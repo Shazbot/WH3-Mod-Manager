@@ -93,9 +93,7 @@ const ModsViewer = memo(() => {
   const saveAsPackNameInputRef = useRef<HTMLInputElement>(null);
   const newPackNameInputRef = useRef<HTMLInputElement>(null);
   const tabIdCounterRef = useRef(0);
-  const lastActionRef = useRef<{ fileKey: string; at: number; openedNew: boolean; tabId?: string } | null>(
-    null,
-  );
+  const lastActionRef = useRef<{ fileKey: string; at: number; openedNew: boolean; tabId?: string } | null>(null);
   const lastSelectionKeyRef = useRef<string | null>(null);
   const lastProcessedSelectionRequestKeyRef = useRef<string | null>(null);
   const suppressSelectionToTabSyncRef = useRef(false);
@@ -387,8 +385,7 @@ const ModsViewer = memo(() => {
       const isAlreadySelected =
         !currentFlowSelection &&
         currentDBSelection?.packPath === activeTab.packPath &&
-        (currentDBSelection?.dbFolder || DEFAULT_DB_TABLE_ROOT) ===
-          (activeTab.dbFolder || DEFAULT_DB_TABLE_ROOT) &&
+        (currentDBSelection?.dbFolder || DEFAULT_DB_TABLE_ROOT) === (activeTab.dbFolder || DEFAULT_DB_TABLE_ROOT) &&
         currentDBSelection?.dbName === activeTab.dbName &&
         currentDBSelection?.dbSubname === activeTab.dbSubname;
       if (isAlreadySelected) {
@@ -409,11 +406,7 @@ const ModsViewer = memo(() => {
       );
       lastSelectionKeyRef.current = activeTab.fileKey;
     }
-  }, [
-    activeTabId,
-    openTabs,
-    dispatch,
-  ]);
+  }, [activeTabId, openTabs, dispatch]);
 
   useEffect(() => {
     let selectionRequestKey: string | null = null;
@@ -491,14 +484,7 @@ const ModsViewer = memo(() => {
       dbName: "main_units_tables",
       dbSubname: "data__",
     });
-  }, [
-    activeTabId,
-    currentFlowFileSelection,
-    currentDBTableSelection,
-    currentPackData,
-    packPath,
-    handleOpenDBTable,
-  ]);
+  }, [activeTabId, currentFlowFileSelection, currentDBTableSelection, currentPackData, packPath, handleOpenDBTable]);
 
   const handleSavePack = useCallback(async () => {
     if (!hasUnsavedFiles) return;
@@ -654,13 +640,7 @@ const ModsViewer = memo(() => {
     } finally {
       setIsNewPackProcessing(false);
     }
-  }, [
-    buildEmptyPackTabCandidate,
-    dispatch,
-    newPackName,
-    openOrActivateTab,
-    showDialog,
-  ]);
+  }, [buildEmptyPackTabCandidate, dispatch, newPackName, openOrActivateTab, showDialog]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -722,13 +702,7 @@ const ModsViewer = memo(() => {
           show={isOpen}
           size="6xl"
           position="top-center"
-          explicitClasses={[
-            "mt-8",
-            "!max-w-7xl",
-            "md:!h-full",
-            "overflow-hidden",
-            "modalDontOverflowWindowHeight",
-          ]}
+          explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>Deep Cloning...</Modal.Header>
           <Modal.Body>
@@ -801,12 +775,7 @@ const ModsViewer = memo(() => {
       </Modal>
 
       {/* Overwrite confirmation, shown over the Save As modal so Cancel goes back to it */}
-      <Modal
-        onClose={() => setOverwriteConfirmPath(null)}
-        show={!!overwriteConfirmPath}
-        size="md"
-        position="center"
-      >
+      <Modal onClose={() => setOverwriteConfirmPath(null)} show={!!overwriteConfirmPath} size="md" position="center">
         <Modal.Header>Pack Already Exists</Modal.Header>
         <Modal.Body>
           <div className="text-sm text-gray-200">
@@ -834,18 +803,11 @@ const ModsViewer = memo(() => {
       </Modal>
 
       {/* New Pack Modal */}
-      <Modal
-        onClose={() => setIsNewPackModalOpen(false)}
-        show={isNewPackModalOpen}
-        size="md"
-        position="center"
-      >
+      <Modal onClose={() => setIsNewPackModalOpen(false)} show={isNewPackModalOpen} size="md" position="center">
         <Modal.Header>Create New Pack</Modal.Header>
         <Modal.Body>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Pack Name (without .pack extension)
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Pack Name (without .pack extension)</label>
             <input
               ref={newPackNameInputRef}
               type="text"
@@ -983,22 +945,22 @@ const ModsViewer = memo(() => {
               >
                 <div className="h-full flex flex-col">
                   <div className="overflow-auto flex-1 scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
-                  <PackTablesTreeView
-                    ref={treeViewRef}
-                    packPath={activeViewerPackPath}
-                    preferredTab={
-                      activeTab?.kind === "flow" ||
-                      activeTab?.kind === "file" ||
-                      (!packFileInventory?.hasDBTables && packFileInventory?.hasFiles)
-                        ? "files"
-                        : "db"
-                    }
-                    tableFilter={dbTableFilter}
-                    showDialog={showDialog}
-                    onOpenDBTable={handleOpenDBTable}
-                    onOpenFlowFile={handleOpenFlowFile}
-                    onOpenPackedFile={handleOpenPackedFile}
-                  />
+                    <PackTablesTreeView
+                      ref={treeViewRef}
+                      packPath={activeViewerPackPath}
+                      preferredTab={
+                        activeTab?.kind === "flow" ||
+                        activeTab?.kind === "file" ||
+                        (!packFileInventory?.hasDBTables && packFileInventory?.hasFiles)
+                          ? "files"
+                          : "db"
+                      }
+                      tableFilter={dbTableFilter}
+                      showDialog={showDialog}
+                      onOpenDBTable={handleOpenDBTable}
+                      onOpenFlowFile={handleOpenFlowFile}
+                      onOpenPackedFile={handleOpenPackedFile}
+                    />
                   </div>
 
                   <div className="flex items-center mt-3">
@@ -1073,7 +1035,11 @@ const ModsViewer = memo(() => {
                     ) : activeTab.kind === "flow" && activeTab.flowFile ? (
                       <NodeEditor currentFile={activeTab.flowFile} currentPack={activeTab.packPath} />
                     ) : activeTab.kind === "file" && activeTab.filePath ? (
-                      <PackFileView packPath={activeTab.packPath} filePath={activeTab.filePath} showDialog={showDialog} />
+                      <PackFileView
+                        packPath={activeTab.packPath}
+                        filePath={activeTab.filePath}
+                        showDialog={showDialog}
+                      />
                     ) : (
                       <PackTablesTableView showDialog={showDialog} />
                     )

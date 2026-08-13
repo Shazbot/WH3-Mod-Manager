@@ -4,10 +4,7 @@ import { Provider } from "react-redux";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer, {
-  setIsFeaturesForModdersEnabled,
-  setWorkshopUpdateCheckMessage,
-} from "../src/appSlice";
+import appReducer, { setIsFeaturesForModdersEnabled, setWorkshopUpdateCheckMessage } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import localizationContext from "../src/localizationContext";
 import LeftSidebar from "../src/components/LeftSidebar";
@@ -123,9 +120,7 @@ const renderWithState = (ui: React.ReactNode, stateOverrides: Partial<AppState> 
 
   const renderResult = render(
     <Provider store={store}>
-      <localizationContext.Provider value={localizedStrings}>
-        {ui}
-      </localizationContext.Provider>
+      <localizationContext.Provider value={localizedStrings}>{ui}</localizationContext.Provider>
     </Provider>,
   );
 
@@ -307,9 +302,7 @@ describe("tree display DOM behavior", () => {
     fireEvent.click(screen.getByText("Workshop mods may be outdated"));
     expect(screen.getByText("Repair Workshop Mods")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Force Update" }));
-    expect(window.api?.repairOutdatedWorkshopMods).toHaveBeenCalledWith([
-      { mod, remoteTimestampMs: 200_000 },
-    ]);
+    expect(window.api?.repairOutdatedWorkshopMods).toHaveBeenCalledWith([{ mod, remoteTimestampMs: 200_000 }]);
 
     act(() => {
       store.dispatch(

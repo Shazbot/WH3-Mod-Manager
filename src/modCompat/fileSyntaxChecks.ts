@@ -32,11 +32,7 @@ const wsmodelParser = new XMLParser({
   },
 });
 
-const toIgnoreInMaterials = [
-  "commontextures/default_black.dds",
-  "MASK_PATH",
-  "commontextures\\default_black.dds",
-];
+const toIgnoreInMaterials = ["commontextures/default_black.dds", "MASK_PATH", "commontextures\\default_black.dds"];
 const materialParser = new XMLParser({
   ignoreAttributes: false,
   tagValueProcessor: (attrName, attrValue, jPath) => {
@@ -66,15 +62,14 @@ export function appendScriptToFileChecksRegistry(pack: Pack, packFile: PackedFil
       } as FileAnalysisError;
 
       packFileAnalysisErrors[pack.name] = packFileAnalysisErrors[pack.name] || {};
-      packFileAnalysisErrors[pack.name][packFile.name] =
-        packFileAnalysisErrors[pack.name][packFile.name] || [];
+      packFileAnalysisErrors[pack.name][packFile.name] = packFileAnalysisErrors[pack.name][packFile.name] || [];
 
       if (
         packFileAnalysisErrors[pack.name][packFile.name].find(
           (existingError) =>
             existingError.msg == error.msg &&
             existingError.packName == error.packName &&
-            existingError.packFileName == error.packFileName
+            existingError.packFileName == error.packFileName,
         )
       )
         return;
@@ -166,7 +161,7 @@ export function appendToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
         existingError.packName == error.packName &&
         existingError.packFileName == error.packFileName &&
         existingError.lineNum == error.lineNum &&
-        existingError.colNum == error.colNum
+        existingError.colNum == error.colNum,
     )
   )
     return;

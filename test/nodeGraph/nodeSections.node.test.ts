@@ -25,8 +25,7 @@ describe("node sidebar sections", () => {
 
   it("separates packs from the files inside them", () => {
     const sectionOf = (type: string) =>
-      nodeTypeSectionDefinitions.find((section) => section.nodes.some((node) => node.type === type))
-        ?.titleFallback;
+      nodeTypeSectionDefinitions.find((section) => section.nodes.some((node) => node.type === type))?.titleFallback;
 
     // Sources of packs - a pack is a mod.
     expect(sectionOf("packedfiles")).toBe("Pack Sources");
@@ -44,8 +43,7 @@ describe("node sidebar sections", () => {
 
   it("keeps the node that gates execution apart from the ones that drop rows", () => {
     const sectionOf = (type: string) =>
-      nodeTypeSectionDefinitions.find((section) => section.nodes.some((node) => node.type === type))
-        ?.titleFallback;
+      nodeTypeSectionDefinitions.find((section) => section.nodes.some((node) => node.type === type))?.titleFallback;
 
     // Conditional branch decides which downstream nodes run at all; it never touches a row.
     expect(sectionOf("conditionalbranch")).toBe("Control Flow");

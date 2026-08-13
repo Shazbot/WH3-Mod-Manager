@@ -7,8 +7,7 @@ import { useTheme } from "../Flowbite/ThemeContext";
 import HelperText from "./HelperText";
 import type { TextInputColors, TextInputSizes } from "./TextInput";
 
-export interface FileInputProps
-  extends Omit<ComponentProps<"input">, "type" | "ref" | "color" | "className"> {
+export interface FileInputProps extends Omit<ComponentProps<"input">, "type" | "ref" | "color" | "className"> {
   sizing?: keyof TextInputSizes;
   helperText?: ReactNode;
   color?: keyof TextInputColors;
@@ -26,7 +25,7 @@ export const FileInput = forwardRef<HTMLInputElement, FileInputProps>(
               className={classNames(
                 theme.field.input.base,
                 theme.field.input.colors[color],
-                theme.field.input.sizes[sizing]
+                theme.field.input.sizes[sizing],
               )}
               {...theirProps}
               type="file"
@@ -37,7 +36,7 @@ export const FileInput = forwardRef<HTMLInputElement, FileInputProps>(
         {helperText && <HelperText color={color}>{helperText}</HelperText>}
       </>
     );
-  }
+  },
 );
 
 FileInput.displayName = "FileInput";

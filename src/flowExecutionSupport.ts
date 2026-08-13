@@ -57,7 +57,9 @@ export const isPackSource = isFlowSourcePack;
 
 export const buildAutomaticFlowExecutionId = (packName: string, flowFileName: string): string => {
   const packBaseName = getFileName(packName).replace(/\.pack$/i, "");
-  const flowBaseName = getFileName(flowFileName).replace(/\.[^.]+$/, "").replace(/\.pack$/i, "");
+  const flowBaseName = getFileName(flowFileName)
+    .replace(/\.[^.]+$/, "")
+    .replace(/\.pack$/i, "");
 
   if (!packBaseName || packBaseName.toLowerCase() === flowBaseName.toLowerCase()) {
     return flowBaseName || packBaseName;
@@ -108,10 +110,7 @@ export const areFlowFilesLoaded = (
 ): sourcePack is Pick<Pack, "packedFiles"> => {
   if (!sourcePack) return false;
   const flowFiles = sourcePack.packedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
-  return (
-    flowFiles.length > 0 &&
-    flowFiles.every((file) => file.text !== undefined || file.buffer !== undefined)
-  );
+  return flowFiles.length > 0 && flowFiles.every((file) => file.text !== undefined || file.buffer !== undefined);
 };
 export const canReuseFlowSourcePack = (
   sourcePack: Pick<Pack, "packedFiles" | "lastChangedLocal" | "size"> | undefined,

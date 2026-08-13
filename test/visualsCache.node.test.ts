@@ -29,9 +29,7 @@ describe("Visuals data cache", () => {
     expect(getCurrentVisualsPackCacheEntry(cache, { ...originalIdentity })).toBe(entry);
     expect(getCurrentVisualsTableContribution(entry, "schema-a")).toBe(entry.tables.contribution);
     expect(getCurrentVisualsTableContribution(entry, "schema-b")).toBeUndefined();
-    expect(
-      getCurrentVisualsPackCacheEntry(cache, { ...originalIdentity, mtimeMs: 11 }),
-    ).toBeUndefined();
+    expect(getCurrentVisualsPackCacheEntry(cache, { ...originalIdentity, mtimeMs: 11 })).toBeUndefined();
 
     const replacement = getOrCreateVisualsPackCacheEntry(cache, {
       ...originalIdentity,
@@ -48,10 +46,7 @@ describe("Visuals data cache", () => {
       "models\\unit.rigid_model_v2",
       "textures\\unit.dds",
     ]);
-    const mod = getVisualsFilesFromNames([
-      "VariantMeshes\\UNIT.variantmeshdefinition",
-      "models\\unit.wsmodel",
-    ]);
+    const mod = getVisualsFilesFromNames(["VariantMeshes\\UNIT.variantmeshdefinition", "models\\unit.wsmodel"]);
 
     expect(mergeVisualsFileContributions([vanilla, mod])).toEqual([
       { path: "models\\unit.rigid_model_v2", ext: "rigid_model_v2" },

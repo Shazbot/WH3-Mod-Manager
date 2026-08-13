@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { applyTextFileEdits, TextFileEditRule } from "../../src/nodeGraph/textFileEdits";
-import {
-  autoIndentXmlFragment,
-  formatXmlDocument,
-} from "../../src/nodeGraph/textFileFormatting";
+import { autoIndentXmlFragment, formatXmlDocument } from "../../src/nodeGraph/textFileFormatting";
 
 const xmlRule = (overrides: Partial<TextFileEditRule> = {}): TextFileEditRule => ({
   id: "format",
@@ -19,12 +16,12 @@ const xmlRule = (overrides: Partial<TextFileEditRule> = {}): TextFileEditRule =>
 
 describe("Edit Text File formatters", () => {
   it("pretty-prints XML using its existing indentation and line endings", () => {
-    const source = '<ROOT>\r\n\t<SLOT><META_DATA>audio:metal</META_DATA></SLOT>\r\n</ROOT>\r\n';
+    const source = "<ROOT>\r\n\t<SLOT><META_DATA>audio:metal</META_DATA></SLOT>\r\n</ROOT>\r\n";
     const result = formatXmlDocument(source, "prettyXml");
 
     expect(result.error).toBeUndefined();
     expect(result.text).toBe(
-      '<ROOT>\r\n\t<SLOT>\r\n\t\t<META_DATA>audio:metal</META_DATA>\r\n\t</SLOT>\r\n</ROOT>\r\n',
+      "<ROOT>\r\n\t<SLOT>\r\n\t\t<META_DATA>audio:metal</META_DATA>\r\n\t</SLOT>\r\n</ROOT>\r\n",
     );
   });
 
@@ -47,12 +44,7 @@ describe("Edit Text File formatters", () => {
   it("auto-indents an inserted fragment at its destination", () => {
     const source = "<ROOT>\n  <SLOT>\n    <OLD/>\n  </SLOT>\n</ROOT>";
     const insertionIndex = source.indexOf("<OLD/>") + "<OLD/>".length;
-    const result = autoIndentXmlFragment(
-      source,
-      "<NEW>\n<CHILD/>\n</NEW>",
-      insertionIndex,
-      "insertAfter",
-    );
+    const result = autoIndentXmlFragment(source, "<NEW>\n<CHILD/>\n</NEW>", insertionIndex, "insertAfter");
 
     expect(result.error).toBeUndefined();
     expect(result.text).toBe("\n    <NEW>\n      <CHILD/>\n    </NEW>");
@@ -60,12 +52,7 @@ describe("Edit Text File formatters", () => {
 
   it("runs auto-indent while applying rules and whole-document formatting afterward", () => {
     const source = "<ROOT>\n  <SLOT>\n    <OLD/>\n  </SLOT>\n</ROOT>";
-    const autoIndented = applyTextFileEdits(
-      "unit.variantmeshdefinition",
-      source,
-      [xmlRule()],
-      "autoIndent",
-    );
+    const autoIndented = applyTextFileEdits("unit.variantmeshdefinition", source, [xmlRule()], "autoIndent");
     expect(autoIndented.text).toContain("<OLD/>\n    <NEW>\n      <CHILD/>\n    </NEW>");
 
     const compacted = applyTextFileEdits(

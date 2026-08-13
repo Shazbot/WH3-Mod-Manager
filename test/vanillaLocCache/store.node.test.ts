@@ -95,8 +95,9 @@ describe("vanilla loc cache store", () => {
     expect(getVanillaLocCacheIdentity("wh2", [packPath])).not.toBe(base);
     // Order counts: packs are folded last-wins, so swapping two of them is a different cache. A
     // language pack listed after English means something different from one listed before it.
-    expect(getVanillaLocCacheIdentity("wh3", [other, packPath]))
-      .not.toBe(getVanillaLocCacheIdentity("wh3", [packPath, other]));
+    expect(getVanillaLocCacheIdentity("wh3", [other, packPath])).not.toBe(
+      getVanillaLocCacheIdentity("wh3", [packPath, other]),
+    );
   });
 
   it("gives consumers with different pack sets their own file instead of evicting each other", async () => {

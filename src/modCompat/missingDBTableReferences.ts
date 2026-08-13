@@ -92,14 +92,8 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
         for (let i = 0; i < chunkedSchemaIntoRows.length; i++) {
           for (let j = 0; j < chunkedSchemaIntoRows[i].length; j++) {
             const dbField = dbversion.fields[j];
-            if (
-              tablesToReferenceFieldNames[dbName] &&
-              tablesToReferenceFieldNames[dbName].includes(dbField.name)
-            ) {
-              const resolvedKeyValue = resolveKeyValue(
-                dbField.field_type,
-                chunkedSchemaIntoRows[i][j].fields
-              );
+            if (tablesToReferenceFieldNames[dbName] && tablesToReferenceFieldNames[dbName].includes(dbField.name)) {
+              const resolvedKeyValue = resolveKeyValue(dbField.field_type, chunkedSchemaIntoRows[i][j].fields);
 
               if (resolvedKeyValue != "") {
                 allOwnKeys[dbName] = allOwnKeys[dbName] || {};
@@ -114,8 +108,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
               tablesAndDBFieldsThatReference[dbName] &&
               tablesAndDBFieldsThatReference[dbName][dbField.name]
             ) {
-              const [dbNameReferenceTo, dbFieldNameReferenceTo] =
-                tablesAndDBFieldsThatReference[dbName][dbField.name];
+              const [dbNameReferenceTo, dbFieldNameReferenceTo] = tablesAndDBFieldsThatReference[dbName][dbField.name];
               packTableReferences.refs[dbNameReferenceTo] = packTableReferences.refs[dbNameReferenceTo] || {};
               packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo] =
                 packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo] || [];
@@ -125,13 +118,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                 resolvedKeyValue = resolveKeyValue(dbField.field_type, chunkedSchemaIntoRows[i][j].fields);
               } catch (e) {
                 console.log(dbField);
-                console.log(
-                  pack.name,
-                  packFile.name,
-                  dbName,
-                  dbField.name,
-                  chunkedSchemaIntoRows[i][j].fields
-                );
+                console.log(pack.name, packFile.name, dbName, dbField.name, chunkedSchemaIntoRows[i][j].fields);
                 continue;
                 // throw e;
               }
@@ -145,9 +132,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                   const refKeys = refKeySets[dbNameReferenceTo][dbFieldNameReferenceTo];
                   if (!refKeys.has(resolvedKeyValue)) {
                     refKeys.add(resolvedKeyValue);
-                    packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].push(
-                      resolvedKeyValue,
-                    );
+                    packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].push(resolvedKeyValue);
                   }
 
                   const newRefOrigin = {
@@ -225,7 +210,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                 (refOrigin) =>
                   refOrigin.targetDBFileName === dbFileNameToSearch &&
                   refOrigin.value === refKey &&
-                  refOrigin.targetFieldName === dbFieldNameToSearch
+                  refOrigin.targetFieldName === dbFieldNameToSearch,
               );
               for (const ref of refs) {
                 // check if it's an optional non-text field with value 0 and skip it in that case
@@ -271,7 +256,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
 // TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
 export function findPackTableMissingReferencesAndCompareWithUnoptimizedMethod(
   packsData: Pack[],
-  onPackChecked?: OnPackChecked
+  onPackChecked?: OnPackChecked,
 ) {
   const missingRefs1 = findPackTableReferences(packsData, onPackChecked);
   const missingRefs2 = findPackTableMissingReferences(packsData, onPackChecked);
@@ -332,18 +317,12 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
         for (let i = 0; i < chunkedSchemaIntoRows.length; i++) {
           for (let j = 0; j < chunkedSchemaIntoRows[i].length; j++) {
             const dbField = dbversion.fields[j];
-            if (
-              tablesToReferenceFieldNames[dbName] &&
-              tablesToReferenceFieldNames[dbName].includes(dbField.name)
-            ) {
+            if (tablesToReferenceFieldNames[dbName] && tablesToReferenceFieldNames[dbName].includes(dbField.name)) {
               packTableReferences.ownKeys[dbName] = packTableReferences.ownKeys[dbName] || {};
               packTableReferences.ownKeys[dbName][dbField.name] =
                 packTableReferences.ownKeys[dbName][dbField.name] || [];
 
-              const resolvedKeyValue = resolveKeyValue(
-                dbField.field_type,
-                chunkedSchemaIntoRows[i][j].fields
-              );
+              const resolvedKeyValue = resolveKeyValue(dbField.field_type, chunkedSchemaIntoRows[i][j].fields);
 
               if (
                 resolvedKeyValue != "" &&
@@ -358,8 +337,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
               tablesAndDBFieldsThatReference[dbName] &&
               tablesAndDBFieldsThatReference[dbName][dbField.name]
             ) {
-              const [dbNameReferenceTo, dbFieldNameReferenceTo] =
-                tablesAndDBFieldsThatReference[dbName][dbField.name];
+              const [dbNameReferenceTo, dbFieldNameReferenceTo] = tablesAndDBFieldsThatReference[dbName][dbField.name];
               packTableReferences.refs[dbNameReferenceTo] = packTableReferences.refs[dbNameReferenceTo] || {};
               packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo] =
                 packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo] || [];
@@ -369,27 +347,15 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                 resolvedKeyValue = resolveKeyValue(dbField.field_type, chunkedSchemaIntoRows[i][j].fields);
               } catch (e) {
                 console.log(dbField);
-                console.log(
-                  pack.name,
-                  packFile.name,
-                  dbName,
-                  dbField.name,
-                  chunkedSchemaIntoRows[i][j].fields
-                );
+                console.log(pack.name, packFile.name, dbName, dbField.name, chunkedSchemaIntoRows[i][j].fields);
                 throw e;
               }
 
               if (resolvedKeyValue != "")
                 if (appData.vanillaPacksDBFileNames.includes(dbNameReferenceTo)) {
                   // if it's an Assembly Kit table ignore it
-                  if (
-                    !packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].includes(
-                      resolvedKeyValue
-                    )
-                  )
-                    packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].push(
-                      resolvedKeyValue
-                    );
+                  if (!packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].includes(resolvedKeyValue))
+                    packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].push(resolvedKeyValue);
 
                   const newRefOrigin = {
                     originDBFileName: dbName,
@@ -411,7 +377,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                         refOrigin.value === newRefOrigin.value &&
                         refOrigin.originFieldName === newRefOrigin.originFieldName &&
                         refOrigin.targetFieldName === newRefOrigin.targetFieldName &&
-                        refOrigin.originFileSuffix === newRefOrigin.originFileSuffix
+                        refOrigin.originFileSuffix === newRefOrigin.originFileSuffix,
                     )
                   )
                     packTableReferences.refOrigins[dbNameReferenceTo].push(newRefOrigin);
@@ -461,7 +427,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
             foundRef =
               packTableReferenceForRefSearch.ownKeys[dbFileNameToSearch] &&
               !!packTableReferenceForRefSearch.ownKeys[dbFileNameToSearch][dbFieldNameToSearch]?.find(
-                (ownKeyInOtherPack) => ownKeyInOtherPack == refKey
+                (ownKeyInOtherPack) => ownKeyInOtherPack == refKey,
               );
             if (foundRef) {
               // console.log(
@@ -486,7 +452,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                 (refOrigin) =>
                   refOrigin.targetDBFileName === dbFileNameToSearch &&
                   refOrigin.value === refKey &&
-                  refOrigin.targetFieldName === dbFieldNameToSearch
+                  refOrigin.targetFieldName === dbFieldNameToSearch,
               );
               for (const ref of refs) {
                 // check if it's an optional non-text field with value 0 and skip it in that case

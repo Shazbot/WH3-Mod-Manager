@@ -77,10 +77,7 @@ describe("migrateAppConfig", () => {
     const config = migrateAppConfig(createLegacyConfig());
 
     const onAppStart = config.games.wh3.presets.find((preset) => preset.name === "On App Start");
-    expect(onAppStart?.mods).toEqual([
-      { name: "alpha.pack" },
-      { name: "beta.pack", isEnabled: false },
-    ]);
+    expect(onAppStart?.mods).toEqual([{ name: "alpha.pack" }, { name: "beta.pack", isEnabled: false }]);
   });
 
   it("lifts per-mod data out of the presets into one map per game", () => {

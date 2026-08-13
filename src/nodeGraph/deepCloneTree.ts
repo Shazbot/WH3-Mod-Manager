@@ -129,8 +129,7 @@ export const getReferenceOptions = (
   }
 
   return options.toSorted(
-    (first, second) =>
-      first.direction.localeCompare(second.direction) || first.table.localeCompare(second.table),
+    (first, second) => first.direction.localeCompare(second.direction) || first.table.localeCompare(second.table),
   );
 };
 

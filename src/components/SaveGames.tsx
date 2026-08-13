@@ -53,13 +53,7 @@ const PackComparisonModal = memo(
         onClose={onClose}
         size="2xl"
         position="top-center"
-        explicitClasses={[
-          "mt-8",
-          "!max-w-5xl",
-          "md:!h-full",
-          "overflow-hidden",
-          "modalDontOverflowWindowHeight",
-        ]}
+        explicitClasses={["mt-8", "!max-w-5xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
       >
         <Modal.Header>
           {localized.comparingModsInSave} - {comparison.saveName}
@@ -78,9 +72,7 @@ const PackComparisonModal = memo(
                     <div key={pack} className="text-sm">
                       <span className="font-mono text-xs">{pack}</span>
                       {getModHumanName(pack) !== pack && (
-                        <span className="ml-2 text-gray-600 dark:text-gray-300">
-                          ({getModHumanName(pack)})
-                        </span>
+                        <span className="ml-2 text-gray-600 dark:text-gray-300">({getModHumanName(pack)})</span>
                       )}
                     </div>
                   ))
@@ -100,9 +92,7 @@ const PackComparisonModal = memo(
                     <div key={pack} className="text-sm">
                       <span className="font-mono text-xs">{pack}</span>
                       {getModHumanName(pack) !== pack && (
-                        <span className="ml-2 text-gray-600 dark:text-gray-300">
-                          ({getModHumanName(pack)})
-                        </span>
+                        <span className="ml-2 text-gray-600 dark:text-gray-300">({getModHumanName(pack)})</span>
                       )}
                     </div>
                   ))
@@ -122,9 +112,7 @@ const PackComparisonModal = memo(
                     <div key={pack} className="text-sm">
                       <span className="font-mono text-xs">{pack}</span>
                       {getModHumanName(pack) !== pack && (
-                        <span className="ml-2 text-gray-600 dark:text-gray-300">
-                          ({getModHumanName(pack)})
-                        </span>
+                        <span className="ml-2 text-gray-600 dark:text-gray-300">({getModHumanName(pack)})</span>
                       )}
                     </div>
                   ))
@@ -135,7 +123,7 @@ const PackComparisonModal = memo(
         </Modal.Body>
       </Modal>
     );
-  }
+  },
 );
 
 const SaveGame = memo((props: SaveGameProps) => {
@@ -179,10 +167,10 @@ const SaveGame = memo((props: SaveGameProps) => {
           packDataOverwrites,
           userFlowOptions,
         },
-        name
+        name,
       );
     },
-    [mods, isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled]
+    [mods, isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled],
   );
 
   const onComparePacksClick = useCallback(
@@ -218,9 +206,7 @@ const SaveGame = memo((props: SaveGameProps) => {
         const enabledPacksSet = new Set(enabledPacks);
 
         const common = packNames.filter((pack) => enabledPacksSet.has(pack));
-        const missingFromEnabled = packNames.filter(
-          (pack) => !enabledPacksSet.has(pack) && !ignoredPacks.has(pack)
-        );
+        const missingFromEnabled = packNames.filter((pack) => !enabledPacksSet.has(pack) && !ignoredPacks.has(pack));
         const extraInEnabled = enabledPacks.filter((pack) => !packsInSaveSet.has(pack));
 
         const comparison: PackComparison = {
@@ -238,7 +224,7 @@ const SaveGame = memo((props: SaveGameProps) => {
         console.error("Failed to get packs from save:", error);
       }
     },
-    [mods]
+    [mods],
   );
 
   const localized = useLocalizations();
@@ -251,13 +237,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           onClose={onClose}
           size="2xl"
           position="top-center"
-          explicitClasses={[
-            "mt-8",
-            "!max-w-7xl",
-            "md:!h-full",
-            "overflow-hidden",
-            "modalDontOverflowWindowHeight",
-          ]}
+          explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>
             <div className="flex justify-between w-full">
@@ -287,7 +267,7 @@ const SaveGame = memo((props: SaveGameProps) => {
                           "bg-green-500 hover:bg-green-700 font-bold text-white px-4 rounded h-[32px] w-full m-auto text-sm truncate",
                           {
                             "opacity-30": isWH3Running,
-                          }
+                          },
                         )}
                         type="button"
                         disabled={isWH3Running}

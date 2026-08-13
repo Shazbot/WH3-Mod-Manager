@@ -72,9 +72,7 @@ describe("collectPlannedTables", () => {
   });
 
   it("omits ignored tables so they are never read", () => {
-    const planned = collectPlannedTables(createTree(), reverseReferences, [
-      "ownership_junctions_tables",
-    ]);
+    const planned = collectPlannedTables(createTree(), reverseReferences, ["ownership_junctions_tables"]);
 
     expect(planned).not.toContain("ownership_junctions_tables");
     expect(planned).toContain("units_to_groupings_tables");

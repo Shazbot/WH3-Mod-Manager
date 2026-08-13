@@ -54,9 +54,7 @@ export const parseSharedModList = (text: string): ModIdAndLoadOrder[] =>
       const possibleFallbackWorkshopId =
         fallbackSeparatorIndex >= 0 ? localIdentifier.slice(fallbackSeparatorIndex + 1) : "";
       const hasFallbackWorkshopId = isNumericWorkshopId(possibleFallbackWorkshopId);
-      const encodedModName = hasFallbackWorkshopId
-        ? localIdentifier.slice(0, fallbackSeparatorIndex)
-        : localIdentifier;
+      const encodedModName = hasFallbackWorkshopId ? localIdentifier.slice(0, fallbackSeparatorIndex) : localIdentifier;
       let modName = encodedModName;
       try {
         modName = decodeURIComponent(encodedModName);
@@ -75,13 +73,8 @@ export const sharedModMatchesInstalledMod = (sharedMod: ModIdAndLoadOrder, mod: 
     mod.name.localeCompare(sharedMod.modName, undefined, { sensitivity: "accent" }) === 0) ||
   (sharedMod.workshopId !== "" && mod.workshopId === sharedMod.workshopId);
 
-export const getMissingSharedWorkshopIds = (
-  sharedMods: ModIdAndLoadOrder[],
-  availableMods: Mod[],
-): string[] => {
-  const installedWorkshopIds = new Set(
-    availableMods.filter(isWorkshopMod).map((mod) => mod.workshopId),
-  );
+export const getMissingSharedWorkshopIds = (sharedMods: ModIdAndLoadOrder[], availableMods: Mod[]): string[] => {
+  const installedWorkshopIds = new Set(availableMods.filter(isWorkshopMod).map((mod) => mod.workshopId));
   return [
     ...new Set(
       sharedMods

@@ -61,13 +61,7 @@ interface WorkshopInstallInfoDiagnostic {
 }
 
 type WorkshopUpdateCheckStatus =
-  | "requested"
-  | "already-downloading"
-  | "downloading"
-  | "updated"
-  | "request-failed"
-  | "timed-out"
-  | "resubscribing";
+  "requested" | "already-downloading" | "downloading" | "updated" | "request-failed" | "timed-out" | "resubscribing";
 
 interface WorkshopUpdateCheckItem {
   workshopId: string;
@@ -175,7 +169,7 @@ if (process.argv[3] == "unsubscribe") {
 const getAuthors = (
   client: Omit<steamworks.Client, "init" | "runCallbacks">,
   ids: bigint[],
-  cb: (authorsMap: Map<string, string>) => void
+  cb: (authorsMap: Map<string, string>) => void,
 ) => {
   if (!process.send) {
     process.exit();
@@ -221,7 +215,7 @@ if (process.argv[3] == "getAuthors") {
 const getDependencies = (
   client: Omit<steamworks.Client, "init" | "runCallbacks">,
   ids: bigint[],
-  cb: (dependenciesMap: Map<string, string[]>) => void
+  cb: (dependenciesMap: Map<string, string[]>) => void,
 ) => {
   if (!process.send) {
     process.exit();
@@ -237,7 +231,7 @@ const getDependencies = (
           .then((dependencyIds) => {
             dependenciesMap.set(
               id.toString(),
-              dependencyIds.map((depId) => depId.toString())
+              dependencyIds.map((depId) => depId.toString()),
             );
             resolve();
           })
@@ -246,7 +240,7 @@ const getDependencies = (
             logSteamError("getItemDependencies", e, [id]);
             resolve();
           });
-      })
+      }),
   );
 
   Promise.allSettled(promises).then(() => {
@@ -269,7 +263,7 @@ if (process.argv[3] == "getDependencies") {
 const getItems = (
   client: Omit<steamworks.Client, "init" | "runCallbacks">,
   ids: bigint[],
-  cb: (data: WorkshopItemStringInsteadOfBigInt[]) => void
+  cb: (data: WorkshopItemStringInsteadOfBigInt[]) => void,
 ) => {
   if (!process.send) {
     process.exit();
@@ -291,9 +285,7 @@ const getItems = (
             owner: { ...data.owner, steamId64: data?.owner.steamId64.toString() },
             publishedFileId: data.publishedFileId.toString(),
             statistics: {
-              numSubscriptions: data.statistics.numSubscriptions
-                ? data.statistics.numSubscriptions.toString()
-                : "",
+              numSubscriptions: data.statistics.numSubscriptions ? data.statistics.numSubscriptions.toString() : "",
               numFavorites: data.statistics.numFavorites ? data.statistics.numFavorites.toString() : "",
               numFollowers: data.statistics.numFollowers ? data.statistics.numFollowers.toString() : "",
               numUniqueSubscriptions: data.statistics.numUniqueSubscriptions
@@ -309,9 +301,7 @@ const getItems = (
                 ? data.statistics.numUniqueWebsiteViews.toString()
                 : "",
               reportScore: data.statistics.reportScore ? data.statistics.reportScore.toString() : "",
-              numSecondsPlayed: data.statistics.numSecondsPlayed
-                ? data.statistics.numSecondsPlayed.toString()
-                : "",
+              numSecondsPlayed: data.statistics.numSecondsPlayed ? data.statistics.numSecondsPlayed.toString() : "",
               numPlaytimeSessions: data.statistics.numPlaytimeSessions
                 ? data.statistics.numPlaytimeSessions.toString()
                 : "",
@@ -323,7 +313,7 @@ const getItems = (
                 ? data.statistics.numPlaytimeSessionsDuringTimePeriod.toString()
                 : "",
             },
-          } as WorkshopItemStringInsteadOfBigInt)
+          } as WorkshopItemStringInsteadOfBigInt),
       ) as WorkshopItemStringInsteadOfBigInt[];
 
   client.workshop
@@ -343,14 +333,10 @@ const getItems = (
             logSteamError("getItems.single", singleItemError, [id]);
             return undefined;
           }
-        })
+        }),
       );
 
-      cb(
-        fallbackItems.filter(
-          (item): item is WorkshopItemStringInsteadOfBigInt => item !== undefined
-        )
-      );
+      cb(fallbackItems.filter((item): item is WorkshopItemStringInsteadOfBigInt => item !== undefined));
     });
 };
 
@@ -361,9 +347,7 @@ if (process.argv[3] == "getModsData") {
 
   getItems(client, ids, (data) => {
     getDependencies(client, ids, (dependenciesMap) => {
-      const dedupedAuthorIds = Array.from(new Set(data.map((data) => data.owner.steamId64))).map((id) =>
-        BigInt(id)
-      );
+      const dedupedAuthorIds = Array.from(new Set(data.map((data) => data.owner.steamId64))).map((id) => BigInt(id));
 
       getAuthors(client, dedupedAuthorIds, (authorsMap) => {
         const installInfoDiagnostics = data.map((item): WorkshopInstallInfoDiagnostic => {
@@ -409,8 +393,7 @@ if (process.argv[3] == "checkState") {
       .split(";")
       .map((entry) => entry.split(":"))
       .filter(
-        (entry): entry is [string, string] =>
-          entry.length === 2 && /^\d+$/.test(entry[0]) && /^\d+$/.test(entry[1]),
+        (entry): entry is [string, string] => entry.length === 2 && /^\d+$/.test(entry[0]) && /^\d+$/.test(entry[1]),
       )
       .map(([workshopId, timestamp]) => [workshopId, Number(timestamp)]),
   );
@@ -463,11 +446,7 @@ if (process.argv[3] == "checkState") {
           workshopId: workshopId.toString(),
           initialState,
           finalState: initialState,
-          status: isAlreadyDownloading
-            ? "already-downloading"
-            : requestAccepted
-              ? "requested"
-              : "request-failed",
+          status: isAlreadyDownloading ? "already-downloading" : requestAccepted ? "requested" : "request-failed",
           requestAccepted,
           installTimestampBefore,
         });
@@ -488,9 +467,7 @@ if (process.argv[3] == "checkState") {
     let lastActivityAt = startedAt;
 
     const isPendingUpdate = (item: WorkshopUpdateCheckItem) =>
-      item.status === "requested" ||
-      item.status === "already-downloading" ||
-      item.status === "downloading";
+      item.status === "requested" || item.status === "already-downloading" || item.status === "downloading";
 
     while (updateItems.some(isPendingUpdate)) {
       await new Promise((resolve) => setTimeout(resolve, WORKSHOP_UPDATE_POLL_INTERVAL_MS));
@@ -507,8 +484,7 @@ if (process.argv[3] == "checkState") {
           const installTimestamp = client.workshop.installInfo(workshopId)?.timestamp;
           const expectedInstallTimestamp = expectedInstallTimestamps.get(item.workshopId);
           const hasMeaningfulDownloadInfo =
-            downloadInfo != null &&
-            (downloadInfo.current > BigInt(0) || downloadInfo.total > BigInt(0));
+            downloadInfo != null && (downloadInfo.current > BigInt(0) || downloadInfo.total > BigInt(0));
           if (item.finalState !== state) {
             didUpdateProgress = true;
             lastActivityAt = Date.now();
@@ -543,8 +519,7 @@ if (process.argv[3] == "checkState") {
             continue;
           }
 
-          const isDownloadActive =
-            (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+          const isDownloadActive = (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
           if (isDownloadActive && item.status !== "downloading") {
             item.status = "downloading";
             didUpdateProgress = true;
@@ -698,7 +673,7 @@ if (process.argv[3] == "update") {
           } as ModUpdateResponseProgress);
       }
     },
-    100
+    100,
   );
 }
 if (process.argv[3] == "sub") {

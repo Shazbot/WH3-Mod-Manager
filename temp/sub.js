@@ -231,9 +231,7 @@ var getItems = function (client, ids, cb) {
             .map(function (data) {
             return data &&
                 __assign(__assign({}, data), { owner: __assign(__assign({}, data.owner), { steamId64: data === null || data === void 0 ? void 0 : data.owner.steamId64.toString() }), publishedFileId: data.publishedFileId.toString(), statistics: {
-                        numSubscriptions: data.statistics.numSubscriptions
-                            ? data.statistics.numSubscriptions.toString()
-                            : "",
+                        numSubscriptions: data.statistics.numSubscriptions ? data.statistics.numSubscriptions.toString() : "",
                         numFavorites: data.statistics.numFavorites ? data.statistics.numFavorites.toString() : "",
                         numFollowers: data.statistics.numFollowers ? data.statistics.numFollowers.toString() : "",
                         numUniqueSubscriptions: data.statistics.numUniqueSubscriptions
@@ -249,9 +247,7 @@ var getItems = function (client, ids, cb) {
                             ? data.statistics.numUniqueWebsiteViews.toString()
                             : "",
                         reportScore: data.statistics.reportScore ? data.statistics.reportScore.toString() : "",
-                        numSecondsPlayed: data.statistics.numSecondsPlayed
-                            ? data.statistics.numSecondsPlayed.toString()
-                            : "",
+                        numSecondsPlayed: data.statistics.numSecondsPlayed ? data.statistics.numSecondsPlayed.toString() : "",
                         numPlaytimeSessions: data.statistics.numPlaytimeSessions
                             ? data.statistics.numPlaytimeSessions.toString()
                             : "",
@@ -308,9 +304,7 @@ if (process.argv[3] == "getModsData") {
     var client_3 = steamworks.init(Number(process.argv[2]));
     getItems(client_3, ids_2, function (data) {
         getDependencies(client_3, ids_2, function (dependenciesMap) {
-            var dedupedAuthorIds = Array.from(new Set(data.map(function (data) { return data.owner.steamId64; }))).map(function (id) {
-                return BigInt(id);
-            });
+            var dedupedAuthorIds = Array.from(new Set(data.map(function (data) { return data.owner.steamId64; }))).map(function (id) { return BigInt(id); });
             getAuthors(client_3, dedupedAuthorIds, function (authorsMap) {
                 var installInfoDiagnostics = data.map(function (item) {
                     try {
@@ -354,9 +348,7 @@ if (process.argv[3] == "checkState") {
     var expectedInstallTimestamps_1 = new Map(((_a = process.argv[5]) !== null && _a !== void 0 ? _a : "")
         .split(";")
         .map(function (entry) { return entry.split(":"); })
-        .filter(function (entry) {
-        return entry.length === 2 && /^\d+$/.test(entry[0]) && /^\d+$/.test(entry[1]);
-    })
+        .filter(function (entry) { return entry.length === 2 && /^\d+$/.test(entry[0]) && /^\d+$/.test(entry[1]); })
         .map(function (_a) {
         var workshopId = _a[0], timestamp = _a[1];
         return [workshopId, Number(timestamp)];
@@ -413,11 +405,7 @@ if (process.argv[3] == "checkState") {
                                 workshopId: workshopId.toString(),
                                 initialState: initialState,
                                 finalState: initialState,
-                                status: isAlreadyDownloading
-                                    ? "already-downloading"
-                                    : requestAccepted
-                                        ? "requested"
-                                        : "request-failed",
+                                status: isAlreadyDownloading ? "already-downloading" : requestAccepted ? "requested" : "request-failed",
                                 requestAccepted: requestAccepted,
                                 installTimestampBefore: installTimestampBefore,
                             });
@@ -439,9 +427,7 @@ if (process.argv[3] == "checkState") {
                     startedAt = Date.now();
                     lastActivityAt = startedAt;
                     isPendingUpdate = function (item) {
-                        return item.status === "requested" ||
-                            item.status === "already-downloading" ||
-                            item.status === "downloading";
+                        return item.status === "requested" || item.status === "already-downloading" || item.status === "downloading";
                     };
                     _e.label = 2;
                 case 2:
@@ -461,8 +447,7 @@ if (process.argv[3] == "checkState") {
                             downloadInfo = client_4.workshop.downloadInfo(workshopId);
                             installTimestamp = (_d = client_4.workshop.installInfo(workshopId)) === null || _d === void 0 ? void 0 : _d.timestamp;
                             expectedInstallTimestamp = expectedInstallTimestamps_1.get(item.workshopId);
-                            hasMeaningfulDownloadInfo = downloadInfo != null &&
-                                (downloadInfo.current > BigInt(0) || downloadInfo.total > BigInt(0));
+                            hasMeaningfulDownloadInfo = downloadInfo != null && (downloadInfo.current > BigInt(0) || downloadInfo.total > BigInt(0));
                             if (item.finalState !== state) {
                                 didUpdateProgress = true;
                                 lastActivityAt = Date.now();

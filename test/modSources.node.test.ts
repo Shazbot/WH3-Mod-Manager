@@ -31,15 +31,17 @@ const createMod = (overrides: Partial<Mod>): Mod => ({
 describe("mod source priority", () => {
   it("preserves Data before Workshop for existing configurations", () => {
     expect(normalizeModSourceOrder({}, false)).toEqual([DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID]);
-    expect(
-      normalizeModSourceOrder({ modSourceOrder: [WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID] }, false),
-    ).toEqual([DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID]);
+    expect(normalizeModSourceOrder({ modSourceOrder: [WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID] }, false)).toEqual([
+      DATA_MOD_SOURCE_ID,
+      WORKSHOP_MOD_SOURCE_ID,
+    ]);
   });
 
   it("allows built-in source reordering with modder features", () => {
-    expect(
-      normalizeModSourceOrder({ modSourceOrder: [WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID] }, true),
-    ).toEqual([WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID]);
+    expect(normalizeModSourceOrder({ modSourceOrder: [WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID] }, true)).toEqual([
+      WORKSHOP_MOD_SOURCE_ID,
+      DATA_MOD_SOURCE_ID,
+    ]);
   });
 
   it("keeps custom positions while restoring built-in order for non-modders", () => {
@@ -64,16 +66,8 @@ describe("mod source priority", () => {
 
   it("gives a new custom folder priority below Data and above every existing source", () => {
     expect(
-      insertCustomSourceAfterData(
-        ["custom-old", WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID],
-        "custom-new",
-      ),
-    ).toEqual([
-      DATA_MOD_SOURCE_ID,
-      "custom-new",
-      "custom-old",
-      WORKSHOP_MOD_SOURCE_ID,
-    ]);
+      insertCustomSourceAfterData(["custom-old", WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID], "custom-new"),
+    ).toEqual([DATA_MOD_SOURCE_ID, "custom-new", "custom-old", WORKSHOP_MOD_SOURCE_ID]);
   });
 
   it("resolves duplicate names using configured priority", () => {
@@ -133,9 +127,7 @@ describe("mod source priority", () => {
       lastChangedLocal: 100,
     });
 
-    expect(getWorkshopModSyncItems([customMod, workshopMod], "custom-1", [])).toEqual([
-      { workshopMod, customMod },
-    ]);
+    expect(getWorkshopModSyncItems([customMod, workshopMod], "custom-1", [])).toEqual([{ workshopMod, customMod }]);
   });
 
   it("does not overwrite an up-to-date or newer custom copy", () => {
@@ -160,9 +152,7 @@ describe("mod source priority", () => {
       sourceKind: "workshop",
     });
 
-    expect(getWorkshopModSyncItems([workshopMod], "custom-1", ["new.pack"])).toEqual([
-      { workshopMod },
-    ]);
+    expect(getWorkshopModSyncItems([workshopMod], "custom-1", ["new.pack"])).toEqual([{ workshopMod }]);
     expect(getWorkshopModSyncItems([workshopMod], "custom-1", [])).toEqual([]);
   });
 });

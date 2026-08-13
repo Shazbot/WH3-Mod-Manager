@@ -191,9 +191,7 @@ describe("flow option substitution into filter values", () => {
     const prepared = prepareGraphForExecution({
       nodes,
       edges: [],
-      flowOptions: [
-        { id: "myUnits", name: "Units", type: "multiline", value: "emp_greatswords\nemp_handgunners" },
-      ],
+      flowOptions: [{ id: "myUnits", name: "Units", type: "multiline", value: "emp_greatswords\nemp_handgunners" }],
     });
 
     const result = await executeNodeAction({

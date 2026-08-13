@@ -132,13 +132,7 @@ const protectPlaceholders = (text) => {
   const tokens = [];
   let protectedText = text;
 
-  const patterns = [
-    /\{\{[^}]+\}\}/g,
-    /\{[0-9]+\}/g,
-    /\\n/g,
-    /\\t/g,
-    /\\r/g,
-  ];
+  const patterns = [/\{\{[^}]+\}\}/g, /\{[0-9]+\}/g, /\\n/g, /\\t/g, /\\r/g];
 
   for (const pattern of patterns) {
     protectedText = protectedText.replace(pattern, (match) => {
@@ -226,9 +220,7 @@ const run = async () => {
     ];
     const cache = new Map();
 
-    console.log(
-      `\n[${lang}] updating ${changedKeys.length} keys (unique strings to translate: ${uniqueTexts.length})`,
-    );
+    console.log(`\n[${lang}] updating ${changedKeys.length} keys (unique strings to translate: ${uniqueTexts.length})`);
 
     let translatedCount = 0;
     for (const text of uniqueTexts) {

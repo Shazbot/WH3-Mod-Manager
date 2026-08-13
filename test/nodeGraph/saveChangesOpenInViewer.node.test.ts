@@ -60,12 +60,8 @@ describe("save changes open in viewer", () => {
     const withoutTheField = saveNode(false);
     delete (withoutTheField.data as Record<string, unknown>).openInViewer;
 
-    expect(JSON.parse(serializeNodeConfigForExecution(withoutTheField as never) as string).openInViewer).toBe(
-      false,
-    );
-    expect((prepareNodeConfig(withoutTheField as never) as { openInViewer?: boolean }).openInViewer).toBe(
-      false,
-    );
+    expect(JSON.parse(serializeNodeConfigForExecution(withoutTheField as never) as string).openInViewer).toBe(false);
+    expect((prepareNodeConfig(withoutTheField as never) as { openInViewer?: boolean }).openInViewer).toBe(false);
   });
 });
 

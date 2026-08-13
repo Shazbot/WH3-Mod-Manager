@@ -39,8 +39,7 @@ const copyByKind: Record<BuildKind, BuildCopy> = {
   packIndex: {
     title: "Preparing vanilla file index",
     progressLabel: "Vanilla file index build progress",
-    runningNote:
-      "This is created once after a game update. The current operation will continue when it is ready.",
+    runningNote: "This is created once after a game update. The current operation will continue when it is ready.",
     phases: {
       indexing: "Reading the vanilla pack list",
       parsing: "Reading vanilla pack file lists",
@@ -84,9 +83,7 @@ export const VanillaDbCacheBuildProgressCard = memo(() => {
     if (!progress || progress.status === "running") return;
     const hideAfterMs = progress.status === "complete" ? 1800 : 5000;
     const timeout = window.setTimeout(() => {
-      setProgress((currentProgress) =>
-        currentProgress?.buildId === progress.buildId ? undefined : currentProgress,
-      );
+      setProgress((currentProgress) => (currentProgress?.buildId === progress.buildId ? undefined : currentProgress));
     }, hideAfterMs);
     return () => window.clearTimeout(timeout);
   }, [progress]);

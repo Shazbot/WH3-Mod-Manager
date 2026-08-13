@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildVanillaLocCacheBytes } from "../../src/vanillaLocCache/build";
-import {
-  readVanillaLocCacheHeader,
-  VANILLA_LOC_CACHE_HEADER_BYTES,
-} from "../../src/vanillaLocCache/format";
+import { readVanillaLocCacheHeader, VANILLA_LOC_CACHE_HEADER_BYTES } from "../../src/vanillaLocCache/format";
 import { createMemorySource, openVanillaLocCache } from "../../src/vanillaLocCache/read";
 
 const openFrom = (entries: Array<readonly [string, string]>) => {
@@ -30,14 +27,21 @@ describe("vanilla loc cache", () => {
   });
 
   it("keeps empty values distinct from missing keys", () => {
-    const { reader } = openFrom([["blanked", ""], ["present", "text"]]);
+    const { reader } = openFrom([
+      ["blanked", ""],
+      ["present", "text"],
+    ]);
 
     expect(reader.get("blanked")).toBe("");
     expect(reader.get("missing")).toBeUndefined();
   });
 
   it("applies last-wins for a key that appears more than once", () => {
-    const { reader } = openFrom([["shared", "first"], ["other", "kept"], ["shared", "second"]]);
+    const { reader } = openFrom([
+      ["shared", "first"],
+      ["other", "kept"],
+      ["shared", "second"],
+    ]);
 
     expect(reader.get("shared")).toBe("second");
     expect(reader.get("other")).toBe("kept");
@@ -46,8 +50,10 @@ describe("vanilla loc cache", () => {
 
   it("round-trips non-ascii text and keys that straddle a checkpoint boundary", () => {
     // More than one checkpoint interval (64), so lookups cross chunk starts and decode from them.
-    const entries = Array.from({ length: 200 }, (_, index) =>
-      [`prefix_shared_key_${String(index).padStart(4, "0")}`, `välue ${index} — ✓`] as const);
+    const entries = Array.from(
+      { length: 200 },
+      (_, index) => [`prefix_shared_key_${String(index).padStart(4, "0")}`, `välue ${index} — ✓`] as const,
+    );
     const { reader } = openFrom(entries);
 
     expect(reader.count).toBe(200);
@@ -57,8 +63,10 @@ describe("vanilla loc cache", () => {
   });
 
   it("reads only the value it was asked for, not the whole blob", () => {
-    const entries = Array.from({ length: 500 }, (_, index) =>
-      [`key_${String(index).padStart(4, "0")}`, "x".repeat(1000)] as const);
+    const entries = Array.from(
+      { length: 500 },
+      (_, index) => [`key_${String(index).padStart(4, "0")}`, "x".repeat(1000)] as const,
+    );
     const bytes = buildVanillaLocCacheBytes(entries);
     const source = createMemorySource(bytes);
     const reader = openVanillaLocCache(source)!;
@@ -87,7 +95,10 @@ describe("vanilla loc cache", () => {
   });
 
   it("writes a header the reader agrees with", () => {
-    const { bytes } = openFrom([["a", "1"], ["b", "2"]]);
+    const { bytes } = openFrom([
+      ["a", "1"],
+      ["b", "2"],
+    ]);
     const meta = readVanillaLocCacheHeader(bytes.subarray(0, VANILLA_LOC_CACHE_HEADER_BYTES));
 
     expect(meta).toMatchObject({ count: 2, valueBlobLength: 2 });

@@ -23,8 +23,7 @@ vi.mock("../../src/vanillaPackIndex/store", () => ({
   clearVanillaPackIndexCache: vi.fn(),
 }));
 
-const VARIANT_MESH_PATH =
-  "variantmeshes\\variantmeshdefinitions\\emp_state_troops_shields_set1.variantmeshdefinition";
+const VARIANT_MESH_PATH = "variantmeshes\\variantmeshdefinitions\\emp_state_troops_shields_set1.variantmeshdefinition";
 
 const vanillaContent = `<VARIANT_MESH>
 \t<SLOT name="shield">

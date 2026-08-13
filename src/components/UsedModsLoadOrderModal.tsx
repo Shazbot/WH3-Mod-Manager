@@ -29,8 +29,8 @@ const UsedModsLoadOrderModal = memo(() => {
         <div className="space-y-4 text-base leading-relaxed text-gray-500 dark:text-gray-300">
           <p>We found your previously enabled mods in the game folder.</p>
           <p>
-            They were last used in a custom order. Automatic load order is recommended for most
-            users and helps avoid unintended compatibility issues.
+            They were last used in a custom order. Automatic load order is recommended for most users and helps avoid
+            unintended compatibility issues.
           </p>
           <p>Would you like to use automatic load order or keep the previous order?</p>
         </div>

@@ -16,8 +16,7 @@ const treeWith = (groupCount: number) =>
     })),
   });
 
-const groupNameById = (data: ReturnType<typeof flattenTree>) =>
-  new Map(data.map((node) => [node.id, node.name]));
+const groupNameById = (data: ReturnType<typeof flattenTree>) => new Map(data.map((node) => [node.id, node.name]));
 
 describe("getAutoExpandedDBGroupIds", () => {
   it("expands every group when the tree is short enough to scan", () => {
@@ -65,9 +64,7 @@ describe("getLoneTableToOpen", () => {
   };
 
   it("returns the single table in a group, so expanding opens it", () => {
-    const { nodeById, groupNamed } = treeFrom([
-      { name: "kv_morale_tables", children: [{ name: "data__" }] },
-    ]);
+    const { nodeById, groupNamed } = treeFrom([{ name: "kv_morale_tables", children: [{ name: "data__" }] }]);
 
     expect(getLoneTableToOpen(groupNamed("kv_morale_tables"), nodeById)?.name).toBe("data__");
   });

@@ -10,14 +10,7 @@ const tsFiles = ["**/*.{ts,tsx}"];
 
 export default defineConfig([
   {
-    ignores: [
-      "**/node_modules/**",
-      "**/.webpack/**",
-      "**/coverage/**",
-      "temp/**",
-      "dist/**",
-      "**/.*",
-    ],
+    ignores: ["**/node_modules/**", "**/.webpack/**", "**/coverage/**", "temp/**", "dist/**", "**/.*"],
   },
 
   {

@@ -39,8 +39,7 @@ export const sortPacksByAscendingPriority = <T>(
   packs
     .map((pack, index) => ({ pack, index }))
     .sort((first, second) => {
-      const byPriority =
-        getPackPriority(pathOf(first.pack), priority) - getPackPriority(pathOf(second.pack), priority);
+      const byPriority = getPackPriority(pathOf(first.pack), priority) - getPackPriority(pathOf(second.pack), priority);
       return byPriority !== 0 ? byPriority : first.index - second.index;
     })
     .map((entry) => entry.pack);

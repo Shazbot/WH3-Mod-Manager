@@ -27,12 +27,7 @@ import { Blob } from "buffer";
 import * as fsExtra from "fs-extra";
 import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
-import {
-  getDBName,
-  getDBPackedFilePath,
-  parseDBTablePath,
-  resolveParsedDBVersion,
-} from "./utility/packFileHelpers";
+import { getDBName, getDBPackedFilePath, parseDBTablePath, resolveParsedDBVersion } from "./utility/packFileHelpers";
 import { groupPackedFilesIntoReadRuns } from "./utility/packedFileReadRuns";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
 import { resolveRadioChoiceId } from "./nodeGraph/types";
@@ -43,10 +38,7 @@ import {
   substituteTextFileRuleValues,
 } from "./nodeGraph/nestedOptionValues";
 import { transformationOptionFields } from "./nodeGraph/graphSerialization";
-import getPackTableData, {
-  isSchemaFieldNumber,
-  isSchemaFieldNumberInteger,
-} from "./utility/frontend/packDataHandling";
+import getPackTableData, { isSchemaFieldNumber, isSchemaFieldNumberInteger } from "./utility/frontend/packDataHandling";
 import deepClone from "clone-deep";
 import { gameToIntroMovies, gameToPackHeader, supportsCompression } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
@@ -319,11 +311,7 @@ export async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackData
       break;
   }
 }
-async function parseType(
-  file: BinaryFile,
-  type: SCHEMA_FIELD_TYPE,
-  existingFields?: Field[],
-): Promise<Field[]> {
+async function parseType(file: BinaryFile, type: SCHEMA_FIELD_TYPE, existingFields?: Field[]): Promise<Field[]> {
   const fields: Field[] = existingFields || [];
   switch (type) {
     case "Boolean":
@@ -599,8 +587,7 @@ export function getFieldSize(value: string, type: SCHEMA_FIELD_TYPE): number {
   }
 }
 const getGUID = () => {
-  const genRanHex = (size: number) =>
-    [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+  const genRanHex = (size: number) => [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
   return [genRanHex(8), genRanHex(4), genRanHex(4), genRanHex(4), genRanHex(12)].join("-");
 };
 const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[], enabledMods: Mod[]) => {
@@ -636,11 +623,7 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
       const dbVersionNumFields = dbVersion.fields.length;
       for (let i = 0; i < packFile.schemaFields.length; i++) {
         const field = packFile.schemaFields[i];
-        if (
-          general_unit_index != null &&
-          dbVersionNumFields != null &&
-          i % dbVersionNumFields == general_unit_index
-        ) {
+        if (general_unit_index != null && dbVersionNumFields != null && i % dbVersionNumFields == general_unit_index) {
           // console.log("FOUND GENERAL UNIT INDEX");
           // console.log(field.name);
           if (field.fields[0].val == 1) {
@@ -956,15 +939,12 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
   let outFile: BinaryFile | undefined;
   try {
     const targetPath =
-      existingPath ||
-      nodePath.join(dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
+      existingPath || nodePath.join(dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
     await fsExtra.ensureDirSync(nodePath.dirname(targetPath));
     const packFieldsSettled = await Promise.allSettled(
       mods.map((mod) => readPack(mod.path, { skipParsingTables: true })),
     );
-    const sources = (
-      packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
-    )
+    const sources = (packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[])
       .map((r) => r.value)
       .filter((packData) => packData);
     const header = gameToPackHeader[appData.currentGame];
@@ -1023,10 +1003,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
         }) as MergedModsData,
     );
     const parsedTargetPath = nodePath.parse(targetPath);
-    await fsExtra.writeJSONSync(
-      nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"),
-      mergedMetaData,
-    );
+    await fsExtra.writeJSONSync(nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"), mergedMetaData);
     for (const packedFileName of sortedPackFileNamesDBFirst) {
       const sourceFile = packNameToFileHandle[packedFileName];
       const packedFile = packedFileNameToPackFileLookup[packedFileName];
@@ -1056,11 +1033,7 @@ export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
   ];
   await writeCopyPack(pathSource, pathTarget, toAdd);
 };
-export const createOverwritePack = async (
-  pathSource: string,
-  pathTarget: string,
-  overwrites: PackDataOverwrite[],
-) => {
+export const createOverwritePack = async (pathSource: string, pathTarget: string, overwrites: PackDataOverwrite[]) => {
   if (overwrites.length == 0) return;
   const tablesToRead = overwrites.map((overwrite) => overwrite.packFilePath);
   console.log("to read for new overwrite pack:", tablesToRead);
@@ -1094,11 +1067,7 @@ export const createOverwritePack = async (
                 console.log("item is", item);
                 console.log("operation is", overwrite.operation);
                 if (overwrite.operation == "REMOVE") return acc;
-                if (
-                  overwrite.operation == "EDIT" &&
-                  overwrite.overwriteIndex &&
-                  overwrite.overwriteData != undefined
-                ) {
+                if (overwrite.operation == "EDIT" && overwrite.overwriteIndex && overwrite.overwriteData != undefined) {
                   const clonedRow = deepClone(item);
                   clonedRow[overwrite.overwriteIndex] = overwrite.overwriteData;
                   acc.push(clonedRow);
@@ -1439,20 +1408,15 @@ export const prepareFlow = (
 
     // Same resolution as the manual run, but against the values the end user actually set.
     if (node.type === "conditionalbranch") {
-      const selectedOption = flowData.options?.find(
-        (option) => option.id === (node.data as any).selectedFlowOptionId,
-      );
+      const selectedOption = flowData.options?.find((option) => option.id === (node.data as any).selectedFlowOptionId);
       const userValue = selectedOption ? flowOptions?.optionValues?.[selectedOption.id] : undefined;
       const effectiveValue = userValue !== undefined ? userValue : selectedOption?.value;
       const isRadio = selectedOption?.type === "radio";
 
-      (node.data as any).flowOptionChecked =
-        selectedOption?.type === "checkbox" ? effectiveValue === true : false;
+      (node.data as any).flowOptionChecked = selectedOption?.type === "checkbox" ? effectiveValue === true : false;
       (node.data as any).flowOptionKind = isRadio ? "radio" : "checkbox";
       (node.data as any).flowOptionChoices = isRadio ? selectedOption.choices : [];
-      (node.data as any).flowOptionChoiceId = isRadio
-        ? resolveRadioChoiceId(selectedOption, userValue)
-        : "";
+      (node.data as any).flowOptionChoiceId = isRadio ? resolveRadioChoiceId(selectedOption, userValue) : "";
     }
     if (node.data.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {
@@ -1748,10 +1712,7 @@ export const writePackStream = async (
     const finalDependencyPacks =
       dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend?.dependencyPacks || [];
     // Calculate pack_file_index_size based on dependency packs
-    const pack_file_index_size = finalDependencyPacks.reduce(
-      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0,
-    );
+    const pack_file_index_size = finalDependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     // Use StreamWriter to batch header writes with backpressure handling
     streamWriter.addString(header);
@@ -2058,10 +2019,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string, depende
       return firstPf.name.localeCompare(secondPf.name);
     });
     // Calculate pack_file_index_size based on dependency packs
-    const pack_file_index_size = dependencyPacks.reduce(
-      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0,
-    );
+    const pack_file_index_size = dependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
     const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     // Write header
     const headerAccumulator = new BufferAccumulator(outFile);
@@ -2136,13 +2094,7 @@ export const writePack = async (
 ) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
-    return await writePackAppendFast(
-      packFiles,
-      path,
-      existingPackToAppend,
-      replaceDuplicates,
-      dependencyPacks,
-    );
+    return await writePackAppendFast(packFiles, path, existingPackToAppend, replaceDuplicates, dependencyPacks);
   }
   // Fallback to sorted implementation for new packs
   return await writePackSorted(packFiles, path, dependencyPacks);
@@ -2185,10 +2137,7 @@ export const writePackLegacy = async (
     const finalDependencyPacks =
       dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend?.dependencyPacks || [];
     // Calculate pack_file_index_size based on dependency packs
-    const pack_file_index_size = finalDependencyPacks.reduce(
-      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0,
-    );
+    const pack_file_index_size = finalDependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     // Use BufferAccumulator to batch header writes and reduce Promise overhead
     const headerAccumulator = new BufferAccumulator(outFile);
@@ -2312,8 +2261,7 @@ export const writeStartGamePack = async (
     const refFileCount = 0;
     const pack_file_index_size = 0;
     const packFiles: PackedFile[] = [];
-    if (startGameOptions.isMakeUnitsGeneralsEnabled)
-      createBattlePermissionsData(packsData, packFiles, enabledMods);
+    if (startGameOptions.isMakeUnitsGeneralsEnabled) createBattlePermissionsData(packsData, packFiles, enabledMods);
     if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(packFiles);
     if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(packFiles);
     if (startGameOptions.isAutoStartCustomBattleEnabled) createAutoStartCustomBattleData(packFiles);
@@ -2764,18 +2712,14 @@ export const readFromExistingPack = async (
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
       for (const fileToRead of packReadingOptions.filesToRead) {
         // console.log("FIND", fileToRead);
-        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
-          collator.compare(a.name, b),
-        );
+        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) => collator.compare(a.name, b));
         if (indexOfFileToRead >= 0) {
           // console.log("FOUND", fileToRead);
           const packedFileToRead = pack_files[indexOfFileToRead];
           let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
           if (packedFileToRead.is_compressed) {
-            buffer = Buffer.concat([
-              Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name)),
-            ]);
+            buffer = Buffer.concat([Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name))]);
           }
           packedFileToRead.buffer = buffer;
         }
@@ -2804,8 +2748,7 @@ export const readFromExistingPack = async (
       -1,
     );
     const endPos =
-      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
-      startOfLastPack;
+      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) + startOfLastPack;
     // console.log("endPos is ", endPos);
     const buffer = Buffer.allocUnsafe(endPos - startPos);
     fs.readSync(fileId, buffer, 0, buffer.length, startPos);
@@ -3286,9 +3229,7 @@ export const readPack = async (
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
       for (const fileToRead of packReadingOptions.filesToRead) {
         // console.log("FIND", fileToRead);
-        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
-          collator.compare(a.name, b),
-        );
+        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) => collator.compare(a.name, b));
         if (indexOfFileToRead >= 0) {
           // console.log("FOUND", fileToRead);
           const packedFileToRead = pack_files[indexOfFileToRead];
@@ -3613,12 +3554,7 @@ const createPackWithRenamedFilesWithOptions = async (
     sourceFileId = fs.openSync(originalPack.path, "r");
     await outFile.open();
     // Write header
-    await writePackHeader(
-      outFile,
-      originalPack.packHeader,
-      finalPackedFiles,
-      originalPack.dependencyPacks || [],
-    );
+    await writePackHeader(outFile, originalPack.packHeader, finalPackedFiles, originalPack.dependencyPacks || []);
     // Pre-build file lookup map for O(1) instead of O(N) lookups
     const originalFileMap = new Map<string, PackedFile>();
     for (const pf of originalPack.packedFiles) {
@@ -3722,10 +3658,7 @@ const writePackHeader = async (
   await outFile.writeInt32(originalHeader.byteMask);
   await outFile.writeInt32(originalHeader.refFileCount);
   // Calculate pack index size
-  const pack_file_index_size = dependencyPacks.reduce(
-    (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-    0,
-  );
+  const pack_file_index_size = dependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
   await outFile.writeInt32(pack_file_index_size);
   await outFile.writeInt32(packedFiles.length);
   // Calculate packed file index size

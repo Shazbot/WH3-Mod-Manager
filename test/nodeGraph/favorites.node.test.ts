@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  moveFavoriteNodeType,
-  toggleFavoriteNodeType,
-  withFavoritesSection,
-} from "../../src/nodeGraph/favorites";
+import { moveFavoriteNodeType, toggleFavoriteNodeType, withFavoritesSection } from "../../src/nodeGraph/favorites";
 import type { NodeTypeSection } from "../../src/nodeGraph/nodeRegistry";
 
 const createNode = (type: string) =>
@@ -17,16 +13,11 @@ const sections: NodeTypeSection[] = [
 
 describe("toggleFavoriteNodeType", () => {
   it("adds a node type at the end", () => {
-    expect(toggleFavoriteNodeType(["deepclone" as never], "filter" as never)).toEqual([
-      "deepclone",
-      "filter",
-    ]);
+    expect(toggleFavoriteNodeType(["deepclone" as never], "filter" as never)).toEqual(["deepclone", "filter"]);
   });
 
   it("removes one that is already favorited", () => {
-    expect(toggleFavoriteNodeType(["deepclone", "filter"] as never[], "deepclone" as never)).toEqual([
-      "filter",
-    ]);
+    expect(toggleFavoriteNodeType(["deepclone", "filter"] as never[], "deepclone" as never)).toEqual(["filter"]);
   });
 
   it("does not mutate the list it was given", () => {
@@ -77,11 +68,7 @@ describe("withFavoritesSection", () => {
   });
 
   it("keeps the user's order rather than the registry's", () => {
-    const result = withFavoritesSection(
-      sections,
-      ["removetables", "allenabledmods"] as never[],
-      "Favorites",
-    );
+    const result = withFavoritesSection(sections, ["removetables", "allenabledmods"] as never[], "Favorites");
 
     expect(result[0].nodes.map((node) => node.type)).toEqual(["removetables", "allenabledmods"]);
   });

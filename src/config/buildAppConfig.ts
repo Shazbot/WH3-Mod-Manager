@@ -17,12 +17,7 @@ export function buildAppConfig(payload: ConfigSavePayload): AppConfig {
   if (currentGame === appData.currentGame) {
     games[currentGame] = { currentPreset, presets, modUserData };
   } else {
-    console.log(
-      "skipping preset write: renderer is on",
-      currentGame,
-      "but the current game is",
-      appData.currentGame,
-    );
+    console.log("skipping preset write: renderer is on", currentGame, "but the current game is", appData.currentGame);
   }
 
   for (const game of Object.keys(games) as (keyof typeof games)[]) {

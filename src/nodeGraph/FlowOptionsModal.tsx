@@ -70,8 +70,7 @@ export const FlowOptionsModal: React.FC<{
           type: "warning",
           messages: [
             (
-              localized.nodeEditorOptionIdAlreadyExists ||
-              'Option ID "{{id}}" already exists. Please use a unique ID.'
+              localized.nodeEditorOptionIdAlreadyExists || 'Option ID "{{id}}" already exists. Please use a unique ID.'
             ).replace("{{id}}", formData.id),
           ],
           startTime: Date.now(),
@@ -112,21 +111,21 @@ export const FlowOptionsModal: React.FC<{
                 value: formData.choices[0]?.id ?? "",
               }
             : newOptionType === "multiline"
-            ? {
-                id: formData.id.trim(),
-                type: "multiline",
-                name: formData.name,
-                description: formData.description || undefined,
-                value: formData.value,
-                placeholder: formData.placeholder || undefined,
-              }
-            : {
-                id: formData.id.trim(),
-                type: "checkbox",
-                name: formData.name,
-                description: formData.description || undefined,
-                value: formData.checked,
-              };
+              ? {
+                  id: formData.id.trim(),
+                  type: "multiline",
+                  name: formData.name,
+                  description: formData.description || undefined,
+                  value: formData.value,
+                  placeholder: formData.placeholder || undefined,
+                }
+              : {
+                  id: formData.id.trim(),
+                  type: "checkbox",
+                  name: formData.name,
+                  description: formData.description || undefined,
+                  value: formData.checked,
+                };
 
     onOptionsChange([...options, newOption]);
     resetForm();
@@ -144,8 +143,7 @@ export const FlowOptionsModal: React.FC<{
           : option.type === "range"
             ? option.value.toString()
             : "",
-      placeholder:
-        option.type === "textbox" || option.type === "multiline" ? option.placeholder || "" : "",
+      placeholder: option.type === "textbox" || option.type === "multiline" ? option.placeholder || "" : "",
       min: option.type === "range" ? option.min : 0,
       max: option.type === "range" ? option.max : 100,
       step: option.type === "range" ? option.step : 1,
@@ -164,8 +162,7 @@ export const FlowOptionsModal: React.FC<{
           type: "warning",
           messages: [
             (
-              localized.nodeEditorOptionIdAlreadyExists ||
-              'Option ID "{{id}}" already exists. Please use a unique ID.'
+              localized.nodeEditorOptionIdAlreadyExists || 'Option ID "{{id}}" already exists. Please use a unique ID.'
             ).replace("{{id}}", formData.id),
           ],
           startTime: Date.now(),
@@ -207,21 +204,21 @@ export const FlowOptionsModal: React.FC<{
                   : (formData.choices[0]?.id ?? ""),
               }
             : editingOption.type === "multiline"
-            ? {
-                ...editingOption,
-                id: formData.id.trim(),
-                name: formData.name,
-                description: formData.description || undefined,
-                value: formData.value,
-                placeholder: formData.placeholder || undefined,
-              }
-            : {
-                ...editingOption,
-                id: formData.id.trim(),
-                name: formData.name,
-                description: formData.description || undefined,
-                value: formData.checked,
-              };
+              ? {
+                  ...editingOption,
+                  id: formData.id.trim(),
+                  name: formData.name,
+                  description: formData.description || undefined,
+                  value: formData.value,
+                  placeholder: formData.placeholder || undefined,
+                }
+              : {
+                  ...editingOption,
+                  id: formData.id.trim(),
+                  name: formData.name,
+                  description: formData.description || undefined,
+                  value: formData.checked,
+                };
 
     onOptionsChange(options.map((opt) => (opt.id === editingOption.id ? updatedOption : opt)));
     resetForm();
@@ -232,9 +229,7 @@ export const FlowOptionsModal: React.FC<{
   };
 
   const handleOptionValueChange = (optionId: string, newValue: string | number | boolean) => {
-    onOptionsChange(
-      options.map((opt) => (opt.id === optionId ? ({ ...opt, value: newValue } as FlowOption) : opt)),
-    );
+    onOptionsChange(options.map((opt) => (opt.id === optionId ? ({ ...opt, value: newValue } as FlowOption) : opt)));
   };
 
   if (!isOpen) return null;
@@ -254,9 +249,7 @@ export const FlowOptionsModal: React.FC<{
         onWheel={stopWheelPropagation}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-white">
-            {localized.nodeEditorFlowOptions || "Flow Options"}
-          </h2>
+          <h2 className="text-xl font-bold text-white">{localized.nodeEditorFlowOptions || "Flow Options"}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
             ×
           </button>
@@ -314,9 +307,7 @@ export const FlowOptionsModal: React.FC<{
                     <div>
                       <h4 className="text-white font-medium">{option.name}</h4>
                       <p className="text-blue-300 text-xs font-mono mt-1">{`{{${option.id}}}`}</p>
-                      {option.description && (
-                        <p className="text-gray-300 text-sm mt-1">{option.description}</p>
-                      )}
+                      {option.description && <p className="text-gray-300 text-sm mt-1">{option.description}</p>}
                       <span className="inline-block bg-gray-600 text-xs px-2 py-1 rounded mt-1">
                         {getOptionTypeLabel(option.type)}
                       </span>
@@ -427,9 +418,7 @@ export const FlowOptionsModal: React.FC<{
                   <option value="textbox">{localized.nodeEditorOptionTypeTextbox || "Textbox"}</option>
                   <option value="range">{localized.nodeEditorOptionTypeRangeSlider || "Range Slider"}</option>
                   <option value="checkbox">{localized.nodeEditorOptionTypeCheckbox || "Checkbox"}</option>
-                  <option value="multiline">
-                    {localized.nodeEditorOptionTypeMultiline || "Multiline List"}
-                  </option>
+                  <option value="multiline">{localized.nodeEditorOptionTypeMultiline || "Multiline List"}</option>
                   <option value="radio">{localized.nodeEditorOptionTypeRadio || "Radio Buttons"}</option>
                 </select>
               </div>
@@ -530,10 +519,7 @@ export const FlowOptionsModal: React.FC<{
                   onClick={() =>
                     setFormData({
                       ...formData,
-                      choices: [
-                        ...formData.choices,
-                        { id: `choice_${formData.choices.length + 1}`, label: "" },
-                      ],
+                      choices: [...formData.choices, { id: `choice_${formData.choices.length + 1}`, label: "" }],
                     })
                   }
                   className="text-sm text-blue-400 hover:text-blue-300"
@@ -555,9 +541,7 @@ export const FlowOptionsModal: React.FC<{
                   onChange={(e) => setFormData({ ...formData, value: e.target.value })}
                   rows={5}
                   className="w-full p-2 bg-gray-600 text-white rounded font-mono"
-                  placeholder={
-                    localized.nodeEditorOptionMultilinePlaceholder || "One value per line"
-                  }
+                  placeholder={localized.nodeEditorOptionMultilinePlaceholder || "One value per line"}
                 />
                 <div className="text-xs text-gray-400 mt-1">
                   {localized.nodeEditorOptionMultilineHelp ||
@@ -665,10 +649,7 @@ export const FlowOptionsModal: React.FC<{
                 {editingOption ? localized.update || "Update" : localized.add || "Add"}{" "}
                 {localized.nodeEditorOption || "Option"}
               </button>
-              <button
-                onClick={resetForm}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-              >
+              <button onClick={resetForm} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded">
                 {localized.cancel || "Cancel"}
               </button>
             </div>

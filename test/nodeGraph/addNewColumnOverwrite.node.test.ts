@@ -79,8 +79,7 @@ const rowsOf = (result: Awaited<ReturnType<typeof run>>) => {
   for (let i = 0; i < fields.length; i += width) rows.push(fields.slice(i, i + width));
   return rows;
 };
-const cell = (row: AmendedSchemaField[], name: string) =>
-  row.find((c) => c.name === name)?.resolvedKeyValue;
+const cell = (row: AmendedSchemaField[], name: string) => row.find((c) => c.name === name)?.resolvedKeyValue;
 
 describe("addnewcolumn overwrite mode", () => {
   const suffixRule = {
@@ -99,11 +98,7 @@ describe("addnewcolumn overwrite mode", () => {
     const result = await run([suffixRule]);
     const rows = rowsOf(result);
 
-    expect(rows.map((row) => cell(row, "text"))).toEqual([
-      "Greatswords (Big)",
-      "Greatswords",
-      "Halberdiers (Big)",
-    ]);
+    expect(rows.map((row) => cell(row, "text"))).toEqual(["Greatswords (Big)", "Greatswords", "Halberdiers (Big)"]);
   });
 
   it("keeps the table's shape, which a loc depends on", async () => {
@@ -167,12 +162,7 @@ describe("addnewcolumn overwrite mode", () => {
     ]);
     const table = (result.data as any).tables[0].table as PackedFile;
 
-    expect(table.tableSchema!.fields.map((field) => field.name)).toEqual([
-      "key",
-      "text",
-      "tooltip",
-      "text_big",
-    ]);
+    expect(table.tableSchema!.fields.map((field) => field.name)).toEqual(["key", "text", "tooltip", "text_big"]);
   });
 
   it("applies to every row when no condition is set", async () => {
@@ -189,15 +179,9 @@ describe("addnewcolumn overwrite mode", () => {
     const equals = await run([
       { ...suffixRule, conditionOperator: "equals", conditionValue: "land_units_onscreen_name_pj_y" },
     ]);
-    expect(rowsOf(equals).map((row) => cell(row, "text"))).toEqual([
-      "Greatswords",
-      "Greatswords",
-      "Halberdiers (Big)",
-    ]);
+    expect(rowsOf(equals).map((row) => cell(row, "text"))).toEqual(["Greatswords", "Greatswords", "Halberdiers (Big)"]);
 
-    const contains = await run([
-      { ...suffixRule, conditionOperator: "contains", conditionValue: "main_units" },
-    ]);
+    const contains = await run([{ ...suffixRule, conditionOperator: "contains", conditionValue: "main_units" }]);
     expect(rowsOf(contains).map((row) => cell(row, "text"))).toEqual([
       "Greatswords",
       "Greatswords (Big)",
@@ -271,10 +255,7 @@ describe("addnewcolumn with several input tables", () => {
     ]);
     const tables = (result.data as any).tables;
 
-    expect(tables.map((table: { name: string }) => table.name)).toEqual([
-      "main_units_tables",
-      "deepclone_loc",
-    ]);
+    expect(tables.map((table: { name: string }) => table.name)).toEqual(["main_units_tables", "deepclone_loc"]);
     expect((result.data as any).tableCount).toBe(2);
   });
 
@@ -314,17 +295,9 @@ describe("addnewcolumn with several input tables", () => {
     ]);
     const tables = (result.data as any).tables;
 
-    expect(tables[0].table.tableSchema.fields.map((f: DBField) => f.name)).toEqual([
-      "unit",
-      "caste",
-      "tagged",
-    ]);
+    expect(tables[0].table.tableSchema.fields.map((f: DBField) => f.name)).toEqual(["unit", "caste", "tagged"]);
     // The loc has no unit column, so it keeps its three columns.
-    expect(tables[1].table.tableSchema.fields.map((f: DBField) => f.name)).toEqual([
-      "key",
-      "text",
-      "tooltip",
-    ]);
+    expect(tables[1].table.tableSchema.fields.map((f: DBField) => f.name)).toEqual(["key", "text", "tooltip"]);
   });
 });
 

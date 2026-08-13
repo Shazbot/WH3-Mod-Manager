@@ -158,11 +158,9 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
   globalAny[AG_GRID_MODULES_KEY] = true;
 }
 
-const isCategoryRow = (row: CategoriesGridRow | undefined | null): row is CategoryGridRow =>
-  row?.kind === "category";
+const isCategoryRow = (row: CategoriesGridRow | undefined | null): row is CategoryGridRow => row?.kind === "category";
 
-const normalizeModLabel = (mod: Mod) =>
-  mod.humanName !== "" ? mod.humanName : mod.name.replace(".pack", "");
+const normalizeModLabel = (mod: Mod) => (mod.humanName !== "" ? mod.humanName : mod.name.replace(".pack", ""));
 
 const buildCategoryRowId = (category: string) => `category:${category}`;
 const buildModRowId = (category: string, path: string) => `mod:${category}:${path}`;
@@ -344,10 +342,7 @@ const Categories = memo(() => {
     };
   }, [setNewCategoriesFilter, setNewCategoryFilter, setNewNameFilter]);
 
-  const modByPath = useMemo(
-    () => new Map<string, Mod>((mods as Mod[]).map((mod) => [mod.path, mod])),
-    [mods],
-  );
+  const modByPath = useMemo(() => new Map<string, Mod>((mods as Mod[]).map((mod) => [mod.path, mod])), [mods]);
 
   const getSelectedMods = useCallback((): Mod[] => {
     const api = gridRef.current?.api;
@@ -413,9 +408,7 @@ const Categories = memo(() => {
 
       const activeElement = document.activeElement as HTMLElement | null;
       const isTypingInInput =
-        activeElement?.tagName === "INPUT" ||
-        activeElement?.tagName === "TEXTAREA" ||
-        activeElement?.isContentEditable;
+        activeElement?.tagName === "INPUT" || activeElement?.tagName === "TEXTAREA" || activeElement?.isContentEditable;
 
       if (event.key === " " && !isContextMenuOpen && !isTypingInInput) {
         const selectedMods = getSelectedMods();
@@ -449,10 +442,7 @@ const Categories = memo(() => {
   }, [dispatch, getSelectedMods, isContextMenuOpen]);
 
   const groupedCategories = useMemo<CategoryGroup[]>(() => {
-    const rowsByCategory = new Map<
-      string,
-      { category: string; mods: Mod[]; total: number; enabled: number }
-    >();
+    const rowsByCategory = new Map<string, { category: string; mods: Mod[]; total: number; enabled: number }>();
 
     for (const mod of getModsSortedByHumanNameAndName(mods) as Mod[]) {
       let modCategories = mod.categories ?? ["Uncategorized"];
@@ -514,9 +504,7 @@ const Categories = memo(() => {
         .filter((category) => category !== "");
 
       data = data.filter((categoryGroup) =>
-        filterCategories.some((filterCategory) =>
-          categoryGroup.category.toLowerCase().includes(filterCategory),
-        ),
+        filterCategories.some((filterCategory) => categoryGroup.category.toLowerCase().includes(filterCategory)),
       );
     }
 
@@ -712,9 +700,7 @@ const Categories = memo(() => {
   const handleToggleEnabled = useCallback(
     (row: CategoriesGridRow) => {
       if (isCategoryRow(row)) {
-        const modsForEnable = row.allModPaths
-          .map((path) => modByPath.get(path))
-          .filter((mod): mod is Mod => !!mod);
+        const modsForEnable = row.allModPaths.map((path) => modByPath.get(path)).filter((mod): mod is Mod => !!mod);
         if (modsForEnable.length === 0) return;
 
         const isEnabled = !row.isEnabled;
@@ -789,10 +775,7 @@ const Categories = memo(() => {
   );
 
   const resolveColumnSizing = useCallback(
-    (
-      colId: string,
-      defaults: Pick<ColDef<CategoriesGridRow>, "width" | "minWidth" | "maxWidth" | "flex">,
-    ) => {
+    (colId: string, defaults: Pick<ColDef<CategoriesGridRow>, "width" | "minWidth" | "maxWidth" | "flex">) => {
       const resizedWidth = columnWidths[colId];
       if (resizedWidth == null) return defaults;
 
@@ -883,9 +866,7 @@ const Categories = memo(() => {
           const row = params.data;
           if (!row) return null;
 
-          const ariaLabel = isCategoryRow(row)
-            ? `Toggle category ${row.category}`
-            : `Toggle mod ${row.humanName}`;
+          const ariaLabel = isCategoryRow(row) ? `Toggle category ${row.category}` : `Toggle mod ${row.humanName}`;
           const isDisabled = isCategoryRow(row) && row.allModPaths.length === 0;
 
           return (
@@ -1237,10 +1218,7 @@ const Categories = memo(() => {
         </div>
       </div>
 
-      <EditCategoriesModal
-        isOpen={isEditCategoriesModalOpen}
-        onClose={() => setIsEditCategoriesModalOpen(false)}
-      />
+      <EditCategoriesModal isOpen={isEditCategoriesModalOpen} onClose={() => setIsEditCategoriesModalOpen(false)} />
     </>
   );
 });

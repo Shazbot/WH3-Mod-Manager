@@ -1,11 +1,7 @@
 import * as cheerio from "cheerio";
 import * as luaparse from "luaparse";
 
-import {
-  TextFileFormatter,
-  autoIndentXmlFragment,
-  formatXmlDocument,
-} from "./textFileFormatting";
+import { TextFileFormatter, autoIndentXmlFragment, formatXmlDocument } from "./textFileFormatting";
 
 /** How a rule decides which files it applies to. */
 export type TextFileTargetMatch = "path" | "name" | "regex" | "input";
@@ -23,13 +19,7 @@ export interface TextFileSkipCondition {
 export type TextFileEditMode = "xml" | "lua" | "text";
 
 export type TextFileEditOperation =
-  | "replace"
-  | "regexReplace"
-  | "insertBefore"
-  | "insertAfter"
-  | "insertBetween"
-  | "delete"
-  | "setAttribute";
+  "replace" | "regexReplace" | "insertBefore" | "insertAfter" | "insertBetween" | "delete" | "setAttribute";
 
 export interface TextFileEditRule {
   id: string;
@@ -142,11 +132,7 @@ export const matchesTextFileSkipConditions = (
     conditions.push({
       ...condition,
       operator:
-        conditions.length === 0
-          ? undefined
-          : pendingOperator === "or" || condition.operator === "or"
-            ? "or"
-            : "and",
+        conditions.length === 0 ? undefined : pendingOperator === "or" || condition.operator === "or" ? "or" : "and",
     });
     pendingOperator = undefined;
   }
@@ -176,12 +162,7 @@ const applyRanges = (text: string, ranges: MatchedRange[]): string => {
 };
 
 /** Turns a matched span into the range the operation wants to write. */
-const rangeForOperation = (
-  rule: TextFileEditRule,
-  start: number,
-  end: number,
-  matchedText: string,
-): MatchedRange => {
+const rangeForOperation = (rule: TextFileEditRule, start: number, end: number, matchedText: string): MatchedRange => {
   const value = rule.value ?? "";
   switch (rule.operation) {
     case "delete":
@@ -371,10 +352,7 @@ const expandRegexReplacement = (replacement: string, match: RegExpExecArray, sou
   });
 
 /** Replaces every regular-expression match, retaining capture references in the replacement text. */
-const applyRegexReplaceRule = (
-  text: string,
-  rule: TextFileEditRule,
-): { ranges: MatchedRange[]; error?: string } => {
+const applyRegexReplaceRule = (text: string, rule: TextFileEditRule): { ranges: MatchedRange[]; error?: string } => {
   let regex: RegExp;
   try {
     regex = new RegExp(rule.selector, "g");
@@ -431,11 +409,11 @@ export const applyTextFileEdits = (
         ? applyBetweenRule(edited, rule)
         : rule.operation === "regexReplace"
           ? applyRegexReplaceRule(edited, rule)
-        : rule.mode === "xml"
-          ? applyXmlRule(edited, rule)
-          : rule.mode === "lua"
-            ? applyLuaRule(edited, rule)
-            : { ranges: applyLiteralRule(edited, rule), error: undefined };
+          : rule.mode === "xml"
+            ? applyXmlRule(edited, rule)
+            : rule.mode === "lua"
+              ? applyLuaRule(edited, rule)
+              : { ranges: applyLiteralRule(edited, rule), error: undefined };
 
     if (error) {
       errors.push(`${filePath} ${error}`);

@@ -295,8 +295,7 @@ var readPack = function (modPath_1) {
                     }
                     startPos = dbPackFiles.reduce(function (previous, current) { return (previous < current.start_pos ? previous : current.start_pos); }, Number.MAX_SAFE_INTEGER);
                     startOfLastPack_1 = dbPackFiles.reduce(function (previous, current) { return (previous > current.start_pos ? previous : current.start_pos); }, -1);
-                    endPos = ((_c = (_b = dbPackFiles.find(function (packFile) { return packFile.start_pos === startOfLastPack_1; })) === null || _b === void 0 ? void 0 : _b.file_size) !== null && _c !== void 0 ? _c : 0) +
-                        startOfLastPack_1;
+                    endPos = ((_c = (_b = dbPackFiles.find(function (packFile) { return packFile.start_pos === startOfLastPack_1; })) === null || _b === void 0 ? void 0 : _b.file_size) !== null && _c !== void 0 ? _c : 0) + startOfLastPack_1;
                     return [4 /*yield*/, file.read(endPos - startPos, startPos)];
                 case 13:
                     buffer = _d.sent();

@@ -141,7 +141,7 @@ class PerformanceMonitor {
         timestamp: new Date().toISOString(),
       },
       null,
-      2
+      2,
     );
   }
 }
@@ -154,8 +154,7 @@ export const startTiming = (name: string) => perfMonitor.startTiming(name);
 export const endTiming = (name: string) => perfMonitor.endTiming(name);
 export const trackBundleLoad = (bundleName: string, startTime: number) =>
   perfMonitor.trackBundleLoad(bundleName, startTime);
-export const trackSchemaLoad = (game: string, startTime: number) =>
-  perfMonitor.trackSchemaLoad(game, startTime);
+export const trackSchemaLoad = (game: string, startTime: number) => perfMonitor.trackSchemaLoad(game, startTime);
 export const trackComponentLoad = (componentName: string, startTime: number) =>
   perfMonitor.trackComponentLoad(componentName, startTime);
 

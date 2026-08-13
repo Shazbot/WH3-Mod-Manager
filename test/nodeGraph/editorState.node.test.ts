@@ -70,12 +70,7 @@ describe("applyNodeDataPatch", () => {
       edges: [{ id: "edge", source: "source", target: "target" }] as any[],
     };
 
-    const result = applyNodeDataPatch(
-      state,
-      "source",
-      { selectedReferenceTable: "units" },
-      { DBNameToDBVersions },
-    );
+    const result = applyNodeDataPatch(state, "source", { selectedReferenceTable: "units" }, { DBNameToDBVersions });
 
     expect(result.nodes[1].data.connectedTableName).toBe("units");
     expect(result.nodes[1].data.columnNames).toEqual(["key", "value"]);
@@ -104,12 +99,7 @@ describe("applyNodeDataPatch", () => {
       edges: [{ id: "edge", source: "source", target: "target" }] as any[],
     };
 
-    const result = applyNodeDataPatch(
-      state,
-      "source",
-      { selectedReverseTable: "agents" },
-      { DBNameToDBVersions },
-    );
+    const result = applyNodeDataPatch(state, "source", { selectedReverseTable: "agents" }, { DBNameToDBVersions });
 
     expect(result.nodes[1].data.connectedTableName).toBe("agents");
     expect(result.nodes[1].data.columnNames).toEqual(["agent", "subtype"]);
@@ -288,9 +278,7 @@ describe("selectAllNodes", () => {
   });
 
   it("leaves node data alone, so selecting cannot disturb what a node holds", () => {
-    const nodes = [
-      { id: "node_0", type: "filter", position: { x: 0, y: 0 }, data: { textValue: "keep me" } },
-    ] as any[];
+    const nodes = [{ id: "node_0", type: "filter", position: { x: 0, y: 0 }, data: { textValue: "keep me" } }] as any[];
 
     expect(selectAllNodes(nodes).nodes[0].data).toEqual({ textValue: "keep me" });
   });

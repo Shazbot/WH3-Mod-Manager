@@ -24,13 +24,15 @@ const CreateSteamCollection = memo(() => {
 
   const enabledPresetWorkshopMods = enabledMods
     .map(
-      (mod) => (isWorkshopMod(mod) && mod) || allMods.find((allMod) => isWorkshopMod(allMod) && allMod.name == mod.name)
+      (mod) =>
+        (isWorkshopMod(mod) && mod) || allMods.find((allMod) => isWorkshopMod(allMod) && allMod.name == mod.name),
     )
     .filter((workshopId): workshopId is Mod => !!workshopId);
 
   const allPresetWorkshopMods = presetMods
     .map(
-      (mod) => (isWorkshopMod(mod) && mod) || allMods.find((allMod) => isWorkshopMod(allMod) && allMod.name == mod.name)
+      (mod) =>
+        (isWorkshopMod(mod) && mod) || allMods.find((allMod) => isWorkshopMod(allMod) && allMod.name == mod.name),
     )
     .filter((workshopId): workshopId is Mod => !!workshopId);
 

@@ -21,9 +21,7 @@ describe("prepared viewer table cache", () => {
   it("retains several small tables when they fit the byte budget", () => {
     const first = preparedTable("first");
     const second = preparedTable("second");
-    const cache = createPreparedTableCache(
-      estimatePreparedTableBytes(first) + estimatePreparedTableBytes(second),
-    );
+    const cache = createPreparedTableCache(estimatePreparedTableBytes(first) + estimatePreparedTableBytes(second));
 
     cache.set("first", first);
     cache.set("second", second);

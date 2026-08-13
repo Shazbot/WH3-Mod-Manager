@@ -8,4 +8,4 @@ export default context;
 
 export const useLocalizations = () => {
   return useContext(context) as typeof enTranslation;
-}
+};

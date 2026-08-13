@@ -186,12 +186,8 @@ describe("applyConnection", () => {
   it("keeps lookup source columns when the index table is connected second", () => {
     const context = {
       DBNameToDBVersions: {
-        agent_subtypes_tables: [
-          { version: 1, fields: [createField("key"), createField("small_entity")] },
-        ],
-        unique_agents_tables: [
-          { version: 1, fields: [createField("agent_subtype"), createField("forename")] },
-        ],
+        agent_subtypes_tables: [{ version: 1, fields: [createField("key"), createField("small_entity")] }],
+        unique_agents_tables: [{ version: 1, fields: [createField("agent_subtype"), createField("forename")] }],
       },
     } as any;
     const state = {
@@ -315,11 +311,7 @@ describe("applyConnection", () => {
   it("keeps both sources when a second table selection is connected to dump to tsv", () => {
     const state = createFanInState("dumptotsv");
 
-    const withFilter = applyConnection(
-      state,
-      { source: "filter", target: "target", sourceHandle: "match" },
-      {} as any,
-    );
+    const withFilter = applyConnection(state, { source: "filter", target: "target", sourceHandle: "match" }, {} as any);
     expect(withFilter.accepted).toBe(true);
 
     const withBranch = applyConnection(
@@ -337,11 +329,7 @@ describe("applyConnection", () => {
   it("still replaces the previous edge for a node that takes a single input", () => {
     const state = createFanInState("columnselectiondropdown");
 
-    const withFilter = applyConnection(
-      state,
-      { source: "filter", target: "target", sourceHandle: "match" },
-      {} as any,
-    );
+    const withFilter = applyConnection(state, { source: "filter", target: "target", sourceHandle: "match" }, {} as any);
     const withBranch = applyConnection(
       { nodes: withFilter.nodes, edges: withFilter.edges },
       { source: "branch", target: "target", sourceHandle: "output-false" },
@@ -367,9 +355,6 @@ describe("applyConnection", () => {
     );
 
     expect(withFalse.edges).toHaveLength(2);
-    expect(withFalse.edges.map((edge) => edge.sourceHandle).toSorted()).toEqual([
-      "output-false",
-      "output-true",
-    ]);
+    expect(withFalse.edges.map((edge) => edge.sourceHandle).toSorted()).toEqual(["output-false", "output-true"]);
   });
 });

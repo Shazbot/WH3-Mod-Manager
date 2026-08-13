@@ -23,9 +23,7 @@ describe("node editor actions", () => {
     );
 
     const ActionButton = () => (
-      <button onClick={() => (node.data as any).onUpdateNodeData?.({ selectedPack: "mod_a.pack" })}>
-        Update Node
-      </button>
+      <button onClick={() => (node.data as any).onUpdateNodeData?.({ selectedPack: "mod_a.pack" })}>Update Node</button>
     );
 
     render(<ActionButton />);

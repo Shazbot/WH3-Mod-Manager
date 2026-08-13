@@ -29,9 +29,8 @@ const indentationOf = (text: string): string => {
 
 const normalizeBuilderOutput = (built: string, source: string): string => {
   const lineEnding = lineEndingOf(source);
-  let normalized = built.startsWith("\n") && !source.startsWith("\n") && !source.startsWith("\r\n")
-    ? built.slice(1)
-    : built;
+  let normalized =
+    built.startsWith("\n") && !source.startsWith("\n") && !source.startsWith("\r\n") ? built.slice(1) : built;
   normalized = normalized.replace(/\n/g, lineEnding);
   const sourceHasFinalNewline = /\r?\n$/.test(source);
   if (sourceHasFinalNewline && !normalized.endsWith(lineEnding)) normalized += lineEnding;
@@ -40,10 +39,7 @@ const normalizeBuilderOutput = (built: string, source: string): string => {
 };
 
 /** Formats a complete XML document after all edit rules have run. */
-export const formatXmlDocument = (
-  text: string,
-  formatter: "prettyXml" | "compactXml",
-): TextFileFormattingResult => {
+export const formatXmlDocument = (text: string, formatter: "prettyXml" | "compactXml"): TextFileFormattingResult => {
   const validation = XMLValidator.validate(text, { allowBooleanAttributes: true });
   if (validation !== true) {
     return {
@@ -106,12 +102,10 @@ export const autoIndentXmlFragment = (
     const hadLeadingNewline = /^\s*\r?\n/.test(replacement);
     const hadTrailingNewline = /\r?\n\s*$/.test(replacement);
 
-    const leading = hadLeadingNewline || (operation === "insertAfter" && !hadLeadingNewline)
-      ? `${lineEnding}${baseIndent}`
-      : "";
-    const trailing = hadTrailingNewline || (operation === "insertBefore" && !hadTrailingNewline)
-      ? `${lineEnding}${baseIndent}`
-      : "";
+    const leading =
+      hadLeadingNewline || (operation === "insertAfter" && !hadLeadingNewline) ? `${lineEnding}${baseIndent}` : "";
+    const trailing =
+      hadTrailingNewline || (operation === "insertBefore" && !hadTrailingNewline) ? `${lineEnding}${baseIndent}` : "";
     return { text: `${leading}${aligned}${trailing}` };
   } catch (error) {
     return { text: replacement, error: `could not auto-indent XML fragment: ${(error as Error).message}` };

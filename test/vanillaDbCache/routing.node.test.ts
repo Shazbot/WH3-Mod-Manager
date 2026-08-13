@@ -2,13 +2,9 @@ import { describe, expect, it } from "vitest";
 import * as nodePath from "path";
 
 import type { PackedFile } from "../../src/packFileTypes";
-import {
-  getIndexedDbTablePathsForPrefix,
-  isVanillaDbPackPath,
-} from "../../src/vanillaDbCache/routing";
+import { getIndexedDbTablePathsForPrefix, isVanillaDbPackPath } from "../../src/vanillaDbCache/routing";
 
-const indexedFile = (name: string): PackedFile =>
-  ({ name, file_size: 0, start_pos: 0 }) as PackedFile;
+const indexedFile = (name: string): PackedFile => ({ name, file_size: 0, start_pos: 0 }) as PackedFile;
 
 describe("vanilla DB cache routing", () => {
   it("rejects an ordinary mod before a cache reader can be opened or built", () => {

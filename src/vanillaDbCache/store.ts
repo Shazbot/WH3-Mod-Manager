@@ -12,11 +12,7 @@ import { parseDBTablePath, resolveParsedDBVersion } from "../utility/packFileHel
 import { buildVanillaDbCache } from "./build";
 import { createCacheBuildGeneration } from "./buildGeneration";
 import { VanillaDbCacheIdentity, isVanillaDbCacheCurrent } from "./format";
-import {
-  VanillaDbCacheBuildPhase,
-  VanillaDbCacheBuildStatus,
-  reportVanillaDbCacheBuildProgress,
-} from "./progress";
+import { VanillaDbCacheBuildPhase, VanillaDbCacheBuildStatus, reportVanillaDbCacheBuildProgress } from "./progress";
 import { CacheCandidateResult, openCacheCandidate } from "./openPolicy";
 import {
   VanillaDbCacheIntegrityError,
@@ -101,10 +97,7 @@ export const canUseVanillaDbCacheForPack = (packPath: string): boolean =>
 
 type OpenExistingResult = CacheCandidateResult<VanillaDbCacheReader>;
 
-const openExisting = (
-  game: SupportedGames,
-  identity: VanillaDbCacheIdentity,
-): OpenExistingResult => {
+const openExisting = (game: SupportedGames, identity: VanillaDbCacheIdentity): OpenExistingResult => {
   const cacheFilePath = nodePath.join(app.getPath("userData"), cacheFileName(game));
   return openCacheCandidate({
     openSource: () => createFileSource(cacheFilePath),
@@ -215,15 +208,10 @@ const buildCacheFile = async (
   return "built";
 };
 
-const recordRecoverableFailure = (
-  identityKey: string,
-  message: string,
-  error?: unknown,
-): boolean => {
+const recordRecoverableFailure = (identityKey: string, message: string, error?: unknown): boolean => {
   const { abandoned, failureCount } = rebuildPolicy.recordRecoverableFailure(identityKey);
   console.log(
-    `vanilla db cache: ${message} (${failureCount} this session)` +
-      `${abandoned ? ", not trying again" : ""}`,
+    `vanilla db cache: ${message} (${failureCount} this session)` + `${abandoned ? ", not trying again" : ""}`,
     error,
   );
   return abandoned;
@@ -284,17 +272,8 @@ export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | 
       }
       if (buildResult === "invalid-output") {
         rebuildPolicy.recordUnopenable(identityKey);
-        reportBuildProgress(
-          identity,
-          buildContext,
-          "complete",
-          0,
-          "failed",
-          "Generated cache failed validation",
-        );
-        console.log(
-          "vanilla db cache: the reader rejected bytes directly from the builder, not building it again",
-        );
+        reportBuildProgress(identity, buildContext, "complete", 0, "failed", "Generated cache failed validation");
+        console.log("vanilla db cache: the reader rejected bytes directly from the builder, not building it again");
         return undefined;
       }
     } catch (error) {
@@ -322,14 +301,7 @@ export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | 
         `freshly built cache could not be opened (${built.kind})`,
         built.kind === "io-error" ? built.error : undefined,
       );
-      reportBuildProgress(
-        identity,
-        buildContext,
-        "complete",
-        0,
-        "failed",
-        `Cache could not be opened (${built.kind})`,
-      );
+      reportBuildProgress(identity, buildContext, "complete", 0, "failed", `Cache could not be opened (${built.kind})`);
       return undefined;
     }
 
@@ -354,9 +326,7 @@ export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | 
 
 const discardCorruptReader = async (reader: VanillaDbCacheReader, error: unknown): Promise<void> => {
   const game = reader.meta.game as SupportedGames;
-  const { abandoned, failureCount } = rebuildPolicy.recordRecoverableFailure(
-    buildCacheIdentityKey(reader.meta),
-  );
+  const { abandoned, failureCount } = rebuildPolicy.recordRecoverableFailure(buildCacheIdentityKey(reader.meta));
   console.log(
     `vanilla db cache: corrupt payload (${failureCount} failure(s) this session), discarding the cache` +
       `${abandoned ? " and not rebuilding it again" : ""}`,
@@ -388,9 +358,7 @@ const discardCorruptReader = async (reader: VanillaDbCacheReader, error: unknown
  * every other consumer here, a block that fails verification discards the cache and reports a miss,
  * instead of letting the error escape into a caller that has no idea what to do with it.
  */
-export const searchVanillaDb = async (
-  options: VanillaSearchOptions,
-): Promise<VanillaSearchResult | undefined> => {
+export const searchVanillaDb = async (options: VanillaSearchOptions): Promise<VanillaSearchResult | undefined> => {
   if (options.query === "") {
     return { matches: [], truncated: false, columnsConsidered: 0, columnsScanned: 0 };
   }
@@ -466,7 +434,6 @@ const fillPackedFileFromReader = async (
   packedFile: PackedFile,
   resolveViewerSchema: (packedFile: PackedFile) => DBVersion | undefined,
 ): Promise<boolean> => {
-
   const tableMeta = reader.getTableMeta(packedFilePath);
   if (!tableMeta) return false;
 
@@ -586,8 +553,7 @@ export const readVanillaPackFromCache = async (
   packReadingOptions: PackReadingOptions,
   resolveConsumerSchema: (packedFile: PackedFile) => DBVersion | undefined,
 ): Promise<Pack | undefined> => {
-  const { tablesToRead, skipParsingTables, readLocs, readScripts, filesToRead, readFlows } =
-    packReadingOptions;
+  const { tablesToRead, skipParsingTables, readLocs, readScripts, filesToRead, readFlows } = packReadingOptions;
   // Anything beyond db tables has to come from the pack: the cache holds nothing else.
   if (!tablesToRead?.length) return undefined;
   if (skipParsingTables || readLocs || readScripts || readFlows || filesToRead?.length) return undefined;

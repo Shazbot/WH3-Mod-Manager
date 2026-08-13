@@ -34,7 +34,9 @@ describe("matchesTextFileTarget", () => {
 
   it("matches on the whole pack path", () => {
     expect(matchesTextFileTarget(path, rule({ targetMatch: "path", target: path }))).toBe(true);
-    expect(matchesTextFileTarget(path, rule({ targetMatch: "path", target: "emp_spearmen.variantmeshdefinition" }))).toBe(false);
+    expect(
+      matchesTextFileTarget(path, rule({ targetMatch: "path", target: "emp_spearmen.variantmeshdefinition" })),
+    ).toBe(false);
   });
 
   it("accepts a path written with either slash", () => {
@@ -50,12 +52,16 @@ describe("matchesTextFileTarget", () => {
   });
 
   it("matches on a regex over the whole path", () => {
-    expect(matchesTextFileTarget(path, rule({ targetMatch: "regex", target: "emp_.*\\.variantmeshdefinition$" }))).toBe(true);
+    expect(matchesTextFileTarget(path, rule({ targetMatch: "regex", target: "emp_.*\\.variantmeshdefinition$" }))).toBe(
+      true,
+    );
     expect(matchesTextFileTarget(path, rule({ targetMatch: "regex", target: "^script\\\\" }))).toBe(false);
   });
 
   it("ignores case and never matches an empty or broken target", () => {
-    expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: "EMP_SPEARMEN.VARIANTMESHDEFINITION" }))).toBe(true);
+    expect(
+      matchesTextFileTarget(path, rule({ targetMatch: "name", target: "EMP_SPEARMEN.VARIANTMESHDEFINITION" })),
+    ).toBe(true);
     expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: "  " }))).toBe(false);
     expect(matchesTextFileTarget(path, rule({ targetMatch: "regex", target: "[unclosed" }))).toBe(false);
   });
@@ -67,11 +73,14 @@ describe("matchesTextFileTarget", () => {
 
 describe("editing XML", () => {
   it("changes an attribute and leaves the rest of the file byte-identical", () => {
-    const result = applyTextFileEdits(
-      "x.xml",
-      variantMesh,
-      [rule({ selector: 'SLOT[name="head"] MESH', operation: "setAttribute", attributeName: "model", value: "new.rigid_model_v2" })],
-    );
+    const result = applyTextFileEdits("x.xml", variantMesh, [
+      rule({
+        selector: 'SLOT[name="head"] MESH',
+        operation: "setAttribute",
+        attributeName: "model",
+        value: "new.rigid_model_v2",
+      }),
+    ]);
 
     expect(result.text).toContain('<MESH model="new.rigid_model_v2"/>');
     // The untouched slot keeps its odd spacing and single quotes.
@@ -82,7 +91,7 @@ describe("editing XML", () => {
 
   it("replaces a whole element", () => {
     const result = applyTextFileEdits("x.xml", variantMesh, [
-      rule({ selector: 'SLOT[name="head"]', operation: "replace", value: "<SLOT name=\"head\"/>" }),
+      rule({ selector: 'SLOT[name="head"]', operation: "replace", value: '<SLOT name="head"/>' }),
     ]);
 
     expect(result.text).toContain('<SLOT name="head"/>');
@@ -121,7 +130,12 @@ describe("editing XML", () => {
 
   it("supports the structural selectors regex cannot express", () => {
     const result = applyTextFileEdits("x.xml", variantMesh, [
-      rule({ selector: 'SLOT:has(MESH[model^="emp_head"])', operation: "setAttribute", attributeName: "marked", value: "1" }),
+      rule({
+        selector: 'SLOT:has(MESH[model^="emp_head"])',
+        operation: "setAttribute",
+        attributeName: "marked",
+        value: "1",
+      }),
     ]);
 
     expect(result.text).toContain('name="head"');
@@ -156,8 +170,7 @@ function other()
   return 2
 end`;
 
-  const luaRule = (overrides: Partial<TextFileEditRule>) =>
-    rule({ mode: "lua", target: "s.lua", ...overrides });
+  const luaRule = (overrides: Partial<TextFileEditRule>) => rule({ mode: "lua", target: "s.lua", ...overrides });
 
   it("finds a function by name and replaces it", () => {
     const result = applyTextFileEdits("s.lua", script, [
@@ -409,22 +422,16 @@ describe("insert between two snippets", () => {
 
   it("keeps what is already between the snippets", () => {
     const withContent = "START\nexisting()\nEND";
-    const result = applyTextFileEdits(
-      "boot.lua",
-      withContent,
-      [between({ selector: "START", selectorEnd: "END", value: "\nadded()" })],
-    );
+    const result = applyTextFileEdits("boot.lua", withContent, [
+      between({ selector: "START", selectorEnd: "END", value: "\nadded()" }),
+    ]);
 
     expect(result.text).toBe("START\nadded()\nexisting()\nEND");
   });
 
   it("handles several pairs, matching each opening with the closing that follows it", () => {
     const twoPairs = "A x B  A y B";
-    const result = applyTextFileEdits(
-      "boot.lua",
-      twoPairs,
-      [between({ selector: "A", selectorEnd: "B", value: "!" })],
-    );
+    const result = applyTextFileEdits("boot.lua", twoPairs, [between({ selector: "A", selectorEnd: "B", value: "!" })]);
 
     expect(result.text).toBe("A! x B  A! y B");
     expect(result.matchCountByRuleId.r1).toBe(2);
@@ -533,9 +540,7 @@ describe("skipIfContains", () => {
 describe("flow options in the new rule fields", () => {
   it("substitutes into the closing snippet and the guard", () => {
     const nodeData: Record<string, unknown> = {
-      textFileRules: [
-        { id: "r1", selectorEnd: "{{endMarker}}", skipIfContains: "{{marker}}" },
-      ],
+      textFileRules: [{ id: "r1", selectorEnd: "{{endMarker}}", skipIfContains: "{{marker}}" }],
     };
 
     substituteTextFileRuleValues(nodeData, (value) =>
@@ -580,9 +585,7 @@ describe("targetHasPathButMatchesName", () => {
     // The matcher agrees: name matching compares the last segment only.
     const path = "ui\\campaign ui\\objectives.twui.xml";
     expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: path }))).toBe(false);
-    expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: "objectives.twui.xml" }))).toBe(
-      true,
-    );
+    expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: "objectives.twui.xml" }))).toBe(true);
   });
 
   it("says nothing about a bare file name", () => {

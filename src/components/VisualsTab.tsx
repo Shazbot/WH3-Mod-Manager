@@ -80,9 +80,7 @@ const VisualsTab = memo(() => {
   const [fileResultsTotal, setFileResultsTotal] = useState(0);
   const [isFileSearchLoading, setIsFileSearchLoading] = useState(false);
   const [fileSearchError, setFileSearchError] = useState<string | null>(null);
-  const [assetEditorContextMenu, setAssetEditorContextMenu] = useState<VisualsAssetEditorContextMenu | null>(
-    null,
-  );
+  const [assetEditorContextMenu, setAssetEditorContextMenu] = useState<VisualsAssetEditorContextMenu | null>(null);
 
   const unitClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -157,8 +155,7 @@ const VisualsTab = memo(() => {
   const filteredUnits = useMemo(() => {
     if (!compiledUnitFilter.regex) return units;
     return units.filter((entry) => {
-      const haystack =
-        `${entry.localizedName} ${entry.unitKey} ${entry.faction} ${entry.variantName || ""}`;
+      const haystack = `${entry.localizedName} ${entry.unitKey} ${entry.faction} ${entry.variantName || ""}`;
       return compiledUnitFilter.regex!.test(haystack);
     });
   }, [compiledUnitFilter.regex, units]);
@@ -348,11 +345,7 @@ const VisualsTab = memo(() => {
     openVariantMeshTab(file.path, "new");
   };
 
-  const openAssetEditorContextMenu = (
-    event: React.MouseEvent,
-    targetPath?: string,
-    preferredPackPath?: string,
-  ) => {
+  const openAssetEditorContextMenu = (event: React.MouseEvent, targetPath?: string, preferredPackPath?: string) => {
     event.preventDefault();
     event.stopPropagation();
     if (!targetPath) {
@@ -362,11 +355,7 @@ const VisualsTab = memo(() => {
     setAssetEditorContextMenu({ x: event.clientX, y: event.clientY, targetPath, preferredPackPath });
   };
 
-  const sendToAssetEditor = async (
-    targetPath: string,
-    mode: "new" | "existing",
-    preferredPackPath?: string,
-  ) => {
+  const sendToAssetEditor = async (targetPath: string, mode: "new" | "existing", preferredPackPath?: string) => {
     if (!sessionId) {
       setViewerMessage("Visuals session is not ready yet.");
       return;
@@ -383,9 +372,7 @@ const VisualsTab = memo(() => {
     }
 
     const resolvedFile = result.resolved?.fileName || targetPath;
-    setViewerMessage(
-      `Sent to AssetEditor (${mode === "existing" ? "existing" : "new"} tab): ${resolvedFile}`,
-    );
+    setViewerMessage(`Sent to AssetEditor (${mode === "existing" ? "existing" : "new"} tab): ${resolvedFile}`);
   };
 
   const onAssetEditorContextAction = async (mode: "new" | "existing") => {
@@ -480,11 +467,7 @@ const VisualsTab = memo(() => {
   };
 
   if (!isFeaturesForModdersEnabled) {
-    return (
-      <div className="text-gray-300 p-4">
-        Visuals tab is available only when Modders features are enabled.
-      </div>
-    );
+    return <div className="text-gray-300 p-4">Visuals tab is available only when Modders features are enabled.</div>;
   }
 
   return (
@@ -504,22 +487,18 @@ const VisualsTab = memo(() => {
             title={compiledUnitFilter.error || "Case-insensitive regular expression"}
             className={`bg-gray-700 border rounded px-2 py-1 text-white min-w-[20rem] ${compiledUnitFilter.error ? "border-red-500" : "border-gray-600"}`}
           />
-          {compiledUnitFilter.error && <span className="max-w-64 truncate text-xs text-red-300" title={compiledUnitFilter.error}>Invalid regex</span>}
+          {compiledUnitFilter.error && (
+            <span className="max-w-64 truncate text-xs text-red-300" title={compiledUnitFilter.error}>
+              Invalid regex
+            </span>
+          )}
         </div>
         <label className="flex items-center gap-2 text-gray-300">
-          <input
-            type="checkbox"
-            checked={isFilePanelOpen}
-            onChange={() => setIsFilePanelOpen((prev) => !prev)}
-          />
+          <input type="checkbox" checked={isFilePanelOpen} onChange={() => setIsFilePanelOpen((prev) => !prev)} />
           Show all model files
         </label>
         <label className="flex items-center gap-2 text-gray-300">
-          <input
-            type="checkbox"
-            checked={isGroupedByOrigin}
-            onChange={() => setIsGroupedByOrigin((prev) => !prev)}
-          />
+          <input type="checkbox" checked={isGroupedByOrigin} onChange={() => setIsGroupedByOrigin((prev) => !prev)} />
           Group by source
         </label>
         <span className="text-gray-400">
@@ -527,9 +506,7 @@ const VisualsTab = memo(() => {
         </span>
       </div>
 
-      {unitsError && (
-        <div className="mb-2 rounded bg-red-900/60 border border-red-700 px-3 py-2">{unitsError}</div>
-      )}
+      {unitsError && <div className="mb-2 rounded bg-red-900/60 border border-red-700 px-3 py-2">{unitsError}</div>}
       {viewerMessage && (
         <div className="mb-2 rounded bg-amber-900/40 border border-amber-700 px-3 py-2 text-amber-200">
           {viewerMessage}
@@ -641,9 +618,7 @@ const VisualsTab = memo(() => {
                               {unit.faction ? ` | faction: ${unit.faction}` : ""}
                             </div>
                             {unit.variantName && (
-                              <div className="text-xs text-gray-500 break-all">
-                                variant: {unit.variantName}
-                              </div>
+                              <div className="text-xs text-gray-500 break-all">variant: {unit.variantName}</div>
                             )}
                             {!unit.variantMeshPath && (
                               <div className="text-xs text-red-300">No resolved variantmeshdefinition</div>
@@ -662,9 +637,7 @@ const VisualsTab = memo(() => {
         <div style={{ flex: 1, minWidth: "1px", display: "flex", flexDirection: "column" }} className="ml-3">
           <div className="flex bg-gray-800 border border-gray-700 rounded-t overflow-x-auto min-h-[36px]">
             {tabs.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-400">
-                Open a unit to view its variantmeshdefinition
-              </div>
+              <div className="px-3 py-2 text-sm text-gray-400">Open a unit to view its variantmeshdefinition</div>
             ) : (
               tabs.map((tab) => (
                 <div
@@ -720,12 +693,7 @@ const VisualsTab = memo(() => {
         </div>
 
         {isFilePanelOpen && (
-          <Resizable
-            defaultSize={{ width: "25%", height: "82vh" }}
-            minWidth="220px"
-            maxWidth="45%"
-            className="ml-3"
-          >
+          <Resizable defaultSize={{ width: "25%", height: "82vh" }} minWidth="220px" maxWidth="45%" className="ml-3">
             <div className="h-[82vh] border border-gray-700 bg-gray-800 rounded flex flex-col min-w-0">
               <div className="p-2 border-b border-gray-700">
                 <input

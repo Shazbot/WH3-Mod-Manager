@@ -119,10 +119,7 @@ export interface VanillaDbCacheIdentity {
 }
 
 /** Whether a cache was built from the same inputs the caller has now. */
-export const isVanillaDbCacheCurrent = (
-  meta: VanillaDbCacheMeta,
-  identity: VanillaDbCacheIdentity,
-): boolean =>
+export const isVanillaDbCacheCurrent = (meta: VanillaDbCacheMeta, identity: VanillaDbCacheIdentity): boolean =>
   meta.game === identity.game &&
   meta.dbPackPath === identity.dbPackPath &&
   meta.dbPackSize === identity.dbPackSize &&
@@ -214,8 +211,7 @@ export const encodeVanillaDbCacheMeta = (meta: VanillaDbCacheMeta): string => {
       table.guid ?? null,
       table.columns.map((column) => {
         const flags =
-          (column.isKey ? COLUMN_FLAG_IS_KEY : 0) |
-          (column.presentLength != undefined ? COLUMN_FLAG_HAS_PRESENCE : 0);
+          (column.isKey ? COLUMN_FLAG_IS_KEY : 0) | (column.presentLength != undefined ? COLUMN_FLAG_HAS_PRESENCE : 0);
         const compactColumn = [
           column.name,
           indexOfFieldType(column.fieldType),
@@ -249,19 +245,8 @@ export const decodeVanillaDbCacheMeta = (json: string): VanillaDbCacheMeta | und
     const compact = JSON.parse(json) as CompactMeta;
     if (!compact?.tables || !compact.pool || !compact.fieldTypes) return undefined;
 
-    const [
-      poolLength,
-      poolCount,
-      checkpointsLength,
-      poolChecksum,
-      checkpointsChecksum,
-      chunkChecksums,
-    ] = compact.pool;
-    if (
-      !Number.isInteger(poolChecksum) ||
-      !Number.isInteger(checkpointsChecksum) ||
-      !Array.isArray(chunkChecksums)
-    ) {
+    const [poolLength, poolCount, checkpointsLength, poolChecksum, checkpointsChecksum, chunkChecksums] = compact.pool;
+    if (!Number.isInteger(poolChecksum) || !Number.isInteger(checkpointsChecksum) || !Array.isArray(chunkChecksums)) {
       return undefined;
     }
     let cursor = 0;

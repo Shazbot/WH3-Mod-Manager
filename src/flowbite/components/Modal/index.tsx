@@ -40,9 +40,7 @@ const ModalComponent: FC<ModalProps> = ({
   onClose,
   ...props
 }) => {
-  const [container] = useState<HTMLDivElement | undefined>(
-    windowExists() ? document.createElement("div") : undefined
-  );
+  const [container] = useState<HTMLDivElement | undefined>(windowExists() ? document.createElement("div") : undefined);
   const theme = useTheme().theme.modal;
   const theirProps = excludeClassName(props);
 
@@ -63,28 +61,17 @@ const ModalComponent: FC<ModalProps> = ({
         <ModalContext.Provider value={{ popup, onClose }}>
           <div
             aria-hidden={!show}
-            className={classNames(
-              theme.base,
-              theme.positions[position],
-              show ? theme.show.on : theme.show.off
-            )}
+            className={classNames(theme.base, theme.positions[position], show ? theme.show.on : theme.show.off)}
             data-testid="modal"
             role="dialog"
             {...theirProps}
           >
             <div className={classNames(theme.content.base, ...explicitClasses, theme.sizes[size])}>
-              <div
-                className={classNames(
-                  theme.content.inner,
-                  "!h-full",
-                )}
-              >
-                {children}
-              </div>
+              <div className={classNames(theme.content.inner, "!h-full")}>{children}</div>
             </div>
           </div>
         </ModalContext.Provider>,
-        container
+        container,
       )
     : null;
 };

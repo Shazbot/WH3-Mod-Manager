@@ -141,9 +141,7 @@ const measureHeaderChrome = (gridRoot: HTMLElement): number | undefined => {
   const headerText = headerCell?.querySelector<HTMLElement>(".ag-header-cell-text");
   if (!headerCell || !headerText) return undefined;
 
-  const chrome = Math.ceil(
-    headerCell.getBoundingClientRect().width - headerText.getBoundingClientRect().width,
-  );
+  const chrome = Math.ceil(headerCell.getBoundingClientRect().width - headerText.getBoundingClientRect().width);
   if (chrome < HEADER_CHROME_PLAUSIBLE_RANGE_PX.min) return undefined;
   if (chrome > HEADER_CHROME_PLAUSIBLE_RANGE_PX.max) return undefined;
   return chrome;
@@ -651,7 +649,12 @@ const copyTextToClipboard = async (text: string): Promise<void> => {
   }
 };
 
-const normalizeSelectionRange = (startRow: number, startCol: number, endRow: number, endCol: number): SelectionRange => ({
+const normalizeSelectionRange = (
+  startRow: number,
+  startCol: number,
+  endRow: number,
+  endCol: number,
+): SelectionRange => ({
   startRow: Math.min(startRow, endRow),
   endRow: Math.max(startRow, endRow),
   startCol: Math.min(startCol, endCol),
@@ -737,9 +740,7 @@ const AgGridWrapper = memo(
     const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
     const autoScrollFrameRef = useRef<number | null>(null);
 
-    const [headerChromePx, setHeaderChromePx] = useState(
-      measuredHeaderChromePx ?? HEADER_CHROME_FALLBACK_PX,
-    );
+    const [headerChromePx, setHeaderChromePx] = useState(measuredHeaderChromePx ?? HEADER_CHROME_FALLBACK_PX);
 
     // Read the real header chrome off the grid once it has been laid out, and size columns from that
     // instead of a constant. Two frames because the first one can land before ag-grid has drawn the
@@ -858,7 +859,9 @@ const AgGridWrapper = memo(
         }
       }
 
-      return Array.from(selectedColumns).sort((a, b) => a - b).join(",");
+      return Array.from(selectedColumns)
+        .sort((a, b) => a - b)
+        .join(",");
     }, [rowCount, selectionRanges]);
 
     const columnDefs = useMemo<Array<ColDef<RowData>>>(() => {
@@ -895,10 +898,7 @@ const AgGridWrapper = memo(
         const displayHeaderName = getDisplayColumnHeader(fullHeaderName);
         const headerName = (isKey ? "🔑 " : "") + displayHeaderName;
 
-        const width = Math.max(
-          getColumnWidth(colIndex),
-          getHeaderMinWidth(displayHeaderName, isKey, headerChromePx),
-        );
+        const width = Math.max(getColumnWidth(colIndex), getHeaderMinWidth(displayHeaderName, isKey, headerChromePx));
         defs.push({
           headerName,
           headerTooltip: fullHeaderName,
@@ -1163,9 +1163,7 @@ const AgGridWrapper = memo(
 
         const rawColId = ev.column?.getColId() ?? "";
         const clickedColIndex = rawColId === "__rowIndex" ? -1 : Number(rawColId);
-        const clickedField = Number.isFinite(clickedColIndex)
-          ? currentSchema.fields[clickedColIndex]
-          : undefined;
+        const clickedField = Number.isFinite(clickedColIndex) ? currentSchema.fields[clickedColIndex] : undefined;
 
         const deepCloneColIndex =
           clickedField && keyColumnSet.has(clickedField.name) ? clickedColIndex : firstKeyColumnIndex;
@@ -1250,88 +1248,91 @@ const AgGridWrapper = memo(
       [stopAutoScroll, updateDragSelection],
     );
 
-    const onKeyDownCapture = useCallback(async (ev: React.KeyboardEvent) => {
-      const isCopy = (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "c";
-      if (!isCopy) return;
+    const onKeyDownCapture = useCallback(
+      async (ev: React.KeyboardEvent) => {
+        const isCopy = (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "c";
+        if (!isCopy) return;
 
-      const api = gridRef.current?.api;
-      if (!api) return;
+        const api = gridRef.current?.api;
+        if (!api) return;
 
-      if (selectionRangesRef.current.length > 0) {
-        const rangeGroups = new Map<string, SelectionRange[]>();
-        for (const range of selectionRangesRef.current) {
-          const key = `${range.startRow}:${range.endRow}`;
-          const existingRanges = rangeGroups.get(key);
-          if (existingRanges) {
-            existingRanges.push(range);
-          } else {
-            rangeGroups.set(key, [range]);
+        if (selectionRangesRef.current.length > 0) {
+          const rangeGroups = new Map<string, SelectionRange[]>();
+          for (const range of selectionRangesRef.current) {
+            const key = `${range.startRow}:${range.endRow}`;
+            const existingRanges = rangeGroups.get(key);
+            if (existingRanges) {
+              existingRanges.push(range);
+            } else {
+              rangeGroups.set(key, [range]);
+            }
+          }
+
+          const rangeBlocks = Array.from(rangeGroups.entries())
+            .sort(([firstKey], [secondKey]) => {
+              const [firstStartRow, firstEndRow] = firstKey.split(":").map(Number);
+              const [secondStartRow, secondEndRow] = secondKey.split(":").map(Number);
+              if (firstStartRow !== secondStartRow) return firstStartRow - secondStartRow;
+              return firstEndRow - secondEndRow;
+            })
+            .map(([, groupedRanges]) => {
+              const startRow = Math.min(...groupedRanges.map((range) => range.startRow));
+              const endRow = Math.max(...groupedRanges.map((range) => range.endRow));
+              const selectedColumns = new Set<number>();
+              for (const range of groupedRanges) {
+                for (let colIndex = range.startCol; colIndex <= range.endCol; colIndex++) {
+                  selectedColumns.add(colIndex);
+                }
+              }
+
+              const orderedColumns = Array.from(selectedColumns).sort((first, second) => first - second);
+              if (orderedColumns.length === 0) return "";
+
+              const lines: string[] = [];
+              for (let rowIndex = startRow; rowIndex <= endRow; rowIndex++) {
+                const rowNode = api.getDisplayedRowAtIndex(rowIndex);
+                const row = rowNode?.data;
+                if (!row) continue;
+
+                const cells = orderedColumns.map((colIndex) => {
+                  if (colIndex < 0 || colIndex >= currentSchema.fields.length) {
+                    return "";
+                  }
+                  const value = row[getColumnFieldKey(colIndex)];
+                  return value == null ? "" : String(value);
+                });
+                lines.push(cells.join("\t"));
+              }
+
+              return lines.join("\n");
+            })
+            .filter((block) => block !== "");
+
+          if (rangeBlocks.length > 0) {
+            await copyTextToClipboard(rangeBlocks.join("\n\n"));
+            ev.preventDefault();
+            return;
           }
         }
 
-        const rangeBlocks = Array.from(rangeGroups.entries())
-          .sort(([firstKey], [secondKey]) => {
-            const [firstStartRow, firstEndRow] = firstKey.split(":").map(Number);
-            const [secondStartRow, secondEndRow] = secondKey.split(":").map(Number);
-            if (firstStartRow !== secondStartRow) return firstStartRow - secondStartRow;
-            return firstEndRow - secondEndRow;
-          })
-          .map(([, groupedRanges]) => {
-            const startRow = Math.min(...groupedRanges.map((range) => range.startRow));
-            const endRow = Math.max(...groupedRanges.map((range) => range.endRow));
-            const selectedColumns = new Set<number>();
-            for (const range of groupedRanges) {
-              for (let colIndex = range.startCol; colIndex <= range.endCol; colIndex++) {
-                selectedColumns.add(colIndex);
-              }
-            }
+        const focused = api.getFocusedCell();
+        if (!focused) return;
 
-            const orderedColumns = Array.from(selectedColumns).sort((first, second) => first - second);
-            if (orderedColumns.length === 0) return "";
+        const rowNode = api.getDisplayedRowAtIndex(focused.rowIndex);
+        const row = rowNode?.data;
+        if (!row) return;
 
-            const lines: string[] = [];
-            for (let rowIndex = startRow; rowIndex <= endRow; rowIndex++) {
-              const rowNode = api.getDisplayedRowAtIndex(rowIndex);
-              const row = rowNode?.data;
-              if (!row) continue;
+        const colId = focused.column.getColId();
+        if (colId === "__rowIndex") return;
+        const colIndex = Number(colId);
+        if (!Number.isFinite(colIndex)) return;
 
-              const cells = orderedColumns.map((colIndex) => {
-                if (colIndex < 0 || colIndex >= currentSchema.fields.length) {
-                  return "";
-                }
-                const value = row[getColumnFieldKey(colIndex)];
-                return value == null ? "" : String(value);
-              });
-              lines.push(cells.join("\t"));
-            }
-
-            return lines.join("\n");
-          })
-          .filter((block) => block !== "");
-
-        if (rangeBlocks.length > 0) {
-          await copyTextToClipboard(rangeBlocks.join("\n\n"));
-          ev.preventDefault();
-          return;
-        }
-      }
-
-      const focused = api.getFocusedCell();
-      if (!focused) return;
-
-      const rowNode = api.getDisplayedRowAtIndex(focused.rowIndex);
-      const row = rowNode?.data;
-      if (!row) return;
-
-      const colId = focused.column.getColId();
-      if (colId === "__rowIndex") return;
-      const colIndex = Number(colId);
-      if (!Number.isFinite(colIndex)) return;
-
-      const value = row[getColumnFieldKey(colIndex)];
-      await copyTextToClipboard(value == null ? "" : String(value));
-      ev.preventDefault();
-    }, [currentSchema.fields.length]);
+        const value = row[getColumnFieldKey(colIndex)];
+        await copyTextToClipboard(value == null ? "" : String(value));
+        ev.preventDefault();
+      },
+      [currentSchema.fields.length],
+    );
 
     return (
       <div
@@ -1344,7 +1345,8 @@ const AgGridWrapper = memo(
 
           if (!hasAdditiveSelectionModifier(ev) || rowCount <= 0) return;
           if ((ev.target as Element | null)?.closest(".ag-header-cell-resize")) return;
-          if ((ev.target as Element | null)?.closest(".ag-header-cell-menu-button, .ag-header-cell-filter-button")) return;
+          if ((ev.target as Element | null)?.closest(".ag-header-cell-menu-button, .ag-header-cell-filter-button"))
+            return;
 
           const headerCell = (ev.target as Element | null)?.closest(".ag-header-cell[col-id]");
           if (!(headerCell instanceof HTMLElement)) return;
@@ -1729,14 +1731,7 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
         event.node?.setDataValue(colId, event.oldValue);
       }
     },
-    [
-      activePackFile,
-      activePreparedTableData,
-      canEditTable,
-      commitPackFileChange,
-      currentSchema,
-      filteredRowIndices,
-    ],
+    [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange, currentSchema, filteredRowIndices],
   );
 
   const handleAddRow = useCallback(async () => {
@@ -1756,7 +1751,13 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
     } as PackedFile;
     const nextPreparedTableData = appendPreparedTableDataRow(previousPreparedTableData, appendedRowFields);
 
-    await commitPackFileChange(nextPackFile, previousPackFile, previousPreparedTableData, nextPreparedTableData, "push");
+    await commitPackFileChange(
+      nextPackFile,
+      previousPackFile,
+      previousPreparedTableData,
+      nextPreparedTableData,
+      "push",
+    );
   }, [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange, currentSchema]);
 
   const handleUndo = useCallback(async () => {

@@ -135,9 +135,7 @@ export function fetchModData(
   });
   child.once("exit", (code, signal) => {
     if (!gotModsData) {
-      log(
-        `Workshop metadata child exited before returning data for ids ${joinedIds} (code=${code}, signal=${signal})`,
-      );
+      log(`Workshop metadata child exited before returning data for ids ${joinedIds} (code=${code}, signal=${signal})`);
       fallbackToIndividualFetch();
     }
   });
@@ -201,9 +199,7 @@ export function fetchModData(
                   .map((matchAllResult) => matchAllResult[1]);
 
                 const requiredItemHumanNameIdsRegex = /class="requiredItem">[\n\r\t]+(.*?)[\n\r\t]+/gs;
-                const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(
-                  requiredItemHumanNameIdsRegex,
-                );
+                const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(requiredItemHumanNameIdsRegex);
                 const reqHumanNames = [...requiredItemHumanNameIds]
                   .filter((matchAllResult) => matchAllResult && matchAllResult[1])
                   .map((matchAllResult) => matchAllResult[1]);
@@ -358,11 +354,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   return mod;
 }
 
-const getDataMods = async (
-  gameDir: string,
-  log: (msg: string) => void,
-  subFolder?: string,
-): Promise<Mod[]> => {
+const getDataMods = async (gameDir: string, log: (msg: string) => void, subFolder?: string): Promise<Mod[]> => {
   let dataPath = await getDataPath(log);
   if (!dataPath) throw new Error("Data folder not found");
 
@@ -508,8 +500,7 @@ export const getLastUpdated = async () => {
 export const getFolderPaths = async (log: (msg: string) => void, newGame?: SupportedGames) => {
   const game = newGame || appData.currentGame;
   console.log(`getFolderPaths for ${game}`);
-  const steamAppsFolderPath =
-    appData.gamesToSteamAppsFolderPaths[game] || (await getSteamAppsFolder(newGame));
+  const steamAppsFolderPath = appData.gamesToSteamAppsFolderPaths[game] || (await getSteamAppsFolder(newGame));
 
   appData.gamesToGameFolderPaths[game] = appData.gamesToGameFolderPaths[game] || {};
   if (!steamAppsFolderPath) return;
@@ -525,15 +516,11 @@ export const getFolderPaths = async (log: (msg: string) => void, newGame?: Suppo
   log(`Game path is at ${appData.gamesToGameFolderPaths[game].gamePath}`);
 };
 
-export async function getContentModInFolder(
-  contentSubFolderName: string,
-  log: (msg: string) => void,
-): Promise<Mod> {
+export async function getContentModInFolder(contentSubFolderName: string, log: (msg: string) => void): Promise<Mod> {
   if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder)
-    throw new Error("Content folder not found");
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
   const contentSubfolder = nodePath.join(contentFolder, contentSubFolderName);
 
@@ -550,8 +537,7 @@ export async function getContentModInFolder(
   });
 
   const pack = files.find((file) => file.name.endsWith(".pack"));
-  const img =
-    files.find((file) => file.name.endsWith(".png")) ?? files.find((file) => file.name.endsWith(".jpg"));
+  const img = files.find((file) => file.name.endsWith(".png")) ?? files.find((file) => file.name.endsWith(".jpg"));
 
   if (!pack) throw new Error(`Content folder ${contentSubFolderName} doesn't contain a pack!`);
 
@@ -660,9 +646,7 @@ const getCustomModPaths = async (folderPath: string): Promise<string[]> => {
     .filter((entry) => entry.isFile() && entry.name.endsWith(".pack"))
     .map((entry) => nodePath.join(folderPath, entry.name));
 
-  const childDirectories = rootEntries.filter(
-    (entry) => entry.isDirectory() && entry.name !== "whmm_backups",
-  );
+  const childDirectories = rootEntries.filter((entry) => entry.isDirectory() && entry.name !== "whmm_backups");
   const childPackPaths = await Promise.all(
     childDirectories.map(async (entry) => {
       const childPath = nodePath.join(folderPath, entry.name);
@@ -680,14 +664,9 @@ const getCustomModPaths = async (folderPath: string): Promise<string[]> => {
   return [...packPaths, ...childPackPaths.flat()];
 };
 
-export const getCustomMods = async (
-  folder: CustomModFolder,
-  log: (msg: string) => void,
-): Promise<Mod[]> => {
+export const getCustomMods = async (folder: CustomModFolder, log: (msg: string) => void): Promise<Mod[]> => {
   const modPaths = await getCustomModPaths(folder.path);
-  const settledMods = await Promise.allSettled(
-    modPaths.map((modPath) => getCustomMod(modPath, folder.id, log)),
-  );
+  const settledMods = await Promise.allSettled(modPaths.map((modPath) => getCustomMod(modPath, folder.id, log)));
   return (settledMods.filter((result) => result.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map(
     (result) => result.value,
   );
@@ -699,8 +678,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder)
-    throw new Error("Content folder not found");
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
 
   if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) throw new Error("Game folder not found");
@@ -715,10 +693,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   });
   mods.push(...moddingDataMods);
 
-  const dataMods = await getDataMods(
-    appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
-    log,
-  );
+  const dataMods = await getDataMods(appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string, log);
   mods.push(...dataMods);
 
   console.log(

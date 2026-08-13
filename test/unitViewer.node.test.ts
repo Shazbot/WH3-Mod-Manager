@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { calculateUnitViewerStats } from "../src/unitViewer/calculator";
 import { buildUnitViewerData, createLocLookup, type UnitViewerTableRows } from "../src/unitViewer/data";
-import type {
-  UnitViewerConstants,
-  UnitViewerEntity,
-  UnitViewerUnitModel,
-} from "../src/unitViewer/types";
+import type { UnitViewerConstants, UnitViewerEntity, UnitViewerUnitModel } from "../src/unitViewer/types";
 
 const rider: UnitViewerEntity = {
   key: "rider",
@@ -176,7 +172,15 @@ describe("Unit Viewer calculations", () => {
   });
 
   it("matches Organ Gun and Sunmaker engine health and missile calculations", () => {
-    const engineEntity = { ...rider, key: "engine", type: "artillery", hitPoints: 425, runSpeed: 2, chargeSpeed: 2, mass: 2000 };
+    const engineEntity = {
+      ...rider,
+      key: "engine",
+      type: "artillery",
+      hitPoints: 425,
+      runSpeed: 2,
+      chargeSpeed: 2,
+      mass: 2000,
+    };
     const organ = calculateUnitViewerStats(
       makeUnit({
         key: "wh_main_dwf_art_organ_gun",
@@ -350,37 +354,35 @@ describe("Unit Viewer catalog", () => {
         { land_unit: "land", ability: "active_a" },
         { land_unit: "land", ability: "passive_a" },
       ],
-      unit_abilities_tables: [
-        { key: "active_z" },
-        { key: "passive_z" },
-        { key: "active_a" },
-        { key: "passive_a" },
-      ],
+      unit_abilities_tables: [{ key: "active_z" }, { key: "passive_z" }, { key: "active_a" }, { key: "passive_a" }],
       unit_special_abilities_tables: [
         { key: "passive_z", passive: "true" },
         { key: "passive_a", passive: "true" },
       ],
     };
-    const built = buildUnitViewerData(tables, (key) => ({
-      unit_attributes_bullet_text_attribute_z: "Zulu Attribute",
-      unit_attributes_bullet_text_attribute_a: "Alpha Attribute",
-      unit_abilities_onscreen_name_active_z: "Zulu Active",
-      unit_abilities_onscreen_name_active_a: "Alpha Active",
-      unit_abilities_onscreen_name_passive_z: "Zulu Passive",
-      unit_abilities_onscreen_name_passive_a: "Alpha Passive",
-    })[key]);
+    const built = buildUnitViewerData(
+      tables,
+      (key) =>
+        ({
+          unit_attributes_bullet_text_attribute_z: "Zulu Attribute",
+          unit_attributes_bullet_text_attribute_a: "Alpha Attribute",
+          unit_abilities_onscreen_name_active_z: "Zulu Active",
+          unit_abilities_onscreen_name_active_a: "Alpha Active",
+          unit_abilities_onscreen_name_passive_z: "Zulu Passive",
+          unit_abilities_onscreen_name_passive_a: "Alpha Passive",
+        })[key],
+    );
     const unit = built.units.get("unit")!;
 
-    expect(unit.attributes.map((attribute) => attribute.name)).toEqual([
-      "Alpha Attribute",
-      "Zulu Attribute",
+    expect(unit.attributes.map((attribute) => attribute.name)).toEqual(["Alpha Attribute", "Zulu Attribute"]);
+    expect(unit.abilities.filter((ability) => !ability.passive).map((ability) => ability.tooltip.name)).toEqual([
+      "Alpha Active",
+      "Zulu Active",
     ]);
-    expect(
-      unit.abilities.filter((ability) => !ability.passive).map((ability) => ability.tooltip.name),
-    ).toEqual(["Alpha Active", "Zulu Active"]);
-    expect(
-      unit.abilities.filter((ability) => ability.passive).map((ability) => ability.tooltip.name),
-    ).toEqual(["Alpha Passive", "Zulu Passive"]);
+    expect(unit.abilities.filter((ability) => ability.passive).map((ability) => ability.tooltip.name)).toEqual([
+      "Alpha Passive",
+      "Zulu Passive",
+    ]);
   });
 
   it("deduplicates subculture roster rows and retains unassigned main units", () => {
@@ -410,14 +412,18 @@ describe("Unit Viewer catalog", () => {
         { unit: "unit_d", faction: "faction_a" },
       ],
     };
-    const built = buildUnitViewerData(tables, (key) => ({
-      land_units_onscreen_name_land_a: "Alpha",
-      land_units_onscreen_name_land_b: "Beta",
-      land_units_onscreen_name_land_c: "Charlie",
-      land_units_onscreen_name_land_d: "{{tr:land_units_onscreen_name_shared_delta}}",
-      land_units_onscreen_name_shared_delta: "Delta",
-      cultures_subcultures_name_subculture: "Culture",
-    })[key]);
+    const built = buildUnitViewerData(
+      tables,
+      (key) =>
+        ({
+          land_units_onscreen_name_land_a: "Alpha",
+          land_units_onscreen_name_land_b: "Beta",
+          land_units_onscreen_name_land_c: "Charlie",
+          land_units_onscreen_name_land_d: "{{tr:land_units_onscreen_name_shared_delta}}",
+          land_units_onscreen_name_shared_delta: "Delta",
+          cultures_subcultures_name_subculture: "Culture",
+        })[key],
+    );
     expect(built.groups.map((group) => [group.name, group.units.map((unit) => unit.key)])).toEqual([
       ["Culture", ["unit_d", "unit_c", "unit_a"]],
       ["Unassigned", ["unit_b"]],
@@ -459,12 +465,16 @@ describe("Unit Viewer catalog", () => {
         { unit: "unit_none", faction: "faction" },
       ],
     };
-    const built = buildUnitViewerData(tables, (key) => ({
-      ui_unit_group_parents_onscreen_name_commander: "Lords",
-      ui_unit_group_parents_onscreen_name_infantry: "Infantry",
-      ui_unit_group_parents_onscreen_name_missile_infantry: "Missile Infantry",
-      ui_unit_group_parents_onscreen_name_campaign_exclusives: "Extended Roster",
-    })[key]);
+    const built = buildUnitViewerData(
+      tables,
+      (key) =>
+        ({
+          ui_unit_group_parents_onscreen_name_commander: "Lords",
+          ui_unit_group_parents_onscreen_name_infantry: "Infantry",
+          ui_unit_group_parents_onscreen_name_missile_infantry: "Missile Infantry",
+          ui_unit_group_parents_onscreen_name_campaign_exclusives: "Extended Roster",
+        })[key],
+    );
 
     expect(built.unitGroups.map((unitGroup) => unitGroup.name)).toEqual([
       "Lords",
@@ -472,9 +482,7 @@ describe("Unit Viewer catalog", () => {
       "Missile Infantry",
       "Extended Roster",
     ]);
-    expect(
-      Object.fromEntries(built.groups[0].units.map((unit) => [unit.key, unit.uiGroupKey])),
-    ).toEqual({
+    expect(Object.fromEntries(built.groups[0].units.map((unit) => [unit.key, unit.uiGroupKey]))).toEqual({
       unit_lord: "commander",
       unit_bow: "missile_infantry",
       unit_spear: "infantry",
@@ -504,9 +512,7 @@ describe("Unit Viewer catalog", () => {
     };
     const built = buildUnitViewerData(tables, () => undefined);
     expect(built.units.get("unit")?.multiplayerCost).toBe(250);
-    expect(built.constants.experienceBonuses).toEqual([
-      { stat: "stat_morale", growthRate: 0, growthScalar: 3 },
-    ]);
+    expect(built.constants.experienceBonuses).toEqual([{ stat: "stat_morale", growthRate: 0, growthScalar: 3 }]);
     expect(built.constants.sizeScaling[0].singleEntityValue).toBe(0.5);
   });
 });

@@ -51,10 +51,10 @@ if (isDomEnvironment) {
 
   window.api =
     window.api ??
-    (({
+    ({
       getDBNameToDBVersions: vi.fn(),
       getDefaultTableVersions: vi.fn(),
-    } as unknown) as NonNullable<Window["api"]>);
+    } as unknown as NonNullable<Window["api"]>);
 }
 
 afterEach(() => {

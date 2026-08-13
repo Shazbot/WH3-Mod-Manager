@@ -30,9 +30,7 @@ export interface VanillaDbCacheBuildProgress {
   detail?: string;
 }
 
-export type VanillaDbCacheBuildProgressReporter = (
-  progress: VanillaDbCacheBuildProgress,
-) => void;
+export type VanillaDbCacheBuildProgressReporter = (progress: VanillaDbCacheBuildProgress) => void;
 
 let reporter: VanillaDbCacheBuildProgressReporter | undefined;
 
@@ -43,8 +41,6 @@ export const setVanillaDbCacheBuildProgressReporter = (
   reporter = nextReporter;
 };
 
-export const reportVanillaDbCacheBuildProgress = (
-  progress: VanillaDbCacheBuildProgress,
-): void => {
+export const reportVanillaDbCacheBuildProgress = (progress: VanillaDbCacheBuildProgress): void => {
   reporter?.(progress);
 };

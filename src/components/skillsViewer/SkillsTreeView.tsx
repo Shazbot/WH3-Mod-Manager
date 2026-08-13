@@ -59,8 +59,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     const subtypeName = isLocalizingSubtypes
       ? (skillsData.subtypesToLocalizedNames[metadata.subtype] ?? metadata.subtype)
       : metadata.subtype;
-    const indexSuffix =
-      (skillsData.subtypeToNumSets[metadata.subtype] ?? 0) > 1 ? ` ${metadata.subtypeIndex + 1}` : "";
+    const indexSuffix = (skillsData.subtypeToNumSets[metadata.subtype] ?? 0) > 1 ? ` ${metadata.subtypeIndex + 1}` : "";
     return `${subtypeName}${indexSuffix}`;
   };
 

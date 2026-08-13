@@ -33,9 +33,7 @@ export const getEnabledEntryNames = (entries: PresetModEntry[]) =>
 /** Resolves entries back to installed mods, keeping entry order and skipping mods that are gone. */
 export function resolveEntriesToMods(entries: PresetModEntry[], mods: Mod[]) {
   const modsByName = new Map(mods.map((mod) => [mod.name, mod]));
-  return entries
-    .map((entry) => modsByName.get(entry.name))
-    .filter((mod): mod is Mod => mod !== undefined);
+  return entries.map((entry) => modsByName.get(entry.name)).filter((mod): mod is Mod => mod !== undefined);
 }
 
 /** Drops entries whose name repeats, keeping the first. Mirrors withoutDataAndContentDuplicates. */

@@ -11,10 +11,7 @@ const CustomModFolderIcon = memo(({ folderPath }: CustomModFolderIconProps) => {
   const localized: Record<string, string> = useContext(localizationContext);
   if (!folderPath) return null;
 
-  const tooltipText = (localized.customFolderModTooltip || "Custom folder: {{path}}").replace(
-    "{{path}}",
-    folderPath,
-  );
+  const tooltipText = (localized.customFolderModTooltip || "Custom folder: {{path}}").replace("{{path}}", folderPath);
   const tooltipContent = (
     <div className="max-w-sm text-left">
       <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-purple-300">
@@ -32,10 +29,7 @@ const CustomModFolderIcon = memo(({ folderPath }: CustomModFolderIconProps) => {
       className="custom-mod-folder-tooltip !z-[100] !border-0 !bg-transparent !p-0 !text-slate-100 !shadow-none"
       content={tooltipContent}
     >
-      <span
-        className="ml-1 inline-flex shrink-0 items-center text-slate-400 opacity-80"
-        aria-label={tooltipText}
-      >
+      <span className="ml-1 inline-flex shrink-0 items-center text-slate-400 opacity-80" aria-label={tooltipText}>
         <FiFolder className="h-3.5 w-3.5" />
       </span>
     </Tooltip>

@@ -178,17 +178,14 @@ if (!gotTheLock) {
       console.log(`[startup] Main renderer finished loading after ${Date.now() - startupStartedAt}ms`);
     });
 
-    mainWebContents.on(
-      "did-fail-load",
-      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-        if (!isMainFrame) return;
-        console.log("[startup] Main renderer failed to load", {
-          errorCode,
-          errorDescription,
-          validatedURL,
-        });
-      },
-    );
+    mainWebContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return;
+      console.log("[startup] Main renderer failed to load", {
+        errorCode,
+        errorDescription,
+        validatedURL,
+      });
+    });
 
     mainWebContents.on("preload-error", (_event, preloadPath, error) => {
       console.log("[startup] Main renderer preload failed", {
@@ -306,8 +303,7 @@ if (!gotTheLock) {
       const idsToDownload: string[] = [];
       for (const modId of appData.waitForModIds) {
         console.log("checking", nodePath.join(contentFolder, modId));
-        if (globSync("*.pack", { cwd: nodePath.join(contentFolder, modId) }).length == 0)
-          idsToDownload.push(modId);
+        if (globSync("*.pack", { cwd: nodePath.join(contentFolder, modId) }).length == 0) idsToDownload.push(modId);
         else toRemoveFromWaitForModIds.push(modId);
       }
 
@@ -315,12 +311,10 @@ if (!gotTheLock) {
       fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "download", idsToDownload.join(";")],
-        {}
+        {},
       );
 
-      appData.waitForModIds = appData.waitForModIds.filter(
-        (modId) => !toRemoveFromWaitForModIds.includes(modId)
-      );
+      appData.waitForModIds = appData.waitForModIds.filter((modId) => !toRemoveFromWaitForModIds.includes(modId));
     };
     setInterval(waitForModDownloads, 3500);
 
@@ -348,10 +342,7 @@ if (!gotTheLock) {
         .then((res) => res.json())
         .then((body) => {
           body.assets.forEach((asset: { content_type: string; browser_download_url: string }) => {
-            windows.mainWindow?.webContents.send(
-              "handleLog",
-              asset.content_type == "application/x-zip-compressed"
-            );
+            windows.mainWindow?.webContents.send("handleLog", asset.content_type == "application/x-zip-compressed");
             if (asset.content_type === "application/x-zip-compressed") {
               modUpdatedExists = {
                 updateExists: true,
@@ -485,7 +476,7 @@ if (!gotTheLock) {
         // Show error dialog
         await dialog.showErrorBox(
           i18n.t("updateFailed"),
-          `${i18n.t("updateFailedMessage")} ${error instanceof Error ? error.message : String(error)}`
+          `${i18n.t("updateFailedMessage")} ${error instanceof Error ? error.message : String(error)}`,
         );
 
         return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -519,32 +510,31 @@ if (!gotTheLock) {
           try {
             // if a game crashes you can end up with a tiny running process of the game, that's why we have a memory filter here
             exec(
-              `tasklist /nh /fi "IMAGENAME eq ${
-                gameToProcessName[appData.currentGame]
-              }" /fi "MEMUSAGE gt 10000"`,
+              `tasklist /nh /fi "IMAGENAME eq ${gameToProcessName[appData.currentGame]}" /fi "MEMUSAGE gt 10000"`,
               (_, stdout) => {
                 const isWH3Running = stdout.includes(gameToProcessName[appData.currentGame]);
                 if (appData.isWH3Running != isWH3Running) {
                   if (appData.isChangingGameProcessPriority && isWH3Running && !appData.isWH3Running) {
                     console.log("Setting process priority to high...");
                     exec(
-                      `powershell.exe -Command "(Get-Process -Name '${gameToProcessName[
-                        appData.currentGame
-                      ].replace(".exe", "")}').PriorityClass = 'High'"`,
+                      `powershell.exe -Command "(Get-Process -Name '${gameToProcessName[appData.currentGame].replace(
+                        ".exe",
+                        "",
+                      )}').PriorityClass = 'High'"`,
 
                       (error) => {
                         if (error) {
                           console.error(`exec error: ${error}`);
                           return;
                         }
-                      }
+                      },
                     );
                   }
                   appData.isWH3Running = isWH3Running;
                   windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
                 }
                 if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
-              }
+              },
             );
           } catch (e) {
             console.log("psList coroutine error:", e);

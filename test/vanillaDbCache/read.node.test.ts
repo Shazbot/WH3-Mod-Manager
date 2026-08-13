@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildVanillaDbCache } from "../../src/vanillaDbCache/build";
-import {
-  VanillaDbCacheIntegrityError,
-  createMemorySource,
-  openVanillaDbCache,
-} from "../../src/vanillaDbCache/read";
-import {
-  VANILLA_DB_CACHE_HEADER_BYTES,
-  decodeVanillaDbCacheHeader,
-} from "../../src/vanillaDbCache/format";
+import { VanillaDbCacheIntegrityError, createMemorySource, openVanillaDbCache } from "../../src/vanillaDbCache/read";
+import { VANILLA_DB_CACHE_HEADER_BYTES, decodeVanillaDbCacheHeader } from "../../src/vanillaDbCache/format";
 import type { DBField, DBVersion, Field, PackedFile, SchemaField } from "../../src/packFileTypes";
 
 const identity = {
@@ -111,10 +104,7 @@ describe("vanilla db cache reader", () => {
 
   it("rejects corruption in a lazily-read string-pool chunk", () => {
     const tablePath = "db\\x_tables\\data__";
-    const { reader, bytes } = openBuilt(
-      [packedFile(tablePath, everyTypeRow(0, 1), 4)],
-      () => everyTypeSchema,
-    );
+    const { reader, bytes } = openBuilt([packedFile(tablePath, everyTypeRow(0, 1), 4)], () => everyTypeSchema);
     const header = decodeVanillaDbCacheHeader(bytes)!;
     const payloadStart = VANILLA_DB_CACHE_HEADER_BYTES + header.metaJsonLength;
 
@@ -243,18 +233,13 @@ describe("vanilla db cache reader", () => {
 
   describe("refusing to open", () => {
     const built = () =>
-      buildVanillaDbCache(
-        [packedFile("db\\x_tables\\data__", everyTypeRow(0, 1), 4)],
-        () => everyTypeSchema,
-        identity,
-      ).bytes;
+      buildVanillaDbCache([packedFile("db\\x_tables\\data__", everyTypeRow(0, 1), 4)], () => everyTypeSchema, identity)
+        .bytes;
 
     it("returns undefined for bytes that are not a cache", () => {
       expect(openVanillaDbCache(createMemorySource(new Uint8Array(0)))).toBeUndefined();
       expect(openVanillaDbCache(createMemorySource(new Uint8Array(64)))).toBeUndefined();
-      expect(
-        openVanillaDbCache(createMemorySource(new TextEncoder().encode("not a cache at all"))),
-      ).toBeUndefined();
+      expect(openVanillaDbCache(createMemorySource(new TextEncoder().encode("not a cache at all")))).toBeUndefined();
     });
 
     it("returns undefined when the metadata will not parse", () => {
@@ -280,12 +265,8 @@ describe("vanilla db cache reader", () => {
       const bytes = built();
 
       expect(openVanillaDbCache(createMemorySource(bytes), identity)).toBeDefined();
-      expect(
-        openVanillaDbCache(createMemorySource(bytes), { ...identity, dbPackMtimeMs: 999 }),
-      ).toBeUndefined();
-      expect(
-        openVanillaDbCache(createMemorySource(bytes), { ...identity, schemaHash: "changed" }),
-      ).toBeUndefined();
+      expect(openVanillaDbCache(createMemorySource(bytes), { ...identity, dbPackMtimeMs: 999 })).toBeUndefined();
+      expect(openVanillaDbCache(createMemorySource(bytes), { ...identity, schemaHash: "changed" })).toBeUndefined();
     });
 
     it("opens without an identity when the caller does not care to check", () => {

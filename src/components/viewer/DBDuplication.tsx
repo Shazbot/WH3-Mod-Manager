@@ -17,7 +17,7 @@ import { Modal } from "../../flowbite";
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
     tree: IViewerTreeNodeWithData | IViewerTreeNode,
-    acc: (IViewerTreeNodeWithData | IViewerTreeNode)[]
+    acc: (IViewerTreeNodeWithData | IViewerTreeNode)[],
   ) => {
     acc.push(tree);
     if (tree.children) {
@@ -107,7 +107,9 @@ const DBDuplication = memo(() => {
   const rebuildRefsCacheFromTree = (nextTreeData: IViewerTreeNodeWithData) => {
     const refs = getAllRefsFromTree(nextTreeData);
     allRefsList.current = refs;
-    allRefsLookup.current = new Set(refs.map(([tableName, columnName, value]) => getDBCellKey(tableName, columnName, value)));
+    allRefsLookup.current = new Set(
+      refs.map(([tableName, columnName, value]) => getDBCellKey(tableName, columnName, value)),
+    );
   };
 
   const addRefToCache = (node: IViewerTreeNodeWithData) => {
@@ -180,7 +182,7 @@ const DBDuplication = memo(() => {
           deepCloneTarget,
           treeData ? getAllRefsFromTree(treeData) : [],
           [],
-          treeData ?? undefined
+          treeData ?? undefined,
         );
 
         if (treeNodeResult) {
@@ -193,7 +195,7 @@ const DBDuplication = memo(() => {
             "selectedNodesByName:",
             selectedNodesByName,
             "packPath:",
-            packPath
+            packPath,
           );
           setTreeData(treeNodeResult);
           rebuildRefsCacheFromTree(treeNodeResult);
@@ -281,7 +283,7 @@ const DBDuplication = memo(() => {
     "packDataStore:",
     packDataStore[packData.packPath]?.packedFiles
       ?.filter((pf) => pf.name.startsWith("db\\") && pf.schemaFields)
-      .map((pf) => pf.name)
+      .map((pf) => pf.name),
   );
 
   const rootNode = {
@@ -327,10 +329,13 @@ const DBDuplication = memo(() => {
 
   const rootNodeName = (treeData.children[0] as IViewerTreeNodeWithData | undefined)?.name ?? rootNode.name;
 
-  const defaultNodeNameToRenameValue = data.reduce((acc, current) => {
-    acc[current.name] = (nodeNameToDataLookup[current.name] && nodeNameToDataLookup[current.name].value) || "";
-    return acc;
-  }, {} as Record<string, string>);
+  const defaultNodeNameToRenameValue = data.reduce(
+    (acc, current) => {
+      acc[current.name] = (nodeNameToDataLookup[current.name] && nodeNameToDataLookup[current.name].value) || "";
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
 
   console.log("tryign to amend", rows[deepCloneTarget.row][deepCloneTarget.col]);
 
@@ -434,8 +439,7 @@ const DBDuplication = memo(() => {
 
     const isSelecting = !selectedNodesByName.includes(currentName);
     let newselectedNodesByName = [...selectedNodesByName];
-    if (!isSelecting)
-      newselectedNodesByName = newselectedNodesByName.filter((name) => name != currentName);
+    if (!isSelecting) newselectedNodesByName = newselectedNodesByName.filter((name) => name != currentName);
     else newselectedNodesByName.push(currentName);
 
     for (const nodeName of [...newselectedNodesByName]) {
@@ -492,14 +496,13 @@ const DBDuplication = memo(() => {
     if (nodeNameToDataLookup[nodeName]?.isIndirectRef) return false;
 
     return (
-      !nodeNameToRenameValue[nodeName] ||
-      nodeNameToRenameValue[nodeName] == defaultNodeNameToRenameValue[nodeName]
+      !nodeNameToRenameValue[nodeName] || nodeNameToRenameValue[nodeName] == defaultNodeNameToRenameValue[nodeName]
     );
   };
 
   const isSavingPossible = () => {
     const selectedDirectNodes = selectedNodesByName.filter(
-      (nodeName) => nodeNameToDataLookup[nodeName] && !nodeNameToDataLookup[nodeName].isIndirectRef
+      (nodeName) => nodeNameToDataLookup[nodeName] && !nodeNameToDataLookup[nodeName].isIndirectRef,
     );
 
     if (selectedDirectNodes.length < 1) return false;
@@ -582,7 +585,7 @@ const DBDuplication = memo(() => {
         nodeNameToRenameValue,
         defaultNodeNameToRenameValue,
         treeData,
-        { isAppendSave, savePackedFileName, savePackFileName }
+        { isAppendSave, savePackedFileName, savePackFileName },
       );
 
       if (!result?.ok) {
@@ -592,7 +595,7 @@ const DBDuplication = memo(() => {
       } else {
         console.log("executeDBDuplication success, output:", result.outputPackPath);
         setDuplicationSuccessMessage(
-          result.outputPackPath ? `Created pack:\n${result.outputPackPath}` : "Clone completed successfully."
+          result.outputPackPath ? `Created pack:\n${result.outputPackPath}` : "Clone completed successfully.",
         );
         setIsSuccessOpen(true);
       }
@@ -632,48 +635,46 @@ const DBDuplication = memo(() => {
           <Modal.Body>
             <div className="flex flex-col gap-8">
               <p>
-                Deep DB Cloning allows you to clone a row in a table. We can only clone tables that have a key
-                column that uniquely identifies that row, for example for the main_units_table that would be
-                the "unit" column.
+                Deep DB Cloning allows you to clone a row in a table. We can only clone tables that have a key column
+                that uniquely identifies that row, for example for the main_units_table that would be the "unit" column.
               </p>
               <p>
-                We look at the row we're cloning and look at all the tables that are referenced from that row,
-                for main_units those would be: unit_castes_tables, land_units_tables, naval_units_tables,
+                We look at the row we're cloning and look at all the tables that are referenced from that row, for
+                main_units those would be: unit_castes_tables, land_units_tables, naval_units_tables,
                 unit_weights_tables, ui_unit_groupings_tables, unit_porthole_camera_settings_tables,
                 audio_vo_actor_groups_tables.
               </p>
               <p>
-                So we look inside each of those tables and find the rows that references the main_unit we're
-                aiming to clone. We then in turn find all the refences to other tables in those rows, and so
-                on.
+                So we look inside each of those tables and find the rows that references the main_unit we're aiming to
+                clone. We then in turn find all the refences to other tables in those rows, and so on.
               </p>
               <p>
-                We end up with a tree of refences and we select what refences we want to clone and which ones
-                should be left the same. So for example we could also clone the land_unit of our main_unit but
-                leave the unit_castes_tables the same.
+                We end up with a tree of refences and we select what refences we want to clone and which ones should be
+                left the same. So for example we could also clone the land_unit of our main_unit but leave the
+                unit_castes_tables the same.
               </p>
               <p>
-                References in <span className="text-amber-500">yellow</span> are non-direct references. These
-                are from tables that reference the key we're duplicating but they're not directly referenced
-                from the table we're cloning. For example units_to_groupings_military_permissions_tables
-                refences the main_units table but the main_units table doesn't reference it.
+                References in <span className="text-amber-500">yellow</span> are non-direct references. These are from
+                tables that reference the key we're duplicating but they're not directly referenced from the table we're
+                cloning. For example units_to_groupings_military_permissions_tables refences the main_units table but
+                the main_units table doesn't reference it.
               </p>
               <p>
-                Non-direct refences are selectable. When you select one, we load its closure so you can choose
-                which additional non-direct references to include.
+                Non-direct refences are selectable. When you select one, we load its closure so you can choose which
+                additional non-direct references to include.
               </p>
               <p>
-                With "Append Existing Pack" enabled we will append an existing pack file instead of creating a
-                new one, using the pack name from "(Optional) Name for new pack".
+                With "Append Existing Pack" enabled we will append an existing pack file instead of creating a new one,
+                using the pack name from "(Optional) Name for new pack".
               </p>
               <p>
-                "(Optional) Name for new tables" specifices what name the new DB tables will have. Leave it
-                blank for an automaitc name with a timestamp (e.g. dbclone_140925_152525_).
+                "(Optional) Name for new tables" specifices what name the new DB tables will have. Leave it blank for an
+                automaitc name with a timestamp (e.g. dbclone_140925_152525_).
               </p>
               <p>
-                "(Optional) Name for new pack" specifices what name the new pack will have. Leave it blank for
-                an automaitc name with a timestamp (e.g. dbclone_140925_152525.pack). WARNING: Using an
-                existing pack name WITHOUT "Append Existing Pack" enabled will OVERWRITE the existing pack.
+                "(Optional) Name for new pack" specifices what name the new pack will have. Leave it blank for an
+                automaitc name with a timestamp (e.g. dbclone_140925_152525.pack). WARNING: Using an existing pack name
+                WITHOUT "Append Existing Pack" enabled will OVERWRITE the existing pack.
               </p>
             </div>
           </Modal.Body>
@@ -833,9 +834,7 @@ const DBDuplication = memo(() => {
                   }}
                   variant={isHalfSelected ? "some" : isSelected ? "all" : "none"}
                 />
-                <span
-                  className={`name ${nodeNameToDataLookup[element.name].isIndirectRef ? "text-amber-500" : ""}`}
-                >
+                <span className={`name ${nodeNameToDataLookup[element.name].isIndirectRef ? "text-amber-500" : ""}`}>
                   {element.name}
                 </span>
                 {!nodeNameToDataLookup[element.name].isIndirectRef && (
@@ -851,9 +850,7 @@ const DBDuplication = memo(() => {
                         type="text"
                         disabled={isSaving}
                         onChange={(e) => onFilterChange(e, element.name)}
-                        value={
-                          nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]
-                        }
+                        value={nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]}
                         className={`ml-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 ${
                           needsWarningBorder(element.name) ? "!border-yellow-300" : ""
                         }`}
@@ -872,12 +869,7 @@ const DBDuplication = memo(() => {
 
 const ArrowIcon = ({ isOpen, className }: { isOpen: boolean; className?: string }) => {
   const baseClass = "arrow";
-  const classes = cx(
-    baseClass,
-    { [`${baseClass}--closed`]: !isOpen },
-    { [`${baseClass}--open`]: isOpen },
-    className
-  );
+  const classes = cx(baseClass, { [`${baseClass}--closed`]: !isOpen }, { [`${baseClass}--open`]: isOpen }, className);
   return <IoMdArrowDropright className={classes} />;
 };
 

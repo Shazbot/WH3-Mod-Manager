@@ -698,7 +698,14 @@ declare global {
       iconPath: string;
       maxLevel: number;
       unlockRank: number;
-      effects: { effectKey: string; effectScope: string; level: number; value: string; icon?: string; priority: string }[];
+      effects: {
+        effectKey: string;
+        effectScope: string;
+        level: number;
+        value: string;
+        icon?: string;
+        priority: string;
+      }[];
     }[];
     allSkillIcons: { path: string; name: string }[];
   }
@@ -1082,13 +1089,7 @@ declare global {
   }
 
   type WorkshopUpdateCheckStatus =
-    | "requested"
-    | "already-downloading"
-    | "downloading"
-    | "updated"
-    | "request-failed"
-    | "timed-out"
-    | "resubscribing";
+    "requested" | "already-downloading" | "downloading" | "updated" | "request-failed" | "timed-out" | "resubscribing";
 
   interface WorkshopModRepairRequest {
     mod: Mod;
@@ -1143,7 +1144,7 @@ declare global {
     maxIndex: number,
     firstPackName: string,
     secondPackName: string,
-    type: PackCollisionCheckType
+    type: PackCollisionCheckType,
   ) => void;
 
   type PackCollisionCheckType = "Files" | "TableKeys" | "MissingKeys";
@@ -1215,14 +1216,7 @@ declare global {
   }
 
   type DBDuplicationStage =
-    | "validating"
-    | "discovering_indirect"
-    | "cloning"
-    | "localizing"
-    | "writing"
-    | "done"
-    | "error"
-    | "canceled";
+    "validating" | "discovering_indirect" | "cloning" | "localizing" | "writing" | "done" | "error" | "canceled";
 
   interface DBDuplicationProgress {
     stage: DBDuplicationStage;

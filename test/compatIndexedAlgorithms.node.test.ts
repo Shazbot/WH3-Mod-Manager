@@ -15,10 +15,7 @@ import {
   findPackFileCollisions,
   findPackFileCollisionsBetweenPacksOptimized,
 } from "../src/modCompat/packFileCollisions";
-import {
-  findPackTableCollisions,
-  findPackTableCollisionsBetweenPacks,
-} from "../src/modCompat/packTableCollisions";
+import { findPackTableCollisions, findPackTableCollisionsBetweenPacks } from "../src/modCompat/packTableCollisions";
 import type { Pack, PackFileCollision, PackTableCollision, PackedFile } from "../src/packFileTypes";
 import { DBNameToDBVersions } from "../src/schema";
 
@@ -39,8 +36,7 @@ const tableSchema = {
     },
   ],
 };
-const file = (name: string, fileSize = 1): PackedFile =>
-  ({ name, file_size: fileSize, start_pos: 0 }) as PackedFile;
+const file = (name: string, fileSize = 1): PackedFile => ({ name, file_size: fileSize, start_pos: 0 }) as PackedFile;
 const tableFile = (name: string, ...keys: string[]): PackedFile =>
   ({
     ...file(name),
@@ -55,9 +51,7 @@ const tableFile = (name: string, ...keys: string[]): PackedFile =>
 const pack = (name: string, packedFiles: PackedFile[]): Pack =>
   ({ name, path: `/mods/${name}`, packedFiles, readTables: "all" }) as Pack;
 const canonical = <T extends object>(values: T[]) =>
-  values
-    .map((value) => JSON.stringify(Object.fromEntries(Object.entries(value).sort())))
-    .sort();
+  values.map((value) => JSON.stringify(Object.fromEntries(Object.entries(value).sort()))).sort();
 
 afterEach(() => emptyPackFileToFileReferences());
 
@@ -118,10 +112,7 @@ describe("indexed compatibility algorithms", () => {
     const sourceFile = file("models\\source.xml");
     const sourcePack = pack("source.pack", [sourceFile]);
     const providerPack = pack("provider.pack", [file("SHARED\\Asset.PNG")]);
-    appendToFileToFileRegistry(sourcePack, sourceFile, [
-      "shared/asset.png",
-      "missing/asset.png",
-    ]);
+    appendToFileToFileRegistry(sourcePack, sourceFile, ["shared/asset.png", "missing/asset.png"]);
 
     const missing = findMissingFileReferences([sourcePack, providerPack]);
 

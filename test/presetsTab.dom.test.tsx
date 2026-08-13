@@ -115,9 +115,7 @@ describe("preset editor additions", () => {
       preloadedState: {
         app: {
           ...initialState,
-          presets: [
-            { name: "Saved", version: 2, mods: [{ name: "missing.pack" }] },
-          ],
+          presets: [{ name: "Saved", version: 2, mods: [{ name: "missing.pack" }] }],
           dataFromConfig: {
             modUserData: {
               "missing.pack": {
@@ -141,9 +139,7 @@ describe("preset editor additions", () => {
 
     fireEvent.click(screen.getByTestId("react-select"));
 
-    const missingRow = container.querySelector<HTMLElement>(
-      '[data-preset-mod-name="missing.pack"]',
-    );
+    const missingRow = container.querySelector<HTMLElement>('[data-preset-mod-name="missing.pack"]');
     expect(missingRow).toHaveTextContent("Cached Missing Title");
     expect(missingRow).toHaveTextContent("(missing)");
     expect(screen.getByText("1 missing deps")).toBeInTheDocument();

@@ -2,16 +2,8 @@ import * as fs from "fs";
 import { SchemaField } from "../packFileTypes";
 import { buildNumericCellFields, buildStringCellFields, isStringCellType } from "./cellFields";
 import { checksumBytes } from "./checksum";
-import {
-  decodeDictionaryColumn,
-  decodeDictionaryColumnIds,
-  decodeNumericColumn,
-} from "./columnCodec";
-import {
-  FRONT_CODED_CHECKPOINT_INTERVAL,
-  FrontCodedBlock,
-  readAllFrontCodedEntries,
-} from "./frontCodedBlock";
+import { decodeDictionaryColumn, decodeDictionaryColumnIds, decodeNumericColumn } from "./columnCodec";
+import { FRONT_CODED_CHECKPOINT_INTERVAL, FrontCodedBlock, readAllFrontCodedEntries } from "./frontCodedBlock";
 import {
   VANILLA_DB_CACHE_HEADER_BYTES,
   VANILLA_DB_CACHE_DICTIONARY_PROBE_BYTES,
@@ -228,10 +220,7 @@ export const openVanillaDbCache = (
       "string pool checkpoints",
     );
     poolCheckpoints = new Uint32Array(
-      checkpointBytes.buffer.slice(
-        checkpointBytes.byteOffset,
-        checkpointBytes.byteOffset + checkpointBytes.byteLength,
-      ),
+      checkpointBytes.buffer.slice(checkpointBytes.byteOffset, checkpointBytes.byteOffset + checkpointBytes.byteLength),
     );
     if (
       poolCheckpoints.length !== Math.ceil(meta.pool.count / FRONT_CODED_CHECKPOINT_INTERVAL) ||
@@ -252,8 +241,7 @@ export const openVanillaDbCache = (
     if (cached) return cached;
 
     const chunkStart = poolCheckpoints[chunkIndex];
-    const chunkEnd =
-      chunkIndex + 1 < poolCheckpoints.length ? poolCheckpoints[chunkIndex + 1] : meta.pool.length;
+    const chunkEnd = chunkIndex + 1 < poolCheckpoints.length ? poolCheckpoints[chunkIndex + 1] : meta.pool.length;
     const entriesInChunk = Math.min(
       FRONT_CODED_CHECKPOINT_INTERVAL,
       meta.pool.count - chunkIndex * FRONT_CODED_CHECKPOINT_INTERVAL,

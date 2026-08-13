@@ -36,18 +36,18 @@ describe("resolvePackFileDestination", () => {
       "script\\campaign\\mod\\gamma.lua",
     );
     // Even given a path, rename only takes the file name from it.
-    expect(
-      resolvePackFileDestination(source, rule({ operation: "rename", destination: "a\\b\\gamma.lua" })),
-    ).toBe("script\\campaign\\mod\\gamma.lua");
+    expect(resolvePackFileDestination(source, rule({ operation: "rename", destination: "a\\b\\gamma.lua" }))).toBe(
+      "script\\campaign\\mod\\gamma.lua",
+    );
   });
 
   it("substitutes the source's own name and folder", () => {
-    expect(
-      resolvePackFileDestination(source, rule({ operation: "copy", destination: "backup\\{name}" })),
-    ).toBe("backup\\alpha.lua");
-    expect(
-      resolvePackFileDestination(source, rule({ operation: "copy", destination: "{dir}\\copy_{name}" })),
-    ).toBe("script\\campaign\\mod\\copy_alpha.lua");
+    expect(resolvePackFileDestination(source, rule({ operation: "copy", destination: "backup\\{name}" }))).toBe(
+      "backup\\alpha.lua",
+    );
+    expect(resolvePackFileDestination(source, rule({ operation: "copy", destination: "{dir}\\copy_{name}" }))).toBe(
+      "script\\campaign\\mod\\copy_alpha.lua",
+    );
   });
 
   it("substitutes regex captures, so one rule can rewrite a set of files", () => {
@@ -121,10 +121,7 @@ describe("planPackFileOperations", () => {
       }),
     ]);
 
-    expect(plan.entries.map((entry) => entry.targetPath).toSorted()).toEqual([
-      "backup\\alpha.lua",
-      "backup\\beta.lua",
-    ]);
+    expect(plan.entries.map((entry) => entry.targetPath).toSorted()).toEqual(["backup\\alpha.lua", "backup\\beta.lua"]);
     expect(plan.matchCountByRuleId.r1).toBe(2);
   });
 
@@ -211,10 +208,7 @@ describe("planPackCopy", () => {
   it("carries the untouched files across, so the output is a whole pack and not a fragment", () => {
     const copy = copyOf([rule({ target: "alpha.lua", operation: "copy", destination: "backup\\alpha.lua" })]);
 
-    expect(copy.map((entry) => entry.targetPath).toSorted()).toEqual([
-      "backup\\alpha.lua",
-      ...files.toSorted(),
-    ]);
+    expect(copy.map((entry) => entry.targetPath).toSorted()).toEqual(["backup\\alpha.lua", ...files.toSorted()]);
     // The new file takes its bytes from the file it was copied from.
     expect(copy.find((entry) => entry.targetPath === "backup\\alpha.lua")?.sourcePath).toBe(
       "script\\campaign\\mod\\alpha.lua",
@@ -231,9 +225,7 @@ describe("planPackCopy", () => {
   });
 
   it("moves a file by dropping the old path and adding the new one", () => {
-    const copy = copyOf([
-      rule({ target: "alpha.lua", operation: "move", destination: "script\\moved\\alpha.lua" }),
-    ]);
+    const copy = copyOf([rule({ target: "alpha.lua", operation: "move", destination: "script\\moved\\alpha.lua" })]);
 
     expect(copy.map((entry) => entry.targetPath)).not.toContain("script\\campaign\\mod\\alpha.lua");
     expect(copy.find((entry) => entry.targetPath === "script\\moved\\alpha.lua")?.sourcePath).toBe(

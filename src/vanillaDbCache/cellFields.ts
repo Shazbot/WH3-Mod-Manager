@@ -47,8 +47,7 @@ const ENCODABLE_FIELD_TYPES = new Set<string>([
  * `parseTypeBuffer` throws on those, leaving the row it was midway through misaligned. A table with
  * one is left out of the cache rather than stored from cells that were never read correctly.
  */
-export const isEncodableCellType = (fieldType: SCHEMA_FIELD_TYPE): boolean =>
-  ENCODABLE_FIELD_TYPES.has(fieldType);
+export const isEncodableCellType = (fieldType: SCHEMA_FIELD_TYPE): boolean => ENCODABLE_FIELD_TYPES.has(fieldType);
 
 /** The byte that says whether an OptionalStringU8 carries a string. Only 1 means it does. */
 export const OPTIONAL_STRING_PRESENT = 1;
@@ -102,11 +101,7 @@ export const buildNumericCellFields = (fieldType: SCHEMA_FIELD_TYPE, value: numb
  * exactly `length` bytes and decodes them as ascii, which yields one character per byte, so the two
  * can never disagree.
  */
-export const buildStringCellFields = (
-  fieldType: SCHEMA_FIELD_TYPE,
-  value: string,
-  presentByte: number,
-): Field[] => {
+export const buildStringCellFields = (fieldType: SCHEMA_FIELD_TYPE, value: string, presentByte: number): Field[] => {
   if (fieldType === "StringU16") return [{ type: "String", val: value }];
   if (fieldType === "StringU8") {
     return [

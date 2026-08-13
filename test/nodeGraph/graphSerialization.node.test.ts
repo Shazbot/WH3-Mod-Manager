@@ -143,9 +143,7 @@ describe("graphSerialization", () => {
     expect(serialized.nodes[0].data.textFileFormatter).toBe("prettyXml");
     expect(serialized.nodes[0].data.ignoreFlowSourcePack).toBe(true);
     expect(serialized.nodes[0].data.flowSourcePack).toBeUndefined();
-    expect(deserializeNodeGraph(JSON.stringify(serialized)).nodes[0].data.textFileFormatter).toBe(
-      "prettyXml",
-    );
+    expect(deserializeNodeGraph(JSON.stringify(serialized)).nodes[0].data.textFileFormatter).toBe("prettyXml");
 
     const prepared = prepareGraphForExecution({
       nodes: deserializeNodeGraph(JSON.stringify(serialized)).nodes as any[],

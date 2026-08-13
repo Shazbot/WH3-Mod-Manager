@@ -47,10 +47,7 @@ describe("preset entries", () => {
   });
 
   it("keeps disabled mods and their order in a snapshot", () => {
-    const entries = toSnapshotEntries([
-      createMod("alpha.pack", false),
-      createMod("beta.pack", true, 1),
-    ]);
+    const entries = toSnapshotEntries([createMod("alpha.pack", false), createMod("beta.pack", true, 1)]);
 
     expect(entries).toEqual([
       { name: "alpha.pack", isEnabled: false },

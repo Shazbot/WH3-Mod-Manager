@@ -24,11 +24,10 @@ export interface ButtonProps extends Omit<ComponentProps<"button">, "className" 
   size?: keyof ButtonSizes;
 }
 
-export interface ButtonColors
-  extends Pick<
-    FlowbiteColors,
-    "dark" | "failure" | "gray" | "info" | "light" | "purple" | "success" | "warning"
-  > {
+export interface ButtonColors extends Pick<
+  FlowbiteColors,
+  "dark" | "failure" | "gray" | "info" | "light" | "purple" | "success" | "warning"
+> {
   [key: string]: string;
 }
 
@@ -79,7 +78,7 @@ const ButtonComponent: FC<ButtonProps> = ({
         groupTheme.position[positionInGroup],
         outline && theme.outline.color[color],
         theme.base,
-        theme.pill[pill ? "on" : "off"]
+        theme.pill[pill ? "on" : "off"],
       )}
       disabled={disabled}
       href={href}
@@ -92,7 +91,7 @@ const ButtonComponent: FC<ButtonProps> = ({
           theme.inner.position[positionInGroup],
           theme.outline[outline ? "on" : "off"],
           theme.outline.pill[outline && pill ? "on" : "off"],
-          theme.size[size]
+          theme.size[size],
         )}
       >
         <>

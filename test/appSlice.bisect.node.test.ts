@@ -62,7 +62,10 @@ describe("createBisectedModListPresets", () => {
 
     const state = runBisect(mods, { isRandom: false, ignoreDependencies: false });
 
-    expect(getCreatedPresetNames(state)).toEqual([["a.pack", "d.pack"], ["b.pack", "c.pack"]]);
+    expect(getCreatedPresetNames(state)).toEqual([
+      ["a.pack", "d.pack"],
+      ["b.pack", "c.pack"],
+    ]);
   });
 
   it("keeps pack-header dependencies in the same preset", () => {
@@ -75,7 +78,10 @@ describe("createBisectedModListPresets", () => {
 
     const state = runBisect(mods, { isRandom: false, ignoreDependencies: false });
 
-    expect(getCreatedPresetNames(state)).toEqual([["a.pack", "d.pack"], ["b.pack", "c.pack"]]);
+    expect(getCreatedPresetNames(state)).toEqual([
+      ["a.pack", "d.pack"],
+      ["b.pack", "c.pack"],
+    ]);
   });
 
   it("keeps transitive dependency chains together even when the split becomes uneven", () => {
@@ -123,7 +129,10 @@ describe("createBisectedModListPresets", () => {
 
     const state = runBisect(mods, { isRandom: true, ignoreDependencies: false });
 
-    expect(getCreatedPresetNames(state)).toEqual([["b.pack", "c.pack"], ["a.pack", "d.pack"]]);
+    expect(getCreatedPresetNames(state)).toEqual([
+      ["b.pack", "c.pack"],
+      ["a.pack", "d.pack"],
+    ]);
   });
 
   it("preserves the old split when dependency checks are bypassed", () => {
@@ -141,7 +150,10 @@ describe("createBisectedModListPresets", () => {
 
     const state = runBisect(mods, { isRandom: false, ignoreDependencies: true });
 
-    expect(getCreatedPresetNames(state)).toEqual([["a.pack", "b.pack"], ["c.pack", "d.pack"]]);
+    expect(getCreatedPresetNames(state)).toEqual([
+      ["a.pack", "b.pack"],
+      ["c.pack", "d.pack"],
+    ]);
   });
 
   it("does not auto-add disabled dependencies from outside the enabled set", () => {
@@ -165,7 +177,10 @@ describe("createBisectedModListPresets", () => {
 
     const state = runBisect(mods, { isRandom: false, ignoreDependencies: false });
 
-    expect(getCreatedPresetNames(state)).toEqual([["a.pack", "b.pack"], ["c.pack", "d.pack"]]);
+    expect(getCreatedPresetNames(state)).toEqual([
+      ["a.pack", "b.pack"],
+      ["c.pack", "d.pack"],
+    ]);
   });
 
   it("reassigns load order within each generated preset", () => {

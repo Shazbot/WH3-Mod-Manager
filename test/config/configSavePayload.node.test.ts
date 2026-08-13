@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import {
-  resetConfigSavePayloadCache,
-  selectConfigSavePayload,
-} from "../../src/config/configSavePayload";
+import { resetConfigSavePayloadCache, selectConfigSavePayload } from "../../src/config/configSavePayload";
 import initialState from "../../src/initialAppState";
 
 const createMod = (name: string, overrides: Partial<Mod> = {}): Mod => ({
@@ -34,9 +31,7 @@ describe("selectConfigSavePayload", () => {
       ...initialState,
       currentPreset: { name: "", version: 2, mods: [liveMod] },
       allMods: [liveMod],
-      presets: [
-        { name: "Saved", version: 2, mods: [{ name: "missing.pack" }] },
-      ],
+      presets: [{ name: "Saved", version: 2, mods: [{ name: "missing.pack" }] }],
       dataFromConfig: {
         modUserData: {
           "live.pack": {

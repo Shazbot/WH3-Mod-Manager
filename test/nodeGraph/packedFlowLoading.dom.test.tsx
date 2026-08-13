@@ -99,9 +99,7 @@ describe("packed flow loading", () => {
     getDefaultTableVersions.mockResolvedValue({});
     const firstRead = deferred<{ success: true; text: string }>();
     const secondRead = deferred<{ success: true; text: string }>();
-    readFileFromPack
-      .mockReturnValueOnce(firstRead.promise)
-      .mockReturnValueOnce(secondRead.promise);
+    readFileFromPack.mockReturnValueOnce(firstRead.promise).mockReturnValueOnce(secondRead.promise);
 
     const editor = renderEditor("whmmflows\\first.json");
     await waitFor(() => expect(readFileFromPack).toHaveBeenCalledOnce());

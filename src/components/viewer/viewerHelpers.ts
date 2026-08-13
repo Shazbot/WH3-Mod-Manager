@@ -55,16 +55,14 @@ export const getPackFileInventory = (
     ...Object.keys(packData.packedFiles || {}),
     ...unsavedFiles.map((file) => file.name),
   ]);
-  const hasDBTables = [...fileNames].some(
-    (fileName) => Boolean(getDBNameFromString(fileName) && getDBSubnameFromString(fileName)),
+  const hasDBTables = [...fileNames].some((fileName) =>
+    Boolean(getDBNameFromString(fileName) && getDBSubnameFromString(fileName)),
   );
 
   return {
     isEmpty: fileNames.size === 0,
     hasDBTables,
-    hasFiles: [...fileNames].some(
-      (fileName) => !getDBNameFromString(fileName) || !getDBSubnameFromString(fileName),
-    ),
+    hasFiles: [...fileNames].some((fileName) => !getDBNameFromString(fileName) || !getDBSubnameFromString(fileName)),
   };
 };
 
@@ -103,7 +101,7 @@ export const chunkTableIntoRows = (schemaFields: SchemaField[], currentSchema: D
 
 export const findNodeInTree = (
   tree: IViewerTreeNodeWithData | IViewerTreeNode,
-  targetName: string
+  targetName: string,
 ): IViewerTreeNodeWithData | IViewerTreeNode | null => {
   if (tree.name === targetName) return tree;
   if (tree.children) {
@@ -117,12 +115,12 @@ export const findNodeInTree = (
 
 export const findParentOfNode = (
   tree: IViewerTreeNodeWithData | IViewerTreeNode,
-  targetName: string
+  targetName: string,
 ): IViewerTreeNodeWithData | IViewerTreeNode | null => {
   const findParentOfNodeIter = (
     tree: IViewerTreeNodeWithData | IViewerTreeNode,
     targetName: string,
-    parentNode: IViewerTreeNodeWithData | IViewerTreeNode
+    parentNode: IViewerTreeNodeWithData | IViewerTreeNode,
   ): IViewerTreeNodeWithData | IViewerTreeNode | null => {
     if (tree.name === targetName) return parentNode;
     if (tree.children) {

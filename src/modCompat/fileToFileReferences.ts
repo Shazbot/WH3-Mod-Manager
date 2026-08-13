@@ -65,8 +65,7 @@ export function appendToFileToFileRegistry(pack: Pack, packFile: PackedFile, ref
       )
         continue;
 
-      packFileToFileReferences[pack.name][packFile.name] =
-        packFileToFileReferences[pack.name][packFile.name] || [];
+      packFileToFileReferences[pack.name][packFile.name] = packFileToFileReferences[pack.name][packFile.name] || [];
       packFileToFileReferences[pack.name][packFile.name].push({
         reference: referencedFile,
         packName: pack.name,

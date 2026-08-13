@@ -370,7 +370,11 @@ const buildInputDataForTarget = (
   if (targetIncomingConnections.length === 0) {
     return null;
   }
-  return extractConnectionData(targetIncomingConnections[targetIncomingConnections.length - 1], executionResults, nodeMap);
+  return extractConnectionData(
+    targetIncomingConnections[targetIncomingConnections.length - 1],
+    executionResults,
+    nodeMap,
+  );
 };
 export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Promise<NodeGraphExecutionResult> => {
   const { nodes, connections, nodeConfigs, executionContext, resetCounters = true } = request;

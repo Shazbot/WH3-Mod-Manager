@@ -32,9 +32,7 @@ const buildModUserData = (
     const humanName = mod.humanName || cached?.humanName;
     const author = mod.author || cached?.author;
     const reqModIdToName =
-      mod.reqModIdToName && mod.reqModIdToName.length > 0
-        ? mod.reqModIdToName
-        : cached?.reqModIdToName;
+      mod.reqModIdToName && mod.reqModIdToName.length > 0 ? mod.reqModIdToName : cached?.reqModIdToName;
     if (humanName) userData.humanName = humanName;
     if (author) userData.author = author;
     if (reqModIdToName && reqModIdToName.length > 0) userData.reqModIdToName = reqModIdToName;
@@ -50,9 +48,7 @@ const buildModUserData = (
 };
 
 let lastSentModsHash: string | undefined;
-const lastModUserDataByGame: Partial<
-  Record<SupportedGames, Record<string, StoredModUserData>>
-> = {};
+const lastModUserDataByGame: Partial<Record<SupportedGames, Record<string, StoredModUserData>>> = {};
 
 /** Only for tests and for resetting between renderer sessions. */
 export const resetConfigSavePayloadCache = () => {

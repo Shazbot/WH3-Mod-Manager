@@ -182,10 +182,7 @@ export const decodeVanillaPackIndex = (bytes: Buffer): VanillaPackIndex | undefi
   }
 };
 
-export const isVanillaPackIndexCurrent = (
-  index: VanillaPackIndex,
-  identity: VanillaPackIndexIdentity,
-): boolean =>
+export const isVanillaPackIndexCurrent = (index: VanillaPackIndex, identity: VanillaPackIndexIdentity): boolean =>
   index.identity.game === identity.game &&
   index.identity.dataFolder === identity.dataFolder &&
   index.identity.manifestSize === identity.manifestSize &&
@@ -196,10 +193,7 @@ const packNameAtRank = (index: VanillaPackIndex, rank: number): string | undefin
   index.packNames[index.packIdByRank[rank]];
 
 /** The vanilla pack the game would load this exact path from, or undefined if no vanilla pack has it. */
-export const findVanillaPackContaining = (
-  index: VanillaPackIndex,
-  packFilePath: string,
-): string | undefined => {
+export const findVanillaPackContaining = (index: VanillaPackIndex, packFilePath: string): string | undefined => {
   const rank = findFrontCodedRank(index.block, normalizeVanillaPackPath(packFilePath));
   return rank === -1 ? undefined : packNameAtRank(index, rank);
 };
@@ -210,10 +204,7 @@ export const findVanillaPackContaining = (
  * Sort order puts a folder's files together, so this is a rank range rather than a scan - which is
  * what lets a caller ask about a folder without a table saying in advance which pack holds it.
  */
-export const collectVanillaFilesUnderPrefix = (
-  index: VanillaPackIndex,
-  prefix: string,
-): Map<string, string> => {
+export const collectVanillaFilesUnderPrefix = (index: VanillaPackIndex, prefix: string): Map<string, string> => {
   const normalizedPrefix = normalizeVanillaPackPath(prefix);
   const { start, end } = findFrontCodedPrefixRange(index.block, normalizedPrefix);
   const filesByPath = new Map<string, string>();

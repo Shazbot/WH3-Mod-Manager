@@ -57,8 +57,7 @@ export function findPackTableCollisionsBetweenPacks(
           for (let ii = 0; ii < v1Keys.length; ii++) {
             const v1Fields = v1Keys[ii].fields;
             const v1 =
-              (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) ||
-              v1Fields[0]?.val?.toString();
+              (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) || v1Fields[0]?.val?.toString();
             for (let jj = 0; jj < v2Keys.length; jj++) {
               const v2Fields = v2Keys[jj].fields;
               const v2 =
@@ -135,10 +134,8 @@ export function getCollisionsBetweenSameTables(
   if (!packFileTwo.schemaFields) return;
 
   // console.log("MATCHED", dbName1, dbName2);
-  const firstVer =
-    (dbNameOne && getDBVersionByTableName(packFileOne, dbNameOne)) || getDBVersion(packFileOne);
-  const secondVer =
-    (dbNameTwo && getDBVersionByTableName(packFileTwo, dbNameTwo)) || getDBVersion(packFileTwo);
+  const firstVer = (dbNameOne && getDBVersionByTableName(packFileOne, dbNameOne)) || getDBVersion(packFileOne);
+  const secondVer = (dbNameTwo && getDBVersionByTableName(packFileTwo, dbNameTwo)) || getDBVersion(packFileTwo);
   // console.log("ver", firstVer, secondVer);
   if (firstVer == null || secondVer == null) return;
 
@@ -163,13 +160,11 @@ export function getCollisionsBetweenSameTables(
 
   for (let ii = 0; ii < v1Keys.length; ii++) {
     const v1Fields = v1Keys[ii].fields;
-    const v1 =
-      (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) || v1Fields[0]?.val?.toString();
+    const v1 = (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) || v1Fields[0]?.val?.toString();
     for (let jj = 0; jj < v2Keys.length; jj++) {
       const v2Fields = v2Keys[jj].fields;
       const v2 =
-        (v2Fields[1] && v2Fields[1].val != null && v2Fields[1].val.toString()) ||
-        (v2Fields[0]?.val?.toString() ?? "");
+        (v2Fields[1] && v2Fields[1].val != null && v2Fields[1].val.toString()) || (v2Fields[0]?.val?.toString() ?? "");
 
       if (v1 === v2) {
         if (
@@ -310,20 +305,13 @@ export function findPackTableCollisionsBetweenPacksOptimized(
   }
 }
 
-export function removeFromPackTableCollisions(
-  packTableCollisions: PackTableCollision[],
-  removedPackName: string,
-) {
+export function removeFromPackTableCollisions(packTableCollisions: PackTableCollision[], removedPackName: string) {
   return packTableCollisions.filter((collision) => {
     return collision.firstPackName != removedPackName && collision.secondPackName != removedPackName;
   });
 }
 
-export function appendPackTableCollisions(
-  packsData: Pack[],
-  packTableCollisions: PackTableCollision[],
-  newPack: Pack,
-) {
+export function appendPackTableCollisions(packsData: Pack[], packTableCollisions: PackTableCollision[], newPack: Pack) {
   console.time("appendPackTableCollisions");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
@@ -370,8 +358,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
         for (const schemaField of packedFile.schemaFields) {
           if (!schemaField.isKey) continue;
           const fields = schemaField.fields;
-          const value =
-            (fields[1]?.val != null && fields[1].val.toString()) || fields[0]?.val?.toString();
+          const value = (fields[1]?.val != null && fields[1].val.toString()) || fields[0]?.val?.toString();
           if (value != null) keyValues.add(value);
         }
 
@@ -427,10 +414,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
         for (let secondIndex = firstIndex + 1; secondIndex < occurrences.length; secondIndex++) {
           const secondOccurrence = occurrences[secondIndex];
           const secondPack = packsData[secondOccurrence.packIndex];
-          if (
-            firstOccurrence.packIndex === secondOccurrence.packIndex ||
-            firstPack.name === secondPack.name
-          ) {
+          if (firstOccurrence.packIndex === secondOccurrence.packIndex || firstPack.name === secondPack.name) {
             continue;
           }
           // The pairwise implementation resolved the key from the first pack and used the same
@@ -460,8 +444,7 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
-        continue;
+      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name)) continue;
 
       findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
     }

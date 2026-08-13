@@ -75,34 +75,26 @@ window.api?.setUnsavedPacksData((event, packPath: string, unsavedFileData: Packe
   );
 });
 
-window.api?.setPackDataStore(
-  (event, packPath: string, pack: Pack, tableReferenceRequests: TableReferenceRequest[]) => {
-    packDataStore[packPath] = pack;
+window.api?.setPackDataStore((event, packPath: string, pack: Pack, tableReferenceRequests: TableReferenceRequest[]) => {
+  packDataStore[packPath] = pack;
 
-    doneRequests[packPath] = doneRequests[packPath] || [];
-    tableReferenceRequests
-      .filter(
-        (tableReferenceRequest) =>
-          !doneRequests[packPath].some(
-            (doneReq) =>
-              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
-          ),
-      )
-      .forEach((tableReferenceRequest) => {
-        doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
-      });
+  doneRequests[packPath] = doneRequests[packPath] || [];
+  tableReferenceRequests
+    .filter(
+      (tableReferenceRequest) =>
+        !doneRequests[packPath].some(
+          (doneReq) => tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
+        ),
+    )
+    .forEach((tableReferenceRequest) => {
+      doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
+    });
 
-    store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
-  },
-);
+  store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
+});
 
 window.api?.appendPackDataStore(
-  (
-    event,
-    packPath: string,
-    packFilesToAppend: PackedFile[],
-    tableReferenceRequests: TableReferenceRequest[],
-  ) => {
+  (event, packPath: string, packFilesToAppend: PackedFile[], tableReferenceRequests: TableReferenceRequest[]) => {
     const pack = packDataStore[packPath];
     if (!pack) return;
 
@@ -115,8 +107,7 @@ window.api?.appendPackDataStore(
       .filter(
         (tableReferenceRequest) =>
           !doneRequests[packPath].some(
-            (doneReq) =>
-              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
+            (doneReq) => tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
           ),
       )
       .forEach((tableReferenceRequest) => {
@@ -153,10 +144,7 @@ window.api?.setDBNameToDBVersions(
             (reference) => reference[0] == tableName && reference[1] == dbFieldName,
           )
         ) {
-          dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].push([
-            tableName,
-            dbFieldName,
-          ]);
+          dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].push([tableName, dbFieldName]);
         }
       }
     }

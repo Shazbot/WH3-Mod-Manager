@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  READ_RUN_MAX_GAP_BYTES,
-  groupPackedFilesIntoReadRuns,
-} from "../src/utility/packedFileReadRuns";
+import { READ_RUN_MAX_GAP_BYTES, groupPackedFilesIntoReadRuns } from "../src/utility/packedFileReadRuns";
 import type { PackedFile } from "../src/packFileTypes";
 
 const packedFile = (name: string, start_pos: number, file_size: number): PackedFile =>
@@ -36,10 +33,7 @@ describe("packed file read runs", () => {
   it("splits on a gap too large to be worth reading through", () => {
     // The case that mattered: two tables at opposite ends of db.pack. One span would have read the
     // whole region between them.
-    const runs = groupPackedFilesIntoReadRuns([
-      packedFile("early", 0, 1000),
-      packedFile("late", 400_000_000, 1000),
-    ]);
+    const runs = groupPackedFilesIntoReadRuns([packedFile("early", 0, 1000), packedFile("late", 400_000_000, 1000)]);
 
     expect(runs).toHaveLength(2);
     expect(bytesRead(runs)).toBe(2000);
@@ -67,10 +61,7 @@ describe("packed file read runs", () => {
     // Deliberately given back to front: readPack sorts pack_files by name, so position order is
     // whatever the pack happens to use. Grouping without sorting would start the run at 100 and then
     // fold in a file that begins before it.
-    const runs = groupPackedFilesIntoReadRuns([
-      packedFile("alpha", 100, 100),
-      packedFile("zebra", 0, 100),
-    ]);
+    const runs = groupPackedFilesIntoReadRuns([packedFile("alpha", 100, 100), packedFile("zebra", 0, 100)]);
 
     expect(runs).toHaveLength(1);
     expect(runs[0].startPos).toBe(0);
@@ -100,11 +91,12 @@ describe("packed file read runs", () => {
     const files = [packedFile("a", 300, 10), packedFile("b", 0, 10), packedFile("c", 900_000_000, 10)];
     const runs = groupPackedFilesIntoReadRuns(files);
 
-    expect(runs.flatMap((run) => run.packedFiles).map((file) => file.name).toSorted()).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+    expect(
+      runs
+        .flatMap((run) => run.packedFiles)
+        .map((file) => file.name)
+        .toSorted(),
+    ).toEqual(["a", "b", "c"]);
     // The input array itself is left alone - readPack still uses it afterwards.
     expect(files.map((file) => file.name)).toEqual(["a", "b", "c"]);
   });

@@ -17,13 +17,8 @@ export const getSavesFolderPath = () => {
     appDataPath = `${homeDir}/.local/share/Steam/steamapps/compatdata/${gameToSteamId[appData.currentGame]}/pfx/drive_c/users/steamuser/AppData/Roaming/`;
   }
 
-  return path.join(
-    appDataPath,
-    "The Creative Assembly",
-    gameToAppDataFolderName[appData.currentGame],
-    "save_games"
-  );
-}
+  return path.join(appDataPath, "The Creative Assembly", gameToAppDataFolderName[appData.currentGame], "save_games");
+};
 
 export const getSaveFiles = async () => {
   saves = [];
@@ -33,9 +28,9 @@ export const getSaveFiles = async () => {
   try {
     files = fs.readdirSync(folderPath, { withFileTypes: true });
   } catch (e) {
-    console.error(e)
+    console.error(e);
 
-    return []
+    return [];
   }
 
   for (const saveFile of files) {

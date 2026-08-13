@@ -122,9 +122,7 @@ export const applyModOverlayToSkillsDataCore = (
     const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
     const requiredNumParents = schemaFieldRow.find((sF) => sF.name == "required_num_parents")?.resolvedKeyValue;
     const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue as
-      | "0"
-      | "1"
-      | undefined;
+      "0" | "1" | undefined;
     if (
       !node ||
       !skill ||
@@ -175,7 +173,11 @@ export const applyModOverlayToSkillsDataCore = (
     if (!skill || !skillNode || level == undefined) return;
     core.nodeToSkillLocks[skillNode] = core.nodeToSkillLocks[skillNode] || [];
     const levelAsNumber = Number(level);
-    if (!core.nodeToSkillLocks[skillNode].some((iterSkillLevel) => iterSkillLevel[0] == skill && iterSkillLevel[1] == levelAsNumber)) {
+    if (
+      !core.nodeToSkillLocks[skillNode].some(
+        (iterSkillLevel) => iterSkillLevel[0] == skill && iterSkillLevel[1] == levelAsNumber,
+      )
+    ) {
       core.nodeToSkillLocks[skillNode].push([skill, levelAsNumber]);
     }
   });
@@ -257,7 +259,9 @@ export const applyModOverlayToSkillsDataCore = (
     if (!key) return;
     core.unitSpecialAbilitiesByKey[key] = {
       key,
-      targetInterceptRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "target_intercept_range")?.resolvedKeyValue),
+      targetInterceptRange: parseNumber(
+        schemaFieldRow.find((sF) => sF.name == "target_intercept_range")?.resolvedKeyValue,
+      ),
       rechargeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "recharge_time")?.resolvedKeyValue),
       activeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "active_time")?.resolvedKeyValue),
       effectRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "effect_range")?.resolvedKeyValue),
@@ -332,15 +336,19 @@ export const applyModOverlayToSkillsDataCore = (
     };
   });
 
-  getTableRowDataFn(modPacksTableData, "special_ability_to_special_ability_phase_junctions_tables", (schemaFieldRow) => {
-    const abilityKey = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
-    const phaseId = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
-    if (!abilityKey || !phaseId) return;
-    core.abilityToPhaseIds[abilityKey] = core.abilityToPhaseIds[abilityKey] || [];
-    if (!core.abilityToPhaseIds[abilityKey].includes(phaseId)) {
-      core.abilityToPhaseIds[abilityKey].push(phaseId);
-    }
-  });
+  getTableRowDataFn(
+    modPacksTableData,
+    "special_ability_to_special_ability_phase_junctions_tables",
+    (schemaFieldRow) => {
+      const abilityKey = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
+      const phaseId = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
+      if (!abilityKey || !phaseId) return;
+      core.abilityToPhaseIds[abilityKey] = core.abilityToPhaseIds[abilityKey] || [];
+      if (!core.abilityToPhaseIds[abilityKey].includes(phaseId)) {
+        core.abilityToPhaseIds[abilityKey].push(phaseId);
+      }
+    },
+  );
 
   getTableRowDataFn(modPacksTableData, "special_ability_phases_tables", (schemaFieldRow) => {
     const id = schemaFieldRow.find((sF) => sF.name == "id")?.resolvedKeyValue;
@@ -348,16 +356,10 @@ export const applyModOverlayToSkillsDataCore = (
     core.phasesById[id] = {
       id,
       damageAmount: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage_amount")?.resolvedKeyValue),
-      maxDamagedEntities: parseNumber(
-        schemaFieldRow.find((sF) => sF.name == "max_damaged_entities")?.resolvedKeyValue,
-      ),
-      hpChangeFrequency: parseNumber(
-        schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue,
-      ),
+      maxDamagedEntities: parseNumber(schemaFieldRow.find((sF) => sF.name == "max_damaged_entities")?.resolvedKeyValue),
+      hpChangeFrequency: parseNumber(schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue),
       duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
-      fatigueChangeRatio: parseNumber(
-        schemaFieldRow.find((sF) => sF.name == "fatigue_change_ratio")?.resolvedKeyValue,
-      ),
+      fatigueChangeRatio: parseNumber(schemaFieldRow.find((sF) => sF.name == "fatigue_change_ratio")?.resolvedKeyValue),
       affectsAllies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_allies")?.resolvedKeyValue),
       affectsEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_enemies")?.resolvedKeyValue),
     };
@@ -424,15 +426,19 @@ export const applyModOverlayToSkillsDataCore = (
     }
   });
 
-  getTableRowDataFn(modPacksTableData, "special_ability_groups_to_unit_abilities_junctions_tables", (schemaFieldRow) => {
-    const group = schemaFieldRow.find((sF) => sF.name == "special_ability_groups")?.resolvedKeyValue;
-    const ability = schemaFieldRow.find((sF) => sF.name == "unit_special_abilities")?.resolvedKeyValue;
-    if (!ability || !group) return;
-    core.abilityToGroupKeys[ability] = core.abilityToGroupKeys[ability] || [];
-    if (!core.abilityToGroupKeys[ability].includes(group)) {
-      core.abilityToGroupKeys[ability].push(group);
-    }
-  });
+  getTableRowDataFn(
+    modPacksTableData,
+    "special_ability_groups_to_unit_abilities_junctions_tables",
+    (schemaFieldRow) => {
+      const group = schemaFieldRow.find((sF) => sF.name == "special_ability_groups")?.resolvedKeyValue;
+      const ability = schemaFieldRow.find((sF) => sF.name == "unit_special_abilities")?.resolvedKeyValue;
+      if (!ability || !group) return;
+      core.abilityToGroupKeys[ability] = core.abilityToGroupKeys[ability] || [];
+      if (!core.abilityToGroupKeys[ability].includes(group)) {
+        core.abilityToGroupKeys[ability].push(group);
+      }
+    },
+  );
 
   getTableRowDataFn(modPacksTableData, "special_ability_groups_tables", (schemaFieldRow) => {
     const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;

@@ -24,11 +24,7 @@ import {
   removeAllPackDataOverwrites,
 } from "../appSlice";
 import { Tooltip } from "flowbite-react";
-import {
-  getFilteredMods,
-  getLoadOrderInsertionIndex,
-  sortByNameAndLoadOrder,
-} from "../modSortingHelpers";
+import { getFilteredMods, getLoadOrderInsertionIndex, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
 import ModDropdown from "./ModDropdown";
 import { isModAlwaysEnabled } from "../modsHelpers";
@@ -75,8 +71,7 @@ type ModRowsProps = {
   scrollElement: RefObject<HTMLDivElement>;
 };
 
-const getLoadOrderRowAnchor = (modName: string) =>
-  document.getElementById(`load-order-row-anchor-${modName}`);
+const getLoadOrderRowAnchor = (modName: string) => document.getElementById(`load-order-row-anchor-${modName}`);
 
 type LoadOrderScrollSnapshot = {
   modName: string;
@@ -122,22 +117,18 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const hiddenModNames = useMemo(() => new Set(hiddenModNamesList), [hiddenModNamesList]);
-  const alwaysEnabledModNames = useMemo(
-    () => new Set(alwaysEnabledModNamesList),
-    [alwaysEnabledModNamesList]
-  );
+  const alwaysEnabledModNames = useMemo(() => new Set(alwaysEnabledModNamesList), [alwaysEnabledModNamesList]);
   const enabledMods = useMemo(
-    () =>
-      currentPresetMods.filter((iterMod) => iterMod.isEnabled || alwaysEnabledModNames.has(iterMod.name)),
-    [alwaysEnabledModNames, currentPresetMods]
+    () => currentPresetMods.filter((iterMod) => iterMod.isEnabled || alwaysEnabledModNames.has(iterMod.name)),
+    [alwaysEnabledModNames, currentPresetMods],
   );
   const canonicalEnabledMods = useMemo(
     () => getVisibleMods(sortByNameAndLoadOrder(enabledMods), noHiddenModNames),
-    [enabledMods]
+    [enabledMods],
   );
   const presetMods = useMemo(
     () => (currentTab == "enabledMods" ? enabledMods : currentPresetMods),
-    [currentPresetMods, currentTab, enabledMods]
+    [currentPresetMods, currentTab, enabledMods],
   );
   const enabledMergeMods = useMemo(() => enabledMods.filter((mod) => mod.mergedModsData), [enabledMods]);
   const mergedModPaths = useMemo(() => {
@@ -151,16 +142,13 @@ const ModRows = memo((props: ModRowsProps) => {
   }, [enabledMergeMods]);
 
   const modsToOrder = useMemo(
-    () =>
-      presetMods.filter(
-        (iterMod) => !hiddenModNames.has(iterMod.name) || alwaysEnabledModNames.has(iterMod.name)
-      ),
-    [alwaysEnabledModNames, hiddenModNames, presetMods]
+    () => presetMods.filter((iterMod) => !hiddenModNames.has(iterMod.name) || alwaysEnabledModNames.has(iterMod.name)),
+    [alwaysEnabledModNames, hiddenModNames, presetMods],
   );
   const orderedMods = useMemo(() => sortByNameAndLoadOrder(modsToOrder), [modsToOrder]);
   const loadOrderIndexByModName = useMemo(
     () => new Map(orderedMods.map((mod, index) => [mod.name, index])),
-    [orderedMods]
+    [orderedMods],
   );
 
   const unfilteredMods = useMemo(() => {
@@ -181,30 +169,33 @@ const ModRows = memo((props: ModRowsProps) => {
       filter !== "" && !loadOrderModName
         ? getFilteredMods(unfilteredMods, filter.toLowerCase(), isAuthorEnabled)
         : unfilteredMods,
-    [filter, isAuthorEnabled, loadOrderModName, unfilteredMods]
+    [filter, isAuthorEnabled, loadOrderModName, unfilteredMods],
   );
 
-  const onModToggled = useCallback((mod: Mod): void => {
-    const modRowsScroll = document.getElementById("mod-rows-scroll");
-    const lastScrollTop = modRowsScroll?.scrollTop;
+  const onModToggled = useCallback(
+    (mod: Mod): void => {
+      const modRowsScroll = document.getElementById("mod-rows-scroll");
+      const lastScrollTop = modRowsScroll?.scrollTop;
 
-    // if always enabled don't allow unchecking
-    if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList)) {
-      return;
-    }
+      // if always enabled don't allow unchecking
+      if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList)) {
+        return;
+      }
 
-    dispatch(toggleMod(mod));
+      dispatch(toggleMod(mod));
 
-    setTimeout(() => {
-      if (lastScrollTop && modRowsScroll) modRowsScroll.scrollTop = lastScrollTop;
-    }, 1);
-  }, [alwaysEnabledModNamesList, dispatch]);
+      setTimeout(() => {
+        if (lastScrollTop && modRowsScroll) modRowsScroll.scrollTop = lastScrollTop;
+      }, 1);
+    },
+    [alwaysEnabledModNamesList, dispatch],
+  );
 
   const setSortingType = useCallback(
     (newSortingType: SortingType) => {
       dispatch(setModRowsSortingType(modRowSorting.getNewSortType(newSortingType, sortingType)));
     },
-    [dispatch, sortingType]
+    [dispatch, sortingType],
   );
 
   const onEnabledRightClick = useCallback(() => {
@@ -227,19 +218,25 @@ const ModRows = memo((props: ModRowsProps) => {
       const loadOrderIcon = document.getElementById(`load-order-icon-${element.id}`);
       if (loadOrderIcon) loadOrderIcon.classList.remove("hidden");
     },
-    [loadOrderModName, sortingType]
+    [loadOrderModName, sortingType],
   );
 
-  const onRowHoverEnd = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
-    const element = e.currentTarget as HTMLDivElement;
-    if (element.id === loadOrderModName) return;
-    const loadOrderIcon = document.getElementById(`load-order-icon-${element.id}`);
-    if (loadOrderIcon) loadOrderIcon.classList.add("hidden");
-  }, [loadOrderModName]);
+  const onRowHoverEnd = useCallback(
+    (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
+      const element = e.currentTarget as HTMLDivElement;
+      if (element.id === loadOrderModName) return;
+      const loadOrderIcon = document.getElementById(`load-order-icon-${element.id}`);
+      if (loadOrderIcon) loadOrderIcon.classList.add("hidden");
+    },
+    [loadOrderModName],
+  );
 
-  const onRemoveModOrder = useCallback((mod: Mod) => {
-    dispatch(resetModLoadOrder([mod]));
-  }, [dispatch]);
+  const onRemoveModOrder = useCallback(
+    (mod: Mod) => {
+      dispatch(resetModLoadOrder([mod]));
+    },
+    [dispatch],
+  );
 
   const [positionX, setPositionX] = useState<number>(0);
   const [positionY, setPositionY] = useState<number>(0);
@@ -258,27 +255,33 @@ const ModRows = memo((props: ModRowsProps) => {
       e.preventDefault();
       e.stopPropagation();
     },
-    [isDropdownOpen]
+    [isDropdownOpen],
   );
 
-  const onCustomizeModClicked = useCallback((e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
-    if (isDropdownOpen) return;
-    console.log("onCustomizeModClicked:", mod);
-    dispatch(setModBeingCustomized(mod));
+  const onCustomizeModClicked = useCallback(
+    (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
+      if (isDropdownOpen) return;
+      console.log("onCustomizeModClicked:", mod);
+      dispatch(setModBeingCustomized(mod));
 
-    e.preventDefault();
-    e.stopPropagation();
-  }, [dispatch, isDropdownOpen]);
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    [dispatch, isDropdownOpen],
+  );
 
-  const onFlowOptionsClicked = useCallback((e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
-    if (isDropdownOpen) return;
-    console.log("onFlowOptionsClicked:", mod);
-    setFlowOptionsModSelected(mod);
-    setIsFlowOptionsModalOpen(true);
+  const onFlowOptionsClicked = useCallback(
+    (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
+      if (isDropdownOpen) return;
+      console.log("onFlowOptionsClicked:", mod);
+      setFlowOptionsModSelected(mod);
+      setIsFlowOptionsModalOpen(true);
 
-    e.preventDefault();
-    e.stopPropagation();
-  }, [isDropdownOpen]);
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    [isDropdownOpen],
+  );
 
   const onCustomizeModRightClick = useCallback(
     (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
@@ -289,7 +292,7 @@ const ModRows = memo((props: ModRowsProps) => {
       e.preventDefault();
       e.stopPropagation();
     },
-    [dispatch, isDropdownOpen]
+    [dispatch, isDropdownOpen],
   );
 
   const onDropdownOverlayClick = useCallback(() => {
@@ -311,7 +314,7 @@ const ModRows = memo((props: ModRowsProps) => {
   }, [isAuthorEnabled, areThumbnailsEnabled]);
   const ghostClass = useMemo(
     () => getGhostClass(isAuthorEnabled, areThumbnailsEnabled),
-    [areThumbnailsEnabled, isAuthorEnabled]
+    [areThumbnailsEnabled, isAuthorEnabled],
   );
 
   useEffect(() => {
@@ -326,16 +329,13 @@ const ModRows = memo((props: ModRowsProps) => {
     window.api?.getCustomizableMods(
       enabledMods.map((mod) => mod.path),
       customizableTables,
-      hash(customizableMods)
+      hash(customizableMods),
     );
   }, [enabledMods, customizableMods]);
 
   const visibleMods = useMemo(
-    () =>
-      loadOrderModName && isCurrentTabEnabledMods
-        ? canonicalEnabledMods
-        : getVisibleMods(mods, hiddenModNames),
-    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, mods]
+    () => (loadOrderModName && isCurrentTabEnabledMods ? canonicalEnabledMods : getVisibleMods(mods, hiddenModNames)),
+    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, mods],
   );
 
   const unfilteredVisibleMods = useMemo(
@@ -343,7 +343,7 @@ const ModRows = memo((props: ModRowsProps) => {
       loadOrderModName && isCurrentTabEnabledMods
         ? canonicalEnabledMods
         : getVisibleMods(unfilteredMods, hiddenModNames),
-    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, unfilteredMods]
+    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, unfilteredMods],
   );
 
   const onSetLoadOrderMode = useCallback(
@@ -377,7 +377,7 @@ const ModRows = memo((props: ModRowsProps) => {
       setActiveLoadOrderPosition(Math.max(0, currentIndex));
       setLoadOrderModName(mod.name);
     },
-    [canonicalEnabledMods, isCurrentTabEnabledMods, loadOrderModName, props.scrollElement, sortingType]
+    [canonicalEnabledMods, isCurrentTabEnabledMods, loadOrderModName, props.scrollElement, sortingType],
   );
 
   useLayoutEffect(() => {
@@ -394,11 +394,7 @@ const ModRows = memo((props: ModRowsProps) => {
       return;
     }
 
-    if (
-      snapshot.didAnchorSource ||
-      snapshot.modName !== loadOrderModName ||
-      snapshot.sourceViewportOffset == null
-    ) {
+    if (snapshot.didAnchorSource || snapshot.modName !== loadOrderModName || snapshot.sourceViewportOffset == null) {
       return;
     }
 
@@ -440,11 +436,7 @@ const ModRows = memo((props: ModRowsProps) => {
 
       const selectedIndex = unfilteredVisibleMods.findIndex((mod) => mod.name === loadOrderModName);
       const modsWithoutSelected = unfilteredVisibleMods.filter((mod) => mod.name !== loadOrderModName);
-      const boundedPosition = getLoadOrderInsertionIndex(
-        selectedIndex,
-        position,
-        modsWithoutSelected.length,
-      );
+      const boundedPosition = getLoadOrderInsertionIndex(selectedIndex, position, modsWithoutSelected.length);
       const isLastPosition = boundedPosition === modsWithoutSelected.length;
       const relativeMod = isLastPosition
         ? modsWithoutSelected[modsWithoutSelected.length - 1]
@@ -463,12 +455,12 @@ const ModRows = memo((props: ModRowsProps) => {
             modNameRelativeTo: relativeMod.name,
             visualModList: [...unfilteredVisibleMods],
             setAfterMod: isLastPosition,
-          })
+          }),
         );
       }
       setLoadOrderModName(undefined);
     },
-    [dispatch, loadOrderModName, unfilteredVisibleMods]
+    [dispatch, loadOrderModName, unfilteredVisibleMods],
   );
 
   useEffect(
@@ -501,9 +493,7 @@ const ModRows = memo((props: ModRowsProps) => {
       skipInitialPlaceholderScrollRef.current = false;
       return;
     }
-    document
-      .getElementById(`enabled-mod-placeholder-${activeLoadOrderPosition}`)
-      ?.scrollIntoView({ block: "nearest" });
+    document.getElementById(`enabled-mod-placeholder-${activeLoadOrderPosition}`)?.scrollIntoView({ block: "nearest" });
   }, [activeLoadOrderPosition, loadOrderModName]);
 
   useEffect(() => {
@@ -518,9 +508,7 @@ const ModRows = memo((props: ModRowsProps) => {
         setActiveLoadOrderPosition((previous) => Math.max(0, previous - 1));
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
-        setActiveLoadOrderPosition((previous) =>
-          Math.min(unfilteredVisibleMods.length, previous + 1)
-        );
+        setActiveLoadOrderPosition((previous) => Math.min(unfilteredVisibleMods.length, previous + 1));
       } else if (event.key === "Enter") {
         event.preventDefault();
         onSelectLoadOrderPosition(activeLoadOrderPosition);
@@ -545,15 +533,11 @@ const ModRows = memo((props: ModRowsProps) => {
         decodedHumanName: decodeHtml(decodeHtml(mod.humanName) ?? ""),
         decodedAuthor: decodeHtml(decodeHtml(mod.author) ?? ""),
         customFolderPath:
-          getModSourceKind(mod) === "custom"
-            ? customFolderPathBySourceId.get(getModSourceId(mod))
-            : undefined,
+          getModSourceKind(mod) === "custom" ? customFolderPathBySourceId.get(getModSourceId(mod)) : undefined,
         hasDbCustomization: Boolean(customizableMods[mod.path]?.some((file) => file.startsWith("db\\"))),
-        hasFlowCustomization: Boolean(
-          customizableMods[mod.path]?.some((file) => file.startsWith("whmmflows\\"))
-        ),
+        hasFlowCustomization: Boolean(customizableMods[mod.path]?.some((file) => file.startsWith("whmmflows\\"))),
         hasPackDataOverwrite: Boolean(packDataOverwrites[mod.path]),
-        thumbnailSrc: (isDev || mod.imgPath === "") ? defaultModThumbnailSrc : mod.imgPath,
+        thumbnailSrc: isDev || mod.imgPath === "" ? defaultModThumbnailSrc : mod.imgPath,
       })),
     [
       alwaysEnabledModNames,
@@ -563,7 +547,7 @@ const ModRows = memo((props: ModRowsProps) => {
       mergedModPaths,
       packDataOverwrites,
       visibleMods,
-    ]
+    ],
   );
 
   const emptyFunc = useCallback(() => {}, []);
@@ -575,7 +559,7 @@ const ModRows = memo((props: ModRowsProps) => {
         defaultHeight: 32,
         minHeight: 32,
       }),
-    []
+    [],
   );
 
   useEffect(() => {
@@ -761,16 +745,13 @@ const ModRows = memo((props: ModRowsProps) => {
             onClick={() => setSortingType(SortingType.HumanName)}
           >
             {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-            <span
-              className={`cursor-pointer ${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}
-            >
+            <span className={`cursor-pointer ${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>
               {localized.name}
             </span>
           </div>
           <div
             className={
-              "flex grid-area-autohide place-items-center pl-1 mod-row-header " +
-              (isAuthorEnabled ? "" : "hidden")
+              "flex grid-area-autohide place-items-center pl-1 mod-row-header " + (isAuthorEnabled ? "" : "hidden")
             }
             onClick={() => setSortingType(SortingType.Author)}
           >
@@ -789,13 +770,11 @@ const ModRows = memo((props: ModRowsProps) => {
             <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
               <span
                 className={`cursor-pointer ${
-                  (modRowSorting.isLastUpdatedSort(sortingType) ||
-                    modRowSorting.isSubbedTimeSort(sortingType)) &&
+                  (modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
                   "font-semibold"
                 }`}
               >
-                {(modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) ||
-                  localized.lastUpdated}
+                {(modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) || localized.lastUpdated}
               </span>
             </Tooltip>
           </div>
@@ -804,9 +783,7 @@ const ModRows = memo((props: ModRowsProps) => {
             onClick={() => setSortingType(SortingType.IsCustomizable)}
           >
             {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-            <span
-              className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}
-            >
+            <span className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}>
               <GoGear></GoGear>
             </span>
           </div>
@@ -859,49 +836,50 @@ const ModRows = memo((props: ModRowsProps) => {
                   hasFlowCustomization,
                   hasPackDataOverwrite,
                 },
-                i
+                i,
               ) => (
-              <ModRow
-                key={mod.path}
-                {...{
-                  loadOrderIndex: loadOrderIndexByModName.get(mod.name) ?? i,
-                  rowIndex: i,
-                  mod,
-                  onRowHoverStart,
-                  onRowHoverEnd,
-                  onSetLoadOrderMode,
-                  onSelectLoadOrderPosition,
-                  activeLoadOrderPosition,
-                  isLoadOrderPlacementMode: !!loadOrderModName,
-                  isLoadOrderPlacementSource: mod.name === loadOrderModName,
-                  isRecentlyReordered: recentlyReorderedModNames.has(mod.name),
-                  onModToggled,
-                  onModRightClick,
-                  onCustomizeModClicked,
-                  onCustomizeModRightClick,
-                  onFlowOptionsClicked,
-                  onRemoveModOrder,
-                  sortingType,
-                  currentTab,
-                  isLast: rowData.length == i + 1,
-                  isAlwaysEnabled,
-                  isEnabledInMergedMod,
-                  areThumbnailsEnabled,
-                  isAuthorEnabled,
-                  ghostClass,
-                  thumbnailSrc,
-                  decodedHumanName,
-                  decodedAuthor,
-                  customFolderPath,
-                  hasDbCustomization,
-                  hasFlowCustomization,
-                  hasPackDataOverwrite,
-                  style: {},
-                  gridClass: "row",
-                  registerChild: emptyFunc,
-                }}
-              ></ModRow>
-            ))}
+                <ModRow
+                  key={mod.path}
+                  {...{
+                    loadOrderIndex: loadOrderIndexByModName.get(mod.name) ?? i,
+                    rowIndex: i,
+                    mod,
+                    onRowHoverStart,
+                    onRowHoverEnd,
+                    onSetLoadOrderMode,
+                    onSelectLoadOrderPosition,
+                    activeLoadOrderPosition,
+                    isLoadOrderPlacementMode: !!loadOrderModName,
+                    isLoadOrderPlacementSource: mod.name === loadOrderModName,
+                    isRecentlyReordered: recentlyReorderedModNames.has(mod.name),
+                    onModToggled,
+                    onModRightClick,
+                    onCustomizeModClicked,
+                    onCustomizeModRightClick,
+                    onFlowOptionsClicked,
+                    onRemoveModOrder,
+                    sortingType,
+                    currentTab,
+                    isLast: rowData.length == i + 1,
+                    isAlwaysEnabled,
+                    isEnabledInMergedMod,
+                    areThumbnailsEnabled,
+                    isAuthorEnabled,
+                    ghostClass,
+                    thumbnailSrc,
+                    decodedHumanName,
+                    decodedAuthor,
+                    customFolderPath,
+                    hasDbCustomization,
+                    hasFlowCustomization,
+                    hasPackDataOverwrite,
+                    style: {},
+                    gridClass: "row",
+                    registerChild: emptyFunc,
+                  }}
+                ></ModRow>
+              ),
+            )}
         </div>
         {loadOrderModName && (
           <div

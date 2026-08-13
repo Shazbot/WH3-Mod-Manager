@@ -147,10 +147,7 @@ export const readFrontCodedEntry = (block: FrontCodedBlock, rank: number): strin
  * that just wants to test each value never has to hold all of them at once - over a large block that
  * array is the dominant cost, not the decoding.
  */
-export const forEachFrontCodedEntry = (
-  block: FrontCodedBlock,
-  visit: (value: string, rank: number) => void,
-): void => {
+export const forEachFrontCodedEntry = (block: FrontCodedBlock, visit: (value: string, rank: number) => void): void => {
   let offset = 0;
   let value = "";
 
@@ -223,10 +220,7 @@ export const findFrontCodedRank = (block: FrontCodedBlock, target: string): numb
  * Sorted order puts them together, so a prefix match is a range of ids - which lets a search filter
  * cells by integer comparison without decoding any strings.
  */
-export const findFrontCodedPrefixRange = (
-  block: FrontCodedBlock,
-  prefix: string,
-): { start: number; end: number } => {
+export const findFrontCodedPrefixRange = (block: FrontCodedBlock, prefix: string): { start: number; end: number } => {
   const start = findFrontCodedLowerBound(block, prefix);
 
   // Walked forward from the chunk holding `start`, decoding each value from the one before, for the

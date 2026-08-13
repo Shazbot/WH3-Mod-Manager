@@ -10,7 +10,10 @@ import { gameToPackWithDBTablesName, SupportedGames } from "../supportedGames";
 import { collator } from "../utility/packFileSorting";
 import Trie, { type KeyedLookup } from "../utility/trie";
 
-export type SkillsDataCacheCore = Omit<NonNullable<typeof appData.skillsData>, "locs" | "icons" | "skillsDataPackPaths">;
+export type SkillsDataCacheCore = Omit<
+  NonNullable<typeof appData.skillsData>,
+  "locs" | "icons" | "skillsDataPackPaths"
+>;
 
 interface VanillaSkillsDataCoreCachePayload {
   version: number;

@@ -15,23 +15,13 @@ const createMod = (name: string): Mod =>
 
 describe("importModsFromUsedMods", () => {
   it("waits for a choice when the previous mods use a custom order", () => {
-    const mods = [
-      createMod("alpha.pack"),
-      createMod("beta.pack"),
-      createMod("gamma.pack"),
-      createMod("unused.pack"),
-    ];
+    const mods = [createMod("alpha.pack"), createMod("beta.pack"), createMod("gamma.pack"), createMod("unused.pack")];
     const pendingState = appReducer(
       { ...initialState, currentPreset: { name: "", mods } },
       importModsFromUsedMods(["beta.pack", "alpha.pack", "gamma.pack", "missing.pack"]),
     );
 
-    expect(pendingState.pendingUsedModsImport).toEqual([
-      "beta.pack",
-      "alpha.pack",
-      "gamma.pack",
-      "missing.pack",
-    ]);
+    expect(pendingState.pendingUsedModsImport).toEqual(["beta.pack", "alpha.pack", "gamma.pack", "missing.pack"]);
     expect(pendingState.currentPreset.mods.every((mod) => mod.loadOrder === 99)).toBe(true);
 
     const state = appReducer(pendingState, resolveUsedModsImport("previous"));

@@ -6,10 +6,7 @@ import { PackCollisions, Pack } from "../packFileTypes";
 import { emptyPackFileToFileReferences, findMissingFileReferences } from "./fileToFileReferences";
 import { emptyPackFileAnalysisErrors, packFileAnalysisErrors } from "./fileSyntaxChecks";
 import { findPackTableReferencesOptimized, refSorting } from "./missingDBTableReferences";
-import {
-  emptyPackToScriptFilesWithListeners,
-  processPackToScriptFilesWithListeners,
-} from "./scriptFileListenerNames";
+import { emptyPackToScriptFilesWithListeners, processPackToScriptFilesWithListeners } from "./scriptFileListenerNames";
 import { emptyPackToTablesWithUniqueIds, processPackToTablesWithUniqueIds } from "./uniqueDBTableIndices";
 import { findPackFileCollisions } from "./packFileCollisions";
 import { findPackTableCollisions } from "./packTableCollisions";
@@ -34,8 +31,8 @@ export function getCompatData(
     maxIndex: number,
     firstPackName: string,
     secondPackName: string,
-    type: PackCollisionCheckType
-  ) => void
+    type: PackCollisionCheckType,
+  ) => void,
 ): PackCollisions {
   const { missingRefs, uniqueIdsCollisions, scriptListenerCollisions, packFileAnalysisErrors } =
     findPackTableMissingReferencesAndRunAnalysis(packsData, onPackChecked);
@@ -72,10 +69,7 @@ export const emptyAllCompatDataCollections = () => {
   emptyPackFileToFileReferences();
 };
 
-export function findPackTableMissingReferencesAndRunAnalysis(
-  packsData: Pack[],
-  onPackChecked?: OnPackChecked
-) {
+export function findPackTableMissingReferencesAndRunAnalysis(packsData: Pack[], onPackChecked?: OnPackChecked) {
   // keep this at top, these are populated inside findPackTableReferencesOptimized
   emptyAllCompatDataCollections();
 

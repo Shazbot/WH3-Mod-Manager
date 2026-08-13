@@ -103,7 +103,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
         renameCategory({
           oldCategory: editingCategory,
           newCategory: editingCategoryName.trim(),
-        })
+        }),
       );
     }
     setEditingCategory(null);
@@ -124,9 +124,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
         <div className="space-y-4">
           {/* Add new category section */}
           <div className="border-b pb-4">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
-              {localized.addNewCategory}
-            </h3>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">{localized.addNewCategory}</h3>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -149,9 +147,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
 
           {/* Existing categories section */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
-              {localized.existingCategories}
-            </h3>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">{localized.existingCategories}</h3>
             <div className="space-y-1 max-h-96 overflow-y-auto">
               {/* Table Header */}
               <div className="grid grid-cols-12 gap-4 px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
@@ -203,18 +199,14 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
                   ) : (
                     <>
                       <div className="col-span-3">
-                        <span className="text-gray-900 dark:text-white font-medium truncate block">
-                          {category}
-                        </span>
+                        <span className="text-gray-900 dark:text-white font-medium truncate block">{category}</span>
                       </div>
                       <div className="col-span-7">
                         <div className="flex gap-1 flex-wrap">
                           {colorOptions.map((color) => (
                             <button
                               key={color.name}
-                              onClick={() =>
-                                dispatch(setCategoryColor({ category, color: color.name.toLowerCase() }))
-                              }
+                              onClick={() => dispatch(setCategoryColor({ category, color: color.name.toLowerCase() }))}
                               className={`w-6 h-6 rounded-full border-2 ${
                                 (categoryColors[category] || "blue") === color.name.toLowerCase()
                                   ? "border-gray-400 dark:border-gray-300"
@@ -248,9 +240,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
                 </div>
               ))}
               {filteredCategories.length === 0 && (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-4">
-                  {localized.noCategoriesFound}
-                </p>
+                <p className="text-gray-500 dark:text-gray-400 text-center py-4">{localized.noCategoriesFound}</p>
               )}
             </div>
           </div>

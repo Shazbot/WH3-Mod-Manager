@@ -12,11 +12,7 @@ export type TimelineContentProps = PropsWithChildren<
 export const TimelineContent: FC<TimelineContentProps> = ({ children, className, ...props }) => {
   const { horizontal } = useTimelineContext();
   return (
-    <div
-      data-testid="timeline-content"
-      className={classNames({ "mt-3 sm:pr-8": horizontal }, className)}
-      {...props}
-    >
+    <div data-testid="timeline-content" className={classNames({ "mt-3 sm:pr-8": horizontal }, className)} {...props}>
       {children}
     </div>
   );

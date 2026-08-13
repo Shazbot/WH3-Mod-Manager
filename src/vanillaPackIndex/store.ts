@@ -136,10 +136,7 @@ const writeToDisk = async (cacheFilePath: string, index: VanillaPackIndex): Prom
  */
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-const buildFromPacks = async (
-  identity: VanillaPackIndexIdentity,
-  buildId: string,
-): Promise<VanillaPackIndex> => {
+const buildFromPacks = async (identity: VanillaPackIndexIdentity, buildId: string): Promise<VanillaPackIndex> => {
   // Imported here rather than at module load: packFileSerializer pulls in a large dependency graph,
   // and nothing needs it until an index actually has to be built.
   const { readPack } = await import("../packFileSerializer");

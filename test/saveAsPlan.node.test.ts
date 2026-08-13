@@ -39,9 +39,9 @@ describe("save as planning", () => {
   });
 
   it("copies over an existing pack once that has been agreed to", () => {
-    expect(
-      planSaveAs(situation({ unsavedFileCount: 0, targetExists: true, overwriteExisting: true })),
-    ).toEqual({ action: "copyPack" });
+    expect(planSaveAs(situation({ unsavedFileCount: 0, targetExists: true, overwriteExisting: true }))).toEqual({
+      action: "copyPack",
+    });
   });
 
   it("does nothing when saving an unchanged pack over itself", () => {
@@ -58,9 +58,9 @@ describe("save as planning", () => {
   });
 
   it("still writes when saving a changed pack over itself", () => {
-    expect(
-      planSaveAs(situation({ targetExists: true, targetIsSourcePack: true, overwriteExisting: true })),
-    ).toEqual({ action: "writePack" });
+    expect(planSaveAs(situation({ targetExists: true, targetIsSourcePack: true, overwriteExisting: true }))).toEqual({
+      action: "writePack",
+    });
   });
 
   it("rejects an empty memory pack, which has no file to copy and nothing to write", () => {

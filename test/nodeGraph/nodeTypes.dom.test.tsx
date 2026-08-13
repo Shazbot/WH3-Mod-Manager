@@ -105,10 +105,7 @@ describe("react flow node types", () => {
         inputType: "TableSelection",
         indexedInputType: "TableSelection",
         outputType: "TableSelection",
-        columnNames: [
-          "agent_subtypes_tables_key",
-          "unique_agents_tables_agent_subtype",
-        ],
+        columnNames: ["agent_subtypes_tables_key", "unique_agents_tables_agent_subtype"],
         sourceInputColumns: ["key"],
         indexedTableColumns: ["agent_subtype"],
         connectedTableName: "agent_subtypes_tables",

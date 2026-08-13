@@ -150,14 +150,10 @@ const run = async () => {
 
     const target = loadJson(outPath);
     const missingKeys = Object.keys(en).filter((key) => !(key in target));
-    const uniqueTexts = [
-      ...new Set(missingKeys.map((key) => en[key]).filter((value) => typeof value === "string")),
-    ];
+    const uniqueTexts = [...new Set(missingKeys.map((key) => en[key]).filter((value) => typeof value === "string"))];
     const cache = new Map();
 
-    console.log(
-      `\n[${lang}] missing keys: ${missingKeys.length} (unique strings to translate: ${uniqueTexts.length})`,
-    );
+    console.log(`\n[${lang}] missing keys: ${missingKeys.length} (unique strings to translate: ${uniqueTexts.length})`);
 
     let translatedCount = 0;
     for (const text of uniqueTexts) {
@@ -207,9 +203,7 @@ const run = async () => {
     }
 
     if (opts.dryRun) {
-      console.log(
-        `[${lang}] dry-run: would write ${outPath} (translated unique strings: ${translatedCount})`,
-      );
+      console.log(`[${lang}] dry-run: would write ${outPath} (translated unique strings: ${translatedCount})`);
     } else {
       saveJson(outPath, target);
       console.log(`[${lang}] wrote ${outPath} (translated unique strings: ${translatedCount})`);

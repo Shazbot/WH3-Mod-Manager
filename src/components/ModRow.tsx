@@ -121,7 +121,7 @@ const ModRow = memo(
         (mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
         (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
         "",
-      [sortingType, mod.lastChanged, mod.lastChangedLocal, mod.subbedTime]
+      [sortingType, mod.lastChanged, mod.lastChangedLocal, mod.subbedTime],
     );
 
     return (
@@ -173,8 +173,8 @@ const ModRow = memo(
                 style="light"
                 content={
                   <span className="text-slate-200">
-                    Mod order can only be changed in the Enabled Mods tab. List of tabs is located in the
-                    top-left of the window. You can also use the Ctrl+2 shortcut.
+                    Mod order can only be changed in the Enabled Mods tab. List of tabs is located in the top-left of
+                    the window. You can also use the Ctrl+2 shortcut.
                   </span>
                 }
               >
@@ -201,9 +201,7 @@ const ModRow = memo(
               <BsArrowDownUp />
             </button>
           )}
-          <form
-            className={"grid place-items-center h-full " + (areThumbnailsEnabled ? "bigger-checkbox" : "")}
-          >
+          <form className={"grid place-items-center h-full " + (areThumbnailsEnabled ? "bigger-checkbox" : "")}>
             <input
               style={
                 (isAlwaysEnabled && {
@@ -225,16 +223,11 @@ const ModRow = memo(
           className={"flex place-items-center grid-area-autohide " + (areThumbnailsEnabled ? "" : "hidden")}
         >
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
-            {areThumbnailsEnabled && (
-              <img className="max-w-[6rem] aspect-square" src={thumbnailSrc}></img>
-            )}
+            {areThumbnailsEnabled && <img className="max-w-[6rem] aspect-square" src={thumbnailSrc}></img>}
           </label>
         </div>
         <div className="flex place-items-center w-min-[0px]" onContextMenu={(e) => onModRightClick(e, mod)}>
-          <label
-            className="max-w-full inline-block break-words cursor-pointer"
-            htmlFor={mod.workshopId + "enabled"}
-          >
+          <label className="max-w-full inline-block break-words cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
             <span
               className={classNames("break-all", "flex", "items-center", {
                 ["text-orange-500"]: mod.isInData && !mod.isSymbolicLink,
@@ -276,9 +269,7 @@ const ModRow = memo(
                       <p>Mod merges the following mods:</p>
                       {mod.mergedModsData.map((mergedModData) => (
                         <div key={mergedModData.path}>
-                          {(mergedModData.humanName &&
-                            mergedModData.humanName != "" &&
-                            mergedModData.humanName) ||
+                          {(mergedModData.humanName && mergedModData.humanName != "" && mergedModData.humanName) ||
                             mergedModData.name}
                         </div>
                       ))}
@@ -296,10 +287,7 @@ const ModRow = memo(
                   content={
                     <>
                       <p>Mod is merged in another enabled pack</p>
-                      <p>
-                        You can leave it enabled, but this mod will be ignored since it's inside the merged
-                        mod
-                      </p>
+                      <p>You can leave it enabled, but this mod will be ignored since it's inside the merged mod</p>
                     </>
                   }
                 >
@@ -326,10 +314,7 @@ const ModRow = memo(
             <span className="break-all">{decodedAuthor}</span>
           </label>
         </div>
-        <div
-          className="flex place-items-center grid-area-autohide"
-          onContextMenu={(e) => onModRightClick(e, mod)}
-        >
+        <div className="flex place-items-center grid-area-autohide" onContextMenu={(e) => onModRightClick(e, mod)}>
           <label
             style={{ height: areThumbnailsEnabled ? "28px" : "24px" }}
             className="cursor-pointer"
@@ -340,14 +325,14 @@ const ModRow = memo(
         </div>
         <div className="flex place-items-center justify-center gap-2">
           {hasDbCustomization && (
-              <Icons.Gear
-                onClick={(e) => {
-                  onCustomizeModClicked(e, mod);
-                }}
-                onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
-                className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
-                color={(hasPackDataOverwrite && "#1c64f2") || "white"}
-              />
+            <Icons.Gear
+              onClick={(e) => {
+                onCustomizeModClicked(e, mod);
+              }}
+              onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
+              className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
+              color={(hasPackDataOverwrite && "#1c64f2") || "white"}
+            />
           )}
           {hasFlowCustomization && (
             <Icons.SettingsKnobs
@@ -375,6 +360,6 @@ const ModRow = memo(
         )}
       </div>
     );
-  }
+  },
 );
 export default ModRow;

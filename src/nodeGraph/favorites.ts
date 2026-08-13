@@ -1,13 +1,8 @@
 import type { NodeTypeSection } from "./nodeRegistry";
 
 /** Adds a node type to the favorites, or removes it if it is already there. */
-export const toggleFavoriteNodeType = (
-  favorites: FlowNodeType[],
-  nodeType: FlowNodeType,
-): FlowNodeType[] =>
-  favorites.includes(nodeType)
-    ? favorites.filter((favorite) => favorite !== nodeType)
-    : [...favorites, nodeType];
+export const toggleFavoriteNodeType = (favorites: FlowNodeType[], nodeType: FlowNodeType): FlowNodeType[] =>
+  favorites.includes(nodeType) ? favorites.filter((favorite) => favorite !== nodeType) : [...favorites, nodeType];
 
 /**
  * Moves a favorite to where it was dropped, keeping the rest in order.
@@ -46,9 +41,7 @@ export const withFavoritesSection = (
 ): NodeTypeSection[] => {
   if (favorites.length === 0) return sections;
 
-  const nodeTypesByType = new Map(
-    sections.flatMap((section) => section.nodes).map((node) => [node.type, node]),
-  );
+  const nodeTypesByType = new Map(sections.flatMap((section) => section.nodes).map((node) => [node.type, node]));
   const favoriteNodes = favorites
     .map((favorite) => nodeTypesByType.get(favorite))
     .filter((node): node is NodeTypeSection["nodes"][number] => node !== undefined);

@@ -57,9 +57,7 @@ const TechNode = memo(({ data, selected }: NodeProps) => {
           {hasRequirements && (
             <div className="space-y-0.5">
               {typedData.buildingLevel && (
-                <div className="text-red-400 text-xs italic">
-                  Requires building: {typedData.buildingLevel}
-                </div>
+                <div className="text-red-400 text-xs italic">Requires building: {typedData.buildingLevel}</div>
               )}
               {typedData.prerequisiteTechNames?.map((name) => (
                 <div key={name} className="text-red-400 text-xs italic">
@@ -71,14 +69,10 @@ const TechNode = memo(({ data, selected }: NodeProps) => {
 
           {/* Description */}
           {typedData.shortDescription && (
-            <div className="text-xs border-t border-red-900/40 pt-1.5">
-              {typedData.shortDescription}
-            </div>
+            <div className="text-xs border-t border-red-900/40 pt-1.5">{typedData.shortDescription}</div>
           )}
           {typedData.longDescription && (
-            <div className="text-xs italic border-t border-red-900/40 pt-1.5">
-              "{typedData.longDescription}"
-            </div>
+            <div className="text-xs italic border-t border-red-900/40 pt-1.5">"{typedData.longDescription}"</div>
           )}
 
           {/* Research cost */}
@@ -112,7 +106,9 @@ const TechNode = memo(({ data, selected }: NodeProps) => {
         className={`relative w-[240px] h-20 rounded overflow-visible ${
           selected ? "ring-2 ring-cyan-500" : typedData.isUnlocked ? "ring-2 ring-emerald-500" : ""
         } ${typedData.isHidden ? "opacity-60" : ""} ${
-          typedData.isCheckingRequirements && !typedData.areRequirementsValid && !typedData.isUnlocked ? "grayscale" : ""
+          typedData.isCheckingRequirements && !typedData.areRequirementsValid && !typedData.isUnlocked
+            ? "grayscale"
+            : ""
         } ${typedData.isCheckingRequirements ? "cursor-pointer" : ""}`}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
@@ -206,9 +202,7 @@ const TechNode = memo(({ data, selected }: NodeProps) => {
               <div className="mt-0.5 text-[10px] opacity-70 whitespace-nowrap overflow-visible">
                 {typedData.technologyKey}
               </div>
-              <div className="text-[10px] opacity-60 whitespace-nowrap overflow-visible">
-                node:{typedData.nodeKey}
-              </div>
+              <div className="text-[10px] opacity-60 whitespace-nowrap overflow-visible">node:{typedData.nodeKey}</div>
             </>
           )}
         </div>

@@ -57,20 +57,18 @@ export const Pagination: FC<PaginationProps> = ({
           </button>
         </li>
         {layout === "pagination" &&
-          range(firstPage, lastPage).map(
-            (page: number): JSX.Element => (
-              <li aria-current={page === currentPage ? "page" : undefined} key={page}>
-                <button
-                  className={classNames(theme.pages.selector.base, {
-                    [theme.pages.selector.active]: currentPage === page,
-                  })}
-                  onClick={() => onPageChange(page)}
-                >
-                  {page}
-                </button>
-              </li>
-            )
-          )}
+          range(firstPage, lastPage).map((page: number): JSX.Element => (
+            <li aria-current={page === currentPage ? "page" : undefined} key={page}>
+              <button
+                className={classNames(theme.pages.selector.base, {
+                  [theme.pages.selector.active]: currentPage === page,
+                })}
+                onClick={() => onPageChange(page)}
+              >
+                {page}
+              </button>
+            </li>
+          ))}
         <li>
           <button
             className={classNames(theme.pages.next.base, showIcon && theme.pages.showIcon)}

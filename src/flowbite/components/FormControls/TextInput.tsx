@@ -7,8 +7,7 @@ import type { FlowbiteColors, FlowbiteSizes } from "../Flowbite/FlowbiteTheme";
 import { useTheme } from "../Flowbite/ThemeContext";
 import HelperText from "./HelperText";
 
-export interface TextInputColors
-  extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
+export interface TextInputColors extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
   [key: string]: string;
 }
 
@@ -46,7 +45,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
                 theme.field.input.withIcon[Icon ? "on" : "off"],
                 theme.field.input.withAddon[addon ? "on" : "off"],
                 theme.field.input.withShadow[shadow ? "on" : "off"],
-                theme.field.input.sizes[sizing]
+                theme.field.input.sizes[sizing],
               )}
               {...theirProps}
               ref={ref}
@@ -56,7 +55,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
         {helperText && <HelperText color={color}>{helperText}</HelperText>}
       </>
     );
-  }
+  },
 );
 
 TextInput.displayName = "TextInput";

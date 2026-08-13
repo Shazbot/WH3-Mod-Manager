@@ -123,20 +123,8 @@ describe("quick-connect handle selection", () => {
   });
 
   it("recognizes when the same two nodes already have a directed connection", () => {
-    expect(
-      hasDirectedConnection(
-        [{ source: "source", target: "target" }],
-        "source",
-        "target",
-      ),
-    ).toBe(true);
-    expect(
-      hasDirectedConnection(
-        [{ source: "target", target: "source" }],
-        "source",
-        "target",
-      ),
-    ).toBe(false);
+    expect(hasDirectedConnection([{ source: "source", target: "target" }], "source", "target")).toBe(true);
+    expect(hasDirectedConnection([{ source: "target", target: "source" }], "source", "target")).toBe(false);
   });
 
   it("rejects an exact duplicate edge in the shared connection path", () => {

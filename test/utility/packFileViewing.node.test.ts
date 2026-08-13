@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getPackedFileViewerKind,
-  isOpenablePackedFilePath,
-} from "../../src/utility/packFileViewing";
+import { getPackedFileViewerKind, isOpenablePackedFilePath } from "../../src/utility/packFileViewing";
 
 describe("pack file viewing", () => {
   it("treats extensionless embedded flows as text files", () => {

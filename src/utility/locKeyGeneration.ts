@@ -22,9 +22,7 @@ export const getLocKeyColumns = (tableSchema: DBVersion, referencedColumns: stri
   }
 
   const keyColumn =
-    referencedColumns.length == 1
-      ? referencedColumns[0]
-      : tableSchema.fields.find((field) => field.is_key)?.name;
+    referencedColumns.length == 1 ? referencedColumns[0] : tableSchema.fields.find((field) => field.is_key)?.name;
   if (!keyColumn) return [];
 
   const keyFieldIndex = tableSchema.fields.findIndex((field) => field.name == keyColumn);

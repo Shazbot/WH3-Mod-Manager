@@ -1,14 +1,15 @@
 export const getTechnologyNodeScopeValues = (node: Pick<TechnologyNodeData, "factionKey" | "campaignKey">) =>
-  [
-    node.factionKey ? `faction:${node.factionKey}` : "",
-    node.campaignKey ? `campaign:${node.campaignKey}` : "",
-  ].filter(Boolean);
+  [node.factionKey ? `faction:${node.factionKey}` : "", node.campaignKey ? `campaign:${node.campaignKey}` : ""].filter(
+    Boolean,
+  );
 
 export const hasBaseNodesOnlyNodes = (
   nodes: Pick<TechnologyNodeData, "nodeKey" | "factionKey" | "campaignKey">[],
   visibleNodeKeys?: Set<string>,
 ) =>
-  nodes.some((node) => (!visibleNodeKeys || visibleNodeKeys.has(node.nodeKey)) && getTechnologyNodeScopeValues(node).length < 1);
+  nodes.some(
+    (node) => (!visibleNodeKeys || visibleNodeKeys.has(node.nodeKey)) && getTechnologyNodeScopeValues(node).length < 1,
+  );
 
 type ResolveTechTreeScopeSelectionInput = {
   selectedScopeKey: string;

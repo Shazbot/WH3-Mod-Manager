@@ -4,9 +4,7 @@ import isDev from "electron-is-dev";
 
 const i18nextOptions = {
   backend: {
-    loadPath: isDev
-      ? "./locales/{{lng}}/{{ns}}.json"
-      : "./resources/app/.webpack/main/locales/{{lng}}/{{ns}}.json",
+    loadPath: isDev ? "./locales/{{lng}}/{{ns}}.json" : "./resources/app/.webpack/main/locales/{{lng}}/{{ns}}.json",
     addPath: isDev
       ? "./locales/{{lng}}/{{ns}}.missing.json"
       : "./resources/app/.webpack/main/locales/{{lng}}/{{ns}}.missing.json",

@@ -226,11 +226,7 @@ const SkillsViewer = memo(() => {
         <Resizable defaultSize={{ width: "17%", height: "85vh" }} maxWidth="100%" minWidth="1">
           <div>
             <div className="overflow-auto h-[85vh] scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
-              <SkillsTreeView
-                tableFilter={dbTableFilter}
-                onSelect={onTreeSelect}
-                onDoubleClick={onTreeDoubleClick}
-              />
+              <SkillsTreeView tableFilter={dbTableFilter} onSelect={onTreeSelect} onDoubleClick={onTreeDoubleClick} />
             </div>
           </div>
         </Resizable>
@@ -304,9 +300,7 @@ const SkillsViewer = memo(() => {
             checked={!!isShowingSkillNodeSetNames}
             onChange={() => dispatch(setIsShowingSkillNodeSetNames(!isShowingSkillNodeSetNames))}
           ></input>
-          <span className="ml-2">
-            {localized.showSkillNodeSetNames || "Show Skill Node Set Names"}
-          </span>
+          <span className="ml-2">{localized.showSkillNodeSetNames || "Show Skill Node Set Names"}</span>
         </label>
       </div>
     </div>

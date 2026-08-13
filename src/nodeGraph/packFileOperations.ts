@@ -55,10 +55,7 @@ const splitPath = (filePath: string) => {
  * and copy take a whole path. {name} and {dir} stand for the source's own parts, and a regex target
  * also exposes its capture groups, so one rule can rewrite a whole set of files.
  */
-export const resolvePackFileDestination = (
-  sourcePath: string,
-  rule: PackFileOperationRule,
-): string | undefined => {
+export const resolvePackFileDestination = (sourcePath: string, rule: PackFileOperationRule): string | undefined => {
   const destination = (rule.destination ?? "").trim();
   if (!destination) return undefined;
 
@@ -92,10 +89,7 @@ export const resolvePackFileDestination = (
  * Rules are applied in order and a later destination replaces an earlier one, which is what makes a
  * copy land on top of an existing file. A rule with overwrite off steps aside instead, and says so.
  */
-export const planPackFileOperations = (
-  filePaths: string[],
-  rules: PackFileOperationRule[],
-): PackFileOperationPlan => {
+export const planPackFileOperations = (filePaths: string[], rules: PackFileOperationRule[]): PackFileOperationPlan => {
   const entryByTarget = new Map<string, PackFileOperationPlanEntry>();
   const removedPaths = new Set<string>();
   const matchCountByRuleId: Record<string, number> = {};
@@ -170,8 +164,5 @@ export const planPackCopy = (
     .filter((name) => !plan.removedPaths.has(name) && !producedTargets.has(name))
     .map((name) => ({ targetPath: name, sourcePath: name }));
 
-  return [
-    ...carried,
-    ...plan.entries.map((entry) => ({ targetPath: entry.targetPath, sourcePath: entry.sourcePath })),
-  ];
+  return [...carried, ...plan.entries.map((entry) => ({ targetPath: entry.targetPath, sourcePath: entry.sourcePath }))];
 };

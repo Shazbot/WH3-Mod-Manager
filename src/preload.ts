@@ -43,10 +43,8 @@ const api = {
   subscribeToMods: (ids: string[]) => ipcRenderer.send("subscribeToMods", ids),
   openFolderInExplorer: (path: string) => ipcRenderer.send("openFolderInExplorer", path),
   openDirectoryInExplorer: (path: string) => ipcRenderer.send("openDirectoryInExplorer", path),
-  openDiagnosticPath: (
-    target: DiagnosticPathTarget,
-    copyPath: boolean,
-  ): Promise<DiagnosticPathResult> => ipcRenderer.invoke("openDiagnosticPath", target, copyPath),
+  openDiagnosticPath: (target: DiagnosticPathTarget, copyPath: boolean): Promise<DiagnosticPathResult> =>
+    ipcRenderer.invoke("openDiagnosticPath", target, copyPath),
   openInSteam: (url: string) => ipcRenderer.send("openInSteam", url),
   openPack: (path: string) => ipcRenderer.send("openPack", path),
   getPacksInSave: (saveName: string) => ipcRenderer.send("getPacksInSave", saveName),
@@ -69,9 +67,8 @@ const api = {
   mergeMods: (mods: Mod[]) => ipcRenderer.send("mergeMods", mods),
   handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) =>
     ipcRenderer.on("handleLog", callback),
-  workshopUpdateCheck: (
-    callback: (event: Electron.IpcRendererEvent, message: WorkshopUpdateCheckMessage) => void,
-  ) => ipcRenderer.on("workshopUpdateCheck", callback),
+  workshopUpdateCheck: (callback: (event: Electron.IpcRendererEvent, message: WorkshopUpdateCheckMessage) => void) =>
+    ipcRenderer.on("workshopUpdateCheck", callback),
   subscribedToMods: (callback: (event: Electron.IpcRendererEvent, ids: string[]) => void) =>
     ipcRenderer.on("subscribedToMods", callback),
   createdMergedPack: (callback: (event: Electron.IpcRendererEvent, filePath: string) => void) =>
@@ -104,18 +101,15 @@ const api = {
     ipcRenderer.send("setSkillsViewOptions", skillsViewOptions),
   openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("openModInViewer", callback),
-  onSkillsViewOptions: (
-    callback: (event: Electron.IpcRendererEvent, skillsViewOptions: SkillsViewOptions) => void,
-  ) => ipcRenderer.on("setSkillsViewOptions", callback),
+  onSkillsViewOptions: (callback: (event: Electron.IpcRendererEvent, skillsViewOptions: SkillsViewOptions) => void) =>
+    ipcRenderer.on("setSkillsViewOptions", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
   copyToData: (modPathsToCopy?: string[]) => ipcRenderer.send("copyToData", modPathsToCopy),
-  copyToDataAsSymbolicLink: (modPathsToCopy?: string[]) =>
-    ipcRenderer.send("copyToDataAsSymbolicLink", modPathsToCopy),
+  copyToDataAsSymbolicLink: (modPathsToCopy?: string[]) => ipcRenderer.send("copyToDataAsSymbolicLink", modPathsToCopy),
   cleanData: () => ipcRenderer.send("cleanData"),
   cleanSymbolicLinksInData: () => ipcRenderer.send("cleanSymbolicLinksInData"),
   getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
-  getPackDataWithLocs: (packPath: string, table?: DBTable) =>
-    ipcRenderer.send("getPackDataWithLocs", packPath, table),
+  getPackDataWithLocs: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackDataWithLocs", packPath, table),
   saveConfig: (payload: ConfigSavePayload) => ipcRenderer.send("saveConfig", payload),
   readMods: debounce(
     (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>
@@ -123,8 +117,7 @@ const api = {
     100,
   ),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
-  downloadAndInstallUpdate: (downloadURL: string) =>
-    ipcRenderer.invoke("downloadAndInstallUpdate", downloadURL),
+  downloadAndInstallUpdate: (downloadURL: string) => ipcRenderer.invoke("downloadAndInstallUpdate", downloadURL),
   translate: (translationId: string, options?: Record<string, string | number>) =>
     ipcRenderer.invoke("translate", translationId, options),
   translateAll: (translationIdsWithOptions: Record<string, Record<string, string | number>>) =>
@@ -139,15 +132,13 @@ const api = {
     ipcRenderer.on("importModsFromUsedMods", callback),
   modsPopulated: (callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void) =>
     ipcRenderer.on("modsPopulated", callback),
-  addMod: (callback: (event: Electron.IpcRendererEvent, mod: Mod) => void) =>
-    ipcRenderer.on("addMod", callback),
+  addMod: (callback: (event: Electron.IpcRendererEvent, mod: Mod) => void) => ipcRenderer.on("addMod", callback),
   removeMod: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("removeMod", callback),
   setModData: (callback: (event: Electron.IpcRendererEvent, modDatas: ModData[]) => void) =>
     ipcRenderer.on("setModData", callback),
-  setPackHeaderData: (
-    callback: (event: Electron.IpcRendererEvent, packHeaderData: PackHeaderData[]) => void,
-  ) => ipcRenderer.on("setPackHeaderData", callback),
+  setPackHeaderData: (callback: (event: Electron.IpcRendererEvent, packHeaderData: PackHeaderData[]) => void) =>
+    ipcRenderer.on("setPackHeaderData", callback),
   setPacksData: (callback: (event: Electron.IpcRendererEvent, packsData: PackViewData[]) => void) =>
     ipcRenderer.on("setPacksData", callback),
   setUnsavedPacksData: (
@@ -172,12 +163,10 @@ const api = {
     ipcRenderer.on("setPackCollisions", callback),
   addToast: (callback: (event: Electron.IpcRendererEvent, toast: Toast) => void) =>
     ipcRenderer.on("addToast", callback),
-  setDBDuplicationProgress: (
-    callback: (event: Electron.IpcRendererEvent, progress: DBDuplicationProgress) => void,
-  ) => ipcRenderer.on("setDBDuplicationProgress", callback),
-  setAppFolderPaths: (
-    callback: (event: Electron.IpcRendererEvent, appFolderPaths: GameFolderPaths) => void,
-  ) => ipcRenderer.on("setAppFolderPaths", callback),
+  setDBDuplicationProgress: (callback: (event: Electron.IpcRendererEvent, progress: DBDuplicationProgress) => void) =>
+    ipcRenderer.on("setDBDuplicationProgress", callback),
+  setAppFolderPaths: (callback: (event: Electron.IpcRendererEvent, appFolderPaths: GameFolderPaths) => void) =>
+    ipcRenderer.on("setAppFolderPaths", callback),
   requestGameFolderPaths: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
     ipcRenderer.on("requestGameFolderPaths", callback),
   getAllModData: (ids: string[]) => ipcRenderer.send("getAllModData", ids),
@@ -201,17 +190,13 @@ const api = {
   setWarhammer3Folder: (callback: (event: Electron.IpcRendererEvent, path: string) => void) =>
     ipcRenderer.on("setWarhammer3Folder", callback),
   setOverwrittenDataPackedFiles: (
-    callback: (
-      event: Electron.IpcRendererEvent,
-      overwrittenDataPackedFiles: Record<string, string[]>,
-    ) => void,
+    callback: (event: Electron.IpcRendererEvent, overwrittenDataPackedFiles: Record<string, string[]>) => void,
   ) => ipcRenderer.on("setOverwrittenDataPackedFiles", callback),
   setOutdatedPackFiles: (
     callback: (event: Electron.IpcRendererEvent, outdatedPackFiles: Record<string, string[]>) => void,
   ) => ipcRenderer.on("setOutdatedPackFiles", callback),
-  setDataModLastChangedLocal: (
-    callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void,
-  ) => ipcRenderer.on("setDataModLastChangedLocal", callback),
+  setDataModLastChangedLocal: (callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void) =>
+    ipcRenderer.on("setDataModLastChangedLocal", callback),
 
   setCurrentlyReadingMod: (callback: (event: Electron.IpcRendererEvent, modName: string) => void) =>
     ipcRenderer.on("setCurrentlyReadingMod", callback),
@@ -222,8 +207,7 @@ const api = {
     ipcRenderer.on("setAvailableLanguages", callback),
   getSteamCollectionName: (url: string): Promise<string> => ipcRenderer.invoke("getSteamCollectionName", url),
   requestLanguageChange: (language: string) => ipcRenderer.send("requestLanguageChange", language),
-  requestGameChange: (game: string, payload: ConfigSavePayload) =>
-    ipcRenderer.send("requestGameChange", game, payload),
+  requestGameChange: (game: string, payload: ConfigSavePayload) => ipcRenderer.send("requestGameChange", game, payload),
   setCurrentLanguage: (callback: (event: Electron.IpcRendererEvent, language: string) => void) =>
     ipcRenderer.on("setCurrentLanguage", callback),
   setCurrentGame: (
@@ -243,8 +227,7 @@ const api = {
   createNewSkillTree: (subtype: string) => ipcRenderer.send("createNewSkillTree", subtype),
   saveSkillsPack: (data: any) => ipcRenderer.invoke("saveSkillsPack", data),
   saveSkillsChanges: (data: any) => ipcRenderer.invoke("saveSkillsChanges", data),
-  getTechnologyNodeSets: (): Promise<TechnologyNodeSetSummary[]> =>
-    ipcRenderer.invoke("getTechnologyNodeSets"),
+  getTechnologyNodeSets: (): Promise<TechnologyNodeSetSummary[]> => ipcRenderer.invoke("getTechnologyNodeSets"),
   getTechnologyTree: (setKey: string): Promise<TechnologyTreePayload | undefined> =>
     ipcRenderer.invoke("getTechnologyTree", setKey),
   saveTechnologyPack: (
@@ -255,8 +238,7 @@ const api = {
     payload: SaveTechnologyChangesPayload,
   ): Promise<{ success: boolean; packName?: string; packPath?: string; warning?: string; error?: string }> =>
     ipcRenderer.invoke("saveTechnologyChanges", payload),
-  searchInsidePacks: (searchTerm: string, mods: Mod[]) =>
-    ipcRenderer.send("searchInsidePacks", searchTerm, mods),
+  searchInsidePacks: (searchTerm: string, mods: Mod[]) => ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("setPackSearchResults", callback),
   terminateGame: () => ipcRenderer.send("terminateGame"),
@@ -280,11 +262,8 @@ const api = {
       tableReferenceRequests: TableReferenceRequest[],
     ) => void,
   ) => ipcRenderer.on("appendPackDataStore", callback),
-  getTableReferences: (
-    packPath: string,
-    tableReferenceRequests: TableReferenceRequest[],
-    withPack: boolean,
-  ) => ipcRenderer.send("getTableReferences", packPath, tableReferenceRequests, withPack),
+  getTableReferences: (packPath: string, tableReferenceRequests: TableReferenceRequest[], withPack: boolean) =>
+    ipcRenderer.send("getTableReferences", packPath, tableReferenceRequests, withPack),
   setDBNameToDBVersions: (
     callback: (
       event: Electron.IpcRendererEvent,
@@ -337,14 +316,11 @@ const api = {
       existingTree,
     ),
 
-  getDBNameToDBVersions: (): Promise<Record<string, DBVersion[]>> =>
-    ipcRenderer.invoke("getDBNameToDBVersions"),
+  getDBNameToDBVersions: (): Promise<Record<string, DBVersion[]>> => ipcRenderer.invoke("getDBNameToDBVersions"),
 
-  getDefaultTableVersions: (): Promise<Record<string, number>> =>
-    ipcRenderer.invoke("getDefaultTableVersions"),
+  getDefaultTableVersions: (): Promise<Record<string, number>> => ipcRenderer.invoke("getDefaultTableVersions"),
 
-  getListOfPacksInSave: (saveName: string): Promise<string[]> =>
-    ipcRenderer.invoke("getListOfPacksInSave", saveName),
+  getListOfPacksInSave: (saveName: string): Promise<string[]> => ipcRenderer.invoke("getListOfPacksInSave", saveName),
 
   getPackFilesList: (packPath: string): Promise<string[]> => ipcRenderer.invoke("getPackFilesList", packPath),
   renamePackedFiles: (
@@ -387,9 +363,7 @@ const api = {
     }>;
   }): Promise<{
     success: boolean;
-    executionResults: Array<
-      [string, { success: boolean; data?: any; error?: string; warnings?: string[] }]
-    >;
+    executionResults: Array<[string, { success: boolean; data?: any; error?: string; warnings?: string[] }]>;
     totalExecuted: number;
     successCount: number;
     failureCount: number;
@@ -444,14 +418,7 @@ const api = {
     alreadyExists?: boolean;
     warning?: string;
     error?: string;
-  }> =>
-    ipcRenderer.invoke(
-      "savePackAsWithUnsavedFiles",
-      packPath,
-      newPackName,
-      newPackDirectory,
-      overwriteExisting,
-    ),
+  }> => ipcRenderer.invoke("savePackAsWithUnsavedFiles", packPath, newPackName, newPackDirectory, overwriteExisting),
 
   getVisualsUnitsData: (
     enabledMods: Mod[],
@@ -473,25 +440,16 @@ const api = {
   getUnitViewerCatalog: (enabledMods: Mod[]): Promise<UnitViewerCatalogResponse> =>
     ipcRenderer.invoke("getUnitViewerCatalog", enabledMods),
 
-  getUnitViewerDetails: (
-    sessionId: string,
-    unitKey: string,
-  ): Promise<UnitViewerDetailsResponse> => ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
+  getUnitViewerDetails: (sessionId: string, unitKey: string): Promise<UnitViewerDetailsResponse> =>
+    ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
 
-  getUnitViewerAsset: (
-    sessionId: string,
-    assetPath: string,
-  ): Promise<UnitViewerAssetResponse> => ipcRenderer.invoke("getUnitViewerAsset", sessionId, assetPath),
+  getUnitViewerAsset: (sessionId: string, assetPath: string): Promise<UnitViewerAssetResponse> =>
+    ipcRenderer.invoke("getUnitViewerAsset", sessionId, assetPath),
 
-  getUnitViewerAssets: (
-    sessionId: string,
-    assetPaths: string[],
-  ): Promise<UnitViewerAssetsResponse> => ipcRenderer.invoke("getUnitViewerAssets", sessionId, assetPaths),
+  getUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsResponse> =>
+    ipcRenderer.invoke("getUnitViewerAssets", sessionId, assetPaths),
 
-  prewarmUnitViewerAssets: (
-    sessionId: string,
-    assetPaths: string[],
-  ): Promise<UnitViewerAssetsPrewarmResponse> =>
+  prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),
 
   readVariantMeshDefinition: (

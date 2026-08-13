@@ -34,9 +34,7 @@ describe("parseDBTablePath", () => {
   });
 
   it("keeps a nested subname whole, as the old regex did", () => {
-    expect(parseDBTablePath("db\\main_units_tables\\sub\\folder\\data__")?.dbSubname).toBe(
-      "sub\\folder\\data__",
-    );
+    expect(parseDBTablePath("db\\main_units_tables\\sub\\folder\\data__")?.dbSubname).toBe("sub\\folder\\data__");
   });
 
   it("rejects anything that is not a table file", () => {
@@ -76,9 +74,9 @@ describe("getDBPackedFilePath", () => {
   });
 
   it("treats a selection with no folder as the live table, so old state still resolves", () => {
-    expect(
-      getDBPackedFilePath({ packPath, dbName: "main_units_tables", dbSubname: "pj_my_table" } as never),
-    ).toBe(LIVE);
+    expect(getDBPackedFilePath({ packPath, dbName: "main_units_tables", dbSubname: "pj_my_table" } as never)).toBe(
+      LIVE,
+    );
   });
 });
 
@@ -107,10 +105,7 @@ describe("groupDBTablePaths", () => {
 
     // The bug this guards: grouping by table name alone merged these into one entry, and editing
     // the spare then wrote over the live table.
-    expect([...groups.keys()].toSorted()).toEqual([
-      "main_units_tables",
-      "unusedtables\\main_units_tables",
-    ]);
+    expect([...groups.keys()].toSorted()).toEqual(["main_units_tables", "unusedtables\\main_units_tables"]);
     expect([...(groups.get("main_units_tables") ?? [])]).toEqual(["pj_my_table"]);
     expect([...(groups.get("unusedtables\\main_units_tables") ?? [])]).toEqual(["pj_my_tablex"]);
   });

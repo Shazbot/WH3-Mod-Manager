@@ -2,11 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  clearUnitViewerMemoryCache,
-  loadUnitViewerDiskCache,
-  saveUnitViewerDiskCache,
-} from "../src/unitViewer/cache";
+import { clearUnitViewerMemoryCache, loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "../src/unitViewer/cache";
 import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
 
 vi.mock("@mongodb-js/zstd", () => ({

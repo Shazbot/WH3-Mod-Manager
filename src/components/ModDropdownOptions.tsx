@@ -85,7 +85,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
       }
       window.open(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
     },
-    [allMods]
+    [allMods],
   );
 
   const onOpenInSteam = useCallback(
@@ -98,7 +98,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
       }
       window.api?.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
     },
-    [allMods]
+    [allMods],
   );
 
   const updateMod = useCallback(
@@ -108,14 +108,14 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
 
       window.api?.updateMod(mod, contentMod);
     },
-    [allMods]
+    [allMods],
   );
   const uploadMod = useCallback(
     (mod: Mod) => {
       dispatch(setCurrentModToUpload(mod));
       dispatch(setIsModTagPickerOpen(true));
     },
-    [allMods]
+    [allMods],
   );
   const fakeUpdatePack = useCallback(
     (mod: Mod) => {
@@ -126,7 +126,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
 
       window.api?.fakeUpdatePack(mod);
     },
-    [allMods]
+    [allMods],
   );
   const forceModDownload = useCallback(
     (mod: Mod) => {
@@ -137,7 +137,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
 
       window.api?.forceModDownload(modToDownload);
     },
-    [allMods]
+    [allMods],
   );
   const forceResubscribe = useCallback(
     (mod: Mod) => {
@@ -148,7 +148,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
 
       window.api?.forceResubscribeMods([workshopMod]);
     },
-    [allMods]
+    [allMods],
   );
   const reMerge = (mod: Mod) => {
     if (!mod) return;
@@ -167,15 +167,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
           <RenameModal show={isRenameModalOpen} onClose={() => setIsRenameModalOpen(false)} mod={props.mod} />
         )}
 
-        <Modal
-          onClose={() => setIsDeleteConfirmOpen(false)}
-          show={isDeleteConfirmOpen}
-          size="md"
-          position="center"
-        >
-          <Modal.Header>
-            {localized.deleteMod || "Delete Mod"}
-          </Modal.Header>
+        <Modal onClose={() => setIsDeleteConfirmOpen(false)} show={isDeleteConfirmOpen} size="md" position="center">
+          <Modal.Header>{localized.deleteMod || "Delete Mod"}</Modal.Header>
           <Modal.Body>
             <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
               {localized.deleteModConfirmMessage || "Are you sure you want to delete this mod from the data folder?"}
@@ -224,9 +217,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                           onGoToWorkshopPageClick(props.mod);
                         }
                       }}
-                      className={
-                        "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      }
+                      className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
                     >
                       <span className="flex items-center gap-2">
                         <FaExternalLinkAlt className="w-5 h-5"></FaExternalLinkAlt>
@@ -242,9 +233,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                           onOpenInSteam(props.mod);
                         }
                       }}
-                      className={
-                        "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      }
+                      className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
                     >
                       <span className="flex items-center gap-2">
                         <FaSteam className="w-5 h-5"></FaSteam>
@@ -465,7 +454,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </Tooltip>
               </a>
             </li>
-            {(!!props.mod && isWorkshopMod(props.mod) ||
+            {((!!props.mod && isWorkshopMod(props.mod)) ||
               allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == props.mod?.name)) && (
               <li>
                 <a
@@ -488,7 +477,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {(!!props.mod && isWorkshopMod(props.mod) ||
+            {((!!props.mod && isWorkshopMod(props.mod)) ||
               allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == props.mod?.name)) && (
               <li>
                 <a
@@ -516,7 +505,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {(!!props.mod && isWorkshopMod(props.mod) ||
+            {((!!props.mod && isWorkshopMod(props.mod)) ||
               allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == props.mod?.name)) && (
               <li>
                 <a
@@ -569,7 +558,11 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this mod from the data folder"}</div>}
+                    content={
+                      <div className="min-w-[10rem]">
+                        {localized.deleteModTooltip || "Delete this mod from the data folder"}
+                      </div>
+                    }
                     style="light"
                   >
                     <span className="flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -591,7 +584,9 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this merged mod"}</div>}
+                    content={
+                      <div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this merged mod"}</div>
+                    }
                     style="light"
                   >
                     <span className="flex items-center gap-2 text-red-600 dark:text-red-400">

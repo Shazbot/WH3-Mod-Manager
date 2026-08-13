@@ -39,10 +39,7 @@ const dbVersion = (version: number, fields: DBField[]): DBVersion => ({ version,
 /** Reads the metadata back out of a built file, as the reader does. */
 const readMeta = (bytes: Uint8Array): { meta: VanillaDbCacheMeta; payloadStart: number } => {
   const header = decodeVanillaDbCacheHeader(bytes)!;
-  const block = bytes.subarray(
-    VANILLA_DB_CACHE_HEADER_BYTES,
-    VANILLA_DB_CACHE_HEADER_BYTES + header.metaJsonLength,
-  );
+  const block = bytes.subarray(VANILLA_DB_CACHE_HEADER_BYTES, VANILLA_DB_CACHE_HEADER_BYTES + header.metaJsonLength);
   const meta = decodeVanillaDbCacheMetaBlock(block);
   if (!meta) throw new Error("expected the metadata to decode");
   return { meta, payloadStart: VANILLA_DB_CACHE_HEADER_BYTES + header.metaJsonLength };
@@ -195,9 +192,7 @@ describe("cache identity", () => {
   });
 
   it("rejects a moved pack, a patched game, a different game and a changed schema", () => {
-    expect(isVanillaDbCacheCurrent(meta, { ...identity, dbPackPath: "D:\\data\\db.pack" })).toBe(
-      false,
-    );
+    expect(isVanillaDbCacheCurrent(meta, { ...identity, dbPackPath: "D:\\data\\db.pack" })).toBe(false);
     expect(isVanillaDbCacheCurrent(meta, { ...identity, dbPackSize: 999 })).toBe(false);
     expect(isVanillaDbCacheCurrent(meta, { ...identity, dbPackMtimeMs: 999 })).toBe(false);
     expect(isVanillaDbCacheCurrent(meta, { ...identity, game: "wh2" })).toBe(false);
@@ -237,11 +232,7 @@ describe("cache builder", () => {
   ];
 
   const build = () =>
-    buildVanillaDbCache(
-      [packedFile("db\\main_units_tables\\data__", unitsRows, 3)],
-      () => unitsSchema,
-      identity,
-    );
+    buildVanillaDbCache([packedFile("db\\main_units_tables\\data__", unitsRows, 3)], () => unitsSchema, identity);
 
   it("produces a file whose header and metadata read back", () => {
     const { bytes } = build();
@@ -260,12 +251,7 @@ describe("cache builder", () => {
   it("records a column per schema field, in schema order", () => {
     const { meta } = readMeta(build().bytes);
 
-    expect(meta.tables[0].columns.map((column) => column.name)).toEqual([
-      "key",
-      "cost",
-      "is_naval",
-      "description",
-    ]);
+    expect(meta.tables[0].columns.map((column) => column.name)).toEqual(["key", "cost", "is_naval", "description"]);
     expect(meta.tables[0].columns.map((column) => column.fieldType)).toEqual([
       "StringU8",
       "I32",
@@ -322,12 +308,10 @@ describe("cache builder", () => {
     expect(Array.from(decodeNumericColumn(slice(isNaval.offset, isNaval.length)))).toEqual([0, 1]);
     // Pool ranks: "" 0, "axe" 1, "pike" 2, "spear" 3.
     expect(Array.from(decodeDictionaryColumn(slice(key.offset, key.length)))).toEqual([3, 1]);
-    expect(Array.from(decodeDictionaryColumn(slice(description.offset, description.length)))).toEqual([
-      2, 0,
+    expect(Array.from(decodeDictionaryColumn(slice(description.offset, description.length)))).toEqual([2, 0]);
+    expect(Array.from(decodeNumericColumn(slice(description.presentOffset!, description.presentLength!)))).toEqual([
+      1, 0,
     ]);
-    expect(
-      Array.from(decodeNumericColumn(slice(description.presentOffset!, description.presentLength!))),
-    ).toEqual([1, 0]);
   });
 
   it("skips a table with no schema rather than storing it wrong", () => {
@@ -338,9 +322,7 @@ describe("cache builder", () => {
     );
 
     expect(result.meta.tables).toEqual([]);
-    expect(result.skipped).toEqual([
-      { packedFilePath: "db\\unknown_tables\\data__", reason: "no schema" },
-    ]);
+    expect(result.skipped).toEqual([{ packedFilePath: "db\\unknown_tables\\data__", reason: "no schema" }]);
   });
 
   it("skips a packed file that was never parsed", () => {
@@ -364,10 +346,7 @@ describe("cache builder", () => {
     const otherRows = [cell("StringU16", [{ type: "String", val: "spear" }])];
 
     const { bytes } = buildVanillaDbCache(
-      [
-        packedFile("db\\main_units_tables\\data__", unitsRows, 3),
-        packedFile("db\\other_tables\\data__", otherRows, 1),
-      ],
+      [packedFile("db\\main_units_tables\\data__", unitsRows, 3), packedFile("db\\other_tables\\data__", otherRows, 1)],
       (file) => (file.name.includes("other") ? otherSchema : unitsSchema),
       identity,
     );

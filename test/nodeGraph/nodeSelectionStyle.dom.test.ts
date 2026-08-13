@@ -28,9 +28,7 @@ describe("flow editor node selection style", () => {
 
   it("shows when a node is armed as the quick-connect source", () => {
     const css = readFileSync(path.resolve(process.cwd(), "src/index.css"), "utf8");
-    const quickConnectRule = css.match(
-      /\.node-editor-flow \.react-flow__node\.quick-connect-source\s*\{[^}]+\}/,
-    )?.[0];
+    const quickConnectRule = css.match(/\.node-editor-flow \.react-flow__node\.quick-connect-source\s*\{[^}]+\}/)?.[0];
     expect(quickConnectRule).toBeDefined();
 
     const styleElement = document.createElement("style");

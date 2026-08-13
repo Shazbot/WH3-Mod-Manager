@@ -47,10 +47,7 @@ describe("Remove Pack Source node", () => {
     });
 
     expect(result.success).toBe(true);
-    expect((result.data as PackFilesNodeData).files.map((file) => file.name)).toEqual([
-      "first.pack",
-      "missing.pack",
-    ]);
+    expect((result.data as PackFilesNodeData).files.map((file) => file.name)).toEqual(["first.pack", "missing.pack"]);
     expect(result.data).toMatchObject({ count: 2, loadedCount: 1 });
   });
 

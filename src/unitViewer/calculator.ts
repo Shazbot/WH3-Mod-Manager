@@ -14,11 +14,8 @@ const UNIT_SIZE_SCALAR = { small: 0.25, medium: 0.5, large: 0.75, ultra: 1 } as 
 const roundTwo = (value: number) => Math.round(value * 100) / 100;
 const normalizeCaste = (value: string) => value.toLowerCase().replace(/[ _-]/g, "");
 
-const getFatigueMultiplier = (
-  constants: UnitViewerConstants,
-  fatigue: UnitViewerFatigue,
-  stat: string,
-) => constants.fatigueEffects[fatigue]?.[stat] ?? 1;
+const getFatigueMultiplier = (constants: UnitViewerConstants, fatigue: UnitViewerFatigue, stat: string) =>
+  constants.fatigueEffects[fatigue]?.[stat] ?? 1;
 
 const getRankedStat = (
   unit: UnitViewerUnitModel,
@@ -42,9 +39,7 @@ const getEntityCount = (unit: UnitViewerUnitModel, scalar: number) => {
   let count = unit.numMen;
   if (unit.engineEntity) count = unit.numEngines;
   else if (unit.mountEntity) {
-    count = ["meleecavalry", "missilecavalry", "warbeast"].includes(caste)
-      ? unit.numMen
-      : unit.numMounts;
+    count = ["meleecavalry", "missilecavalry", "warbeast"].includes(caste) ? unit.numMen : unit.numMounts;
   }
   return Math.max(1, Math.ceil(count * scalar));
 };
@@ -117,9 +112,7 @@ const calculateMissile = (
       getSizeScale(constants, context, "scalar_missile_explosion_damage_ap", isSingleEntity),
   );
   const rankedReload = getRankedStat(unit, constants, context.rank, "stat_reloading", unit.reload);
-  const reloadBonus = Math.round(
-    rankedReload * getFatigueMultiplier(constants, context.fatigue, "stat_reloading"),
-  );
+  const reloadBonus = Math.round(rankedReload * getFatigueMultiplier(constants, context.fatigue, "stat_reloading"));
   const reloadTime = Math.max(0.01, projectile.baseReloadTime * (1 - reloadBonus / 100));
   const ammoPool = weapon.useSecondaryAmmoPool ? unit.secondaryAmmo : unit.primaryAmmo;
   const shotsPerVolley = projectile.shotsPerVolley || 1;
@@ -171,9 +164,7 @@ export const calculateUnitViewerStats = (
   const multiplayerCost =
     caste === "lord" || caste === "hero" || unit.isRenown || !rankBonus
       ? unit.multiplayerCost
-      : Math.round(
-          unit.multiplayerCost * rankBonus.multiplayerCostMultiplier + rankBonus.multiplayerFixedCost,
-        );
+      : Math.round(unit.multiplayerCost * rankBonus.multiplayerCostMultiplier + rankBonus.multiplayerFixedCost);
   const fatigueMorale = constants.fatigueMorale[context.fatigue] || 0;
 
   return {
@@ -195,9 +186,7 @@ export const calculateUnitViewerStats = (
     chargeSpeed: Math.round(
       10 * activeEntity.chargeSpeed * getFatigueMultiplier(constants, context.fatigue, "scalar_speed"),
     ),
-    meleeAttack: Math.round(
-      rankedMeleeAttack * getFatigueMultiplier(constants, context.fatigue, "stat_melee_attack"),
-    ),
+    meleeAttack: Math.round(rankedMeleeAttack * getFatigueMultiplier(constants, context.fatigue, "stat_melee_attack")),
     meleeDefence: Math.round(
       rankedMeleeDefence * getFatigueMultiplier(constants, context.fatigue, "stat_melee_defence"),
     ),
@@ -206,25 +195,11 @@ export const calculateUnitViewerStats = (
     apDamage,
     bonusVsLarge: unit.meleeWeapon.bonusVsLarge,
     bonusVsInfantry: unit.meleeWeapon.bonusVsInfantry,
-    chargeBonus: Math.round(
-      unit.chargeBonus * getFatigueMultiplier(constants, context.fatigue, "stat_charge_bonus"),
-    ),
+    chargeBonus: Math.round(unit.chargeBonus * getFatigueMultiplier(constants, context.fatigue, "stat_charge_bonus")),
     attackInterval: unit.meleeWeapon.attackInterval,
     mass: Math.round(activeEntity.mass),
     fatigueModifier: rankBonus?.fatigueModifier || 0,
-    primaryMissile: calculateMissile(
-      unit.primaryMissileWeapon,
-      unit,
-      constants,
-      context,
-      entityCount,
-    ),
-    secondaryMissile: calculateMissile(
-      unit.secondaryMissileWeapon,
-      unit,
-      constants,
-      context,
-      entityCount,
-    ),
+    primaryMissile: calculateMissile(unit.primaryMissileWeapon, unit, constants, context, entityCount),
+    secondaryMissile: calculateMissile(unit.secondaryMissileWeapon, unit, constants, context, entityCount),
   };
 };

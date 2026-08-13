@@ -7,9 +7,7 @@ import { VanillaDbCacheBuildProgressCard } from "../../src/components/VanillaDbC
 
 describe("vanilla DB cache build progress", () => {
   const originalApi = window.api;
-  let listener:
-    | ((event: Electron.IpcRendererEvent, progress: VanillaDbCacheBuildProgress) => void)
-    | undefined;
+  let listener: ((event: Electron.IpcRendererEvent, progress: VanillaDbCacheBuildProgress) => void) | undefined;
   const unsubscribe = vi.fn();
 
   beforeEach(() => {
@@ -109,9 +107,7 @@ describe("vanilla DB cache build progress", () => {
       percent: 0,
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "File index unavailable; reading packs directly",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("File index unavailable; reading packs directly");
   });
 
   it("lets a pack index build take the card from a finished database build", () => {

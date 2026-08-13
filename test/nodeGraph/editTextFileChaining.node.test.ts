@@ -67,12 +67,8 @@ describe("chained Edit Text File nodes", () => {
     expect(second.success).toBe(true);
     const tables = (second.data as DBTablesNodeData).tables;
     expect(tables).toHaveLength(2);
-    expect(tables.find((table) => table.name.endsWith("one.lua"))?.table.buffer?.toString("utf8")).toBe(
-      "three",
-    );
-    expect(tables.find((table) => table.name.endsWith("untouched.lua"))?.table.buffer?.toString("utf8")).toBe(
-      "keep",
-    );
+    expect(tables.find((table) => table.name.endsWith("one.lua"))?.table.buffer?.toString("utf8")).toBe("three");
+    expect(tables.find((table) => table.name.endsWith("untouched.lua"))?.table.buffer?.toString("utf8")).toBe("keep");
   });
 
   it("passes guarded and rule-free previous output through unchanged", async () => {
@@ -99,15 +95,13 @@ describe("chained Edit Text File nodes", () => {
 
     expect(noRules.success).toBe(true);
     expect((noRules.data as DBTablesNodeData).tables).toHaveLength(1);
-    expect((noRules.data as DBTablesNodeData).tables[0].table.buffer?.toString("utf8")).toBe(
-      "already edited",
-    );
+    expect((noRules.data as DBTablesNodeData).tables[0].table.buffer?.toString("utf8")).toBe("already edited");
   });
 
   it("formats chained XML after applying its rules", async () => {
     const input: DBTablesNodeData = {
       type: "TableSelection",
-      tables: [textTable("unit.variantmeshdefinition", "<ROOT>\n  <MESH old=\"1\"/>\n</ROOT>")],
+      tables: [textTable("unit.variantmeshdefinition", '<ROOT>\n  <MESH old="1"/>\n</ROOT>')],
       sourceFiles: [],
       tableCount: 1,
     };

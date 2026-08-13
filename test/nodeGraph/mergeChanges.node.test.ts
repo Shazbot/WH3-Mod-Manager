@@ -32,10 +32,7 @@ const createRow = (id: number, firstValue: number, secondValue: number): Amended
   createCell("second_value", secondValue),
 ];
 
-const createChangedInput = (
-  selectedColumn: string,
-  rows: AmendedSchemaField[][],
-): DBNumericAdjustmentNodeData => {
+const createChangedInput = (selectedColumn: string, rows: AmendedSchemaField[][]): DBNumericAdjustmentNodeData => {
   const sourceTable = {
     name: "db\\example_tables\\data__",
     schemaFields: rows.flat(),
@@ -67,10 +64,7 @@ const createChangedInput = (
 describe("Merge Changes node", () => {
   it("retains rows missing from a filtered branch and merges changes by row key", async () => {
     const filteredInput = createChangedInput("first_value", [createRow(2, 200, 20)]);
-    const completeInput = createChangedInput("second_value", [
-      createRow(1, 100, 110),
-      createRow(2, 20, 220),
-    ]);
+    const completeInput = createChangedInput("second_value", [createRow(1, 100, 110), createRow(2, 20, 220)]);
 
     const result = await executeNodeAction({
       nodeId: "merge_changes_1",
@@ -83,9 +77,7 @@ describe("Merge Changes node", () => {
     const mergedResult = result.data as DBNumericAdjustmentNodeData;
     const mergedFields = mergedResult.adjustedInputData.columns[0].sourceTable.schemaFields ?? [];
     const mergedRows = [mergedFields.slice(0, 3), mergedFields.slice(3, 6)] as AmendedSchemaField[][];
-    const rowsById = new Map(
-      mergedRows.map((row) => [row.find((cell) => cell.name === "id")?.resolvedKeyValue, row]),
-    );
+    const rowsById = new Map(mergedRows.map((row) => [row.find((cell) => cell.name === "id")?.resolvedKeyValue, row]));
 
     expect(rowsById.size).toBe(2);
     expect(rowsById.get("1")?.find((cell) => cell.name === "second_value")?.resolvedKeyValue).toBe("110");

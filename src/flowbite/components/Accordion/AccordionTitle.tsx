@@ -11,11 +11,7 @@ export interface AccordionTitleProps extends ComponentProps<"button"> {
   as?: FlowbiteHeadingLevel;
 }
 
-export const AccordionTitle: FC<AccordionTitleProps> = ({
-  as: Heading = "h2",
-  children,
-  ...props
-}): JSX.Element => {
+export const AccordionTitle: FC<AccordionTitleProps> = ({ as: Heading = "h2", children, ...props }): JSX.Element => {
   const theirProps = excludeClassName(props);
 
   const { arrowIcon: ArrowIcon, flush, isOpen, setOpen } = useAccordionContext();

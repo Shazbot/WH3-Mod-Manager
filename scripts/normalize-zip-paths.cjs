@@ -44,12 +44,7 @@ async function writeExactly(file, buffer, position) {
   let offset = 0;
 
   while (offset < buffer.length) {
-    const { bytesWritten } = await file.write(
-      buffer,
-      offset,
-      buffer.length - offset,
-      position + offset,
-    );
+    const { bytesWritten } = await file.write(buffer, offset, buffer.length - offset, position + offset);
     if (bytesWritten === 0) {
       throw new Error(`Could not write ZIP at byte ${position + offset}`);
     }
@@ -97,15 +92,9 @@ async function collectPatches(zipPath) {
       });
       zipFile.on("entry", (entry) => {
         void (async () => {
-          const variableCentralSize =
-            entry.fileNameLength + entry.extraFieldLength + entry.fileCommentLength;
-          const centralHeaderOffset =
-            zipFile.readEntryCursor - FIXED_CENTRAL_HEADER_SIZE - variableCentralSize;
-          const centralHeader = await readExactly(
-            source,
-            FIXED_CENTRAL_HEADER_SIZE,
-            centralHeaderOffset,
-          );
+          const variableCentralSize = entry.fileNameLength + entry.extraFieldLength + entry.fileCommentLength;
+          const centralHeaderOffset = zipFile.readEntryCursor - FIXED_CENTRAL_HEADER_SIZE - variableCentralSize;
+          const centralHeader = await readExactly(source, FIXED_CENTRAL_HEADER_SIZE, centralHeaderOffset);
 
           if (centralHeader.readUInt32LE(0) !== CENTRAL_FILE_HEADER_SIGNATURE) {
             throw new Error(`Invalid central ZIP header at byte ${centralHeaderOffset}`);
@@ -183,9 +172,7 @@ async function normalizeMadeZipPaths(_forgeConfig, makeResults) {
   for (const zipPath of zipPaths) {
     const changedEntries = await normalizeZipEntryPaths(zipPath);
     if (changedEntries > 0) {
-      console.log(
-        `Normalized path separators in ${changedEntries} ZIP entries: ${zipPath}`,
-      );
+      console.log(`Normalized path separators in ${changedEntries} ZIP entries: ${zipPath}`);
     }
   }
 

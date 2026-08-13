@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getMissingSharedWorkshopIds,
-  parseSharedModList,
-  serializeSharedModList,
-} from "../src/sharedModList";
+import { getMissingSharedWorkshopIds, parseSharedModList, serializeSharedModList } from "../src/sharedModList";
 
 const createMod = (overrides: Partial<Mod>): Mod => ({
   name: "example.pack",
@@ -67,16 +63,12 @@ describe("shared mod lists", () => {
     const sharedList = serializeSharedModList([dataCopy], [dataCopy, workshopCopy]);
 
     expect(sharedList).toBe("local:shared.pack:987654;0");
-    expect(parseSharedModList(sharedList)).toEqual([
-      { workshopId: "987654", modName: "shared.pack", loadOrder: 0 },
-    ]);
+    expect(parseSharedModList(sharedList)).toEqual([{ workshopId: "987654", modName: "shared.pack", loadOrder: 0 }]);
   });
 
   it("still requests the Workshop fallback when only the local copy is installed", () => {
     const localCopy = createMod({ name: "shared.pack" });
-    const sharedMods = [
-      { workshopId: "987654", modName: localCopy.name, loadOrder: 0 },
-    ];
+    const sharedMods = [{ workshopId: "987654", modName: localCopy.name, loadOrder: 0 }];
 
     expect(getMissingSharedWorkshopIds(sharedMods, [localCopy])).toEqual(["987654"]);
 

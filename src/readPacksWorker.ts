@@ -1,14 +1,6 @@
 // FOR MULTITHREADED READING OF FILES, CURRENTLY NOT USED
 
-import {
-  SCHEMA_FIELD_TYPE,
-  Field,
-  DBVersion,
-  Pack,
-  PackedFile,
-  SchemaField,
-  PackHeader,
-} from "./packFileTypes";
+import { SCHEMA_FIELD_TYPE, Field, DBVersion, Pack, PackedFile, SchemaField, PackHeader } from "./packFileTypes";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { DBNameToDBVersions } = require("./schema") as { DBNameToDBVersions: Record<string, DBVersion[]> };
 
@@ -26,7 +18,7 @@ function parseTypeBuffer(
   buffer: Buffer,
   pos: number,
   type: SCHEMA_FIELD_TYPE,
-  existingFields?: Field[]
+  existingFields?: Field[],
 ): [Field[], number] {
   const fields: Field[] = existingFields || [];
   switch (type) {
@@ -289,16 +281,15 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
 
     const startPos = dbPackFiles.reduce(
       (previous, current) => (previous < current.start_pos ? previous : current.start_pos),
-      Number.MAX_SAFE_INTEGER
+      Number.MAX_SAFE_INTEGER,
     );
 
     const startOfLastPack = dbPackFiles.reduce(
       (previous, current) => (previous > current.start_pos ? previous : current.start_pos),
-      -1
+      -1,
     );
     const endPos =
-      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
-      startOfLastPack;
+      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) + startOfLastPack;
     // console.log("endPos is ", endPos);
 
     const buffer = await file.read(endPos - startPos, startPos);

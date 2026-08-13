@@ -57,8 +57,7 @@ describe("vanilla pack index", () => {
   });
 
   it("matches a target written with forward slashes or in mixed case", () => {
-    const forwardSlashes =
-      "variantmeshes/variantmeshdefinitions/emp_state_troops_shields_set1.variantmeshdefinition";
+    const forwardSlashes = "variantmeshes/variantmeshdefinitions/emp_state_troops_shields_set1.variantmeshdefinition";
     expect(findVanillaPackContaining(index, forwardSlashes)).toBe("variants.pack");
     expect(findVanillaPackContaining(index, forwardSlashes.toUpperCase())).toBe("variants.pack");
   });
@@ -80,9 +79,7 @@ describe("vanilla pack index", () => {
       "variantmeshes\\variantmeshdefinitions\\emp_state_troops_shields_set1.variantmeshdefinition",
       "variantmeshes\\variantmeshdefinitions\\shared.variantmeshdefinition",
     ]);
-    expect(found.get("variantmeshes\\variantmeshdefinitions\\shared.variantmeshdefinition")).toBe(
-      "variants_bl.pack",
-    );
+    expect(found.get("variantmeshes\\variantmeshdefinitions\\shared.variantmeshdefinition")).toBe("variants_bl.pack");
     // The sibling folder under variantmeshes\ must not be swept in by the prefix.
     expect(found.has("variantmeshes\\wh_variantmodels\\hu1\\emp\\emp_props\\shield.wsmodel")).toBe(false);
   });
@@ -90,10 +87,7 @@ describe("vanilla pack index", () => {
   it("names the packs that win a file under a folder, in load order", () => {
     // data.pack has a file under variantmeshes\ but variants_bl.pack overrides it, so reading
     // data.pack for that folder would only produce a copy the game never loads.
-    expect(findVanillaPacksUnderPrefix(index, "variantmeshes\\")).toEqual([
-      "variants.pack",
-      "variants_bl.pack",
-    ]);
+    expect(findVanillaPacksUnderPrefix(index, "variantmeshes\\")).toEqual(["variants.pack", "variants_bl.pack"]);
     expect(findVanillaPacksUnderPrefix(index, "script\\")).toEqual(["data.pack"]);
     expect(findVanillaPacksUnderPrefix(index, "ui\\")).toEqual([]);
   });

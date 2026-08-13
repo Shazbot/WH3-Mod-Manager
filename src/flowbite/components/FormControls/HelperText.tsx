@@ -5,8 +5,7 @@ import { excludeClassName } from "../../helpers/exclude";
 import type { FlowbiteColors } from "../Flowbite/FlowbiteTheme";
 import { useTheme } from "../Flowbite/ThemeContext";
 
-export interface HelperColors
-  extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
+export interface HelperColors extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
   [key: string]: string;
 }
 

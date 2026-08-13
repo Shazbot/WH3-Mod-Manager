@@ -29,8 +29,7 @@ describe("cache candidate open policy", () => {
       },
       openReader: () => resource(),
       isCurrent: () => true,
-      isMissingError: (candidate: unknown) =>
-        (candidate as NodeJS.ErrnoException).code === "ENOENT",
+      isMissingError: (candidate: unknown) => (candidate as NodeJS.ErrnoException).code === "ENOENT",
     });
 
     expect(openCacheCandidate(options(missing))).toEqual({ kind: "missing" });

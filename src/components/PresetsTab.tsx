@@ -100,9 +100,7 @@ const PresetsTab = memo(() => {
   const presets = useAppSelector((state) => state.app.presets);
   const allMods = useAppSelector((state) => state.app.allMods);
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
-  const storedModUserData = useAppSelector(
-    (state) => state.app.dataFromConfig?.modUserData ?? noStoredModUserData,
-  );
+  const storedModUserData = useAppSelector((state) => state.app.dataFromConfig?.modUserData ?? noStoredModUserData);
   const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const categories = useAppSelector((state) => state.app.categories);
   const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
@@ -140,9 +138,7 @@ const PresetsTab = memo(() => {
       (iterMod) =>
         iterMod.isInData &&
         !iterMod.isInModding &&
-        mods.some(
-          (secondMod) => secondMod.isInModding && secondMod !== iterMod && secondMod.name === iterMod.name,
-        ),
+        mods.some((secondMod) => secondMod.isInModding && secondMod !== iterMod && secondMod.name === iterMod.name),
     );
     return mods.filter((mod) => !dataModsThatAreInModding.includes(mod));
   }, [currentPresetMods]);
@@ -187,18 +183,13 @@ const PresetsTab = memo(() => {
       const existingMod = modsByName.get(mod.name);
       if (!existingMod) continue;
       const mergedReqsById = new Map<string, [string, string]>();
-      (existingMod.reqModIdToName ?? []).forEach(([reqId, reqName]) =>
-        mergedReqsById.set(reqId, [reqId, reqName]),
-      );
+      (existingMod.reqModIdToName ?? []).forEach(([reqId, reqName]) => mergedReqsById.set(reqId, [reqId, reqName]));
       (mod.reqModIdToName ?? []).forEach(([reqId, reqName]) => mergedReqsById.set(reqId, [reqId, reqName]));
 
       modsByName.set(mod.name, {
         ...existingMod,
         humanName:
-          getMeaningfulHumanName(existingMod) ??
-          getMeaningfulHumanName(mod) ??
-          existingMod.humanName ??
-          mod.humanName,
+          getMeaningfulHumanName(existingMod) ?? getMeaningfulHumanName(mod) ?? existingMod.humanName ?? mod.humanName,
         reqModIdToName: [...mergedReqsById.values()],
       });
     }
@@ -211,9 +202,7 @@ const PresetsTab = memo(() => {
   );
   const getCustomFolderPath = useCallback(
     (mod: Mod) =>
-      getModSourceKind(mod) === "custom"
-        ? customFolderPathBySourceId.get(getModSourceId(mod))
-        : undefined,
+      getModSourceKind(mod) === "custom" ? customFolderPathBySourceId.get(getModSourceId(mod)) : undefined,
     [customFolderPathBySourceId],
   );
 
@@ -228,18 +217,13 @@ const PresetsTab = memo(() => {
       }
 
       const mergedReqsById = new Map<string, [string, string]>();
-      (existingMod.reqModIdToName ?? []).forEach(([reqId, reqName]) =>
-        mergedReqsById.set(reqId, [reqId, reqName]),
-      );
+      (existingMod.reqModIdToName ?? []).forEach(([reqId, reqName]) => mergedReqsById.set(reqId, [reqId, reqName]));
       (mod.reqModIdToName ?? []).forEach(([reqId, reqName]) => mergedReqsById.set(reqId, [reqId, reqName]));
 
       modsByName.set(mod.name, {
         ...existingMod,
         humanName:
-          getMeaningfulHumanName(existingMod) ??
-          getMeaningfulHumanName(mod) ??
-          existingMod.humanName ??
-          mod.humanName,
+          getMeaningfulHumanName(existingMod) ?? getMeaningfulHumanName(mod) ?? existingMod.humanName ?? mod.humanName,
         workshopId: existingMod.workshopId || mod.workshopId,
         reqModIdToName: [...mergedReqsById.values()],
       });
@@ -259,19 +243,14 @@ const PresetsTab = memo(() => {
     currentPresetMods.forEach((mod) => {
       if (!mod.reqModIdToName || mod.reqModIdToName.length < 1) return;
       const mergedReqsById = new Map<string, [string, string]>();
-      (reqsByName.get(mod.name) ?? []).forEach(([reqId, reqName]) =>
-        mergedReqsById.set(reqId, [reqId, reqName]),
-      );
+      (reqsByName.get(mod.name) ?? []).forEach(([reqId, reqName]) => mergedReqsById.set(reqId, [reqId, reqName]));
       mod.reqModIdToName.forEach(([reqId, reqName]) => mergedReqsById.set(reqId, [reqId, reqName]));
       reqsByName.set(mod.name, [...mergedReqsById.values()]);
     });
     return reqsByName;
   }, [currentPresetMods]);
 
-  const computeEnabledPresetMods = useCallback(
-    (preset: SavedPreset) => preset.mods.filter(isPresetModEnabled),
-    [],
-  );
+  const computeEnabledPresetMods = useCallback((preset: SavedPreset) => preset.mods.filter(isPresetModEnabled), []);
 
   const loadPresetDraft = useCallback(
     (presetName: string) => {
@@ -303,9 +282,7 @@ const PresetsTab = memo(() => {
   );
 
   const loadCurrentEnabledDraft = useCallback(() => {
-    const enabledCurrentMods = currentPresetMods.filter(
-      (mod) => mod.isEnabled || alwaysEnabledNames.has(mod.name),
-    );
+    const enabledCurrentMods = currentPresetMods.filter((mod) => mod.isEnabled || alwaysEnabledNames.has(mod.name));
     const nextEnabledNames = new Set<string>(enabledCurrentMods.map((mod) => mod.name));
     alwaysEnabledNames.forEach((name) => nextEnabledNames.add(name));
 
@@ -357,8 +334,7 @@ const PresetsTab = memo(() => {
   const enabledDraftMods = useMemo(() => {
     const mods: Mod[] = [];
     effectiveEnabledNames.forEach((name) => {
-      const sourceMod =
-        knownModsByName.get(name) ?? createPlaceholderMod(name, storedModUserData[name]);
+      const sourceMod = knownModsByName.get(name) ?? createPlaceholderMod(name, storedModUserData[name]);
       mods.push({
         ...sourceMod,
         isEnabled: true,
@@ -378,24 +354,15 @@ const PresetsTab = memo(() => {
     let mods = enabledDraftMods;
     if (inPresetCategoryFilter) {
       mods = mods.filter(
-        (mod) =>
-          recentlyAddedModNames.has(mod.name) || mod.categories?.includes(inPresetCategoryFilter),
+        (mod) => recentlyAddedModNames.has(mod.name) || mod.categories?.includes(inPresetCategoryFilter),
       );
     }
     if (!searchInPreset.trim()) return mods;
     const query = searchInPreset.trim().toLowerCase();
     return mods.filter(
-      (mod) =>
-        recentlyAddedModNames.has(mod.name) ||
-        `${mod.humanName} ${mod.name}`.toLowerCase().includes(query),
+      (mod) => recentlyAddedModNames.has(mod.name) || `${mod.humanName} ${mod.name}`.toLowerCase().includes(query),
     );
-  }, [
-    enabledDraftMods,
-    inPresetCategoryFilter,
-    placeMode,
-    recentlyAddedModNames,
-    searchInPreset,
-  ]);
+  }, [enabledDraftMods, inPresetCategoryFilter, placeMode, recentlyAddedModNames, searchInPreset]);
 
   const visibleNotInPresetMods = useMemo(() => {
     let mods = notInPresetInstalledMods;
@@ -565,13 +532,9 @@ const PresetsTab = memo(() => {
   );
 
   useEffect(() => {
-    const firstAddedVisibleMod = visibleEnabledDraftMods.find((mod) =>
-      recentlyAddedModNames.has(mod.name),
-    );
+    const firstAddedVisibleMod = visibleEnabledDraftMods.find((mod) => recentlyAddedModNames.has(mod.name));
     if (!firstAddedVisibleMod) return;
-    inPresetRowRefs.current
-      .get(firstAddedVisibleMod.name)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    inPresetRowRefs.current.get(firstAddedVisibleMod.name)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [recentlyAddedModNames, visibleEnabledDraftMods]);
 
   const addModNamesToPreset = useCallback(
@@ -637,11 +600,7 @@ const PresetsTab = memo(() => {
         );
       }
 
-      const boundedIndex = getLoadOrderInsertionIndex(
-        selectedIndex,
-        placeholderIndex,
-        workingMods.length,
-      );
+      const boundedIndex = getLoadOrderInsertionIndex(selectedIndex, placeholderIndex, workingMods.length);
       workingMods.splice(boundedIndex, 0, modToPlace);
 
       const nextLoadOrders = getSparseLoadOrderByModName(workingMods, placeModName);
@@ -653,14 +612,7 @@ const PresetsTab = memo(() => {
       setSelectedNotInPresetNames(new Set());
       if (placeMode.kind === "insert") highlightAddedModNames([placeModName]);
     },
-    [
-      draftEnabledNames,
-      draftLoadOrderByName,
-      enabledDraftMods,
-      highlightAddedModNames,
-      knownModsByName,
-      placeMode,
-    ],
+    [draftEnabledNames, draftLoadOrderByName, enabledDraftMods, highlightAddedModNames, knownModsByName, placeMode],
   );
 
   useEffect(() => {
@@ -1134,11 +1086,7 @@ const PresetsTab = memo(() => {
                     >
                       <BsArrowDownUp />
                     </button>
-                    <span
-                      className={
-                        "text-center " + (mod.loadOrder != null ? "text-blue-400 font-semibold" : "")
-                      }
-                    >
+                    <span className={"text-center " + (mod.loadOrder != null ? "text-blue-400 font-semibold" : "")}>
                       {(mod.loadOrder != null ? mod.loadOrder : visualOrder) + 1}
                     </span>
                     <button
@@ -1153,14 +1101,10 @@ const PresetsTab = memo(() => {
                     </button>
                     <div className="truncate cursor-pointer" title={mod.name}>
                       <span className={isMissing ? "text-amber-400" : ""}>{getModDisplayName(mod)}</span>
-                      {mod.isInData && (
-                        <span className="ml-1 text-orange-500 font-semibold opacity-80">D</span>
-                      )}
+                      {mod.isInData && <span className="ml-1 text-orange-500 font-semibold opacity-80">D</span>}
                       <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />
                       {isMissing && (
-                        <span className="ml-2 text-xs text-amber-400">
-                          {localized.missingModTag || "(missing)"}
-                        </span>
+                        <span className="ml-2 text-xs text-amber-400">{localized.missingModTag || "(missing)"}</span>
                       )}
                       {isAlwaysEnabled && (
                         <span className="ml-2 text-xs text-violet-300">
@@ -1212,9 +1156,7 @@ const PresetsTab = memo(() => {
                 id={`preset-placeholder-${visibleEnabledDraftMods.length}`}
                 className={
                   "drop-ghost h-8 cursor-pointer " +
-                  (activePlaceholderIndex === visibleEnabledDraftMods.length
-                    ? "bg-blue-700/40"
-                    : "opacity-70")
+                  (activePlaceholderIndex === visibleEnabledDraftMods.length ? "bg-blue-700/40" : "opacity-70")
                 }
                 onClick={() => applyPlacement(visibleEnabledDraftMods.length)}
               ></div>
@@ -1358,9 +1300,7 @@ const PresetsTab = memo(() => {
       {isDiscardConfirmOpen && (
         <div className="fixed inset-0 z-[500] bg-black/70 flex items-center justify-center">
           <div className="bg-slate-800 border border-slate-600 rounded p-4 min-w-[24rem]">
-            <div className="text-slate-100">
-              {localized.discardUnsavedChanges || "Discard unsaved changes?"}
-            </div>
+            <div className="text-slate-100">{localized.discardUnsavedChanges || "Discard unsaved changes?"}</div>
             <div className="mt-3 flex justify-end gap-2">
               <button
                 className="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600"
@@ -1371,10 +1311,7 @@ const PresetsTab = memo(() => {
               >
                 {localized.cancel || "Cancel"}
               </button>
-              <button
-                className="px-3 py-1 rounded bg-red-700 hover:bg-red-800"
-                onClick={() => applyDiscardAndSwitch()}
-              >
+              <button className="px-3 py-1 rounded bg-red-700 hover:bg-red-800" onClick={() => applyDiscardAndSwitch()}>
                 {localized.discard || "Discard"}
               </button>
             </div>
@@ -1395,10 +1332,7 @@ const PresetsTab = memo(() => {
               >
                 {localized.cancel || "Cancel"}
               </button>
-              <button
-                className="px-3 py-1 rounded bg-red-700 hover:bg-red-800"
-                onClick={() => onConfirmDeletePreset()}
-              >
+              <button className="px-3 py-1 rounded bg-red-700 hover:bg-red-800" onClick={() => onConfirmDeletePreset()}>
                 {localized.delete || "Delete"}
               </button>
             </div>
@@ -1410,9 +1344,7 @@ const PresetsTab = memo(() => {
         <div className="fixed inset-0 z-[500] bg-black/70 flex items-center justify-center">
           <div className="bg-slate-800 border border-slate-600 rounded p-4 min-w-[24rem]">
             <div className="text-slate-100">{localized.saveAs || "Save As"}</div>
-            <div className="mt-2 text-sm text-slate-300">
-              {localized.saveAsPresetPrompt || "Name for new preset:"}
-            </div>
+            <div className="mt-2 text-sm text-slate-300">{localized.saveAsPresetPrompt || "Name for new preset:"}</div>
             <input
               autoFocus
               value={saveAsName}

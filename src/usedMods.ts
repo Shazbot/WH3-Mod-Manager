@@ -47,10 +47,7 @@ const getLongestIncreasingSubsequenceIndices = (values: number[]): Set<number> =
   return indices;
 };
 
-export const getUsedModImport = (
-  usedModNames: string[],
-  availableModNames: Iterable<string>,
-): UsedModImport[] => {
+export const getUsedModImport = (usedModNames: string[], availableModNames: Iterable<string>): UsedModImport[] => {
   const availableNames = new Set(availableModNames);
   const seenNames = new Set<string>();
   const importedNames = usedModNames.filter((name) => {

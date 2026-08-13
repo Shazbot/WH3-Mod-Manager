@@ -239,41 +239,21 @@ describe("Categories", () => {
 
     await screen.findByLabelText("Toggle category Alpha");
 
-    expect(getRowOrder()).toEqual([
-      "vAlpha",
-      "Alpha ModAlpha",
-      "Beta ModAlpha",
-      "Gamma ModAlpha",
-    ]);
+    expect(getRowOrder()).toEqual(["vAlpha", "Alpha ModAlpha", "Beta ModAlpha", "Gamma ModAlpha"]);
 
     await user.click(screen.getByRole("button", { name: "Enabled" }));
     await waitFor(() => {
-      expect(getRowOrder()).toEqual([
-        "vAlpha",
-        "Beta ModAlpha",
-        "Alpha ModAlpha",
-        "Gamma ModAlpha",
-      ]);
+      expect(getRowOrder()).toEqual(["vAlpha", "Beta ModAlpha", "Alpha ModAlpha", "Gamma ModAlpha"]);
     });
 
     await user.click(screen.getByRole("button", { name: "Enabled ↓" }));
     await waitFor(() => {
-      expect(getRowOrder()).toEqual([
-        "vAlpha",
-        "Alpha ModAlpha",
-        "Gamma ModAlpha",
-        "Beta ModAlpha",
-      ]);
+      expect(getRowOrder()).toEqual(["vAlpha", "Alpha ModAlpha", "Gamma ModAlpha", "Beta ModAlpha"]);
     });
 
     await user.click(screen.getByRole("button", { name: "Enabled ↑" }));
     await waitFor(() => {
-      expect(getRowOrder()).toEqual([
-        "vAlpha",
-        "Alpha ModAlpha",
-        "Beta ModAlpha",
-        "Gamma ModAlpha",
-      ]);
+      expect(getRowOrder()).toEqual(["vAlpha", "Alpha ModAlpha", "Beta ModAlpha", "Gamma ModAlpha"]);
     });
   });
 });

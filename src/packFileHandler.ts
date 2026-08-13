@@ -24,10 +24,7 @@ export const packedFileIndexHasStartpos = (
   return false;
 };
 
-export const readPackHeader = async (
-  path: string,
-  hasCompressionFlag = true,
-): Promise<PackHeaderData> => {
+export const readPackHeader = async (path: string, hasCompressionFlag = true): Promise<PackHeaderData> => {
   let file: BinaryFile | undefined;
   let isMovie = false;
   let hasStartpos = false;
@@ -67,11 +64,7 @@ export const readPackHeader = async (
 
     if (packed_file_index_size > 0 && pack_file_count > 0) {
       const packedFileIndex = await file.read(packed_file_index_size);
-      hasStartpos = packedFileIndexHasStartpos(
-        packedFileIndex,
-        pack_file_count,
-        hasCompressionFlag,
-      );
+      hasStartpos = packedFileIndexHasStartpos(packedFileIndex, pack_file_count, hasCompressionFlag);
     }
   } catch (e) {
     console.log(e);

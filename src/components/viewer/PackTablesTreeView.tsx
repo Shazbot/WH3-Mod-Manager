@@ -29,14 +29,8 @@ type PackTablesTreeViewProps = {
   tableFilter: string;
   showDialog: ShowViewerDialog;
   onOpenDBTable: (selection: DBTableSelection, options?: { forceNewTab?: boolean }) => void;
-  onOpenFlowFile: (
-    selection: { flowFile: string; packPath: string },
-    options?: { forceNewTab?: boolean },
-  ) => void;
-  onOpenPackedFile: (
-    selection: { filePath: string; packPath: string },
-    options?: { forceNewTab?: boolean },
-  ) => void;
+  onOpenFlowFile: (selection: { flowFile: string; packPath: string }, options?: { forceNewTab?: boolean }) => void;
+  onOpenPackedFile: (selection: { filePath: string; packPath: string }, options?: { forceNewTab?: boolean }) => void;
 };
 
 type TreeData = { name: string; children?: TreeData[] };
@@ -220,7 +214,7 @@ const PackTablesTreeView = React.memo(
       },
     }));
 
-    const packPath = props.packPath || (gameToPackWithDBTablesName[currentGame] || "db.pack");
+    const packPath = props.packPath || gameToPackWithDBTablesName[currentGame] || "db.pack";
     const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
     const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
     const isVanillaPackOpen = packData ? vanillaPackNames.includes(packData.packName) : false;
@@ -257,9 +251,7 @@ const PackTablesTreeView = React.memo(
         ...unsavedFiles.toReversed().map((unsavedFile) => unsavedFile.name),
       ]);
 
-      for (const groupName of [...dbEntriesByName.keys()].toSorted((first, second) =>
-        first.localeCompare(second),
-      )) {
+      for (const groupName of [...dbEntriesByName.keys()].toSorted((first, second) => first.localeCompare(second))) {
         const subnames = dbEntriesByName.get(groupName);
         root.children?.push({
           name: groupName,
@@ -745,9 +737,7 @@ const PackTablesTreeView = React.memo(
             ? dbNameToDBVersions
             : dataFromBackend.DBNameToDBVersions;
 
-        const tableNames = Object.keys(resolvedTableVersions).toSorted((first, second) =>
-          first.localeCompare(second),
-        );
+        const tableNames = Object.keys(resolvedTableVersions).toSorted((first, second) => first.localeCompare(second));
         if (tableNames.length === 0) {
           props.showDialog("No vanilla DB tables are available for this game", { title: "No Tables" });
           return;
@@ -763,9 +753,7 @@ const PackTablesTreeView = React.memo(
       } catch (error) {
         console.error("Error loading vanilla DB table definitions:", error);
         props.showDialog(
-          `Failed to load vanilla DB table definitions: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`,
+          `Failed to load vanilla DB table definitions: ${error instanceof Error ? error.message : "Unknown error"}`,
           { title: "Error" },
         );
       } finally {
@@ -968,9 +956,7 @@ const PackTablesTreeView = React.memo(
                 pendingOpenTimeoutRef.current = null;
               }
 
-              const idsToSelect = isBranch
-                ? getDescendantLeafIds(element, nodeById)
-                : [element.id as string | number];
+              const idsToSelect = isBranch ? getDescendantLeafIds(element, nodeById) : [element.id as string | number];
               addIdsToSelection(idsToSelect, setSelectedNodeIds);
               lastLabelSelectionModeRef.current = null;
               return;
@@ -984,9 +970,7 @@ const PackTablesTreeView = React.memo(
                 pendingOpenTimeoutRef.current = null;
               }
 
-              const idsToToggle = isBranch
-                ? getDescendantLeafIds(element, nodeById)
-                : [element.id as string | number];
+              const idsToToggle = isBranch ? getDescendantLeafIds(element, nodeById) : [element.id as string | number];
               toggleIdsInSelection(idsToToggle, setSelectedNodeIds);
               lastLabelSelectionModeRef.current = null;
               return;
@@ -1049,7 +1033,10 @@ const PackTablesTreeView = React.memo(
     }
 
     return (
-      <div onContextMenu={(e) => handleContextMenu(e, activeTreeTab)} className="relative select-none h-full min-h-full">
+      <div
+        onContextMenu={(e) => handleContextMenu(e, activeTreeTab)}
+        className="relative select-none h-full min-h-full"
+      >
         <div className="sticky top-0 z-10 flex border-b border-gray-700 bg-gray-900/95 mb-2">
           <button
             type="button"

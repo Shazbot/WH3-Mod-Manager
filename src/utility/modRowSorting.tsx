@@ -121,7 +121,7 @@ export function getSortedMods(
   presetMods: Mod[],
   orderedMods: Mod[],
   sortingType: SortingType,
-  customizableMods: Record<string, string[]>
+  customizableMods: Record<string, string[]>,
 ) {
   let mods: Mod[] = [];
 
@@ -160,11 +160,7 @@ export function getSortedMods(
       break;
     case SortingType.IsEnabled:
     case SortingType.IsEnabledReverse:
-      mods = getModsSortedByEnabled(
-        presetMods,
-        orderedMods,
-        sortingType === SortingType.IsEnabled,
-      );
+      mods = getModsSortedByEnabled(presetMods, orderedMods, sortingType === SortingType.IsEnabled);
       break;
     case SortingType.LastUpdated:
     case SortingType.LastUpdatedReverse:
@@ -210,7 +206,5 @@ const sortTypeToReverseType: { [key in SortingType]?: SortingType } = {
 };
 
 export const getNewSortType = (newSortingType: SortingType, currentSortingType: SortingType) => {
-  return (
-    (currentSortingType == newSortingType && sortTypeToReverseType[currentSortingType]) || newSortingType
-  );
+  return (currentSortingType == newSortingType && sortTypeToReverseType[currentSortingType]) || newSortingType;
 };

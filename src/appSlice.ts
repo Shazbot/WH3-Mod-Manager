@@ -164,17 +164,10 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   });
 
   const isInitialModPopulation = previousModsByName.size === 0;
-  if (
-    isInitialModPopulation &&
-    state.dataFromConfig &&
-    state.dataFromConfig.currentPreset.version != undefined
-  ) {
+  if (isInitialModPopulation && state.dataFromConfig && state.dataFromConfig.currentPreset.version != undefined) {
     state.currentPreset.version = state.dataFromConfig.currentPreset.version;
     console.log("sorting as in preset from config in setMods");
-    state.currentPreset.mods = sortModsAsInEntries(
-      state.currentPreset.mods,
-      state.dataFromConfig.currentPreset.mods,
-    );
+    state.currentPreset.mods = sortModsAsInEntries(state.currentPreset.mods, state.dataFromConfig.currentPreset.mods);
   }
 
   if (state.dataFromConfig) {
@@ -316,18 +309,12 @@ const applyPresetModsUnaryInternal = (state: AppState, presetEntries: PresetModE
   state.currentPreset.mods = sortModsAsInEntries(state.currentPreset.mods, normalizedEntries);
   state.currentPreset.version = 2;
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
-    (mod) => (mod.isEnabled = true),
-  );
+  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
 
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
-const selectPresetInternal = (
-  state: AppState,
-  presetSelection: SelectOperation,
-  newPreset: SavedPreset,
-) => {
+const selectPresetInternal = (state: AppState, presetSelection: SelectOperation, newPreset: SavedPreset) => {
   state.lastSelectedPreset = newPreset;
 
   if (presetSelection === "unary") {
@@ -341,9 +328,7 @@ const selectPresetInternal = (
     });
   }
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
-    (mod) => (mod.isEnabled = true),
-  );
+  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
@@ -557,11 +542,7 @@ const getDependencyAwareBisectGroups = (presetMods: Mod[]) => {
   return groups;
 };
 
-const createDependencyAwareBisectedPresetMods = (
-  presetMods: Mod[],
-  isRandom: boolean,
-  isLoadOrderPreset: boolean,
-) => {
+const createDependencyAwareBisectedPresetMods = (presetMods: Mod[], isRandom: boolean, isLoadOrderPreset: boolean) => {
   const groups = getDependencyAwareBisectGroups(presetMods);
   const groupsToSplit = isRandom ? shuffleItems(groups) : groups;
   const cutoff = Math.ceil(presetMods.length / 2);
@@ -569,14 +550,8 @@ const createDependencyAwareBisectedPresetMods = (
     groupsToSplit.map((group) => group.length),
     cutoff,
   );
-  const firstPresetMods = normalizeBisectedPresetMods(
-    groupsToSplit.slice(0, boundaryIndex).flat(),
-    isLoadOrderPreset,
-  );
-  const secondPresetMods = normalizeBisectedPresetMods(
-    groupsToSplit.slice(boundaryIndex).flat(),
-    isLoadOrderPreset,
-  );
+  const firstPresetMods = normalizeBisectedPresetMods(groupsToSplit.slice(0, boundaryIndex).flat(), isLoadOrderPreset);
+  const secondPresetMods = normalizeBisectedPresetMods(groupsToSplit.slice(boundaryIndex).flat(), isLoadOrderPreset);
 
   return [firstPresetMods, secondPresetMods] as const;
 };
@@ -671,9 +646,7 @@ const appSlice = createSlice({
       }
 
       state.currentPreset.mods.forEach((mod) => {
-        const importedMod = state.importedMods.find((iterMod) =>
-          sharedModMatchesInstalledMod(iterMod, mod),
-        );
+        const importedMod = state.importedMods.find((iterMod) => sharedModMatchesInstalledMod(iterMod, mod));
         mod.isEnabled = importedMod != null;
         mod.loadOrder = importedMod?.loadOrder;
       });
@@ -695,9 +668,7 @@ const appSlice = createSlice({
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
       const modNameSet = new Set(modNames);
-      state.currentPreset.mods
-        .filter((mod) => modNameSet.has(mod.name))
-        .forEach((mod) => (mod.isEnabled = true));
+      state.currentPreset.mods.filter((mod) => modNameSet.has(mod.name)).forEach((mod) => (mod.isEnabled = true));
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     importModsFromUsedMods: (state: AppState, action: PayloadAction<string[]>) => {
@@ -712,10 +683,7 @@ const appSlice = createSlice({
 
       applyUsedModsImportToState(state, action.payload);
     },
-    resolveUsedModsImport: (
-      state: AppState,
-      action: PayloadAction<"automatic" | "previous">,
-    ) => {
+    resolveUsedModsImport: (state: AppState, action: PayloadAction<"automatic" | "previous">) => {
       if (!state.pendingUsedModsImport) return;
 
       const modNames =
@@ -799,10 +767,7 @@ const appSlice = createSlice({
         mod.categories = state.removedModsCategories[mod.path];
         delete state.removedModsCategories[mod.path];
       }
-      if (
-        mod.isInData &&
-        state.dataModsToEnableByName.find((nameOfToEnable) => nameOfToEnable === mod.name)
-      ) {
+      if (mod.isInData && state.dataModsToEnableByName.find((nameOfToEnable) => nameOfToEnable === mod.name)) {
         mod.isEnabled = true;
 
         state.dataModsToEnableByName.splice(
@@ -812,9 +777,7 @@ const appSlice = createSlice({
       }
       // match on name, not path: a mod that moved between data/content/custom folders is still the
       // same mod and should keep the enabled state the config saved for it
-      const entryInConfig = state.dataFromConfig?.currentPreset.mods.find(
-        (entry) => entry.name == mod.name,
-      );
+      const entryInConfig = state.dataFromConfig?.currentPreset.mods.find((entry) => entry.name == mod.name);
       if (entryInConfig && isPresetModEnabled(entryInConfig)) {
         mod.isEnabled = true;
       }
@@ -839,9 +802,7 @@ const appSlice = createSlice({
         if (removedModInAll) {
           const sameModOrSymLinkInData =
             isWorkshopMod(removedModInAll) &&
-            state.currentPreset.mods.find(
-              (iterMod) => iterMod.isInData && iterMod.name == removedModInAll.name,
-            );
+            state.currentPreset.mods.find((iterMod) => iterMod.isInData && iterMod.name == removedModInAll.name);
           if (sameModOrSymLinkInData && sameModOrSymLinkInData.isSymbolicLink) {
             state.currentPreset.mods = state.currentPreset.mods.filter(
               (iterMod) => iterMod.path !== sameModOrSymLinkInData.path,
@@ -901,9 +862,7 @@ const appSlice = createSlice({
           }
         }
         // Propagate Workshop metadata to whichever same-named source currently wins priority.
-        const contentMod = state.allMods.find(
-          (mod) => isWorkshopMod(mod) && mod.workshopId == data.workshopId,
-        );
+        const contentMod = state.allMods.find((mod) => isWorkshopMod(mod) && mod.workshopId == data.workshopId);
         if (contentMod) {
           const preferredMod = state.currentPreset.mods.find((iterMod) => iterMod.name == contentMod.name);
           if (preferredMod) {
@@ -939,11 +898,7 @@ const appSlice = createSlice({
           if (data.humanName && data.humanName != "" && mod.humanName != data.humanName)
             mod.humanName = data.humanName ?? "";
           if (data.author && data.author != "" && mod.author != data.author) mod.author = data.author;
-          if (
-            data.reqModIdToName &&
-            data.reqModIdToName.length > 0 &&
-            !equal(mod.reqModIdToName, data.reqModIdToName)
-          )
+          if (data.reqModIdToName && data.reqModIdToName.length > 0 && !equal(mod.reqModIdToName, data.reqModIdToName))
             mod.reqModIdToName = data.reqModIdToName;
         }
 
@@ -965,8 +920,7 @@ const appSlice = createSlice({
         state.workshopUpdateCheckResults[item.workshopId] = item;
         const installedTimestamp = item.installTimestampAfter ?? item.installTimestampBefore;
         state.workshopInstallStatuses[item.workshopId] = {
-          installedTimestamp:
-            installedTimestamp ?? state.workshopInstallStatuses[item.workshopId]?.installedTimestamp,
+          installedTimestamp: installedTimestamp ?? state.workshopInstallStatuses[item.workshopId]?.installedTimestamp,
           state: item.finalState,
         };
       }
@@ -1005,13 +959,9 @@ const appSlice = createSlice({
           state.packsData[packData.packPath] = packData;
         } else if (packData.packedFiles) {
           state.packsData[packData.packPath].tables = Array.from(
-            new Set([
-              ...(state.packsData[packData.packPath].tables || []),
-              ...(packData.tables || []),
-            ]),
+            new Set([...(state.packsData[packData.packPath].tables || []), ...(packData.tables || [])]),
           );
-          state.packsData[packData.packPath].packedFiles =
-            state.packsData[packData.packPath].packedFiles || {};
+          state.packsData[packData.packPath].packedFiles = state.packsData[packData.packPath].packedFiles || {};
           for (const [packedFilePath, packedFile] of Object.entries(packData.packedFiles))
             state.packsData[packData.packPath].packedFiles[packedFilePath] = packedFile;
         }
@@ -1055,10 +1005,7 @@ const appSlice = createSlice({
     setPackCollisions: (state: AppState, action: PayloadAction<PackCollisions>) => {
       state.packCollisions = action.payload;
     },
-    setPackCollisionsCheckProgress: (
-      state: AppState,
-      action: PayloadAction<PackCollisionsCheckProgressData>,
-    ) => {
+    setPackCollisionsCheckProgress: (state: AppState, action: PayloadAction<PackCollisionsCheckProgressData>) => {
       state.packCollisionsCheckProgress = action.payload;
     },
     setPackSearchResults: (state: AppState, action: PayloadAction<string[] | undefined>) => {
@@ -1092,8 +1039,7 @@ const appSlice = createSlice({
       state.isClosedOnPlay = fromConfigAppState.isClosedOnPlay;
       state.isUsingEnglishLocalizations = !!fromConfigAppState.isUsingEnglishLocalizations;
       state.isCompatCheckingVanillaPacks =
-        !!fromConfigAppState.isFeaturesForModdersEnabled &&
-        !!fromConfigAppState.isCompatCheckingVanillaPacks;
+        !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
       state.hiddenModNames = fromConfigAppState.hiddenModNames;
       state.alwaysEnabledModNames = fromConfigAppState.alwaysEnabledModNames;
@@ -1493,8 +1439,7 @@ const appSlice = createSlice({
       state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName] || [];
       state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName].filter(
         (iterOverwrite) =>
-          iterOverwrite.packFilePath != overwrite.packFilePath ||
-          iterOverwrite.columnsId != overwrite.columnsId,
+          iterOverwrite.packFilePath != overwrite.packFilePath || iterOverwrite.columnsId != overwrite.columnsId,
       );
       state.packDataOverwrites[overwrite.packName].push({
         packFilePath: overwrite.packFilePath,
@@ -1511,11 +1456,9 @@ const appSlice = createSlice({
       state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName] || [];
       state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName].filter(
         (iterOverwrite) =>
-          iterOverwrite.packFilePath != overwrite.packFilePath ||
-          iterOverwrite.columnsId != overwrite.columnsId,
+          iterOverwrite.packFilePath != overwrite.packFilePath || iterOverwrite.columnsId != overwrite.columnsId,
       );
-      if (state.packDataOverwrites[overwrite.packName].length == 0)
-        delete state.packDataOverwrites[overwrite.packName];
+      if (state.packDataOverwrites[overwrite.packName].length == 0) delete state.packDataOverwrites[overwrite.packName];
     },
     removeAllPackDataOverwrites: (state: AppState, action: PayloadAction<string>) => {
       const packName = action.payload;
@@ -1585,10 +1528,7 @@ const appSlice = createSlice({
       state.customizableMods = action.payload;
       console.log("setCustomizableMods:", state.customizableMods);
     },
-    createBisectedModListPresets: (
-      state: AppState,
-      action: PayloadAction<CreateBisectedModListPresetsPayload>,
-    ) => {
+    createBisectedModListPresets: (state: AppState, action: PayloadAction<CreateBisectedModListPresetsPayload>) => {
       createBisectedModListPresetsInternal(state, action.payload);
     },
     setIsModTagPickerOpen: (state: AppState, action: PayloadAction<boolean>) => {

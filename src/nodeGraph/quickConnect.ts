@@ -33,13 +33,9 @@ export const buildQuickConnectionCandidates = ({
   const targetHandleIds = targetHandles.map((handle) => handle.id ?? null);
 
   const isSourceHandleFree = (sourceHandle: string | null) =>
-    !edges.some(
-      (edge) => edge.source === sourceNodeId && (edge.sourceHandle ?? null) === sourceHandle,
-    );
+    !edges.some((edge) => edge.source === sourceNodeId && (edge.sourceHandle ?? null) === sourceHandle);
   const isTargetHandleFree = (targetHandle: string | null) =>
-    !edges.some(
-      (edge) => edge.target === targetNodeId && (edge.targetHandle ?? null) === targetHandle,
-    );
+    !edges.some((edge) => edge.target === targetNodeId && (edge.targetHandle ?? null) === targetHandle);
 
   // Free handles first on both sides. On a node with several outputs - a conditional branch, say -
   // quick connect should reach for the one still unused rather than always the first.

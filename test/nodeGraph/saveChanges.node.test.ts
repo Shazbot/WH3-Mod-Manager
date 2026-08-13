@@ -125,12 +125,7 @@ describe("save changes node", () => {
       ],
     } as DBVersion;
 
-    const createTable = (
-      name: string,
-      value: string,
-      outputPathPrefix?: string,
-      outputPathSuffix?: string,
-    ) => ({
+    const createTable = (name: string, value: string, outputPathPrefix?: string, outputPathSuffix?: string) => ({
       name,
       fileName: `db\\${name}\\data__`,
       sourceFile: {} as Pack,
@@ -178,9 +173,7 @@ describe("save changes node", () => {
     const savedNames = savedPack.packedFiles.map((packedFile) => packedFile.name);
 
     expect(savedNames.some((name) => /^text\\db\\table-output_[a-z0-9]+\.loc$/.test(name))).toBe(true);
-    expect(savedNames.some((name) => /^db\\main_units_tables\\table-output_[a-z0-9]+$/.test(name))).toBe(
-      true,
-    );
+    expect(savedNames.some((name) => /^db\\main_units_tables\\table-output_[a-z0-9]+$/.test(name))).toBe(true);
   });
 
   it("writes a raw payload at its exact path when the table names one", async () => {

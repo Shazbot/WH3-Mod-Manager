@@ -1,17 +1,9 @@
 import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useCallback, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import {
-  orderImportedMods,
-  setAreModsEnabled,
-  setImportedMods,
-} from "../appSlice";
+import { orderImportedMods, setAreModsEnabled, setImportedMods } from "../appSlice";
 import { Spinner } from "flowbite-react";
-import {
-  getMissingSharedWorkshopIds,
-  parseSharedModList,
-  sharedModMatchesInstalledMod,
-} from "../sharedModList";
+import { getMissingSharedWorkshopIds, parseSharedModList, sharedModMatchesInstalledMod } from "../sharedModList";
 
 export interface ShareModsProps {
   isOpen: boolean;
@@ -81,9 +73,7 @@ const ShareMods = memo((props: ShareModsProps) => {
   useEffect(() => {
     if (
       importedMods.length > 0 &&
-      importedMods.every((importedMod) =>
-        mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)),
-      )
+      importedMods.every((importedMod) => mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)))
     ) {
       dispatch(orderImportedMods());
       setIsSpinnerOpen(false);
@@ -100,9 +90,7 @@ const ShareMods = memo((props: ShareModsProps) => {
             // show={true}
             show={
               isSpinnerOpen &&
-              !importedMods.every((subbedMod) =>
-                mods.some((mod) => sharedModMatchesInstalledMod(subbedMod, mod)),
-              )
+              !importedMods.every((subbedMod) => mods.some((mod) => sharedModMatchesInstalledMod(subbedMod, mod)))
             }
             size="2xl"
             position="center"
@@ -110,9 +98,9 @@ const ShareMods = memo((props: ShareModsProps) => {
             <Modal.Header>Waiting For Mods To Download...</Modal.Header>
             <Modal.Body>
               <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-                We're now subscribed to the mods, but there is a chance Steam won't download new mods while
-                the mod manager is running. Close the manager, wait for Steam to download the mods and import
-                mods agains if this takes more than 1 min.
+                We're now subscribed to the mods, but there is a chance Steam won't download new mods while the mod
+                manager is running. Close the manager, wait for Steam to download the mods and import mods agains if
+                this takes more than 1 min.
               </p>
               <div className="text-center mt-8">
                 <Spinner color="purple" size="xl" />
@@ -133,8 +121,8 @@ const ShareMods = memo((props: ShareModsProps) => {
                 <div className="text-lg font-medium text-gray-900 dark:text-white">Export</div>
                 <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
                   <p>
-                    Share the enabled mods and their load order. Pressing the button will copy some text into
-                    your clipboard, share that text with the other person.
+                    Share the enabled mods and their load order. Pressing the button will copy some text into your
+                    clipboard, share that text with the other person.
                   </p>
 
                   <div className="flex mt-4 justify-center">
@@ -150,8 +138,8 @@ const ShareMods = memo((props: ShareModsProps) => {
 
               <div className="pt-10 text-lg font-medium text-gray-900 dark:text-white">Import</div>
               <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300 pb-4">
-                Import shared mods. Workshop mods will be subscribed, downloaded, and enabled. Local packs
-                are enabled when a file with the same name is already installed.
+                Import shared mods. Workshop mods will be subscribed, downloaded, and enabled. Local packs are enabled
+                when a file with the same name is already installed.
               </p>
               <textarea
                 id="message"

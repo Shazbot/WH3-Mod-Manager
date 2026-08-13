@@ -26,10 +26,7 @@ describe("vanilla localisation packs", () => {
   });
 
   it("puts the player's language after English so it overrides it", () => {
-    expect(getVanillaLocalisationPackNames(packNames, "fr")).toEqual([
-      "local_en.pack",
-      "local_fr.pack",
-    ]);
+    expect(getVanillaLocalisationPackNames(packNames, "fr")).toEqual(["local_en.pack", "local_fr.pack"]);
   });
 
   it("does not list English twice when English is the player's language", () => {
@@ -40,22 +37,10 @@ describe("vanilla localisation packs", () => {
   it("maps the app's language codes onto the game's pack codes", () => {
     // Interpolating the app code would look for local_de/local_es/local_ko/local_pt, none of which
     // the game ships, and silently leave the player on English.
-    expect(getVanillaLocalisationPackNames(packNames, "de")).toEqual([
-      "local_en.pack",
-      "local_ge.pack",
-    ]);
-    expect(getVanillaLocalisationPackNames(packNames, "es")).toEqual([
-      "local_en.pack",
-      "local_sp.pack",
-    ]);
-    expect(getVanillaLocalisationPackNames(packNames, "ko")).toEqual([
-      "local_en.pack",
-      "local_kr.pack",
-    ]);
-    expect(getVanillaLocalisationPackNames(packNames, "pt")).toEqual([
-      "local_en.pack",
-      "local_br.pack",
-    ]);
+    expect(getVanillaLocalisationPackNames(packNames, "de")).toEqual(["local_en.pack", "local_ge.pack"]);
+    expect(getVanillaLocalisationPackNames(packNames, "es")).toEqual(["local_en.pack", "local_sp.pack"]);
+    expect(getVanillaLocalisationPackNames(packNames, "ko")).toEqual(["local_en.pack", "local_kr.pack"]);
+    expect(getVanillaLocalisationPackNames(packNames, "pt")).toEqual(["local_en.pack", "local_br.pack"]);
   });
 
   it("uses the app's own code where the game agrees with it", () => {
@@ -91,23 +76,14 @@ describe("vanilla localisation packs", () => {
     expect(getVanillaLocalisationPackNames(packNames, "ge", true)).toEqual(["local_en.pack"]);
     expect(getVanillaLocalisationPackNames(packNames, "fr", true)).toEqual(["local_en.pack"]);
     // Off by default, so leaving it out keeps the player's language.
-    expect(getVanillaLocalisationPackNames(packNames, "fr")).toEqual([
-      "local_en.pack",
-      "local_fr.pack",
-    ]);
-    expect(getVanillaLocalisationPackNames(packNames, "fr", false)).toEqual([
-      "local_en.pack",
-      "local_fr.pack",
-    ]);
+    expect(getVanillaLocalisationPackNames(packNames, "fr")).toEqual(["local_en.pack", "local_fr.pack"]);
+    expect(getVanillaLocalisationPackNames(packNames, "fr", false)).toEqual(["local_en.pack", "local_fr.pack"]);
   });
 
   it("sorts a language's packs so a suffixed one wins, for versions that ship several", () => {
     // WH3 ships one English pack today, but has shipped suffixed ones, and set order is not stable.
     const withSuffixed = [...packNames, "local_en_3.pack"];
-    expect(getVanillaLocalisationPackNames(withSuffixed, "en")).toEqual([
-      "local_en.pack",
-      "local_en_3.pack",
-    ]);
+    expect(getVanillaLocalisationPackNames(withSuffixed, "en")).toEqual(["local_en.pack", "local_en_3.pack"]);
   });
 
   it("is stable regardless of the order the pack names arrive in", () => {

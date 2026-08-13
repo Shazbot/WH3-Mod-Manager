@@ -52,11 +52,7 @@ describe("front coded block", () => {
     const values = manyKeys();
     const block = buildFrontCodedBlock(values);
 
-    for (const rank of [
-      FRONT_CODED_CHECKPOINT_INTERVAL - 1,
-      FRONT_CODED_CHECKPOINT_INTERVAL,
-      values.length - 1,
-    ]) {
+    for (const rank of [FRONT_CODED_CHECKPOINT_INTERVAL - 1, FRONT_CODED_CHECKPOINT_INTERVAL, values.length - 1]) {
       expect(readFrontCodedEntry(block, rank)).toBe(values[rank]);
     }
   });

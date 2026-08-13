@@ -158,12 +158,7 @@ describe("node graph execution", () => {
         data: { ...createNode("gate").data, type: "conditionalbranch" },
       };
       return {
-        nodes: [
-          gate,
-          createNode("trueSave"),
-          createNode("falseChild"),
-          createNode("falseSave"),
-        ],
+        nodes: [gate, createNode("trueSave"), createNode("falseChild"), createNode("falseSave")],
         connections: [
           { id: "c1", sourceId: "gate", targetId: "trueSave", sourceHandle: "output-true" },
           { id: "c2", sourceId: "gate", targetId: "falseChild", sourceHandle: "output-false" },
@@ -223,7 +218,6 @@ describe("node graph execution", () => {
         expect.objectContaining({ nodeId: "trueSave", inputData: tableSelection }),
       );
     });
-
 
     /**
      * The reported graph: the true branch goes through a filter into the dump, the false branch

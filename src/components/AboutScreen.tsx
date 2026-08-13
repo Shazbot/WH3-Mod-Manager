@@ -38,10 +38,7 @@ const AboutScreen = memo(({ isOpen, setIsOpen }: AboutScreenProps) => {
                       style={"light"}
                       content={<p>https://steamcommunity.com/sharedfiles/filedetails/?id=2845454582</p>}
                     >
-                      <a
-                        href="https://steamcommunity.com/sharedfiles/filedetails/?id=2845454582"
-                        target="_blank"
-                      >
+                      <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2845454582" target="_blank">
                         <FaSteam size="3rem" />
                       </a>
                     </Tooltip>

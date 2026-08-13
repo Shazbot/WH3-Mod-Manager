@@ -38,11 +38,7 @@ export function sortByNameAndLoadOrder<T extends Sortable>(mods: T[]): T[] {
   return newMods;
 }
 
-export function getLoadOrderInsertionIndex(
-  selectedIndex: number,
-  placeholderIndex: number,
-  remainingModCount: number,
-) {
+export function getLoadOrderInsertionIndex(selectedIndex: number, placeholderIndex: number, remainingModCount: number) {
   const adjustedIndex =
     selectedIndex >= 0 && placeholderIndex > selectedIndex ? placeholderIndex - 1 : placeholderIndex;
   return Math.max(0, Math.min(adjustedIndex, remainingModCount));
@@ -79,7 +75,7 @@ export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
   return [...mods].sort(
     (firstMod, secondMod) =>
       (orderedModIndices.get(firstMod) ?? Number.MAX_SAFE_INTEGER) -
-      (orderedModIndices.get(secondMod) ?? Number.MAX_SAFE_INTEGER)
+      (orderedModIndices.get(secondMod) ?? Number.MAX_SAFE_INTEGER),
   );
 }
 
@@ -190,7 +186,7 @@ export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: 
       (mod) =>
         mod.name.replace(".pack", "").toLowerCase().includes(needle) ||
         (mod.humanName && mod.humanName.toLowerCase().includes(needle)) ||
-        (doAuthorFiltering && mod.author.toLowerCase().includes(needle))
+        (doAuthorFiltering && mod.author.toLowerCase().includes(needle)),
     );
 
   if (filter.startsWith("/") && filter.endsWith("/")) {
@@ -201,7 +197,7 @@ export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: 
         (mod) =>
           regexFilter.test(mod.name.replace(".pack", "")) ||
           (mod.humanName && regexFilter.test(mod.humanName)) ||
-          (doAuthorFiltering && regexFilter.test(mod.author))
+          (doAuthorFiltering && regexFilter.test(mod.author)),
       );
     } catch {
       return filterBySubstring(regexPattern.toLowerCase());

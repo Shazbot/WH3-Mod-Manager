@@ -12,15 +12,35 @@ import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer
 vi.mock("react-virtualized", () => ({
   AutoSizer: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) =>
     children({ width: 320, height: 600 }),
-  List: ({ rowCount, rowRenderer }: { rowCount: number; rowRenderer: (props: { index: number; key: string; style: React.CSSProperties }) => React.ReactNode }) => (
-    <div>{Array.from({ length: rowCount }, (_, index) => rowRenderer({ index, key: `${index}`, style: {} }))}</div>
-  ),
+  List: ({
+    rowCount,
+    rowRenderer,
+  }: {
+    rowCount: number;
+    rowRenderer: (props: { index: number; key: string; style: React.CSSProperties }) => React.ReactNode;
+  }) => <div>{Array.from({ length: rowCount }, (_, index) => rowRenderer({ index, key: `${index}`, style: {} }))}</div>,
 }));
 
 const tables: UnitViewerTableRows = {
   main_units_tables: [
-    { unit: "unit_a", land_unit: "land_a", caste: "hero", num_men: "10", recruitment_cost: "100", multiplayer_cost: "120", ui_unit_group_land: "grouping_hero" },
-    { unit: "unit_b", land_unit: "land_b", caste: "lord", num_men: "10", recruitment_cost: "150", multiplayer_cost: "170", ui_unit_group_land: "grouping_lord" },
+    {
+      unit: "unit_a",
+      land_unit: "land_a",
+      caste: "hero",
+      num_men: "10",
+      recruitment_cost: "100",
+      multiplayer_cost: "120",
+      ui_unit_group_land: "grouping_hero",
+    },
+    {
+      unit: "unit_b",
+      land_unit: "land_b",
+      caste: "lord",
+      num_men: "10",
+      recruitment_cost: "150",
+      multiplayer_cost: "170",
+      ui_unit_group_land: "grouping_lord",
+    },
   ],
   ui_unit_groupings_tables: [
     { key: "grouping_hero", parent_group: "heroes_agents" },
@@ -31,10 +51,18 @@ const tables: UnitViewerTableRows = {
     { key: "heroes_agents", order: "20" },
   ],
   land_units_tables: [
-    { key: "land_a", man_entity: "entity", primary_melee_weapon: "weapon", melee_attack: "20", attribute_group: "group_a" },
+    {
+      key: "land_a",
+      man_entity: "entity",
+      primary_melee_weapon: "weapon",
+      melee_attack: "20",
+      attribute_group: "group_a",
+    },
     { key: "land_b", man_entity: "entity", primary_melee_weapon: "weapon", melee_attack: "30" },
   ],
-  battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "50", run_speed: "3", charge_speed: "4" }],
+  battle_entities_tables: [
+    { key: "entity", type: "man", hit_points: "100", mass: "50", run_speed: "3", charge_speed: "4" },
+  ],
   melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5", melee_attack_interval: "4" }],
   factions_tables: [{ key: "faction", subculture: "culture" }],
   units_custom_battle_permissions_tables: [
@@ -42,7 +70,9 @@ const tables: UnitViewerTableRows = {
     { unit: "unit_b", faction: "faction" },
   ],
   land_units_to_unit_abilites_junctions_tables: [{ land_unit: "land_a", ability: "ability_without_special" }],
-  unit_abilities_tables: [{ key: "ability_without_special", icon_name: "ability_icon", type: "active", source_type: "unit" }],
+  unit_abilities_tables: [
+    { key: "ability_without_special", icon_name: "ability_icon", type: "active", source_type: "unit" },
+  ],
   special_ability_to_special_ability_phase_junctions_tables: [
     { special_ability: "ability_without_special", phase: "ability_phase" },
   ],
@@ -50,12 +80,8 @@ const tables: UnitViewerTableRows = {
   special_ability_phase_stat_effects_tables: [
     { phase: "ability_phase", stat: "stat_melee_attack", value: "1.25", how: "mult" },
   ],
-  unit_abilities_to_additional_ui_effects_juncs_tables: [
-    { ability: "ability_without_special", effect: "test_effect" },
-  ],
-  unit_abilities_additional_ui_effects_tables: [
-    { key: "test_effect", sort_order: "1", effect_state: "positive" },
-  ],
+  unit_abilities_to_additional_ui_effects_juncs_tables: [{ ability: "ability_without_special", effect: "test_effect" }],
+  unit_abilities_additional_ui_effects_tables: [{ key: "test_effect", sort_order: "1", effect_state: "positive" }],
   unit_attributes_to_groups_junctions_tables: [{ attribute_group: "group_a", attribute: "attribute_a" }],
   ui_unit_stats_tables: [
     { key: "stat_health", icon: "ui/skins/default/icon_stat_health.png" },
@@ -63,19 +89,23 @@ const tables: UnitViewerTableRows = {
   ],
 };
 
-const built = buildUnitViewerData(tables, (key) => ({
-  land_units_onscreen_name_land_a: "Alpha",
-  land_units_onscreen_name_land_b: "Beta",
-  cultures_subcultures_name_culture: "Culture",
-  ui_unit_group_parents_onscreen_name_commander: "Lords",
-  ui_unit_group_parents_onscreen_name_heroes_agents: "Heroes",
-  unit_abilities_onscreen_name_ability_without_special: "Test Ability",
-  unit_abilities_tooltip_text_ability_without_special: "Ability description",
-  unit_stat_localisations_onscreen_name_stat_melee_attack: "Melee Attack",
-  random_localisation_strings_string_fatigue: "Vigour per second",
-  unit_abilities_additional_ui_effects_localised_text_test_effect: "Test active effect",
-  unit_attributes_bullet_text_attribute_a: "Test Attribute||Attribute description",
-})[key]);
+const built = buildUnitViewerData(
+  tables,
+  (key) =>
+    ({
+      land_units_onscreen_name_land_a: "Alpha",
+      land_units_onscreen_name_land_b: "Beta",
+      cultures_subcultures_name_culture: "Culture",
+      ui_unit_group_parents_onscreen_name_commander: "Lords",
+      ui_unit_group_parents_onscreen_name_heroes_agents: "Heroes",
+      unit_abilities_onscreen_name_ability_without_special: "Test Ability",
+      unit_abilities_tooltip_text_ability_without_special: "Ability description",
+      unit_stat_localisations_onscreen_name_stat_melee_attack: "Melee Attack",
+      random_localisation_strings_string_fatigue: "Vigour per second",
+      unit_abilities_additional_ui_effects_localised_text_test_effect: "Test active effect",
+      unit_attributes_bullet_text_attribute_a: "Test Attribute||Attribute description",
+    })[key],
+);
 
 const renderViewer = () => {
   const store = configureStore({
@@ -88,7 +118,14 @@ const renderViewer = () => {
       },
     },
   });
-  return { ...render(<Provider store={store}><UnitViewerTab /></Provider>), store };
+  return {
+    ...render(
+      <Provider store={store}>
+        <UnitViewerTab />
+      </Provider>,
+    ),
+    store,
+  };
 };
 
 const createEnabledMod = (): Mod => ({
@@ -127,10 +164,13 @@ describe("Unit Viewer UI", () => {
       getUnitViewerDetails: vi.fn().mockImplementation(async (_sessionId: string, unitKey: string) => ({
         success: true,
         unit: built.units.get(unitKey),
-        icons: unitKey === "unit_a" ? {
-          "ui\\battle ui\\ability_icons\\ability_icon.png": "ability-icon-data",
-          "ui\\battle ui\\ability_icons\\attribute_a.png": "attribute-icon-data",
-        } : {},
+        icons:
+          unitKey === "unit_a"
+            ? {
+                "ui\\battle ui\\ability_icons\\ability_icon.png": "ability-icon-data",
+                "ui\\battle ui\\ability_icons\\attribute_a.png": "attribute-icon-data",
+              }
+            : {},
       })),
       getUnitViewerAsset: vi.fn().mockResolvedValue({ success: false }),
       getUnitViewerAssets: vi.fn().mockImplementation(async (_sessionId: string, assetPaths: string[]) => ({
@@ -193,14 +233,18 @@ describe("Unit Viewer UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
     const browser = await screen.findByRole("dialog", { name: "Unit card browser" });
     expect(within(browser).getByLabelText("Subculture")).toHaveValue("culture");
-    expect(within(browser).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
-      "Lords1",
-      "Heroes1",
-    ]);
+    expect(
+      within(browser)
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(["Lords1", "Heroes1"]);
 
     const addBeta = within(browser).getByRole("button", { name: "Add Beta to comparison" });
     await waitFor(() =>
-      expect(addBeta.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,card:ui\\units\\icons\\unit_b.png"),
+      expect(addBeta.querySelector("img")).toHaveAttribute(
+        "src",
+        "data:image/png;base64,card:ui\\units\\icons\\unit_b.png",
+      ),
     );
     // Both units fit in the first page, so there is nothing left to prewarm.
     expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
@@ -212,7 +256,10 @@ describe("Unit Viewer UI", () => {
 
     fireEvent.click(addBeta);
     expect(within(browser).getByText(/1 selected/)).toBeInTheDocument();
-    expect(within(browser).getByRole("button", { name: "Remove Beta from comparison" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(browser).getByRole("button", { name: "Remove Beta from comparison" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await waitFor(() => expect(window.api?.getUnitViewerDetails).toHaveBeenCalledWith("session", "unit_b"));
 
     fireEvent.change(within(browser).getByLabelText("Search unit cards"), { target: { value: "alpha" } });
@@ -239,12 +286,18 @@ describe("Unit Viewer UI", () => {
     expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(1);
 
     const mod = createEnabledMod();
-    act(() => { store.dispatch(setMods([mod])); });
+    act(() => {
+      store.dispatch(setMods([mod]));
+    });
     await waitFor(() => expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2));
 
     // Pack reading hands Redux a fresh array of equal mods; that must not restart the load.
-    act(() => { store.dispatch(setMods([{ ...mod }])); });
-    act(() => { store.dispatch(setMods([{ ...mod }])); });
+    act(() => {
+      store.dispatch(setMods([{ ...mod }]));
+    });
+    act(() => {
+      store.dispatch(setMods([{ ...mod }]));
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2);
   });
@@ -254,7 +307,13 @@ describe("Unit Viewer UI", () => {
     // section comes first even though its unit is not a lord.
     const orderTables: UnitViewerTableRows = {
       main_units_tables: [
-        { unit: "unit_lord_infantry", land_unit: "land_x", num_men: "1", caste: "lord", ui_unit_group_land: "grouping_infantry" },
+        {
+          unit: "unit_lord_infantry",
+          land_unit: "land_x",
+          num_men: "1",
+          caste: "lord",
+          ui_unit_group_land: "grouping_infantry",
+        },
         { unit: "unit_plain_commander", land_unit: "land_y", num_men: "1", ui_unit_group_land: "grouping_commander" },
       ],
       land_units_tables: [
@@ -277,7 +336,10 @@ describe("Unit Viewer UI", () => {
         { unit: "unit_plain_commander", faction: "faction" },
       ],
     };
-    const orderBuilt = buildUnitViewerData(orderTables, (key) => ({ cultures_subcultures_name_culture: "Culture" })[key]);
+    const orderBuilt = buildUnitViewerData(
+      orderTables,
+      (key) => ({ cultures_subcultures_name_culture: "Culture" })[key],
+    );
     expect(orderBuilt.groups[0].units.map((unit) => unit.key)).toEqual(["unit_lord_infantry", "unit_plain_commander"]);
     window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
       success: true,
@@ -304,10 +366,15 @@ describe("Unit Viewer UI", () => {
     const unitCount = 120;
     const largeTables: UnitViewerTableRows = {
       main_units_tables: Array.from({ length: unitCount }, (_, index) => ({
-        unit: `unit_${index}`, land_unit: `land_${index}`, num_men: "10", ui_unit_group_land: "grouping_lord",
+        unit: `unit_${index}`,
+        land_unit: `land_${index}`,
+        num_men: "10",
+        ui_unit_group_land: "grouping_lord",
       })),
       land_units_tables: Array.from({ length: unitCount }, (_, index) => ({
-        key: `land_${index}`, man_entity: "entity", primary_melee_weapon: "weapon",
+        key: `land_${index}`,
+        man_entity: "entity",
+        primary_melee_weapon: "weapon",
       })),
       battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "50" }],
       melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
@@ -315,10 +382,14 @@ describe("Unit Viewer UI", () => {
       ui_unit_group_parents_tables: [{ key: "commander", order: "10" }],
       factions_tables: [{ key: "faction", subculture: "culture" }],
       units_custom_battle_permissions_tables: Array.from({ length: unitCount }, (_, index) => ({
-        unit: `unit_${index}`, faction: "faction",
+        unit: `unit_${index}`,
+        faction: "faction",
       })),
     };
-    const largeBuilt = buildUnitViewerData(largeTables, (key) => ({ cultures_subcultures_name_culture: "Culture" })[key]);
+    const largeBuilt = buildUnitViewerData(
+      largeTables,
+      (key) => ({ cultures_subcultures_name_culture: "Culture" })[key],
+    );
     window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
       success: true,
       sessionId: "session",
@@ -338,9 +409,9 @@ describe("Unit Viewer UI", () => {
     await waitFor(() => expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(3));
     expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
     expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toHaveLength(unitCount - 50);
-    expect(
-      vi.mocked(window.api!.getUnitViewerAssets).mock.calls.map(([, paths]) => paths.length),
-    ).toEqual([50, 50, 20]);
+    expect(vi.mocked(window.api!.getUnitViewerAssets).mock.calls.map(([, paths]) => paths.length)).toEqual([
+      50, 50, 20,
+    ]);
     // The first page must land before anything is prewarmed, so it can paint straight away.
     const firstPageOrder = vi.mocked(window.api!.getUnitViewerAssets).mock.invocationCallOrder[0];
     expect(firstPageOrder).toBeLessThan(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.invocationCallOrder[0]);
@@ -385,7 +456,8 @@ describe("Unit Viewer UI", () => {
   });
 
   it("rebuilds an expired main-process session and retries selected units", async () => {
-    const getCatalog = vi.fn()
+    const getCatalog = vi
+      .fn()
       .mockResolvedValueOnce({
         success: true,
         sessionId: "expired-session",
@@ -400,11 +472,13 @@ describe("Unit Viewer UI", () => {
         constants: built.constants,
         statIcons: {},
       });
-    const getDetails = vi.fn().mockImplementation(async (session: string, unitKey: string) =>
-      session === "expired-session"
-        ? { success: false, error: "Unit Viewer session expired" }
-        : { success: true, unit: built.units.get(unitKey), icons: {} },
-    );
+    const getDetails = vi
+      .fn()
+      .mockImplementation(async (session: string, unitKey: string) =>
+        session === "expired-session"
+          ? { success: false, error: "Unit Viewer session expired" }
+          : { success: true, unit: built.units.get(unitKey), icons: {} },
+      );
     window.api!.getUnitViewerCatalog = getCatalog;
     window.api!.getUnitViewerDetails = getDetails;
 

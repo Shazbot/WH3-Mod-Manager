@@ -130,9 +130,7 @@ export const buildVanillaDbCache = (
         continue;
       }
 
-      const poolIds = rows.map(
-        (row) => poolIdByValue.get(readStringCell(fieldType, row[column].fields))!,
-      );
+      const poolIds = rows.map((row) => poolIdByValue.get(readStringCell(fieldType, row[column].fields))!);
       const payload = encodeDictionaryColumn(poolIds);
 
       // The presence byte gets its own column: only the byte 1 makes a string present, and any other
@@ -155,9 +153,7 @@ export const buildVanillaDbCache = (
         checksum: checksumBytes(column.payload),
       };
       if (isStringCellType(column.fieldType)) {
-        meta.probeChecksum = checksumBytes(
-          column.payload.subarray(0, VANILLA_DB_CACHE_DICTIONARY_PROBE_BYTES),
-        );
+        meta.probeChecksum = checksumBytes(column.payload.subarray(0, VANILLA_DB_CACHE_DICTIONARY_PROBE_BYTES));
       }
       // Set only when true, so the metadata says what readDBPackedFiles puts on the cell.
       if (column.isKey) meta.isKey = true;

@@ -32,7 +32,7 @@ export function useTheme(): ThemeContextProps {
 }
 
 export const useThemeMode = (
-  usePreferences: boolean
+  usePreferences: boolean,
 ): [Mode, React.Dispatch<React.SetStateAction<Mode>> | undefined, (() => void) | undefined] => {
   if (!usePreferences) return [undefined, undefined, undefined];
   const [mode, setMode] = useState<Mode>(undefined);

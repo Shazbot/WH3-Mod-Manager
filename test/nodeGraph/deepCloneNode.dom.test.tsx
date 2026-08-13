@@ -11,10 +11,7 @@ import { reactFlowNodeTypes } from "../../src/nodeGraph/nodeTypes";
 import appSlice from "../../src/appSlice";
 import type { DBField, DBVersion } from "../../src/packFileTypes";
 
-const createField = (
-  name: string,
-  options: { isKey?: boolean; reference?: [string, string] } = {},
-): DBField =>
+const createField = (name: string, options: { isKey?: boolean; reference?: [string, string] } = {}): DBField =>
   ({
     name,
     field_type: "StringU8",
@@ -53,37 +50,37 @@ const createStore = (moddersPrefix: string) => {
 const renderDeepCloneNode = (onUpdateNodeData = vi.fn(), moddersPrefix = "abc_") => {
   const result = render(
     <Provider store={createStore(moddersPrefix)}>
-    <div style={{ width: 800, height: 700 }}>
-      <ReactFlowProvider>
-        <ReactFlow
-          fitView
-          edges={[]}
-          nodeTypes={reactFlowNodeTypes}
-          nodes={[
-            {
-              id: "deepclone_1",
-              type: "deepclone",
-              position: { x: 0, y: 0 },
-              data: {
-                label: "Deep Clone",
+      <div style={{ width: 800, height: 700 }}>
+        <ReactFlowProvider>
+          <ReactFlow
+            fitView
+            edges={[]}
+            nodeTypes={reactFlowNodeTypes}
+            nodes={[
+              {
+                id: "deepclone_1",
                 type: "deepclone",
-                inputType: "TableSelection",
-                outputType: "TableSelection",
-                connectedTableName: "main_units_tables",
-                columnNames: [],
-                DBNameToDBVersions,
-                nameTemplate: "my_new_unit{variant}",
-                useModdersPrefix: true,
-                variantAxes: [],
-                columnOverrides: [],
-                generateLoc: true,
-                onUpdateNodeData,
-              },
-            } as any,
-          ]}
-        />
-      </ReactFlowProvider>
-    </div>
+                position: { x: 0, y: 0 },
+                data: {
+                  label: "Deep Clone",
+                  type: "deepclone",
+                  inputType: "TableSelection",
+                  outputType: "TableSelection",
+                  connectedTableName: "main_units_tables",
+                  columnNames: [],
+                  DBNameToDBVersions,
+                  nameTemplate: "my_new_unit{variant}",
+                  useModdersPrefix: true,
+                  variantAxes: [],
+                  columnOverrides: [],
+                  generateLoc: true,
+                  onUpdateNodeData,
+                },
+              } as any,
+            ]}
+          />
+        </ReactFlowProvider>
+      </div>
     </Provider>,
   );
 
@@ -128,9 +125,7 @@ describe("Deep Clone node", () => {
   it("dispatches the edited key template back to the graph", () => {
     const { container, onUpdateNodeData } = renderDeepCloneNode();
 
-    const templateInput = container.querySelector(
-      'input[placeholder="{original}{variant}"]',
-    ) as HTMLInputElement;
+    const templateInput = container.querySelector('input[placeholder="{original}{variant}"]') as HTMLInputElement;
     expect(templateInput).not.toBeNull();
 
     fireEvent.change(templateInput, { target: { value: "{selfOriginal}_clone{variant}" } });
@@ -148,9 +143,7 @@ describe("Deep Clone node", () => {
     expect(autoFollowLabel.type).toBe("checkbox");
     expect(autoFollowLabel.checked).toBe(true);
 
-    expect(
-      getHelpTooltips(container).some((title) => title.includes("re-pointed at the new key")),
-    ).toBe(true);
+    expect(getHelpTooltips(container).some((title) => title.includes("re-pointed at the new key"))).toBe(true);
 
     fireEvent.click(autoFollowLabel);
 
@@ -161,9 +154,7 @@ describe("Deep Clone node", () => {
   it("warns in the editor when variant axes are set but the template ignores {variant}", () => {
     const { container, getByText, queryByText } = renderDeepCloneNode();
 
-    const templateInput = container.querySelector(
-      'input[placeholder="{original}{variant}"]',
-    ) as HTMLInputElement;
+    const templateInput = container.querySelector('input[placeholder="{original}{variant}"]') as HTMLInputElement;
     const warningText = "Add {variant} to the key template, or every variant produces the same key:";
 
     // One variant, so nothing to warn about yet however the template is written.
@@ -192,9 +183,7 @@ describe("Deep Clone node", () => {
   it("warns and saves no prefix when the checkbox is on but no prefix is configured", () => {
     const { getByText, onUpdateNodeData } = renderDeepCloneNode(vi.fn(), "");
 
-    expect(
-      getByText("Set a modders prefix in the app options, or untick this.", { exact: false }),
-    ).not.toBeNull();
+    expect(getByText("Set a modders prefix in the app options, or untick this.", { exact: false })).not.toBeNull();
     const patches = onUpdateNodeData.mock.calls.map((call) => call[0]);
     expect(patches.some((patch) => patch.moddersPrefix === "")).toBe(true);
   });

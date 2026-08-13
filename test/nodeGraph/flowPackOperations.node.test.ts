@@ -31,10 +31,7 @@ describe("flow names stored in packs", () => {
 
   it("finds a case-insensitive collision while preserving the stored name", () => {
     expect(
-      findExistingPackedFlowName(
-        ["whmmflows\\Existing.JSON", "script\\other.lua"],
-        "whmmflows\\existing.json",
-      ),
+      findExistingPackedFlowName(["whmmflows\\Existing.JSON", "script\\other.lua"], "whmmflows\\existing.json"),
     ).toBe("whmmflows\\Existing.JSON");
   });
 });

@@ -31,9 +31,7 @@ export const getConflictingStartposMods = (enabledMods: readonly Mod[]) => {
   const startposMods = enabledMods.filter((mod) => mod.hasStartpos);
   if (startposMods.length < 2) return [];
 
-  const enabledModsByName = new Map(
-    enabledMods.map((mod) => [normalizePackName(mod.name), mod] as const),
-  );
+  const enabledModsByName = new Map(enabledMods.map((mod) => [normalizePackName(mod.name), mod] as const));
   const conflictingMods = new Set<Mod>();
 
   for (let firstIndex = 0; firstIndex < startposMods.length; firstIndex++) {
@@ -41,8 +39,7 @@ export const getConflictingStartposMods = (enabledMods: readonly Mod[]) => {
     for (let secondIndex = firstIndex + 1; secondIndex < startposMods.length; secondIndex++) {
       const secondMod = startposMods[secondIndex];
       const dependencyOrdersPair =
-        modDependsOn(firstMod, secondMod, enabledModsByName) ||
-        modDependsOn(secondMod, firstMod, enabledModsByName);
+        modDependsOn(firstMod, secondMod, enabledModsByName) || modDependsOn(secondMod, firstMod, enabledModsByName);
       if (!dependencyOrdersPair) {
         conflictingMods.add(firstMod);
         conflictingMods.add(secondMod);

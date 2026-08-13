@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext } from "react";
 
 type ModalContext = {
   popup?: boolean;
@@ -11,7 +11,7 @@ export function useModalContext(): ModalContext {
   const context = useContext(ModalContext);
 
   if (!context) {
-    throw new Error('useModalContext should be used within the ModalContext provider!');
+    throw new Error("useModalContext should be used within the ModalContext provider!");
   }
 
   return context;

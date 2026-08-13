@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import appData from "../../src/appData";
 import { applyConfigSavePayloadToAppData } from "../../src/config/applyConfigSavePayload";
-import {
-  resetConfigSavePayloadCache,
-  selectConfigSavePayload,
-} from "../../src/config/configSavePayload";
+import { resetConfigSavePayloadCache, selectConfigSavePayload } from "../../src/config/configSavePayload";
 import initialState from "../../src/initialAppState";
 
 const createMod = (name: string, isEnabled = true): Mod =>

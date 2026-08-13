@@ -113,9 +113,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         areRequirementsValid = areRequirementsValid && (skillNodesToLevel[parentNode] || 0) > 0;
       }
       if (!areRequirementsValid) {
-        const reqParentNodeSkill = skillsData.currentSkills.find(
-          (skill) => skill.nodeId == nodeRequirements.single[0],
-        );
+        const reqParentNodeSkill = skillsData.currentSkills.find((skill) => skill.nodeId == nodeRequirements.single[0]);
         if (reqParentNodeSkill) {
           reqsMessage =
             localized.skillUnlockRequirementParent &&
@@ -206,9 +204,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
               </div>
             )}
-            {!areRequirementsValid && reqsMessage != "" && (
-              <div className="text-sm text-red-600">{reqsMessage}</div>
-            )}
+            {!areRequirementsValid && reqsMessage != "" && <div className="text-sm text-red-600">{reqsMessage}</div>}
             {skillsBeingDisabled.length > 0 && (
               <>
                 <div className="text-sm text-yellow-200">{localized.skillUnlockWillLock}</div>
@@ -260,9 +256,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           onRightClick(currentLevel);
         }}
         className={`h-20 relative w-[260px] ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${
-          areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank)
-            ? ""
-            : "grayscale"
+          areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank) ? "" : "grayscale"
         } ${data.isEditMode && selected ? "outline-dashed outline-2 outline-offset-2 outline-cyan-400 rounded-sm" : ""}`}
         style={data.editGroupColor ? { boxShadow: `inset 4px 0 0 ${data.editGroupColor}` } : undefined}
       >

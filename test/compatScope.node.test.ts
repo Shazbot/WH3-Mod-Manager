@@ -45,10 +45,7 @@ describe("packs a compat check should look at", () => {
 
   it("ignores a requested pack that was never loaded", () => {
     // A pack that failed to read simply is not checked, as before.
-    const selected = selectPacksToCheck([pack(modPath("a.pack"))], [
-      modPath("a.pack"),
-      modPath("never-read.pack"),
-    ]);
+    const selected = selectPacksToCheck([pack(modPath("a.pack"))], [modPath("a.pack"), modPath("never-read.pack")]);
 
     expect(selected).toHaveLength(1);
   });
@@ -56,9 +53,10 @@ describe("packs a compat check should look at", () => {
   it("keeps the loaded order, so progress reporting stays stable", () => {
     const loaded = [pack(modPath("b.pack")), pack(modPath("a.pack"))];
 
-    expect(
-      selectPacksToCheck(loaded, [modPath("a.pack"), modPath("b.pack")]).map((e) => e.name),
-    ).toEqual(["b.pack", "a.pack"]);
+    expect(selectPacksToCheck(loaded, [modPath("a.pack"), modPath("b.pack")]).map((e) => e.name)).toEqual([
+      "b.pack",
+      "a.pack",
+    ]);
   });
 
   it("checks nothing when nothing was asked about", () => {

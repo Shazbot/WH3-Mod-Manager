@@ -6,8 +6,7 @@ import { amendSchemaField, chunkSchemaIntoRows } from "../src/packFileSerializer
 import type { DBField, DBVersion, SchemaField } from "../src/packFileTypes";
 
 vi.mock("@mongodb-js/zstd", () => ({
-  compress: async (buffer: Buffer, level: number) =>
-    zlib.zstdCompressSync(buffer, { params: { 0: level } }),
+  compress: async (buffer: Buffer, level: number) => zlib.zstdCompressSync(buffer, { params: { 0: level } }),
   decompress: async (buffer: Buffer) => zlib.zstdDecompressSync(buffer),
 }));
 vi.mock("electron-is-dev", () => ({ default: false }));
@@ -29,10 +28,7 @@ const valueCell = (value: number): SchemaField => ({ type: "I32", fields: [{ typ
 
 describe("chunkSchemaIntoRows", () => {
   it("splits cells into rows of the schema's width", () => {
-    const rows = chunkSchemaIntoRows(
-      [keyCell("alpha"), valueCell(11), keyCell("beta"), valueCell(22)],
-      schema,
-    );
+    const rows = chunkSchemaIntoRows([keyCell("alpha"), valueCell(11), keyCell("beta"), valueCell(22)], schema);
 
     expect(rows.map((row) => row.map((cell) => cell.fields[cell.fields.length - 1].val))).toEqual([
       ["alpha", 11],
@@ -68,10 +64,7 @@ describe("chunkSchemaIntoRows", () => {
 
 describe("amendSchemaField", () => {
   it("amends every cell of a table that parsed fully", () => {
-    const amended = amendSchemaField(
-      [keyCell("alpha"), valueCell(11), keyCell("beta"), valueCell(22)],
-      schema,
-    );
+    const amended = amendSchemaField([keyCell("alpha"), valueCell(11), keyCell("beta"), valueCell(22)], schema);
 
     expect(amended.map((cell) => [cell.name, cell.resolvedKeyValue])).toEqual([
       ["key", "alpha"],

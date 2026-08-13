@@ -68,13 +68,7 @@ describe("buildFileCopyOutputs", () => {
       async (_packPath: string, names: string[]) => new Map(names.map((name) => [name, bytesFor(name)])),
     );
 
-    const outputs = await buildFileCopyOutputs(
-      fileCopies,
-      splitIndex,
-      readPackedFiles,
-      {} as Pack,
-      () => undefined,
-    );
+    const outputs = await buildFileCopyOutputs(fileCopies, splitIndex, readPackedFiles, {} as Pack, () => undefined);
 
     expect(outputs).toHaveLength(2);
     expect(readPackedFiles.mock.calls.map((call) => call[0]).toSorted()).toEqual([MOD_PACK, UI_PACK]);

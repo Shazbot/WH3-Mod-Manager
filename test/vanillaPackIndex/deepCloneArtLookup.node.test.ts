@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildVanillaPackIndex,
-  collectVanillaFilesUnderPrefix,
-} from "../../src/vanillaPackIndex/format";
+import { buildVanillaPackIndex, collectVanillaFilesUnderPrefix } from "../../src/vanillaPackIndex/format";
 
 /**
  * Deep Clone used to carry a hand-written folder -> vanilla pack table, because indexing all ~260

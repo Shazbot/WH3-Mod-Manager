@@ -32,8 +32,7 @@ import type { DBVersion, SchemaField } from "../../src/packFileTypes";
  * Set WHMM_DB_PACK to point at a pack somewhere other than the default.
  */
 const DB_PACK_PATH =
-  process.env.WHMM_DB_PACK ??
-  "/mnt/k/SteamLibrary/steamapps/common/Total War WARHAMMER III/data/db.pack";
+  process.env.WHMM_DB_PACK ?? "/mnt/k/SteamLibrary/steamapps/common/Total War WARHAMMER III/data/db.pack";
 const SCHEMA_JSON_PATH = nodePath.join(__dirname, "../../schema/schema_wh3.json");
 
 const havePackAndSchema =
@@ -128,10 +127,7 @@ describe.skipIf(!havePackAndSchema)("vanilla db cache fidelity against the real 
       comparedTables++;
     }
 
-    const metaBlockLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(
-      8,
-      true,
-    );
+    const metaBlockLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(8, true);
     console.log(
       `  metadata block ${(metaBlockLength / 1048576).toFixed(2)} MB stored` +
         ` (${(zlib.gunzipSync(Buffer.from(bytes.subarray(12, 12 + metaBlockLength))).length / 1048576).toFixed(2)} MB of JSON)`,
@@ -213,8 +209,7 @@ describe.skipIf(!havePackAndSchema)("vanilla db cache fidelity against the real 
     const packStarted = performance.now();
     const fromPack = await readPack(DB_PACK_PATH, { tablesToRead: [tablePath] });
     const packMs = performance.now() - packStarted;
-    const packRows = fromPack.packedFiles.find((packedFile) => packedFile.name === tablePath)?.schemaFields
-      ?.length;
+    const packRows = fromPack.packedFiles.find((packedFile) => packedFile.name === tablePath)?.schemaFields?.length;
 
     const cacheStarted = performance.now();
     const reader = openVanillaDbCache(createMemorySource(bytes))!;

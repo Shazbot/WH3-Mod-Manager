@@ -1,10 +1,6 @@
 import { findFrontCodedRank, type FrontCodedBlock } from "../vanillaDbCache/frontCodedBlock";
 import { createFileSource, createMemorySource, type VanillaDbCacheSource } from "../vanillaDbCache/read";
-import {
-  getVanillaLocCacheSections,
-  readVanillaLocCacheHeader,
-  VANILLA_LOC_CACHE_HEADER_BYTES,
-} from "./format";
+import { getVanillaLocCacheSections, readVanillaLocCacheHeader, VANILLA_LOC_CACHE_HEADER_BYTES } from "./format";
 
 export { createFileSource, createMemorySource };
 export type VanillaLocCacheSource = VanillaDbCacheSource;
@@ -50,11 +46,7 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
   // Copied into aligned arrays rather than viewed in place: a source is free to hand back a slice at
   // any byte offset, and a Uint32Array cannot be laid over one that is not 4-byte aligned.
   const checkpoints = new Uint32Array(meta.checkpointCount);
-  const checkpointView = new DataView(
-    checkpointBytes.buffer,
-    checkpointBytes.byteOffset,
-    checkpointBytes.byteLength,
-  );
+  const checkpointView = new DataView(checkpointBytes.buffer, checkpointBytes.byteOffset, checkpointBytes.byteLength);
   for (let index = 0; index < meta.checkpointCount; index++) {
     checkpoints[index] = checkpointView.getUint32(index * 4, true);
   }

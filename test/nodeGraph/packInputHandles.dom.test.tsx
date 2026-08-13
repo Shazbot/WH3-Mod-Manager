@@ -55,20 +55,13 @@ const renderNode = (type: string, data: Record<string, unknown>) =>
   );
 
 describe("pack source nodes", () => {
-  it.each(packSourceNodes)(
-    "draws no input handle on $type",
-    ({ type, data }) => {
-      const { container } = renderNode(type, data as Record<string, unknown>);
+  it.each(packSourceNodes)("draws no input handle on $type", ({ type, data }) => {
+    const { container } = renderNode(type, data as Record<string, unknown>);
 
-      expect(
-        container.querySelectorAll(".react-flow__handle-left"),
-      ).toHaveLength(0);
-      // The output handle is still there - these nodes feed the rest of the graph.
-      expect(
-        container.querySelectorAll(".react-flow__handle-right").length,
-      ).toBeGreaterThan(0);
-    },
-  );
+    expect(container.querySelectorAll(".react-flow__handle-left")).toHaveLength(0);
+    // The output handle is still there - these nodes feed the rest of the graph.
+    expect(container.querySelectorAll(".react-flow__handle-right").length).toBeGreaterThan(0);
+  });
 
   it("draws PackFiles input and output handles on Remove Pack Source", () => {
     const { container } = renderNode("removepacksource", {
@@ -107,55 +100,56 @@ describe("pack source nodes", () => {
       edges: [],
     };
 
-    const result = applyConnection(state, { source: "all-mods", target: "remove-pack" } as never, {
-      DBNameToDBVersions: undefined,
-      defaultTableVersions: undefined,
-      sortedTableNames: [],
-    } as never);
+    const result = applyConnection(
+      state,
+      { source: "all-mods", target: "remove-pack" } as never,
+      {
+        DBNameToDBVersions: undefined,
+        defaultTableVersions: undefined,
+        sortedTableNames: [],
+      } as never,
+    );
 
     expect(result.accepted).toBe(true);
     expect(result.edges).toHaveLength(1);
   });
 
-  it.each(packSourceNodes)(
-    "rejects a connection into $type",
-    ({ type, data }) => {
-      const state = {
-        nodes: [
-          {
-            id: "source",
-            type: "packedfiles",
-            position: { x: 0, y: 0 },
-            data: {
-              label: "Pack Files",
-              type: "packedfiles",
-              textValue: "",
-              outputType: "PackFiles",
-            },
-          },
-          {
-            id: "target",
-            type,
-            position: { x: 200, y: 0 },
-            data: { label: type, type, ...data },
-          },
-        ] as never[],
-        edges: [],
-      };
-
-      const result = applyConnection(
-        state,
-        { source: "source", target: "target" } as never,
+  it.each(packSourceNodes)("rejects a connection into $type", ({ type, data }) => {
+    const state = {
+      nodes: [
         {
-          DBNameToDBVersions: undefined,
-          defaultTableVersions: undefined,
-          sortedTableNames: [],
-        } as never,
-      );
+          id: "source",
+          type: "packedfiles",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Pack Files",
+            type: "packedfiles",
+            textValue: "",
+            outputType: "PackFiles",
+          },
+        },
+        {
+          id: "target",
+          type,
+          position: { x: 200, y: 0 },
+          data: { label: type, type, ...data },
+        },
+      ] as never[],
+      edges: [],
+    };
 
-      // No inputType is declared on these, so there is nothing an edge could satisfy.
-      expect(result.accepted).toBe(false);
-      expect(result.edges).toEqual([]);
-    },
-  );
+    const result = applyConnection(
+      state,
+      { source: "source", target: "target" } as never,
+      {
+        DBNameToDBVersions: undefined,
+        defaultTableVersions: undefined,
+        sortedTableNames: [],
+      } as never,
+    );
+
+    // No inputType is declared on these, so there is nothing an edge could satisfy.
+    expect(result.accepted).toBe(false);
+    expect(result.edges).toEqual([]);
+  });
 });

@@ -41,8 +41,7 @@ export const getVanillaLocalisationPackNames = (
   useEnglishLocalizations = false,
 ): string[] => {
   const packNames = [...allVanillaPackNames];
-  const packsForCode = (code: string) =>
-    packNames.filter((packName) => packName.startsWith(`local_${code}`)).sort();
+  const packsForCode = (code: string) => packNames.filter((packName) => packName.startsWith(`local_${code}`)).sort();
 
   const language = useEnglishLocalizations ? "en" : currentLanguage || "en";
   const englishPacks = packsForCode("en");
@@ -59,6 +58,6 @@ export const getVanillaLocalisationPackPaths = (
   dataFolder: string,
   useEnglishLocalizations = false,
 ): string[] =>
-  getVanillaLocalisationPackNames(allVanillaPackNames, currentLanguage, useEnglishLocalizations).map(
-    (packName) => nodePath.join(dataFolder, packName),
+  getVanillaLocalisationPackNames(allVanillaPackNames, currentLanguage, useEnglishLocalizations).map((packName) =>
+    nodePath.join(dataFolder, packName),
   );

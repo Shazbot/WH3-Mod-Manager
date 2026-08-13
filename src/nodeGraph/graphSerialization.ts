@@ -1,12 +1,6 @@
 import { Edge, Node } from "@xyflow/react";
 
-import {
-  FlowOption,
-  SerializedConnection,
-  SerializedNode,
-  SerializedNodeGraph,
-  resolveRadioChoiceId,
-} from "./types";
+import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph, resolveRadioChoiceId } from "./types";
 import {
   substituteDeepCloneOptionValues,
   substituteFilterOptionValues,
@@ -249,7 +243,15 @@ export const prepareGraphForExecution = ({
     }
 
     if (flowOptions.length > 0) {
-      const textFields = ["textValue", "pattern", "beforeText", "afterText", "joinSeparator", "packName", "packedFileName"];
+      const textFields = [
+        "textValue",
+        "pattern",
+        "beforeText",
+        "afterText",
+        "joinSeparator",
+        "packName",
+        "packedFileName",
+      ];
 
       for (const fieldName of textFields) {
         const fieldValue = nodeData[fieldName];
@@ -264,9 +266,7 @@ export const prepareGraphForExecution = ({
 
       if (
         node.type === "edittextfile" &&
-        substituteTextFileRuleValues(nodeData, (value) =>
-          replaceFlowOptionPlaceholders(value, flowOptions),
-        )
+        substituteTextFileRuleValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
       ) {
         modified = true;
       }
@@ -280,18 +280,14 @@ export const prepareGraphForExecution = ({
 
       if (
         node.type === "filter" &&
-        substituteFilterOptionValues(nodeData, (value) =>
-          replaceFlowOptionPlaceholders(value, flowOptions),
-        )
+        substituteFilterOptionValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
       ) {
         modified = true;
       }
 
       if (
         node.type === "deepclone" &&
-        substituteDeepCloneOptionValues(nodeData, (value) =>
-          replaceFlowOptionPlaceholders(value, flowOptions),
-        )
+        substituteDeepCloneOptionValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
       ) {
         modified = true;
       }
@@ -384,9 +380,7 @@ export const deserializeNodeGraph = (jsonContent: string) => {
   }));
 
   const maxNodeId = Math.max(
-    ...serializedGraph.nodes
-      .map((node) => parseInt(node.id.replace("node_", ""), 10))
-      .filter((id) => !isNaN(id)),
+    ...serializedGraph.nodes.map((node) => parseInt(node.id.replace("node_", ""), 10)).filter((id) => !isNaN(id)),
     -1,
   );
 

@@ -146,28 +146,9 @@ export interface PackCollisions {
 }
 
 export type SCHEMA_FIELD_TYPE =
-  | "Boolean"
-  | "OptionalStringU8"
-  | "StringU8"
-  | "F32"
-  | "I16"
-  | "I32"
-  | "I64"
-  | "F64"
-  | "ColourRGB"
-  | "StringU16";
+  "Boolean" | "OptionalStringU8" | "StringU8" | "F32" | "I16" | "I32" | "I64" | "F64" | "ColourRGB" | "StringU16";
 
-export type FIELD_TYPE =
-  | "Int16"
-  | "Int8"
-  | "UInt8"
-  | "String"
-  | "Buffer"
-  | "F32"
-  | "I32"
-  | "I16"
-  | "I64"
-  | "F64";
+export type FIELD_TYPE = "Int16" | "Int8" | "UInt8" | "String" | "Buffer" | "F32" | "I32" | "I16" | "I64" | "F64";
 export type FIELD_VALUE = number | string | Buffer | undefined;
 
 export interface Field {

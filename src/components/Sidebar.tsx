@@ -64,9 +64,7 @@ const formatWorkshopUpdateStatus = (updateResult: WorkshopUpdateCheckItem) => {
   if (status === "requested") status = "waiting for Steam";
   if ((status === "downloading" || status === "already-downloading") && !hasProgress) {
     status =
-      (updateResult.finalState & WORKSHOP_STATE_DOWNLOAD_PENDING) !== 0
-        ? "queued by Steam"
-        : "preparing download";
+      (updateResult.finalState & WORKSHOP_STATE_DOWNLOAD_PENDING) !== 0 ? "queued by Steam" : "preparing download";
   }
   return (
     status +
@@ -154,97 +152,29 @@ const Sidebar = memo(() => {
     };
   }, [isTreeMenuOpen]);
 
-  const playGameClicked = useCallback((forcedDelayTime?: number) => {
-    console.log("playGameClicked: play game clicked");
+  const playGameClicked = useCallback(
+    (forcedDelayTime?: number) => {
+      console.log("playGameClicked: play game clicked");
 
-    if (isWaitingForContinueRelaunch) return;
-    if (isWH3Running) {
-      setIsWaitingForRelaunch(!isWaitingForRelaunch);
-      console.log("playGameClicked: waiting for relaunch");
-      return;
-    }
-    if (
-      forcedDelayTime ||
-      removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)
-    ) {
-      console.log(
-        `playGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
-          forcedDelayTime || "3.5"
-        } seconds before starting.`,
-        Date.now()
-      );
-      if (!playDelayTimeoutId.current) {
-        playDelayTimeoutId.current = setTimeout(() => {
-          console.log("playGameClicked: triggering delayed play game", Date.now());
-          playDelayTimeoutId.current = undefined;
-          dispatch(createOnGameStartPreset());
-          window.api?.startGame(mods, areModsInOrder, {
-            isMakeUnitsGeneralsEnabled,
-            isSkipIntroMoviesEnabled,
-            isScriptLoggingEnabled,
-            isAutoStartCustomBattleEnabled,
-            isClosedOnPlay,
-            packDataOverwrites,
-            userFlowOptions,
-          });
-        }, forcedDelayTime || 3500);
+      if (isWaitingForContinueRelaunch) return;
+      if (isWH3Running) {
+        setIsWaitingForRelaunch(!isWaitingForRelaunch);
+        console.log("playGameClicked: waiting for relaunch");
+        return;
       }
-      return;
-    }
-    dispatch(createOnGameStartPreset());
-    window.api?.startGame(mods, areModsInOrder, {
-      isMakeUnitsGeneralsEnabled,
-      isSkipIntroMoviesEnabled,
-      isScriptLoggingEnabled,
-      isAutoStartCustomBattleEnabled,
-      isClosedOnPlay,
-      packDataOverwrites,
-      userFlowOptions,
-    });
-  }, [
-    areModsInOrder,
-    dispatch,
-    isAutoStartCustomBattleEnabled,
-    isClosedOnPlay,
-    isMakeUnitsGeneralsEnabled,
-    isScriptLoggingEnabled,
-    isSkipIntroMoviesEnabled,
-    isWaitingForContinueRelaunch,
-    isWaitingForRelaunch,
-    isWH3Running,
-    mods,
-    packDataOverwrites,
-    removedModsData,
-    userFlowOptions,
-  ]);
-
-  const onContinueGameClicked = useCallback((forcedDelayTime?: number) => {
-    if (isWaitingForRelaunch) return;
-
-    if (isWH3Running) {
-      setIsWaitingForContinueRelaunch(!isWaitingForContinueRelaunch);
-      console.log("onContinueGameClicked: waiting for relaunch");
-      return;
-    }
-
-    if (
-      forcedDelayTime ||
-      removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)
-    ) {
-      console.log(
-        `onContinueGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
-          forcedDelayTime || "3.5"
-        } seconds before starting.`,
-        Date.now()
-      );
-      if (!continueDelayTimeoutId.current) {
-        continueDelayTimeoutId.current = setTimeout(() => {
-          console.log("onContinueGameClicked: triggering delayed continue game", Date.now());
-          continueDelayTimeoutId.current = undefined;
-          window.api?.startGame(
-            mods,
-            areModsInOrder,
-            {
+      if (forcedDelayTime || removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)) {
+        console.log(
+          `playGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
+            forcedDelayTime || "3.5"
+          } seconds before starting.`,
+          Date.now(),
+        );
+        if (!playDelayTimeoutId.current) {
+          playDelayTimeoutId.current = setTimeout(() => {
+            console.log("playGameClicked: triggering delayed play game", Date.now());
+            playDelayTimeoutId.current = undefined;
+            dispatch(createOnGameStartPreset());
+            window.api?.startGame(mods, areModsInOrder, {
               isMakeUnitsGeneralsEnabled,
               isSkipIntroMoviesEnabled,
               isScriptLoggingEnabled,
@@ -252,18 +182,13 @@ const Sidebar = memo(() => {
               isClosedOnPlay,
               packDataOverwrites,
               userFlowOptions,
-            },
-            saves[0]?.name
-          );
-        }, forcedDelayTime || 3500);
+            });
+          }, forcedDelayTime || 3500);
+        }
+        return;
       }
-      return;
-    }
-
-    window.api?.startGame(
-      mods,
-      areModsInOrder,
-      {
+      dispatch(createOnGameStartPreset());
+      window.api?.startGame(mods, areModsInOrder, {
         isMakeUnitsGeneralsEnabled,
         isSkipIntroMoviesEnabled,
         isScriptLoggingEnabled,
@@ -271,25 +196,98 @@ const Sidebar = memo(() => {
         isClosedOnPlay,
         packDataOverwrites,
         userFlowOptions,
-      },
-      saves[0]?.name
-    );
-  }, [
-    areModsInOrder,
-    isAutoStartCustomBattleEnabled,
-    isClosedOnPlay,
-    isMakeUnitsGeneralsEnabled,
-    isScriptLoggingEnabled,
-    isSkipIntroMoviesEnabled,
-    isWaitingForContinueRelaunch,
-    isWaitingForRelaunch,
-    isWH3Running,
-    mods,
-    packDataOverwrites,
-    removedModsData,
-    saves,
-    userFlowOptions,
-  ]);
+      });
+    },
+    [
+      areModsInOrder,
+      dispatch,
+      isAutoStartCustomBattleEnabled,
+      isClosedOnPlay,
+      isMakeUnitsGeneralsEnabled,
+      isScriptLoggingEnabled,
+      isSkipIntroMoviesEnabled,
+      isWaitingForContinueRelaunch,
+      isWaitingForRelaunch,
+      isWH3Running,
+      mods,
+      packDataOverwrites,
+      removedModsData,
+      userFlowOptions,
+    ],
+  );
+
+  const onContinueGameClicked = useCallback(
+    (forcedDelayTime?: number) => {
+      if (isWaitingForRelaunch) return;
+
+      if (isWH3Running) {
+        setIsWaitingForContinueRelaunch(!isWaitingForContinueRelaunch);
+        console.log("onContinueGameClicked: waiting for relaunch");
+        return;
+      }
+
+      if (forcedDelayTime || removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)) {
+        console.log(
+          `onContinueGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
+            forcedDelayTime || "3.5"
+          } seconds before starting.`,
+          Date.now(),
+        );
+        if (!continueDelayTimeoutId.current) {
+          continueDelayTimeoutId.current = setTimeout(() => {
+            console.log("onContinueGameClicked: triggering delayed continue game", Date.now());
+            continueDelayTimeoutId.current = undefined;
+            window.api?.startGame(
+              mods,
+              areModsInOrder,
+              {
+                isMakeUnitsGeneralsEnabled,
+                isSkipIntroMoviesEnabled,
+                isScriptLoggingEnabled,
+                isAutoStartCustomBattleEnabled,
+                isClosedOnPlay,
+                packDataOverwrites,
+                userFlowOptions,
+              },
+              saves[0]?.name,
+            );
+          }, forcedDelayTime || 3500);
+        }
+        return;
+      }
+
+      window.api?.startGame(
+        mods,
+        areModsInOrder,
+        {
+          isMakeUnitsGeneralsEnabled,
+          isSkipIntroMoviesEnabled,
+          isScriptLoggingEnabled,
+          isAutoStartCustomBattleEnabled,
+          isClosedOnPlay,
+          packDataOverwrites,
+          userFlowOptions,
+        },
+        saves[0]?.name,
+      );
+    },
+    [
+      areModsInOrder,
+      isAutoStartCustomBattleEnabled,
+      isClosedOnPlay,
+      isMakeUnitsGeneralsEnabled,
+      isScriptLoggingEnabled,
+      isSkipIntroMoviesEnabled,
+      isWaitingForContinueRelaunch,
+      isWaitingForRelaunch,
+      isWH3Running,
+      mods,
+      packDataOverwrites,
+      removedModsData,
+      saves,
+      userFlowOptions,
+    ],
+  );
 
   const presets = useAppSelector((state) => state.app.presets);
   const options: OptionType[] = useMemo(
@@ -330,8 +328,7 @@ const Sidebar = memo(() => {
   };
 
   const defaultOption =
-    (lastSelectedPreset != null && options.filter((option) => option.value === lastSelectedPreset.name)[0]) ||
-    null;
+    (lastSelectedPreset != null && options.filter((option) => option.value === lastSelectedPreset.name)[0]) || null;
 
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setFilter(e.target.value));
@@ -425,22 +422,12 @@ const Sidebar = memo(() => {
   useEffect(() => {
     if (previousIsWH3RunningRef.current !== isWH3Running) {
       if (isWaitingForRelaunch && !isWH3Running) {
-        console.log(
-          "calling PLAYGAMECLICKED",
-          previousIsWH3RunningRef.current,
-          isWH3Running,
-          isWaitingForRelaunch,
-        );
+        console.log("calling PLAYGAMECLICKED", previousIsWH3RunningRef.current, isWH3Running, isWaitingForRelaunch);
         setIsWaitingForRelaunch(false);
         playGameClicked(1500);
       }
       if (isWaitingForContinueRelaunch && !isWH3Running) {
-        console.log(
-          "calling PLAYGAMECLICKED",
-          previousIsWH3RunningRef.current,
-          isWH3Running,
-          isWaitingForRelaunch,
-        );
+        console.log("calling PLAYGAMECLICKED", previousIsWH3RunningRef.current, isWH3Running, isWaitingForRelaunch);
         setIsWaitingForContinueRelaunch(false);
         onContinueGameClicked(1500);
       }
@@ -476,8 +463,7 @@ const Sidebar = memo(() => {
       }
       if (
         updateResult?.status === "updated" &&
-        (updateResult.installTimestampAfter == null ||
-          mod.lastChanged <= updateResult.installTimestampAfter * 1000)
+        (updateResult.installTimestampAfter == null || mod.lastChanged <= updateResult.installTimestampAfter * 1000)
       ) {
         return false;
       }
@@ -537,7 +523,7 @@ const Sidebar = memo(() => {
       if (!modInAllById) return false;
       return enabledMods.some((enabledMod) => enabledMod.name == modInAllById.name);
     },
-    [allMods, enabledMods]
+    [allMods, enabledMods],
   );
 
   const missingModDependencies = enabledMods
@@ -550,9 +536,9 @@ const Sidebar = memo(() => {
           mod.reqModIdToName.filter(
             ([reqId]) =>
               !isDependencyEnabledByPackName(reqId) &&
-              !enabledMods.some((enabledMod) => enabledMod.workshopId == reqId)
+              !enabledMods.some((enabledMod) => enabledMod.workshopId == reqId),
           ),
-        ] as [Mod, [string, string][]]
+        ] as [Mod, [string, string][]],
     )
     .filter((member) => member[1].length > 0);
 
@@ -578,7 +564,7 @@ const Sidebar = memo(() => {
           enabledMod.lastChanged != mergedModData.lastChanged &&
           enabledMod.lastChangedLocal != mergedModData.lastChanged
         );
-      })
+      }),
     );
 
   const timeCheckedOverwrittenDataPackedFiles: typeof overwrittenDataPackedFiles = {};
@@ -599,9 +585,7 @@ const Sidebar = memo(() => {
         size="lg"
         position="center"
       >
-        <Modal.Header>
-          {localized.repairWorkshopMods || "Repair Workshop Mods"}
-        </Modal.Header>
+        <Modal.Header>{localized.repairWorkshopMods || "Repair Workshop Mods"}</Modal.Header>
         <Modal.Body>
           <p className="mb-4 text-gray-500 dark:text-gray-300">
             {localized.repairWorkshopModsHelp ||
@@ -808,11 +792,7 @@ const Sidebar = memo(() => {
           )}
           {possiblyOutdatedWorkshopMods.length > 0 && (
             <div className="text-center text-amber-500 font-semibold mb-4">
-              <button
-                type="button"
-                className="make-tooltip-w-full w-full"
-                onClick={openWorkshopRepairModal}
-              >
+              <button type="button" className="make-tooltip-w-full w-full" onClick={openWorkshopRepairModal}>
                 <Tooltip
                   placement="left"
                   content={
@@ -832,11 +812,9 @@ const Sidebar = memo(() => {
                             {(localized.installedVersion || "Installed version") +
                               `: ${new Date((installedTimestamp as number) * 1000).toLocaleString()}`}
                           </div>
-                          {(updateResult?.status === "request-failed" ||
-                            updateResult?.status === "timed-out") && (
+                          {(updateResult?.status === "request-failed" || updateResult?.status === "timed-out") && (
                             <div className="text-amber-400">
-                              {(localized.workshopUpdateStatus || "Update status") +
-                                `: ${updateResult.status}`}
+                              {(localized.workshopUpdateStatus || "Update status") + `: ${updateResult.status}`}
                             </div>
                           )}
                         </div>
@@ -854,10 +832,7 @@ const Sidebar = memo(() => {
 
           {missingModDependencies.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
-              <div
-                className="make-tooltip-w-full cursor-pointer"
-                onClick={() => onMissingDependenciesClicked()}
-              >
+              <div className="make-tooltip-w-full cursor-pointer" onClick={() => onMissingDependenciesClicked()}>
                 <Tooltip
                   placement="left"
                   content={missingModDependencies.map(([mod, reqs]) => (
@@ -888,18 +863,16 @@ const Sidebar = memo(() => {
                   content={
                     <>
                       <p className="cursor-default">{localized.outdatedOverwritingPacksTooltip}</p>
-                      {Object.entries(timeCheckedOverwrittenDataPackedFiles).map(
-                        ([packName, overwrittenFileNames]) => (
-                          <div key={packName}>
-                            <span className="">{packName + ` ${localized.overwrites}`}</span>
-                            {overwrittenFileNames.map((packedFileName) => (
-                              <div key={`${packName}_${packedFileName}`} className="text-red-600">
-                                {packedFileName}
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      )}
+                      {Object.entries(timeCheckedOverwrittenDataPackedFiles).map(([packName, overwrittenFileNames]) => (
+                        <div key={packName}>
+                          <span className="">{packName + ` ${localized.overwrites}`}</span>
+                          {overwrittenFileNames.map((packedFileName) => (
+                            <div key={`${packName}_${packedFileName}`} className="text-red-600">
+                              {packedFileName}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
                     </>
                   }
                 >
@@ -977,8 +950,7 @@ const Sidebar = memo(() => {
             <button
               id="playGame"
               className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto ${
-                (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") ||
-                ""
+                (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") || ""
               }`}
               onClick={(e) => {
                 if (e.ctrlKey) {
@@ -1010,9 +982,7 @@ const Sidebar = memo(() => {
                       />
                     </div>
                   </Tooltip>
-                  {isWaitingForRelaunch && (
-                    <div className="dots-loader h-3 w-3 self-center mt-2 opacity-90"></div>
-                  )}
+                  {isWaitingForRelaunch && <div className="dots-loader h-3 w-3 self-center mt-2 opacity-90"></div>}
                 </div>
               )) || (
                 <div className="flex justify-center items-center gap-[0.4rem]">
@@ -1032,18 +1002,13 @@ const Sidebar = memo(() => {
               <button
                 id="continueGame"
                 className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto ${
-                  (isWH3Running &&
-                    "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") ||
-                  ""
+                  (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") || ""
                 }`}
                 onClick={() => onContinueGameClicked()}
                 disabled={saves.length < 1}
               >
                 <div className="make-tooltip-w-full">
-                  <Tooltip
-                    placement="left"
-                    content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}
-                  >
+                  <Tooltip placement="left" content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}>
                     {((isWaitingForContinueRelaunch || continueDelayTimeoutId.current) && (
                       <div className="dots-loader mb-1 ml-2 h-3 w-3 self-center mt-2 opacity-90"></div>
                     )) || <span className="ml-[-25%]">{localized.continue}</span>}
@@ -1068,12 +1033,7 @@ const Sidebar = memo(() => {
                       viewBox="0 0 24 24"
                       xmlns="http://www.w3.org/2000/svg"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      ></path>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"></path>
                     </svg>
                   </Tooltip>
                 </div>
@@ -1094,9 +1054,7 @@ const Sidebar = memo(() => {
         <div className="mt-4">
           <div className="text-center mt-4">
             <button
-              onClick={() =>
-                window.api?.requestOpenModInViewer(gameToPackWithDBTablesName[currentGame] || "db.pack")
-              }
+              onClick={() => window.api?.requestOpenModInViewer(gameToPackWithDBTablesName[currentGame] || "db.pack")}
               className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
             >
@@ -1177,9 +1135,7 @@ const Sidebar = memo(() => {
       </div>
 
       {isUpdateAvailable && (
-        <div
-          className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}
-        >
+        <div className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}>
           <UpdateNotification
             downloadURL={downloadURL}
             releaseNotesURL={releaseNotesURL}

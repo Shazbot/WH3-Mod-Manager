@@ -37,11 +37,7 @@ const schema: DBVersion = {
 const packedFile = (name: string, rows: Array<[string, string, number]>): PackedFile =>
   ({
     name,
-    schemaFields: rows.flatMap(([key, faction, cost]) => [
-      stringCell(key),
-      stringCell(faction),
-      numberCell(cost),
-    ]),
+    schemaFields: rows.flatMap(([key, faction, cost]) => [stringCell(key), stringCell(faction), numberCell(cost)]),
     version: 1,
     file_size: 0,
     start_pos: 0,
@@ -96,10 +92,7 @@ describe("vanilla db cache search", () => {
   it("matches substrings by default", () => {
     const { matches } = searchVanillaDbCache(sampleReader(), { query: "grn_spear" });
 
-    expect(matches.map((match) => match.value).toSorted()).toEqual([
-      "wh_main_grn_spear",
-      "wh_main_grn_spear_land",
-    ]);
+    expect(matches.map((match) => match.value).toSorted()).toEqual(["wh_main_grn_spear", "wh_main_grn_spear_land"]);
   });
 
   it("matches prefixes when asked, which needs no string comparison at all", () => {
@@ -122,9 +115,7 @@ describe("vanilla db cache search", () => {
     const reader = sampleReader();
 
     expect(searchVanillaDbCache(reader, { query: "WH_MAIN_EMP_SWORD" }).matches).toHaveLength(1);
-    expect(
-      searchVanillaDbCache(reader, { query: "WH_MAIN_EMP_SWORD", caseSensitive: true }).matches,
-    ).toHaveLength(0);
+    expect(searchVanillaDbCache(reader, { query: "WH_MAIN_EMP_SWORD", caseSensitive: true }).matches).toHaveLength(0);
   });
 
   it("finds nothing for a value no table holds", () => {

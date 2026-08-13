@@ -167,11 +167,7 @@ const stripGameMarkup = (value: string) =>
 const resolveGameText = (value: string, getLoc: (key: string) => string | undefined) =>
   stripGameMarkup(resolveTextReplacements(value, getLoc) || value);
 
-const splitAttributeText = (
-  value: string,
-  fallback: string,
-  getLoc: (key: string) => string | undefined,
-) => {
+const splitAttributeText = (value: string, fallback: string, getLoc: (key: string) => string | undefined) => {
   const [name, ...description] = resolveGameText(value, getLoc).split("||");
   return { name: name || fallback, description: description.join("||") };
 };
@@ -264,9 +260,7 @@ const normalizeUiPath = (path: string) => path.replace(/\//g, "\\").replace(/\\+
 const getBonusValuePresentation = (how: string, value: number, key: string) => {
   if (how === "mult") {
     const rawPercentage = (value - 1) * 100;
-    const percentage = Number.isInteger(rawPercentage)
-      ? rawPercentage
-      : Math.round(rawPercentage * 100) / 100;
+    const percentage = Number.isInteger(rawPercentage) ? rawPercentage : Math.round(rawPercentage * 100) / 100;
     return {
       valueText: `${percentage > 0 ? "+" : ""}${percentage}%`,
       numericValue: percentage,
@@ -315,10 +309,7 @@ const buildAbility = (
       bonuses.push({
         key: `${phaseId}:${stat}:${how}`,
         compareKey: `${stat}:${how}`,
-        label: resolveGameText(
-          getLoc(`unit_stat_localisations_onscreen_name_${stat}`) || stat,
-          getLoc,
-        ),
+        label: resolveGameText(getLoc(`unit_stat_localisations_onscreen_name_${stat}`) || stat, getLoc),
         valueText: presentation.valueText,
         numericValue: presentation.numericValue,
         valueSuffix: presentation.valueSuffix,
@@ -333,10 +324,7 @@ const buildAbility = (
       bonuses.push({
         key: `${phaseId}:fatigue_change_ratio`,
         compareKey: "fatigue_change_ratio",
-        label: resolveGameText(
-          getLoc("random_localisation_strings_string_fatigue") || "Vigour per second",
-          getLoc,
-        ),
+        label: resolveGameText(getLoc("random_localisation_strings_string_fatigue") || "Vigour per second", getLoc),
         valueText: `${fatiguePerSecond > 0 ? "+" : ""}${fatiguePerSecond}%`,
         numericValue: fatiguePerSecond,
         valueSuffix: "%",
@@ -345,11 +333,7 @@ const buildAbility = (
     }
   }
   const additionalUiEffects = Array.from(
-    new Set(
-      (additionalEffectsByAbility.get(key) || [])
-        .map((row) => asString(row.effect))
-        .filter(Boolean),
-    ),
+    new Set((additionalEffectsByAbility.get(key) || []).map((row) => asString(row.effect)).filter(Boolean)),
   )
     .map((effectKey) => {
       const effect = additionalEffects.get(effectKey);
@@ -372,15 +356,9 @@ const buildAbility = (
       key,
       name: resolveGameText(getLoc(`unit_abilities_onscreen_name_${key}`) || key, getLoc),
       description: resolveGameText(getLoc(`unit_abilities_tooltip_text_${key}`) || "", getLoc),
-      sourceTypeName: resolveGameText(
-        getLoc(`unit_ability_source_types_name_${sourceType}`) || sourceType,
-        getLoc,
-      ),
+      sourceTypeName: resolveGameText(getLoc(`unit_ability_source_types_name_${sourceType}`) || sourceType, getLoc),
       loreGroupName: "",
-      abilityTypeName: resolveGameText(
-        getLoc(`unit_ability_types_onscreen_name_${type}`) || type,
-        getLoc,
-      ),
+      abilityTypeName: resolveGameText(getLoc(`unit_ability_types_onscreen_name_${type}`) || type, getLoc),
       overpowerOption: asString(ability?.overpower_option) || undefined,
       iconPath: normalizeIconPath(asString(ability?.icon_name)),
       stats: {
@@ -434,10 +412,7 @@ export const buildUnitViewerData = (
   );
   const abilities = indexRows(tables.unit_abilities_tables, "key");
   const specialAbilities = indexRows(tables.unit_special_abilities_tables, "key");
-  const abilityPhases = groupRows(
-    tables.special_ability_to_special_ability_phase_junctions_tables,
-    "special_ability",
-  );
+  const abilityPhases = groupRows(tables.special_ability_to_special_ability_phase_junctions_tables, "special_ability");
   const phases = indexRows(tables.special_ability_phases_tables, "id");
   const phaseStatEffects = new Map<string, Array<Record<string, string>>>();
   for (const row of tables.special_ability_phase_stat_effects_tables || []) {
@@ -446,17 +421,12 @@ export const buildUnitViewerData = (
     const how = asString(row.how);
     if (!phase || !stat || !how) continue;
     const effects = phaseStatEffects.get(phase) || [];
-    const existingIndex = effects.findIndex(
-      (effect) => asString(effect.stat) === stat && asString(effect.how) === how,
-    );
+    const existingIndex = effects.findIndex((effect) => asString(effect.stat) === stat && asString(effect.how) === how);
     if (existingIndex >= 0) effects[existingIndex] = row;
     else effects.push(row);
     phaseStatEffects.set(phase, effects);
   }
-  const additionalEffectsByAbility = groupRows(
-    tables.unit_abilities_to_additional_ui_effects_juncs_tables,
-    "ability",
-  );
+  const additionalEffectsByAbility = groupRows(tables.unit_abilities_to_additional_ui_effects_juncs_tables, "ability");
   const additionalEffects = indexRows(tables.unit_abilities_additional_ui_effects_tables, "key");
   const groundEffectsByGroup = groupRows(tables.ground_type_to_stat_effects_tables, "affected_group");
   const uiUnitStats = indexRows(tables.ui_unit_stats_tables, "key");
@@ -567,8 +537,7 @@ export const buildUnitViewerData = (
       .filter((ability): ability is UnitViewerAbility => !!ability)
       .sort(
         (first, second) =>
-          collator.compare(first.tooltip.name, second.tooltip.name) ||
-          collator.compare(first.key, second.key),
+          collator.compare(first.tooltip.name, second.tooltip.name) || collator.compare(first.key, second.key),
       );
     const attributeRows = attributesByGroup.get(asString(land.attribute_group)) || [];
     const unitAttributes = attributeRows
@@ -585,10 +554,7 @@ export const buildUnitViewerData = (
           iconPath: normalizeIconPath(attributeKey)!,
         };
       })
-      .sort(
-        (first, second) =>
-          collator.compare(first.name, second.name) || collator.compare(first.key, second.key),
-      );
+      .sort((first, second) => collator.compare(first.name, second.name) || collator.compare(first.key, second.key));
     const variantRows = (unitVariants.get(landUnitKey) || []).toReversed();
     const variant = variantRows.find((row) => !asString(row.faction)) || variantRows[0];
     const unitCardName = asString(variant?.unit_card) || key;
@@ -597,7 +563,10 @@ export const buildUnitViewerData = (
       .map((permission) => asString(permission.general_portrait))
       .find(Boolean);
     const unitCardPath = generalPortrait
-      ? generalPortrait.replace(/\//g, "\\").replace(/portholes/gi, "units").toLowerCase()
+      ? generalPortrait
+          .replace(/\//g, "\\")
+          .replace(/portholes/gi, "units")
+          .toLowerCase()
       : `ui\\units\\icons\\${unitCardName}.png`.toLowerCase();
     const engineMissileKey = asString(engine?.missile_weapon);
     const landMissileKey = asString(land.primary_missile_weapon);
@@ -626,8 +595,7 @@ export const buildUnitViewerData = (
       accuracy: asNumber(land.accuracy),
       armour: asNumber(armour.get(asString(land.armour))?.armour_value),
       shieldBlock: asNumber(
-        shields.get(asString(land.shield))?.missile_block_chance ??
-          shields.get(asString(land.shield))?.parry_chance,
+        shields.get(asString(land.shield))?.missile_block_chance ?? shields.get(asString(land.shield))?.parry_chance,
       ),
       chargeBonus: asNumber(land.charge_bonus),
       meleeAttack: asNumber(land.melee_attack),
@@ -651,8 +619,7 @@ export const buildUnitViewerData = (
           getLoc,
         ),
         stat: resolveGameText(
-          getLoc(`unit_stat_localisations_onscreen_name_${asString(row.affected_stat)}`) ||
-            asString(row.affected_stat),
+          getLoc(`unit_stat_localisations_onscreen_name_${asString(row.affected_stat)}`) || asString(row.affected_stat),
           getLoc,
         ),
         multiplier: asNumber(row.multiplier),
@@ -671,19 +638,18 @@ export const buildUnitViewerData = (
     units.set(key, model);
     iconPathsByUnit.set(
       key,
-      Array.from(new Set([
-        ...unitAbilities.map((ability) => ability.tooltip.iconPath),
-        ...unitAttributes.map((attribute) => attribute.iconPath),
-      ].filter((path): path is string => !!path))),
+      Array.from(
+        new Set(
+          [
+            ...unitAbilities.map((ability) => ability.tooltip.iconPath),
+            ...unitAttributes.map((attribute) => attribute.iconPath),
+          ].filter((path): path is string => !!path),
+        ),
+      ),
     );
 
-    const parentGroupKey = asString(
-      uiUnitGroupings.get(asString(main.ui_unit_group_land))?.parent_group,
-    );
-    uiGroupKeyByUnit.set(
-      key,
-      uiUnitGroupParents.has(parentGroupKey) ? parentGroupKey : EXTENDED_ROSTER_GROUP_KEY,
-    );
+    const parentGroupKey = asString(uiUnitGroupings.get(asString(main.ui_unit_group_land))?.parent_group);
+    uiGroupKeyByUnit.set(key, uiUnitGroupParents.has(parentGroupKey) ? parentGroupKey : EXTENDED_ROSTER_GROUP_KEY);
 
     const subcultures = new Set<string>();
     for (const permission of permissions.get(key) || []) {
@@ -742,10 +708,11 @@ export const buildUnitViewerData = (
           uiGroupKey: uiGroupKeyByUnit.get(unit.key) || EXTENDED_ROSTER_GROUP_KEY,
           unitCardPath: unit.unitCardPath,
         }))
-        .sort((first, second) =>
-          getCasteSortOrder(first.caste) - getCasteSortOrder(second.caste) ||
-          collator.compare(first.name, second.name) ||
-          collator.compare(first.key, second.key),
+        .sort(
+          (first, second) =>
+            getCasteSortOrder(first.caste) - getCasteSortOrder(second.caste) ||
+            collator.compare(first.name, second.name) ||
+            collator.compare(first.key, second.key),
         ),
     }))
     .sort((first, second) => {

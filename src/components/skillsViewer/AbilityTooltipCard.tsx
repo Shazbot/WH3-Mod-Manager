@@ -67,13 +67,7 @@ const renderValueWithDiff = (
   );
 };
 
-const Row = ({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) => {
+const Row = ({ label, children }: { label: string; children: React.ReactNode }) => {
   return (
     <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-3">
       <span className="text-gray-300">{label}:</span>
@@ -135,11 +129,14 @@ const AbilityTooltipCard = ({
               <span className="text-gray-400">
                 {" "}
                 ({ability.projectile.apPct}% AP
-                {compareAbility?.projectile?.apPct != undefined && Math.abs(ability.projectile.apPct - compareAbility.projectile.apPct) > 0.0001 && (
-                  <span className={`ml-1 ${getDiffClassName(ability.projectile.apPct - compareAbility.projectile.apPct)}`}>
-                    {formatDelta(ability.projectile.apPct - compareAbility.projectile.apPct, "%")}
-                  </span>
-                )}
+                {compareAbility?.projectile?.apPct != undefined &&
+                  Math.abs(ability.projectile.apPct - compareAbility.projectile.apPct) > 0.0001 && (
+                    <span
+                      className={`ml-1 ${getDiffClassName(ability.projectile.apPct - compareAbility.projectile.apPct)}`}
+                    >
+                      {formatDelta(ability.projectile.apPct - compareAbility.projectile.apPct, "%")}
+                    </span>
+                  )}
                 )
               </span>
             )}
@@ -156,13 +153,17 @@ const AbilityTooltipCard = ({
                   {" "}
                   ({ability.projectile.explosion.apPct}% AP
                   {compareAbility?.projectile?.explosion?.apPct != undefined &&
-                    Math.abs(ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct) > 0.0001 && (
+                    Math.abs(ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct) >
+                      0.0001 && (
                       <span
                         className={`ml-1 ${getDiffClassName(
                           ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct,
                         )}`}
                       >
-                        {formatDelta(ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct, "%")}
+                        {formatDelta(
+                          ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct,
+                          "%",
+                        )}
                       </span>
                     )}
                   )
@@ -190,7 +191,9 @@ const AbilityTooltipCard = ({
                   ({displayedVortex.apPct}% AP
                   {displayedCompareVortex?.apPct != undefined &&
                     Math.abs(displayedVortex.apPct - displayedCompareVortex.apPct) > 0.0001 && (
-                      <span className={`ml-1 ${getDiffClassName(displayedVortex.apPct - displayedCompareVortex.apPct)}`}>
+                      <span
+                        className={`ml-1 ${getDiffClassName(displayedVortex.apPct - displayedCompareVortex.apPct)}`}
+                      >
                         {formatDelta(displayedVortex.apPct - displayedCompareVortex.apPct, "%")}
                       </span>
                     )}
@@ -251,11 +254,14 @@ const AbilityTooltipCard = ({
             return (
               <div key={bonus.key} className={bonus.isPositive ? "text-lime-300" : "text-red-300"}>
                 {bonusIcon ? (
-                  <img className="mr-1 inline-block h-4 w-4 object-contain align-[-2px]" src={`data:image/png;base64,${bonusIcon}`} alt="" />
+                  <img
+                    className="mr-1 inline-block h-4 w-4 object-contain align-[-2px]"
+                    src={`data:image/png;base64,${bonusIcon}`}
+                    alt=""
+                  />
                 ) : (
                   <span className="text-yellow-200">➤</span>
-                )}
-                {" "}
+                )}{" "}
                 {bonus.label}: {bonus.valueText}
                 {hasDiff && diffValue != undefined && (
                   <span className={`ml-1 text-[12px] ${getDiffClassName(diffValue)}`}>
@@ -278,14 +284,10 @@ const AbilityTooltipCard = ({
           </Row>
         )}
         {ability.stats.cooldown != undefined && (
-          <Row label="Cooldown">
-            {renderValueWithDiff(ability.stats.cooldown, compareAbility?.stats.cooldown, "s")}
-          </Row>
+          <Row label="Cooldown">{renderValueWithDiff(ability.stats.cooldown, compareAbility?.stats.cooldown, "s")}</Row>
         )}
         {ability.stats.duration != undefined && !isStatsDurationDuplicated && (
-          <Row label="Duration">
-            {renderValueWithDiff(ability.stats.duration, compareAbility?.stats.duration, "s")}
-          </Row>
+          <Row label="Duration">{renderValueWithDiff(ability.stats.duration, compareAbility?.stats.duration, "s")}</Row>
         )}
         {ability.stats.womCost != undefined && (
           <Row label="Winds of Magic Cost">
@@ -314,7 +316,9 @@ const AbilityTooltipCard = ({
         </div>
       )}
 
-      {ability.description && <div className="mt-2.5 text-[13px] italic leading-5 text-gray-200">{ability.description}</div>}
+      {ability.description && (
+        <div className="mt-2.5 text-[13px] italic leading-5 text-gray-200">{ability.description}</div>
+      )}
     </div>
   );
 };

@@ -1,18 +1,8 @@
-import {
-  PackedFile,
-  AmendedSchemaField,
-  SCHEMA_FIELD_TYPE,
-  DBVersion,
-  LocVersion,
-} from "../../packFileTypes";
+import { PackedFile, AmendedSchemaField, SCHEMA_FIELD_TYPE, DBVersion, LocVersion } from "../../packFileTypes";
 
 export const isSchemaFieldNumber = (fieldType: SCHEMA_FIELD_TYPE) => {
   return (
-    fieldType === "I16" ||
-    fieldType === "I32" ||
-    fieldType === "I64" ||
-    fieldType === "F32" ||
-    fieldType === "F64"
+    fieldType === "I16" || fieldType === "I32" || fieldType === "I64" || fieldType === "F32" || fieldType === "F64"
   );
 };
 
@@ -63,10 +53,7 @@ export const getLocsTree = (packData: PackViewData) => {
   return locTree;
 };
 
-const getTreeNodeForLoc = (
-  leaf: TreeNode<string> | RootNode<string>,
-  locs: string[]
-): TreeNode<string> | undefined => {
+const getTreeNodeForLoc = (leaf: TreeNode<string> | RootNode<string>, locs: string[]): TreeNode<string> | undefined => {
   if (locs.length == 0) return;
 
   for (const child of leaf.children) {
@@ -88,7 +75,7 @@ export const getLocFromTree = (tree: Tree<string>, locPrefix: string, loc: strin
 const getPlainPackData = (
   packedFiles: PackedFile[],
   schema: DBVersion,
-  rowFilter?: (row: PlainPackDataTypes[]) => boolean
+  rowFilter?: (row: PlainPackDataTypes[]) => boolean,
 ) => {
   const packFilePathToData = {} as Record<string, PlainPackFileData>;
   for (const packFile of packedFiles) {
@@ -116,7 +103,7 @@ const getPlainPackData = (
           return "";
         }
         return cell.resolvedKeyValue;
-      })
+      }),
     );
 
     if (rowFilter) {
@@ -132,7 +119,7 @@ const getPlainPackData = (
 const getPackTableData = (
   packedFilePath: string,
   packData: PackViewData,
-  rowFilter?: (row: PlainPackDataTypes[]) => boolean
+  rowFilter?: (row: PlainPackDataTypes[]) => boolean,
 ) => {
   console.log("getPackTableData packedFilePath:", packedFilePath);
 

@@ -36,11 +36,7 @@ import {
   resolveFlowSourcePackPath,
 } from "./flowExecutionSupport";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
-import {
-  buildPackPriority,
-  resolveFileSourcePacks,
-  sortPacksByAscendingPriority,
-} from "./nodeGraph/packPriority";
+import { buildPackPriority, resolveFileSourcePacks, sortPacksByAscendingPriority } from "./nodeGraph/packPriority";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import {
   VanillaPackIndex,
@@ -59,17 +55,9 @@ import {
   tablesToIgnore,
 } from "./schema";
 import { splitMultilineOptionValue } from "./nodeGraph/types";
-import {
-  TextFileEditRule,
-  applyTextFileEdits,
-  matchesTextFileTarget,
-} from "./nodeGraph/textFileEdits";
+import { TextFileEditRule, applyTextFileEdits, matchesTextFileTarget } from "./nodeGraph/textFileEdits";
 import type { TextFileFormatter } from "./nodeGraph/textFileFormatting";
-import {
-  PackFileOperationRule,
-  planPackCopy,
-  planPackFileOperations,
-} from "./nodeGraph/packFileOperations";
+import { PackFileOperationRule, planPackCopy, planPackFileOperations } from "./nodeGraph/packFileOperations";
 import {
   DeepClonePlan,
   LoadedTableFile,
@@ -77,12 +65,7 @@ import {
   executeDeepClonePlan,
   parseFilenameRelativePaths,
 } from "./flowDeepClone";
-import type {
-  DeepCloneOverride,
-  DeepCloneTreeNode,
-  DeepCloneVariantAxis,
-  LocTextRule,
-} from "./nodeGraph/nodes/types";
+import type { DeepCloneOverride, DeepCloneTreeNode, DeepCloneVariantAxis, LocTextRule } from "./nodeGraph/nodes/types";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
 // Map structure: sourceColumnId -> Set of used numbers
@@ -172,7 +155,8 @@ const getMergeIdentityColumnNames = (
   existingColumn: DBColumnSelectionTableValues,
   currentColumn: DBColumnSelectionTableValues,
 ): string[] => {
-  const tableFields = currentColumn.sourceTable.tableSchema?.fields ?? existingColumn.sourceTable.tableSchema?.fields ?? [];
+  const tableFields =
+    currentColumn.sourceTable.tableSchema?.fields ?? existingColumn.sourceTable.tableSchema?.fields ?? [];
   const keyColumnNames = tableFields.filter((field) => field.is_key).map((field) => field.name);
   if (keyColumnNames.length > 0) {
     return keyColumnNames;
@@ -296,10 +280,7 @@ const buildFlowPackPriority = (): Map<string, number> =>
  * what a flow editing one known vanilla file does. Matching on file name or on a regex cannot be
  * narrowed by sort order, so those rules cost one walk of the whole index between them.
  */
-const resolveVanillaTargets = (
-  vanillaIndex: VanillaPackIndex,
-  packRules: TextFileEditRule[],
-): Map<string, string> => {
+const resolveVanillaTargets = (vanillaIndex: VanillaPackIndex, packRules: TextFileEditRule[]): Map<string, string> => {
   const packNameByFileName = new Map<string, string>();
 
   for (const rule of packRules) {
@@ -347,11 +328,7 @@ const readPackCached = async (
   return cachedPackPromise;
 };
 
-const cacheTableFilesForPack = (
-  pack: Pack,
-  tableNames: string[],
-  executionContext?: FlowExecutionContext,
-): void => {
+const cacheTableFilesForPack = (pack: Pack, tableNames: string[], executionContext?: FlowExecutionContext): void => {
   if (!executionContext) {
     return;
   }
@@ -364,7 +341,9 @@ const cacheTableFilesForPack = (
 
     executionContext.tableFilesByPackAndTable.set(
       cacheKey,
-      pack.packedFiles.filter((packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`)),
+      pack.packedFiles.filter(
+        (packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`),
+      ),
     );
   }
 };
@@ -447,7 +426,9 @@ const getTableFilesForPackAndTables = async (
     matchingTablesByName.set(
       tableName,
       cachedTables ??
-        pack.packedFiles.filter((packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`)),
+        pack.packedFiles.filter(
+          (packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`),
+        ),
     );
   }
 
@@ -817,9 +798,7 @@ async function executePackFilesDropdownNode(
             });
             console.log(`PackFiles Dropdown Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
           } else {
-            console.warn(
-              `PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`,
-            );
+            console.warn(`PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`);
           }
         }
       }
@@ -943,9 +922,7 @@ async function executeAllEnabledModsNode(
       console.warn(`AllEnabledMods Node ${nodeId}: No mods found (includeBaseGame: ${includeBaseGame})`);
     }
 
-    console.log(
-      `AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`,
-    );
+    console.log(`AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`);
 
     return {
       success: true,
@@ -984,11 +961,7 @@ async function executeTableSelectionNode(
     .map((name) => (name.startsWith("db\\") ? name : `db\\${name}`));
   const selectedTables = [] as DBTablesNodeTable[];
 
-  const filesToRead = await narrowFilesToPacksWithTables(
-    inputData.files,
-    tableNames,
-    `TableSelection Node ${nodeId}`,
-  );
+  const filesToRead = await narrowFilesToPacksWithTables(inputData.files, tableNames, `TableSelection Node ${nodeId}`);
 
   for (const file of filesToRead) {
     if (!file.loaded) {
@@ -1144,11 +1117,7 @@ async function executeColumnSelectionNode(
   const columnData = [] as DBColumnSelectionTableValues[];
 
   for (const tableData of inputData.tables) {
-    if (
-      tableData.table.tableSchema &&
-      tableData.table.schemaFields &&
-      tableData.table.schemaFields.length != 0
-    ) {
+    if (tableData.table.tableSchema && tableData.table.schemaFields && tableData.table.schemaFields.length != 0) {
       const rows = getRowsForPackedFile(tableData.table, executionContext);
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
@@ -1216,11 +1185,7 @@ async function executeGroupByColumnsNode(
   const groupedData = new Map<string, string[]>();
 
   for (const tableData of inputData.tables) {
-    if (
-      !tableData.table.tableSchema ||
-      !tableData.table.schemaFields ||
-      tableData.table.schemaFields.length === 0
-    ) {
+    if (!tableData.table.tableSchema || !tableData.table.schemaFields || tableData.table.schemaFields.length === 0) {
       console.log(`Missing table data, skipping ${tableData.name}!`);
       continue;
     }
@@ -1232,9 +1197,7 @@ async function executeGroupByColumnsNode(
     const column2Index = getColumnIndexForPackedFile(tableData.table, column2);
 
     if (column1Index === -1 || column2Index === -1) {
-      console.warn(
-        `Columns ${column1} or ${column2} not found in table ${tableData.name}. Skipping this table.`,
-      );
+      console.warn(`Columns ${column1} or ${column2} not found in table ${tableData.name}. Skipping this table.`);
       continue;
     }
 
@@ -1261,9 +1224,7 @@ async function executeGroupByColumnsNode(
         filteredData.set(key, values);
       }
     }
-    console.log(
-      `GroupByColumns Node ${nodeId}: Filtered from ${groupedData.size} to ${filteredData.size} groups`,
-    );
+    console.log(`GroupByColumns Node ${nodeId}: Filtered from ${groupedData.size} to ${filteredData.size} groups`);
     groupedData.clear();
     for (const [key, values] of filteredData.entries()) {
       groupedData.set(key, values);
@@ -1306,10 +1267,9 @@ async function executeFilterNode(
   console.log("filter text values:", textValue);
 
   // Parse filters from textValue
-  const parsed = getNodeConfig<{ filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }> }>(
-    config,
-    textValue,
-  );
+  const parsed = getNodeConfig<{
+    filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }>;
+  }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid filter configuration" };
   }
@@ -1324,9 +1284,7 @@ async function executeFilterNode(
     };
   }
 
-  console.log(
-    `Filter Node ${nodeId}: Applying ${filters.length} filters to ${inputData.tables.length} table(s)`,
-  );
+  console.log(`Filter Node ${nodeId}: Applying ${filters.length} filters to ${inputData.tables.length} table(s)`);
 
   // Create a filtered version of the input data
   const filteredData: DBTablesNodeData = {
@@ -1532,10 +1490,10 @@ async function executeMultiFilterNode(
   }
 
   // Parse configuration from textValue
-  const parsed = getNodeConfig<{ selectedColumn?: string; splitValues?: Array<{ id: string; value: string; enabled: boolean }> }>(
-    config,
-    textValue,
-  );
+  const parsed = getNodeConfig<{
+    selectedColumn?: string;
+    splitValues?: Array<{ id: string; value: string; enabled: boolean }>;
+  }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid multi-filter configuration" };
   }
@@ -1740,9 +1698,7 @@ async function executeReferenceLookupNode(
     // is_reference is an array where [0] is the referenced table name
     const referenceColumns = tableData.table.tableSchema.fields.filter(
       (field) =>
-        field.is_reference &&
-        field.is_reference.length > 0 &&
-        field.is_reference[0] === selectedReferenceTable,
+        field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === selectedReferenceTable,
     );
 
     console.log(
@@ -1848,20 +1804,15 @@ async function executeReferenceLookupNode(
 
     // Find the key column (usually the first column or a column with is_key=true)
     const keyField =
-      tableData.table.tableSchema.fields.find((field) => field.is_key) ||
-      tableData.table.tableSchema.fields[0];
+      tableData.table.tableSchema.fields.find((field) => field.is_key) || tableData.table.tableSchema.fields[0];
 
     if (!keyField) {
-      console.warn(
-        `Reference Lookup Node ${nodeId}: No key field found in table "${tableData.name}", skipping`,
-      );
+      console.warn(`Reference Lookup Node ${nodeId}: No key field found in table "${tableData.name}", skipping`);
       continue;
     }
 
     const keyColumnName = keyField.name;
-    console.log(
-      `Reference Lookup Node ${nodeId}: Using key column "${keyColumnName}" in table "${tableData.name}"`,
-    );
+    console.log(`Reference Lookup Node ${nodeId}: Using key column "${keyColumnName}" in table "${tableData.name}"`);
 
     // Filter rows where the key column value is in our reference values set
     const filteredRows = rows.filter((row) => {
@@ -1898,9 +1849,7 @@ async function executeReferenceLookupNode(
 
   filteredReferencedTables.tableCount = filteredReferencedTables.tables.length;
 
-  console.log(
-    `Reference Lookup Node ${nodeId}: Returning ${filteredReferencedTables.tableCount} filtered table(s)`,
-  );
+  console.log(`Reference Lookup Node ${nodeId}: Returning ${filteredReferencedTables.tableCount} filtered table(s)`);
 
   return {
     success: true,
@@ -1949,9 +1898,7 @@ async function executeReverseReferenceLookupNode(
               path: baseGamePackPath,
               loaded: true,
             });
-            console.log(
-              `Reverse Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`,
-            );
+            console.log(`Reverse Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
           }
         }
       }
@@ -2018,9 +1965,7 @@ async function executeReverseReferenceLookupNode(
                 // Check if this table has any fields that reference the input table
                 const hasReferenceToInput = packedFile.tableSchema.fields.some(
                   (field) =>
-                    field.is_reference &&
-                    field.is_reference.length > 0 &&
-                    field.is_reference[0] === inputTableName,
+                    field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName,
                 );
 
                 if (hasReferenceToInput) {
@@ -2127,9 +2072,7 @@ async function executeReverseReferenceLookupNode(
   );
 
   if (inputKeyValues.size === 0) {
-    console.log(
-      `Reverse Reference Lookup Node ${nodeId}: No key values found in input, returning empty result`,
-    );
+    console.log(`Reverse Reference Lookup Node ${nodeId}: No key values found in input, returning empty result`);
     return {
       success: true,
       data: {
@@ -2183,9 +2126,7 @@ async function executeReverseReferenceLookupNode(
     }
   }
 
-  console.log(
-    `Reverse Reference Lookup Node ${nodeId}: Found ${reverseTables.length} table(s) from pack files`,
-  );
+  console.log(`Reverse Reference Lookup Node ${nodeId}: Found ${reverseTables.length} table(s) from pack files`);
 
   const filteredReverseTables: DBTablesNodeData = {
     type: "TableSelection",
@@ -2210,8 +2151,7 @@ async function executeReverseReferenceLookupNode(
 
     // Find columns that reference the input table
     const referenceColumns = tableData.table.tableSchema.fields.filter(
-      (field) =>
-        field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName,
+      (field) => field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName,
     );
 
     if (referenceColumns.length === 0) {
@@ -2273,7 +2213,6 @@ async function executeReverseReferenceLookupNode(
   };
 }
 
-
 async function executeColumnSelectionDropdownNode(
   nodeId: string,
   textValue: string,
@@ -2307,11 +2246,7 @@ async function executeColumnSelectionDropdownNode(
   const columnData = [] as DBColumnSelectionTableValues[];
 
   for (const tableData of inputData.tables) {
-    if (
-      tableData.table.tableSchema &&
-      tableData.table.schemaFields &&
-      tableData.table.schemaFields.length != 0
-    ) {
+    if (tableData.table.tableSchema && tableData.table.schemaFields && tableData.table.schemaFields.length != 0) {
       const rows = getRowsForPackedFile(tableData.table, executionContext);
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
@@ -2391,10 +2326,7 @@ async function executeNumericAdjustmentNode(
 
     // Collect unique tables and merge selectedColumns/data WITHOUT cloning yet
     // We'll clone once at the end when we apply the formula
-    const tableMap = new Map<
-      string,
-      { column: any; selectedColumns: Set<string>; dataMap: Map<string, any> }
-    >();
+    const tableMap = new Map<string, { column: any; selectedColumns: Set<string>; dataMap: Map<string, any> }>();
     const allSourceTables: any[] = [];
     const seenSourceTables = new Set<string>();
 
@@ -2607,9 +2539,7 @@ async function executeMathMaxNode(
       // Merge sourceTables
       for (const sourceTable of currentInput.sourceTables) {
         if (
-          !mergedInputData.sourceTables.some(
-            (t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName,
-          )
+          !mergedInputData.sourceTables.some((t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName)
         ) {
           mergedInputData.sourceTables.push(sourceTable);
         }
@@ -2753,9 +2683,7 @@ async function executeMathCeilNode(
       // Merge sourceTables
       for (const sourceTable of currentInput.sourceTables) {
         if (
-          !mergedInputData.sourceTables.some(
-            (t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName,
-          )
+          !mergedInputData.sourceTables.some((t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName)
         ) {
           mergedInputData.sourceTables.push(sourceTable);
         }
@@ -3120,9 +3048,7 @@ async function executeSaveChangesNode(
       if (baseName) replacementPackBaseNames.set(baseName.toLowerCase(), baseName);
     }
     const replacementPackBaseName =
-      replacementPackBaseNames.size === 1
-        ? replacementPackBaseNames.values().next().value
-        : undefined;
+      replacementPackBaseNames.size === 1 ? replacementPackBaseNames.values().next().value : undefined;
 
     let packFileBaseName: string;
     // A pack replacement must retain the original file name. The launcher removes the original
@@ -3163,16 +3089,13 @@ async function executeSaveChangesNode(
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
     // If flowExecutionId is set, we're executing a flow at game start, so save to whmm_flows
     // Otherwise, save to data for manual execution
-    const outputDir = flowExecutionId
-      ? nodePath.join(gamePath, "whmm_flows")
-      : nodePath.join(gamePath, "data");
+    const outputDir = flowExecutionId ? nodePath.join(gamePath, "whmm_flows") : nodePath.join(gamePath, "data");
     const packFilePath = nodePath.join(outputDir, `${packFileBaseName}.pack`);
     const normalizePathForComparison = (filePath: string) =>
       nodePath.resolve(filePath).replace(/\//g, "\\").toLowerCase();
     if (
       [...replacedPackPaths].some(
-        (sourcePackPath) =>
-          normalizePathForComparison(sourcePackPath) === normalizePathForComparison(packFilePath),
+        (sourcePackPath) => normalizePathForComparison(sourcePackPath) === normalizePathForComparison(packFilePath),
       )
     ) {
       return {
@@ -3181,9 +3104,7 @@ async function executeSaveChangesNode(
       };
     }
 
-    console.log(
-      `Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`,
-    );
+    console.log(`Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`);
     console.log(`Save Changes Node ${nodeId}: Output path: ${packFilePath}`);
 
     if (!fs.existsSync(outputDir)) {
@@ -3302,7 +3223,10 @@ async function executeSaveChangesNode(
     let format = "tsv"; // default format
 
     // Try to parse as JSON for more complex configurations
-    const parsedSaveConfig = getNodeConfig<{ path?: string; filePath?: string; format?: string }>(undefined, saveConfig);
+    const parsedSaveConfig = getNodeConfig<{ path?: string; filePath?: string; format?: string }>(
+      undefined,
+      saveConfig,
+    );
     if (parsedSaveConfig) {
       filePath = parsedSaveConfig.path || parsedSaveConfig.filePath || "output.tsv";
       format = parsedSaveConfig.format || "tsv";
@@ -3335,9 +3259,7 @@ async function executeSaveChangesNode(
     //   })),
     // };
 
-    console.log(
-      `SaveChanges Node ${nodeId}: Successfully saved ${filesToSave.length} file(s) to ${newPackPath}`,
-    );
+    console.log(`SaveChanges Node ${nodeId}: Successfully saved ${filesToSave.length} file(s) to ${newPackPath}`);
 
     return {
       success: true,
@@ -3557,11 +3479,7 @@ async function executeAppendTextNode(
   }
 }
 
-async function executeTextJoinNode(
-  nodeId: string,
-  textValue: string,
-  inputData: any,
-): Promise<NodeExecutionResult> {
+async function executeTextJoinNode(nodeId: string, textValue: string, inputData: any): Promise<NodeExecutionResult> {
   console.log(`TextJoin Node ${nodeId}: Processing with separator "${textValue}" and input:`, inputData);
 
   if (!inputData) {
@@ -3614,10 +3532,7 @@ async function executeGroupedColumnsToTextNode(
   inputData: any,
   config?: unknown,
 ): Promise<NodeExecutionResult> {
-  console.log(
-    `GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}" and input:`,
-    inputData,
-  );
+  console.log(`GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
 
   if (!inputData) {
     return { success: false, error: "Invalid input: No input data provided" };
@@ -3725,9 +3640,7 @@ async function executeIndexTableNode(
   }
 
   const rows = allRows;
-  console.log(
-    `Index Table Node ${nodeId}: Indexing ${rows.length} rows from ${inputData.tables.length} pack file(s)`,
-  );
+  console.log(`Index Table Node ${nodeId}: Indexing ${rows.length} rows from ${inputData.tables.length} pack file(s)`);
 
   // Build the index map
   const indexMap = new Map<string, any[]>();
@@ -3869,7 +3782,10 @@ async function executeLookupNode(
           ? indexColumns
           : [lookupColumn];
 
-      hotPathLog(executionContext, `Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`);
+      hotPathLog(
+        executionContext,
+        `Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`,
+      );
 
       const indexMap = new Map<string, AmendedSchemaField[][]>();
       let rightTable = rightInputData.tables[0];
@@ -4225,10 +4141,7 @@ async function executeLookupNode(
   }
 }
 
-async function executeFlattenNestedNode(
-  nodeId: string,
-  inputData: NestedTableSelection,
-): Promise<NodeExecutionResult> {
+async function executeFlattenNestedNode(nodeId: string, inputData: NestedTableSelection): Promise<NodeExecutionResult> {
   console.log(`Flatten Nested Node ${nodeId}: Processing with input:`, inputData);
 
   if (!inputData || inputData.type !== "NestedTableSelection") {
@@ -4431,24 +4344,13 @@ async function executeAggregateNestedNode(
 
   // Parse configuration
   let filterColumn: string = "";
-  let filterOperator:
-    | "equals"
-    | "notEquals"
-    | "greaterThan"
-    | "lessThan"
-    | "greaterThanOrEqual"
-    | "lessThanOrEqual" = "equals";
+  let filterOperator: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual" =
+    "equals";
   const parsed = getNodeConfig<{
     aggregateColumn?: string;
     aggregateType?: "min" | "max" | "sum" | "avg" | "count";
     filterColumn?: string;
-    filterOperator?:
-      | "equals"
-      | "notEquals"
-      | "greaterThan"
-      | "lessThan"
-      | "greaterThanOrEqual"
-      | "lessThanOrEqual";
+    filterOperator?: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
     filterValue?: string;
   }>(config, textValue);
   if (!parsed) {
@@ -4523,9 +4425,7 @@ async function executeAggregateNestedNode(
       for (const lookupRow of filteredMatches) {
         const cell = lookupRow.find((c: AmendedSchemaField) => c.name === aggregateColumn);
         if (!cell) {
-          console.warn(
-            `Aggregate Nested Node ${nodeId}: Column "${aggregateColumn}" not found in lookup row`,
-          );
+          console.warn(`Aggregate Nested Node ${nodeId}: Column "${aggregateColumn}" not found in lookup row`);
           continue;
         }
 
@@ -4663,9 +4563,7 @@ async function executeGroupByNode(
   }
 
   console.log(
-    `Group By Node ${nodeId}: Grouping by [${groupByColumns.join(", ")}] with ${
-      aggregations.length
-    } aggregation(s)`,
+    `Group By Node ${nodeId}: Grouping by [${groupByColumns.join(", ")}] with ${aggregations.length} aggregation(s)`,
   );
 
   // Process each table
@@ -4692,9 +4590,7 @@ async function executeGroupByNode(
       for (const colName of groupByColumns) {
         const cell = row.find((c: AmendedSchemaField) => c.name === colName);
         if (!cell) {
-          console.warn(
-            `Group By Node ${nodeId}: Group by column "${colName}" not found in row, skipping row`,
-          );
+          console.warn(`Group By Node ${nodeId}: Group by column "${colName}" not found in row, skipping row`);
           continue;
         }
         keyParts.push(String(cell.resolvedKeyValue || ""));
@@ -4735,9 +4631,7 @@ async function executeGroupByNode(
           const cell = groupRows[0].find((c: AmendedSchemaField) => c.name === agg.sourceColumn);
           aggregateValue = cell ? cell.resolvedKeyValue : "";
         } else if (agg.operation === "last") {
-          const cell = groupRows[groupRows.length - 1].find(
-            (c: AmendedSchemaField) => c.name === agg.sourceColumn,
-          );
+          const cell = groupRows[groupRows.length - 1].find((c: AmendedSchemaField) => c.name === agg.sourceColumn);
           aggregateValue = cell ? cell.resolvedKeyValue : "";
         } else {
           // max, min, sum, avg - need numeric values
@@ -4798,9 +4692,7 @@ async function executeGroupByNode(
       groupedRows.push(outputRow);
     }
 
-    console.log(
-      `Group By Node ${nodeId}: Output ${groupedRows.length} grouped rows from ${rows.length} input rows`,
-    );
+    console.log(`Group By Node ${nodeId}: Output ${groupedRows.length} grouped rows from ${rows.length} input rows`);
 
     // Flatten grouped rows back into schemaFields array
     const groupedSchemaFields: AmendedSchemaField[] = [];
@@ -4814,9 +4706,7 @@ async function executeGroupByNode(
     // Add group by columns to schema
     for (const colName of groupByColumns) {
       // Try to find the field in the original schema
-      const originalField = tableData.table.tableSchema?.fields.find(
-        (field: DBField) => field.name === colName,
-      );
+      const originalField = tableData.table.tableSchema?.fields.find((field: DBField) => field.name === colName);
 
       if (originalField) {
         console.log(`Group By: Found original field for ${colName}, type=${originalField.field_type}`);
@@ -5204,9 +5094,7 @@ async function executeGenerateRowsNode(
   });
 
   // Check if we have a counter_range transformation that can generate rows without input
-  const counterRangeTransformation = config.transformations.find(
-    (t) => t.transformationType === "counter_range",
-  );
+  const counterRangeTransformation = config.transformations.find((t) => t.transformationType === "counter_range");
   const hasCustomSchema = !!config.customSchemaData;
 
   // 2. Extract input rows from ALL input tables
@@ -5241,12 +5129,18 @@ async function executeGenerateRowsNode(
       `Generate Rows Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`,
     );
   } else {
-    hotPathLog(executionContext, `Generate Rows Node ${nodeId}: No input tables, will generate rows from counter_range`);
+    hotPathLog(
+      executionContext,
+      `Generate Rows Node ${nodeId}: No input tables, will generate rows from counter_range`,
+    );
   }
 
   // If no rows but we have counter_range, generate rows from the range
   if (rows.length === 0 && counterRangeTransformation) {
-    hotPathLog(executionContext, `Generate Rows Node ${nodeId}: No input rows but has counter_range - generating from range`);
+    hotPathLog(
+      executionContext,
+      `Generate Rows Node ${nodeId}: No input rows but has counter_range - generating from range`,
+    );
 
     const rangeStart = parseInt(counterRangeTransformation.rangeStart || "1", 10) || 1;
     const rangeEnd = parseInt(counterRangeTransformation.endNumber || "10", 10) || 10;
@@ -5439,8 +5333,7 @@ async function executeGenerateRowsNode(
           case "multiply":
           case "divide":
             // For numeric transformations, use -1 so that "add 1" results in 0
-            outputValue =
-              transformation.transformationType === "add" && transformation.numericValue === 1 ? -1 : 0;
+            outputValue = transformation.transformationType === "add" && transformation.numericValue === 1 ? -1 : 0;
             break;
           case "counter":
             // Counter doesn't need a source value, it generates its own
@@ -5609,9 +5502,7 @@ async function executeGenerateRowsNode(
 
     if (outputConfig.existingTableName === "__custom_schema__") {
       if (!config.customSchemaData || config.customSchemaData.length === 0) {
-        console.error(
-          `Generate Rows Node ${nodeId}: Custom schema selected but no customSchemaData provided`,
-        );
+        console.error(`Generate Rows Node ${nodeId}: Custom schema selected but no customSchemaData provided`);
         console.error(`Generate Rows Node ${nodeId}: config.customSchemaData:`, config.customSchemaData);
         return {
           success: false,
@@ -5660,18 +5551,21 @@ async function executeGenerateRowsNode(
         if (version) schema = version;
       } else {
         const defaultTableVersions = await getDefaultTableVersions();
-        const defaultTableVersionNumber =
-          defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
+        const defaultTableVersionNumber = defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
         if (defaultTableVersionNumber) {
           const version = versions.find((version) => version.version == defaultTableVersionNumber);
           if (version) schema = version;
         }
       }
 
-      hotPathLog(executionContext, `Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`, {
-        fieldCount: schema.fields.length,
-        fields: schema.fields.map((f: any) => f.name),
-      });
+      hotPathLog(
+        executionContext,
+        `Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`,
+        {
+          fieldCount: schema.fields.length,
+          fields: schema.fields.map((f: any) => f.name),
+        },
+      );
     }
 
     // Build rows for this output
@@ -5777,12 +5671,13 @@ async function executeGenerateRowsNode(
       }
     }
 
-    hotPathLog(executionContext, `Generate Rows Node ${nodeId}: Created ${numRows} rows for output "${outputConfig.name}"`);
+    hotPathLog(
+      executionContext,
+      `Generate Rows Node ${nodeId}: Created ${numRows} rows for output "${outputConfig.name}"`,
+    );
 
     // Determine the table name - use a proper name for custom schema
-    const outputTableName = isCustomSchema
-      ? `custom_${outputConfig.handleId}`
-      : outputConfig.existingTableName;
+    const outputTableName = isCustomSchema ? `custom_${outputConfig.handleId}` : outputConfig.existingTableName;
 
     // Create a default table structure when there's no sourceTable (e.g., counter_range with custom schema only)
     const defaultTable: PackedFile = {
@@ -5805,7 +5700,14 @@ async function executeGenerateRowsNode(
           name: "generated.pack",
           path: "",
           packedFiles: [],
-          packHeader: { header: Buffer.alloc(0), byteMask: 0, refFileCount: 0, pack_file_index_size: 0, pack_file_count: 0, header_buffer: Buffer.alloc(0) },
+          packHeader: {
+            header: Buffer.alloc(0),
+            byteMask: 0,
+            refFileCount: 0,
+            pack_file_index_size: 0,
+            pack_file_count: 0,
+            header_buffer: Buffer.alloc(0),
+          },
           lastChangedLocal: 0,
           size: 0,
           readTables: [],
@@ -5891,9 +5793,7 @@ async function executeAddNewColumnNode(
       throw new Error("Invalid configuration");
     }
     config = parsedConfig;
-    console.log(
-      `Add New Column Node ${nodeId}: Parsed ${(config.transformations || []).length} transformations`,
-    );
+    console.log(`Add New Column Node ${nodeId}: Parsed ${(config.transformations || []).length} transformations`);
   } catch (error) {
     return {
       success: false,
@@ -5939,10 +5839,7 @@ async function executeAddNewColumnNode(
    * single node hold several rules - append one suffix to the land unit names, another to the main
    * unit names - each matching on a different column from the one it writes.
    */
-  function conditionHolds(
-    trans: (typeof config.transformations)[0],
-    row: AmendedSchemaField[],
-  ): boolean {
+  function conditionHolds(trans: (typeof config.transformations)[0], row: AmendedSchemaField[]): boolean {
     if (!trans.conditionColumn || !trans.conditionOperator) return true;
     const conditionValue = trans.conditionValue ?? "";
     const cellValue = row.find((cell) => cell.name === trans.conditionColumn)?.resolvedKeyValue ?? "";
@@ -5976,258 +5873,254 @@ async function executeAddNewColumnNode(
   const outputTables: DBTablesNodeTable[] = [];
 
   for (const sourceTable of inputData.tables) {
-  const tableSchemaForRun = sourceTable.table.tableSchema;
-  if (!tableSchemaForRun || !sourceTable.table.schemaFields) {
-    console.warn(`Add New Column Node ${nodeId}: Passing through ${sourceTable.name} - no schema`);
-    outputTables.push(sourceTable);
-    continue;
-  }
-
-  const transformationsForTable = config.transformations.filter((trans) =>
-    appliesToTable(trans, tableSchemaForRun),
-  );
-  const rows = getRowsForPackedFile(sourceTable.table);
-  if (transformationsForTable.length === 0 || rows.length === 0) {
-    outputTables.push(sourceTable);
-    continue;
-  }
-
-  // Keyed by the transformation's position, not its output column: in overwrite mode several
-  // transformations legitimately target the same column, and sharing one array would interleave
-  // their values and shift every later row.
-  const transformedData = new Map<number, any[]>();
-  const filteredRowIndices = new Set<number>(); // Track which rows to exclude
-
-  transformationsForTable.forEach((_transformation, transformationIndex) => {
-    transformedData.set(transformationIndex, []);
-  });
-
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx];
-    const rowTransformedValues = new Map<string, any>(); // Per-row transformation outputs for chaining
-
-    // Process transformations in order (to support chaining)
-    for (const transformation of transformationsForTable) {
-      let outputValue: any;
-
-      // Get source value - either from original row or previous transformation (chaining)
-      if (rowTransformedValues.has(transformation.sourceColumn)) {
-        outputValue = rowTransformedValues.get(transformation.sourceColumn);
-      } else {
-        const sourceCell = row.find((c) => c.name === transformation.sourceColumn);
-        outputValue = sourceCell?.resolvedKeyValue ?? "";
-      }
-
-      // A row the condition excludes keeps its source value: an overwriting transformation leaves
-      // the cell alone, and an appending one copies the source across untransformed. Only the
-      // per-row map is set here; the loop below is what pushes one entry per row into
-      // transformedData, and pushing again here would shift every later row's value.
-      if (!isFilterTransformation(transformation) && !conditionHolds(transformation, row)) {
-        rowTransformedValues.set(transformation.outputColumnName, outputValue);
-        continue;
-      }
-
-      // Apply transformation
-      switch (transformation.transformationType) {
-        case "none":
-          // Pass through
-          break;
-
-        case "prefix":
-          outputValue = `${transformation.prefix || ""}${outputValue}`;
-          break;
-
-        case "suffix":
-          outputValue = `${outputValue}${transformation.suffix || ""}`;
-          break;
-
-        case "add":
-          outputValue = parseFloat(String(outputValue)) + (transformation.numericValue || 0);
-          break;
-
-        case "subtract":
-          outputValue = parseFloat(String(outputValue)) - (transformation.numericValue || 0);
-          break;
-
-        case "multiply":
-          outputValue = parseFloat(String(outputValue)) * (transformation.numericValue || 1);
-          break;
-
-        case "divide": {
-          const divisor = transformation.numericValue || 1;
-          outputValue = divisor !== 0 ? parseFloat(String(outputValue)) / divisor : 0;
-          break;
-        }
-
-        case "rename_whole": {
-          const strValue = String(outputValue);
-          const matchValue = transformation.matchValue || "";
-          if (strValue === matchValue) {
-            outputValue = transformation.replaceValue || "";
-          }
-          // Otherwise keep original value
-          break;
-        }
-
-        case "rename_substring": {
-          const findStr = transformation.findSubstring || "";
-          const replaceStr = transformation.replaceValue || "";
-          if (findStr) {
-            outputValue = String(outputValue).replace(new RegExp(escapeRegex(findStr), "g"), replaceStr);
-          }
-          break;
-        }
-
-        case "replace_substring_whole": {
-          const searchSubstr = transformation.findSubstring || "";
-          const wholeReplacement = transformation.replaceValue || "";
-          if (searchSubstr && String(outputValue).includes(searchSubstr)) {
-            outputValue = wholeReplacement;
-          }
-          // Otherwise keep original value
-          break;
-        }
-
-        case "regex_replace":
-          try {
-            const pattern = transformation.regexPattern || "";
-            const replacement = transformation.regexReplacement || "";
-            if (pattern) {
-              const regex = new RegExp(pattern, "g");
-              outputValue = String(outputValue).replace(regex, replacement);
-            }
-          } catch (error) {
-            console.warn(
-              `Add New Column Node ${nodeId}: Invalid regex pattern "${transformation.regexPattern}":`,
-              error,
-            );
-            // Keep original value on error
-          }
-          break;
-
-        case "filterequal":
-          if (String(outputValue) === (transformation.filterValue || "")) {
-            filteredRowIndices.add(rowIdx);
-          }
-          break;
-
-        case "filternotequal":
-          if (String(outputValue) !== (transformation.filterValue || "")) {
-            filteredRowIndices.add(rowIdx);
-          }
-          break;
-      }
-
-      // Store transformed value for this row (for chaining and output)
-      rowTransformedValues.set(transformation.outputColumnName, outputValue);
-    }
-
-    // Store all transformed values for this row, one entry per transformation per row
-    transformationsForTable.forEach((transformation, transformationIndex) => {
-      transformedData.get(transformationIndex)!.push(
-        rowTransformedValues.get(transformation.outputColumnName),
-      );
-    });
-  }
-
-  console.log(`Add New Column Node ${nodeId}: Filtered out ${filteredRowIndices.size} rows`);
-
-  // 4. Build output table with original columns + new columns
-  const inputSchemaFields = sourceTable.table.tableSchema?.fields ?? [];
-  const outputRows: AmendedSchemaField[] = [];
-  let outputRowIdx = 0;
-
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    // Skip filtered rows
-    if (filteredRowIndices.has(rowIdx)) {
+    const tableSchemaForRun = sourceTable.table.tableSchema;
+    if (!tableSchemaForRun || !sourceTable.table.schemaFields) {
+      console.warn(`Add New Column Node ${nodeId}: Passing through ${sourceTable.name} - no schema`);
+      outputTables.push(sourceTable);
       continue;
     }
 
-    const row = rows[rowIdx];
-
-    // Copy the original columns, applying any overwriting transformation in place. The column keeps
-    // its own field type, so a table whose shape matters - a loc is exactly key/text/tooltip - comes
-    // out with the same columns it went in with.
-    const overwrittenRow = row.map((cell) => ({ ...cell }));
-    for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
-      if (!isOverwriteTransformation(transformation)) continue;
-
-      const cellIndex = overwrittenRow.findIndex((cell) => cell.name === transformation.sourceColumn);
-      if (cellIndex === -1) continue;
-
-      const value = String(transformedData.get(transformationIndex)?.[rowIdx] ?? "");
-      if (value === overwrittenRow[cellIndex].resolvedKeyValue) continue;
-
-      const fieldType = inputSchemaFields[cellIndex]?.field_type ?? "StringU8";
-      overwrittenRow[cellIndex] = {
-        ...overwrittenRow[cellIndex],
-        resolvedKeyValue: value,
-        type: "Buffer",
-        fields: [{ type: "Buffer", val: await typeToBuffer(fieldType, value) }],
-      };
-    }
-    for (const cell of overwrittenRow) {
-      outputRows.push(cell);
+    const transformationsForTable = config.transformations.filter((trans) => appliesToTable(trans, tableSchemaForRun));
+    const rows = getRowsForPackedFile(sourceTable.table);
+    if (transformationsForTable.length === 0 || rows.length === 0) {
+      outputTables.push(sourceTable);
+      continue;
     }
 
-    // Append new transformed columns (excluding filters and in-place overwrites)
-    for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
-      if (isFilterTransformation(transformation) || isOverwriteTransformation(transformation)) continue;
+    // Keyed by the transformation's position, not its output column: in overwrite mode several
+    // transformations legitimately target the same column, and sharing one array would interleave
+    // their values and shift every later row.
+    const transformedData = new Map<number, any[]>();
+    const filteredRowIndices = new Set<number>(); // Track which rows to exclude
 
-      const value = transformedData.get(transformationIndex)?.[rowIdx];
+    transformationsForTable.forEach((_transformation, transformationIndex) => {
+      transformedData.set(transformationIndex, []);
+    });
 
-      // Create schema field for the new column
-      const fieldBuffer = await typeToBuffer("StringU8", String(value ?? ""));
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx];
+      const rowTransformedValues = new Map<string, any>(); // Per-row transformation outputs for chaining
 
-      const schemaField: AmendedSchemaField = {
-        name: transformation.outputColumnName,
-        resolvedKeyValue: String(value ?? ""),
-        type: "StringU8",
-        fields: [{ type: "Buffer", val: fieldBuffer }],
-        isKey: false,
-      };
+      // Process transformations in order (to support chaining)
+      for (const transformation of transformationsForTable) {
+        let outputValue: any;
 
-      outputRows.push(schemaField);
+        // Get source value - either from original row or previous transformation (chaining)
+        if (rowTransformedValues.has(transformation.sourceColumn)) {
+          outputValue = rowTransformedValues.get(transformation.sourceColumn);
+        } else {
+          const sourceCell = row.find((c) => c.name === transformation.sourceColumn);
+          outputValue = sourceCell?.resolvedKeyValue ?? "";
+        }
+
+        // A row the condition excludes keeps its source value: an overwriting transformation leaves
+        // the cell alone, and an appending one copies the source across untransformed. Only the
+        // per-row map is set here; the loop below is what pushes one entry per row into
+        // transformedData, and pushing again here would shift every later row's value.
+        if (!isFilterTransformation(transformation) && !conditionHolds(transformation, row)) {
+          rowTransformedValues.set(transformation.outputColumnName, outputValue);
+          continue;
+        }
+
+        // Apply transformation
+        switch (transformation.transformationType) {
+          case "none":
+            // Pass through
+            break;
+
+          case "prefix":
+            outputValue = `${transformation.prefix || ""}${outputValue}`;
+            break;
+
+          case "suffix":
+            outputValue = `${outputValue}${transformation.suffix || ""}`;
+            break;
+
+          case "add":
+            outputValue = parseFloat(String(outputValue)) + (transformation.numericValue || 0);
+            break;
+
+          case "subtract":
+            outputValue = parseFloat(String(outputValue)) - (transformation.numericValue || 0);
+            break;
+
+          case "multiply":
+            outputValue = parseFloat(String(outputValue)) * (transformation.numericValue || 1);
+            break;
+
+          case "divide": {
+            const divisor = transformation.numericValue || 1;
+            outputValue = divisor !== 0 ? parseFloat(String(outputValue)) / divisor : 0;
+            break;
+          }
+
+          case "rename_whole": {
+            const strValue = String(outputValue);
+            const matchValue = transformation.matchValue || "";
+            if (strValue === matchValue) {
+              outputValue = transformation.replaceValue || "";
+            }
+            // Otherwise keep original value
+            break;
+          }
+
+          case "rename_substring": {
+            const findStr = transformation.findSubstring || "";
+            const replaceStr = transformation.replaceValue || "";
+            if (findStr) {
+              outputValue = String(outputValue).replace(new RegExp(escapeRegex(findStr), "g"), replaceStr);
+            }
+            break;
+          }
+
+          case "replace_substring_whole": {
+            const searchSubstr = transformation.findSubstring || "";
+            const wholeReplacement = transformation.replaceValue || "";
+            if (searchSubstr && String(outputValue).includes(searchSubstr)) {
+              outputValue = wholeReplacement;
+            }
+            // Otherwise keep original value
+            break;
+          }
+
+          case "regex_replace":
+            try {
+              const pattern = transformation.regexPattern || "";
+              const replacement = transformation.regexReplacement || "";
+              if (pattern) {
+                const regex = new RegExp(pattern, "g");
+                outputValue = String(outputValue).replace(regex, replacement);
+              }
+            } catch (error) {
+              console.warn(
+                `Add New Column Node ${nodeId}: Invalid regex pattern "${transformation.regexPattern}":`,
+                error,
+              );
+              // Keep original value on error
+            }
+            break;
+
+          case "filterequal":
+            if (String(outputValue) === (transformation.filterValue || "")) {
+              filteredRowIndices.add(rowIdx);
+            }
+            break;
+
+          case "filternotequal":
+            if (String(outputValue) !== (transformation.filterValue || "")) {
+              filteredRowIndices.add(rowIdx);
+            }
+            break;
+        }
+
+        // Store transformed value for this row (for chaining and output)
+        rowTransformedValues.set(transformation.outputColumnName, outputValue);
+      }
+
+      // Store all transformed values for this row, one entry per transformation per row
+      transformationsForTable.forEach((transformation, transformationIndex) => {
+        transformedData.get(transformationIndex)!.push(rowTransformedValues.get(transformation.outputColumnName));
+      });
     }
 
-    outputRowIdx++;
-  }
+    console.log(`Add New Column Node ${nodeId}: Filtered out ${filteredRowIndices.size} rows`);
 
-  console.log(`Add New Column Node ${nodeId}: Created ${outputRowIdx} output rows with added columns`);
+    // 4. Build output table with original columns + new columns
+    const inputSchemaFields = sourceTable.table.tableSchema?.fields ?? [];
+    const outputRows: AmendedSchemaField[] = [];
+    let outputRowIdx = 0;
 
-  // 5. Create extended schema (original fields + new fields)
-  const inputSchema = tableSchemaForRun;
-  const extendedSchema: DBVersion = {
-    ...inputSchema,
-    fields: [
-      ...inputSchema.fields,
-      ...transformationsForTable
-        .filter((t) => !isFilterTransformation(t) && !isOverwriteTransformation(t))
-        .map((t) => ({
-          name: t.outputColumnName,
-          field_type: "StringU8" as SCHEMA_FIELD_TYPE,
-          is_key: false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: `Generated column from ${t.transformationType}(${t.sourceColumn})`,
-          ca_order: -1,
-          is_bitwise: 0,
-          enum_values: {},
-        })),
-    ],
-  };
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      // Skip filtered rows
+      if (filteredRowIndices.has(rowIdx)) {
+        continue;
+      }
 
-  // 6. Emit this table, keeping its own schema and identity
-  outputTables.push({
-    ...sourceTable,
-    table: {
-      ...sourceTable.table,
-      tableSchema: extendedSchema,
-      schemaFields: outputRows,
-      version: extendedSchema.version,
-    },
-  });
+      const row = rows[rowIdx];
+
+      // Copy the original columns, applying any overwriting transformation in place. The column keeps
+      // its own field type, so a table whose shape matters - a loc is exactly key/text/tooltip - comes
+      // out with the same columns it went in with.
+      const overwrittenRow = row.map((cell) => ({ ...cell }));
+      for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
+        if (!isOverwriteTransformation(transformation)) continue;
+
+        const cellIndex = overwrittenRow.findIndex((cell) => cell.name === transformation.sourceColumn);
+        if (cellIndex === -1) continue;
+
+        const value = String(transformedData.get(transformationIndex)?.[rowIdx] ?? "");
+        if (value === overwrittenRow[cellIndex].resolvedKeyValue) continue;
+
+        const fieldType = inputSchemaFields[cellIndex]?.field_type ?? "StringU8";
+        overwrittenRow[cellIndex] = {
+          ...overwrittenRow[cellIndex],
+          resolvedKeyValue: value,
+          type: "Buffer",
+          fields: [{ type: "Buffer", val: await typeToBuffer(fieldType, value) }],
+        };
+      }
+      for (const cell of overwrittenRow) {
+        outputRows.push(cell);
+      }
+
+      // Append new transformed columns (excluding filters and in-place overwrites)
+      for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
+        if (isFilterTransformation(transformation) || isOverwriteTransformation(transformation)) continue;
+
+        const value = transformedData.get(transformationIndex)?.[rowIdx];
+
+        // Create schema field for the new column
+        const fieldBuffer = await typeToBuffer("StringU8", String(value ?? ""));
+
+        const schemaField: AmendedSchemaField = {
+          name: transformation.outputColumnName,
+          resolvedKeyValue: String(value ?? ""),
+          type: "StringU8",
+          fields: [{ type: "Buffer", val: fieldBuffer }],
+          isKey: false,
+        };
+
+        outputRows.push(schemaField);
+      }
+
+      outputRowIdx++;
+    }
+
+    console.log(`Add New Column Node ${nodeId}: Created ${outputRowIdx} output rows with added columns`);
+
+    // 5. Create extended schema (original fields + new fields)
+    const inputSchema = tableSchemaForRun;
+    const extendedSchema: DBVersion = {
+      ...inputSchema,
+      fields: [
+        ...inputSchema.fields,
+        ...transformationsForTable
+          .filter((t) => !isFilterTransformation(t) && !isOverwriteTransformation(t))
+          .map((t) => ({
+            name: t.outputColumnName,
+            field_type: "StringU8" as SCHEMA_FIELD_TYPE,
+            is_key: false,
+            default_value: "",
+            is_filename: false,
+            is_reference: [],
+            description: `Generated column from ${t.transformationType}(${t.sourceColumn})`,
+            ca_order: -1,
+            is_bitwise: 0,
+            enum_values: {},
+          })),
+      ],
+    };
+
+    // 6. Emit this table, keeping its own schema and identity
+    outputTables.push({
+      ...sourceTable,
+      table: {
+        ...sourceTable.table,
+        tableSchema: extendedSchema,
+        schemaFields: outputRows,
+        version: extendedSchema.version,
+      },
+    });
   }
 
   // 7. One output entry per input entry, in the same order
@@ -6525,10 +6418,16 @@ async function executeGetCounterColumnNode(
   // Use default column name if not specified
   if (!newColumnName) {
     newColumnName = `counter_${selectedColumn}`;
-    hotPathLog(executionContext, `GetCounterColumn Node ${nodeId}: No column name specified, using default: ${newColumnName}`);
+    hotPathLog(
+      executionContext,
+      `GetCounterColumn Node ${nodeId}: No column name specified, using default: ${newColumnName}`,
+    );
   }
 
-  hotPathLog(executionContext, `GetCounterColumn Node ${nodeId}: Collecting values from ${selectedTable}.${selectedColumn}`);
+  hotPathLog(
+    executionContext,
+    `GetCounterColumn Node ${nodeId}: Collecting values from ${selectedTable}.${selectedColumn}`,
+  );
 
   // Convert table name to db\ format if needed
   const tableName = selectedTable.startsWith("db\\") ? selectedTable : `db\\${selectedTable}`;
@@ -6791,9 +6690,7 @@ async function executeReadTSVFromPackNode(
       );
 
       // Search for the TSV file in packed files
-      const tsvFile = pack.packedFiles.find((pf) =>
-        pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase()),
-      );
+      const tsvFile = pack.packedFiles.find((pf) => pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase()));
 
       if (tsvFile) {
         hotPathLog(executionContext, `ReadTSVFromPack Node ${nodeId}: Found TSV file in pack: ${packFile}`);
@@ -6919,7 +6816,10 @@ async function executeReadTSVFromPackNode(
     },
   ];
 
-  hotPathLog(executionContext, `ReadTSVFromPack Node ${nodeId}: Successfully parsed ${dataLines.length} rows from TSV file`);
+  hotPathLog(
+    executionContext,
+    `ReadTSVFromPack Node ${nodeId}: Successfully parsed ${dataLines.length} rows from TSV file`,
+  );
 
   return {
     success: true,
@@ -7686,8 +7586,7 @@ async function executeEditTextFileNode(
       data: {
         type: "TableSelection",
         tables,
-        sourceFiles:
-          inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+        sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
         tableCount: tables.length,
       } as DBTablesNodeData,
     };
@@ -7773,17 +7672,17 @@ async function executeEditTextFileNode(
     };
 
     const sourcePackFiles = (inputData.files || []).filter(
-      (packFile) =>
-        !parsed.ignoreFlowSourcePack || !isFlowSourcePack(packFile, parsed.flowSourcePack),
+      (packFile) => !parsed.ignoreFlowSourcePack || !isFlowSourcePack(packFile, parsed.flowSourcePack),
     );
 
     // Reading a pack's index to find a handful of files costs the same as reading it to find all of
     // them, and "Include Base Game" now hands this node ~260 vanilla packs. The prebuilt index
     // answers for all of them at once; the mod packs, which change under us, are still read directly.
-    const vanillaIndex =
-      sourcePackFiles.some((packFile) => packFile.loaded && appData.allVanillaPackNames.has(packFile.name))
-        ? await getVanillaPackIndex()
-        : undefined;
+    const vanillaIndex = sourcePackFiles.some(
+      (packFile) => packFile.loaded && appData.allVanillaPackNames.has(packFile.name),
+    )
+      ? await getVanillaPackIndex()
+      : undefined;
     const indexedVanillaPackPaths = new Map<string, string>();
     if (vanillaIndex) {
       for (const packFile of sourcePackFiles) {
@@ -8027,9 +7926,7 @@ async function executePackFileOperationsNode(
         skipParsingTables: true,
         filesToRead: [...namesToRead],
       });
-      const bufferByName = new Map(
-        packWithFiles.packedFiles.map((packedFile) => [packedFile.name, packedFile.buffer]),
-      );
+      const bufferByName = new Map(packWithFiles.packedFiles.map((packedFile) => [packedFile.name, packedFile.buffer]));
 
       for (const copy of copies) {
         const buffer = bufferByName.get(copy.sourcePath);

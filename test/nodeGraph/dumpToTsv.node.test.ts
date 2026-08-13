@@ -54,14 +54,7 @@ describe("dump to TSV node", () => {
     appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
 
     const columns = ["key", "category", "num_mounts", "num_engines", "rank_depth", "primary_ammo"];
-    const adjustedValues: Array<string | number> = [
-      "wh2_dlc09_tmb_cav_hexwraiths",
-      "cavalry",
-      82,
-      22,
-      26,
-      22,
-    ];
+    const adjustedValues: Array<string | number> = ["wh2_dlc09_tmb_cav_hexwraiths", "cavalry", 82, 22, 26, 22];
     const sourceTable = {
       name: "db\\land_units_tables\\data__",
       schemaFields: adjustedValues.map((value, index) => createSchemaField(columns[index], value)),

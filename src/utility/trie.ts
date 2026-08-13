@@ -93,10 +93,7 @@ export default class Trie<T> implements ITrie<T>, Iterable<T> {
     this.addToNode(this.root, subKeys, value);
   }
 
-  private getTreeNode(
-    leaf: TreeNode<T> | RootNode<T> | RootNode<T>,
-    locs: string[]
-  ): TreeNode<T> | undefined {
+  private getTreeNode(leaf: TreeNode<T> | RootNode<T> | RootNode<T>, locs: string[]): TreeNode<T> | undefined {
     if (locs.length == 0) return;
     // console.log("finding", locs, "in", "key" in leaf ? leaf.key : "root");
     // console.log(leaf.children);

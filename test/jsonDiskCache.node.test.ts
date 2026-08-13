@@ -14,8 +14,7 @@ vi.mock("@mongodb-js/zstd", () => ({
 
 import { readJsonDiskCache, writeJsonDiskCache } from "../src/utility/jsonDiskCache";
 
-const tempFile = (name: string) =>
-  nodePath.join(fs.mkdtempSync(nodePath.join(os.tmpdir(), "whmm-cache-")), name);
+const tempFile = (name: string) => nodePath.join(fs.mkdtempSync(nodePath.join(os.tmpdir(), "whmm-cache-")), name);
 
 describe("json disk cache", () => {
   it("reads back what it wrote", async () => {

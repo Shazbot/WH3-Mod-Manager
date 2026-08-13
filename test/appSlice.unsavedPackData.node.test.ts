@@ -17,14 +17,9 @@ describe("authoritative unsaved pack data updates", () => {
       unsavedPacksData: { [packPath]: [file("whmmflows\\old.json"), file("db\\a\\b")] },
     };
 
-    const nextState = appReducer(
-      previousState,
-      setUnsavedPacksData({ packPath, unsavedFileData: [file("db\\a\\b")] }),
-    );
+    const nextState = appReducer(previousState, setUnsavedPacksData({ packPath, unsavedFileData: [file("db\\a\\b")] }));
 
-    expect(nextState.unsavedPacksData[packPath].map((packedFile) => packedFile.name)).toEqual([
-      "db\\a\\b",
-    ]);
+    expect(nextState.unsavedPacksData[packPath].map((packedFile) => packedFile.name)).toEqual(["db\\a\\b"]);
   });
 
   it("removes the pack entry when the backend reports no unsaved files", () => {
@@ -34,10 +29,7 @@ describe("authoritative unsaved pack data updates", () => {
       unsavedPacksData: { [packPath]: [file("whmmflows\\old.json")] },
     };
 
-    const nextState = appReducer(
-      previousState,
-      setUnsavedPacksData({ packPath, unsavedFileData: [] }),
-    );
+    const nextState = appReducer(previousState, setUnsavedPacksData({ packPath, unsavedFileData: [] }));
 
     expect(nextState.unsavedPacksData[packPath]).toBeUndefined();
   });

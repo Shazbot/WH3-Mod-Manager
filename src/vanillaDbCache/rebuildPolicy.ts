@@ -23,9 +23,7 @@ export interface CacheRebuildPolicy {
   isAbandoned(identityKey: string): boolean;
 }
 
-export const createCacheRebuildPolicy = (
-  maxRetries = MAX_RETRIES_AFTER_FAILURE,
-): CacheRebuildPolicy => {
+export const createCacheRebuildPolicy = (maxRetries = MAX_RETRIES_AFTER_FAILURE): CacheRebuildPolicy => {
   const abandoned = new Set<string>();
   const failureCounts = new Map<string, number>();
 

@@ -15,8 +15,7 @@ import type { DBField, DBVersion, NewPackedFile, PackedFile } from "../../src/pa
 
 /** The app's zstd is a native Electron prebuild; node's own reads the same frames. */
 vi.mock("@mongodb-js/zstd", () => ({
-  compress: async (buffer: Buffer, level: number) =>
-    zlib.zstdCompressSync(buffer, { params: { 0: level } }),
+  compress: async (buffer: Buffer, level: number) => zlib.zstdCompressSync(buffer, { params: { 0: level } }),
   decompress: async (buffer: Buffer) => zlib.zstdDecompressSync(buffer),
 }));
 vi.mock("electron-is-dev", () => ({ default: false }));
@@ -70,11 +69,7 @@ const identity = {
 const oldSchema = dbVersion(1, [field("key", "StringU8"), field("value", "I32")]);
 
 /** One table the schema describes a column the game no longer writes, so the parse overruns. */
-const threeColumnSchema = dbVersion(1, [
-  field("key", "StringU8"),
-  field("value", "I32"),
-  field("gone", "StringU8"),
-]);
+const threeColumnSchema = dbVersion(1, [field("key", "StringU8"), field("value", "I32"), field("gone", "StringU8")]);
 
 const resolveSchema = (packedFile: PackedFile) => {
   const dbName = parseDBTablePath(packedFile.name)?.dbName;
@@ -118,9 +113,7 @@ const writeStalePack = async (): Promise<string> => {
   appData.currentGame = "wh3";
 
   for (const name of ALL_TABLES) {
-    DBNameToDBVersions.wh3[parseDBTablePath(name)!.dbName] = [
-      name === MISSING_COLUMN ? threeColumnSchema : oldSchema,
-    ];
+    DBNameToDBVersions.wh3[parseDBTablePath(name)!.dbName] = [name === MISSING_COLUMN ? threeColumnSchema : oldSchema];
   }
 
   const tables: Array<{ name: string; buffer: Buffer }> = [
@@ -215,9 +208,7 @@ describe("building the vanilla db cache against a schema the game has moved past
     expect(truncated!.rowCount).toBeLessThan(3);
 
     const reader = openVanillaDbCache(createMemorySource(bytes))!;
-    expect(
-      reader.getTableRows(GOOD_AFTER)!.map((row) => [row[0].fields[1].val, row[1].fields[0].val]),
-    ).toEqual([
+    expect(reader.getTableRows(GOOD_AFTER)!.map((row) => [row[0].fields[1].val, row[1].fields[0].val])).toEqual([
       ["after_one", 11],
       ["after_two", 22],
     ]);

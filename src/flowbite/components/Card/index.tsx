@@ -11,14 +11,7 @@ export interface CardProps extends PropsWithChildren<Omit<ComponentProps<"div">,
   imgSrc?: string;
 }
 
-export const Card: FC<CardProps> = ({
-  children,
-  horizontal,
-  href,
-  imgAlt,
-  imgSrc,
-  ...props
-}): JSX.Element => {
+export const Card: FC<CardProps> = ({ children, horizontal, href, imgAlt, imgSrc, ...props }): JSX.Element => {
   const theirProps = excludeClassName(props);
 
   const theme = useTheme().theme.card;

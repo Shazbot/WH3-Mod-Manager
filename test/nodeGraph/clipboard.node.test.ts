@@ -39,19 +39,13 @@ describe("copySelectedNodes", () => {
   });
 
   it("copies every selected node, not just the first", () => {
-    const copied = copySelectedNodes(
-      [createNode("a", true), createNode("b"), createNode("c", true)],
-      [],
-    );
+    const copied = copySelectedNodes([createNode("a", true), createNode("b"), createNode("c", true)], []);
 
     expect(copied?.nodes.map((node) => node.id)).toEqual(["a", "c"]);
   });
 
   it("keeps edges that run between the copied nodes", () => {
-    const copied = copySelectedNodes(
-      [createNode("a", true), createNode("b", true)],
-      [createEdge("a", "b")],
-    );
+    const copied = copySelectedNodes([createNode("a", true), createNode("b", true)], [createEdge("a", "b")]);
 
     expect(copied?.edges.map((edge) => edge.id)).toEqual(["edge-a-b"]);
   });
@@ -76,10 +70,7 @@ describe("copySelectedNodes", () => {
   });
 
   it("leaves out the editor callbacks so the copy can be cloned", () => {
-    const copied = copySelectedNodes(
-      [createNode("a", true, { onUpdateNodeData: () => undefined })],
-      [],
-    )!;
+    const copied = copySelectedNodes([createNode("a", true, { onUpdateNodeData: () => undefined })], [])!;
 
     expect((copied.nodes[0].data as Record<string, unknown>).onUpdateNodeData).toBeUndefined();
   });
@@ -116,11 +107,7 @@ describe("pasteNodes", () => {
   });
 
   it("selects the copies and deselects everything else", () => {
-    const result = pasteNodes(
-      { nodes: [createNode("a", true)], edges: [] },
-      clipboard,
-      createIdFactory(),
-    );
+    const result = pasteNodes({ nodes: [createNode("a", true)], edges: [] }, clipboard, createIdFactory());
 
     // So a second paste copies the copy, and repeated pastes walk across the canvas.
     expect(result.nodes.map((node) => node.selected)).toEqual([false, true, true]);

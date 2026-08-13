@@ -95,9 +95,7 @@ const OptionsDrawer = memo(() => {
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
-  const isUsingEnglishLocalizations = useAppSelector(
-    (state) => state.app.isUsingEnglishLocalizations,
-  );
+  const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
@@ -127,10 +125,7 @@ const OptionsDrawer = memo(() => {
   );
   const enabledMods = useSelector(enabledModsSelector);
   const workshopMods = useMemo(() => allMods.filter(isWorkshopMod), [allMods]);
-  const customModFolders = useMemo(
-    () => appFolderPaths.customModFolders || [],
-    [appFolderPaths.customModFolders],
-  );
+  const customModFolders = useMemo(() => appFolderPaths.customModFolders || [], [appFolderPaths.customModFolders]);
   const modSourceOrder = useMemo(
     () => normalizeModSourceOrder(appFolderPaths, isFeaturesForModdersEnabled),
     [appFolderPaths, isFeaturesForModdersEnabled],
@@ -145,9 +140,7 @@ const OptionsDrawer = memo(() => {
   }, [currentMods]);
 
   useEffect(() => {
-    window.api
-      ?.getCustomModFolderStatuses(customModFolders.map((folder) => folder.path))
-      .then(setCustomFolderStatuses);
+    window.api?.getCustomModFolderStatuses(customModFolders.map((folder) => folder.path)).then(setCustomFolderStatuses);
   }, [customModFolders]);
 
   const updateCustomModSources = useCallback(
@@ -292,9 +285,7 @@ const OptionsDrawer = memo(() => {
   );
   const languageOptions = useSelector(availableLanguagesToOptionsSelector);
 
-  const availableGames = supportedGames.map(
-    (gameKey) => ({ value: gameKey, label: localized[gameKey] }) as OptionType,
-  );
+  const availableGames = supportedGames.map((gameKey) => ({ value: gameKey, label: localized[gameKey] }) as OptionType);
 
   const [areOptionsOpen, setAreOptionsOpen] = useState(false);
 
@@ -423,9 +414,7 @@ const OptionsDrawer = memo(() => {
         window.api?.copyToDataAsSymbolicLink();
       } else {
         window.api?.copyToDataAsSymbolicLink(enabledMods.map((mod) => mod.path));
-        dispatch(
-          setDataModsToEnableByName([...dataModsToEnableByName, ...enabledMods.map((mod) => mod.name)]),
-        );
+        dispatch(setDataModsToEnableByName([...dataModsToEnableByName, ...enabledMods.map((mod) => mod.name)]));
       }
     },
     [enabledMods],
@@ -439,21 +428,13 @@ const OptionsDrawer = memo(() => {
 
   return (
     <div>
-      <GamePathsSetup
-        isOpen={isShowingSetFolderPaths}
-        setIsOpen={setIsShowingSetFolderPaths}
-      ></GamePathsSetup>
+      <GamePathsSetup isOpen={isShowingSetFolderPaths} setIsOpen={setIsShowingSetFolderPaths}></GamePathsSetup>
       <AboutScreen isOpen={isShowingAboutScreen} setIsOpen={setIsShowingAboutScreen}></AboutScreen>
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <CreateSteamCollection />
       <ImportSteamCollection />
       <PackSearcher />
-      <Modal
-        show={isForceResubscribeConfirmOpen}
-        onClose={closeForceResubscribeConfirm}
-        size="lg"
-        position="center"
-      >
+      <Modal show={isForceResubscribeConfirmOpen} onClose={closeForceResubscribeConfirm} size="lg" position="center">
         <Modal.Header>{localized.forceResubscribe}</Modal.Header>
         <Modal.Body>
           <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
@@ -491,8 +472,7 @@ const OptionsDrawer = memo(() => {
         <Modal.Body>
           <p className="text-sm text-gray-300">
             {(
-              localized.customFolderCopyConflicts ||
-              "The destination already contains {{count}} matching pack(s)."
+              localized.customFolderCopyConflicts || "The destination already contains {{count}} matching pack(s)."
             ).replace("{{count}}", String(pendingCustomFolderCopy?.conflicts.length || 0))}
           </p>
           <div className="mt-2 max-h-40 overflow-auto text-xs text-gray-400">
@@ -510,11 +490,7 @@ const OptionsDrawer = memo(() => {
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
             onClick={() => {
               if (!pendingCustomFolderCopy) return;
-              finishCustomFolderCopy(
-                pendingCustomFolderCopy.destinationPath,
-                pendingCustomFolderCopy.modPaths,
-                true,
-              );
+              finishCustomFolderCopy(pendingCustomFolderCopy.destinationPath, pendingCustomFolderCopy.modPaths, true);
             }}
           >
             {localized.overwrite || "Overwrite"}
@@ -714,9 +690,7 @@ const OptionsDrawer = memo(() => {
                   const modIds = (
                     e.shiftKey
                       ? workshopMods
-                      : workshopMods.filter((mod) =>
-                          enabledMods.some((enabledMod) => enabledMod.name === mod.name),
-                        )
+                      : workshopMods.filter((mod) => enabledMods.some((enabledMod) => enabledMod.name === mod.name))
                   ).map((mod) => mod.workshopId);
                   forceDownloadMods(modIds);
                 }}
@@ -734,9 +708,7 @@ const OptionsDrawer = memo(() => {
                 onClick={(e) => {
                   const mods = e.shiftKey
                     ? workshopMods
-                    : workshopMods.filter((mod) =>
-                        enabledMods.some((enabledMod) => enabledMod.name === mod.name),
-                      );
+                    : workshopMods.filter((mod) => enabledMods.some((enabledMod) => enabledMod.name === mod.name));
                   openForceResubscribeConfirm(mods);
                 }}
               >
@@ -783,9 +755,7 @@ const OptionsDrawer = memo(() => {
                         <div className="truncate text-sm text-gray-200">
                           {label}
                           {isMissing && (
-                            <span className="ml-2 text-xs text-red-400">
-                              {localized.missing || "Missing"}
-                            </span>
+                            <span className="ml-2 text-xs text-red-400">{localized.missing || "Missing"}</span>
                           )}
                         </div>
                         {sourcePath && !isMissing ? (
@@ -988,9 +958,7 @@ const OptionsDrawer = memo(() => {
                 <span className="uppercase">{localized.copyModList}</span>
               </button>
             </div>
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              {localized.createSteamCollectionMsg}
-            </p>
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{localized.createSteamCollectionMsg}</p>
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
@@ -999,9 +967,7 @@ const OptionsDrawer = memo(() => {
                 <span className="uppercase">{localized.createSteamCollection}</span>
               </button>
             </div>
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              {localized.importSteamCollectionOptionsMsg}
-            </p>
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{localized.importSteamCollectionOptionsMsg}</p>
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
@@ -1191,18 +1157,13 @@ const OptionsDrawer = memo(() => {
                   "Choose whether Skill Trees and Tech Trees appear as tabs, standalone windows, or not at all."}
               </p>
               <div className="mt-3 grid gap-3">
-                <label
-                  className="block text-sm text-gray-900 dark:text-gray-100"
-                  htmlFor="skillTreesDisplayMode"
-                >
+                <label className="block text-sm text-gray-900 dark:text-gray-100" htmlFor="skillTreesDisplayMode">
                   {localized.skillTrees || "Skill Trees"}
                 </label>
                 <FormSelect
                   id="skillTreesDisplayMode"
                   value={skillTreesDisplayMode}
-                  onChange={(event) =>
-                    dispatch(setSkillTreesDisplayMode(event.target.value as TreeDisplayMode))
-                  }
+                  onChange={(event) => dispatch(setSkillTreesDisplayMode(event.target.value as TreeDisplayMode))}
                 >
                   {treeDisplayModeOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1210,18 +1171,13 @@ const OptionsDrawer = memo(() => {
                     </option>
                   ))}
                 </FormSelect>
-                <label
-                  className="block text-sm text-gray-900 dark:text-gray-100"
-                  htmlFor="technologyTreesDisplayMode"
-                >
+                <label className="block text-sm text-gray-900 dark:text-gray-100" htmlFor="technologyTreesDisplayMode">
                   {localized.techTreesTab || "Tech Trees"}
                 </label>
                 <FormSelect
                   id="technologyTreesDisplayMode"
                   value={technologyTreesDisplayMode}
-                  onChange={(event) =>
-                    dispatch(setTechnologyTreesDisplayMode(event.target.value as TreeDisplayMode))
-                  }
+                  onChange={(event) => dispatch(setTechnologyTreesDisplayMode(event.target.value as TreeDisplayMode))}
                 >
                   {treeDisplayModeOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1235,9 +1191,7 @@ const OptionsDrawer = memo(() => {
             {isFeaturesForModdersEnabled && (
               <>
                 <h6 className="mt-10">{localized.compatCheckVanillaPacks}</h6>
-                <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-                  {localized.compatCheckVanillaPacksMsg}
-                </p>
+                <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{localized.compatCheckVanillaPacksMsg}</p>
                 <div className="flex mt-3 w-ful items-center">
                   <input
                     className=""
@@ -1274,9 +1228,7 @@ const OptionsDrawer = memo(() => {
                 <span className="uppercase">{localized.bisectModList}</span>
               </button>
             </div>
-            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-              {localized.bisectModListRandomMsg}
-            </p>
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">{localized.bisectModListRandomMsg}</p>
             <div className="flex mt-2 mb-4 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
@@ -1287,9 +1239,7 @@ const OptionsDrawer = memo(() => {
             </div>
 
             <h6 className="mt-10">{localized.searchInsidePacks}</h6>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {localized.searchInsidePacksDescription}
-            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{localized.searchInsidePacksDescription}</p>
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"

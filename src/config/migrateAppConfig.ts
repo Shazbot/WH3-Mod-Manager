@@ -48,10 +48,7 @@ export const emptyGameConfig = (): GameConfig => ({
 });
 
 const emptyGames = () =>
-  Object.fromEntries(supportedGames.map((game) => [game, emptyGameConfig()])) as Record<
-    SupportedGames,
-    GameConfig
-  >;
+  Object.fromEntries(supportedGames.map((game) => [game, emptyGameConfig()])) as Record<SupportedGames, GameConfig>;
 
 const emptyGameFolderPathsByGame = () =>
   Object.fromEntries(supportedGames.map((game) => [game, emptyGameFolderPaths()])) as Record<
@@ -78,10 +75,7 @@ const legacyPresetToSavedPreset = (preset: LegacyPreset, isSnapshot: boolean): S
 /** The two auto-generated presets snapshot the whole list, so their disabled mods have to survive. */
 const isSnapshotPreset = (name: string) => name === "On App Start" || name === "On Last Game Launch";
 
-const addModUserData = (
-  modUserData: Record<string, StoredModUserData>,
-  mods: LegacyMod[] | undefined,
-) => {
+const addModUserData = (modUserData: Record<string, StoredModUserData>, mods: LegacyMod[] | undefined) => {
   for (const mod of mods ?? []) {
     if (!mod || mod.name == null || modUserData[mod.name]) continue;
 
@@ -175,9 +169,10 @@ export function migrateAppConfig(raw: unknown): AppConfig {
   console.log("migrating app config to version", CONFIG_VERSION);
   foldDeprecatedWh3Fields(legacy);
 
-  const games = Object.fromEntries(
-    supportedGames.map((game) => [game, migrateGame(legacy, game)]),
-  ) as Record<SupportedGames, GameConfig>;
+  const games = Object.fromEntries(supportedGames.map((game) => [game, migrateGame(legacy, game)])) as Record<
+    SupportedGames,
+    GameConfig
+  >;
 
   const {
     gameToCurrentPreset: _gameToCurrentPreset,

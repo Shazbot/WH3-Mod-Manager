@@ -55,10 +55,7 @@ export const getVisualsPackCacheKey = (packPath: string): string => {
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 };
 
-export const isSameVisualsPackIdentity = (
-  first: VisualsPackCacheIdentity,
-  second: VisualsPackCacheIdentity,
-): boolean =>
+export const isSameVisualsPackIdentity = (first: VisualsPackCacheIdentity, second: VisualsPackCacheIdentity): boolean =>
   getVisualsPackCacheKey(first.packPath) === getVisualsPackCacheKey(second.packPath) &&
   first.size === second.size &&
   first.mtimeMs === second.mtimeMs;
@@ -92,9 +89,7 @@ export const getCurrentVisualsTableContribution = (
   entry: VisualsPackCacheEntry | undefined,
   schemaHash: string | undefined,
 ): VisualsTableContribution | undefined =>
-  schemaHash && entry?.tables?.schemaHash === schemaHash
-    ? entry.tables.contribution
-    : undefined;
+  schemaHash && entry?.tables?.schemaHash === schemaHash ? entry.tables.contribution : undefined;
 
 export const getVisualsFileExtension = (fileName: string): VisualsFileExtension | undefined => {
   const normalizedName = fileName.toLowerCase();
@@ -114,18 +109,14 @@ export const getVisualsFilesFromNames = (fileNames: Iterable<string>): VisualsFi
 };
 
 /** Merge low-to-high priority contributions with the same override semantics as pack resolution. */
-export const mergeVisualsFileContributions = (
-  contributions: VisualsFileResult[][],
-): VisualsFileResult[] => {
+export const mergeVisualsFileContributions = (contributions: VisualsFileResult[][]): VisualsFileResult[] => {
   const filesByPath = new Map<string, VisualsFileResult>();
   for (const files of contributions) {
     for (const file of files) {
       filesByPath.set(file.path.replace(/\//g, "\\").toLowerCase(), file);
     }
   }
-  return Array.from(filesByPath.values()).sort((first, second) =>
-    first.path.localeCompare(second.path, "en"),
-  );
+  return Array.from(filesByPath.values()).sort((first, second) => first.path.localeCompare(second.path, "en"));
 };
 
 /**
@@ -137,10 +128,7 @@ export const mergeVisualsTableContributions = (
   originOrder: Array<{ packPath: string; contribution: VisualsTableContribution }>,
 ): VisualsMergedTableData => {
   const variantsByName = new Map<string, string>();
-  const unitToVariantRows = new Map<
-    string,
-    Array<{ faction: string; variantName: string }>
-  >();
+  const unitToVariantRows = new Map<string, Array<{ faction: string; variantName: string }>>();
   const landUnitKeys = new Set<string>();
   const unitKeyToOriginPackPath = new Map<string, string>();
 

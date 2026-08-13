@@ -48,14 +48,8 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
     flowRequestId.current++;
   }, []);
 
-  const promotedPacks = useMemo(
-    () => packs.filter((pack) => pack.isEnabled && pack.hasFlows),
-    [packs],
-  );
-  const otherPacks = useMemo(
-    () => packs.filter((pack) => !(pack.isEnabled && pack.hasFlows)),
-    [packs],
-  );
+  const promotedPacks = useMemo(() => packs.filter((pack) => pack.isEnabled && pack.hasFlows), [packs]);
+  const otherPacks = useMemo(() => packs.filter((pack) => !(pack.isEnabled && pack.hasFlows)), [packs]);
 
   const loadFlows = useCallback(async (packPath: string, tolerateMissing = false) => {
     const requestId = ++flowRequestId.current;
@@ -70,9 +64,7 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
         if (!tolerateMissing) setError(result?.error || "Failed to inspect the selected pack");
         return;
       }
-      const nextFlows = (result.flowFiles || []).toSorted((first, second) =>
-        first.name.localeCompare(second.name),
-      );
+      const nextFlows = (result.flowFiles || []).toSorted((first, second) => first.name.localeCompare(second.name));
       setFlowFiles(nextFlows);
       setSelectedFlowName(nextFlows[0]?.name || "");
     } catch (loadError) {
@@ -131,9 +123,7 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
 
   const browseForPack = async () => {
     const packPath =
-      mode === "load"
-        ? await window.api?.selectFlowPackFile()
-        : await window.api?.selectFlowPackSavePath("flows.pack");
+      mode === "load" ? await window.api?.selectFlowPackFile() : await window.api?.selectFlowPackSavePath("flows.pack");
     if (!packPath) return;
     setSelectedPackPath(packPath);
     setSelectedPackLabel(packPath);
@@ -299,9 +289,7 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
                 />
                 {flowFiles.some(
                   (flow) => flow.name.toLowerCase() === normalizePackedFlowName(newFlowName)?.toLowerCase(),
-                ) && (
-                  <div className="mt-2 text-sm text-amber-300">A flow with this name already exists.</div>
-                )}
+                ) && <div className="mt-2 text-sm text-amber-300">A flow with this name already exists.</div>}
               </div>
             )}
 
@@ -344,7 +332,7 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
         <Modal.Body>
           <div className="space-y-4 text-gray-100">
             <p>
-              {shortFlowName(normalizePackedFlowName(newFlowName) || newFlowName)}: {" "}
+              {shortFlowName(normalizePackedFlowName(newFlowName) || newFlowName)}:{" "}
               {localized.nodeEditorOverwriteFlowPrompt ||
                 "A flow with this name already exists in the selected pack. Replace it?"}
             </p>

@@ -47,22 +47,22 @@ export const TabsComponent: FC<TabsProps> = ({ children, style = "default", ...r
     () =>
       Children.map(
         (children as ReactElement<PropsWithChildren<TabProps>>[]).filter((child) => child),
-        ({ props }) => props
+        ({ props }) => props,
       ),
-    [children]
+    [children],
   );
   const tabRefs = useRef<HTMLButtonElement[]>([]);
   const [activeTab, setActiveTab] = useState(
     Math.max(
       0,
-      tabs.findIndex((tab) => tab.active)
-    )
+      tabs.findIndex((tab) => tab.active),
+    ),
   );
   const [focusedTab, setFocusedTab] = useState(
     Math.max(
       0,
-      tabs.findIndex((tab) => tab.active)
-    )
+      tabs.findIndex((tab) => tab.active),
+    ),
   );
 
   const handleClick = ({ target }: TabEventProps): void => {
@@ -111,7 +111,7 @@ export const TabsComponent: FC<TabsProps> = ({ children, style = "default", ...r
               {
                 [theme.tablist.tabitem.styles[style].active.on]: index === activeTab,
                 [theme.tablist.tabitem.styles[style].active.off]: index !== activeTab && !tab.disabled,
-              }
+              },
             )}
             disabled={tab.disabled}
             id={`${id}-tab-${index}`}

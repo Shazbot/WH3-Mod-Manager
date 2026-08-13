@@ -87,9 +87,7 @@ interface NodeDefinition {
  * depends on which rows the run actually touches - so this is offered as autocomplete rather than as
  * a closed list to pick from.
  */
-export const buildLocKeyPrefixes = (
-  DBNameToDBVersions: Record<string, DBVersion[]> | undefined,
-): string[] => {
+export const buildLocKeyPrefixes = (DBNameToDBVersions: Record<string, DBVersion[]> | undefined): string[] => {
   const prefixes = new Set<string>();
   for (const [tableName, versions] of Object.entries(DBNameToDBVersions || {})) {
     for (const field of versions?.[0]?.localised_fields ?? []) {
@@ -478,8 +476,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
     labelKey: "nodeEditorNodeAddNewColumnLabel",
     labelFallback: "Add Or Transform Columns",
     descriptionKey: "nodeEditorNodeAddNewColumnDescription",
-    descriptionFallback:
-      "Adds derived columns, or transforms existing ones in place, optionally only on matching rows",
+    descriptionFallback: "Adds derived columns, or transforms existing ones in place, optionally only on matching rows",
     createData: ({ label }) => ({
       label,
       type: "addnewcolumn",
@@ -919,10 +916,7 @@ export const getNodeDefinition = (type: FlowNodeType) => nodeDefinitions[type];
 
 export const isRegisteredNodeType = (type: string): type is FlowNodeType => type in nodeDefinitions;
 
-export const createNodeFromDefinition = (
-  nodeType: FlowNodeType,
-  context: NodeFactoryContext,
-): Node => {
+export const createNodeFromDefinition = (nodeType: FlowNodeType, context: NodeFactoryContext): Node => {
   const definition = getNodeDefinition(nodeType);
 
   return {

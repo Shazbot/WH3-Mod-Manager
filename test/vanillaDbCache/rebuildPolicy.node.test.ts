@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCacheIdentityKey,
-  createCacheRebuildPolicy,
-} from "../../src/vanillaDbCache/rebuildPolicy";
+import { buildCacheIdentityKey, createCacheRebuildPolicy } from "../../src/vanillaDbCache/rebuildPolicy";
 
 const identity = {
   game: "wh3",
@@ -64,9 +61,7 @@ describe("cache rebuild policy", () => {
     policy.recordUnopenable(key);
 
     expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, dbPackMtimeMs: 999 }))).toBe(true);
-    expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, dbPackPath: "/other/db.pack" }))).toBe(
-      true,
-    );
+    expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, dbPackPath: "/other/db.pack" }))).toBe(true);
     expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, dbPackSize: 999 }))).toBe(true);
     expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, schemaHash: "changed" }))).toBe(true);
   });

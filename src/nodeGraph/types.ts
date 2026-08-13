@@ -53,11 +53,7 @@ export interface RadioFlowOption extends BaseFlowOption {
 }
 
 export type FlowOption =
-  | TextboxFlowOption
-  | RangeSliderFlowOption
-  | CheckboxFlowOption
-  | MultilineTextboxFlowOption
-  | RadioFlowOption;
+  TextboxFlowOption | RangeSliderFlowOption | CheckboxFlowOption | MultilineTextboxFlowOption | RadioFlowOption;
 
 /**
  * The choice a radio option resolves to: the selected one, falling back to the first.
@@ -126,13 +122,7 @@ export interface SerializedNode {
     aggregateColumn?: string;
     aggregateType?: "min" | "max" | "sum" | "avg" | "count";
     filterColumn?: string;
-    filterOperator?:
-      | "equals"
-      | "notEquals"
-      | "greaterThan"
-      | "lessThan"
-      | "greaterThanOrEqual"
-      | "lessThanOrEqual";
+    filterOperator?: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
     filterValue?: string;
     transformations?: Array<Record<string, unknown>>;
     outputTables?: Array<{

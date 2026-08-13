@@ -35,8 +35,7 @@ const Main = (props: MainProps) => {
   const isVisualsMounted = useKeepMountedOnceActive(isVisualsTab);
   const isSkillsMounted = useKeepMountedOnceActive(isSkillsTab);
   const isTechTreesMounted = useKeepMountedOnceActive(isTechTreesTab);
-  const isKeptMountedTab =
-    isNodeEditorTab || isUnitViewerTab || isVisualsTab || isSkillsTab || isTechTreesTab;
+  const isKeptMountedTab = isNodeEditorTab || isUnitViewerTab || isVisualsTab || isSkillsTab || isTechTreesTab;
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =
@@ -79,8 +78,7 @@ const Main = (props: MainProps) => {
       )}
 
       {!isKeptMountedTab &&
-        ((currentTab == "presets" && <PresetsTab />) ||
-        (currentTab == "categories" && <Categories></Categories>) || (
+        ((currentTab == "presets" && <PresetsTab />) || (currentTab == "categories" && <Categories></Categories>) || (
           <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">
             <div className="col-span-10">
               <ModRows scrollElement={props.scrollElement} />

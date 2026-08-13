@@ -9,11 +9,7 @@ const managerNameAndVersion = `WH3 Mod Manager v${appPackage.version}`;
 const TopBarFrame = memo(({ title }: { title: string }) => {
   return (
     <>
-      <div
-        id="top-bar"
-        draggable="true"
-        className="h-[28px] bg-gray-700 w-full fixed top-0 flex items-center z-[1000]"
-      >
+      <div id="top-bar" draggable="true" className="h-[28px] bg-gray-700 w-full fixed top-0 flex items-center z-[1000]">
         <img className="ml-1 h-[24px]" src={require("../assets/modmanager.ico")} />
         <span className="ml-1 font-light text-sm text-slate-100">{title}</span>
       </div>

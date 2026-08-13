@@ -96,9 +96,7 @@ export const Toasts = memo(() => {
               </div>
               <div className="ml-3 text-sm font-normal dark:text-gray-300">
                 {toast.messages.map((message, i) => {
-                  const localizedMessage = message.startsWith("loc:")
-                    ? localized[message.substring(4)]
-                    : message;
+                  const localizedMessage = message.startsWith("loc:") ? localized[message.substring(4)] : message;
                   return (
                     <p className="break-all" key={i}>
                       {localizedMessage}

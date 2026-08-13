@@ -90,31 +90,21 @@ describe("canReuseFlowSourcePack", () => {
 
 describe("automatic flow output names", () => {
   it("does not repeat the name when the pack and flow have the same base name", () => {
-    const executionId = buildAutomaticFlowExecutionId(
-      "pj_unitmultiplier.pack",
-      "whmmflows\\pj_unitmultiplier.json",
-    );
+    const executionId = buildAutomaticFlowExecutionId("pj_unitmultiplier.pack", "whmmflows\\pj_unitmultiplier.json");
 
     expect(executionId).toBe("pj_unitmultiplier");
     expect(buildFlowOutputPackBaseName(executionId)).toBe("dbflow_pj_unitmultiplier");
   });
 
   it("keeps distinct flow names so multiple flows in one pack get unique outputs", () => {
-    const firstExecutionId = buildAutomaticFlowExecutionId(
-      "pj_unitmultiplier.pack",
-      "whmmflows\\increase_units.json",
-    );
+    const firstExecutionId = buildAutomaticFlowExecutionId("pj_unitmultiplier.pack", "whmmflows\\increase_units.json");
     const secondExecutionId = buildAutomaticFlowExecutionId(
       "pj_unitmultiplier.pack",
       "whmmflows\\increase_health.json",
     );
 
-    expect(buildFlowOutputPackBaseName(firstExecutionId)).toBe(
-      "dbflow_pj_unitmultiplier_increase_units",
-    );
-    expect(buildFlowOutputPackBaseName(secondExecutionId)).toBe(
-      "dbflow_pj_unitmultiplier_increase_health",
-    );
+    expect(buildFlowOutputPackBaseName(firstExecutionId)).toBe("dbflow_pj_unitmultiplier_increase_units");
+    expect(buildFlowOutputPackBaseName(secondExecutionId)).toBe("dbflow_pj_unitmultiplier_increase_health");
   });
 
   it("does not mistake a regular one-underscore flow ID for a timestamp", () => {

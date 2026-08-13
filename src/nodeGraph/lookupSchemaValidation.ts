@@ -42,13 +42,9 @@ export const validateLookupSchemaReference = ({
 }: LookupSchemaReferenceValidationInput): LookupSchemaReferenceValidation => {
   const lookupReferences = getReferencePairs(lookupField);
   const indexedReferences = getReferencePairs(indexedField);
-  const referencesToIndexedTable = lookupReferences.filter(
-    (reference) => reference.table === indexedTableName,
-  );
+  const referencesToIndexedTable = lookupReferences.filter((reference) => reference.table === indexedTableName);
 
-  const hasForwardReference = referencesToIndexedTable.some(
-    (reference) => reference.column === indexJoinColumn,
-  );
+  const hasForwardReference = referencesToIndexedTable.some((reference) => reference.column === indexJoinColumn);
   const hasReverseReference = indexedReferences.some(
     (reference) => reference.table === sourceTableName && reference.column === lookupColumn,
   );

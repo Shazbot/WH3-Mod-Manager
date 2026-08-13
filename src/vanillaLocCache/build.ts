@@ -1,9 +1,5 @@
 import { buildFrontCodedBlock } from "../vanillaDbCache/frontCodedBlock";
-import {
-  getVanillaLocCacheSections,
-  writeVanillaLocCacheHeader,
-  type VanillaLocCacheMeta,
-} from "./format";
+import { getVanillaLocCacheSections, writeVanillaLocCacheHeader, type VanillaLocCacheMeta } from "./format";
 
 const textEncoder = new TextEncoder();
 

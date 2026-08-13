@@ -15,7 +15,7 @@ export function processDuplicateListenerNamesInSameTable(
   packFileName: string,
   scriptListeners: ScriptListener[],
   packName: string,
-  scriptListenerCollisions: Record<PackName, ScriptListenerCollision[]>
+  scriptListenerCollisions: Record<PackName, ScriptListenerCollision[]>,
 ) {
   // compare for duplicate keys in the same pack
   for (let i = 0; i < scriptListeners.length - 1; i++) {
@@ -31,7 +31,7 @@ export function processDuplicateListenerNamesInSameTable(
           (collision) =>
             collision.value == newScriptListenerCollision.value &&
             collision.packFileName == newScriptListenerCollision.packFileName &&
-            collision.firstPackName == newScriptListenerCollision.firstPackName
+            collision.firstPackName == newScriptListenerCollision.firstPackName,
         )
       ) {
         scriptListenerCollisions[packName].push(newScriptListenerCollision);
@@ -48,15 +48,8 @@ export function processPackToScriptFilesWithListeners() {
   for (let packOneIndex = 0; packOneIndex < packToScriptFilesWithListenersSortedKeys.length; packOneIndex++) {
     const packName = packToScriptFilesWithListenersSortedKeys[packOneIndex];
     scriptListenerCollisions[packName] = scriptListenerCollisions[packName] || [];
-    for (const [scriptFileName, scriptListeners] of Object.entries(
-      packToScriptFilesWithListeners[packName]
-    )) {
-      processDuplicateListenerNamesInSameTable(
-        scriptFileName,
-        scriptListeners,
-        packName,
-        scriptListenerCollisions
-      );
+    for (const [scriptFileName, scriptListeners] of Object.entries(packToScriptFilesWithListeners[packName])) {
+      processDuplicateListenerNamesInSameTable(scriptFileName, scriptListeners, packName, scriptListenerCollisions);
 
       for (
         let packTwoIndex = packOneIndex + 1;
@@ -69,13 +62,9 @@ export function processPackToScriptFilesWithListeners() {
         const scriptListenersInPackTwo = packToScriptFilesWithListeners[packTWoName][scriptFileName];
         if (scriptListenersInPackTwo) {
           const scriptListenersToSearch =
-            scriptListeners.length < scriptListenersInPackTwo.length
-              ? scriptListeners
-              : scriptListenersInPackTwo;
+            scriptListeners.length < scriptListenersInPackTwo.length ? scriptListeners : scriptListenersInPackTwo;
           const scriptListenersToSearchOther =
-            scriptListeners.length < scriptListenersInPackTwo.length
-              ? scriptListenersInPackTwo
-              : scriptListeners;
+            scriptListeners.length < scriptListenersInPackTwo.length ? scriptListenersInPackTwo : scriptListeners;
 
           for (let i = 0; i < scriptListenersToSearch.length; i++) {
             // if it's a duplicates value skip it
@@ -88,7 +77,7 @@ export function processPackToScriptFilesWithListeners() {
             const keyValuesOtherIndex = bs(
               scriptListenersToSearchOther,
               scriptListenersToSearch[i],
-              (a: ScriptListener, b: ScriptListener) => collator.compare(a.value, b.value)
+              (a: ScriptListener, b: ScriptListener) => collator.compare(a.value, b.value),
             );
             if (keyValuesOtherIndex > -1) {
               const newScriptListenerCollision = {
@@ -104,7 +93,7 @@ export function processPackToScriptFilesWithListeners() {
                     collision.value == newScriptListenerCollision.value &&
                     collision.packFileName == newScriptListenerCollision.packFileName &&
                     collision.firstPackName == newScriptListenerCollision.firstPackName &&
-                    collision.secondPackName == newScriptListenerCollision.secondPackName
+                    collision.secondPackName == newScriptListenerCollision.secondPackName,
                 )
               ) {
                 scriptListenerCollisions[packName].push(newScriptListenerCollision);
@@ -139,7 +128,7 @@ export function appendToAddListenerRegistry(pack: Pack, packFileName: string, sc
 
     if (
       packToScriptFilesWithListeners[pack.name][packFileName].find(
-        (listener) => listener.value == listenerName[0] && listener.position == listenerName.index
+        (listener) => listener.value == listenerName[0] && listener.position == listenerName.index,
       )
     )
       continue;

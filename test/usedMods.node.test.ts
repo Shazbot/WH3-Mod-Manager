@@ -5,9 +5,7 @@ import { getUsedModImport, parseUsedMods } from "../src/usedMods";
 
 const sortImport = (names: string[]) => {
   const imported = getUsedModImport(names, names);
-  return sortByNameAndLoadOrder(
-    imported.map(({ name, loadOrder }) => ({ name, loadOrder }) as Mod),
-  );
+  return sortByNameAndLoadOrder(imported.map(({ name, loadOrder }) => ({ name, loadOrder }) as Mod));
 };
 
 const getPermutations = (names: string[]): string[][] =>
@@ -32,11 +30,9 @@ describe("parseUsedMods", () => {
 
 describe("getUsedModImport", () => {
   it("does not add load orders when file order is automatic", () => {
-    expect(getUsedModImport(["alpha.pack", "beta.pack", "gamma.pack"], [
-      "alpha.pack",
-      "beta.pack",
-      "gamma.pack",
-    ])).toEqual([
+    expect(
+      getUsedModImport(["alpha.pack", "beta.pack", "gamma.pack"], ["alpha.pack", "beta.pack", "gamma.pack"]),
+    ).toEqual([
       { name: "alpha.pack", loadOrder: undefined },
       { name: "beta.pack", loadOrder: undefined },
       { name: "gamma.pack", loadOrder: undefined },
@@ -47,9 +43,7 @@ describe("getUsedModImport", () => {
     const desiredOrder = ["beta.pack", "alpha.pack", "delta.pack", "gamma.pack"];
     const imported = getUsedModImport(desiredOrder, desiredOrder);
 
-    expect(imported.filter((mod) => mod.loadOrder !== undefined)).toEqual([
-      { name: "beta.pack", loadOrder: 0 },
-    ]);
+    expect(imported.filter((mod) => mod.loadOrder !== undefined)).toEqual([{ name: "beta.pack", loadOrder: 0 }]);
     expect(sortImport(desiredOrder).map((mod) => mod.name)).toEqual(desiredOrder);
   });
 
@@ -67,10 +61,7 @@ describe("getUsedModImport", () => {
 
   it("ignores unavailable and duplicate entries before assigning positions", () => {
     expect(
-      getUsedModImport(
-        ["missing.pack", "beta.pack", "beta.pack", "alpha.pack"],
-        ["alpha.pack", "beta.pack"],
-      ),
+      getUsedModImport(["missing.pack", "beta.pack", "beta.pack", "alpha.pack"], ["alpha.pack", "beta.pack"]),
     ).toEqual([
       { name: "beta.pack", loadOrder: 0 },
       { name: "alpha.pack", loadOrder: undefined },
@@ -92,9 +83,7 @@ describe("getUsedModImport", () => {
           name,
           loadOrder: mask & (1 << index) ? index : undefined,
         }));
-        expect(sortByNameAndLoadOrder(candidate as Mod[]).map((mod) => mod.name)).not.toEqual(
-          desiredOrder,
-        );
+        expect(sortByNameAndLoadOrder(candidate as Mod[]).map((mod) => mod.name)).not.toEqual(desiredOrder);
       }
     }
   });

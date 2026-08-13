@@ -44,9 +44,21 @@ const openBAfterA = (guardOnFileKey: boolean) => {
   let workingText: string | undefined = "A contents";
 
   // Render 1: filePath is already B, but loadState still describes A.
-  workingText = hydrate({ status: "loaded", fileKey: "pack|a.lua", text: "A contents" }, "pack|b.lua", hydratedKeyRef, workingText, guardOnFileKey);
+  workingText = hydrate(
+    { status: "loaded", fileKey: "pack|a.lua", text: "A contents" },
+    "pack|b.lua",
+    hydratedKeyRef,
+    workingText,
+    guardOnFileKey,
+  );
   // Render 2: B's content has landed.
-  workingText = hydrate({ status: "loaded", fileKey: "pack|b.lua", text: "B contents" }, "pack|b.lua", hydratedKeyRef, workingText, guardOnFileKey);
+  workingText = hydrate(
+    { status: "loaded", fileKey: "pack|b.lua", text: "B contents" },
+    "pack|b.lua",
+    hydratedKeyRef,
+    workingText,
+    guardOnFileKey,
+  );
 
   return workingText;
 };
@@ -65,7 +77,13 @@ describe("file viewer content follows the file", () => {
     const edited = "B contents, edited";
 
     expect(
-      hydrate({ status: "loaded", fileKey: "pack|b.lua", text: "B contents" }, "pack|b.lua", hydratedKeyRef, edited, true),
+      hydrate(
+        { status: "loaded", fileKey: "pack|b.lua", text: "B contents" },
+        "pack|b.lua",
+        hydratedKeyRef,
+        edited,
+        true,
+      ),
     ).toBe(edited);
   });
 
@@ -73,7 +91,13 @@ describe("file viewer content follows the file", () => {
     const hydratedKeyRef = { current: null as string | null };
 
     expect(
-      hydrate({ status: "loaded", fileKey: "pack|a.lua", text: "A contents" }, "pack|a.lua", hydratedKeyRef, undefined, true),
+      hydrate(
+        { status: "loaded", fileKey: "pack|a.lua", text: "A contents" },
+        "pack|a.lua",
+        hydratedKeyRef,
+        undefined,
+        true,
+      ),
     ).toBe("A contents");
   });
 

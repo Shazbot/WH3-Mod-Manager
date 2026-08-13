@@ -29,8 +29,7 @@ import { createFileSource, openVanillaLocCache, type VanillaLocCacheReader } fro
  * needed - which is just as well, since nothing here can tell another consumer's file from a stale
  * one by name.
  */
-const cacheFileName = (game: string, packSetKey: string) =>
-  `vanilla-loc-cache-${game}-${packSetKey.slice(0, 16)}.bin`;
+const cacheFileName = (game: string, packSetKey: string) => `vanilla-loc-cache-${game}-${packSetKey.slice(0, 16)}.bin`;
 
 const getPackSetKey = (game: string, packPaths: readonly string[]) =>
   crypto
@@ -64,7 +63,10 @@ export const getVanillaLocCacheIdentity = (game: string, packPaths: readonly str
       return `${nodePath.resolve(packPath)}:missing`;
     }
   });
-  return crypto.createHash("sha1").update(JSON.stringify([game, parts])).digest("hex");
+  return crypto
+    .createHash("sha1")
+    .update(JSON.stringify([game, parts]))
+    .digest("hex");
 };
 
 const cacheFilePath = (userDataPath: string, game: string, packSetKey: string) =>

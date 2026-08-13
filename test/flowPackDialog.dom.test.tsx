@@ -75,7 +75,7 @@ describe("flow pack dialog", () => {
           mode="save"
           currentFile={"whmmflows\\existing.json"}
           currentPack="/mods/with-flows.pack"
-          getFlowData={() => "{\"nodes\":[]}"}
+          getFlowData={() => '{"nodes":[]}'}
           onClose={vi.fn()}
           onOpenFlow={onOpenFlow}
         />
@@ -89,7 +89,7 @@ describe("flow pack dialog", () => {
     expect(saveFlowToPack).toHaveBeenCalledWith(
       "/mods/with-flows.pack",
       "whmmflows\\existing.json",
-      "{\"nodes\":[]}",
+      '{"nodes":[]}',
       false,
     );
 
@@ -98,7 +98,7 @@ describe("flow pack dialog", () => {
     expect(saveFlowToPack).toHaveBeenLastCalledWith(
       "/mods/with-flows.pack",
       "whmmflows\\existing.json",
-      "{\"nodes\":[]}",
+      '{"nodes":[]}',
       true,
     );
   });

@@ -57,11 +57,7 @@ export const getWorkshopModSyncItems = (
     for (const customMod of matchingCustomMods) {
       const workshopChangedAt = workshopMod.lastChangedLocal;
       const customChangedAt = customMod.lastChangedLocal;
-      if (
-        workshopChangedAt === undefined ||
-        customChangedAt === undefined ||
-        workshopChangedAt > customChangedAt
-      ) {
+      if (workshopChangedAt === undefined || customChangedAt === undefined || workshopChangedAt > customChangedAt) {
         syncItems.push({ workshopMod, customMod });
       }
     }

@@ -11,10 +11,7 @@ import {
 } from "../../src/nodeGraph/deepCloneTree";
 import type { DBField, DBVersion } from "../../src/packFileTypes";
 
-const createField = (
-  name: string,
-  options: { isKey?: boolean; reference?: [string, string] } = {},
-): DBField =>
+const createField = (name: string, options: { isKey?: boolean; reference?: [string, string] } = {}): DBField =>
   ({
     name,
     field_type: "StringU8",
@@ -44,10 +41,7 @@ const DBNameToDBVersions: Record<string, DBVersion[]> = {
   units_to_groupings_tables: [
     {
       version: 1,
-      fields: [
-        createField("unit", { reference: ["main_units_tables", "unit"] }),
-        createField("grouping"),
-      ],
+      fields: [createField("unit", { reference: ["main_units_tables", "unit"] }), createField("grouping")],
     },
   ],
   main_unit_ownership_content_pack_junctions_tables: [
@@ -79,9 +73,7 @@ describe("deepCloneTree", () => {
       // key of its own to rename — only its foreign key back at main_units_tables gets rewritten.
       { table: "units_to_groupings_tables", keyColumn: "", linkColumn: "unit", direction: "reverse" },
     ]);
-    expect(
-      options.some((option) => option.table === "main_unit_ownership_content_pack_junctions_tables"),
-    ).toBe(false);
+    expect(options.some((option) => option.table === "main_unit_ownership_content_pack_junctions_tables")).toBe(false);
   });
 
   it("picks the referenced column as the key when there is exactly one", () => {
@@ -115,10 +107,7 @@ describe("deepCloneTree", () => {
     const root = expandTreeNode(DBNameToDBVersions, createRootTreeNode(DBNameToDBVersions, "main_units_tables"));
     root.children.find((child) => child.table === "land_units_tables")!.selected = true;
 
-    expect(findTemplatesMissingVariant(root, "my_new_unit")).toEqual([
-      "main_units_tables",
-      "land_units_tables",
-    ]);
+    expect(findTemplatesMissingVariant(root, "my_new_unit")).toEqual(["main_units_tables", "land_units_tables"]);
     expect(findTemplatesMissingVariant(root, "my_new_unit{variant}")).toEqual([]);
   });
 

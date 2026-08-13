@@ -38,7 +38,7 @@ const ToastComponent: FC<ToastProps> = ({ children, duration = 300, ...props }) 
           theme.base,
           durationClasses[duration],
           { [theme.closed]: isClosed },
-          { [theme.removed]: isRemoved }
+          { [theme.removed]: isRemoved },
         )}
         {...theirProps}
       >

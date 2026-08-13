@@ -3,9 +3,7 @@ export interface ClosableCacheResource {
 }
 
 export type CacheCandidateResult<Reader> =
-  | { kind: "opened"; reader: Reader }
-  | { kind: "missing" | "stale" | "invalid" }
-  | { kind: "io-error"; error: unknown };
+  { kind: "opened"; reader: Reader } | { kind: "missing" | "stale" | "invalid" } | { kind: "io-error"; error: unknown };
 
 /**
  * Classifies cache-open outcomes without knowing about Electron or the filesystem. Keeping this seam

@@ -4,8 +4,7 @@ import React from "react";
 import { excludeClassName } from "../../helpers/exclude";
 import { useTheme } from "../Flowbite/ThemeContext";
 
-export interface ListGroupItemProps
-  extends PropsWithChildren<Omit<ComponentProps<"a" | "button">, "className">> {
+export interface ListGroupItemProps extends PropsWithChildren<Omit<ComponentProps<"a" | "button">, "className">> {
   active?: boolean;
   disabled?: boolean;
   href?: string;
@@ -31,11 +30,7 @@ export const ListGroupItem: FC<ListGroupItemProps> = ({
   return (
     <li>
       <Component
-        className={classNames(
-          theme.active[isActive ? "on" : "off"],
-          theme.base,
-          theme.href[isLink ? "on" : "off"]
-        )}
+        className={classNames(theme.active[isActive ? "on" : "off"], theme.base, theme.href[isLink ? "on" : "off"])}
         href={href}
         onClick={onClick}
         type={isLink ? undefined : "button"}

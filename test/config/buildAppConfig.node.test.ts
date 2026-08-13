@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import appData from "../../src/appData";
-import {
-  buildAppConfig,
-  cacheAcceptedGameConfig,
-} from "../../src/config/buildAppConfig";
+import { buildAppConfig, cacheAcceptedGameConfig } from "../../src/config/buildAppConfig";
 import { emptyGameConfig } from "../../src/config/migrateAppConfig";
 import { supportedGames } from "../../src/supportedGames";
 
@@ -25,9 +22,10 @@ const createPayload = (currentGame: SupportedGames, presetName: string): ConfigS
 describe("buildAppConfig", () => {
   beforeEach(() => {
     appData.currentGame = "wh3";
-    appData.gameToConfig = Object.fromEntries(
-      supportedGames.map((game) => [game, emptyGameConfig()]),
-    ) as Record<SupportedGames, GameConfig>;
+    appData.gameToConfig = Object.fromEntries(supportedGames.map((game) => [game, emptyGameConfig()])) as Record<
+      SupportedGames,
+      GameConfig
+    >;
   });
 
   it("writes the renderer's presets into the selected game's slot", () => {

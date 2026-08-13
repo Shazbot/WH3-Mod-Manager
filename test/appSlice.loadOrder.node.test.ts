@@ -55,11 +55,7 @@ describe("load-order reducer behavior", () => {
       }),
     );
 
-    expect(orderedEnabledNames(state.currentPreset.mods)).toEqual([
-      "beta.pack",
-      "alpha.pack",
-      "always.pack",
-    ]);
+    expect(orderedEnabledNames(state.currentPreset.mods)).toEqual(["beta.pack", "alpha.pack", "always.pack"]);
     expect(state.currentPreset.mods.find((mod) => mod.name === "beta.pack")?.loadOrder).toBe(0);
     expect(state.currentPreset.mods.find((mod) => mod.name === "alpha.pack")?.loadOrder).toBe(1);
     expect(state.currentPreset.mods.find((mod) => mod.name === "always.pack")?.loadOrder).toBeUndefined();
@@ -88,11 +84,7 @@ describe("load-order reducer behavior", () => {
       }),
     );
 
-    expect(orderedEnabledNames(state.currentPreset.mods)).toEqual([
-      "beta.pack",
-      "alpha.pack",
-      "hidden.pack",
-    ]);
+    expect(orderedEnabledNames(state.currentPreset.mods)).toEqual(["beta.pack", "alpha.pack", "hidden.pack"]);
     expect(state.currentPreset.mods.find((mod) => mod.name === "beta.pack")?.loadOrder).toBe(0);
     expect(state.currentPreset.mods.find((mod) => mod.name === "alpha.pack")?.loadOrder).toBeUndefined();
     expect(state.currentPreset.mods.find((mod) => mod.name === "hidden.pack")?.loadOrder).toBeUndefined();
@@ -100,11 +92,7 @@ describe("load-order reducer behavior", () => {
   });
 
   it("loads a saved custom preset in its exact order", () => {
-    const mods = [
-      createMod("alpha.pack", true),
-      createMod("beta.pack", true),
-      createMod("gamma.pack", true),
-    ];
+    const mods = [createMod("alpha.pack", true), createMod("beta.pack", true), createMod("gamma.pack", true)];
     const preset: SavedPreset = {
       name: "Custom",
       version: 2,
@@ -120,11 +108,7 @@ describe("load-order reducer behavior", () => {
       selectPreset([preset.name, "unary"]),
     );
 
-    expect(orderedEnabledNames(state.currentPreset.mods)).toEqual([
-      "gamma.pack",
-      "alpha.pack",
-      "beta.pack",
-    ]);
+    expect(orderedEnabledNames(state.currentPreset.mods)).toEqual(["gamma.pack", "alpha.pack", "beta.pack"]);
     expect(state.currentPreset.mods.map((mod) => mod.loadOrder).sort()).toEqual([0, 1, 2]);
   });
 
@@ -219,9 +203,7 @@ describe("load-order reducer behavior", () => {
     workshop.workshopId = "987654";
     const pendingState = appReducer(
       { ...initialState, currentPreset: { name: "", mods: [workshop] } },
-      setImportedMods([
-        { workshopId: workshop.workshopId, modName: "sender-local-copy.pack", loadOrder: 0 },
-      ]),
+      setImportedMods([{ workshopId: workshop.workshopId, modName: "sender-local-copy.pack", loadOrder: 0 }]),
     );
 
     const state = appReducer(pendingState, orderImportedMods());

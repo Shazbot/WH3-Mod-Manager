@@ -2,15 +2,7 @@ import { findNodeInTree, findParentOfNode } from "./components/viewer/viewerHelp
 import appData from "./appData";
 import { getLocsTrie, readModsByPath } from "./ipcMainListeners";
 import { chunkSchemaIntoRows, getPacksTableData } from "./packFileSerializer";
-import {
-  AmendedSchemaField,
-  DBVersion,
-  LocVersion,
-  PackedFile,
-  LocFields,
-  FIELD_TYPE,
-  Pack,
-} from "./packFileTypes";
+import { AmendedSchemaField, DBVersion, LocVersion, PackedFile, LocFields, FIELD_TYPE, Pack } from "./packFileTypes";
 import {
   DBNameToDBVersions as gameToDBNameToDBVersions,
   gameToDBFieldsReferencedBy,
@@ -33,7 +25,7 @@ const wasPackAlreadyRead = (newPackPath: string, tableToRead: string) => {
 
   return packData.packedFiles.some(
     (packedFile) =>
-      packedFile.name.startsWith(tableToRead) && packedFile.schemaFields && packedFile.schemaFields.length > 0
+      packedFile.name.startsWith(tableToRead) && packedFile.schemaFields && packedFile.schemaFields.length > 0,
   );
 };
 
@@ -45,9 +37,7 @@ const wasPackAlreadyReadAll = (newPackPath: string, tablesToRead: string[]) => {
     if (
       !packData.packedFiles.some(
         (packedFile) =>
-          packedFile.name.startsWith(tableToRead) &&
-          packedFile.schemaFields &&
-          packedFile.schemaFields.length > 0
+          packedFile.name.startsWith(tableToRead) && packedFile.schemaFields && packedFile.schemaFields.length > 0,
       )
     ) {
       return false;
@@ -93,7 +83,7 @@ export const buildDBReferenceTree = async (
   deepCloneTarget: { row: number; col: number },
   existingRefs: DBCell[],
   selectedNodesByName: IViewerTreeNodeWithData[],
-  existingTree?: IViewerTreeNodeWithData
+  existingTree?: IViewerTreeNodeWithData,
 ): Promise<IViewerTreeNodeWithData | undefined> => {
   console.log("ENTER buildDBReferenceTree");
   console.log("args:", packPath, currentDBTableSelection, deepCloneTarget, selectedNodesByName);
@@ -106,10 +96,7 @@ export const buildDBReferenceTree = async (
   if (!gameFolderPaths || !gameFolderPaths.dataFolder) return;
 
   const nodePath = await import("path");
-  const dataPackPath = nodePath.join(
-    gameFolderPaths.dataFolder,
-    gameToPackWithDBTablesName[appData.currentGame]
-  );
+  const dataPackPath = nodePath.join(gameFolderPaths.dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
 
   const isCurrentPackDataPack = nodePath.relative(packPath, dataPackPath) == "";
 
@@ -150,11 +137,11 @@ export const buildDBReferenceTree = async (
 
   const getSelectedPackFile = (packToSearch: Pack) => {
     let selectedPackFile = packToSearch.packedFiles.find(
-      (pf) => pf.name == `db\\${currentDBTableSelection.dbName}\\${currentDBTableSelection.dbSubname}`
+      (pf) => pf.name == `db\\${currentDBTableSelection.dbName}\\${currentDBTableSelection.dbSubname}`,
     );
     if (!selectedPackFile && currentDBTableSelection.dbSubname == "") {
       selectedPackFile = packToSearch.packedFiles.find((pf) =>
-        pf.name.startsWith(`db\\${currentDBTableSelection.dbName}\\`)
+        pf.name.startsWith(`db\\${currentDBTableSelection.dbName}\\`),
       );
     }
     if (!selectedPackFile) {
@@ -270,7 +257,7 @@ export const buildDBReferenceTree = async (
     } else {
       console.log(
         "tableDataResult:",
-        tableDataResult.map((tdr) => Object.keys(tdr.packedFiles))
+        tableDataResult.map((tdr) => Object.keys(tdr.packedFiles)),
       );
     }
 
@@ -309,13 +296,7 @@ export const buildDBReferenceTree = async (
   const allTreeChildren: string[] = [];
 
   const refsQueue = new Queue<
-    [
-      acc: DBCell[],
-      packFile: PackedFile,
-      dbCell: DBCell,
-      treeParent: IViewerTreeNodeWithData,
-      isIndirect: boolean
-    ]
+    [acc: DBCell[], packFile: PackedFile, dbCell: DBCell, treeParent: IViewerTreeNodeWithData, isIndirect: boolean]
   >();
 
   const addRefsRecursively = async (
@@ -323,7 +304,7 @@ export const buildDBReferenceTree = async (
     packFile: PackedFile,
     dbCell: DBCell,
     treeParent: IViewerTreeNodeWithData,
-    isIndirectRefSearch: boolean
+    isIndirectRefSearch: boolean,
   ) => {
     const [tableName, tableColumnName, resolvedKeyValue] = dbCell;
     console.log("addRefsRecursively for", tableName, tableColumnName, resolvedKeyValue, packFile.name);
@@ -342,8 +323,7 @@ export const buildDBReferenceTree = async (
       console.log("FOUND ROW FOR", tableName, tableColumnName, resolvedKeyValue);
 
       if (isIndirectRefSearch) {
-        const references =
-          DBFieldsReferencedBy[tableName] && DBFieldsReferencedBy[tableName][tableColumnName];
+        const references = DBFieldsReferencedBy[tableName] && DBFieldsReferencedBy[tableName][tableColumnName];
 
         if (references) {
           console.log("REFERENCES FOR", tableName, tableColumnName, references);
@@ -353,29 +333,20 @@ export const buildDBReferenceTree = async (
             console.log("REFERENCE:", refTableName, refTableColumnName, resolvedKeyValue);
 
             if (existingTree) {
-              const parentOfParentNode = findParentOfNode(
-                existingTree,
-                treeParent.name
-              ) as IViewerTreeNodeWithData | undefined;
+              const parentOfParentNode = findParentOfNode(existingTree, treeParent.name) as
+                IViewerTreeNodeWithData | undefined;
 
               // are we looking up the reference to the parent in the tree, if so we can skip it
               if (parentOfParentNode?.tableName == refTableName) {
                 console.log(
                   "parentOfParentNode points to the same table, skipping this refence:",
-                  parentOfParentNode.name
+                  parentOfParentNode.name,
                 );
                 continue;
               }
             }
 
-            await addNewCellFromReference(
-              acc,
-              treeParent,
-              refTableName,
-              refTableColumnName,
-              resolvedKeyValue,
-              true
-            );
+            await addNewCellFromReference(acc, treeParent, refTableName, refTableColumnName, resolvedKeyValue, true);
           }
         }
         return;
@@ -397,19 +368,14 @@ export const buildDBReferenceTree = async (
           const newTableName = field.is_reference[0];
           const newTableColumnName = field.is_reference[1];
 
-          console.log(
-            "ELSE addNewCellFromReference:",
-            newTableName,
-            newTableColumnName,
-            cell.resolvedKeyValue
-          );
+          console.log("ELSE addNewCellFromReference:", newTableName, newTableColumnName, cell.resolvedKeyValue);
           await addNewCellFromReference(
             acc,
             treeParent,
             newTableName,
             newTableColumnName,
             cell.resolvedKeyValue,
-            false
+            false,
           );
         }
       }
@@ -420,7 +386,7 @@ export const buildDBReferenceTree = async (
     pack: Pack,
     newTableName: string,
     newTableColumnName: string,
-    resolvedKeyValue: string
+    resolvedKeyValue: string,
   ) => {
     console.log("tryGetPackWithReference:", pack.path, newTableName, newTableColumnName, resolvedKeyValue);
 
@@ -429,7 +395,7 @@ export const buildDBReferenceTree = async (
         getDBNameFromString(pf.name) == newTableName &&
         pf.schemaFields
           ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
-          .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue)
+          .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue),
     );
 
     if (!newPackFile || !newPackFile.schemaFields) {
@@ -441,7 +407,7 @@ export const buildDBReferenceTree = async (
           getDBNameFromString(pf.name) == newTableName &&
           pf.schemaFields
             ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
-            .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue)
+            .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue),
       );
 
       return newPackFile;
@@ -456,13 +422,12 @@ export const buildDBReferenceTree = async (
     newTableName: string,
     newTableColumnName: string,
     resolvedKeyValue: string,
-    isIndirectReference: boolean
+    isIndirectReference: boolean,
   ) => {
     // if (!isIndirectReference) {
     if (
       acc.some(
-        (dbCell) =>
-          dbCell[0] == newTableName && dbCell[1] == newTableColumnName && dbCell[2] == resolvedKeyValue
+        (dbCell) => dbCell[0] == newTableName && dbCell[1] == newTableColumnName && dbCell[2] == resolvedKeyValue,
       )
     )
       return;
@@ -471,27 +436,14 @@ export const buildDBReferenceTree = async (
     // }
     // console.log("SEARCH", newTableName, newTableColumnName, resolvedKeyValue);
 
-    let newPackFile = await tryGetPackWithReference(
-      existingPack,
-      newTableName,
-      newTableColumnName,
-      resolvedKeyValue
-    );
+    let newPackFile = await tryGetPackWithReference(existingPack, newTableName, newTableColumnName, resolvedKeyValue);
 
     if (!newPackFile || !newPackFile.schemaFields) {
-      console.log(
-        "tryGetPackWithReference with existingPack FAILED, isCurrentPackDataPack:",
-        isCurrentPackDataPack
-      );
+      console.log("tryGetPackWithReference with existingPack FAILED, isCurrentPackDataPack:", isCurrentPackDataPack);
       if (!isCurrentPackDataPack) {
         const dataPack = appData.packsData.find((pack) => pack.path == dataPackPath);
         if (dataPack) {
-          newPackFile = await tryGetPackWithReference(
-            dataPack,
-            newTableName,
-            newTableColumnName,
-            resolvedKeyValue
-          );
+          newPackFile = await tryGetPackWithReference(dataPack, newTableName, newTableColumnName, resolvedKeyValue);
         }
       }
 
@@ -501,7 +453,7 @@ export const buildDBReferenceTree = async (
           newPackFile?.name,
           newTableName,
           newTableColumnName,
-          resolvedKeyValue
+          resolvedKeyValue,
         );
         return;
       }
@@ -510,15 +462,7 @@ export const buildDBReferenceTree = async (
     // return addNewChildNode(acc, newPackFile, treeParent, newTableName, newTableColumnName, resolvedKeyValue);
 
     if (!isIndirectReference) {
-      return addNewChildNode(
-        acc,
-        newPackFile,
-        treeParent,
-        newTableName,
-        newTableColumnName,
-        resolvedKeyValue,
-        false
-      );
+      return addNewChildNode(acc, newPackFile, treeParent, newTableName, newTableColumnName, resolvedKeyValue, false);
     }
 
     if (newPackFile.schemaFields) {
@@ -530,7 +474,7 @@ export const buildDBReferenceTree = async (
       const rows = chunkSchemaIntoRows(newPackFile.schemaFields, dbVersion) as AmendedSchemaField[][];
 
       const row = rows.find(
-        (row) => row.find((cell) => cell.name == newTableColumnName)?.resolvedKeyValue == resolvedKeyValue
+        (row) => row.find((cell) => cell.name == newTableColumnName)?.resolvedKeyValue == resolvedKeyValue,
       );
 
       if (!row) {
@@ -552,20 +496,10 @@ export const buildDBReferenceTree = async (
         console.log("referenced columns are:", referencedColumns);
 
         if (referencedColumns.length == 0) {
-          addNewChildNode(
-            acc,
-            newPackFile,
-            treeParent,
-            newTableName,
-            newTableColumnName,
-            resolvedKeyValue,
-            true
-          );
+          addNewChildNode(acc, newPackFile, treeParent, newTableName, newTableColumnName, resolvedKeyValue, true);
         } else {
           for (const referencedColumn of referencedColumns) {
-            const resolvedKeyValueOfColumnKey = row.find(
-              (cell) => cell.name == referencedColumn
-            )?.resolvedKeyValue;
+            const resolvedKeyValueOfColumnKey = row.find((cell) => cell.name == referencedColumn)?.resolvedKeyValue;
             if (!resolvedKeyValueOfColumnKey) {
               console.log("no resoldevedKeyValueOfColumnKey");
               return;
@@ -578,7 +512,7 @@ export const buildDBReferenceTree = async (
                 (dbCell) =>
                   dbCell[0] == newTableName &&
                   dbCell[1] == referencedColumn &&
-                  dbCell[2] == resolvedKeyValueOfColumnKey
+                  dbCell[2] == resolvedKeyValueOfColumnKey,
               )
             ) {
               console.log("SKIPPING, this ref already exists");
@@ -592,7 +526,7 @@ export const buildDBReferenceTree = async (
               newPackFile.name,
               newTableName,
               referencedColumn,
-              resolvedKeyValueOfColumnKey
+              resolvedKeyValueOfColumnKey,
             );
             logUsedRefs(acc);
             // await addNewCellFromReference(
@@ -610,7 +544,7 @@ export const buildDBReferenceTree = async (
               newTableName,
               referencedColumn,
               resolvedKeyValueOfColumnKey,
-              false
+              false,
             );
           }
         }
@@ -629,7 +563,7 @@ export const buildDBReferenceTree = async (
     newTableName: string,
     newTableColumnName: string,
     resolvedKeyValue: string,
-    isIndirectRefSearch: boolean
+    isIndirectRefSearch: boolean,
   ) => {
     console.log("addNewChildNode", newTableName, newTableColumnName, resolvedKeyValue, treeParent.name);
     const newChild = {
@@ -639,10 +573,7 @@ export const buildDBReferenceTree = async (
       columnName: newTableColumnName,
       value: resolvedKeyValue,
     } as IViewerTreeNodeWithData;
-    if (
-      !treeParent.children.some((node) => node.name == newChild.name) &&
-      !allTreeChildren.includes(newChild.name)
-    ) {
+    if (!treeParent.children.some((node) => node.name == newChild.name) && !allTreeChildren.includes(newChild.name)) {
       treeParent.children.push(newChild);
       allTreeChildren.push(newChild.name);
       // console.log("enqueue 1:", acc);
@@ -714,9 +645,7 @@ export const buildDBReferenceTree = async (
           continue;
         }
 
-        if (
-          packToGet.packedFiles.find((pf) => getDBNameFromString(pf.name) == tableName && !pf.schemaFields)
-        ) {
+        if (packToGet.packedFiles.find((pf) => getDBNameFromString(pf.name) == tableName && !pf.schemaFields)) {
           const tableToRead = `db\\${tableName}`;
           console.log("reading from data pack:", tableToRead);
 
@@ -735,7 +664,7 @@ export const buildDBReferenceTree = async (
             getDBNameFromString(pf.name) == tableName &&
             pf.schemaFields
               ?.filter((sF) => (sF as AmendedSchemaField).name == tableColumnName)
-              .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == currentField.resolvedKeyValue)
+              .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == currentField.resolvedKeyValue),
         );
         if (pf) {
           const dbCell: DBCell = [tableName, tableColumnName, currentField.resolvedKeyValue];
@@ -762,7 +691,7 @@ export const buildDBReferenceTree = async (
           console.log("DBClone: no pf for", tableName, tableColumnName, currentField.resolvedKeyValue);
           console.log(
             "packsToGet:",
-            packsToGet.map((pack) => pack.name)
+            packsToGet.map((pack) => pack.name),
           );
         }
       }
@@ -776,7 +705,7 @@ export const buildDBReferenceTree = async (
   for (const existingRef of existingRefs) {
     if (
       !refsToUse.some(
-        (dbCell) => dbCell[0] == existingRef[0] && dbCell[1] == existingRef[1] && dbCell[2] == existingRef[2]
+        (dbCell) => dbCell[0] == existingRef[0] && dbCell[1] == existingRef[1] && dbCell[2] == existingRef[2],
       )
     )
       refsToUse.push(existingRef);
@@ -790,18 +719,14 @@ export const buildDBReferenceTree = async (
 
   if (selectedNodesByName.length > 0) {
     const selectedNodeByName = selectedNodesByName[0];
-    const dbCell: DBCell = [
-      selectedNodeByName.tableName,
-      selectedNodeByName.columnName,
-      selectedNodeByName.value,
-    ];
+    const dbCell: DBCell = [selectedNodeByName.tableName, selectedNodeByName.columnName, selectedNodeByName.value];
     // console.log("enqueue 3:", refsToUse);
     refsQueue.enqueue([refsToUse, packFile, dbCell, rootNode, true]);
   }
 
   console.log(
     "refsQueue at START:",
-    refsQueue.queue.map((rq) => rq[0])
+    refsQueue.queue.map((rq) => rq[0]),
   );
 
   while (!refsQueue.isEmpty()) {
@@ -822,7 +747,7 @@ export const buildDBIndirectReferences = async (
   packPath: string,
   selectedNode: IViewerTreeNodeWithData,
   existingRefs: DBCell[],
-  cacheContext?: DBIndirectReferenceCacheContext
+  cacheContext?: DBIndirectReferenceCacheContext,
 ): Promise<IViewerTreeNodeWithData[]> => {
   const DBFieldsReferencedBy = gameToDBFieldsReferencedBy[appData.currentGame];
   const tableToreferencedColumns = gameToReferences[appData.currentGame];
@@ -834,17 +759,15 @@ export const buildDBIndirectReferences = async (
   if (!gameFolderPaths || !gameFolderPaths.dataFolder) return [];
 
   const nodePath = await import("path");
-  const dataPackPath = nodePath.join(
-    gameFolderPaths.dataFolder,
-    gameToPackWithDBTablesName[appData.currentGame]
-  );
+  const dataPackPath = nodePath.join(gameFolderPaths.dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
   const isCurrentPackDataPack = nodePath.relative(packPath, dataPackPath) == "";
   const currentGame = appData.currentGame;
 
   const packByPath = cacheContext?.packByPath ?? new Map<string, Pack>();
   const tableFilesByPackAndTable = cacheContext?.tableFilesByPackAndTable ?? new Map<string, PackedFile[]>();
   const rowsByPackedFile = cacheContext?.rowsByPackedFile ?? new WeakMap<PackedFile, AmendedSchemaField[][]>();
-  const columnIndexesByPackedFile = cacheContext?.columnIndexesByPackedFile ?? new WeakMap<PackedFile, Map<string, number>>();
+  const columnIndexesByPackedFile =
+    cacheContext?.columnIndexesByPackedFile ?? new WeakMap<PackedFile, Map<string, number>>();
   const reverseRefIndexByKey = cacheContext?.reverseRefIndexByKey ?? new Map<string, DBIndirectReferenceCacheEntry>();
   const reverseRefTtlMs = cacheContext?.reverseRefTtlMs ?? 5 * 60 * 1000;
   const maxReverseRefEntries = cacheContext?.maxReverseRefEntries ?? 32;
@@ -919,7 +842,7 @@ export const buildDBIndirectReferences = async (
 
     const tableFiles = refreshedPack.packedFiles.filter(
       (packedFile) =>
-        packedFile.name.startsWith(`db\\${tableName}\\`) && packedFile.schemaFields && packedFile.tableSchema
+        packedFile.name.startsWith(`db\\${tableName}\\`) && packedFile.schemaFields && packedFile.tableSchema,
     );
     tableFilesByPackAndTable.set(cacheKey, tableFiles);
     return tableFiles;
@@ -1002,7 +925,9 @@ export const buildDBIndirectReferences = async (
     await getPackByPath(dataPackPath);
   }
 
-  const seenRefs = new Set(existingRefs.map(([tableName, columnName, value]) => getCellLookupKey(tableName, columnName, value)));
+  const seenRefs = new Set(
+    existingRefs.map(([tableName, columnName, value]) => getCellLookupKey(tableName, columnName, value)),
+  );
   const seenNodeNames = new Set<string>();
   const newNodes = [] as IViewerTreeNodeWithData[];
 
@@ -1050,16 +975,11 @@ export async function executeDBDuplication(
   defaultNodeNameToRenameValue: Record<string, string>,
   treeData: IViewerTreeNodeWithData,
   DBCloneSaveOptions: DBCloneSaveOptions,
-  executionContext?: DBCloneExecutionContext
+  executionContext?: DBCloneExecutionContext,
 ): Promise<DBCloneExecutionResult> {
   try {
     const isCanceled = () => executionContext?.isCanceled?.() ?? false;
-    const report = (
-      stage: DBDuplicationProgress["stage"],
-      message?: string,
-      current?: number,
-      total?: number
-    ) => {
+    const report = (stage: DBDuplicationProgress["stage"], message?: string, current?: number, total?: number) => {
       executionContext?.report?.({ stage, message, current, total });
     };
 
@@ -1071,9 +991,7 @@ export async function executeDBDuplication(
 
     const timestamp = format(new Date(), "ddMMyy_HHmmss");
     const packedFileBaseName =
-      DBCloneSaveOptions.savePackedFileName != ""
-        ? DBCloneSaveOptions.savePackedFileName
-        : `dbclone_${timestamp}_`;
+      DBCloneSaveOptions.savePackedFileName != "" ? DBCloneSaveOptions.savePackedFileName : `dbclone_${timestamp}_`;
 
     let pack = appData.packsData.find((pack) => pack.path == packPath);
     if (!pack) {
@@ -1092,10 +1010,7 @@ export async function executeDBDuplication(
     if (!gameFolderPaths || !gameFolderPaths.dataFolder) {
       return { ok: false, error: "No data folder configured for current game" };
     }
-    const dataPackPath = nodePath.join(
-      gameFolderPaths.dataFolder,
-      gameToPackWithDBTablesName[appData.currentGame]
-    );
+    const dataPackPath = nodePath.join(gameFolderPaths.dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
     const isCurrentPackDataPack = nodePath.relative(packPath, dataPackPath) == "";
     const packPathsForCollisionChecks = isCurrentPackDataPack ? [packPath] : [packPath, dataPackPath];
 
@@ -1181,7 +1096,7 @@ export async function executeDBDuplication(
 
       const tableFiles = refreshedPack.packedFiles.filter(
         (packedFile) =>
-          packedFile.name.startsWith(`db\\${tableName}\\`) && packedFile.schemaFields && packedFile.tableSchema
+          packedFile.name.startsWith(`db\\${tableName}\\`) && packedFile.schemaFields && packedFile.tableSchema,
       );
       tableFilesByPackAndTable.set(cacheKey, tableFiles);
       return tableFiles;
@@ -1270,10 +1185,7 @@ export async function executeDBDuplication(
     const numericIdTables = gameToTablesWithNumericIds[appData.currentGame];
 
     const getIndirectChildrenNodes = (node: IViewerTreeNodeWithData) => {
-      const getIndirectChildrenNodesIter = (
-        acc: IViewerTreeNodeWithData[],
-        node: IViewerTreeNodeWithData
-      ) => {
+      const getIndirectChildrenNodesIter = (acc: IViewerTreeNodeWithData[], node: IViewerTreeNodeWithData) => {
         for (const child of node.children as IViewerTreeNodeWithData[]) {
           if (child.isIndirectRef && !acc.includes(child)) {
             acc.push(child);
@@ -1304,7 +1216,7 @@ export async function executeDBDuplication(
       nodesToDuplicate.push(node);
     }
     const selectedNodeLookupKeys = new Set(
-      nodesToDuplicate.map((node) => getCellLookupKey(node.tableName, node.columnName, node.value))
+      nodesToDuplicate.map((node) => getCellLookupKey(node.tableName, node.columnName, node.value)),
     );
     for (const nodeNameToDupe of nodesNamesToDuplicate) {
       const nodeToDupe = findNodeInTree(treeData, nodeNameToDupe) as IViewerTreeNodeWithData;
@@ -1440,7 +1352,7 @@ export async function executeDBDuplication(
         "discovering_indirect",
         `Processing ${currentNode.tableName}.${currentNode.columnName}`,
         processedIndirectNodes.size,
-        Math.max(processedIndirectNodes.size, processedIndirectNodes.size + indirectSearchQueue.length)
+        Math.max(processedIndirectNodes.size, processedIndirectNodes.size + indirectSearchQueue.length),
       );
 
       const references = DBFieldsReferencedBy[currentNode.tableName]?.[currentNode.columnName];
@@ -1465,7 +1377,11 @@ export async function executeDBDuplication(
             value,
             isIndirectRef: true,
           } as IViewerTreeNodeWithData;
-          const newIndirectNodeKey = getCellLookupKey(newIndirectNode.tableName, newIndirectNode.columnName, newIndirectNode.value);
+          const newIndirectNodeKey = getCellLookupKey(
+            newIndirectNode.tableName,
+            newIndirectNode.columnName,
+            newIndirectNode.value,
+          );
           if (!selectedNodeLookupKeys.has(newIndirectNodeKey)) continue;
           if (addNodeRefToHandle(newIndirectNode)) {
             indirectSearchQueue.push(newIndirectNode);
@@ -1513,7 +1429,7 @@ export async function executeDBDuplication(
       tableName: string,
       packedFile: PackedFile,
       clonedRows: AmendedSchemaField[][],
-      rowsSize: number
+      rowsSize: number,
     ) => {
       if (!packedFile.tableSchema || rowsSize == 0 || clonedRows.length == 0) return;
 
@@ -1543,7 +1459,7 @@ export async function executeDBDuplication(
 
     const handleRefs = async (
       nodeRefsToHandle: IViewerTreeNodeWithData[],
-      nodesToDuplicate: IViewerTreeNodeWithData[]
+      nodesToDuplicate: IViewerTreeNodeWithData[],
     ) => {
       const renameValueByCellKey = new Map<string, string>();
       for (const nodeToDupe of nodesToDuplicate) {
@@ -1552,7 +1468,10 @@ export async function executeDBDuplication(
             ? nodeNameToRenameValue[nodeToDupe.name]
             : defaultNodeNameToRenameValue[nodeToDupe.name];
         if (newValue == null) continue;
-        renameValueByCellKey.set(getCellLookupKey(nodeToDupe.tableName, nodeToDupe.columnName, nodeToDupe.value), newValue);
+        renameValueByCellKey.set(
+          getCellLookupKey(nodeToDupe.tableName, nodeToDupe.columnName, nodeToDupe.value),
+          newValue,
+        );
       }
 
       const tableNamesToHandle = Array.from(new Set(nodeRefsToHandle.map((node) => node.tableName)));
@@ -1657,7 +1576,7 @@ export async function executeDBDuplication(
               const newNumericIdAsString = await createUniqueNumericId(
                 tableName,
                 numericIdField.field_type,
-                numericIdField.name
+                numericIdField.name,
               );
               if (!newNumericIdAsString) {
                 throw new Error(`Could not generate unique numeric id for ${tableName}.${numericIdField.name}`);
@@ -1673,8 +1592,7 @@ export async function executeDBDuplication(
             }
           }
 
-          const clonedRows =
-            rowsToSaveBothKeyAndRefToSave.length > 0 ? rowsToSaveBothKeyAndRefToSave : rowsToSave;
+          const clonedRows = rowsToSaveBothKeyAndRefToSave.length > 0 ? rowsToSaveBothKeyAndRefToSave : rowsToSave;
           let rowsSize = 0;
           for (const clonedRow of clonedRows) {
             for (let i = 0; i < clonedRow.length; i++) {
@@ -1699,7 +1617,11 @@ export async function executeDBDuplication(
       const indirectChildren = getIndirectChildrenNodes(node);
       for (const indirectChild of indirectChildren) {
         const indirectChildNode = indirectChild as IViewerTreeNodeWithData;
-        const key = getCellLookupKey(indirectChildNode.tableName, indirectChildNode.columnName, indirectChildNode.value);
+        const key = getCellLookupKey(
+          indirectChildNode.tableName,
+          indirectChildNode.columnName,
+          indirectChildNode.value,
+        );
         if (!selectedNodeLookupKeys.has(key)) continue;
         if (indirectRefsToHandleSet.has(key)) continue;
         indirectRefsToHandleSet.add(key);
@@ -1774,9 +1696,7 @@ export async function executeDBDuplication(
             // console.log("keyOrder is", keyOrder, row[keyOrder].name);
 
             if (originalValueLookup[tableName][row[keyOrder].name]) {
-              for (const [origValue, newValue] of Object.entries(
-                originalValueLookup[tableName][row[keyOrder].name]
-              )) {
+              for (const [origValue, newValue] of Object.entries(originalValueLookup[tableName][row[keyOrder].name])) {
                 if (newValue == row[keyOrder].resolvedKeyValue) {
                   newLocLookup += origValue;
                   break;
@@ -1822,7 +1742,7 @@ export async function executeDBDuplication(
         skipParsingTables: true,
         readLocs: true,
       },
-      true
+      true,
     );
     if (!localePacks || localePacks.length < 1) {
       console.log("ERROR: couldn't read local_en.pack");
@@ -1833,12 +1753,10 @@ export async function executeDBDuplication(
     console.log("origLocToNewLoc:", origLocToNewLoc);
     console.log(
       "localePacks:",
-      localePacks.map((pack) => pack.name)
+      localePacks.map((pack) => pack.name),
     );
 
-    const locsTries = localePacks
-      .map((localePack) => getLocsTrie(localePack))
-      .filter((trie) => trie) as Trie<string>[];
+    const locsTries = localePacks.map((localePack) => getLocsTrie(localePack)).filter((trie) => trie) as Trie<string>[];
     type locsTriesType = typeof locsTries;
 
     const getLocFromTries = (locKey: string, locsTries: locsTriesType) => {
@@ -1865,10 +1783,10 @@ export async function executeDBDuplication(
         "LOC for",
         loc,
         origLocToNewLoc[loc],
-        origLocToNewLoc[loc] ? getLocFromTries(origLocToNewLoc[loc], locsTries) ?? "" : ""
+        origLocToNewLoc[loc] ? (getLocFromTries(origLocToNewLoc[loc], locsTries) ?? "") : "",
       );
 
-      const origLoc = origLocToNewLoc[loc] ? getLocFromTries(origLocToNewLoc[loc], locsTries) ?? "" : "";
+      const origLoc = origLocToNewLoc[loc] ? (getLocFromTries(origLocToNewLoc[loc], locsTries) ?? "") : "";
 
       const fields = [
         { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer("StringU16", loc) },
@@ -1916,9 +1834,7 @@ export async function executeDBDuplication(
     const toSave = toSaveWithSchema as (SavePackedFileDataWithSchema | SavePackedFileDataWithBuffer)[];
 
     const packFileBaseName =
-      DBCloneSaveOptions.savePackFileName != ""
-        ? DBCloneSaveOptions.savePackFileName
-        : `dbclone_${timestamp}`;
+      DBCloneSaveOptions.savePackFileName != "" ? DBCloneSaveOptions.savePackFileName : `dbclone_${timestamp}`;
 
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
     const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);

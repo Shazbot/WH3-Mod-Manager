@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { executeNodeAction } from "../../src/nodeExecutor";
-import {
-  deserializeNodeGraph,
-  serializeNodeGraphState,
-} from "../../src/nodeGraph/graphSerialization";
+import { deserializeNodeGraph, serializeNodeGraphState } from "../../src/nodeGraph/graphSerialization";
 import type { Pack, PackedFile } from "../../src/packFileTypes";
 
 vi.mock("@mongodb-js/zstd", () => ({

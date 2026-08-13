@@ -49,11 +49,7 @@ describe("presets", () => {
   });
 
   it("round-trips the enabled set and order through save and re-select", () => {
-    const mods = [
-      createMod("alpha.pack", true, 1),
-      createMod("beta.pack", true, 0),
-      createMod("gamma.pack", false),
-    ];
+    const mods = [createMod("alpha.pack", true, 1), createMod("beta.pack", true, 0), createMod("gamma.pack", false)];
 
     // PresetsTab sorts the draft before saving, so the preset's array order is the load order
     let state = appReducer(
@@ -74,11 +70,7 @@ describe("presets", () => {
   });
 
   it("adds and subtracts a preset's mods without touching the rest", () => {
-    const mods = [
-      createMod("alpha.pack", false),
-      createMod("beta.pack", false),
-      createMod("gamma.pack", true),
-    ];
+    const mods = [createMod("alpha.pack", false), createMod("beta.pack", false), createMod("gamma.pack", true)];
     const base = {
       ...initialState,
       currentPreset: { name: "", mods, version: 2 },
@@ -86,11 +78,7 @@ describe("presets", () => {
     };
 
     const added = appReducer(base, selectPreset(["Pair", "addition"]));
-    expect(enabledNames(added.currentPreset.mods).sort()).toEqual([
-      "alpha.pack",
-      "beta.pack",
-      "gamma.pack",
-    ]);
+    expect(enabledNames(added.currentPreset.mods).sort()).toEqual(["alpha.pack", "beta.pack", "gamma.pack"]);
 
     const subtracted = appReducer(added, selectPreset(["Pair", "subtraction"]));
     expect(enabledNames(subtracted.currentPreset.mods)).toEqual(["gamma.pack"]);

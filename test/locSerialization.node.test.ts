@@ -68,9 +68,7 @@ describe("loc round trip", () => {
 
     const { rows, bytesConsumed, totalBytes } = parseLocBuffer(buffer);
 
-    expect(rows).toEqual([
-      { key: "land_units_onscreen_name_pj_unit", text: "My Unit", tooltip: 0 },
-    ]);
+    expect(rows).toEqual([{ key: "land_units_onscreen_name_pj_unit", text: "My Unit", tooltip: 0 }]);
     // Nothing left over: a stray byte would desync every following entry.
     expect(bytesConsumed).toBe(totalBytes);
   });

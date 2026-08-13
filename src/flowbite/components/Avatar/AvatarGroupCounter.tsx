@@ -1,5 +1,5 @@
-import type { PropsWithChildren } from 'react';
-import React from 'react';
+import type { PropsWithChildren } from "react";
+import React from "react";
 
 export type AvatarGroupdCounterProps = PropsWithChildren<{
   total?: number;
@@ -17,5 +17,5 @@ const AvatarGroupCounter: React.FC<AvatarGroupdCounterProps> = ({ total, href })
   );
 };
 
-AvatarGroupCounter.displayName = 'Avatar.GroupCounter';
+AvatarGroupCounter.displayName = "Avatar.GroupCounter";
 export default AvatarGroupCounter;

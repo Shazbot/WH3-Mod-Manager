@@ -56,10 +56,7 @@ const REFERENCE_TARGET_TYPES = new Set([
   "generaterowsschema",
 ]);
 
-const REVERSE_REFERENCE_TARGET_TYPES = new Set([
-  ...REFERENCE_TARGET_TYPES,
-  "reversereferencelookup",
-]);
+const REVERSE_REFERENCE_TARGET_TYPES = new Set([...REFERENCE_TARGET_TYPES, "reversereferencelookup"]);
 
 const updateConnectedTargetNodes = (
   nodes: Node[],
@@ -124,11 +121,7 @@ export const applyNodeDataPatch = (
   if (patch.selectedReferenceTable !== undefined && sourceNode.type === "referencelookup") {
     const selectedReferenceTable = (sourceNode.data as Partial<ReferenceTableLookupNodeData>).selectedReferenceTable;
     if (selectedReferenceTable) {
-      const fieldNames = getFieldNamesForTable(
-        selectedReferenceTable,
-        DBNameToDBVersions,
-        defaultTableVersions,
-      );
+      const fieldNames = getFieldNamesForTable(selectedReferenceTable, DBNameToDBVersions, defaultTableVersions);
       nextNodes = updateConnectedTargetNodes(nextNodes, state.edges, nodeId, REFERENCE_TARGET_TYPES, {
         connectedTableName: selectedReferenceTable,
         columnNames: fieldNames,
@@ -140,22 +133,12 @@ export const applyNodeDataPatch = (
   if (patch.selectedReverseTable !== undefined && sourceNode.type === "reversereferencelookup") {
     const selectedReverseTable = (sourceNode.data as Partial<ReverseReferenceLookupNodeData>).selectedReverseTable;
     if (selectedReverseTable) {
-      const fieldNames = getFieldNamesForTable(
-        selectedReverseTable,
-        DBNameToDBVersions,
-        defaultTableVersions,
-      );
-      nextNodes = updateConnectedTargetNodes(
-        nextNodes,
-        state.edges,
-        nodeId,
-        REVERSE_REFERENCE_TARGET_TYPES,
-        {
-          connectedTableName: selectedReverseTable,
-          columnNames: fieldNames,
-          inputColumnNames: fieldNames,
-        },
-      );
+      const fieldNames = getFieldNamesForTable(selectedReverseTable, DBNameToDBVersions, defaultTableVersions);
+      nextNodes = updateConnectedTargetNodes(nextNodes, state.edges, nodeId, REVERSE_REFERENCE_TARGET_TYPES, {
+        connectedTableName: selectedReverseTable,
+        columnNames: fieldNames,
+        inputColumnNames: fieldNames,
+      });
     }
   }
 
@@ -306,9 +289,7 @@ export const selectAllNodes = (nodes: Node[]) => {
 
 export const getNodesDisabledByUpstream = (nodes: Node[], edges: Edge[]) => {
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const manuallyDisabledNodeIds = new Set(
-    nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id),
-  );
+  const manuallyDisabledNodeIds = new Set(nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id));
   const reachableNodeIds = new Set(manuallyDisabledNodeIds);
   const nodesToVisit = [...manuallyDisabledNodeIds];
   const outgoingTargetIdsBySource = new Map<string, string[]>();
@@ -338,9 +319,7 @@ export const getNodesDisabledByUpstream = (nodes: Node[], edges: Edge[]) => {
     }
   }
 
-  return new Set(
-    [...reachableNodeIds].filter((nodeId) => !manuallyDisabledNodeIds.has(nodeId)),
-  );
+  return new Set([...reachableNodeIds].filter((nodeId) => !manuallyDisabledNodeIds.has(nodeId)));
 };
 
 export const toggleSelectedNodesDisabled = (nodes: Node[]) => {
@@ -351,9 +330,7 @@ export const toggleSelectedNodesDisabled = (nodes: Node[]) => {
   }
 
   const selectedNodeIdSet = new Set(selectedNodeIds);
-  const disabled = nodes.some(
-    (node) => selectedNodeIdSet.has(node.id) && node.data.isDisabled !== true,
-  );
+  const disabled = nodes.some((node) => selectedNodeIdSet.has(node.id) && node.data.isDisabled !== true);
 
   return {
     nodes: nodes.map((node) =>

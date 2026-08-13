@@ -68,15 +68,8 @@ const ModTagPicker = memo(() => {
           <Modal.Header>{localized.uploadMod}</Modal.Header>
           <Modal.Body>
             <div className="flex flex-col gap-4">
-              <span className="text-slate-100 select-none text-center w-full">
-                {localized.chooseNewModTag}
-              </span>
-              <Select
-                options={options}
-                styles={selectStyle}
-                onChange={onTagChange}
-                defaultValue={options[0]}
-              ></Select>
+              <span className="text-slate-100 select-none text-center w-full">{localized.chooseNewModTag}</span>
+              <Select options={options} styles={selectStyle} onChange={onTagChange} defaultValue={options[0]}></Select>
               <button
                 className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm m-auto "
                 type="button"

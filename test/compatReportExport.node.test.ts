@@ -121,9 +121,7 @@ describe("compat report", () => {
   it("differs when the mod set differs, even with identical findings", () => {
     const withExtra = [...mods, { name: "c.pack", isEnabled: false, loadOrder: 3 }];
 
-    expect(formatCompatReport(emptyCollisions(), mods)).not.toBe(
-      formatCompatReport(emptyCollisions(), withExtra),
-    );
+    expect(formatCompatReport(emptyCollisions(), mods)).not.toBe(formatCompatReport(emptyCollisions(), withExtra));
   });
 
   it("ends with a newline, so the file diffs cleanly", () => {
@@ -143,11 +141,10 @@ describe("HTML compat report", () => {
       },
     ];
 
-    const html = formatCompatReportHtml(
-      collisions,
-      [{ name: "first.pack", isEnabled: true, loadOrder: 0 }],
-      { generatedAt: new Date("2026-08-11T10:00:00.000Z"), scopeLabel: "Enabled mods only" },
-    );
+    const html = formatCompatReportHtml(collisions, [{ name: "first.pack", isEnabled: true, loadOrder: 0 }], {
+      generatedAt: new Date("2026-08-11T10:00:00.000Z"),
+      scopeLabel: "Enabled mods only",
+    });
 
     expect(html).toContain("<!doctype html>");
     expect(html).toContain("Compatibility Report");

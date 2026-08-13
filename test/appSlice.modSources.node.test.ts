@@ -39,10 +39,7 @@ describe("app mod source reconciliation", () => {
     let state = appReducer({ ...initialState, appFolderPaths: folderPaths }, setMods([dataMod, customMod]));
     expect(state.currentPreset.mods[0].path).toBe(customMod.path);
 
-    state = appReducer(
-      state,
-      setAppFolderPaths({ ...folderPaths, modSourceOrder: ["data", "custom-1", "workshop"] }),
-    );
+    state = appReducer(state, setAppFolderPaths({ ...folderPaths, modSourceOrder: ["data", "custom-1", "workshop"] }));
 
     expect(state.currentPreset.mods[0].path).toBe(dataMod.path);
     expect(state.currentPreset.mods[0].isEnabled).toBe(true);

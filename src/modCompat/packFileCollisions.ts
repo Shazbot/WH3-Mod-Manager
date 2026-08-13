@@ -5,20 +5,13 @@ import { collator } from "../utility/packFileSorting";
 import { diff } from "deep-object-diff";
 import * as fs from "fs";
 
-export function removeFromPackFileCollisions(
-  packFileCollisions: PackFileCollision[],
-  removedPackName: string,
-) {
+export function removeFromPackFileCollisions(packFileCollisions: PackFileCollision[], removedPackName: string) {
   return packFileCollisions.filter((collision) => {
     return collision.firstPackName != removedPackName && collision.secondPackName != removedPackName;
   });
 }
 
-export function appendPackFileCollisions(
-  packsData: Pack[],
-  packFileCollisions: PackFileCollision[],
-  newPack: Pack,
-) {
+export function appendPackFileCollisions(packsData: Pack[], packFileCollisions: PackFileCollision[], newPack: Pack) {
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     if (pack === newPack) continue;
@@ -31,11 +24,7 @@ export function appendPackFileCollisions(
   return packFileCollisions;
 }
 
-export function findPackFileCollisionsBetweenPacks(
-  pack: Pack,
-  packTwo: Pack,
-  conflicts: PackFileCollision[],
-) {
+export function findPackFileCollisionsBetweenPacks(pack: Pack, packTwo: Pack, conflicts: PackFileCollision[]) {
   for (const packFile of pack.packedFiles) {
     if (packFile.name.endsWith(".rpfm_reserved")) continue;
     for (const packTwoFile of packTwo.packedFiles) {
@@ -59,11 +48,7 @@ export function findPackFileCollisionsBetweenPacks(
   }
 }
 
-export function findPackFileCollisionsBetweenPacksOptimized(
-  pack: Pack,
-  packTwo: Pack,
-  conflicts: PackFileCollision[],
-) {
+export function findPackFileCollisionsBetweenPacksOptimized(pack: Pack, packTwo: Pack, conflicts: PackFileCollision[]) {
   let i = 0,
     j = 0;
   while (i < pack.packedFiles.length && j < packTwo.packedFiles.length) {
@@ -125,8 +110,7 @@ export function findPackFileCollisionsAndCompareWithUnoptimizedMethod(
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
-        continue;
+      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name)) continue;
 
       if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "Files");
       findPackFileCollisionsBetweenPacks(pack, packTwo, conflicts);
@@ -192,8 +176,7 @@ export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPack
         // paired duplicates positionally, so retain that behavior instead of producing a cross-product.
         const pairCount = Math.min(firstFiles.length, secondFiles.length);
         for (let occurrenceIndex = 0; occurrenceIndex < pairCount; occurrenceIndex++) {
-          const areSameSize =
-            firstFiles[occurrenceIndex].file_size === secondFiles[occurrenceIndex].file_size;
+          const areSameSize = firstFiles[occurrenceIndex].file_size === secondFiles[occurrenceIndex].file_size;
           conflicts.push({
             firstPackName: firstPack.name,
             secondPackName: secondPack.name,

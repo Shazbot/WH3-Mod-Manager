@@ -154,9 +154,7 @@ const UserFlowOptionsModal: React.FC<{
                       <div key={option.id} className="bg-gray-600 rounded p-3">
                         <div className="mb-2">
                           <h4 className="text-white font-medium">{option.name}</h4>
-                          {option.description && (
-                            <p className="text-gray-300 text-sm">{option.description}</p>
-                          )}
+                          {option.description && <p className="text-gray-300 text-sm">{option.description}</p>}
                         </div>
 
                         {/* Render based on option type */}
@@ -164,9 +162,7 @@ const UserFlowOptionsModal: React.FC<{
                           <input
                             type="text"
                             value={getUserValue(flow.flowName, option.id, option.value)}
-                            onChange={(e) =>
-                              handleOptionValueChange(flow.flowName, option.id, e.target.value)
-                            }
+                            onChange={(e) => handleOptionValueChange(flow.flowName, option.id, e.target.value)}
                             placeholder={option.placeholder}
                             className="w-full p-2 bg-gray-700 text-white rounded text-sm"
                           />
@@ -179,17 +175,11 @@ const UserFlowOptionsModal: React.FC<{
                                 <input
                                   type="radio"
                                   name={`${flow.flowName}-${option.id}`}
-                                  checked={
-                                    getUserValue(flow.flowName, option.id, option.value) === choice.id
-                                  }
-                                  onChange={() =>
-                                    handleOptionValueChange(flow.flowName, option.id, choice.id)
-                                  }
+                                  checked={getUserValue(flow.flowName, option.id, option.value) === choice.id}
+                                  onChange={() => handleOptionValueChange(flow.flowName, option.id, choice.id)}
                                   className="w-4 h-4"
                                 />
-                                <span className="text-sm text-gray-300">
-                                  {choice.label || choice.id}
-                                </span>
+                                <span className="text-sm text-gray-300">{choice.label || choice.id}</span>
                               </label>
                             ))}
                           </div>
@@ -198,9 +188,7 @@ const UserFlowOptionsModal: React.FC<{
                         {option.type === "multiline" && (
                           <textarea
                             value={getUserValue(flow.flowName, option.id, option.value)}
-                            onChange={(e) =>
-                              handleOptionValueChange(flow.flowName, option.id, e.target.value)
-                            }
+                            onChange={(e) => handleOptionValueChange(flow.flowName, option.id, e.target.value)}
                             placeholder={option.placeholder}
                             rows={5}
                             className="w-full p-2 bg-gray-700 text-white rounded text-sm font-mono"
@@ -235,9 +223,7 @@ const UserFlowOptionsModal: React.FC<{
                             <input
                               type="checkbox"
                               checked={getUserValue(flow.flowName, option.id, option.value)}
-                              onChange={(e) =>
-                                handleOptionValueChange(flow.flowName, option.id, e.target.checked)
-                              }
+                              onChange={(e) => handleOptionValueChange(flow.flowName, option.id, e.target.checked)}
                               className="w-4 h-4"
                             />
                             <span className="text-sm text-gray-300">
@@ -276,8 +262,7 @@ const UserFlowOptionsModal: React.FC<{
                 // Extract graph enabled state if applicable
                 if (flow.isGraphEnabled) {
                   const graphKey = `${flow.flowName}_graphEnabled`;
-                  graphEnabled =
-                    userValues[graphKey] !== undefined ? userValues[graphKey] : flow.graphStartsEnabled;
+                  graphEnabled = userValues[graphKey] !== undefined ? userValues[graphKey] : flow.graphStartsEnabled;
                 }
 
                 // Dispatch to save in app state
@@ -289,7 +274,7 @@ const UserFlowOptionsModal: React.FC<{
                       optionValues,
                       graphEnabled,
                     },
-                  })
+                  }),
                 );
               });
 

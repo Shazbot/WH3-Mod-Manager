@@ -89,17 +89,13 @@ const locTextsOf = (result: Awaited<ReturnType<typeof run>>) => {
 
 describe("edit loc text node", () => {
   it("appends to the rows whose key matches and leaves the others", async () => {
-    const result = await run([
-      { id: "r1", keyPrefix: "land_units_onscreen_name_", append: " (Big)" },
-    ]);
+    const result = await run([{ id: "r1", keyPrefix: "land_units_onscreen_name_", append: " (Big)" }]);
 
     expect(locTextsOf(result)).toEqual(["Greatswords (Big)", "Greatswords", "Halberdiers (Big)"]);
   });
 
   it("passes non-loc tables straight through", async () => {
-    const result = await run([
-      { id: "r1", keyPrefix: "land_units_onscreen_name_", append: " (Big)" },
-    ]);
+    const result = await run([{ id: "r1", keyPrefix: "land_units_onscreen_name_", append: " (Big)" }]);
     const tables = (result.data as any).tables;
 
     expect(tables).toHaveLength(2);
@@ -111,11 +107,7 @@ describe("edit loc text node", () => {
     const result = await run([{ id: "r1", keyPrefix: "land_units_onscreen_name_", append: " (Big)" }]);
     const table = (result.data as any).tables.find((t: any) => t.name === "deepclone_loc");
 
-    expect(table.table.tableSchema.fields.map((f: DBField) => f.name)).toEqual([
-      "key",
-      "text",
-      "tooltip",
-    ]);
+    expect(table.table.tableSchema.fields.map((f: DBField) => f.name)).toEqual(["key", "text", "tooltip"]);
     expect(table.table.schemaFields).toHaveLength(9);
   });
 
@@ -125,11 +117,7 @@ describe("edit loc text node", () => {
       { id: "r2", keyPrefix: "land_units_onscreen_name_", append: " (Big)" },
     ]);
 
-    expect(locTextsOf(result)).toEqual([
-      "The Greatswords (Big)",
-      "Greatswords",
-      "The Halberdiers (Big)",
-    ]);
+    expect(locTextsOf(result)).toEqual(["The Greatswords (Big)", "Greatswords", "The Halberdiers (Big)"]);
   });
 
   it("finds and replaces inside the text", async () => {
@@ -141,9 +129,7 @@ describe("edit loc text node", () => {
   });
 
   it("matches the prefix case-insensitively", async () => {
-    const result = await run([
-      { id: "r1", keyPrefix: "LAND_UNITS_ONSCREEN_NAME_", append: " (Big)" },
-    ]);
+    const result = await run([{ id: "r1", keyPrefix: "LAND_UNITS_ONSCREEN_NAME_", append: " (Big)" }]);
 
     expect(locTextsOf(result)).toEqual(["Greatswords (Big)", "Greatswords", "Halberdiers (Big)"]);
   });
@@ -185,18 +171,12 @@ describe("loc key prefix autocomplete", () => {
           localised_fields: [{ name: "onscreen_name" } as DBField, { name: "description" } as DBField],
         },
       ],
-      main_units_tables: [
-        { version: 1, fields: [], localised_fields: [{ name: "onscreen_name" } as DBField] },
-      ],
+      main_units_tables: [{ version: 1, fields: [], localised_fields: [{ name: "onscreen_name" } as DBField] }],
       // No localised fields, so it contributes no prefix.
       units_to_groupings_tables: [{ version: 1, fields: [] }],
     });
 
-    expect(prefixes).toEqual([
-      "land_units_description_",
-      "land_units_onscreen_name_",
-      "main_units_onscreen_name_",
-    ]);
+    expect(prefixes).toEqual(["land_units_description_", "land_units_onscreen_name_", "main_units_onscreen_name_"]);
   });
 
   it("returns nothing without a schema", () => {
@@ -210,9 +190,7 @@ describe("flow options in loc rules", () => {
       locRules: [{ id: "r1", keyPrefix: "land_units_onscreen_name_", append: "{{mySuffix}}" }],
     } as Record<string, unknown>;
 
-    const modified = substituteLocRuleValues(nodeData, (value) =>
-      value.replace("{{mySuffix}}", " (Big)"),
-    );
+    const modified = substituteLocRuleValues(nodeData, (value) => value.replace("{{mySuffix}}", " (Big)"));
 
     expect(modified).toBe(true);
     expect((nodeData.locRules as any[])[0].append).toBe(" (Big)");

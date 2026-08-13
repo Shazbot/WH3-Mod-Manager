@@ -7,8 +7,7 @@ import type { FlowbiteColors } from "../Flowbite/FlowbiteTheme";
 import { useTheme } from "../Flowbite/ThemeContext";
 import HelperText from "./HelperText";
 
-export interface TextareaColors
-  extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
+export interface TextareaColors extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
   [key: string]: string;
 }
 
@@ -32,7 +31,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         {helperText && <HelperText color={color}>{helperText}</HelperText>}
       </>
     );
-  }
+  },
 );
 
 Textarea.displayName = "Textarea";

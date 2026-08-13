@@ -11,8 +11,10 @@ export interface SpinnerProps extends Omit<ComponentProps<"span">, "color"> {
   size?: keyof SpinnerSizes;
 }
 
-export interface SpinnerColors
-  extends Pick<FlowbiteColors, "failure" | "gray" | "info" | "pink" | "purple" | "success" | "warning"> {
+export interface SpinnerColors extends Pick<
+  FlowbiteColors,
+  "failure" | "gray" | "info" | "pink" | "purple" | "success" | "warning"
+> {
   [key: string]: string;
 }
 
@@ -33,7 +35,7 @@ export const Spinner: FC<SpinnerProps> = ({ color = "info", light, size = "md", 
           theme.color[color],
           theme.light[light ? "on" : "off"].base,
           theme.light[light ? "on" : "off"].color[color],
-          theme.size[size]
+          theme.size[size],
         )}
         fill="none"
         viewBox="0 0 100 101"

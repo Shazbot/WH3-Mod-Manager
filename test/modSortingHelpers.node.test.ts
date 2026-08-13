@@ -44,11 +44,7 @@ describe("getFilteredMods", () => {
       createMod({ name: "gamma.pack", loadOrder: 2 }),
     ];
 
-    expect(sortByNameAndLoadOrder(mods).map((mod) => mod.name)).toEqual([
-      "alpha.pack",
-      "beta.pack",
-      "gamma.pack",
-    ]);
+    expect(sortByNameAndLoadOrder(mods).map((mod) => mod.name)).toEqual(["alpha.pack", "beta.pack", "gamma.pack"]);
   });
 
   it("keeps preset mods first while sorting absent mods deterministically", () => {

@@ -54,12 +54,12 @@ const RequiredMods = memo((props: RequiredModsProps) => {
   useEffect(() => {
     const interval = setInterval(() => {
       const newMods = subbedModIdsToWaitFor.filter((subbedModId) =>
-        mods.find((iterMod) => iterMod.workshopId === subbedModId)
+        mods.find((iterMod) => iterMod.workshopId === subbedModId),
       );
       if (newMods.length == 0) return;
 
       const restOfMods = subbedModIdsToWaitFor.filter(
-        (subbedModId) => !mods.find((iterMod) => iterMod.workshopId === subbedModId)
+        (subbedModId) => !mods.find((iterMod) => iterMod.workshopId === subbedModId),
       );
       console.log("waiting for:", restOfMods);
       subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
@@ -77,13 +77,7 @@ const RequiredMods = memo((props: RequiredModsProps) => {
   return (
     <>
       {props.isOpen && (
-        <Modal
-          show={props.isOpen}
-          onClose={onClose}
-          size="2xl"
-          position="top-center"
-          explicitClasses={["mt-8"]}
-        >
+        <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center" explicitClasses={["mt-8"]}>
           <Modal.Header>{localized.missingRequiredMods}</Modal.Header>
           <Modal.Body>
             <div className="grid grid-cols-2 h-full gap-4">

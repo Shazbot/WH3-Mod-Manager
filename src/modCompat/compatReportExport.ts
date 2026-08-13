@@ -83,10 +83,7 @@ export const countCompatFindings = (collisions: PackCollisions): CompatReportCou
  * The mod list is included because a comparison across two builds only means anything if both ran over
  * the same mods - and a mod set that quietly differs is the most likely way to get a misleading result.
  */
-export const formatCompatReport = (
-  collisions: PackCollisions,
-  mods: readonly CompatReportModEntry[],
-): string =>
+export const formatCompatReport = (collisions: PackCollisions, mods: readonly CompatReportModEntry[]): string =>
   `${JSON.stringify(
     {
       mods: canonicaliseForDiff(
@@ -107,18 +104,14 @@ const escapeHtml = (value: unknown): string =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
-const sortRows = (rows: string[][]) =>
-  rows.sort((first, second) => first.join("\0").localeCompare(second.join("\0")));
+const sortRows = (rows: string[][]) => rows.sort((first, second) => first.join("\0").localeCompare(second.join("\0")));
 
 const renderFindingTable = (headers: string[], rows: string[][]) => {
   if (rows.length === 0) return '<p class="empty">No findings in this category.</p>';
   return `<div class="table-wrap"><table>
     <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
     <tbody>${sortRows(rows)
-      .map(
-        (row) =>
-          `<tr data-finding>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
-      )
+      .map((row) => `<tr data-finding>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
       .join("")}</tbody>
   </table></div>`;
 };
@@ -178,43 +171,40 @@ export const formatCompatReportHtml = (
         reference.value,
       ]),
   );
-  const uniqueIdRows = Object.entries(collisions.uniqueIdsCollisions).flatMap(
-    ([packName, entries]) =>
-      entries.map((entry) => [
-        packName,
-        entry.tableName,
-        entry.fieldName,
-        entry.value.value,
-        entry.firstPackName,
-        entry.secondPackName || entry.valueTwo.packName,
-        entry.value.packFileName,
-        entry.valueTwo.packFileName,
-      ]),
+  const uniqueIdRows = Object.entries(collisions.uniqueIdsCollisions).flatMap(([packName, entries]) =>
+    entries.map((entry) => [
+      packName,
+      entry.tableName,
+      entry.fieldName,
+      entry.value.value,
+      entry.firstPackName,
+      entry.secondPackName || entry.valueTwo.packName,
+      entry.value.packFileName,
+      entry.valueTwo.packFileName,
+    ]),
   );
-  const scriptListenerRows = Object.entries(collisions.scriptListenerCollisions).flatMap(
-    ([packName, entries]) =>
-      entries.map((entry) => [
-        packName,
-        entry.value.value,
-        entry.firstPackName,
-        entry.secondPackName || entry.valueTwo.packName,
-        entry.value.packFileName,
-        entry.valueTwo.packFileName,
-        String(entry.value.position),
-        String(entry.valueTwo.position),
-      ]),
+  const scriptListenerRows = Object.entries(collisions.scriptListenerCollisions).flatMap(([packName, entries]) =>
+    entries.map((entry) => [
+      packName,
+      entry.value.value,
+      entry.firstPackName,
+      entry.secondPackName || entry.valueTwo.packName,
+      entry.value.packFileName,
+      entry.valueTwo.packFileName,
+      String(entry.value.position),
+      String(entry.valueTwo.position),
+    ]),
   );
-  const analysisErrorRows = Object.entries(collisions.packFileAnalysisErrors).flatMap(
-    ([packName, files]) =>
-      Object.entries(files).flatMap(([fileName, errors]) =>
-        errors.map((error) => [
-          packName,
-          fileName,
-          error.msg,
-          error.lineNum == null ? "" : String(error.lineNum),
-          error.colNum == null ? "" : String(error.colNum),
-        ]),
-      ),
+  const analysisErrorRows = Object.entries(collisions.packFileAnalysisErrors).flatMap(([packName, files]) =>
+    Object.entries(files).flatMap(([fileName, errors]) =>
+      errors.map((error) => [
+        packName,
+        fileName,
+        error.msg,
+        error.lineNum == null ? "" : String(error.lineNum),
+        error.colNum == null ? "" : String(error.colNum),
+      ]),
+    ),
   );
   const missingFileRows = Object.entries(collisions.missingFileRefs).flatMap(([packName, files]) =>
     Object.entries(files).flatMap(([fileName, references]) =>
@@ -266,7 +256,16 @@ export const formatCompatReportHtml = (
       "Duplicate listener names",
       "Lua listeners that reuse the same name.",
       counts.scriptListenerCollisions,
-      ["Pack", "Listener", "First pack", "Second pack", "First file", "Second file", "First position", "Second position"],
+      [
+        "Pack",
+        "Listener",
+        "First pack",
+        "Second pack",
+        "First file",
+        "Second file",
+        "First position",
+        "Second position",
+      ],
       scriptListenerRows,
     ),
     renderReportSection(

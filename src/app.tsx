@@ -115,7 +115,7 @@ function render() {
       <Provider store={store}>
         <App />
       </Provider>
-    </StrictMode>
+    </StrictMode>,
   );
   endTiming("react_render");
 }

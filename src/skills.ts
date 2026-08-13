@@ -47,9 +47,7 @@ export function getNodesToParents(
           skills.push(parentSkill);
         }
       }
-      skills.sort(
-        (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier),
-      );
+      skills.sort((firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier));
       if (skills.length > 0) {
         linkedToNode = skills[0].node;
       }
@@ -99,9 +97,7 @@ export function getSkills(
           skills.push(parentSkill);
         }
       }
-      skills.sort(
-        (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier),
-      );
+      skills.sort((firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier));
       if (skills.length > 0) {
         linkedToNode = skills[0].node;
       }
@@ -248,8 +244,7 @@ export function resolveTextReplacements(
   if (!localizedText) return;
 
   return localizedText.replaceAll(/{{tr:(.*?)}}/gi, (_, captureGroup) => {
-    let replacementText =
-      getLoc(`ui_text_replacements_localised_text_${captureGroup}`) || getLoc(captureGroup);
+    let replacementText = getLoc(`ui_text_replacements_localised_text_${captureGroup}`) || getLoc(captureGroup);
     if (replacementText?.startsWith("{{tr:")) {
       const nestedReplacementKey = replacementText.match(/^{{tr:(.*?)}}$/i)?.[1];
       if (nestedReplacementKey) {
@@ -289,10 +284,7 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
   }
 }
 
-export function getRawEffectLocalization(
-  effectKey: string,
-  getLoc: (locId: string) => string | undefined,
-): string {
+export function getRawEffectLocalization(effectKey: string, getLoc: (locId: string) => string | undefined): string {
   const locId = `effects_description_${effectKey}`;
   let localized = getLoc(locId);
   if (!localized) return effectKey;
@@ -319,10 +311,7 @@ export function formatEffectLocalization(
 }
 
 export function getNodeRequirements(nodeLinks: NodeLinks, nodeToSkill: Record<string, NodeSkill>) {
-  const nodeRequirements = {} as Record<
-    string,
-    { single: string[]; multiple: string[]; numMultiple: number }
-  >;
+  const nodeRequirements = {} as Record<string, { single: string[]; multiple: string[]; numMultiple: number }>;
 
   for (const [parentNode, nodeLinkData] of Object.entries(nodeLinks)) {
     for (const nodeLink of nodeLinkData) {

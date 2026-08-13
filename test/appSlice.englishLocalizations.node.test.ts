@@ -17,10 +17,7 @@ describe("english localizations option", () => {
   });
 
   it("is restored from the config, and stays off when the config predates it", () => {
-    const restored = appReducer(
-      initialState,
-      setFromConfig({ ...initialState, isUsingEnglishLocalizations: true }),
-    );
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, isUsingEnglishLocalizations: true }));
     expect(restored.isUsingEnglishLocalizations).toBe(true);
 
     // A config written before this option existed has no field; it must not read as enabled.

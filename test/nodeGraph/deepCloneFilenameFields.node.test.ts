@@ -21,14 +21,8 @@ describe("parseFilenameRelativePaths", () => {
   it("splits the semicolon-separated form into one pattern per file", () => {
     // unit_variants_tables.unit_card names an icon and three masks in a single field.
     expect(
-      parseFilenameRelativePaths(
-        "ui/units/icons/%.png;ui/units/mask/%_mask1.png;ui/units/mask/%_mask2.png",
-      ),
-    ).toEqual([
-      "ui\\units\\icons\\%.png",
-      "ui\\units\\mask\\%_mask1.png",
-      "ui\\units\\mask\\%_mask2.png",
-    ]);
+      parseFilenameRelativePaths("ui/units/icons/%.png;ui/units/mask/%_mask1.png;ui/units/mask/%_mask2.png"),
+    ).toEqual(["ui\\units\\icons\\%.png", "ui\\units\\mask\\%_mask1.png", "ui\\units\\mask\\%_mask2.png"]);
   });
 
   it("keeps the wildcard form intact for the caller to resolve", () => {
@@ -67,7 +61,6 @@ describe("replaceKeyInValue", () => {
     expect(replaceKeyInValue("anything", "", "new")).toBe("anything");
   });
 });
-
 
 const meshes = "variantmeshes\\variantmeshdefinitions\\";
 
@@ -126,31 +119,35 @@ const runVariantsClone = async (options: {
     packPath: "C:\\test.pack",
   };
 
-  return executeDeepClonePlan([tableFile], {
-    cloneTree: {
-      table: "variants_tables",
-      keyColumn: "variant_name",
-      linkColumn: "",
-      direction: "forward",
-      selected: true,
-      children: [],
+  return executeDeepClonePlan(
+    [tableFile],
+    {
+      cloneTree: {
+        table: "variants_tables",
+        keyColumn: "variant_name",
+        linkColumn: "",
+        direction: "forward",
+        selected: true,
+        children: [],
+      },
+      nameTemplate: "{selfOriginal}_clone",
+      useModdersPrefix: false,
+      moddersPrefix: "",
+      variantAxes: [],
+      columnOverrides: [],
+      generateLoc: false,
+      autoFollowReferences: false,
     },
-    nameTemplate: "{selfOriginal}_clone",
-    useModdersPrefix: false,
-    moddersPrefix: "",
-    variantAxes: [],
-    columnOverrides: [],
-    generateLoc: false,
-    autoFollowReferences: false,
-  }, {
-    loadTable: async () => [tableFile],
-    getRows: (packedFile) =>
-      chunkSchemaIntoRows(packedFile.schemaFields!, packedFile.tableSchema!) as AmendedSchemaField[][],
-    referencedColumnsByTable: {},
-    numericIdFieldByTable: {},
-    hasPackedFile: (name) => (options.existingFiles ?? []).includes(name),
-    listPackedFiles: (prefix) => options.packedFilesUnderPrefix?.[prefix] ?? [],
-  });
+    {
+      loadTable: async () => [tableFile],
+      getRows: (packedFile) =>
+        chunkSchemaIntoRows(packedFile.schemaFields!, packedFile.tableSchema!) as AmendedSchemaField[][],
+      referencedColumnsByTable: {},
+      numericIdFieldByTable: {},
+      hasPackedFile: (name) => (options.existingFiles ?? []).includes(name),
+      listPackedFiles: (prefix) => options.packedFilesUnderPrefix?.[prefix] ?? [],
+    },
+  );
 };
 
 const cellValue = (row: AmendedSchemaField[], columnName: string) =>
@@ -188,10 +185,7 @@ describe("cloning files named through filename_relative_path", () => {
     const result = await runVariantsClone({
       rowValues: ["xyxyxy", sourceFolder, ""],
       packedFilesUnderPrefix: {
-        [`${sourceFolder}\\`]: [
-          `${sourceFolder}\\body.rigid_model_v2`,
-          `${sourceFolder}\\head.rigid_model_v2`,
-        ],
+        [`${sourceFolder}\\`]: [`${sourceFolder}\\body.rigid_model_v2`, `${sourceFolder}\\head.rigid_model_v2`],
       },
     });
 
@@ -200,9 +194,7 @@ describe("cloning files named through filename_relative_path", () => {
       "variantmeshes\\wh_variantmodels\\emp\\xyxyxy_clone\\head.rigid_model_v2",
     ]);
     const clonedRow = result.tables.find((table) => table.tableName === "variants_tables")!.rows[0];
-    expect(cellValue(clonedRow, "tech_folder")).toBe(
-      "variantmeshes\\wh_variantmodels\\emp\\xyxyxy_clone",
-    );
+    expect(cellValue(clonedRow, "tech_folder")).toBe("variantmeshes\\wh_variantmodels\\emp\\xyxyxy_clone");
   });
 
   it("copies a filename that differs from the row key, naming the copy after the new key", async () => {

@@ -9,19 +9,10 @@ import {
   PackedFile,
   FIELD_TYPE,
 } from "./packFileTypes";
-import type {
-  DeepCloneOverride,
-  DeepCloneTreeNode,
-  DeepCloneVariantAxis,
-} from "./nodeGraph/nodes/types";
+import type { DeepCloneOverride, DeepCloneTreeNode, DeepCloneVariantAxis } from "./nodeGraph/nodes/types";
 import { expandRangeAxis, findTemplatesMissingVariant } from "./nodeGraph/deepCloneTree";
 import { buildLocKey, getLocKeyColumns } from "./utility/locKeyGeneration";
-import {
-  evaluateFormula,
-  formatFormulaResult,
-  isNumericFieldType,
-  isPlainNumber,
-} from "./utility/formulaEvaluation";
+import { evaluateFormula, formatFormulaResult, isNumericFieldType, isPlainNumber } from "./utility/formulaEvaluation";
 
 /** Guards against a variant product or a reference closure that would blow up the executor. */
 // A range axis makes large variant counts a normal thing to ask for; the limit is here to catch a
@@ -38,10 +29,7 @@ export interface DeepCloneFileCopy {
 }
 
 /** Reads the named files out of one pack, returning their bytes by name. */
-export type PackedFileReader = (
-  packPath: string,
-  names: string[],
-) => Promise<Map<string, Buffer | undefined>>;
+export type PackedFileReader = (packPath: string, names: string[]) => Promise<Map<string, Buffer | undefined>>;
 
 /**
  * Turns the engine's file copy list into save-node entries carrying the source bytes.
@@ -78,9 +66,7 @@ export const buildFileCopyOutputs = async (
         packCopies.map((fileCopy) => fileCopy.sourceName),
       );
     } catch (error) {
-      onWarn(
-        `Could not read art from ${sourcePackPath}: ${error instanceof Error ? error.message : "unknown error"}`,
-      );
+      onWarn(`Could not read art from ${sourcePackPath}: ${error instanceof Error ? error.message : "unknown error"}`);
       continue;
     }
 
@@ -190,8 +176,7 @@ export const expandVariants = (axes: DeepCloneVariantAxis[]): DeepCloneVariant[]
   let variants: DeepCloneVariant[] = [{ suffix: "", overrides: [] }];
 
   for (const axis of axes || []) {
-    const values =
-      axis.kind === "range" ? expandRangeAxis(axis) : (axis.values || []).filter((value) => value);
+    const values = axis.kind === "range" ? expandRangeAxis(axis) : (axis.values || []).filter((value) => value);
     if (values.length === 0) continue;
 
     const expanded: DeepCloneVariant[] = [];
@@ -226,16 +211,14 @@ const applyModdersPrefix = (name: string, prefix: string, enabled: boolean): str
 const getCellValue = (row: AmendedSchemaField[], columnName: string): string | undefined =>
   row.find((cell) => cell.name == columnName)?.resolvedKeyValue;
 
-const getRenameKey = (tableName: string, columnName: string, value: string) =>
-  `${tableName}|${columnName}|${value}`;
+const getRenameKey = (tableName: string, columnName: string, value: string) => `${tableName}|${columnName}|${value}`;
 
 /**
  * Stable identity for a source row, so the same row is never collected twice in one pass.
  * Uses every cell rather than the key column, so the walk and the auto-follow pass produce the
  * same identity for a table both of them reach.
  */
-const getRowIdentity = (row: AmendedSchemaField[]): string =>
-  row.map((cell) => cell.resolvedKeyValue).join("\u0001");
+const getRowIdentity = (row: AmendedSchemaField[]): string => row.map((cell) => cell.resolvedKeyValue).join("\u0001");
 
 /**
  * Turns an override value into the string to write into the cell.
@@ -245,12 +228,7 @@ const getRowIdentity = (row: AmendedSchemaField[]): string =>
  * so a string column may safely contain an "x". A formula that fails to evaluate is reported and the
  * literal text is kept rather than silently writing a zero.
  */
-const resolveOverrideValue = (
-  value: string,
-  originalValue: string,
-  field: DBField,
-  warnings: string[],
-): string => {
+const resolveOverrideValue = (value: string, originalValue: string, field: DBField, warnings: string[]): string => {
   if (!isNumericFieldType(field.field_type) || isPlainNumber(value)) return value;
 
   if (value.includes("{{")) {
@@ -520,10 +498,7 @@ export const executeDeepClonePlan = async (
 
   const outputTables = new Map<string, DeepCloneOutputTable>();
   /** Cloned rows kept alongside their source, so loc keys can be derived from both. */
-  const clonedPairsByTable = new Map<
-    string,
-    Array<{ cloned: AmendedSchemaField[]; source: AmendedSchemaField[] }>
-  >();
+  const clonedPairsByTable = new Map<string, Array<{ cloned: AmendedSchemaField[]; source: AmendedSchemaField[] }>>();
   const emittedRowKeys = new Set<string>();
   let clonedRowCount = 0;
 
@@ -535,7 +510,7 @@ export const executeDeepClonePlan = async (
     const rootSchema = rootTableFile.packedFile.tableSchema;
     if (!rootSchema) return;
 
-    const rootOriginal = rootNode.keyColumn ? getCellValue(rootRow, rootNode.keyColumn) ?? "" : "";
+    const rootOriginal = rootNode.keyColumn ? (getCellValue(rootRow, rootNode.keyColumn) ?? "") : "";
     const renames = new Map<string, string>();
     /** Renamed keys in walk order, so the auto-follow pass knows what to search for. */
     const renamedKeys: Array<{ table: string; column: string; originalValue: string }> = [];
@@ -560,9 +535,7 @@ export const executeDeepClonePlan = async (
       seenInPass.add(identity);
 
       if (collected.length >= MAX_DEEP_CLONE_ROWS) {
-        throw new Error(
-          `Deep clone exceeded ${MAX_DEEP_CLONE_ROWS} rows. Narrow the clone plan or the input rows.`,
-        );
+        throw new Error(`Deep clone exceeded ${MAX_DEEP_CLONE_ROWS} rows. Narrow the clone plan or the input rows.`);
       }
 
       if (node.keyColumn) {
@@ -722,9 +695,7 @@ export const executeDeepClonePlan = async (
 
         // Outgoing foreign key: does this cell point at a row we renamed?
         if (field.is_reference && field.is_reference.length > 1) {
-          newValue = renames.get(
-            getRenameKey(field.is_reference[0], field.is_reference[1], cell.resolvedKeyValue),
-          );
+          newValue = renames.get(getRenameKey(field.is_reference[0], field.is_reference[1], cell.resolvedKeyValue));
         }
         // The row's own key.
         if (newValue === undefined) {
@@ -788,9 +759,7 @@ export const executeDeepClonePlan = async (
           field,
           warnings,
         );
-        cloned[cellIndex].fields = [
-          { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer(field.field_type, value) },
-        ];
+        cloned[cellIndex].fields = [{ type: "Buffer" as FIELD_TYPE, val: await typeToBuffer(field.field_type, value) }];
         cloned[cellIndex].resolvedKeyValue = value;
       }
 

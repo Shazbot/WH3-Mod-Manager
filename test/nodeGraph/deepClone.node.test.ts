@@ -8,13 +8,7 @@ import {
   expandVariants,
 } from "../../src/flowDeepClone";
 import { chunkSchemaIntoRows } from "../../src/packFileSerializer";
-import type {
-  AmendedSchemaField,
-  DBField,
-  DBVersion,
-  PackedFile,
-  SCHEMA_FIELD_TYPE,
-} from "../../src/packFileTypes";
+import type { AmendedSchemaField, DBField, DBVersion, PackedFile, SCHEMA_FIELD_TYPE } from "../../src/packFileTypes";
 import type { DeepCloneTreeNode } from "../../src/nodeGraph/nodes/types";
 
 vi.mock("@mongodb-js/zstd", () => ({
@@ -88,10 +82,7 @@ const schemas: Record<string, DBVersion> = {
   // auto-follow can reach it.
   unit_permissions_tables: {
     version: 1,
-    fields: [
-      createField("unit", { reference: ["main_units_tables", "unit"] }),
-      createField("faction"),
-    ],
+    fields: [createField("unit", { reference: ["main_units_tables", "unit"] }), createField("faction")],
   },
   // Composite-key junction hanging off land_units_tables, to cover auto-follow on a key renamed
   // deeper in the plan than the root.
@@ -115,10 +106,7 @@ const schemas: Record<string, DBVersion> = {
   // Stands in for the DLC ownership junctions that are always skipped.
   ownership_junctions_tables: {
     version: 1,
-    fields: [
-      createField("unit", { reference: ["main_units_tables", "unit"] }),
-      createField("content_pack"),
-    ],
+    fields: [createField("unit", { reference: ["main_units_tables", "unit"] }), createField("content_pack")],
   },
 };
 
@@ -178,17 +166,13 @@ const createTableFiles = (): Record<string, LoadedTableFile> => ({
     ["other_stats", "9"],
   ]),
   unit_castes_tables: createTableFile("unit_castes_tables", [["melee_infantry", "Melee Infantry"]]),
-  units_to_groupings_tables: createTableFile("units_to_groupings_tables", [
-    ["emp_spearmen", "empire_core"],
-  ]),
+  units_to_groupings_tables: createTableFile("units_to_groupings_tables", [["emp_spearmen", "empire_core"]]),
   unit_permissions_tables: createTableFile("unit_permissions_tables", [
     ["emp_spearmen", "emp_empire"],
     ["emp_spearmen", "emp_secessionists"],
     ["other_unit", "emp_empire"],
   ]),
-  ownership_junctions_tables: createTableFile("ownership_junctions_tables", [
-    ["emp_spearmen", "base_game"],
-  ]),
+  ownership_junctions_tables: createTableFile("ownership_junctions_tables", [["emp_spearmen", "base_game"]]),
   land_units_to_abilities_tables: createTableFile("land_units_to_abilities_tables", [
     ["emp_spearmen_land", "wall_defence"],
     ["other_land", "charge_defence"],
@@ -272,9 +256,7 @@ const runClone = async (
     numericIdFieldByTable: {},
     reverseReferencesByTable,
     tablesToIgnore: ["ownership_junctions_tables"],
-    hasPackedFile: options.existingFiles
-      ? (name) => options.existingFiles!.includes(name)
-      : undefined,
+    hasPackedFile: options.existingFiles ? (name) => options.existingFiles!.includes(name) : undefined,
   });
 };
 
@@ -344,11 +326,7 @@ describe("range variant axes", () => {
   it("takes a custom suffix pattern", () => {
     const variants = expandVariants([rangeAxis({ rangeEnd: "3", rangeSuffix: "_variant{n}b" })]);
 
-    expect(variants.map((variant) => variant.suffix)).toEqual([
-      "_variant1b",
-      "_variant2b",
-      "_variant3b",
-    ]);
+    expect(variants.map((variant) => variant.suffix)).toEqual(["_variant1b", "_variant2b", "_variant3b"]);
   });
 
   it("honours a step, including a descending one", () => {
@@ -424,9 +402,7 @@ describe("range variant axes", () => {
     // No end is the one bound that cannot be guessed.
     expect(expandVariants([rangeAxis({ rangeEnd: "" })])).toEqual([{ suffix: "", overrides: [] }]);
     expect(expandVariants([rangeAxis({ rangeEnd: "abc" })])).toEqual([{ suffix: "", overrides: [] }]);
-    expect(expandVariants([rangeAxis({ rangeStart: "5", rangeEnd: "1" })])).toEqual([
-      { suffix: "", overrides: [] },
-    ]);
+    expect(expandVariants([rangeAxis({ rangeStart: "5", rangeEnd: "1" })])).toEqual([{ suffix: "", overrides: [] }]);
   });
 
   it("stops a runaway range at the limit instead of exhausting memory", () => {
@@ -531,9 +507,7 @@ describe("Deep clone engine", () => {
       expect(cellValue(row, "land_unit")).toBe(cellValue(row, "unit"));
     }
 
-    const shieldByKey = new Map(
-      landTable.rows.map((row) => [cellValue(row, "key"), cellValue(row, "shield")]),
-    );
+    const shieldByKey = new Map(landTable.rows.map((row) => [cellValue(row, "key"), cellValue(row, "shield")]));
     expect(shieldByKey.get("my_new_unit_shielded_t1")).toBe("1");
     expect(shieldByKey.get("my_new_unit_shielded_t2")).toBe("1");
     expect(shieldByKey.get("my_new_unit_unshielded_t1")).toBe("0");
@@ -547,24 +521,16 @@ describe("Deep clone engine", () => {
   });
 
   it("supports {selfOriginal} so each table can keep its own naming", async () => {
-    const result = await runClone(
-      createPlan({ nameTemplate: "{selfOriginal}_clone{variant}" }),
-    );
+    const result = await runClone(createPlan({ nameTemplate: "{selfOriginal}_clone{variant}" }));
 
     expect(cellValue(getTable(result, "main_units_tables")!.rows[0], "unit")).toBe("emp_spearmen_clone");
-    expect(cellValue(getTable(result, "land_units_tables")!.rows[0], "key")).toBe(
-      "emp_spearmen_land_clone",
-    );
+    expect(cellValue(getTable(result, "land_units_tables")!.rows[0], "key")).toBe("emp_spearmen_land_clone");
     // The foreign key still resolves to the land_units row's own new name.
-    expect(cellValue(getTable(result, "main_units_tables")!.rows[0], "land_unit")).toBe(
-      "emp_spearmen_land_clone",
-    );
+    expect(cellValue(getTable(result, "main_units_tables")!.rows[0], "land_unit")).toBe("emp_spearmen_land_clone");
   });
 
   it("applies the modders prefix once and does not double it", async () => {
-    const prefixed = await runClone(
-      createPlan({ useModdersPrefix: true, moddersPrefix: "abc_" }),
-    );
+    const prefixed = await runClone(createPlan({ useModdersPrefix: true, moddersPrefix: "abc_" }));
     expect(cellValue(getTable(prefixed, "main_units_tables")!.rows[0], "unit")).toBe("abc_my_new_unit");
 
     const alreadyPrefixed = await runClone(
@@ -574,9 +540,7 @@ describe("Deep clone engine", () => {
         moddersPrefix: "abc_",
       }),
     );
-    expect(cellValue(getTable(alreadyPrefixed, "main_units_tables")!.rows[0], "unit")).toBe(
-      "abc_my_new_unit",
-    );
+    expect(cellValue(getTable(alreadyPrefixed, "main_units_tables")!.rows[0], "unit")).toBe("abc_my_new_unit");
   });
 
   it("reports a collision when the new key already exists, without failing the clone", async () => {
@@ -600,7 +564,7 @@ describe("Deep clone engine", () => {
           },
         ],
       }),
-      { locTexts: { "main_units_onscreen_name_emp_spearmen": "Spearmen" } },
+      { locTexts: { main_units_onscreen_name_emp_spearmen: "Spearmen" } },
     );
 
     const locTable = getTable(result, "deepclone_loc")!;
@@ -609,9 +573,7 @@ describe("Deep clone engine", () => {
     // One localised field on main_units_tables, two variants.
     expect(locTable.rows).toHaveLength(2);
 
-    const textByKey = new Map(
-      locTable.rows.map((row) => [cellValue(row, "key"), cellValue(row, "text")]),
-    );
+    const textByKey = new Map(locTable.rows.map((row) => [cellValue(row, "key"), cellValue(row, "text")]));
     expect(textByKey.get("main_units_onscreen_name_my_new_unit_shielded")).toBe("Spearmen");
     expect(textByKey.get("main_units_onscreen_name_my_new_unit_unshielded")).toBe("Spearmen");
   });
@@ -647,10 +609,7 @@ describe("Deep clone engine", () => {
     // Two rows referenced emp_spearmen; the third belongs to another unit and must be left alone.
     const permissions = getTable(result, "unit_permissions_tables")!;
     expect(permissions.rows).toHaveLength(2);
-    expect(permissions.rows.map((row) => cellValue(row, "unit"))).toEqual([
-      "my_new_unit",
-      "my_new_unit",
-    ]);
+    expect(permissions.rows.map((row) => cellValue(row, "unit"))).toEqual(["my_new_unit", "my_new_unit"]);
     expect(permissions.rows.map((row) => cellValue(row, "faction")).toSorted()).toEqual([
       "emp_empire",
       "emp_secessionists",
@@ -697,9 +656,7 @@ describe("Deep clone engine", () => {
     const result = await runClone(createPlan({ autoFollowReferences: true }));
 
     expect(getTable(result, "building_units_allowed_tables")).toBeUndefined();
-    expect(result.warnings.some((warning) => warning.includes("building_units_allowed_tables"))).toBe(
-      true,
-    );
+    expect(result.warnings.some((warning) => warning.includes("building_units_allowed_tables"))).toBe(true);
   });
 
   it("skips ignored ownership junction tables", async () => {
@@ -857,10 +814,7 @@ describe("Deep clone engine", () => {
     );
 
     const costByKey = new Map(
-      getTable(result, "main_units_tables")!.rows.map((row) => [
-        cellValue(row, "unit"),
-        cellValue(row, "cost"),
-      ]),
+      getTable(result, "main_units_tables")!.rows.map((row) => [cellValue(row, "unit"), cellValue(row, "cost")]),
     );
     expect(costByKey.get("my_new_unit_t1")).toBe("500");
     expect(costByKey.get("my_new_unit_t2")).toBe("1000");
@@ -909,9 +863,7 @@ describe("Deep clone engine", () => {
       existingFiles: [`${portholes}emp_spearmen_mask1.png`],
     });
 
-    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName)).toEqual([
-      `${portholes}my_new_unit_mask1.png`,
-    ]);
+    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName)).toEqual([`${portholes}my_new_unit_mask1.png`]);
   });
 
   it("copies the porthole once per variant, named after each new key", async () => {
@@ -944,9 +896,7 @@ describe("Deep clone engine", () => {
       existingFiles: [`${portholes}emp_spearmen.png`, `${portholes}emp_spearmen_land.png`],
     });
 
-    expect(result.fileCopies.map((fileCopy) => fileCopy.sourceName)).toEqual([
-      `${portholes}emp_spearmen.png`,
-    ]);
+    expect(result.fileCopies.map((fileCopy) => fileCopy.sourceName)).toEqual([`${portholes}emp_spearmen.png`]);
   });
 
   it("keeps counting masks past the two the schema lists", async () => {
@@ -983,9 +933,7 @@ describe("Deep clone engine", () => {
   };
 
   it("warns when variant axes are configured but the template ignores {variant}", async () => {
-    const result = await runClone(
-      createPlan({ nameTemplate: "my_new_unit", variantAxes: [shieldAxis] }),
-    );
+    const result = await runClone(createPlan({ nameTemplate: "my_new_unit", variantAxes: [shieldAxis] }));
 
     // The collision check cannot catch this: my_new_unit does not exist in the packs, so nothing
     // looks wrong until two rows share the key.
@@ -997,9 +945,7 @@ describe("Deep clone engine", () => {
   });
 
   it("stays quiet when the template uses {variant}", async () => {
-    const result = await runClone(
-      createPlan({ nameTemplate: "my_new_unit{variant}", variantAxes: [shieldAxis] }),
-    );
+    const result = await runClone(createPlan({ nameTemplate: "my_new_unit{variant}", variantAxes: [shieldAxis] }));
 
     expect(result.warnings.filter((warning) => warning.includes("{variant}"))).toEqual([]);
   });
@@ -1011,9 +957,7 @@ describe("Deep clone engine", () => {
   });
 
   it("reports the warning once, not once per row and variant", async () => {
-    const result = await runClone(
-      createPlan({ nameTemplate: "my_new_unit", variantAxes: [shieldAxis] }),
-    );
+    const result = await runClone(createPlan({ nameTemplate: "my_new_unit", variantAxes: [shieldAxis] }));
 
     const forMainUnits = result.warnings.filter(
       (warning) => warning.includes("{variant}") && warning.includes("main_units_tables"),
@@ -1022,14 +966,14 @@ describe("Deep clone engine", () => {
   });
 
   it("fails rather than silently dropping a prefix the flow was meant to carry", async () => {
-    await expect(
-      runClone(createPlan({ useModdersPrefix: true, moddersPrefix: "" })),
-    ).rejects.toThrow(/no prefix is saved with the flow/);
+    await expect(runClone(createPlan({ useModdersPrefix: true, moddersPrefix: "" }))).rejects.toThrow(
+      /no prefix is saved with the flow/,
+    );
 
     // Whitespace is not a prefix.
-    await expect(
-      runClone(createPlan({ useModdersPrefix: true, moddersPrefix: "   " })),
-    ).rejects.toThrow(/no prefix is saved with the flow/);
+    await expect(runClone(createPlan({ useModdersPrefix: true, moddersPrefix: "   " }))).rejects.toThrow(
+      /no prefix is saved with the flow/,
+    );
   });
 
   it("runs with an empty prefix when the flow does not ask for one", async () => {

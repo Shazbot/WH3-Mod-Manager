@@ -9,7 +9,7 @@ export const TableHead: FC<TableHeadProps> = ({ children, className, ...props })
     <thead
       className={classNames(
         "bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-700 dark:text-gray-400",
-        className
+        className,
       )}
       {...props}
     >

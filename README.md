@@ -12,7 +12,7 @@ Features not present in the CA launcher:
 - can also update your mods directly like the CA launcher
 - add tags/categories to organize your mods
 - customize individual mods by disabling units, buildings or agents (lords and heroes)
-  
+
 &nbsp;
 
 ![App image](https://i.imgur.com/tRpqhWN.png)

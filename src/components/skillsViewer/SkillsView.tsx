@@ -289,10 +289,7 @@ type AddPlaceHolderNodeData = {
   nodeId: "addPlaceholder";
 } & Pick<SkillData, "editGroupColor" | "imgPath" | "id">;
 
-type Nodes =
-  | Node<SkillData, "default">
-  | Node<SkillData, "skill">
-  | Node<AddPlaceHolderNodeData, "addPlaceholder">;
+type Nodes = Node<SkillData, "default"> | Node<SkillData, "skill"> | Node<AddPlaceHolderNodeData, "addPlaceholder">;
 
 type NodesWithoutPlaceholders = Exclude<Nodes, Node<AddPlaceHolderNodeData, "addPlaceholder">>;
 
@@ -329,18 +326,14 @@ const SkillsView = memo(
       nodeId: string;
       nodeType: string;
     } | null>(null);
-    const [isRequirementsMode, setIsRequirementsMode] = useState(
-      initialSnapshot?.isRequirementsMode ?? false,
-    );
+    const [isRequirementsMode, setIsRequirementsMode] = useState(initialSnapshot?.isRequirementsMode ?? false);
     const isRequirementsModeRef = useRef(false);
     const savedEditEdges = useRef<SkillEdge[]>((initialSnapshot?.savedEditEdges as SkillEdge[]) ?? []);
     const [isSkillLocksMode, setIsSkillLocksMode] = useState(initialSnapshot?.isSkillLocksMode ?? false);
     const isSkillLocksModeRef = useRef(false);
     const savedLocksEdges = useRef<SkillEdge[]>((initialSnapshot?.savedLocksEdges as SkillEdge[]) ?? []);
     const allLockEdges = useRef<SkillEdge[]>((initialSnapshot?.allLockEdges as SkillEdge[]) ?? []);
-    const [lockEdgeLevels, setLockEdgeLevels] = useState<Record<string, number>>(
-      initialSnapshot?.lockEdgeLevels ?? {},
-    );
+    const [lockEdgeLevels, setLockEdgeLevels] = useState<Record<string, number>>(initialSnapshot?.lockEdgeLevels ?? {});
     const localNodeToSkillLocks = useRef<Record<string, [string, number][]> | null>(
       initialSnapshot?.localNodeToSkillLocks ?? null,
     );
@@ -356,9 +349,7 @@ const SkillsView = memo(
     const [, setClipboardVersion] = useState(0);
     const [resetCounter, setResetCounter] = useState(0);
     const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
-    const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(
-      null,
-    );
+    const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
     const [customTableName, setCustomTableName] = useState(defaultSkillTableNameTemplate);
     const [customKeyPrefix, setCustomKeyPrefix] = useState(defaultSkillNodeKeyTemplate);
     const [customSkillKeyTemplate, setCustomSkillKeyTemplate] = useState(defaultCharacterSkillKeyTemplate);
@@ -735,11 +726,7 @@ const SkillsView = memo(
       for (let r = 0; r < 9; r++) {
         const skillsInRow = skills.filter((s) => s.x === r);
         const occupiedCols = new Set(skillsInRow.map((s) => s.y));
-        const maxColBound = Math.max(
-          skillsInRow.length > 0 ? Math.max(...occupiedCols) + 1 : 0,
-          globalMaxCol + 1,
-          3,
-        );
+        const maxColBound = Math.max(skillsInRow.length > 0 ? Math.max(...occupiedCols) + 1 : 0, globalMaxCol + 1, 3);
         for (let c = 0; c <= maxColBound; c++) {
           if (!occupiedCols.has(c)) {
             skillNodes.push({
@@ -796,17 +783,13 @@ const SkillsView = memo(
         const linkedNode = skillWithLink.linkedToNode;
         if (linkedNode) {
           const linkedSkillNode = skillNodes.find((skillNode) => skillNode.data.nodeId == `${linkedNode}`);
-          const sourceSkillNode = skillNodes.find(
-            (skillNode) => skillNode.data.nodeId == `${skillWithLink.nodeId}`,
-          );
+          const sourceSkillNode = skillNodes.find((skillNode) => skillNode.data.nodeId == `${skillWithLink.nodeId}`);
           // console.log("linkedSkillNode:", !!linkedSkillNode);
           // console.log("sourceSkillNode:", !!sourceSkillNode);
           if (linkedSkillNode && sourceSkillNode) {
             initialEdges.push({
               id: `e${skillWithLink.nodeId}2${linkedNode}`,
-              source: isEditMode
-                ? `${skillWithLink.nodeId}`
-                : sourceSkillNode.parentId || `${skillWithLink.nodeId}`,
+              source: isEditMode ? `${skillWithLink.nodeId}` : sourceSkillNode.parentId || `${skillWithLink.nodeId}`,
               target: isEditMode ? `${linkedNode}` : linkedSkillNode.parentId || `${linkedNode}`,
               type: edgeType,
               animated: false,
@@ -869,9 +852,7 @@ const SkillsView = memo(
         savedLocksEdges: deepClone(savedLocksEdges.current),
         allLockEdges: deepClone(allLockEdges.current),
         lockEdgeLevels,
-        localNodeToSkillLocks: localNodeToSkillLocks.current
-          ? deepClone(localNodeToSkillLocks.current)
-          : null,
+        localNodeToSkillLocks: localNodeToSkillLocks.current ? deepClone(localNodeToSkillLocks.current) : null,
       }),
     }));
 
@@ -885,8 +866,7 @@ const SkillsView = memo(
         if (!sourceNode || !targetNode) return;
         let x = Math.max(sourceNode.position.x, targetNode.position.x) - 70;
         if ((targetNode.data as any)?.isGrouping) x -= 20;
-        const y =
-          sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? 40 + nodeSizeDelta / 2 : 27.5);
+        const y = sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? 40 + nodeSizeDelta / 2 : 27.5);
         return { x, y };
       })
       .filter((arrow): arrow is { x: number; y: number } => arrow != undefined);
@@ -906,23 +886,12 @@ const SkillsView = memo(
         savedEditEdges: deepClone(savedEditEdges.current),
         savedLocksEdges: deepClone(savedLocksEdges.current),
         allLockEdges: deepClone(allLockEdges.current),
-        localNodeToSkillLocks: localNodeToSkillLocks.current
-          ? deepClone(localNodeToSkillLocks.current)
-          : null,
+        localNodeToSkillLocks: localNodeToSkillLocks.current ? deepClone(localNodeToSkillLocks.current) : null,
       });
       if (historyPast.current.length > 50) historyPast.current.shift();
       historyFuture.current = [];
       setHistorySize({ past: historyPast.current.length, future: 0 });
-    }, [
-      nodes,
-      edges,
-      editGroups,
-      nextGroupId,
-      lockEdgeLevels,
-      isRequirementsMode,
-      isSkillLocksMode,
-      isEditMode,
-    ]);
+    }, [nodes, edges, editGroups, nextGroupId, lockEdgeLevels, isRequirementsMode, isSkillLocksMode, isEditMode]);
 
     // Undo/redo: restore all edit state from a snapshot
     const applySnapshot = useCallback((snap: EditSnapshot) => {
@@ -937,9 +906,7 @@ const SkillsView = memo(
       savedEditEdges.current = deepClone(snap.savedEditEdges) as SkillEdge[];
       savedLocksEdges.current = deepClone(snap.savedLocksEdges) as SkillEdge[];
       allLockEdges.current = deepClone(snap.allLockEdges) as SkillEdge[];
-      localNodeToSkillLocks.current = snap.localNodeToSkillLocks
-        ? deepClone(snap.localNodeToSkillLocks)
-        : null;
+      localNodeToSkillLocks.current = snap.localNodeToSkillLocks ? deepClone(snap.localNodeToSkillLocks) : null;
       setTimeout(() => {
         isRestoringSnapshot.current = false;
       }, 0);
@@ -957,9 +924,7 @@ const SkillsView = memo(
         savedEditEdges: deepClone(savedEditEdges.current),
         savedLocksEdges: deepClone(savedLocksEdges.current),
         allLockEdges: deepClone(allLockEdges.current),
-        localNodeToSkillLocks: localNodeToSkillLocks.current
-          ? deepClone(localNodeToSkillLocks.current)
-          : null,
+        localNodeToSkillLocks: localNodeToSkillLocks.current ? deepClone(localNodeToSkillLocks.current) : null,
       }),
       [nodes, edges, editGroups, nextGroupId, lockEdgeLevels, isRequirementsMode, isSkillLocksMode],
     );
@@ -1042,26 +1007,15 @@ const SkillsView = memo(
     const repositionPlaceholders = useCallback(
       (currentNodes: Nodes[], affectedRows: Set<number>) => {
         const result = currentNodes.filter(
-          (n) =>
-            !(
-              n.type === "addPlaceholder" && affectedRows.has(Math.round(n.position.y / effectiveNodeHeight))
-            ),
+          (n) => !(n.type === "addPlaceholder" && affectedRows.has(Math.round(n.position.y / effectiveNodeHeight))),
         );
         // Compute global max column across all skill nodes for consistent placeholder coverage
         const allSkillNodes = result.filter((n) => n.type === "skill" && !n.parentId);
-        const globalMaxCol = allSkillNodes.reduce(
-          (max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)),
-          -1,
-        );
+        const globalMaxCol = allSkillNodes.reduce((max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)), -1);
         for (const row of affectedRows) {
-          const rowSkills = allSkillNodes.filter(
-            (n) => Math.round(n.position.y / effectiveNodeHeight) === row,
-          );
+          const rowSkills = allSkillNodes.filter((n) => Math.round(n.position.y / effectiveNodeHeight) === row);
           const occupiedCols = new Set(rowSkills.map((n) => Math.round(n.position.x / nodeWidth)));
-          const maxCol = rowSkills.reduce(
-            (max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)),
-            -1,
-          );
+          const maxCol = rowSkills.reduce((max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)), -1);
           const maxColBound = Math.max(maxCol + 1, globalMaxCol + 1, row < 9 ? 3 : 0);
           for (let c = 0; c <= maxColBound; c++) {
             if (!occupiedCols.has(c)) {
@@ -1139,15 +1093,7 @@ const SkillsView = memo(
           });
         }
       },
-      [
-        setEdges,
-        isSkillLocksMode,
-        lockEdgeLevels,
-        setLockEdgeLevels,
-        isRequirementsMode,
-        editGroups,
-        captureHistory,
-      ],
+      [setEdges, isSkillLocksMode, lockEdgeLevels, setLockEdgeLevels, isRequirementsMode, editGroups, captureHistory],
     );
 
     const confirmEdgeLevelEdit = useCallback(() => {
@@ -1159,9 +1105,7 @@ const SkillsView = memo(
       }
       captureHistory();
       setLockEdgeLevels((prev) => ({ ...prev, [editingEdgeId]: newLevel }));
-      setEdges((eds) =>
-        eds.map((e) => (e.id === editingEdgeId ? { ...e, data: { ...e.data, level: newLevel } } : e)),
-      );
+      setEdges((eds) => eds.map((e) => (e.id === editingEdgeId ? { ...e, data: { ...e.data, level: newLevel } } : e)));
       setEditingEdgeId(null);
     }, [editingEdgeId, editingEdgeLevel, setEdges, setLockEdgeLevels, captureHistory]);
 
@@ -1351,9 +1295,7 @@ const SkillsView = memo(
             });
           } else {
             // No overlap, just snap
-            result = nds.map((n) =>
-              n.id === node.id ? { ...n, position: { x: snappedX, y: snappedY } } : n,
-            );
+            result = nds.map((n) => (n.id === node.id ? { ...n, position: { x: snappedX, y: snappedY } } : n));
           }
 
           // Reposition placeholders for affected rows
@@ -1439,9 +1381,7 @@ const SkillsView = memo(
         if (!contextMenu) return;
         captureHistory();
         const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
-        const selectedNodes = nodes.filter(
-          (n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId,
-        );
+        const selectedNodes = nodes.filter((n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId);
         if (selectedNodes.length === 0 || !targetNode) {
           setContextMenu(null);
           return;
@@ -1754,16 +1694,7 @@ const SkillsView = memo(
 
         setContextMenu(null);
       },
-      [
-        contextMenu,
-        nodes,
-        nextGroupId,
-        editGroups,
-        effectiveNodeHeight,
-        setEditGroups,
-        setEdges,
-        captureHistory,
-      ],
+      [contextMenu, nodes, nextGroupId, editGroups, effectiveNodeHeight, setEditGroups, setEdges, captureHistory],
     );
 
     // Context menu: delete group (ungroup + remove group edges)
@@ -1780,9 +1711,7 @@ const SkillsView = memo(
           .map(([nodeId]) => nodeId),
       );
       const memberIds = new Set(
-        nodes
-          .filter((n) => n.type === "skill" && memberNodeIds.has((n.data as SkillData).nodeId))
-          .map((n) => n.id),
+        nodes.filter((n) => n.type === "skill" && memberNodeIds.has((n.data as SkillData).nodeId)).map((n) => n.id),
       );
       const containerId = `${targetGroupId}_group`;
       setEdges((eds) =>
@@ -1868,9 +1797,7 @@ const SkillsView = memo(
             absX = n.position.x;
             absY = n.position.y;
           }
-          return (
-            Math.round(absY / effectiveNodeHeight) === targetRow && Math.round(absX / nodeWidth) === targetCol
-          );
+          return Math.round(absY / effectiveNodeHeight) === targetRow && Math.round(absX / nodeWidth) === targetCol;
         }).length;
 
         let result = nds.map((n) => {
@@ -1920,9 +1847,7 @@ const SkillsView = memo(
               ? Math.round((n.position.y + 15) / effectiveNodeHeight)
               : Math.round(n.position.y / effectiveNodeHeight);
             if (row !== targetRow) return n;
-            const col = isGroup
-              ? Math.round((n.position.x + 10) / nodeWidth)
-              : Math.round(n.position.x / nodeWidth);
+            const col = isGroup ? Math.round((n.position.x + 10) / nodeWidth) : Math.round(n.position.x / nodeWidth);
             if (col < targetCol) return n;
             return { ...n, position: { ...n.position, x: n.position.x + delta } };
           });
@@ -2107,9 +2032,7 @@ const SkillsView = memo(
               ? Math.round((n.position.y + 15) / effectiveNodeHeight)
               : Math.round(n.position.y / effectiveNodeHeight);
             if (nRow !== row) continue;
-            const col = isGroup
-              ? Math.round((n.position.x + 10) / nodeWidth)
-              : Math.round(n.position.x / nodeWidth);
+            const col = isGroup ? Math.round((n.position.x + 10) / nodeWidth) : Math.round(n.position.x / nodeWidth);
             const colWidth = isGroup ? Math.ceil(((n as any).width ?? nodeWidth) / nodeWidth) : 1;
             rowNodesInfo.push({ idx: i, col, colWidth });
           }
@@ -2175,9 +2098,7 @@ const SkillsView = memo(
               ? Math.round((n.position.y + 15) / effectiveNodeHeight)
               : Math.round(n.position.y / effectiveNodeHeight);
             if (nRow !== row) continue;
-            const col = isGroup
-              ? Math.round((n.position.x + 10) / nodeWidth)
-              : Math.round(n.position.x / nodeWidth);
+            const col = isGroup ? Math.round((n.position.x + 10) / nodeWidth) : Math.round(n.position.x / nodeWidth);
             const colWidth = isGroup ? Math.ceil(((n as any).width ?? nodeWidth) / nodeWidth) : 1;
             // Only consider nodes on the trailing side (opposite to move direction)
             if (direction === "right" && col > containerStartCol + memberCount - 1) {
@@ -2207,9 +2128,7 @@ const SkillsView = memo(
               ? Math.round((n.position.y + 15) / effectiveNodeHeight)
               : Math.round(n.position.y / effectiveNodeHeight);
             if (nRow !== row) continue;
-            const col = isGroup
-              ? Math.round((n.position.x + 10) / nodeWidth)
-              : Math.round(n.position.x / nodeWidth);
+            const col = isGroup ? Math.round((n.position.x + 10) / nodeWidth) : Math.round(n.position.x / nodeWidth);
             const colWidth = isGroup ? Math.ceil(((n as any).width ?? nodeWidth) / nodeWidth) : 1;
             for (let c = 0; c < colWidth; c++) allOccupied.add(col + c);
           }
@@ -2253,9 +2172,7 @@ const SkillsView = memo(
     const contextMenuAddRequirement = useCallback(
       (type: "REQUIRED" | "SUBSET_REQUIRED") => {
         if (!contextMenu) return;
-        const selectedNodes = nodes.filter(
-          (n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId,
-        );
+        const selectedNodes = nodes.filter((n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId);
         if (selectedNodes.length === 0) {
           setContextMenu(null);
           return;
@@ -2472,10 +2389,7 @@ const SkillsView = memo(
               absX = n.position.x;
               absY = n.position.y;
             }
-            return (
-              Math.round(absX / nodeWidth) === targetCol &&
-              Math.round(absY / effectiveNodeHeight) === targetRow
-            );
+            return Math.round(absX / nodeWidth) === targetCol && Math.round(absY / effectiveNodeHeight) === targetRow;
           });
 
           // If existing node is grouped, add new node to that group
@@ -2518,16 +2432,7 @@ const SkillsView = memo(
         setIsAddNodeModalOpen(false);
         setEditingNodeId(undefined);
       },
-      [
-        editingNodeId,
-        setNodes,
-        setEditGroups,
-        skillsData,
-        nodes,
-        editGroups,
-        repositionPlaceholders,
-        captureHistory,
-      ],
+      [editingNodeId, setNodes, setEditGroups, skillsData, nodes, editGroups, repositionPlaceholders, captureHistory],
     );
 
     // Edit mode: export skill tree to JSON
@@ -2540,8 +2445,7 @@ const SkillsView = memo(
         containerToMembers[containerId].push(nodeId);
       }
 
-      const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] =
-        [];
+      const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] = [];
       for (const e of edges) {
         const sourceMembers = containerToMembers[e.source];
         const targetMembers = containerToMembers[e.target];
@@ -2701,9 +2605,7 @@ const SkillsView = memo(
                 tooltipFrame,
                 skillLevelLitIcon,
                 skillIcon:
-                  n.imgPath && skillsData?.icons[n.imgPath]
-                    ? skillsData.icons[n.imgPath]
-                    : resolveSkillIcon(n.imgPath),
+                  n.imgPath && skillsData?.icons[n.imgPath] ? skillsData.icons[n.imgPath] : resolveSkillIcon(n.imgPath),
               },
             }));
 
@@ -2769,8 +2671,7 @@ const SkillsView = memo(
           containerToMembers[containerId].push(nodeId);
         }
 
-        const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] =
-          [];
+        const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] = [];
         for (const e of edges) {
           const sourceMembers = containerToMembers[e.source];
           const targetMembers = containerToMembers[e.target];
@@ -2852,8 +2753,7 @@ const SkillsView = memo(
         };
 
         // Add skill locks data
-        const skillLocksArray: { lockedNodeId: string; lockingSkillKey: string; requiredLevel: number }[] =
-          [];
+        const skillLocksArray: { lockedNodeId: string; lockingSkillKey: string; requiredLevel: number }[] = [];
         const nodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
 
         for (const [lockedNodeId, skillAndLevelArray] of Object.entries(nodeToSkillLocks)) {
@@ -2942,8 +2842,7 @@ const SkillsView = memo(
         }
 
         // Expand and dedup current edges
-        const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] =
-          [];
+        const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] = [];
         for (const e of edges) {
           const sourceMembers = containerToMembers[e.source];
           const targetMembers = containerToMembers[e.target];
@@ -3335,9 +3234,7 @@ const SkillsView = memo(
           }
         } else if (edge.target.endsWith("_group")) {
           // Target is a group container → expand to individual member edges
-          const tgtContainerGroupId = Object.keys(groupToMembers).find(
-            (gid) => `${gid}_group` === edge.target,
-          );
+          const tgtContainerGroupId = Object.keys(groupToMembers).find((gid) => `${gid}_group` === edge.target);
           if (tgtContainerGroupId && groupToMembers[tgtContainerGroupId]) {
             for (const memberId of groupToMembers[tgtContainerGroupId]) {
               addReqEdge(edge.source, memberId, "#f59e0b", true);
@@ -3561,17 +3458,14 @@ const SkillsView = memo(
       for (const edge of allLockEdges.current) {
         const sourceNode = nodes.find((n) => n.id === edge.source);
         const targetNode = nodes.find((n) => n.id === edge.target);
-        if (!sourceNode || !targetNode || sourceNode.type !== "skill" || targetNode.type !== "skill")
-          continue;
+        if (!sourceNode || !targetNode || sourceNode.type !== "skill" || targetNode.type !== "skill") continue;
 
         const lockingSkillKey = sourceNode.data.id;
         const lockedNodeId = targetNode.data.nodeId;
         const level = lockEdgeLevels[edge.id] || 1;
 
         if (!newNodeToSkillLocks[lockedNodeId]) newNodeToSkillLocks[lockedNodeId] = [];
-        const existing = newNodeToSkillLocks[lockedNodeId].find(
-          ([sk, lv]) => sk === lockingSkillKey && lv === level,
-        );
+        const existing = newNodeToSkillLocks[lockedNodeId].find(([sk, lv]) => sk === lockingSkillKey && lv === level);
         if (!existing) newNodeToSkillLocks[lockedNodeId].push([lockingSkillKey, level]);
       }
 
@@ -4029,11 +3923,7 @@ const SkillsView = memo(
               .map(([gid]) => gid),
           );
           result = result.map((n) => {
-            if (
-              n.parentId &&
-              n.parentId.endsWith("_group") &&
-              !validGroupIds.has(n.parentId.replace(/_group$/, ""))
-            ) {
+            if (n.parentId && n.parentId.endsWith("_group") && !validGroupIds.has(n.parentId.replace(/_group$/, ""))) {
               // Restore absolute position using the old container (from currentNodes, before removal)
               const oldContainer = currentNodes.find((c) => c.id === n.parentId);
               const absX = oldContainer ? oldContainer.position.x + n.position.x : n.position.x;
@@ -4049,12 +3939,10 @@ const SkillsView = memo(
 
             const firstMember = members[0];
             const firstAbsX = firstMember.parentId
-              ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.x ?? 0) +
-                firstMember.position.x
+              ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.x ?? 0) + firstMember.position.x
               : firstMember.position.x;
             const firstAbsY = firstMember.parentId
-              ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.y ?? 0) +
-                firstMember.position.y
+              ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.y ?? 0) + firstMember.position.y
               : firstMember.position.y;
             const row = Math.round(firstAbsY / effectiveNodeHeight);
 
@@ -4092,8 +3980,7 @@ const SkillsView = memo(
               style: {
                 backgroundColor: "transparent",
                 border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
-                boxShadow:
-                  "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
+                boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
                 zIndex: "0",
                 width: members.length * nodeWidth - 15,
                 height: nodeHeight + 10,
@@ -4286,9 +4173,7 @@ const SkillsView = memo(
           nodes={nodes}
           edges={edges}
           onNodesChange={
-            isEditMode
-              ? onNodesChange
-              : (changes) => onNodesChange(changes.filter((c) => c.type !== "select"))
+            isEditMode ? onNodesChange : (changes) => onNodesChange(changes.filter((c) => c.type !== "select"))
           }
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
@@ -4303,17 +4188,11 @@ const SkillsView = memo(
           deleteKeyCode={isEditMode && !isRequirementsMode && !isSkillLocksMode ? "Delete" : null}
           onNodesDelete={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodesDelete : undefined}
           onEdgeClick={isEditMode ? onEdgeClick : undefined}
-          onNodeDragStart={
-            isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDragStart : undefined
-          }
+          onNodeDragStart={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDragStart : undefined}
           onNodeDragStop={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDragStop : undefined}
           onNodeClick={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeClick : undefined}
-          onNodeDoubleClick={
-            isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDoubleClick : undefined
-          }
-          onNodeContextMenu={
-            isEditMode || isRequirementsMode || isSkillLocksMode ? onNodeContextMenu : undefined
-          }
+          onNodeDoubleClick={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDoubleClick : undefined}
+          onNodeContextMenu={isEditMode || isRequirementsMode || isSkillLocksMode ? onNodeContextMenu : undefined}
           onPaneClick={isEditMode ? onPaneClick : undefined}
           onPaneContextMenu={isEditMode ? onPaneContextMenu : undefined}
           defaultEdgeOptions={
@@ -4370,9 +4249,7 @@ const SkillsView = memo(
                           type="checkbox"
                           checked={!!isShowingHiddenModifiersInsideSkills}
                           onChange={() => {
-                            dispatch(
-                              setIsShowingHiddenModifiersInsideSkills(!isShowingHiddenModifiersInsideSkills),
-                            );
+                            dispatch(setIsShowingHiddenModifiersInsideSkills(!isShowingHiddenModifiersInsideSkills));
                           }}
                         ></input>
                         <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
@@ -4640,10 +4517,7 @@ const SkillsView = memo(
           )}
           {isEditMode && (
             <ViewportPortal>
-              <div
-                className="fixed w-full h-full top-0 left-0 pointer-events-none"
-                style={{ userSelect: "none" }}
-              >
+              <div className="fixed w-full h-full top-0 left-0 pointer-events-none" style={{ userSelect: "none" }}>
                 {Array.from({ length: 7 }, (_, r) => (
                   <div
                     key={`row-label-${r}`}
@@ -4678,12 +4552,7 @@ const SkillsView = memo(
             </ViewportPortal>
           )}
         </ReactFlow>
-        <Modal
-          onClose={() => setIsSavePackModalOpen(false)}
-          show={isSavePackModalOpen}
-          size="md"
-          position="center"
-        >
+        <Modal onClose={() => setIsSavePackModalOpen(false)} show={isSavePackModalOpen} size="md" position="center">
           <Modal.Header>{saveChangesMode ? "Save Changes" : "Save Skills Pack"}</Modal.Header>
           <Modal.Body>
             <div className="space-y-4">
@@ -4719,9 +4588,7 @@ const SkillsView = memo(
                     Browse
                   </button>
                 </div>
-                {savePackDirectory && (
-                  <p className="text-xs text-gray-400 mt-1 truncate">{savePackDirectory}</p>
-                )}
+                {savePackDirectory && <p className="text-xs text-gray-400 mt-1 truncate">{savePackDirectory}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Table Name Template</label>
@@ -4749,12 +4616,12 @@ const SkillsView = memo(
                   disabled={isSavePackProcessing}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
                 />
-                <p className="text-xs text-gray-400 mt-1">Tokens: ${"{prefix}"}, ${"{row}"}, ${"{column}"}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Tokens: ${"{prefix}"}, ${"{row}"}, ${"{column}"}
+                </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Character Skill Key Template
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Character Skill Key Template</label>
                 <input
                   type="text"
                   value={customSkillKeyTemplate}
@@ -4763,13 +4630,13 @@ const SkillsView = memo(
                   disabled={isSavePackProcessing}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
                 />
-                <p className="text-xs text-gray-400 mt-1">Tokens: ${"{prefix}"}, ${"{row}"}, ${"{column}"}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Tokens: ${"{prefix}"}, ${"{row}"}, ${"{column}"}
+                </p>
               </div>
               {!saveChangesMode && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Existing Character Skills
-                  </label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Existing Character Skills</label>
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -4779,9 +4646,7 @@ const SkillsView = memo(
                         onChange={() => setSavePackCloneAll(false)}
                         className="text-blue-600"
                       />
-                      <span className="text-sm text-gray-300">
-                        Preserve existing (reference by original key)
-                      </span>
+                      <span className="text-sm text-gray-300">Preserve existing (reference by original key)</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -4791,17 +4656,15 @@ const SkillsView = memo(
                         onChange={() => setSavePackCloneAll(true)}
                         className="text-blue-600"
                       />
-                      <span className="text-sm text-gray-300">
-                        Clone all (create new entries for all skills)
-                      </span>
+                      <span className="text-sm text-gray-300">Clone all (create new entries for all skills)</span>
                     </label>
                   </div>
                 </div>
               )}
               {saveChangesMode && (
                 <p className="text-sm text-gray-400">
-                  Only changed, moved, added, or deleted nodes will be included in the output pack. Unchanged
-                  nodes are left as-is.
+                  Only changed, moved, added, or deleted nodes will be included in the output pack. Unchanged nodes are
+                  left as-is.
                 </p>
               )}
             </div>
@@ -4868,12 +4731,12 @@ const SkillsView = memo(
                   })()
                 : Math.round(editingNode.position.x / nodeWidth)
               : undefined;
-    if (!hasSkills) {
-      console.log("SkillsView: no skills");
-      return <></>;
-    }
+            if (!hasSkills) {
+              console.log("SkillsView: no skills");
+              return <></>;
+            }
 
-    return (
+            return (
               <AddNodeModal
                 isOpen={isAddNodeModalOpen}
                 onClose={() => {
@@ -4904,9 +4767,7 @@ const SkillsView = memo(
         {contextMenu &&
           (() => {
             const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
-            const selectedNodes = nodes.filter(
-              (n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId,
-            );
+            const selectedNodes = nodes.filter((n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId);
             const targetGroupId =
               contextMenu.nodeType === "skill" && targetNode
                 ? editGroups[(targetNode.data as SkillData).nodeId]
@@ -4917,23 +4778,17 @@ const SkillsView = memo(
 
             // Nodes that would be grouped: right-clicked + all selected, deduplicated
             const groupCandidateMap = new Map<string, (typeof nodes)[0]>();
-            if (targetNode && contextMenu.nodeType === "skill")
-              groupCandidateMap.set(targetNode.id, targetNode);
+            if (targetNode && contextMenu.nodeType === "skill") groupCandidateMap.set(targetNode.id, targetNode);
             for (const n of selectedNodes) groupCandidateMap.set(n.id, n);
             const groupCandidates = Array.from(groupCandidateMap.values());
             const canGroup =
-              groupCandidates.length >= 2 &&
-              groupCandidates.every((n) => !editGroups[(n.data as SkillData).nodeId]);
+              groupCandidates.length >= 2 && groupCandidates.every((n) => !editGroups[(n.data as SkillData).nodeId]);
 
             // Count input and output connections
             const inputCount =
-              contextMenu.nodeType === "skill"
-                ? edges.filter((e) => e.target === contextMenu.nodeId).length
-                : 0;
+              contextMenu.nodeType === "skill" ? edges.filter((e) => e.target === contextMenu.nodeId).length : 0;
             const outputCount =
-              contextMenu.nodeType === "skill"
-                ? edges.filter((e) => e.source === contextMenu.nodeId).length
-                : 0;
+              contextMenu.nodeType === "skill" ? edges.filter((e) => e.source === contextMenu.nodeId).length : 0;
 
             // Helper to get absolute position for a node
             const getNodeAbsPos = (n: (typeof nodes)[0]) => {
@@ -5051,10 +4906,7 @@ const SkillsView = memo(
               const ts = Date.now();
               const relToNewId = new Map<string, string>();
               for (const entry of clipboard) {
-                relToNewId.set(
-                  `${entry.relRow},${entry.relCol}`,
-                  `new_node_${ts}_${entry.relRow}_${entry.relCol}`,
-                );
+                relToNewId.set(`${entry.relRow},${entry.relCol}`, `new_node_${ts}_${entry.relRow}_${entry.relCol}`);
               }
               for (const entry of clipboard) {
                 const destRow = targetRow + entry.relRow;
@@ -5106,12 +4958,7 @@ const SkillsView = memo(
                   const col = Math.round(newNode.position.x / nodeWidth);
                   const row = Math.round(newNode.position.y / effectiveNodeHeight);
                   const existingAtPos = updated.find((n) => {
-                    if (
-                      n.id === newNode.id ||
-                      n.type !== "skill" ||
-                      (n.data as any)?.isGrouping ||
-                      n.parentId
-                    )
+                    if (n.id === newNode.id || n.type !== "skill" || (n.data as any)?.isGrouping || n.parentId)
                       return false;
                     return (
                       Math.round(n.position.x / nodeWidth) === col &&
@@ -5121,12 +4968,7 @@ const SkillsView = memo(
                   if (existingAtPos) {
                     const shiftIds = new Set<string>();
                     for (const n of updated) {
-                      if (
-                        n.id === newNode.id ||
-                        n.type !== "skill" ||
-                        (n.data as any)?.isGrouping ||
-                        n.parentId
-                      )
+                      if (n.id === newNode.id || n.type !== "skill" || (n.data as any)?.isGrouping || n.parentId)
                         continue;
                       const nCol = Math.round(n.position.x / nodeWidth);
                       if (
@@ -5236,8 +5078,7 @@ const SkillsView = memo(
               }
             };
 
-            const menuItemClass =
-              "w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 cursor-pointer";
+            const menuItemClass = "w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 cursor-pointer";
 
             // For placeholder nodes, only show paste
             if (contextMenu.nodeType === "addPlaceholder") {
@@ -5344,12 +5185,8 @@ const SkillsView = memo(
                         (n) => Math.round(getAbsY(n) / effectiveNodeHeight) === targetRow,
                       );
                       if (sameRowSelected.length === 0) return null;
-                      const allToLeft = sameRowSelected.every(
-                        (n) => Math.round(getAbsX(n) / nodeWidth) < targetCol,
-                      );
-                      const allToRight = sameRowSelected.every(
-                        (n) => Math.round(getAbsX(n) / nodeWidth) > targetCol,
-                      );
+                      const allToLeft = sameRowSelected.every((n) => Math.round(getAbsX(n) / nodeWidth) < targetCol);
+                      const allToRight = sameRowSelected.every((n) => Math.round(getAbsX(n) / nodeWidth) > targetCol);
                       return (
                         <>
                           <div className="border-t border-gray-600 my-1" />
@@ -5362,10 +5199,7 @@ const SkillsView = memo(
                             </button>
                           )}
                           {allToRight && (
-                            <button
-                              className={menuItemClass}
-                              onClick={() => contextMenuAddRequirement("REQUIRED")}
-                            >
+                            <button className={menuItemClass} onClick={() => contextMenuAddRequirement("REQUIRED")}>
                               Add REQUIRED (target → {sameRowSelected.length})
                             </button>
                           )}
@@ -5390,10 +5224,7 @@ const SkillsView = memo(
                           <button className={menuItemClass} onClick={() => contextMenuLockSelected("locks")}>
                             This Locks {selectedNodes.length} Selected
                           </button>
-                          <button
-                            className={menuItemClass}
-                            onClick={() => contextMenuLockSelected("lockedBy")}
-                          >
+                          <button className={menuItemClass} onClick={() => contextMenuLockSelected("lockedBy")}>
                             Locked By {selectedNodes.length} Selected
                           </button>
                           <button className={menuItemClass} onClick={() => contextMenuLockSelected("both")}>
@@ -5433,10 +5264,7 @@ const SkillsView = memo(
                           <button className={menuItemClass} onClick={() => contextMenuGroup("required")}>
                             Group {groupCandidates.length} Nodes (Required)
                           </button>
-                          <button
-                            className={menuItemClass}
-                            onClick={() => contextMenuGroup("subset_required")}
-                          >
+                          <button className={menuItemClass} onClick={() => contextMenuGroup("subset_required")}>
                             Group {groupCandidates.length} Nodes (Subset Required)
                           </button>
                         </>
@@ -5537,17 +5365,11 @@ const SkillsView = memo(
                         return (
                           <>
                             {row > 0 && (
-                              <button
-                                className={menuItemClass}
-                                onClick={() => contextMenuMoveRowVertical("up")}
-                              >
+                              <button className={menuItemClass} onClick={() => contextMenuMoveRowVertical("up")}>
                                 Move Row Up
                               </button>
                             )}
-                            <button
-                              className={menuItemClass}
-                              onClick={() => contextMenuMoveRowVertical("down")}
-                            >
+                            <button className={menuItemClass} onClick={() => contextMenuMoveRowVertical("down")}>
                               Move Row Down
                             </button>
                             <button className={menuItemClass} onClick={contextMenuDeleteRow}>
@@ -5561,9 +5383,7 @@ const SkillsView = memo(
                         const containerId = `${targetGroupId}_group`;
                         const container = nodes.find((n) => n.id === containerId);
                         if (!container) return null;
-                        const memberCount = Object.values(editGroups).filter(
-                          (gid) => gid === targetGroupId,
-                        ).length;
+                        const memberCount = Object.values(editGroups).filter((gid) => gid === targetGroupId).length;
                         if (memberCount < 2) return null;
                         const containerCol = Math.round((container.position.x + 10) / nodeWidth);
                         const canMoveGroupLeft = containerCol > 0;
@@ -5592,10 +5412,7 @@ const SkillsView = memo(
                           <div className="px-4 py-1 text-xs text-gray-400">
                             {selectedNodes.length} selected node{selectedNodes.length > 1 ? "s" : ""}
                           </div>
-                          <button
-                            className={menuItemClass}
-                            onClick={() => contextMenuInsert("before", false)}
-                          >
+                          <button className={menuItemClass} onClick={() => contextMenuInsert("before", false)}>
                             Insert Before{targetGroupId && " Group"}
                           </button>
                           <button className={menuItemClass} onClick={() => contextMenuInsert("after", false)}>
@@ -5603,16 +5420,10 @@ const SkillsView = memo(
                           </button>
                           {targetGroupId && (
                             <>
-                              <button
-                                className={menuItemClass}
-                                onClick={() => contextMenuInsert("before", true)}
-                              >
+                              <button className={menuItemClass} onClick={() => contextMenuInsert("before", true)}>
                                 Insert Before Node, Inside Group
                               </button>
-                              <button
-                                className={menuItemClass}
-                                onClick={() => contextMenuInsert("after", true)}
-                              >
+                              <button className={menuItemClass} onClick={() => contextMenuInsert("after", true)}>
                                 Insert After Node, Inside Group
                               </button>
                             </>
@@ -5708,10 +5519,7 @@ const SkillsView = memo(
               className="w-20 px-2 py-1 bg-gray-700 text-white border border-gray-600 rounded text-sm"
             />
             <div className="flex gap-1 mt-1">
-              <button
-                onClick={confirmEdgeLevelEdit}
-                className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded"
-              >
+              <button onClick={confirmEdgeLevelEdit} className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded">
                 OK
               </button>
               <button
@@ -5720,10 +5528,7 @@ const SkillsView = memo(
               >
                 Cancel
               </button>
-              <button
-                onClick={deleteEditingEdge}
-                className="px-2 py-0.5 bg-red-600 text-white text-xs rounded"
-              >
+              <button onClick={deleteEditingEdge} className="px-2 py-0.5 bg-red-600 text-white text-xs rounded">
                 Delete
               </button>
             </div>

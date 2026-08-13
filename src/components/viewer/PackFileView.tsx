@@ -59,7 +59,8 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   const saveRequestIdRef = useRef(0);
   const packedFile = useMemo(() => {
     const unsavedMatch =
-      unsavedFiles.find((file) => file.name === filePath) || unsavedFiles.find((file) => file.name.startsWith(filePath));
+      unsavedFiles.find((file) => file.name === filePath) ||
+      unsavedFiles.find((file) => file.name.startsWith(filePath));
     if (unsavedMatch) return unsavedMatch;
     if (!packData?.packedFiles) return undefined;
     if (packData.packedFiles[filePath]) return packData.packedFiles[filePath];
@@ -183,10 +184,9 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
           setIsPersisting(false);
         }
         if (!options?.suppressDialog) {
-          showDialog(
-            `Failed to save ${filePath}: ${error instanceof Error ? error.message : "Unknown error"}`,
-            { title: "Save Failed" },
-          );
+          showDialog(`Failed to save ${filePath}: ${error instanceof Error ? error.message : "Unknown error"}`, {
+            title: "Save Failed",
+          });
         }
         return false;
       }
@@ -247,8 +247,7 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   const loadedState = loadState as Extract<LoadState, { status: "loaded" }>;
   // workingText belongs to whichever file was hydrated last. Until this file has been hydrated -
   // one render after its content lands - show what was loaded rather than the last file's edits.
-  const isWorkingTextForThisFile =
-    hydratedTextFileKeyRef.current === openedTextFileKey && workingText != null;
+  const isWorkingTextForThisFile = hydratedTextFileKeyRef.current === openedTextFileKey && workingText != null;
   const displayedText = isWorkingTextForThisFile ? workingText : (loadedState.text ?? "");
   const hasPendingTextChanges = canEditTextFile && displayedText !== persistedText;
 
@@ -272,7 +271,13 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center justify-between gap-3">
         <span className="truncate">{filePath}</span>
         <span className="shrink-0 text-[11px] uppercase tracking-wide text-gray-500">
-          {canEditTextFile ? (isPersisting ? "Saving..." : hasPendingTextChanges ? "Modified" : "Editable") : "Read Only"}
+          {canEditTextFile
+            ? isPersisting
+              ? "Saving..."
+              : hasPendingTextChanges
+                ? "Modified"
+                : "Editable"
+            : "Read Only"}
         </span>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">

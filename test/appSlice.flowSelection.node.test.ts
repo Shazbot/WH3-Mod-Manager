@@ -8,10 +8,7 @@ describe("node editor flow selection", () => {
     const packPath = "K:\\mods\\owner.pack";
     const flowFile = "whmmflows\\flow.json";
     const openState = appReducer(initialState, selectFlowFile({ packPath, flowFile }));
-    const blankState = appReducer(
-      openState,
-      selectFlowFile({ packPath, flowFile: undefined }),
-    );
+    const blankState = appReducer(openState, selectFlowFile({ packPath, flowFile: undefined }));
 
     expect(blankState.currentFlowFileSelection).toBeUndefined();
     expect(blankState.currentFlowFilePackPath).toBe(packPath);

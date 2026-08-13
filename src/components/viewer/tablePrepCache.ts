@@ -99,8 +99,7 @@ export const createPreparedTableCache = (maxBytes: number): PreparedTableCache =
 
 const preparedTableCache = createPreparedTableCache(DEFAULT_PREPARED_TABLE_CACHE_BYTES);
 
-export const getPreparedTable = (cacheKey: string): PreparedTableData | undefined =>
-  preparedTableCache.get(cacheKey);
+export const getPreparedTable = (cacheKey: string): PreparedTableData | undefined => preparedTableCache.get(cacheKey);
 
 export const setPreparedTable = (cacheKey: string, value: PreparedTableData): void => {
   preparedTableCache.set(cacheKey, value);

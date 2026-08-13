@@ -22,9 +22,7 @@ export const packHasCompatTextFiles = (pack: Pack) =>
   pack.packedFiles.some((packedFile) => isCompatTextFileName(packedFile.name));
 
 export const packNeedsCompatTextRefresh = (pack: Pack) =>
-  pack.packedFiles.some(
-    (packedFile) => isCompatTextFileName(packedFile.name) && packedFile.text === undefined,
-  );
+  pack.packedFiles.some((packedFile) => isCompatTextFileName(packedFile.name) && packedFile.text === undefined);
 
 /** Merge only transient source text, preserving the retained pack's parsed DB rows and index. */
 export const mergeCompatTextIntoPack = (target: Pack, source: Pack) => {
