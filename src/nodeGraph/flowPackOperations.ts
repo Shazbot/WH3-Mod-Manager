@@ -4,6 +4,7 @@ export interface FlowPackCatalogEntry {
   humanName?: string;
   isEnabled: boolean;
   hasFlows: boolean;
+  isInData?: boolean;
 }
 
 export const normalizePackedFlowName = (flowName: string): string | undefined => {

@@ -211,8 +211,9 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
                   {promotedPacks.length > 0 && (
                     <optgroup label={localized.nodeEditorEnabledModsWithFlows || "Enabled mods with flows"}>
                       {promotedPacks.map((pack) => (
-                        <option value={pack.path} key={pack.path}>
+                        <option value={pack.path} key={pack.path} className={pack.isInData ? "text-orange-500" : ""}>
                           {packLabel(pack)}
+                          {pack.isInData ? " D" : ""}
                         </option>
                       ))}
                     </optgroup>
@@ -220,8 +221,9 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
                   {otherPacks.length > 0 && (
                     <optgroup label={localized.nodeEditorAllOtherMods || "All other mods"}>
                       {otherPacks.map((pack) => (
-                        <option value={pack.path} key={pack.path}>
+                        <option value={pack.path} key={pack.path} className={pack.isInData ? "text-orange-500" : ""}>
                           {packLabel(pack)}
+                          {pack.isInData ? " D" : ""}
                           {pack.isEnabled ? " (enabled)" : ""}
                         </option>
                       ))}

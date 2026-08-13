@@ -5016,6 +5016,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         humanName: mod.humanName,
         isEnabled,
         hasFlows,
+        isInData: mod.isInData,
       });
     }
 
