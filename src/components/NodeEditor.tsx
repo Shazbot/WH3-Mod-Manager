@@ -321,6 +321,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const localizedRef = useRef(localized);
   localizedRef.current = localized;
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
+  const flowFileReloadNonce = useAppSelector((state) => state.app.currentFlowFileReloadNonce);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -791,6 +792,30 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const loadNodeGraphRef = useRef(loadNodeGraph);
   loadNodeGraphRef.current = loadNodeGraph;
 
+  /** Says which file the new graph landed in, since it is the one Save will overwrite. */
+  const toastGraphReplacedOpenFile = useCallback(
+    (prefix: string) => {
+      if (!currentFile) return;
+      dispatch(
+        addToast({
+          type: "success",
+          messages: [
+            `${prefix} ${currentFile.replace(/^whmmflows[\\/]/i, "")} - ${
+              localized.nodeEditorSaveToOverwriteOpenFlow || "save to overwrite it."
+            }`,
+          ],
+          startTime: Date.now(),
+        }),
+      );
+    },
+    [currentFile, dispatch, localized],
+  );
+
+  const toastLoadedIntoOpenFile = useCallback(
+    () => toastGraphReplacedOpenFile(localized.nodeEditorLoadedFlowIntoOpenFilePrefix || "Loaded flow into"),
+    [localized, toastGraphReplacedOpenFile],
+  );
+
   const openFlowFromPack = useCallback(
     (selection: { flowFile: string; packPath: string; content?: string }) => {
       // With a file open, a loaded flow replaces the graph in place instead of switching files: the
@@ -799,24 +824,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         // Discard a file read still in flight, otherwise it would land on top of the loaded graph.
         flowLoadRequestIdRef.current++;
         loadNodeGraph(selection.content);
-        dispatch(
-          addToast({
-            type: "success",
-            messages: [
-              `${localized.nodeEditorLoadedFlowIntoOpenFilePrefix || "Loaded flow into"} ${currentFile.replace(
-                /^whmmflows[\\/]/i,
-                "",
-              )} - ${localized.nodeEditorSaveToOverwriteOpenFlow || "save to overwrite it."}`,
-            ],
-            startTime: Date.now(),
-          }),
-        );
+        toastLoadedIntoOpenFile();
         return;
       }
 
       dispatch(selectFlowFile({ flowFile: selection.flowFile, packPath: selection.packPath }));
     },
-    [currentFile, currentPack, dispatch, loadNodeGraph, localized],
+    [currentFile, currentPack, dispatch, loadNodeGraph, toastLoadedIntoOpenFile],
   );
 
   const loadNodeGraphFile = useCallback(
@@ -824,6 +838,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const reader = new FileReader();
       reader.onload = (event) => {
         const jsonContent = event.target?.result as string;
+        // Discard a pack read still in flight, otherwise it would land on top of the loaded graph.
+        flowLoadRequestIdRef.current++;
         loadNodeGraph(jsonContent);
       };
 
@@ -836,16 +852,22 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (file) {
-        // A local JSON file has no owning pack, even though the editor keeps a working pack context.
-        dispatch(
-          currentPack ? selectFlowFile({ flowFile: undefined, packPath: currentPack }) : selectFlowFile(undefined),
-        );
+        // With a file open the loaded graph replaces its contents in place, so the editor keeps
+        // pointing at that file and Save overwrites it. Detaching the selection would close the file.
+        if (currentFile) {
+          toastLoadedIntoOpenFile();
+        } else {
+          // A local JSON file has no owning pack, even though the editor keeps a working pack context.
+          dispatch(
+            currentPack ? selectFlowFile({ flowFile: undefined, packPath: currentPack }) : selectFlowFile(undefined),
+          );
+        }
         loadNodeGraphFile(file);
       }
       // Clear the input so the same file can be loaded again
       event.target.value = "";
     },
-    [currentPack, dispatch, loadNodeGraphFile],
+    [currentFile, currentPack, dispatch, loadNodeGraphFile, toastLoadedIntoOpenFile],
   );
 
   const newNodeGraph = useCallback(() => {
@@ -861,12 +883,20 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     setIsGraphEnabled(false);
     setGraphStartsEnabled(true);
     setQuickConnectSourceNodeId(null);
-    // Detach the blank graph from the previously open file. Keeping the pack selected makes the
-    // pack dialog convenient, while clearing the file guarantees that choosing the same flow again
-    // changes currentFile and reruns the loader.
-    dispatch(currentPack ? selectFlowFile({ flowFile: undefined, packPath: currentPack }) : selectFlowFile(undefined));
+    // The blank graph stays attached to the open file the way a loaded one does, so Save overwrites
+    // that file rather than closing it. Load From Pack re-reads a flow when the blank graph was a
+    // mistake: re-picking the same file in the tree cannot, since the selection never changes.
+    if (currentFile) {
+      // Drop a read still in flight, otherwise the file it was reading would fill the blank graph.
+      flowLoadRequestIdRef.current++;
+      toastGraphReplacedOpenFile(localized.nodeEditorBlankGraphInOpenFilePrefix || "Started a blank graph in");
+    } else {
+      dispatch(
+        currentPack ? selectFlowFile({ flowFile: undefined, packPath: currentPack }) : selectFlowFile(undefined),
+      );
+    }
     nodeEditorDebugLog("Started a blank graph");
-  }, [currentPack, dispatch, setNodes, setEdges]);
+  }, [currentFile, currentPack, dispatch, localized, setNodes, setEdges, toastGraphReplacedOpenFile]);
 
   const selectAll = useCallback(() => {
     const nextGraph = selectAllNodes(nodesRef.current);
@@ -1152,7 +1182,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     return () => {
       if (flowLoadRequestIdRef.current === requestId) flowLoadRequestIdRef.current += 1;
     };
-  }, [currentFile, currentPack, selectedUnsavedFlowText, dispatch, isSchemaContextReady]);
+    // flowFileReloadNonce is here so re-picking the open flow re-reads it, after a load or a New
+    // Graph replaced the graph in place and left the selection untouched.
+  }, [currentFile, currentPack, selectedUnsavedFlowText, dispatch, isSchemaContextReady, flowFileReloadNonce]);
 
   return (
     <div className="flex explicit-height-without-topbar-and-padding">

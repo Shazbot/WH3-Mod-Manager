@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "Перезаписать поток?",
   "nodeEditorOverwriteFlowPrompt": "Поток с таким именем уже существует в выбранном пакете. Заменить?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Загруженный поток в",
-  "nodeEditorSaveToOverwriteOpenFlow": "сохраните, чтобы перезаписать его."
+  "nodeEditorSaveToOverwriteOpenFlow": "сохраните, чтобы перезаписать его.",
+  "nodeEditorBlankGraphInOpenFilePrefix": "Начал пустой график в"
 }

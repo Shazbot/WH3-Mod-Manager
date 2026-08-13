@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "Zastąpić przepływ?",
   "nodeEditorOverwriteFlowPrompt": "Przepływ o tej nazwie już istnieje w wybranym pakiecie. Wymienić?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Załadowany przepływ do",
-  "nodeEditorSaveToOverwriteOpenFlow": "zapisz, aby go zastąpić."
+  "nodeEditorSaveToOverwriteOpenFlow": "zapisz, aby go zastąpić.",
+  "nodeEditorBlankGraphInOpenFilePrefix": "Rozpoczęto pusty wykres w"
 }

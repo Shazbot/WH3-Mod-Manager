@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "上書きフロー?",
   "nodeEditorOverwriteFlowPrompt": "この名前のフローは、選択したパックにすでに存在します。交換しますか?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "ロードされたフロー",
-  "nodeEditorSaveToOverwriteOpenFlow": "保存して上書きします。"
+  "nodeEditorSaveToOverwriteOpenFlow": "保存して上書きします。",
+  "nodeEditorBlankGraphInOpenFilePrefix": "空のグラフを開始しました"
 }

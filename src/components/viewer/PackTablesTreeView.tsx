@@ -989,6 +989,11 @@ const PackTablesTreeView = React.memo(
             // controlled tree reconcile the entire node set twice for one click.
             beginSingleLabelSelection();
             handleSelect(e);
+
+            // The tree only reports a selection that changed, so clicking the selected node again
+            // never reaches onSelect. Opening it from here is what re-reads a flow whose graph was
+            // replaced in the editor.
+            if (isSelected) scheduleOpenForElement(element, treeTab);
           };
 
           return (

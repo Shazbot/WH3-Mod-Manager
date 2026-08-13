@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "Overwrite Flow?",
   "nodeEditorOverwriteFlowPrompt": "A flow with this name already exists in the selected pack. Replace it?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Loaded flow into",
+  "nodeEditorBlankGraphInOpenFilePrefix": "Started a blank graph in",
   "nodeEditorSaveToOverwriteOpenFlow": "save to overwrite it."
 }

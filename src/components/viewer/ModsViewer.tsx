@@ -11,7 +11,7 @@ import localizationContext from "../../localizationContext";
 import { gameToPackWithDBTablesName } from "../../supportedGames";
 import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
-import { selectDBTable, selectFlowFile, setDeepCloneTarget, setPacksData } from "@/src/appSlice";
+import { requestFlowFileReload, selectDBTable, selectFlowFile, setDeepCloneTarget, setPacksData } from "@/src/appSlice";
 import NodeEditor from "../NodeEditor";
 import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
@@ -295,9 +295,14 @@ const ModsViewer = memo(() => {
 
   const handleOpenFlowFile = useCallback(
     (selection: { flowFile: string; packPath: string }, options?: { forceNewTab?: boolean }) => {
-      openOrActivateTab(buildFlowTabCandidate(selection.flowFile, selection.packPath), options);
+      const candidate = buildFlowTabCandidate(selection.flowFile, selection.packPath);
+      // Picking the open flow again is how you get its saved contents back after loading or blanking
+      // the graph in place. Neither the tab nor the selection changes, so ask for a reload explicitly.
+      const reopensActiveFlow = !options?.forceNewTab && activeTab?.fileKey === candidate.fileKey;
+      openOrActivateTab(candidate, options);
+      if (reopensActiveFlow) dispatch(requestFlowFileReload());
     },
-    [buildFlowTabCandidate, openOrActivateTab],
+    [activeTab, buildFlowTabCandidate, dispatch, openOrActivateTab],
   );
 
   const handleOpenPackedFile = useCallback(

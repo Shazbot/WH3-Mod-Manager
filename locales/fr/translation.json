@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "Écraser le flux ?",
   "nodeEditorOverwriteFlowPrompt": "Un flux portant ce nom existe déjà dans le pack sélectionné. Le remplacer ?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Flux chargé dans",
-  "nodeEditorSaveToOverwriteOpenFlow": "enregistrer pour l'écraser."
+  "nodeEditorSaveToOverwriteOpenFlow": "enregistrer pour l'écraser.",
+  "nodeEditorBlankGraphInOpenFilePrefix": "A démarré un graphique vierge dans"
 }

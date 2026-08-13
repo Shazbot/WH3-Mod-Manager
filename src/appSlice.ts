@@ -1488,6 +1488,13 @@ const appSlice = createSlice({
       state.currentFlowFileSelection = payload?.flowFile;
       state.currentFlowFilePackPath = payload?.packPath;
     },
+    /**
+     * Re-open the flow that is already selected. Picking it again cannot say this through the
+     * selection, which does not change, so the editor watches this counter instead.
+     */
+    requestFlowFileReload: (state: AppState) => {
+      state.currentFlowFileReloadNonce++;
+    },
     setCurrentTab: (state: AppState, action: PayloadAction<MainWindowTab>) => {
       const tabType = action.payload;
       state.currentTab = isMainWindowTabAvailable(state, tabType) ? tabType : "mods";
@@ -1702,6 +1709,7 @@ export const {
   setLastModThatWasRead,
   selectDBTable,
   selectFlowFile,
+  requestFlowFileReload,
   setCurrentTab,
   setAreModsEnabled,
   setIsCreateSteamCollectionOpen,

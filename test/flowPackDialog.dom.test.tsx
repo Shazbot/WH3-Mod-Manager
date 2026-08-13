@@ -128,6 +128,7 @@ describe("flow pack dialog", () => {
     expect(onOpenFlow).toHaveBeenCalledWith({
       packPath: "/mods/with-flows.pack",
       flowFile: "whmmflows\\existing.json",
+      content: "{}",
     });
   });
 });

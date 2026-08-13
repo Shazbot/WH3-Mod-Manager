@@ -67,6 +67,7 @@ const initialState = {
   outdatedPackFiles: {},
   startArgs: [],
   currentTab: "mods",
+  currentFlowFileReloadNonce: 0,
   isCreateSteamCollectionOpen: false,
   isImportSteamCollectionOpen: false,
   isPackSearcherOpen: false,

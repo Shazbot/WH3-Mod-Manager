@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "Flow überschreiben?",
   "nodeEditorOverwriteFlowPrompt": "Im ausgewählten Paket ist bereits ein Flow mit diesem Namen vorhanden. Ersetzen?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Geladener Fluss in",
-  "nodeEditorSaveToOverwriteOpenFlow": "Speichern, um es zu überschreiben."
+  "nodeEditorSaveToOverwriteOpenFlow": "Speichern, um es zu überschreiben.",
+  "nodeEditorBlankGraphInOpenFilePrefix": "Habe ein leeres Diagramm gestartet"
 }

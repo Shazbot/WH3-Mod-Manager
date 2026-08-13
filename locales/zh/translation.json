@@ -1121,5 +1121,6 @@
   "nodeEditorOverwriteFlow": "覆盖流程？",
   "nodeEditorOverwriteFlowPrompt": "所选包中已存在具有此名称的流。更换吗？",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "加载流量进入",
-  "nodeEditorSaveToOverwriteOpenFlow": "保存以覆盖它。"
+  "nodeEditorSaveToOverwriteOpenFlow": "保存以覆盖它。",
+  "nodeEditorBlankGraphInOpenFilePrefix": "开始一个空白图表"
 }

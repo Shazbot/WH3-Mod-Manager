@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "¿Sobrescribir flujo?",
   "nodeEditorOverwriteFlowPrompt": "Ya existe un flujo con este nombre en el paquete seleccionado. ¿Reemplazarlo?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Flujo cargado en",
-  "nodeEditorSaveToOverwriteOpenFlow": "guardar para sobrescribirlo."
+  "nodeEditorSaveToOverwriteOpenFlow": "guardar para sobrescribirlo.",
+  "nodeEditorBlankGraphInOpenFilePrefix": "Comenzó un gráfico en blanco en"
 }

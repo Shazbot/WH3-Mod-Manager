@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "Akışın Üzerine Yazılsın mı?",
   "nodeEditorOverwriteFlowPrompt": "Seçilen pakette bu ada sahip bir akış zaten mevcut. Değiştirilsin mi?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Yüklü akış",
-  "nodeEditorSaveToOverwriteOpenFlow": "üzerine yazmak için kaydedin."
+  "nodeEditorSaveToOverwriteOpenFlow": "üzerine yazmak için kaydedin.",
+  "nodeEditorBlankGraphInOpenFilePrefix": "Boş bir grafik başlattı"
 }

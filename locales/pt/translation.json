@@ -1119,5 +1119,6 @@
   "nodeEditorOverwriteFlow": "Substituir fluxo?",
   "nodeEditorOverwriteFlowPrompt": "Já existe um fluxo com este nome no pacote selecionado. Substituí-lo?",
   "nodeEditorLoadedFlowIntoOpenFilePrefix": "Fluxo carregado em",
-  "nodeEditorSaveToOverwriteOpenFlow": "salve para substituí-lo."
+  "nodeEditorSaveToOverwriteOpenFlow": "salve para substituí-lo.",
+  "nodeEditorBlankGraphInOpenFilePrefix": "Iniciou um gráfico em branco em"
 }

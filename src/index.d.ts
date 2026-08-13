@@ -210,6 +210,8 @@ declare global {
     currentDBTableSelection?: DBTableSelection;
     currentFlowFileSelection?: string;
     currentFlowFilePackPath?: string;
+    /** Bumped to make the node editor re-read the open flow when the selection itself cannot change. */
+    currentFlowFileReloadNonce: number;
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;
