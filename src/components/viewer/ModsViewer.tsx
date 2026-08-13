@@ -295,14 +295,14 @@ const ModsViewer = memo(() => {
 
   const handleOpenFlowFile = useCallback(
     (selection: { flowFile: string; packPath: string }, options?: { forceNewTab?: boolean }) => {
-      const candidate = buildFlowTabCandidate(selection.flowFile, selection.packPath);
-      // Picking the open flow again is how you get its saved contents back after loading or blanking
-      // the graph in place. Neither the tab nor the selection changes, so ask for a reload explicitly.
-      const reopensActiveFlow = !options?.forceNewTab && activeTab?.fileKey === candidate.fileKey;
-      openOrActivateTab(candidate, options);
-      if (reopensActiveFlow) dispatch(requestFlowFileReload());
+      openOrActivateTab(buildFlowTabCandidate(selection.flowFile, selection.packPath), options);
+      // Picking a flow here means "show me what is in the pack", which is how you get its saved
+      // contents back after replacing the graph in place. Landing on the flow the editor already
+      // holds moves neither the tab nor the selection, whether it opens in this tab or another one,
+      // so the reload has to be asked for rather than left to those changing.
+      dispatch(requestFlowFileReload());
     },
-    [activeTab, buildFlowTabCandidate, dispatch, openOrActivateTab],
+    [buildFlowTabCandidate, dispatch, openOrActivateTab],
   );
 
   const handleOpenPackedFile = useCallback(
