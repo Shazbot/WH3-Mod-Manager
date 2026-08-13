@@ -171,7 +171,6 @@ interface AppData {
   packsData: Pack[];
   unsavedPacksData: Record<string, PackedFile[]>;
   compatData: PackCollisions;
-  currentlyReadingModPaths: string[];
   vanillaPacks: Pack[];
   allVanillaPackNames: Set<string>;
   overwrittenDataPackedFiles: Record<string, string[]>;
@@ -244,7 +243,6 @@ const appData = {
     packFileAnalysisErrors: {},
     missingFileRefs: {},
   },
-  currentlyReadingModPaths: [],
   overwrittenDataPackedFiles: {},
   outdatedPackFiles: {},
   enabledMods: [],

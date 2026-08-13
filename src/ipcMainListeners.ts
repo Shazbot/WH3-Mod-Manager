@@ -10,6 +10,7 @@ import {
 import { planSaveAs } from "./utility/saveAsPlan";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
+import { createPackReadRegistry } from "./utility/packReadRegistry";
 import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
 import { selectPacksToCheck } from "./modCompat/compatScope";
 import {
@@ -911,6 +912,22 @@ export const getDefaultTableVersions = async () => {
   }
   return tableNameToVersion;
 };
+/**
+ * The packs being read right now. Every read of a whole pack registers here, so a caller that needs
+ * one can wait for the read in flight instead of reading beside it or giving up on it.
+ */
+export const packReads = createPackReadRegistry();
+
+/** A pack read that is registered for its whole duration, released even when the read throws. */
+const readPackWhileRegistered = async (packPath: string, packReadingOptions: PackReadingOptions) => {
+  const releaseRead = packReads.begin(packPath);
+  try {
+    return await readPack(packPath, packReadingOptions);
+  } finally {
+    releaseRead();
+  }
+};
+
 export const readModsByPath = async (
   modPaths: string[],
   packReadingOptions: PackReadingOptions,
@@ -925,26 +942,22 @@ export const readModsByPath = async (
   // }
   const newPacks = [] as Pack[];
   for (const modPath of modPaths) {
-    for (let i = 0; i < 20; i++) {
-      if (!appData.currentlyReadingModPaths.some((path) => path == modPath)) {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 125));
-    }
-    if (appData.currentlyReadingModPaths.some((path) => path == modPath)) {
-      console.log("already reading", modPath, "SKIPPING IT");
-      continue;
+    // Wait for whoever is reading this pack rather than skip it. The read in flight is not this
+    // caller's read - it may be parsing an entirely different set of tables - so giving up on it
+    // returned a pack holding none of the tables asked for, with only a log line to say so. A full
+    // parse of the game's database pack runs well past any fixed wait, so the wait is exact and the
+    // backstop below only guards against a registration that leaked.
+    if (!(await packReads.waitUntilFree(modPath))) {
+      console.log("readModsByPath: waited too long for a read of", modPath, "to end, reading it anyway");
     }
     // console.log("READING ", modPath, readLocs);
-    appData.currentlyReadingModPaths.push(modPath);
     if (emitToMainWindow) {
       windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
     }
-    const newPack = await readPack(modPath, packReadingOptions);
+    const newPack = await readPackWhileRegistered(modPath, packReadingOptions);
     if (emitToMainWindow) {
       windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
     }
-    appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
     // if (appData.packsData.every((pack) => pack.path != modPath)) {
     appendPacksData(newPack, undefined, emitToMainWindow);
     // }
@@ -2417,12 +2430,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       indexedDbPack.readTables = [...tablesToRead];
       appendPacksData(indexedDbPack, undefined, false);
     } else {
-      // readModsByPath gives up on a pack another operation is already reading and says so only in a
-      // log line. Left unchecked that produces a catalog with no vanilla units at all, which reads as
-      // a real result and gets cached under a signature that stays valid across restarts.
+      // A pack readModsByPath did not return is one it never read, and a catalog built without the
+      // game's database pack holds no vanilla units at all - which reads as a real result and would
+      // be cached under a signature that stays valid across restarts.
       const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
       if (readDbPacks.length === 0) {
-        throw new Error("The game's database pack is being read by another operation, try again in a moment");
+        throw new Error("The game's database pack could not be read for the Unit Viewer");
       }
     }
     if (enabledMods.length > 0) {
@@ -3269,13 +3282,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               packedFileNames = cacheEntry.packedFileNames;
             } else {
               console.log("READING DATA PACK");
-              appData.currentlyReadingModPaths.push(dataPackPath);
-              const dataPackData = await readPack(dataMod.path, {
+              const dataPackData = await readPackWhileRegistered(dataMod.path, {
                 skipParsingTables: true,
               });
-              appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
-                (path) => path != dataPackPath,
-              );
               if (dataPackData) {
                 appData.vanillaPacks.push(dataPackData);
                 if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
@@ -3944,14 +3953,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const pathsMatch = (firstPath: string, secondPath: string) =>
     nodePath.resolve(firstPath) === nodePath.resolve(secondPath);
   const readPackForCompat = async (packPath: string, packReadingOptions: PackReadingOptions, displayName: string) => {
-    appData.currentlyReadingModPaths.push(packPath);
     mainWindow?.webContents.send("setCurrentlyReadingMod", displayName);
     try {
-      return await readPack(packPath, packReadingOptions);
+      return await readPackWhileRegistered(packPath, packReadingOptions);
     } finally {
-      appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
-        (currentlyReadingPath) => currentlyReadingPath !== packPath,
-      );
       mainWindow?.webContents.send("setLastModThatWasRead", displayName);
     }
   };
@@ -7912,7 +7917,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
       }
     }
-    console.log("CURRENTLY READING:", appData.currentlyReadingModPaths);
+    console.log("CURRENTLY READING:", packReads.reading());
     console.log("before join", dataFolder, packPath);
     if (!packPath.includes("\\")) {
       // if we provided pack name instead of pack path as argument
@@ -7987,14 +7992,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.packsData = appData.packsData.filter((pack) => !mods.some((mod) => mod.path == pack.path));
     }
     for (const mod of mods) {
-      if (
-        appData.currentlyReadingModPaths.every((path) => path != mod.path) &&
-        appData.packsData.every((pack) => pack.path != mod.path)
-      ) {
+      // Wait for a read of this mod already in flight before deciding. Skipping on it left the mod
+      // out of packsData entirely when parsing was asked for, since the filter above has already
+      // dropped it - a catalog built here would then be missing that mod altogether.
+      if (!(await packReads.waitUntilFree(mod.path))) {
+        console.log("readMods: waited too long for a read of", mod.path, "to end, reading it anyway");
+      }
+      if (appData.packsData.every((pack) => pack.path != mod.path)) {
         console.log("READING " + mod.name);
-        appData.currentlyReadingModPaths.push(mod.path);
         if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
-        const newPack = await readPack(mod.path, {
+        const newPack = await readPackWhileRegistered(mod.path, {
           skipParsingTables,
           readScripts,
           tablesToRead,
@@ -8002,7 +8009,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           readLocs,
         });
         if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
-        appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != mod.path);
         if (appData.packsData.every((pack) => pack.path != mod.path)) {
           appendPacksData(newPack, mod, emitToMainWindow);
         }
