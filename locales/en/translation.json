@@ -1117,5 +1117,7 @@
   "nodeEditorNoFlowsInPack": "No flows found in this pack.",
   "nodeEditorOpenFlow": "Open Flow",
   "nodeEditorOverwriteFlow": "Overwrite Flow?",
-  "nodeEditorOverwriteFlowPrompt": "A flow with this name already exists in the selected pack. Replace it?"
+  "nodeEditorOverwriteFlowPrompt": "A flow with this name already exists in the selected pack. Replace it?",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "Loaded flow into",
+  "nodeEditorSaveToOverwriteOpenFlow": "save to overwrite it."
 }

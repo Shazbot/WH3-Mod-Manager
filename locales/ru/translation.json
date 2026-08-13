@@ -1117,5 +1117,7 @@
   "nodeEditorNoFlowsInPack": "В этом пакете не найдено ни одного потока.",
   "nodeEditorOpenFlow": "Открытый поток",
   "nodeEditorOverwriteFlow": "Перезаписать поток?",
-  "nodeEditorOverwriteFlowPrompt": "Поток с таким именем уже существует в выбранном пакете. Заменить?"
+  "nodeEditorOverwriteFlowPrompt": "Поток с таким именем уже существует в выбранном пакете. Заменить?",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "Загруженный поток в",
+  "nodeEditorSaveToOverwriteOpenFlow": "сохраните, чтобы перезаписать его."
 }

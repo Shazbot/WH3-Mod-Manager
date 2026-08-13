@@ -15,7 +15,8 @@ interface FlowPackDialogProps {
   currentPack?: string;
   getFlowData: () => string;
   onClose: () => void;
-  onOpenFlow: (selection: { flowFile: string; packPath: string }) => void;
+  /** `content` is the flow's text when it was read out of a pack, so the editor can load it in place. */
+  onOpenFlow: (selection: { flowFile: string; packPath: string; content?: string }) => void;
 }
 
 const shortFlowName = (flowName: string) => flowName.replace(/^whmmflows[\\/]/i, "");
@@ -133,7 +134,8 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
 
   const openSelectedFlow = () => {
     if (!selectedPackPath || !selectedFlowName) return;
-    onOpenFlow({ packPath: selectedPackPath, flowFile: selectedFlowName });
+    const selectedFlow = flowFiles.find((flow) => flow.name === selectedFlowName);
+    onOpenFlow({ packPath: selectedPackPath, flowFile: selectedFlowName, content: selectedFlow?.content });
     onClose();
   };
 

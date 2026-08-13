@@ -665,13 +665,6 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
   const getSerializedFlowData = useCallback(() => JSON.stringify(serializeNodeGraph(), null, 2), [serializeNodeGraph]);
 
-  const openFlowFromPack = useCallback(
-    (selection: { flowFile: string; packPath: string }) => {
-      dispatch(selectFlowFile(selection));
-    },
-    [dispatch],
-  );
-
   const saveNodeGraph = useCallback(() => {
     const serializedGraph = serializeNodeGraph();
     const jsonString = JSON.stringify(serializedGraph, null, 2);
@@ -797,6 +790,34 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   );
   const loadNodeGraphRef = useRef(loadNodeGraph);
   loadNodeGraphRef.current = loadNodeGraph;
+
+  const openFlowFromPack = useCallback(
+    (selection: { flowFile: string; packPath: string; content?: string }) => {
+      // With a file open, a loaded flow replaces the graph in place instead of switching files: the
+      // editor keeps pointing at the open file, so Save overwrites it and the pack can be saved after.
+      if (selection.content !== undefined && currentFile && currentPack) {
+        // Discard a file read still in flight, otherwise it would land on top of the loaded graph.
+        flowLoadRequestIdRef.current++;
+        loadNodeGraph(selection.content);
+        dispatch(
+          addToast({
+            type: "success",
+            messages: [
+              `${localized.nodeEditorLoadedFlowIntoOpenFilePrefix || "Loaded flow into"} ${currentFile.replace(
+                /^whmmflows[\\/]/i,
+                "",
+              )} - ${localized.nodeEditorSaveToOverwriteOpenFlow || "save to overwrite it."}`,
+            ],
+            startTime: Date.now(),
+          }),
+        );
+        return;
+      }
+
+      dispatch(selectFlowFile({ flowFile: selection.flowFile, packPath: selection.packPath }));
+    },
+    [currentFile, currentPack, dispatch, loadNodeGraph, localized],
+  );
 
   const loadNodeGraphFile = useCallback(
     (file: File) => {

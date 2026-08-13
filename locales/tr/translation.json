@@ -1117,5 +1117,7 @@
   "nodeEditorNoFlowsInPack": "Bu pakette akış bulunamadı.",
   "nodeEditorOpenFlow": "Açık Akış",
   "nodeEditorOverwriteFlow": "Akışın Üzerine Yazılsın mı?",
-  "nodeEditorOverwriteFlowPrompt": "Seçilen pakette bu ada sahip bir akış zaten mevcut. Değiştirilsin mi?"
+  "nodeEditorOverwriteFlowPrompt": "Seçilen pakette bu ada sahip bir akış zaten mevcut. Değiştirilsin mi?",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "Yüklü akış",
+  "nodeEditorSaveToOverwriteOpenFlow": "üzerine yazmak için kaydedin."
 }

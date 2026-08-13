@@ -1117,5 +1117,7 @@
   "nodeEditorNoFlowsInPack": "이 팩에는 흐름이 없습니다.",
   "nodeEditorOpenFlow": "개방형 흐름",
   "nodeEditorOverwriteFlow": "흐름을 덮어쓰시겠습니까?",
-  "nodeEditorOverwriteFlowPrompt": "선택한 팩에 이 이름을 가진 흐름이 이미 존재합니다. 교체하시겠습니까?"
+  "nodeEditorOverwriteFlowPrompt": "선택한 팩에 이 이름을 가진 흐름이 이미 존재합니다. 교체하시겠습니까?",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "로드된 흐름",
+  "nodeEditorSaveToOverwriteOpenFlow": "덮어쓰려면 저장하세요."
 }

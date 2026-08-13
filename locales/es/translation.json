@@ -1117,5 +1117,7 @@
   "nodeEditorNoFlowsInPack": "No se encontraron flujos en este paquete.",
   "nodeEditorOpenFlow": "Flujo abierto",
   "nodeEditorOverwriteFlow": "¿Sobrescribir flujo?",
-  "nodeEditorOverwriteFlowPrompt": "Ya existe un flujo con este nombre en el paquete seleccionado. ¿Reemplazarlo?"
+  "nodeEditorOverwriteFlowPrompt": "Ya existe un flujo con este nombre en el paquete seleccionado. ¿Reemplazarlo?",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "Flujo cargado en",
+  "nodeEditorSaveToOverwriteOpenFlow": "guardar para sobrescribirlo."
 }

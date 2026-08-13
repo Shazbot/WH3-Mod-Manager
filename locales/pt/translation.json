@@ -1117,5 +1117,7 @@
   "nodeEditorNoFlowsInPack": "Nenhum fluxo encontrado neste pacote.",
   "nodeEditorOpenFlow": "Fluxo aberto",
   "nodeEditorOverwriteFlow": "Substituir fluxo?",
-  "nodeEditorOverwriteFlowPrompt": "Já existe um fluxo com este nome no pacote selecionado. Substituí-lo?"
+  "nodeEditorOverwriteFlowPrompt": "Já existe um fluxo com este nome no pacote selecionado. Substituí-lo?",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "Fluxo carregado em",
+  "nodeEditorSaveToOverwriteOpenFlow": "salve para substituí-lo."
 }

@@ -1117,5 +1117,7 @@
   "nodeEditorNoFlowsInPack": "W tym pakiecie nie znaleziono przepływów.",
   "nodeEditorOpenFlow": "Otwarty przepływ",
   "nodeEditorOverwriteFlow": "Zastąpić przepływ?",
-  "nodeEditorOverwriteFlowPrompt": "Przepływ o tej nazwie już istnieje w wybranym pakiecie. Wymienić?"
+  "nodeEditorOverwriteFlowPrompt": "Przepływ o tej nazwie już istnieje w wybranym pakiecie. Wymienić?",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "Załadowany przepływ do",
+  "nodeEditorSaveToOverwriteOpenFlow": "zapisz, aby go zastąpić."
 }

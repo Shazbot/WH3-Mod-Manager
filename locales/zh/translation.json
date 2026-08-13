@@ -1119,5 +1119,7 @@
   "nodeEditorNoFlowsInPack": "在此包中未找到任何流。",
   "nodeEditorOpenFlow": "开放流程",
   "nodeEditorOverwriteFlow": "覆盖流程？",
-  "nodeEditorOverwriteFlowPrompt": "所选包中已存在具有此名称的流。更换吗？"
+  "nodeEditorOverwriteFlowPrompt": "所选包中已存在具有此名称的流。更换吗？",
+  "nodeEditorLoadedFlowIntoOpenFilePrefix": "加载流量进入",
+  "nodeEditorSaveToOverwriteOpenFlow": "保存以覆盖它。"
 }
