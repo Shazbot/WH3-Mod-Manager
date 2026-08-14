@@ -1041,6 +1041,8 @@ const appSlice = createSlice({
       state.isCompatCheckingVanillaPacks =
         !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
+      state.isPresetAuthorEnabled = !!fromConfigAppState.isPresetAuthorEnabled;
+      state.arePresetThumbnailsEnabled = !!fromConfigAppState.arePresetThumbnailsEnabled;
       state.hiddenModNames = fromConfigAppState.hiddenModNames;
       state.alwaysEnabledModNames = fromConfigAppState.alwaysEnabledModNames;
       state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
@@ -1331,6 +1333,12 @@ const appSlice = createSlice({
     },
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
+    },
+    toggleIsPresetAuthorEnabled: (state: AppState) => {
+      state.isPresetAuthorEnabled = !state.isPresetAuthorEnabled;
+    },
+    toggleArePresetThumbnailsEnabled: (state: AppState) => {
+      state.arePresetThumbnailsEnabled = !state.arePresetThumbnailsEnabled;
     },
     toggleMakeUnitsGenerals: (state: AppState) => {
       state.isMakeUnitsGeneralsEnabled = !state.isMakeUnitsGeneralsEnabled;
@@ -1668,6 +1676,8 @@ export const {
   setWasOnboardingEverRun,
   toggleIsAuthorEnabled,
   toggleAreThumbnailsEnabled,
+  toggleIsPresetAuthorEnabled,
+  toggleArePresetThumbnailsEnabled,
   toggleIsClosedOnPlay,
   toggleIsUsingEnglishLocalizations,
   setIsDev,

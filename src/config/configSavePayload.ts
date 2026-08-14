@@ -91,6 +91,8 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       wasOnboardingEverRun: appState.wasOnboardingEverRun,
       isAuthorEnabled: appState.isAuthorEnabled,
       areThumbnailsEnabled: appState.areThumbnailsEnabled,
+      isPresetAuthorEnabled: appState.isPresetAuthorEnabled,
+      arePresetThumbnailsEnabled: appState.arePresetThumbnailsEnabled,
       isMakeUnitsGeneralsEnabled: appState.isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
       isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,

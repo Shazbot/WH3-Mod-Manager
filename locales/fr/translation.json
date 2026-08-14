@@ -75,6 +75,8 @@
   "clearOrder": "Effacer l'ordre",
   "resetAllOrder": "Réinitialiser tout l'ordre",
   "resetSelectedOrder": "Réinitialiser l'ordre sélectionné",
+  "showAuthor": "Afficher l'auteur",
+  "showThumbnail": "Afficher la miniature",
   "reordered": "réordonnés",
   "pinned": "épinglés",
   "missingDependenciesShort": "dépendances manquantes",

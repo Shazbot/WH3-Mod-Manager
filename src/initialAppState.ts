@@ -22,6 +22,8 @@ const initialState = {
   isClosedOnPlay: false,
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,
+  isPresetAuthorEnabled: false,
+  arePresetThumbnailsEnabled: false,
   isMakeUnitsGeneralsEnabled: false,
   requestFolderPathsForGame: undefined,
   isScriptLoggingEnabled: false,

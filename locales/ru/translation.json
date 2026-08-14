@@ -73,6 +73,8 @@
   "alwaysEnabledShort": "всегда",
   "resetAllOrder": "Сбросить весь порядок",
   "resetSelectedOrder": "Сбросить порядок выбранных",
+  "showAuthor": "Показывать автора",
+  "showThumbnail": "Показывать миниатюру",
   "reordered": "переставлено",
   "pinned": "закреплено",
   "missingDependenciesShort": "нехв. зависимостей",

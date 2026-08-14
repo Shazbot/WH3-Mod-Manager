@@ -73,6 +73,8 @@
   "alwaysEnabledShort": "siempre",
   "resetAllOrder": "Restablecer todo el orden",
   "resetSelectedOrder": "Restablecer orden seleccionado",
+  "showAuthor": "Mostrar autor",
+  "showThumbnail": "Mostrar miniatura",
   "reordered": "reordenados",
   "pinned": "fijados",
   "missingDependenciesShort": "dependencias faltantes",

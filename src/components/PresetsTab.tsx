@@ -11,6 +11,8 @@ import {
   applyPresetDraftMods,
   deletePreset,
   setModRowsSortingType,
+  toggleArePresetThumbnailsEnabled,
+  toggleIsPresetAuthorEnabled,
   updatePresetMods,
 } from "../appSlice";
 import selectStyle from "../styles/selectStyle";
@@ -71,6 +73,28 @@ const createPlaceholderMod = (name: string, userData?: StoredModUserData): Mod =
   categories: userData?.categories || [],
 });
 
+const domParser = new DOMParser();
+const decodeHtml = (encoded: string) => {
+  // Parsing is the expensive part and authors are searched on every keystroke, so skip the parse for
+  // the vast majority of names that hold no entity at all.
+  if (!encoded.includes("&")) return encoded;
+  const doc = domParser.parseFromString(encoded, "text/html");
+  return doc.documentElement.textContent ?? "";
+};
+
+/** Steam hands us doubly encoded authors, so one decode pass isn't always enough. */
+const getDecodedModAuthor = (mod: Mod) => decodeHtml(decodeHtml(mod.author ?? ""));
+
+const getModSearchHaystack = (mod: Mod, isAuthorIncluded: boolean) =>
+  `${mod.humanName} ${mod.name}${isAuthorIncluded ? ` ${getDecodedModAuthor(mod)}` : ""}`.toLowerCase();
+
+// Required lazily so this module still loads where the webpack asset loader isn't set up (tests).
+let defaultModThumbnailSrc: string | undefined;
+const getDefaultModThumbnailSrc = () => {
+  if (!defaultModThumbnailSrc) defaultModThumbnailSrc = require("../assets/modThumbnail.png");
+  return defaultModThumbnailSrc;
+};
+
 const areSetsEqual = (first: Set<string>, second: Set<string>) => {
   if (first.size !== second.size) return false;
   for (const value of first) {
@@ -105,6 +129,9 @@ const PresetsTab = memo(() => {
   const categories = useAppSelector((state) => state.app.categories);
   const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const isDev = useAppSelector((state) => state.app.isDev);
+  const isAuthorShown = useAppSelector((state) => state.app.isPresetAuthorEnabled);
+  const isThumbnailShown = useAppSelector((state) => state.app.arePresetThumbnailsEnabled);
 
   const [selectedPresetName, setSelectedPresetName] = useState<string | undefined>(undefined);
   const [pendingPresetName, setPendingPresetName] = useState<string | undefined>(undefined);
@@ -113,6 +140,7 @@ const PresetsTab = memo(() => {
   const [isSaveAsOpen, setIsSaveAsOpen] = useState(false);
   const [saveAsName, setSaveAsName] = useState("");
   const [saveAsError, setSaveAsError] = useState<string | undefined>(undefined);
+  const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 
   const [draftEnabledNames, setDraftEnabledNames] = useState<Set<string>>(new Set());
   const [draftLoadOrderByName, setDraftLoadOrderByName] = useState<Map<string, number>>(new Map());
@@ -131,6 +159,21 @@ const PresetsTab = memo(() => {
   const didInitializeFromCurrentPresetRef = useRef(false);
   const recentlyAddedTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inPresetRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const optionsMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOptionsMenuOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (optionsMenuRef.current?.contains(event.target as Node)) return;
+      setIsOptionsMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [isOptionsMenuOpen]);
 
   const installedMods = useMemo(() => {
     const mods = withoutDataAndContentDuplicates(currentPresetMods);
@@ -360,9 +403,9 @@ const PresetsTab = memo(() => {
     if (!searchInPreset.trim()) return mods;
     const query = searchInPreset.trim().toLowerCase();
     return mods.filter(
-      (mod) => recentlyAddedModNames.has(mod.name) || `${mod.humanName} ${mod.name}`.toLowerCase().includes(query),
+      (mod) => recentlyAddedModNames.has(mod.name) || getModSearchHaystack(mod, isAuthorShown).includes(query),
     );
-  }, [enabledDraftMods, inPresetCategoryFilter, placeMode, recentlyAddedModNames, searchInPreset]);
+  }, [enabledDraftMods, inPresetCategoryFilter, isAuthorShown, placeMode, recentlyAddedModNames, searchInPreset]);
 
   const visibleNotInPresetMods = useMemo(() => {
     let mods = notInPresetInstalledMods;
@@ -371,8 +414,8 @@ const PresetsTab = memo(() => {
     }
     if (!searchNotInPreset.trim()) return mods;
     const query = searchNotInPreset.trim().toLowerCase();
-    return mods.filter((mod) => `${mod.humanName} ${mod.name}`.toLowerCase().includes(query));
-  }, [categoryFilter, notInPresetInstalledMods, searchNotInPreset]);
+    return mods.filter((mod) => getModSearchHaystack(mod, isAuthorShown).includes(query));
+  }, [categoryFilter, isAuthorShown, notInPresetInstalledMods, searchNotInPreset]);
 
   const missingDependenciesByModName = useMemo(() => {
     const isDependencyEnabledByWorkshopId = (reqId: string): boolean => {
@@ -410,6 +453,29 @@ const PresetsTab = memo(() => {
   const getModDisplayName = useCallback((mod: Mod) => {
     return getMeaningfulHumanName(mod) ?? stripPackExtension(mod.name);
   }, []);
+
+  const getModThumbnailSrc = useCallback(
+    (mod: Mod) => (isDev || !mod.imgPath ? getDefaultModThumbnailSrc() : mod.imgPath),
+    [isDev],
+  );
+
+  const renderModAuthor = useCallback(
+    (mod: Mod) => {
+      if (!isAuthorShown) return null;
+      const author = getDecodedModAuthor(mod);
+      if (!author) return null;
+      return <div className="truncate text-xs text-slate-400">{author}</div>;
+    },
+    [isAuthorShown],
+  );
+
+  const renderModThumbnail = useCallback(
+    (mod: Mod) => {
+      if (!isThumbnailShown) return null;
+      return <img className="w-full aspect-square object-cover rounded-sm" src={getModThumbnailSrc(mod)} />;
+    },
+    [getModThumbnailSrc, isThumbnailShown],
+  );
 
   const missingDependencyIds = useMemo(() => {
     const ids = new Set<string>();
@@ -940,6 +1006,35 @@ const PresetsTab = memo(() => {
           </span>
         </div>
         <div className="col-span-4 flex justify-end gap-1.5 flex-nowrap min-w-0">
+          <div className="relative shrink-0" ref={optionsMenuRef}>
+            <button
+              className="bg-slate-700 hover:bg-slate-600 text-white text-sm px-3 py-2 rounded whitespace-nowrap"
+              onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
+              type="button"
+            >
+              {localized.options || "Options"}
+            </button>
+            {isOptionsMenuOpen && (
+              <div className="absolute right-0 z-[250] mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                  onClick={() => dispatch(toggleIsPresetAuthorEnabled())}
+                >
+                  <input type="checkbox" readOnly checked={isAuthorShown} className="pointer-events-none" />
+                  {localized.showAuthor || "Show author"}
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                  onClick={() => dispatch(toggleArePresetThumbnailsEnabled())}
+                >
+                  <input type="checkbox" readOnly checked={isThumbnailShown} className="pointer-events-none" />
+                  {localized.showThumbnail || "Show thumbnail"}
+                </button>
+              </div>
+            )}
+          </div>
           <button
             className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40 shrink-0 whitespace-nowrap"
             disabled={!isDirty || !selectedPresetName}
@@ -1062,7 +1157,10 @@ const PresetsTab = memo(() => {
                     }}
                     data-preset-mod-name={mod.name}
                     className={
-                      "grid grid-cols-[2.2rem_3rem_2.2rem_1fr_auto] gap-2 px-2 py-1 border-b border-slate-800 items-center transition-colors duration-700 " +
+                      "grid gap-2 px-2 py-1 border-b border-slate-800 items-center transition-colors duration-700 " +
+                      (isThumbnailShown
+                        ? "grid-cols-[2.2rem_3rem_2.2rem_4rem_1fr_auto] "
+                        : "grid-cols-[2.2rem_3rem_2.2rem_1fr_auto] ") +
                       (isRecentlyAdded
                         ? "bg-emerald-500/30 ring-1 ring-inset ring-emerald-400"
                         : isSelected
@@ -1099,18 +1197,22 @@ const PresetsTab = memo(() => {
                     >
                       <FontAwesomeIcon icon={faXmark} />
                     </button>
-                    <div className="truncate cursor-pointer" title={mod.name}>
-                      <span className={isMissing ? "text-amber-400" : ""}>{getModDisplayName(mod)}</span>
-                      {mod.isInData && <span className="ml-1 text-orange-500 font-semibold opacity-80">D</span>}
-                      <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />
-                      {isMissing && (
-                        <span className="ml-2 text-xs text-amber-400">{localized.missingModTag || "(missing)"}</span>
-                      )}
-                      {isAlwaysEnabled && (
-                        <span className="ml-2 text-xs text-violet-300">
-                          <FontAwesomeIcon icon={faLock} /> {localized.alwaysEnabledShort || "always"}
-                        </span>
-                      )}
+                    {isThumbnailShown && <div className="min-w-0">{renderModThumbnail(mod)}</div>}
+                    <div className="min-w-0 cursor-pointer" title={mod.name}>
+                      <div className="truncate">
+                        <span className={isMissing ? "text-amber-400" : ""}>{getModDisplayName(mod)}</span>
+                        {mod.isInData && <span className="ml-1 text-orange-500 font-semibold opacity-80">D</span>}
+                        <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />
+                        {isMissing && (
+                          <span className="ml-2 text-xs text-amber-400">{localized.missingModTag || "(missing)"}</span>
+                        )}
+                        {isAlwaysEnabled && (
+                          <span className="ml-2 text-xs text-violet-300">
+                            <FontAwesomeIcon icon={faLock} /> {localized.alwaysEnabledShort || "always"}
+                          </span>
+                        )}
+                      </div>
+                      {renderModAuthor(mod)}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -1256,7 +1358,8 @@ const PresetsTab = memo(() => {
                 <div
                   key={mod.name}
                   className={
-                    "grid grid-cols-[2.2rem_1fr_auto] gap-2 px-2 py-1 border-b border-slate-800 items-center " +
+                    "grid gap-2 px-2 py-1 border-b border-slate-800 items-center " +
+                    (isThumbnailShown ? "grid-cols-[2.2rem_4rem_1fr_auto] " : "grid-cols-[2.2rem_1fr_auto] ") +
                     (isSelected ? "bg-blue-900/40" : "")
                   }
                   onClick={() => onToggleNotInPresetSelection(mod.name)}
@@ -1275,10 +1378,14 @@ const PresetsTab = memo(() => {
                   >
                     <BsArrowDownUp />
                   </button>
-                  <div className="truncate cursor-pointer" title={mod.name}>
-                    {getModDisplayName(mod)}
-                    {mod.isInData && <span className="ml-1 text-orange-500 font-semibold">D</span>}
-                    <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />
+                  {isThumbnailShown && <div className="min-w-0">{renderModThumbnail(mod)}</div>}
+                  <div className="min-w-0 cursor-pointer" title={mod.name}>
+                    <div className="truncate">
+                      {getModDisplayName(mod)}
+                      {mod.isInData && <span className="ml-1 text-orange-500 font-semibold">D</span>}
+                      <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />
+                    </div>
+                    {renderModAuthor(mod)}
                   </div>
                   <button
                     className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40"

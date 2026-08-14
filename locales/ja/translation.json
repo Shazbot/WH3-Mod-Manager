@@ -73,6 +73,8 @@
   "alwaysEnabledShort": "常に",
   "resetAllOrder": "順序をすべてリセット",
   "resetSelectedOrder": "選択した順序をリセット",
+  "showAuthor": "作者を表示",
+  "showThumbnail": "サムネイルを表示",
   "reordered": "並べ替え",
   "pinned": "固定",
   "missingDependenciesShort": "依存不足",

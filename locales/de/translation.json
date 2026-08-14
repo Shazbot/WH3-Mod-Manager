@@ -73,6 +73,8 @@
   "alwaysEnabledShort": "immer",
   "resetAllOrder": "Gesamte Reihenfolge zurücksetzen",
   "resetSelectedOrder": "Ausgewählte Reihenfolge zurücksetzen",
+  "showAuthor": "Autor anzeigen",
+  "showThumbnail": "Vorschaubild anzeigen",
   "reordered": "neu sortiert",
   "pinned": "fixiert",
   "missingDependenciesShort": "fehlende Abhängigkeiten",

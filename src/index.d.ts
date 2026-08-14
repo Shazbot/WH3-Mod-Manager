@@ -181,6 +181,10 @@ declare global {
     isUsingEnglishLocalizations: boolean;
     isCompatCheckingVanillaPacks: boolean;
     isAuthorEnabled: boolean;
+    /** Show the mod author under the mod name in the presets tab lists. */
+    isPresetAuthorEnabled: boolean;
+    /** Show a thumbnail column in the presets tab lists. */
+    arePresetThumbnailsEnabled: boolean;
     isDev: boolean;
     isAdmin: boolean;
     startArgs: string[];
@@ -273,6 +277,8 @@ declare global {
     | "wasOnboardingEverRun"
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
+    | "isPresetAuthorEnabled"
+    | "arePresetThumbnailsEnabled"
     | "isMakeUnitsGeneralsEnabled"
     | "isScriptLoggingEnabled"
     | "isSkipIntroMoviesEnabled"

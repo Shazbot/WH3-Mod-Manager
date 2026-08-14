@@ -72,6 +72,8 @@
   "alwaysEnabledShort": "始终",
   "resetAllOrder": "重置全部顺序",
   "resetSelectedOrder": "重置所选顺序",
+  "showAuthor": "显示作者",
+  "showThumbnail": "显示缩略图",
   "reordered": "已重新排序",
   "pinned": "已固定",
   "missingDependenciesShort": "缺失依赖",

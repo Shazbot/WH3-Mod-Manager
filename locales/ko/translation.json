@@ -73,6 +73,8 @@
   "alwaysEnabledShort": "항상",
   "resetAllOrder": "전체 순서 재설정",
   "resetSelectedOrder": "선택한 순서 재설정",
+  "showAuthor": "작성자 표시",
+  "showThumbnail": "미리보기 이미지 표시",
   "reordered": "재정렬",
   "pinned": "고정됨",
   "missingDependenciesShort": "누락된 의존성",
