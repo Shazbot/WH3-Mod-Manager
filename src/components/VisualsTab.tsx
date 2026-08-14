@@ -57,7 +57,8 @@ const getTabLabel = (path: string) => {
 
 const VisualsTab = memo(() => {
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
-  const enabledMods = useAppSelector((state) => state.app.currentPreset.mods.filter((mod) => mod.isEnabled));
+  const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const enabledMods = useMemo(() => currentPresetMods.filter((mod) => mod.isEnabled), [currentPresetMods]);
 
   const [isLeftOpen] = useState(true);
   const [units, setUnits] = useState<VisualsUnitEntry[]>([]);
@@ -85,10 +86,14 @@ const VisualsTab = memo(() => {
   const unitClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const enabledModsKey = enabledMods
-    .map((mod) => `${mod.path}|${mod.loadOrder ?? ""}|${mod.name}`)
-    .sort()
-    .join("||");
+  const enabledModsKey = useMemo(
+    () =>
+      enabledMods
+        .map((mod) => `${mod.path}|${mod.loadOrder ?? ""}|${mod.name}`)
+        .sort()
+        .join("||"),
+    [enabledMods],
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
