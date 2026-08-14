@@ -832,7 +832,7 @@ const Categories = memo(() => {
   // Rows have to grow to fit whichever extras are switched on, otherwise the thumbnail gets clipped
   // and the author line has nowhere to go.
   const rowHeight = useMemo(() => {
-    if (isThumbnailShown) return 64;
+    if (isThumbnailShown) return 75;
     if (isAuthorShown) return 48;
     return 35;
   }, [isAuthorShown, isThumbnailShown]);
@@ -929,7 +929,7 @@ const Categories = memo(() => {
           const isDisabled = isCategoryRow(row) && row.allModPaths.length === 0;
 
           return (
-            <div className="flex h-full items-center justify-center">
+            <div className={`flex h-full items-center justify-center ${isThumbnailShown && "scale-125"}`}>
               <input
                 type="checkbox"
                 checked={row.isEnabled}
