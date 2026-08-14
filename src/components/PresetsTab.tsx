@@ -900,7 +900,7 @@ const PresetsTab = memo(() => {
     : null;
 
   return (
-    <div className="max-w-[100rem] mx-auto px-4 py-4 text-slate-100 h-full flex flex-col">
+    <div className="max-w-[120rem] mx-auto px-14 py-4 text-slate-100 h-full flex flex-col">
       <div className="grid grid-cols-12 gap-4 items-end">
         <div className="col-span-4">
           <div className="flex items-center gap-2">
