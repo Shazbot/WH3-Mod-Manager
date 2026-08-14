@@ -93,6 +93,8 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       areThumbnailsEnabled: appState.areThumbnailsEnabled,
       isPresetAuthorEnabled: appState.isPresetAuthorEnabled,
       arePresetThumbnailsEnabled: appState.arePresetThumbnailsEnabled,
+      isCategoryAuthorEnabled: appState.isCategoryAuthorEnabled,
+      areCategoryThumbnailsEnabled: appState.areCategoryThumbnailsEnabled,
       isMakeUnitsGeneralsEnabled: appState.isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
       isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,

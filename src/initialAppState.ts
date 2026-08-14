@@ -24,6 +24,8 @@ const initialState = {
   isAuthorEnabled: true,
   isPresetAuthorEnabled: false,
   arePresetThumbnailsEnabled: false,
+  isCategoryAuthorEnabled: false,
+  areCategoryThumbnailsEnabled: false,
   isMakeUnitsGeneralsEnabled: false,
   requestFolderPathsForGame: undefined,
   isScriptLoggingEnabled: false,

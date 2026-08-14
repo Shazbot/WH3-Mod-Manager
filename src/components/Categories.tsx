@@ -18,9 +18,18 @@ import { Tooltip } from "flowbite-react";
 import { ActionMeta, SingleValue } from "react-select";
 
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { addCategory, removeCategory, selectCategory, setAreModsEnabled, toggleMod } from "../appSlice";
+import {
+  addCategory,
+  removeCategory,
+  selectCategory,
+  setAreModsEnabled,
+  toggleAreCategoryThumbnailsEnabled,
+  toggleIsCategoryAuthorEnabled,
+  toggleMod,
+} from "../appSlice";
 import { useLocalizations } from "../localizationContext";
 import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
+import { getDecodedModAuthor, getModThumbnailSrc } from "../utility/frontend/modDisplay";
 import selectStyle from "../styles/selectStyle";
 import EditCategoriesModal from "./EditCategoriesModal";
 import ModDropdownOptions from "./ModDropdownOptions";
@@ -296,6 +305,8 @@ const Categories = memo(() => {
   const [isEditCategoriesModalOpen, setIsEditCategoriesModalOpen] = useState(false);
   const [enabledSortMode, setEnabledSortMode] = useState<EnabledSortMode>("none");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+  const optionsMenuRef = useRef<HTMLDivElement>(null);
 
   const [categoryFilterInput, setCategoryFilterInput] = useState("");
   const [nameFilterInput, setNameFilterInput] = useState("");
@@ -307,6 +318,23 @@ const Categories = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const categories = useAppSelector((state) => state.app.categories);
   const categoryColors = useAppSelector((state) => state.app.categoryColors || {});
+  const isDev = useAppSelector((state) => state.app.isDev);
+  const isAuthorShown = useAppSelector((state) => state.app.isCategoryAuthorEnabled);
+  const isThumbnailShown = useAppSelector((state) => state.app.areCategoryThumbnailsEnabled);
+
+  useEffect(() => {
+    if (!isOptionsMenuOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (optionsMenuRef.current?.contains(event.target as Node)) return;
+      setIsOptionsMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [isOptionsMenuOpen]);
   const categoriesWithUncategorized = useMemo(
     () => (categories.includes("Uncategorized") ? categories : categories.concat(["Uncategorized"])),
     [categories],
@@ -487,9 +515,13 @@ const Categories = memo(() => {
         .filter((name) => name !== "");
 
       for (const categoryGroup of data) {
-        categoryGroup.filteredMods = categoryGroup.filteredMods.filter((mod) =>
-          filterNames.some((filterName) => normalizeModLabel(mod).toLowerCase().includes(filterName)),
-        );
+        categoryGroup.filteredMods = categoryGroup.filteredMods.filter((mod) => {
+          // Only search what's on screen - matching a hidden author would look like a phantom match.
+          const haystack = `${normalizeModLabel(mod)}${
+            isAuthorShown ? ` ${getDecodedModAuthor(mod)}` : ""
+          }`.toLowerCase();
+          return filterNames.some((filterName) => haystack.includes(filterName));
+        });
       }
 
       data = data.filter((categoryGroup) => categoryGroup.filteredMods.length > 0);
@@ -550,7 +582,15 @@ const Categories = memo(() => {
     }
 
     return data;
-  }, [categoriesFilter, categoryFilter, enabledSortMode, groupedCategories, localized.noMatches, nameFilter]);
+  }, [
+    categoriesFilter,
+    categoryFilter,
+    enabledSortMode,
+    groupedCategories,
+    isAuthorShown,
+    localized.noMatches,
+    nameFilter,
+  ]);
 
   const displayedRows = useMemo(() => {
     const rows: CategoriesGridRow[] = [];
@@ -789,6 +829,19 @@ const Categories = memo(() => {
     [columnWidths],
   );
 
+  // Rows have to grow to fit whichever extras are switched on, otherwise the thumbnail gets clipped
+  // and the author line has nowhere to go.
+  const rowHeight = useMemo(() => {
+    if (isThumbnailShown) return 64;
+    if (isAuthorShown) return 48;
+    return 35;
+  }, [isAuthorShown, isThumbnailShown]);
+
+  // Already-rendered rows keep the height they were created with, so ask the grid to remeasure.
+  useEffect(() => {
+    gridRef.current?.api?.resetRowHeights();
+  }, [rowHeight]);
+
   const columnDefs = useMemo<Array<ColDef<CategoriesGridRow>>>(() => {
     const categorySizing = resolveColumnSizing("category", {
       width: undefined,
@@ -807,6 +860,12 @@ const Categories = memo(() => {
       minWidth: 260,
       maxWidth: undefined,
       flex: 1.8,
+    });
+    const thumbnailSizing = resolveColumnSizing("thumbnail", {
+      width: 70,
+      minWidth: 70,
+      maxWidth: undefined,
+      flex: undefined,
     });
     const categoriesSizing = resolveColumnSizing("categories", {
       width: undefined,
@@ -884,12 +943,53 @@ const Categories = memo(() => {
           );
         },
       },
+      ...(isThumbnailShown
+        ? [
+            {
+              headerName: localized.thumbnail,
+              colId: "thumbnail",
+              ...thumbnailSizing,
+              sortable: false,
+              resizable: false,
+              // The theme's horizontal cell padding eats most of a 70px column, leaving the image
+              // squished. This is the only column whose content is meant to span it edge to edge.
+              cellStyle: { padding: 0 },
+              cellRenderer: (params: CustomCellRendererProps<CategoriesGridRow>) => {
+                const row = params.data;
+                if (!row || isCategoryRow(row)) return null;
+
+                const mod = modByPath.get(row.path);
+                if (!mod) return null;
+
+                return (
+                  <div className="flex h-full items-center justify-center py-1">
+                    <img className="h-full aspect-square object-cover rounded-sm" src={getModThumbnailSrc(mod, isDev)} />
+                  </div>
+                );
+              },
+            } satisfies ColDef<CategoriesGridRow>,
+          ]
+        : []),
       {
         headerName: localized.name,
         colId: "humanName",
         ...nameSizing,
         valueGetter: (params) => (params.data && !isCategoryRow(params.data) ? params.data.humanName : ""),
         cellClass: (params) => (params.data && isCategoryRow(params.data) ? "font-semibold" : undefined),
+        cellRenderer: (params: CustomCellRendererProps<CategoriesGridRow>) => {
+          const row = params.data;
+          if (!row || isCategoryRow(row)) return null;
+
+          const mod = isAuthorShown ? modByPath.get(row.path) : undefined;
+          const author = mod ? getDecodedModAuthor(mod) : "";
+
+          return (
+            <div className="flex h-full flex-col justify-center leading-tight">
+              <span className="truncate">{row.humanName}</span>
+              {author !== "" && <span className="truncate text-xs text-gray-400">{author}</span>}
+            </div>
+          );
+        },
       },
       {
         headerName: localized.categories,
@@ -924,6 +1024,9 @@ const Categories = memo(() => {
     enabledSortMode,
     handleToggleEnabled,
     hiddenCategories,
+    isAuthorShown,
+    isDev,
+    isThumbnailShown,
     localized.categories,
     localized.category,
     localized.collapseAll,
@@ -931,6 +1034,7 @@ const Categories = memo(() => {
     localized.expandAll,
     localized.name,
     localized.removeBadge,
+    localized.thumbnail,
     modByPath,
     resolveColumnSizing,
     toggleCategoryVisibility,
@@ -1163,6 +1267,35 @@ const Categories = memo(() => {
           </span>
 
           <div className="text-center ml-auto flex gap-2">
+            <div className="relative" ref={optionsMenuRef}>
+              <button
+                onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
+                className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                type="button"
+              >
+                {localized.options || "Options"}
+              </button>
+              {isOptionsMenuOpen && (
+                <div className="absolute left-0 z-[250] w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                    onClick={() => dispatch(toggleIsCategoryAuthorEnabled())}
+                  >
+                    <input type="checkbox" readOnly checked={isAuthorShown} className="pointer-events-none" />
+                    {localized.showAuthor || "Show author"}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                    onClick={() => dispatch(toggleAreCategoryThumbnailsEnabled())}
+                  >
+                    <input type="checkbox" readOnly checked={isThumbnailShown} className="pointer-events-none" />
+                    {localized.showThumbnail || "Show thumbnail"}
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setIsEditCategoriesModalOpen(true)}
               className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
@@ -1197,7 +1330,7 @@ const Categories = memo(() => {
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             rowSelection={rowSelection}
-            rowHeight={35}
+            rowHeight={rowHeight}
             headerHeight={35}
             animateRows={false}
             suppressRowHoverHighlight={true}

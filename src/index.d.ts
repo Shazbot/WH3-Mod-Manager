@@ -185,6 +185,10 @@ declare global {
     isPresetAuthorEnabled: boolean;
     /** Show a thumbnail column in the presets tab lists. */
     arePresetThumbnailsEnabled: boolean;
+    /** Show the mod author under the mod name in the categories tab grid. */
+    isCategoryAuthorEnabled: boolean;
+    /** Show a thumbnail column in the categories tab grid. */
+    areCategoryThumbnailsEnabled: boolean;
     isDev: boolean;
     isAdmin: boolean;
     startArgs: string[];
@@ -279,6 +283,8 @@ declare global {
     | "areThumbnailsEnabled"
     | "isPresetAuthorEnabled"
     | "arePresetThumbnailsEnabled"
+    | "isCategoryAuthorEnabled"
+    | "areCategoryThumbnailsEnabled"
     | "isMakeUnitsGeneralsEnabled"
     | "isScriptLoggingEnabled"
     | "isSkipIntroMoviesEnabled"

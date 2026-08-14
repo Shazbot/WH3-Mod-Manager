@@ -27,6 +27,7 @@ import { isModAlwaysEnabled, withoutDataAndContentDuplicates } from "../modsHelp
 import { SortingType } from "../utility/modRowSorting";
 import { getModSourceId, getModSourceKind, resolveModsBySourcePriority } from "../modSources";
 import { isPresetModEnabled } from "../config/presetEntries";
+import { getDecodedModAuthor, getModThumbnailSrc } from "../utility/frontend/modDisplay";
 import CustomModFolderIcon from "./CustomModFolderIcon";
 
 type PresetOption = {
@@ -73,27 +74,8 @@ const createPlaceholderMod = (name: string, userData?: StoredModUserData): Mod =
   categories: userData?.categories || [],
 });
 
-const domParser = new DOMParser();
-const decodeHtml = (encoded: string) => {
-  // Parsing is the expensive part and authors are searched on every keystroke, so skip the parse for
-  // the vast majority of names that hold no entity at all.
-  if (!encoded.includes("&")) return encoded;
-  const doc = domParser.parseFromString(encoded, "text/html");
-  return doc.documentElement.textContent ?? "";
-};
-
-/** Steam hands us doubly encoded authors, so one decode pass isn't always enough. */
-const getDecodedModAuthor = (mod: Mod) => decodeHtml(decodeHtml(mod.author ?? ""));
-
 const getModSearchHaystack = (mod: Mod, isAuthorIncluded: boolean) =>
   `${mod.humanName} ${mod.name}${isAuthorIncluded ? ` ${getDecodedModAuthor(mod)}` : ""}`.toLowerCase();
-
-// Required lazily so this module still loads where the webpack asset loader isn't set up (tests).
-let defaultModThumbnailSrc: string | undefined;
-const getDefaultModThumbnailSrc = () => {
-  if (!defaultModThumbnailSrc) defaultModThumbnailSrc = require("../assets/modThumbnail.png");
-  return defaultModThumbnailSrc;
-};
 
 const areSetsEqual = (first: Set<string>, second: Set<string>) => {
   if (first.size !== second.size) return false;
@@ -454,11 +436,6 @@ const PresetsTab = memo(() => {
     return getMeaningfulHumanName(mod) ?? stripPackExtension(mod.name);
   }, []);
 
-  const getModThumbnailSrc = useCallback(
-    (mod: Mod) => (isDev || !mod.imgPath ? getDefaultModThumbnailSrc() : mod.imgPath),
-    [isDev],
-  );
-
   const renderModAuthor = useCallback(
     (mod: Mod) => {
       if (!isAuthorShown) return null;
@@ -472,9 +449,9 @@ const PresetsTab = memo(() => {
   const renderModThumbnail = useCallback(
     (mod: Mod) => {
       if (!isThumbnailShown) return null;
-      return <img className="w-full aspect-square object-cover rounded-sm" src={getModThumbnailSrc(mod)} />;
+      return <img className="w-full aspect-square object-cover rounded-sm" src={getModThumbnailSrc(mod, isDev)} />;
     },
-    [getModThumbnailSrc, isThumbnailShown],
+    [isDev, isThumbnailShown],
   );
 
   const missingDependencyIds = useMemo(() => {
