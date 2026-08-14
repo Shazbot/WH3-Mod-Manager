@@ -984,8 +984,8 @@ const PresetsTab = memo(() => {
         </div>
       )}
 
-      <div className="mt-3 grid grid-cols-12 gap-4 flex-1 min-h-0">
-        <div className="col-span-5 flex flex-col min-h-0">
+      <div className="mt-3 grid grid-cols-9 gap-4 flex-1 min-h-0">
+        <div className="col-span-4 flex flex-col min-h-0">
           <div className="mb-2 flex items-center justify-between">
             <span>{localized.inPreset || "In preset"}</span>
             <div className="flex items-center gap-2">
@@ -1175,7 +1175,7 @@ const PresetsTab = memo(() => {
           </div>
         </div>
 
-        <div className="col-span-2 flex flex-col justify-center items-center gap-2">
+        <div className="col-span-1 flex flex-col justify-center items-center gap-2">
           <button
             className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40"
             onClick={() => onAddAllToPreset()}
@@ -1213,7 +1213,7 @@ const PresetsTab = memo(() => {
           </button>
         </div>
 
-        <div className="col-span-5 flex flex-col min-h-0">
+        <div className="col-span-4 flex flex-col min-h-0">
           <div className="mb-2 flex items-center justify-between">
             <span>{localized.notInPreset || "Not in preset"}</span>
             <span className="text-xs opacity-80">
