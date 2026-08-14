@@ -223,7 +223,9 @@ const ModRow = memo(
           className={"flex place-items-center grid-area-autohide " + (areThumbnailsEnabled ? "" : "hidden")}
         >
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
-            {areThumbnailsEnabled && <img className="max-w-[6rem] aspect-square" src={thumbnailSrc}></img>}
+            {areThumbnailsEnabled && (
+              <img className="max-w-[6rem] aspect-square" src={thumbnailSrc} decoding="async"></img>
+            )}
           </label>
         </div>
         <div className="flex place-items-center w-min-[0px]" onContextMenu={(e) => onModRightClick(e, mod)}>

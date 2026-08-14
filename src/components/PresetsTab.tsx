@@ -449,7 +449,14 @@ const PresetsTab = memo(() => {
   const renderModThumbnail = useCallback(
     (mod: Mod) => {
       if (!isThumbnailShown) return null;
-      return <img className="w-full aspect-square object-cover rounded-sm" src={getModThumbnailSrc(mod, isDev)} />;
+      return (
+        <img
+          className="w-full aspect-square object-cover rounded-sm"
+          src={getModThumbnailSrc(mod, isDev)}
+          loading="lazy"
+          decoding="async"
+        />
+      );
     },
     [isDev, isThumbnailShown],
   );

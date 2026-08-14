@@ -963,7 +963,11 @@ const Categories = memo(() => {
 
                 return (
                   <div className="flex h-full items-center justify-center py-1">
-                    <img className="h-full aspect-square object-cover rounded-sm" src={getModThumbnailSrc(mod, isDev)} />
+                    <img
+                      className="h-full aspect-square object-cover rounded-sm"
+                      src={getModThumbnailSrc(mod, isDev)}
+                      decoding="async"
+                    />
                   </div>
                 );
               },
