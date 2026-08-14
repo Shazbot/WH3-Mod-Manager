@@ -18,6 +18,7 @@ export interface AssetBytes {
  */
 export const ICON_HOST = "icon";
 export const UNIT_ASSET_HOST = "unit-asset";
+export const MOD_THUMBNAIL_HOST = "mod-thumbnail";
 
 /**
  * Pack paths are compared case insensitively everywhere else, and a URL round trip is not
@@ -45,3 +46,12 @@ export const unitAssetUrl = (sessionId: string, assetPath: string) =>
   `${ASSET_SCHEME}://${UNIT_ASSET_HOST}/${encodeURIComponent(sessionId)}/${encodeURIComponent(
     normalizeAssetPath(assetPath),
   )}`;
+
+/**
+ * A mod's thumbnail, addressed by where it sits on disk.
+ *
+ * Not normalised the way pack paths are: this is a real filesystem path, it is matched against the
+ * path the mod was built with, and lowercasing it would not survive a case sensitive filesystem.
+ */
+export const modThumbnailUrl = (imgPath: string) =>
+  `${ASSET_SCHEME}://${MOD_THUMBNAIL_HOST}/${encodeURIComponent(imgPath)}`;

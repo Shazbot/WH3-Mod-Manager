@@ -12,6 +12,7 @@ import * as os from "os";
 import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from "./supportedGames";
 import { decodeHTML } from "entities";
 import { DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID } from "./modSources";
+import { registerModThumbnailPath } from "./modThumbnailAssets";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
@@ -328,6 +329,8 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     // eslint-disable-next-line no-empty
   } catch {}
 
+  if (doesThumbnailExist) registerModThumbnailPath(thumbnailPath);
+
   const linuxBit = process.platform === "linux" ? "Z:" : "";
   const mod: Mod = {
     humanName: "",
@@ -556,6 +559,7 @@ export async function getContentModInFolder(contentSubFolderName: string, log: (
   // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
   const packPath = nodePath.join(contentSubfolder, pack.name);
   const imgPath = (img && nodePath.join(contentSubfolder, img.name)) || "";
+  registerModThumbnailPath(imgPath);
   const mod: Mod = {
     author: "",
     humanName: "",
@@ -607,6 +611,7 @@ export async function getCustomMod(filePath: string, sourceId: string, log: (msg
       // A missing thumbnail is valid.
     }
   }
+  registerModThumbnailPath(imgPath);
 
   let mergedModsData = null;
   try {

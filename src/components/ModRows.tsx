@@ -40,8 +40,7 @@ import { MeasuredCellParent } from "react-virtualized/dist/es/CellMeasurer";
 import { GridCoreProps } from "react-virtualized/dist/es/Grid";
 import hash from "object-hash";
 import { getModSourceId, getModSourceKind } from "../modSources";
-
-const defaultModThumbnailSrc = require("../assets/modThumbnail.png");
+import { getModThumbnailSrc } from "../utility/frontend/modDisplay";
 
 const noHiddenModNames = new Set<string>();
 const REORDER_HIGHLIGHT_MS = 2400;
@@ -537,7 +536,7 @@ const ModRows = memo((props: ModRowsProps) => {
         hasDbCustomization: Boolean(customizableMods[mod.path]?.some((file) => file.startsWith("db\\"))),
         hasFlowCustomization: Boolean(customizableMods[mod.path]?.some((file) => file.startsWith("whmmflows\\"))),
         hasPackDataOverwrite: Boolean(packDataOverwrites[mod.path]),
-        thumbnailSrc: isDev || mod.imgPath === "" ? defaultModThumbnailSrc : mod.imgPath,
+        thumbnailSrc: getModThumbnailSrc(mod, isDev),
       })),
     [
       alwaysEnabledModNames,

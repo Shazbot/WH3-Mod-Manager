@@ -11,7 +11,17 @@
  * pressure - which JS strings in a Redux store can never be.
  */
 import { protocol } from "electron";
-import { ASSET_SCHEME, ICON_HOST, UNIT_ASSET_HOST, normalizeAssetPath, type AssetBytes } from "./assetUrls";
+import * as fs from "fs";
+import * as nodePath from "path";
+import {
+  ASSET_SCHEME,
+  ICON_HOST,
+  MOD_THUMBNAIL_HOST,
+  UNIT_ASSET_HOST,
+  normalizeAssetPath,
+  type AssetBytes,
+} from "./assetUrls";
+import { isRegisteredModThumbnailPath } from "./modThumbnailAssets";
 
 export { ASSET_SCHEME, iconAssetUrl, unitAssetUrl, type AssetBytes } from "./assetUrls";
 
@@ -62,7 +72,23 @@ export interface AssetProtocolResolvers {
 
 const notFound = () => new Response(undefined, { status: 404 });
 
-const respondWith = (asset: AssetBytes) => {
+/** The URL identifies the bytes, so what it addresses can never change under it. */
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/**
+ * A thumbnail URL is just a path, and the file behind a path can be replaced when a mod updates, so
+ * this one cannot be cached forever. A minute keeps scrolling a list on Chromium's decoded copy
+ * instead of re-reading the file, while a swapped image still appears without a restart.
+ */
+const MOD_THUMBNAIL_CACHE_CONTROL = "public, max-age=60";
+
+const MOD_THUMBNAIL_MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+};
+
+const respondWith = (asset: AssetBytes, cacheControl = IMMUTABLE_CACHE_CONTROL) => {
   // A view over the buffer rather than a copy of it: the bytes are already in memory, and copying
   // them per request would undo the point of not encoding them in the first place. A buffer read out
   // of a pack can be a view into a pooled allocation, so the offset and length have to come along;
@@ -73,17 +99,34 @@ const respondWith = (asset: AssetBytes) => {
     status: 200,
     headers: {
       "content-type": asset.mimeType,
-      // The URL identifies the bytes: icon URLs carry a generation and unit asset URLs a session id,
-      // both of which change when the underlying packs do.
-      "cache-control": "public, max-age=31536000, immutable",
+      // Icon URLs carry a generation and unit asset URLs a session id, both of which change when the
+      // underlying packs do; a thumbnail has no such buster and passes a shorter lifetime instead.
+      "cache-control": cacheControl,
     },
   });
 };
 
 /**
- * Nothing here reaches the filesystem: a request resolves to bytes already in memory, or to a file
- * inside a pack this session has registered, or to nothing. A path in the URL cannot escape into
- * anything the app was not already serving.
+ * The one asset read off the filesystem rather than out of a pack, and so the one that has to prove
+ * it is allowed: only a path some mod was built with is served, and only if it names an image.
+ */
+const serveModThumbnail = async (imgPath: string) => {
+  if (!imgPath || !isRegisteredModThumbnailPath(imgPath)) return notFound();
+  const mimeType = MOD_THUMBNAIL_MIME_TYPES[nodePath.extname(imgPath).toLowerCase()];
+  if (!mimeType) return notFound();
+  try {
+    return respondWith({ buffer: await fs.promises.readFile(imgPath), mimeType }, MOD_THUMBNAIL_CACHE_CONTROL);
+  } catch {
+    // Registered when the mod was built, gone by the time it was asked for.
+    return notFound();
+  }
+};
+
+/**
+ * A request resolves to bytes already in memory, to a file inside a pack this session has
+ * registered, to a thumbnail some mod was built with, or to nothing. Only that last case touches the
+ * filesystem, and it is checked against `modThumbnailAssets.ts` first, so a path in the URL cannot
+ * escape into anything the app was not already serving.
  */
 export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
   protocol.handle(ASSET_SCHEME, async (request) => {
@@ -102,6 +145,10 @@ export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
         if (!sessionId || !assetPath) return notFound();
         const asset = await resolvers.resolveUnitViewerAsset(sessionId, assetPath);
         return asset ? respondWith(asset) : notFound();
+      }
+      if (url.host === MOD_THUMBNAIL_HOST) {
+        // segments: [imgPath]
+        return await serveModThumbnail(segments[0] || "");
       }
       return notFound();
     } catch (error) {
