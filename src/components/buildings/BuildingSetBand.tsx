@@ -7,6 +7,7 @@ export type BuildingSetBandProps = {
   band: BoardBand;
   /** Shared by every band so the tiers read as continuous rows across the whole board. */
   rowCount: number;
+  buildingFrameUrl?: string;
   registerTileRef?: (levelKey: string, element: HTMLElement | null) => void;
   onTileContextMenu?: (tile: BuildingsTile, event: React.MouseEvent) => void;
   onBandContextMenu?: (setKey: string, setName: string, event: React.MouseEvent) => void;
@@ -18,7 +19,15 @@ export type BuildingSetBandProps = {
  * bottom, the way the game's construction panel does it.
  */
 const BuildingSetBand = memo(
-  ({ band, rowCount, registerTileRef, onTileContextMenu, onBandContextMenu, onTileHover }: BuildingSetBandProps) => (
+  ({
+    band,
+    rowCount,
+    buildingFrameUrl,
+    registerTileRef,
+    onTileContextMenu,
+    onBandContextMenu,
+    onTileHover,
+  }: BuildingSetBandProps) => (
     <section
       className="buildingSetBand flex shrink-0 flex-col"
       style={{ ["--building-band-colour" as string]: band.colour }}
@@ -38,6 +47,7 @@ const BuildingSetBand = memo(
               gridRow={cell.gridRow}
               gridColumn={cell.gridColumn}
               colour={band.colour}
+              buildingFrameUrl={buildingFrameUrl}
               registerRef={registerTileRef}
               onContextMenu={onTileContextMenu}
               onHover={onTileHover}

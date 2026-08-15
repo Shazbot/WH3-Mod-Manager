@@ -7,6 +7,7 @@ export type BuildingTileProps = {
   gridColumn: number;
   /** The band's `r, g, b`, used for the border so a tile reads as part of its set. */
   colour: string;
+  buildingFrameUrl?: string;
   registerRef?: (levelKey: string, element: HTMLElement | null) => void;
   onContextMenu?: (tile: BuildingsTile, event: React.MouseEvent) => void;
   onHover?: (tile: BuildingsTile | undefined, element: HTMLElement | undefined) => void;
@@ -52,7 +53,7 @@ const portraitStripStyle: React.CSSProperties = {
 };
 
 const BuildingTile = memo(
-  ({ tile, gridRow, gridColumn, colour, registerRef, onContextMenu, onHover }: BuildingTileProps) => {
+  ({ tile, gridRow, gridColumn, colour, buildingFrameUrl, registerRef, onContextMenu, onHover }: BuildingTileProps) => {
     const elementRef = useRef<HTMLButtonElement | null>(null);
 
     const setRef = useCallback(
@@ -101,10 +102,19 @@ const BuildingTile = memo(
           tile.isExistingInRegion ? "shadow-[inset_0_0_10px_rgba(255,215,120,0.45)]" : ""
         } ${!tile.visibleInUi || tile.hasNoVariant || tile.isRuin ? "opacity-60 grayscale" : ""}`}
       >
+        {buildingFrameUrl && (
+          <img
+            src={buildingFrameUrl}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 z-0 h-full w-full object-contain opacity-80"
+          />
+        )}
+
         {tile.iconUrl ? (
-          <img className="absolute inset-[8%] h-[84%] w-[84%] object-contain" src={tile.iconUrl} alt="" />
+          <img className="absolute inset-[8%] z-[1] h-[84%] w-[84%] object-contain" src={tile.iconUrl} alt="" />
         ) : (
-          <span className="absolute inset-0 flex items-center justify-center text-[0.55rem] leading-tight text-gray-500">
+          <span className="absolute inset-0 z-[1] flex items-center justify-center text-[0.55rem] leading-tight text-gray-500">
             no icon
           </span>
         )}

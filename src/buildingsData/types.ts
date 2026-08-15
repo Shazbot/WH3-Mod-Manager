@@ -172,6 +172,8 @@ export interface BuildingUnitRow {
 // ---------------------------------------------------------------------------
 
 export interface BuiltBuildingsData {
+  /** Vanilla construction-panel frame, cached as base64 so it survives the buildings disk cache. */
+  buildingFrame?: string;
   superChains: Record<string, string[]>;
   chains: Record<string, BuildingChainRow>;
   levelsByKey: Record<string, BuildingLevelRow>;
@@ -366,6 +368,8 @@ export interface BuildingsUpgradeEdge {
 
 export interface BuildingsRegionView {
   query: BuildingsRegionQuery;
+  /** Asset protocol URL for the shared vanilla frame drawn beneath each building icon. */
+  buildingFrameUrl?: string;
   bands: BuildingsSetBand[];
   edges: BuildingsUpgradeEdge[];
   /** Distinct settlement types the visible chains bind to; empty means: hide the dropdown. */

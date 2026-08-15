@@ -3084,6 +3084,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
 
   // --- Buildings -------------------------------------------------------------
+  const BUILDING_FRAME_PATH = "ui\\skins\\default\\building_frame.png";
+  const BUILDING_FRAME_PACK_NAME = "ui2.pack";
   /** Folders the game keeps building icons in. Scanned, not assumed: `icon` holds a bare name. */
   const BUILDING_ICON_PREFIXES = ["ui\\campaign ui\\building_icons\\", "ui\\buildings\\"];
   const IMAGE_EXTENSION = /\.(png|jpg|jpeg|webp|tga)$/i;
@@ -3094,11 +3096,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    * Vanilla names come from the global pack index, which answers both folder and exact-path lookups
    * without reopening ~260 pack indices. Enabled mods are few and still inspected directly.
    */
-  const buildBuildingIconIndex = async (
-    dataFolder: string,
-    vanillaPackPaths: string[],
-    modPackPaths: string[],
-  ) => {
+  const buildBuildingIconIndex = async (dataFolder: string, vanillaPackPaths: string[], modPackPaths: string[]) => {
     const byBaseName: Record<string, string> = {};
     const recordBuildingIcons = (packedFileNames: Iterable<string>) => {
       for (const name of packedFileNames) {
@@ -3192,7 +3190,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       .map((packName) => nodePath.join(dataFolder, packName));
     const modIconPackPaths = orderedEnabledMods.map((mod) => mod.path);
 
-    const identityPaths = [dbPackPath, ...localizationPackPaths, ...enabledMods.map((mod) => mod.path)];
+    const buildingFramePackPath = nodePath.join(dataFolder, BUILDING_FRAME_PACK_NAME);
+    const identityPaths = [
+      dbPackPath,
+      buildingFramePackPath,
+      ...localizationPackPaths,
+      ...enabledMods.map((mod) => mod.path),
+    ];
     const identities = await Promise.all(
       identityPaths.map(async (packPath) => {
         try {
@@ -3217,7 +3221,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (cachedBuildingsData?.signature === signature) return cachedBuildingsData;
     const diskData = await loadBuildingsDiskCache(app.getPath("userData"), signature);
     if (diskData) {
+      const hadBuildingFrame = !!diskData.buildingFrame;
       const icons = await registerBuildingIcons(diskData, dataFolder, vanillaIconPackPaths, modIconPackPaths);
+      if (!hadBuildingFrame && diskData.buildingFrame) {
+        await saveBuildingsDiskCache(app.getPath("userData"), signature, diskData);
+      }
       cachedBuildingsData = { signature, data: diskData, dbPackPath, ...icons };
       return cachedBuildingsData;
     }
@@ -3272,9 +3280,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       createBuildingsLocLookup([...vanillaLocLookups, ...orderedModPacks.map((pack) => getLocsTrie(pack))]),
     );
 
-    await saveBuildingsDiskCache(app.getPath("userData"), signature, data);
     releaseParsedTables(tablePacks, tablesToRead);
     const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
+    await saveBuildingsDiskCache(app.getPath("userData"), signature, data);
     cachedBuildingsData = { signature, data, dbPackPath, ...icons };
     return cachedBuildingsData;
   };
@@ -3286,6 +3294,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     vanillaPackPaths: string[],
     modPackPaths: string[],
   ) => {
+    let buildingFrame: AssetBytes | undefined;
+    if (data.buildingFrame) {
+      buildingFrame = { buffer: Buffer.from(data.buildingFrame, "base64"), mimeType: "image/png" };
+    } else {
+      const vanillaUiPackPath = vanillaPackPaths.find(
+        (packPath) => nodePath.basename(packPath).toLowerCase() === BUILDING_FRAME_PACK_NAME,
+      );
+      if (vanillaUiPackPath) {
+        const uiPack = (await getIconPacks([vanillaUiPackPath]))[0];
+        if (uiPack) {
+          const loadedFrame = await loadIconsFromPacks([uiPack], [BUILDING_FRAME_PATH]);
+          buildingFrame = loadedFrame[BUILDING_FRAME_PATH];
+          if (buildingFrame) data.buildingFrame = buildingFrame.buffer.toString("base64");
+        }
+      }
+    }
+
     const iconIndex = await buildBuildingIconIndex(dataFolder, vanillaPackPaths, modPackPaths);
     const iconPathByBaseName: Record<string, string> = {};
     for (const variants of Object.values(data.variantsByLevel)) {
@@ -3307,7 +3332,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       for (const unit of units) if (unit.cardPath) unitCardPaths.add(unit.cardPath);
     }
     const wantedPaths = Array.from(
-      new Set([...Object.values(iconPathByBaseName), ...effectIconPaths, ...unitCardPaths]),
+      new Set([
+        ...(buildingFrame ? [BUILDING_FRAME_PATH] : []),
+        ...Object.values(iconPathByBaseName),
+        ...effectIconPaths,
+        ...unitCardPaths,
+      ]),
     );
     const wantedPackPaths = new Set(
       wantedPaths.map(iconIndex.sourcePackPath).filter((packPath): packPath is string => !!packPath),
@@ -3315,6 +3345,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const neededPackPaths = [...vanillaPackPaths, ...modPackPaths].filter((packPath) => wantedPackPaths.has(packPath));
     const icons =
       wantedPaths.length > 0 ? await loadIconsFromPacks(await getIconPacks(neededPackPaths), wantedPaths) : {};
+    if (buildingFrame) icons[BUILDING_FRAME_PATH] = buildingFrame;
     return { iconPathByBaseName, icons, iconGeneration: registerIconAssets(icons) };
   };
 
@@ -3378,6 +3409,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const assetUrl = (packedFilePath: string | undefined) =>
       packedFilePath && built.icons[packedFilePath] ? iconAssetUrl(built.iconGeneration, packedFilePath) : undefined;
 
+    view.buildingFrameUrl = assetUrl(BUILDING_FRAME_PATH);
     for (const band of view.bands) {
       for (const column of band.columns) {
         for (const tile of column.tiles) {

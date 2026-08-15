@@ -93,6 +93,7 @@ const BuildingsBoard = memo(
               key={band.setKey}
               band={band}
               rowCount={layout.rowCount}
+              buildingFrameUrl={view.buildingFrameUrl}
               registerTileRef={registerTileRef}
               onTileContextMenu={onTileContextMenu}
               onBandContextMenu={onBandContextMenu}
