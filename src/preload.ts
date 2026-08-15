@@ -53,6 +53,7 @@ const api = {
   openInSteam: (url: string) => ipcRenderer.send("openInSteam", url),
   openPack: (path: string) => ipcRenderer.send("openPack", path),
   getPacksInSave: (saveName: string) => ipcRenderer.send("getPacksInSave", saveName),
+  requestSaves: () => ipcRenderer.send("requestSaves"),
   putPathInClipboard: (path: string) => ipcRenderer.send("putPathInClipboard", path),
   copyModToData: (path: string) => ipcRenderer.send("copyModToData", path),
   updateMod: (mod: Mod, contentMod: Mod) => ipcRenderer.send("updateMod", mod, contentMod),

@@ -4668,6 +4668,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("getPacksInSave", async (event, saveName: string) => {
     mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
   });
+  ipcMain.on("requestSaves", async () => {
+    mainWindow?.webContents.send("savesPopulated", await getSaveFiles());
+  });
   ipcMain.handle("getListOfPacksInSave", async (event, saveName: string) => {
     return getPacksInSave(saveName);
   });

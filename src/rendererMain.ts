@@ -269,6 +269,7 @@ window.api?.setOutdatedPackFiles((event, outdatedPackFiles) => {
 window.api?.savesPopulated((event, saves: GameSave[]) => {
   store.dispatch(setSaves(saves));
 });
+window.api?.requestSaves();
 
 window.api?.setModData((event, modDatas: ModData[]) => {
   store.dispatch(setModData(modDatas));
