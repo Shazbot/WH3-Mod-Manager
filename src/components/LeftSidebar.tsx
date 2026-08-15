@@ -5,7 +5,7 @@ import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
 import { FaProjectDiagram } from "react-icons/fa";
 import { BsCollection, BsDiagram3, BsPersonVcard } from "react-icons/bs";
-import { GiCrossedSwords } from "react-icons/gi";
+import { GiCastle, GiCrossedSwords } from "react-icons/gi";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -24,15 +24,24 @@ const LeftSidebar = memo(() => {
   const isSkillsTabVisible = currentGame === "wh3" && skillTreesDisplayMode === "tab";
   const isTechTreesTabVisible = currentGame === "wh3" && technologyTreesDisplayMode === "tab";
   const isUnitViewerVisible = currentGame === "wh3";
+  const isBuildingsTabVisible = currentGame === "wh3";
   const tabIndexToTabType: MainWindowTab[] = useMemo(() => {
     const tabs: MainWindowTab[] = ["mods", "enabledMods", "categories", "presets"];
     if (isSkillsTabVisible) tabs.push("skills");
     if (isUnitViewerVisible) tabs.push("unitViewer");
     if (showVisualsTab) tabs.push("visuals");
     if (isTechTreesTabVisible) tabs.push("techTrees");
+    if (isBuildingsTabVisible) tabs.push("buildings");
     if (isFeaturesForModdersEnabled) tabs.push("nodeEditor");
     return tabs;
-  }, [isFeaturesForModdersEnabled, isSkillsTabVisible, isTechTreesTabVisible, isUnitViewerVisible, showVisualsTab]);
+  }, [
+    isBuildingsTabVisible,
+    isFeaturesForModdersEnabled,
+    isSkillsTabVisible,
+    isTechTreesTabVisible,
+    isUnitViewerVisible,
+    showVisualsTab,
+  ]);
 
   const onTabSelected = (index: number) => {
     const tabType = tabIndexToTabType[index];
@@ -156,6 +165,17 @@ const LeftSidebar = memo(() => {
                 <span className="ml-2 mr-2 hidden-child">{localized.techTreesTab || "Tech Trees"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("techTrees") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {isBuildingsTabVisible && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <GiCastle size="1.35rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.buildingsTab || "Buildings"}</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("buildings") + 1}
                 </span>
               </div>
             </Tab>

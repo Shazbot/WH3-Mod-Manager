@@ -19,6 +19,9 @@ vi.mock("../src/components/skillsViewer/SkillsTab", () => ({
 vi.mock("../src/components/techTrees/TechTreesTab", () => ({
   default: () => <input aria-label="Tech trees state" defaultValue="" />,
 }));
+vi.mock("../src/components/buildings/BuildingsTab", () => ({
+  default: () => <input aria-label="Buildings state" defaultValue="" />,
+}));
 vi.mock("../src/components/PresetsTab", () => ({ default: () => <div /> }));
 vi.mock("../src/components/Categories", () => ({ default: () => <div>Categories tab</div> }));
 vi.mock("../src/components/ModRows", () => ({ default: () => <div /> }));
@@ -54,7 +57,7 @@ describe("main tab persistence", () => {
   /** Opened, edited, switched away from and returned to: the same element with the same value. */
   const expectTabKeepsItsState = (
     store: ReturnType<typeof renderMain>,
-    tab: "visuals" | "skills" | "techTrees",
+    tab: "visuals" | "skills" | "techTrees" | "buildings",
     label: string,
   ) => {
     expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
@@ -82,6 +85,19 @@ describe("main tab persistence", () => {
 
   it("lazily mounts Tech Trees and keeps its state after switching away", () => {
     expectTabKeepsItsState(renderMain(), "techTrees", "Tech trees state");
+  });
+
+  it("lazily mounts Buildings and keeps its state after switching away", () => {
+    expectTabKeepsItsState(renderMain(), "buildings", "Buildings state");
+  });
+
+  it("does not mount Buildings for a game that has none", () => {
+    const store = renderMain({ currentGame: "wh2" as const });
+
+    act(() => store.dispatch(setCurrentTab("buildings")));
+
+    expect(store.getState().app.currentTab).toBe("mods");
+    expect(screen.queryByLabelText("Buildings state")).not.toBeInTheDocument();
   });
 
   it("does not mount Tech Trees for a game that has none", () => {

@@ -41,6 +41,8 @@ const isMainWindowTabAvailable = (state: AppState, tab: MainWindowTab) => {
       return state.currentGame === "wh3";
     case "techTrees":
       return state.currentGame === "wh3" && state.technologyTreesDisplayMode === "tab";
+    case "buildings":
+      return state.currentGame === "wh3";
     case "nodeEditor":
       return state.isFeaturesForModdersEnabled;
     case "twui":

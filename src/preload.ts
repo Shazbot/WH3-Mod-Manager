@@ -9,6 +9,13 @@ import type {
   UnitViewerCatalogResponse,
   UnitViewerDetailsResponse,
 } from "./unitViewer/types";
+import type {
+  BuildingsCaiRowsResponse,
+  BuildingsCatalogResponse,
+  BuildingsRegionQuery,
+  BuildingsRegionViewResponse,
+} from "./buildingsData/types";
+import type { BuildingsEditState } from "./buildingsData/edits";
 
 console.log("IN PRELOAD");
 
@@ -237,6 +244,16 @@ const api = {
     payload: SaveTechnologyChangesPayload,
   ): Promise<{ success: boolean; packName?: string; packPath?: string; warning?: string; error?: string }> =>
     ipcRenderer.invoke("saveTechnologyChanges", payload),
+  getBuildingsCatalog: (enabledMods: Mod[]): Promise<BuildingsCatalogResponse> =>
+    ipcRenderer.invoke("getBuildingsCatalog", enabledMods),
+  getBuildingsRegionView: (
+    enabledMods: Mod[],
+    query: BuildingsRegionQuery,
+    pendingEdits?: BuildingsEditState,
+  ): Promise<BuildingsRegionViewResponse> =>
+    ipcRenderer.invoke("getBuildingsRegionView", enabledMods, query, pendingEdits),
+  getBuildingsCaiRows: (enabledMods: Mod[], chainKey: string): Promise<BuildingsCaiRowsResponse> =>
+    ipcRenderer.invoke("getBuildingsCaiRows", enabledMods, chainKey),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) => ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("setPackSearchResults", callback),

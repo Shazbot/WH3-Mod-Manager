@@ -12,6 +12,7 @@ import TechTreesTab from "./techTrees/TechTreesTab";
 import SkillsTab from "./skillsViewer/SkillsTab";
 import { gameToPackWithDBTablesName } from "../supportedGames";
 import UnitViewerTab from "./UnitViewerTab";
+import BuildingsTab from "./buildings/BuildingsTab";
 
 type MainProps = {
   scrollElement: RefObject<HTMLDivElement>;
@@ -29,13 +30,16 @@ const Main = (props: MainProps) => {
   const isVisualsTab = currentTab == "visuals" && isFeaturesForModdersEnabled;
   const isSkillsTab = currentTab == "skills";
   const isTechTreesTab = currentTab == "techTrees" && isTechnologyTreesSupported;
+  const isBuildingsTab = currentTab == "buildings" && currentGame === "wh3";
   // Stateful tabs stay mounted once opened so switching tabs preserves their in-memory work.
   const isNodeEditorMounted = useKeepMountedOnceActive(isNodeEditorTab);
   const isUnitViewerMounted = useKeepMountedOnceActive(isUnitViewerTab);
   const isVisualsMounted = useKeepMountedOnceActive(isVisualsTab);
   const isSkillsMounted = useKeepMountedOnceActive(isSkillsTab);
   const isTechTreesMounted = useKeepMountedOnceActive(isTechTreesTab);
-  const isKeptMountedTab = isNodeEditorTab || isUnitViewerTab || isVisualsTab || isSkillsTab || isTechTreesTab;
+  const isBuildingsMounted = useKeepMountedOnceActive(isBuildingsTab);
+  const isKeptMountedTab =
+    isNodeEditorTab || isUnitViewerTab || isVisualsTab || isSkillsTab || isTechTreesTab || isBuildingsTab;
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =
@@ -74,6 +78,12 @@ const Main = (props: MainProps) => {
       {isTechTreesMounted && (
         <div className={isTechTreesTab ? undefined : "hidden"}>
           <TechTreesTab />
+        </div>
+      )}
+
+      {isBuildingsMounted && (
+        <div className={isBuildingsTab ? undefined : "hidden"}>
+          <BuildingsTab isActive={isBuildingsTab} />
         </div>
       )}
 

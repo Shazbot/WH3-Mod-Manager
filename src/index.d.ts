@@ -1050,6 +1050,7 @@ declare global {
     | "unitViewer"
     | "twui"
     | "techTrees"
+    | "buildings"
     | "nodeEditor"
     | "presets";
 

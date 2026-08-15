@@ -1,6 +1,10 @@
 import { AmendedSchemaField } from "@/src/packFileTypes";
+import type { TableCellValue } from "@/src/utility/dbRowCells";
 
-export type TableCellValue = string | number | boolean;
+// Defined next to the cell builders that produce these values, and re-exported here so the grid's
+// existing importers do not have to move.
+export type { TableCellValue } from "@/src/utility/dbRowCells";
+
 export type PreparedRowData = Record<string, TableCellValue | string> & { __rowId: string };
 
 export interface ColumnWidthHint {

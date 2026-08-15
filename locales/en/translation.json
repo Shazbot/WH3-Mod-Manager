@@ -1066,6 +1066,7 @@
   "visualsTab": "Visuals",
   "unitViewerTab": "Unit Viewer",
   "techTreesTab": "Tech Trees",
+  "buildingsTab": "Buildings",
   "nodeEditorTab": "Node Editor",
   "modFolders": "Mod Folders",
   "modFoldersHelp": "Add folders containing pack files and order them from highest to lowest priority.",

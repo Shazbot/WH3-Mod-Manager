@@ -34,6 +34,22 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import { buildBuildingsData, createBuildingsLocLookup, BUILDINGS_TABLES } from "./buildingsData/data";
+import { resolveRegionBuildings } from "./buildingsData/derive";
+import { applyNewRowsToBuiltData } from "./buildingsData/applyEdits";
+import { validateNewRows } from "./buildingsData/validate";
+import type { BuildingsEditState } from "./buildingsData/edits";
+import { clearBuildingsMemoryCache, loadBuildingsDiskCache, saveBuildingsDiskCache } from "./buildingsData/cache";
+import type {
+  BuildingsCatalog,
+  BuildingsCaiRowsResponse,
+  BuildingsCatalogResponse,
+  BuildingsRegionQuery,
+  BuildingsRegionView,
+  BuildingsRegionViewResponse,
+  BuildingsTableRows,
+  BuiltBuildingsData,
+} from "./buildingsData/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
 import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
 import {
@@ -131,6 +147,7 @@ import {
 import {
   AmendedSchemaField,
   DBField,
+  DBVersion,
   LocFields,
   NewPackedFile,
   Pack,
@@ -178,6 +195,9 @@ import {
   unitAssetUrl,
   type AssetBytes,
 } from "./assetProtocol";
+import { normalizeAssetPath } from "./assetUrls";
+import { collectVanillaFilesUnderPrefix, findVanillaPackContaining } from "./vanillaPackIndex/format";
+import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import {
   gameToGameName,
   gameToPackWithDBTablesName,
@@ -306,6 +326,81 @@ type UnitViewerSession = {
 const unitViewerSessions = new Map<string, UnitViewerSession>();
 const UNIT_VIEWER_ASSET_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 let cachedUnitViewerData: { signature: string; data: BuiltUnitViewerData; assetPackPaths: string[] } | undefined;
+type CachedBuildingsData = {
+  signature: string;
+  data: BuiltBuildingsData;
+  dbPackPath: string;
+  /** Variant `icon` cell, normalised to a bare lowercase name -> the packed file that holds it. */
+  iconPathByBaseName: Record<string, string>;
+  icons: Record<string, AssetBytes>;
+  iconGeneration: number;
+};
+let cachedBuildingsData: CachedBuildingsData | undefined;
+// Cache for vanilla pack file name lists, keyed by pack path.
+// Allows skipping readPack() on startup when the pack hasn't changed. Module scope rather than
+// inside registerIpcMainListeners so anything that only needs a pack's file names - the buildings
+// icon scan, for one - can reuse it instead of reading the pack again.
+interface VanillaPackFilesCacheEntry {
+  size: number;
+  lastChangedLocal: number;
+  packedFileNames: string[];
+}
+type VanillaPackFilesCache = Record<string, VanillaPackFilesCacheEntry>;
+const VANILLA_PACK_FILES_CACHE_FILE = "vanilla-pack-files-cache.bin";
+let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
+const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache> => {
+  if (vanillaPackFilesCache !== null) return vanillaPackFilesCache;
+  try {
+    const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
+    const compressed = await fs.promises.readFile(cacheFilePath);
+    const json = await zstdDecompress(compressed);
+    vanillaPackFilesCache = JSON.parse(json.toString("utf8")) as VanillaPackFilesCache;
+    return vanillaPackFilesCache!;
+  } catch {
+    vanillaPackFilesCache = {};
+    return vanillaPackFilesCache;
+  }
+};
+const saveVanillaPackFilesCache = async (): Promise<void> => {
+  if (!vanillaPackFilesCache) return;
+  try {
+    const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
+    const json = Buffer.from(JSON.stringify(vanillaPackFilesCache), "utf8");
+    const compressed = await zstdCompress(json, 1);
+    await fs.promises.writeFile(cacheFilePath, compressed);
+  } catch (err) {
+    console.error("Failed to save vanilla pack files cache:", err);
+  }
+};
+
+/**
+ * A pack's file names, from the cache when its size and mtime still match.
+ *
+ * The names are all an icon lookup needs, and reading a pack just to list them costs a full index
+ * parse per pack - about 260 of them for wh3. Populates the cache for packs the startup path never
+ * touched, so the second call in a session is free.
+ */
+const getVanillaPackedFileNames = async (packPath: string): Promise<string[]> => {
+  const cache = await loadVanillaPackFilesCache();
+  let stat: fs.Stats | undefined;
+  try {
+    stat = await fs.promises.stat(packPath);
+  } catch {
+    return [];
+  }
+  const entry = cache[packPath];
+  if (entry && entry.size === stat.size && entry.lastChangedLocal === stat.mtimeMs) return entry.packedFileNames;
+
+  const alreadyRead = appData.packsData.find((pack) => pack.path == packPath);
+  const packedFileNames = alreadyRead
+    ? alreadyRead.packedFiles.map((packedFile) => packedFile.name)
+    : (await readPack(packPath, { skipParsingTables: true })).packedFiles.map((packedFile) => packedFile.name);
+
+  cache[packPath] = { size: stat.size, lastChangedLocal: stat.mtimeMs, packedFileNames };
+  await saveVanillaPackFilesCache();
+  return packedFileNames;
+};
+
 const visualsSessions = new Map<string, VisualsSession>();
 const visualsPackIndexes = new Map<string, { size: number; mtimeMs: number; pack: Pack }>();
 const VISUALS_DATA_CACHE_FILE = "visuals-data-cache.bin";
@@ -2987,6 +3082,372 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       return cachedTechnologyData;
     });
   };
+
+  // --- Buildings -------------------------------------------------------------
+  /** Folders the game keeps building icons in. Scanned, not assumed: `icon` holds a bare name. */
+  const BUILDING_ICON_PREFIXES = ["ui\\campaign ui\\building_icons\\", "ui\\buildings\\"];
+  const IMAGE_EXTENSION = /\.(png|jpg|jpeg|webp|tga)$/i;
+
+  /**
+   * `basename without extension` -> full packed file path, for every building icon in the packs.
+   *
+   * Vanilla names come from the global pack index, which answers both folder and exact-path lookups
+   * without reopening ~260 pack indices. Enabled mods are few and still inspected directly.
+   */
+  const buildBuildingIconIndex = async (
+    dataFolder: string,
+    vanillaPackPaths: string[],
+    modPackPaths: string[],
+  ) => {
+    const byBaseName: Record<string, string> = {};
+    const recordBuildingIcons = (packedFileNames: Iterable<string>) => {
+      for (const name of packedFileNames) {
+        const lower = name.toLowerCase();
+        if (!BUILDING_ICON_PREFIXES.some((prefix) => lower.startsWith(prefix))) continue;
+        if (!IMAGE_EXTENSION.test(lower)) continue;
+        const baseName = lower.slice(lower.lastIndexOf("\\") + 1).replace(IMAGE_EXTENSION, "");
+        byBaseName[baseName] = name;
+      }
+    };
+
+    const vanillaIndex = await getVanillaPackIndex();
+    const fallbackVanillaNames = new Map<string, Set<string>>();
+    if (vanillaIndex) {
+      for (const prefix of BUILDING_ICON_PREFIXES) {
+        recordBuildingIcons(collectVanillaFilesUnderPrefix(vanillaIndex, prefix).keys());
+      }
+    } else {
+      // The global index can be unavailable after a failed build. Preserve a slower path rather than
+      // losing every building image, but retain its results in the older per-pack filename cache.
+      for (const packPath of vanillaPackPaths) {
+        try {
+          const names = await getVanillaPackedFileNames(packPath);
+          fallbackVanillaNames.set(packPath, new Set(names.map(normalizeAssetPath)));
+          recordBuildingIcons(names);
+        } catch {
+          // One unreadable art pack must not take down the Buildings panel.
+        }
+      }
+    }
+
+    const modNames = new Map<string, Set<string>>();
+    for (const packPath of modPackPaths) {
+      try {
+        const names = await getVanillaPackedFileNames(packPath);
+        modNames.set(packPath, new Set(names.map(normalizeAssetPath)));
+        // Mods follow vanilla and later mods win, matching game load order.
+        recordBuildingIcons(names);
+      } catch {
+        // An unreadable mod cannot contribute an icon, but its tables were handled separately.
+      }
+    }
+
+    const sourcePackPath = (assetPath: string): string | undefined => {
+      const normalized = normalizeAssetPath(assetPath);
+      let source: string | undefined;
+      if (vanillaIndex) {
+        const packName = findVanillaPackContaining(vanillaIndex, normalized);
+        source = packName ? nodePath.join(dataFolder, packName) : undefined;
+      } else {
+        source = vanillaPackPaths.findLast((packPath) => fallbackVanillaNames.get(packPath)?.has(normalized));
+      }
+      for (const packPath of modPackPaths) {
+        if (modNames.get(packPath)?.has(normalized)) source = packPath;
+      }
+      return source;
+    };
+
+    return { byBaseName, sourcePackPath };
+  };
+
+  /** Strips any folder and extension so a raw `icon` cell can be matched against the index. */
+  const buildingIconBaseName = (icon: string) => {
+    const normalized = icon.replace(/\//g, "\\").toLowerCase();
+    return normalized.slice(normalized.lastIndexOf("\\") + 1).replace(IMAGE_EXTENSION, "");
+  };
+
+  const buildBuildingsSessionData = async (enabledMods: Mod[]): Promise<CachedBuildingsData> => {
+    if (appData.currentGame !== "wh3") throw new Error("Buildings are available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+
+    const tablesToRead = Array.from(
+      new Set(
+        BUILDINGS_TABLES.flatMap((tableName) =>
+          resolveTable(tableName).map((resolvedTable) => `db\\${resolvedTable}\\`),
+        ),
+      ),
+    );
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
+    const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
+    const vanillaIconPackPaths = [...appData.allVanillaPackNames]
+      .filter(
+        (packName) =>
+          !packName.startsWith("audio_") &&
+          !packName.startsWith("movies") &&
+          !packName.startsWith("terrain") &&
+          !packName.startsWith("tile"),
+      )
+      .map((packName) => nodePath.join(dataFolder, packName));
+    const modIconPackPaths = orderedEnabledMods.map((mod) => mod.path);
+
+    const identityPaths = [dbPackPath, ...localizationPackPaths, ...enabledMods.map((mod) => mod.path)];
+    const identities = await Promise.all(
+      identityPaths.map(async (packPath) => {
+        try {
+          const stat = await fs.promises.stat(packPath);
+          return [nodePath.resolve(packPath), stat.size, stat.mtimeMs] as const;
+        } catch {
+          return [nodePath.resolve(packPath), -1, -1] as const;
+        }
+      }),
+    );
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify({
+          feature: 1,
+          game: appData.currentGame,
+          schema: getVisualsSchemaHash(appData.currentGame),
+          mods: getUnitViewerSignature(enabledMods),
+          identities,
+        }),
+      )
+      .digest("hex");
+    if (cachedBuildingsData?.signature === signature) return cachedBuildingsData;
+    const diskData = await loadBuildingsDiskCache(app.getPath("userData"), signature);
+    if (diskData) {
+      const icons = await registerBuildingIcons(diskData, dataFolder, vanillaIconPackPaths, modIconPackPaths);
+      cachedBuildingsData = { signature, data: diskData, dbPackPath, ...icons };
+      return cachedBuildingsData;
+    }
+
+    const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
+    const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
+    if (unservedPrefixes.length === 0) {
+      indexedDbPack.readTables = [...tablesToRead];
+      appendPacksData(indexedDbPack, undefined, false);
+    } else {
+      // Worth knowing which ones: a prefix the vanilla db cache cannot serve puts this whole build
+      // on the slow path, and the start_pos_* family is the one most likely to be the culprit.
+      console.log("buildBuildingsSessionData: prefixes the vanilla db cache did not serve:", unservedPrefixes);
+      const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
+      if (readDbPacks.length === 0) throw new Error("The game's database pack could not be read for Buildings");
+    }
+    if (enabledMods.length > 0) {
+      await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
+    }
+    // Read separately from the tables: readVanillaPackFromCache refuses any request with readLocs,
+    // so combining the two would give up the cache for the whole build.
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+
+    const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    const dbPack = packsByPath.get(dbPackPath);
+    if (!dbPack) throw new Error("Could not read db.pack for Buildings");
+    // Files present but no rows means the rows this build filled in were released underneath it.
+    // Caching that would serve a buildings-less catalog until the mod list changes.
+    const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
+    if (unparsedVanillaPrefixes.length > 0) {
+      throw new Error(
+        `The game's building tables were not available when Buildings was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
+      );
+    }
+    const orderedModPacks = orderedEnabledMods
+      .map((mod) => packsByPath.get(mod.path))
+      .filter((pack): pack is Pack => !!pack);
+    const tablePacks = [dbPack, ...orderedModPacks];
+    const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
+    const tables: BuildingsTableRows = {};
+    for (const canonicalTableName of BUILDINGS_TABLES) {
+      const rows: Array<Record<string, string>> = [];
+      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow) => {
+        rows.push(schemaRowToRecord(schemaFieldRow));
+      });
+      tables[canonicalTableName] = rows;
+    }
+
+    // Vanilla first so mod locs, which stay on the live path, still shadow it.
+    const data = buildBuildingsData(
+      tables,
+      createBuildingsLocLookup([...vanillaLocLookups, ...orderedModPacks.map((pack) => getLocsTrie(pack))]),
+    );
+
+    await saveBuildingsDiskCache(app.getPath("userData"), signature, data);
+    releaseParsedTables(tablePacks, tablesToRead);
+    const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
+    cachedBuildingsData = { signature, data, dbPackPath, ...icons };
+    return cachedBuildingsData;
+  };
+
+  /** Loads the icon bytes for every variant icon the data mentions and registers them for serving. */
+  const registerBuildingIcons = async (
+    data: BuiltBuildingsData,
+    dataFolder: string,
+    vanillaPackPaths: string[],
+    modPackPaths: string[],
+  ) => {
+    const iconIndex = await buildBuildingIconIndex(dataFolder, vanillaPackPaths, modPackPaths);
+    const iconPathByBaseName: Record<string, string> = {};
+    for (const variants of Object.values(data.variantsByLevel)) {
+      for (const variant of variants) {
+        if (!variant.icon) continue;
+        const baseName = buildingIconBaseName(variant.icon);
+        const packedFilePath = iconIndex.byBaseName[baseName];
+        if (packedFilePath) iconPathByBaseName[baseName] = packedFilePath;
+      }
+    }
+    const effectIconPaths = new Set<string>();
+    for (const effects of Object.values(data.effectsByLevel)) {
+      for (const effect of effects) {
+        if (effect.icon) effectIconPaths.add(`ui\\campaign ui\\effect_bundles\\${effect.icon}`);
+      }
+    }
+    const unitCardPaths = new Set<string>();
+    for (const units of [...Object.values(data.garrisonByLevel), ...Object.values(data.recruitableByLevel)]) {
+      for (const unit of units) if (unit.cardPath) unitCardPaths.add(unit.cardPath);
+    }
+    const wantedPaths = Array.from(
+      new Set([...Object.values(iconPathByBaseName), ...effectIconPaths, ...unitCardPaths]),
+    );
+    const wantedPackPaths = new Set(
+      wantedPaths.map(iconIndex.sourcePackPath).filter((packPath): packPath is string => !!packPath),
+    );
+    const neededPackPaths = [...vanillaPackPaths, ...modPackPaths].filter((packPath) => wantedPackPaths.has(packPath));
+    const icons =
+      wantedPaths.length > 0 ? await loadIconsFromPacks(await getIconPacks(neededPackPaths), wantedPaths) : {};
+    return { iconPathByBaseName, icons, iconGeneration: registerIconAssets(icons) };
+  };
+
+  /** The packs icon bytes are read out of, loaded lazily and only once per session. */
+  const getIconPacks = async (iconPackPaths: string[]) => {
+    const loaded = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    const missing = iconPackPaths.filter((packPath) => !loaded.has(packPath));
+    if (missing.length > 0) {
+      await readModsByPath(missing, { skipParsingTables: true }, true, false);
+    }
+    const byPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    return iconPackPaths.map((packPath) => byPath.get(packPath)).filter((pack): pack is Pack => !!pack);
+  };
+
+  const buildingsBuilds = createSerializedBuilds();
+  const ensureBuildingsData = async (enabledMods: Mod[]) =>
+    buildingsBuilds.run(getUnitViewerSignature(enabledMods), () => buildBuildingsSessionData(enabledMods));
+
+  /**
+   * The schema each buildings table's rows have to be written with.
+   *
+   * The version matters: writing rows against a different one than the game's own table uses makes
+   * the pack unreadable. Same choice `saveSkillsPack` makes - prefer the version the vanilla pack
+   * carries, fall back to the newest the schema knows.
+   */
+  const getBuildingsTableSchemas = async (): Promise<Record<string, DBVersion>> => {
+    const defaultTableVersions = await getDefaultTableVersions();
+    const schemas: Record<string, DBVersion> = {};
+    for (const tableName of BUILDINGS_TABLES) {
+      const versions = DBNameToDBVersions[appData.currentGame][tableName];
+      if (!versions || versions.length === 0) continue;
+      const defaultVersion = defaultTableVersions?.[tableName];
+      schemas[tableName] = versions.find((version) => version.version === defaultVersion) || versions[0];
+    }
+    return schemas;
+  };
+
+  const toBuildingsCatalog = (
+    built: CachedBuildingsData,
+    tableSchemas: Record<string, DBVersion>,
+  ): BuildingsCatalog => ({
+    tableSchemas,
+    campaigns: built.data.campaigns,
+    regions: built.data.regions,
+    cultures: built.data.cultures,
+    subcultures: built.data.subcultures,
+    factions: built.data.factions,
+    settlementTypes: built.data.settlementTypes,
+    units: built.data.units,
+    unitGroups: built.data.unitGroups,
+    effects: built.data.effects,
+    effectScopes: built.data.effectScopes,
+    chainKeys: Object.keys(built.data.chains).sort(),
+    dbPackPath: built.dbPackPath,
+    moddersPrefix: appData.moddersPrefix,
+    nextNumericIds: built.data.nextNumericIds,
+  });
+
+  /** Fills in the icon URLs the renderer renders; the data itself holds only pack-relative paths. */
+  const decorateBuildingsView = (view: BuildingsRegionView, built: CachedBuildingsData): BuildingsRegionView => {
+    const assetUrl = (packedFilePath: string | undefined) =>
+      packedFilePath && built.icons[packedFilePath] ? iconAssetUrl(built.iconGeneration, packedFilePath) : undefined;
+
+    for (const band of view.bands) {
+      for (const column of band.columns) {
+        for (const tile of column.tiles) {
+          tile.iconUrl = assetUrl(
+            tile.iconPath ? built.iconPathByBaseName[buildingIconBaseName(tile.iconPath)] : undefined,
+          );
+          for (const effect of tile.effects) {
+            effect.iconUrl = assetUrl(effect.icon ? `ui\\campaign ui\\effect_bundles\\${effect.icon}` : undefined);
+          }
+          for (const unit of [...tile.garrison, ...tile.recruitable]) {
+            unit.cardUrl = assetUrl(unit.cardPath);
+          }
+        }
+      }
+    }
+    return view;
+  };
+
+  ipcMain.handle("getBuildingsCatalog", async (_event, enabledMods: Mod[]): Promise<BuildingsCatalogResponse> => {
+    try {
+      const built = await ensureBuildingsData(enabledMods);
+      return { success: true, catalog: toBuildingsCatalog(built, await getBuildingsTableSchemas()) };
+    } catch (error) {
+      console.log("getBuildingsCatalog failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle(
+    "getBuildingsRegionView",
+    async (
+      _event,
+      enabledMods: Mod[],
+      query: BuildingsRegionQuery,
+      pendingEdits?: BuildingsEditState,
+    ): Promise<BuildingsRegionViewResponse> => {
+      try {
+        const built = await ensureBuildingsData(enabledMods);
+        // The raw rows were released after the build, so pending edits are folded into the built
+        // structures rather than by re-running the extraction. See applyEdits.ts.
+        const data = pendingEdits ? applyNewRowsToBuiltData(built.data, pendingEdits) : built.data;
+        const view = resolveRegionBuildings(data, query);
+        // Validated against the base data, not `data`: every pending row exists in the latter by
+        // construction, so an override would look like a perfectly ordinary key.
+        const rowIssues = pendingEdits ? validateNewRows(built.data, pendingEdits) : undefined;
+        return { success: true, view: decorateBuildingsView(view, built), rowIssues };
+      } catch (error) {
+        console.log("getBuildingsRegionView failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "getBuildingsCaiRows",
+    async (_event, enabledMods: Mod[], chainKey: string): Promise<BuildingsCaiRowsResponse> => {
+      try {
+        const built = await ensureBuildingsData(enabledMods);
+        const rowsByTable: Record<string, Array<Record<string, string>>> = {};
+        const values = built.data.caiValuesByChain[chainKey];
+        if (values?.length) rowsByTable.cai_construction_system_building_values_tables = values;
+        const synergies = built.data.caiSynergiesByChain[chainKey];
+        if (synergies?.length) rowsByTable.cai_construction_system_synergies_tables = synergies;
+        return { success: true, rowsByTable, superChain: built.data.chains[chainKey]?.superChain };
+      } catch (error) {
+        console.log("getBuildingsCaiRows failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+
   const setCurrentGame = async (newGame: SupportedGames): Promise<boolean> => {
     let didSwitchGame = false;
     try {
@@ -2996,6 +3457,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // Every registered icon belongs to the game being left, and the features that registered them
       // register again when they rebuild for the new one.
       clearIconAssets();
+      // The buildings data is cached under a signature that includes the game, so coming back here
+      // would otherwise serve icon URLs built with a generation clearIconAssets has just dropped.
+      cachedBuildingsData = undefined;
+      clearBuildingsMemoryCache();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);
       }
@@ -3713,40 +4178,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       };
     }
     return data;
-  };
-  // Cache for vanilla pack file name lists, keyed by pack path.
-  // Allows skipping readPack() on startup when the pack hasn't changed.
-  interface VanillaPackFilesCacheEntry {
-    size: number;
-    lastChangedLocal: number;
-    packedFileNames: string[];
-  }
-  type VanillaPackFilesCache = Record<string, VanillaPackFilesCacheEntry>;
-  const VANILLA_PACK_FILES_CACHE_FILE = "vanilla-pack-files-cache.bin";
-  let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
-  const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache> => {
-    if (vanillaPackFilesCache !== null) return vanillaPackFilesCache;
-    try {
-      const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-      const compressed = await fs.promises.readFile(cacheFilePath);
-      const json = await zstdDecompress(compressed);
-      vanillaPackFilesCache = JSON.parse(json.toString("utf8")) as VanillaPackFilesCache;
-      return vanillaPackFilesCache!;
-    } catch {
-      vanillaPackFilesCache = {};
-      return vanillaPackFilesCache;
-    }
-  };
-  const saveVanillaPackFilesCache = async (): Promise<void> => {
-    if (!vanillaPackFilesCache) return;
-    try {
-      const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-      const json = Buffer.from(JSON.stringify(vanillaPackFilesCache), "utf8");
-      const compressed = await zstdCompress(json, 1);
-      await fs.promises.writeFile(cacheFilePath, compressed);
-    } catch (err) {
-      console.error("Failed to save vanilla pack files cache:", err);
-    }
   };
   interface FlowExecutionCacheEntry {
     signatureHash: string;
