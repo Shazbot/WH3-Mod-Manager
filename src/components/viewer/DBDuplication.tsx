@@ -32,7 +32,9 @@ const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 
-const DBDuplication = memo(() => {
+export type DBDuplicationLaunchSource = "modsViewer" | "buildings";
+
+const DBDuplication = memo(({ launchSource }: { launchSource: DBDuplicationLaunchSource }) => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   // important to reload the component
@@ -466,7 +468,7 @@ const DBDuplication = memo(() => {
 
   const overlayStatusText = isSaving ? getProgressLabel(duplicationProgress) : "Loading references...";
 
-  const onSave = async () => {
+  const onSave = async (destination: DBCloneSaveOptions["destination"]) => {
     console.log("SAVING");
 
     // const selecedNodesWithRootNode = [...selectedNodesByName, rootNode.name];
@@ -498,7 +500,7 @@ const DBDuplication = memo(() => {
         nodeNameToRenameValue,
         defaultNodeNameToRenameValue,
         treeData,
-        { isAppendSave, savePackedFileName, savePackFileName },
+        { isAppendSave, savePackedFileName, savePackFileName, destination },
       );
 
       if (!result?.ok) {
@@ -508,7 +510,11 @@ const DBDuplication = memo(() => {
       } else {
         console.log("executeDBDuplication success, output:", result.outputPackPath);
         setDuplicationSuccessMessage(
-          result.outputPackPath ? `Created pack:\n${result.outputPackPath}` : "Clone completed successfully.",
+          destination == "memory"
+            ? `Created an in-memory pack and opened its generated tables in new Mods Viewer tabs:\n${result.outputPackPath ?? ""}`
+            : result.outputPackPath
+              ? `Created pack:\n${result.outputPackPath}`
+              : "Clone completed successfully.",
         );
         setIsSuccessOpen(true);
       }
@@ -580,6 +586,13 @@ const DBDuplication = memo(() => {
                 With "Append Existing Pack" enabled we will append an existing pack file instead of creating a new one,
                 using the pack name from "(Optional) Name for new pack".
               </p>
+              {launchSource == "buildings" && (
+                <p>
+                  "Save to memory/new tabs" creates an unsaved memory pack and opens every generated DB table in its own
+                  Mods Viewer tab. You can inspect or edit those tables there, then use the viewer&apos;s Save As action
+                  when you are ready to write a pack.
+                </p>
+              )}
               <p>
                 "(Optional) Name for new tables" specifices what name the new DB tables will have. Leave it blank for an
                 automaitc name with a timestamp (e.g. dbclone_140925_152525_).
@@ -647,20 +660,33 @@ const DBDuplication = memo(() => {
       </MemoizedFloatingOverlay>
 
       <div className="absolute right-8 top-24 flex flex-col gap-6">
-        <div>
+        <div className="flex flex-col items-center gap-2">
           <button
-            className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 w-24 m-auto ${
+            className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 min-w-32 m-auto ${
               ((!isSavingPossible() || isSaving) &&
                 "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
               ""
             }`}
-            onClick={async () => await onSave()}
+            onClick={async () => await onSave("pack")}
             disabled={!isSavingPossible() || isSaving}
           >
             <div>
-              <span>{"Save"}</span>
+              <span>{"Save to pack"}</span>
             </div>
           </button>
+          {launchSource == "buildings" && (
+            <button
+              className={`bg-cyan-700 border-cyan-600 border-2 hover:bg-cyan-800 text-white font-medium text-sm px-4 rounded h-8 min-w-44 m-auto ${
+                ((!isSavingPossible() || isSaving) &&
+                  "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+                ""
+              }`}
+              onClick={async () => await onSave("memory")}
+              disabled={!isSavingPossible() || isSaving}
+            >
+              Save to memory/new tabs
+            </button>
+          )}
         </div>
         <div className="flex items-center justify-center mt-2">
           <input

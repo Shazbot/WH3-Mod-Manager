@@ -1246,11 +1246,14 @@ declare global {
     isAppendSave: boolean;
     savePackedFileName: string;
     savePackFileName: string;
+    destination: "pack" | "memory";
   }
 
   interface DBCloneExecutionResult {
     ok: boolean;
     outputPackPath?: string;
+    /** Main-process-only payload used to publish a newly generated memory pack. */
+    generatedPackedFiles?: PackedFile[];
     error?: string;
   }
 

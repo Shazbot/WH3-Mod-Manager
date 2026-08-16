@@ -567,7 +567,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           <Modal.Header>Deep Cloning...</Modal.Header>
           <Modal.Body>
             <div className="mt-8 text-center">
-              <DBDuplication />
+              <DBDuplication launchSource="buildings" />
             </div>
           </Modal.Body>
         </Modal>

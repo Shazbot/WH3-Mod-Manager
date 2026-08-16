@@ -1851,14 +1851,28 @@ export async function executeDBDuplication(
 
     console.log("DONE BEFORE toSave");
 
-    // console.log("toSave", toSave);
-
-    const { writePack } = await import("./packFileSerializer");
-
     const toSave = toSaveWithSchema as (SavePackedFileDataWithSchema | SavePackedFileDataWithBuffer)[];
 
     const packFileBaseName =
       DBCloneSaveOptions.savePackFileName != "" ? DBCloneSaveOptions.savePackFileName : `dbclone_${timestamp}`;
+
+    if (DBCloneSaveOptions.destination == "memory") {
+      const memoryPackPath = `memory://${packFileBaseName}`;
+      report("writing", "Staging generated tables in memory");
+      const generatedPackedFiles = toSaveWithSchema.map(
+        (packedFile) =>
+          ({
+            ...packedFile,
+            start_pos: -1,
+          }) as PackedFile,
+      );
+      report("done", "Generated tables opened in the Mods Viewer");
+      return { ok: true, outputPackPath: memoryPackPath, generatedPackedFiles };
+    }
+
+    // console.log("toSave", toSave);
+
+    const { writePack } = await import("./packFileSerializer");
 
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
     const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);

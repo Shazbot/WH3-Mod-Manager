@@ -1075,6 +1075,7 @@ export const readModsByPath = async (
   return newPacks;
 };
 export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExports.BrowserWindow, isDev: boolean) => {
+  let pendingDBCloneViewerOpen: { packData: PackViewData; unsavedFiles: PackedFile[]; tables: DBTable[] } | undefined;
   const log = (msg: string) => {
     mainWindow?.webContents.send("handleLog", msg);
     console.log(msg);
@@ -8315,6 +8316,31 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   };
   openModInViewerFromMainProcess = openModInViewerWindow;
+
+  const openDBCloneMemoryPackInViewer = (packData: PackViewData, unsavedFiles: PackedFile[], tables: DBTable[]) => {
+    mainWindow.webContents.send("setPacksData", [packData]);
+    mainWindow.webContents.send("setUnsavedPacksData", packData.packPath, unsavedFiles);
+
+    let viewerWindow = getLiveViewerWindow();
+    if (!viewerWindow) {
+      createViewerWindow();
+      viewerWindow = getLiveViewerWindow();
+    }
+    if (!viewerWindow) return;
+
+    if (!appData.isViewerReady) {
+      pendingDBCloneViewerOpen = { packData, unsavedFiles, tables };
+      viewerWindow.focus();
+      return;
+    }
+
+    viewerWindow.webContents.send("setPacksData", [packData]);
+    viewerWindow.webContents.send("setUnsavedPacksData", packData.packPath, unsavedFiles);
+    viewerWindow.webContents.send("openDBCloneInViewer", packData.packPath, tables);
+    viewerWindow.setTitle(`WH3 Mod Manager v${version}: viewing ${packData.packName}`);
+    viewerWindow.focus();
+  };
+
   ipcMain.on("requestOpenModInViewer", (_event, modPath: string) => openModInViewerWindow(modPath));
   ipcMain.on("requestOpenSkillsWindow", async (event, mods: Mod[]) => {
     console.log("ON requestOpenSkillsWindow");
@@ -8656,6 +8682,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     windows.viewerWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
     windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
     windows.viewerWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
+    if (pendingDBCloneViewerOpen) {
+      const { packData, unsavedFiles, tables } = pendingDBCloneViewerOpen;
+      pendingDBCloneViewerOpen = undefined;
+      windows.viewerWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
+      windows.viewerWindow?.webContents.send("setPacksData", [packData]);
+      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packData.packPath, unsavedFiles);
+      windows.viewerWindow?.webContents.send("openDBCloneInViewer", packData.packPath, tables);
+      windows.viewerWindow?.setTitle(`WH3 Mod Manager v${version}: viewing ${packData.packName}`);
+      windows.viewerWindow?.focus();
+      appData.queuedViewerData = [];
+      return;
+    }
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
@@ -9458,7 +9496,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const cancelState = { canceled: false };
       dbDuplicationCancelStateByWebContentsId.set(webContentsId, cancelState);
       try {
-        return await executeDBDuplication(
+        const result = await executeDBDuplication(
           packPath,
           nodesNamesToDuplicate,
           nodeNameToRef,
@@ -9471,6 +9509,32 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             report: (progress) => event.sender.send("setDBDuplicationProgress", progress),
           },
         );
+        if (result.ok && DBCloneSaveOptions.destination == "memory" && result.generatedPackedFiles) {
+          const generatedPackedFiles = result.generatedPackedFiles.map((packedFile) => {
+            const buffer = serializePackFileDataToBuffer(packedFile);
+            return {
+              ...packedFile,
+              buffer,
+              file_size: buffer.length,
+              start_pos: -1,
+            } as PackedFile;
+          });
+          const memoryPackPath = result.outputPackPath as string;
+          appData.unsavedPacksData[memoryPackPath] = generatedPackedFiles;
+
+          const packData: PackViewData = {
+            packName: memoryPackPath.slice("memory://".length),
+            packPath: memoryPackPath,
+            tables: generatedPackedFiles.map((packedFile) => packedFile.name),
+            packedFiles: Object.fromEntries(generatedPackedFiles.map((packedFile) => [packedFile.name, packedFile])),
+          };
+          const tables = generatedPackedFiles.flatMap((packedFile): DBTable[] => {
+            const match = /^db\\([^\\]+)\\(.+)$/.exec(packedFile.name);
+            return match ? [{ dbName: match[1], dbSubname: match[2] }] : [];
+          });
+          openDBCloneMemoryPackInViewer(packData, generatedPackedFiles, tables);
+        }
+        return { ...result, generatedPackedFiles: undefined };
       } finally {
         dbDuplicationCancelStateByWebContentsId.delete(webContentsId);
       }

@@ -108,6 +108,12 @@ const api = {
     ipcRenderer.send("setSkillsViewOptions", skillsViewOptions),
   openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("openModInViewer", callback),
+  openDBCloneInViewer: (callback: (event: Electron.IpcRendererEvent, packPath: string, tables: DBTable[]) => void) => {
+    ipcRenderer.on("openDBCloneInViewer", callback);
+    return () => {
+      ipcRenderer.removeListener("openDBCloneInViewer", callback);
+    };
+  },
   onSkillsViewOptions: (callback: (event: Electron.IpcRendererEvent, skillsViewOptions: SkillsViewOptions) => void) =>
     ipcRenderer.on("setSkillsViewOptions", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),

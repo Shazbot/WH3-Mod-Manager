@@ -22,6 +22,7 @@ import {
   getPackNameFromPath,
 } from "@/src/utility/packFileHelpers";
 import { getDefaultSaveAsPackName, getPackFileInventory, hasLoadedDBTable } from "./viewerHelpers";
+import { subscribeToDBCloneViewerRequests } from "./dbCloneViewerRequests";
 
 type ViewerTabKind = "db" | "flow" | "file";
 
@@ -311,6 +312,31 @@ const ModsViewer = memo(() => {
     },
     [buildPackedFileTabCandidate, openOrActivateTab],
   );
+
+  useEffect(() => {
+    return subscribeToDBCloneViewerRequests(({ packPath: memoryPackPath, tables }) => {
+      const requestedTabs = tables.map((table) => ({
+        id: createTabId(),
+        ...buildDbTabCandidate({ ...table, packPath: memoryPackPath }),
+      }));
+      if (requestedTabs.length === 0) return;
+
+      // A clone can produce several tables at once. They are all results, rather than navigation
+      // through one result, so each one gets its own tab and the final generated table is focused.
+      setOpenTabs((currentTabs) => [...currentTabs, ...requestedTabs]);
+      const lastTab = requestedTabs[requestedTabs.length - 1];
+      setActiveTabId(lastTab.id);
+      suppressSelectionToTabSyncRef.current = true;
+      dispatch(selectFlowFile(undefined));
+      dispatch(
+        selectDBTable({
+          packPath: lastTab.packPath,
+          dbName: lastTab.dbName ?? "",
+          dbSubname: lastTab.dbSubname ?? "",
+        }),
+      );
+    });
+  }, [buildDbTabCandidate, createTabId, dispatch]);
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
@@ -712,7 +738,7 @@ const ModsViewer = memo(() => {
           <Modal.Header>Deep Cloning...</Modal.Header>
           <Modal.Body>
             <div className="text-center mt-8">
-              <DBDuplication />
+              <DBDuplication launchSource="modsViewer" />
             </div>
           </Modal.Body>
         </Modal>
