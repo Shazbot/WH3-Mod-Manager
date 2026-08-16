@@ -445,6 +445,10 @@ describe("resolveRegionBuildings: settlement types", () => {
     expect(chainKeysIn(view)).toEqual(["chain_a"]);
   });
 
+  it("shows only chains without a settlement-type assignment when none is selected", () => {
+    expect(chainKeysIn(resolveRegionBuildings(withBindings(), query()))).toEqual(["chain_c"]);
+  });
+
   it("disables the settlement type filter when the selected culture has no assigned chains", () => {
     const view = resolveRegionBuildings(withBindings(), query({ culture: "dwf" }));
     expect(view.settlementTypeOptions.map((option) => option.key)).toEqual(["capital", "minor"]);

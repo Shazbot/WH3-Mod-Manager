@@ -365,7 +365,7 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
   const visibleChains = availableChains
     .filter((chain) => {
       const bindings = data.settlementTypeBindings[chain];
-      if (!selectedSettlementType) return true;
+      if (!selectedSettlementType) return !bindings || bindings.length === 0;
       if (!bindings || bindings.length === 0) return false;
       if (bindings.some((binding) => binding.settlementType === selectedSettlementType && binding.exclude))
         return false;
