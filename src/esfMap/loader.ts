@@ -272,20 +272,59 @@ const pickCandidateForMapFolder = (
   return pickBestCandidate(matchingVanilla, mapFolder, kind);
 };
 
-const readPackedFileBuffer = async (candidate: EsfFileCandidate): Promise<Buffer> => {
-  if (candidate.filePath) return fs.promises.readFile(candidate.filePath);
-  if (!candidate.packPath) throw new Error(`No source pack was recorded for ${candidate.fileName}.`);
+/**
+ * Reads packed candidates grouped by their source pack. The pack reader keeps one file descriptor
+ * open while it processes `filesToRead`, so grouping the map layers avoids reopening data_maps.pack
+ * once for map_data, lookup, pathfinding, and each background layer.
+ */
+const readPackedFileBuffers = async (candidates: EsfFileCandidate[]): Promise<Map<EsfFileCandidate, Buffer>> => {
+  const buffers = new Map<EsfFileCandidate, Buffer>();
+  const candidatesByPack = new Map<string, EsfFileCandidate[]>();
 
-  const retainedPack = appData.packsData.find((pack) => pack.path === candidate.packPath);
-  const pack: Pack = retainedPack
-    ? await readFromExistingPack(retainedPack, { filesToRead: [candidate.fileName], skipParsingTables: true })
-    : await readPack(candidate.packPath, { filesToRead: [candidate.fileName], skipParsingTables: true });
-  const normalized = normalizePackPath(candidate.fileName);
-  const packedFile = pack.packedFiles.find((file) => normalizePackPath(file.name) === normalized);
-  if (!packedFile?.buffer) {
-    throw new Error(`Could not read ${candidate.fileName} from ${candidate.packPath}.`);
-  }
-  return Buffer.from(packedFile.buffer);
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      if (candidate.filePath) {
+        buffers.set(candidate, await fs.promises.readFile(candidate.filePath));
+        return;
+      }
+      if (!candidate.packPath) throw new Error(`No source pack was recorded for ${candidate.fileName}.`);
+      const packCandidates = candidatesByPack.get(candidate.packPath) ?? [];
+      packCandidates.push(candidate);
+      candidatesByPack.set(candidate.packPath, packCandidates);
+    }),
+  );
+
+  await Promise.all(
+    [...candidatesByPack].map(async ([packPath, packCandidates]) => {
+      const retainedPack = appData.packsData.find((pack) => pack.path === packPath);
+      const pack: Pack = retainedPack
+        ? await readFromExistingPack(retainedPack, {
+            filesToRead: packCandidates.map((candidate) => candidate.fileName),
+            skipParsingTables: true,
+          })
+        : await readPack(packPath, {
+            filesToRead: packCandidates.map((candidate) => candidate.fileName),
+            skipParsingTables: true,
+          });
+
+      for (const candidate of packCandidates) {
+        const normalized = normalizePackPath(candidate.fileName);
+        const packedFile = pack.packedFiles.find((file) => normalizePackPath(file.name) === normalized);
+        if (!packedFile?.buffer) {
+          throw new Error(`Could not read ${candidate.fileName} from ${candidate.packPath}.`);
+        }
+        buffers.set(candidate, Buffer.from(packedFile.buffer));
+      }
+    }),
+  );
+
+  return buffers;
+};
+
+const readPackedFileBuffer = async (candidate: EsfFileCandidate): Promise<Buffer> => {
+  const buffer = (await readPackedFileBuffers([candidate])).get(candidate);
+  if (!buffer) throw new Error(`Could not read ${candidate.fileName}.`);
+  return buffer;
 };
 
 const readCampaignStartposCandidates = async (
@@ -497,15 +536,21 @@ export async function loadEsfMapData(
       )
     : undefined;
 
-  const [mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer, backgroundBuffer, backgroundTextBuffer] =
-    await Promise.all([
-      readPackedFileBuffer(mapDataCandidate),
-      Promise.resolve(startposCandidate.buffer),
-      lookupCandidate ? readPackedFileBuffer(lookupCandidate) : Promise.resolve(undefined),
-      pathfindingCandidate ? readPackedFileBuffer(pathfindingCandidate) : Promise.resolve(undefined),
-      backgroundCandidate ? readPackedFileBuffer(backgroundCandidate) : Promise.resolve(undefined),
-      backgroundTextCandidate ? readPackedFileBuffer(backgroundTextCandidate) : Promise.resolve(undefined),
-    ]);
+  const mapAssetCandidates = [
+    mapDataCandidate,
+    lookupCandidate,
+    pathfindingCandidate,
+    backgroundCandidate,
+    backgroundTextCandidate,
+  ].filter((candidate): candidate is EsfFileCandidate => !!candidate);
+  const mapAssetBuffers = await readPackedFileBuffers(mapAssetCandidates);
+  const mapDataBuffer = mapAssetBuffers.get(mapDataCandidate);
+  if (!mapDataBuffer) throw new Error(`Could not read ${mapDataCandidate.fileName}.`);
+  const lookupBuffer = lookupCandidate ? mapAssetBuffers.get(lookupCandidate) : undefined;
+  const pathfindingBuffer = pathfindingCandidate ? mapAssetBuffers.get(pathfindingCandidate) : undefined;
+  const backgroundBuffer = backgroundCandidate ? mapAssetBuffers.get(backgroundCandidate) : undefined;
+  const backgroundTextBuffer = backgroundTextCandidate ? mapAssetBuffers.get(backgroundTextCandidate) : undefined;
+  const startposBuffer = startposCandidate.buffer;
   const map = buildEsfMapData(mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer, {
     mapDataPath: mapDataCandidate.fileName,
     startposPath: startposCandidate.fileName,
