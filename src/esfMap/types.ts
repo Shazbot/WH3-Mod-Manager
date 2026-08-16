@@ -28,12 +28,17 @@ export interface EsfMapCampaignOption {
   label: string;
 }
 
+export type EsfMapGridSource = "lookup" | "region-areas";
+
 export interface EsfMapPayload {
   campaignKey: string;
   availableCampaigns: EsfMapCampaignOption[];
   mapDataPath: string;
   startposPath: string;
+  lookupPath: string | null;
   startposWasCompressed: boolean;
+  gridSource: EsfMapGridSource;
+  displayFlipY: boolean;
   width: number;
   height: number;
   areas: EsfMapArea[];

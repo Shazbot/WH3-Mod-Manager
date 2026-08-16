@@ -2,7 +2,7 @@ import { readFromExistingPack, readPack } from "../packFileSerializer";
 import type { Pack } from "../packFileTypes";
 import appData from "../appData";
 import { getVanillaPackPathsInLoadOrder } from "../utility/vanillaPackPaths";
-import { collectVanillaFilesMatching, type VanillaPackIndex } from "../vanillaPackIndex/format";
+import { collectVanillaFilesUnderPrefix, type VanillaPackIndex } from "../vanillaPackIndex/format";
 import { getVanillaPackIndex } from "../vanillaPackIndex/store";
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
 import * as fs from "node:fs";
@@ -18,6 +18,8 @@ interface EsfFileCandidate {
   modIndex: number;
 }
 
+type EsfAssetKind = "map" | "startpos" | "lookup" | "pathfinding";
+
 const normalizePackPath = (value: string): string => value.replace(/\//g, "\\").toLowerCase();
 
 const isPackedFileNamed = (name: string, basename: string): boolean => {
@@ -25,24 +27,55 @@ const isPackedFileNamed = (name: string, basename: string): boolean => {
   return normalized === basename || normalized.endsWith(`\\${basename}`);
 };
 
-const scoreCandidate = (candidate: EsfFileCandidate, campaignHint: string, kind: "map" | "startpos"): number => {
+const isLookupFileNamed = (name: string): boolean => {
+  const normalized = normalizePackPath(name);
+  const basename = normalized.slice(normalized.lastIndexOf("\\") + 1);
+  return (
+    !basename.includes("small_lookup") && (basename.endsWith("_lookup.tga") || basename.endsWith("_lookup_minimap.tga"))
+  );
+};
+
+const isPathfindingFileNamed = (name: string): boolean => isPackedFileNamed(name, "pathfinding.ppd");
+
+const isCampaignMapAsset = (name: string): boolean =>
+  isPackedFileNamed(name, "map_data.esf") || isLookupFileNamed(name) || isPathfindingFileNamed(name);
+
+const mapFolderFromPath = (fileName: string): string | undefined => {
+  const normalized = normalizePackPath(fileName);
+  return normalized.match(/(?:^|\\)campaign_maps\\([^\\]+)(?:\\|$)/i)?.[1];
+};
+
+const scoreCandidate = (candidate: EsfFileCandidate, campaignHint: string, kind: EsfAssetKind): number => {
   const path = normalizePackPath(candidate.fileName);
   const hint = campaignHint.toLowerCase();
   const mapHint = hint.replace(/_map_\d+$/, "");
+  const basename = path.slice(path.lastIndexOf("\\") + 1);
+  const mapFolder = mapFolderFromPath(path);
   let score = 0;
   if (hint && path.includes(hint)) score += 1000;
   if (mapHint && mapHint !== hint && path.includes(mapHint)) score += 500;
   if (path.includes("wh3_main_combi")) score += 100;
-  if (kind === "map" && path.includes("\\campaign_maps\\")) score += 30;
+  if ((kind === "map" || kind === "lookup" || kind === "pathfinding") && mapFolder) {
+    score += 30;
+  }
   if (kind === "startpos" && path.includes("\\campaigns\\")) score += 30;
-  if (kind === "map" && path.includes("_map_3\\")) score += 5;
+  if (kind === "map") {
+    const mapVariant = mapFolder?.match(/_map_(\d+)$/i)?.[1];
+    if (mapVariant) score += Math.max(0, 20 - Number(mapVariant));
+  }
+  if (kind === "lookup" && mapFolder) {
+    const mapBase = mapFolder.replace(/_map_\d+$/i, "");
+    if (basename === `${mapBase}_lookup.tga`) score += 20;
+    else if (basename === `${mapBase}_lookup_minimap.tga`) score += 10;
+    else if (basename.endsWith("_lookup.tga")) score += 5;
+  }
   return score;
 };
 
 const pickBestCandidate = (
   candidates: EsfFileCandidate[],
   campaignHint: string,
-  kind: "map" | "startpos",
+  kind: EsfAssetKind,
 ): EsfFileCandidate | undefined =>
   [...candidates].sort((first, second) => {
     const score = scoreCandidate(second, campaignHint, kind) - scoreCandidate(first, campaignHint, kind);
@@ -54,8 +87,7 @@ const campaignKeyFromPath = (fileName: string): string | undefined => {
   const normalized = normalizePackPath(fileName);
   const startposMatch = normalized.match(/(?:^|\\)campaigns\\([^\\]+)\\startpos\.esf$/i);
   if (startposMatch) return startposMatch[1];
-  const mapDataMatch = normalized.match(/(?:^|\\)campaign_maps\\([^\\]+)\\map_data\.esf$/i);
-  return mapDataMatch?.[1].replace(/_map_\d+$/i, "");
+  return mapFolderFromPath(normalized)?.replace(/_map_\d+$/i, "");
 };
 
 const campaignMatches = (candidate: EsfFileCandidate, campaignKey: string): boolean =>
@@ -73,19 +105,18 @@ const getPackedFileNames = async (packPath: string): Promise<string[]> => {
   return (await readPack(packPath, { skipParsingTables: true })).packedFiles.map((packedFile) => packedFile.name);
 };
 
-const collectVanillaPackCandidates = async (
+const collectVanillaCampaignMapCandidates = async (
   vanillaIndex: VanillaPackIndex | undefined,
   vanillaPackPaths: string[],
-  basename: string,
 ): Promise<EsfFileCandidate[]> => {
   if (vanillaIndex) {
-    return Array.from(
-      collectVanillaFilesMatching(vanillaIndex, (fileName) => isPackedFileNamed(fileName, basename)),
-    ).map(([fileName, packName]) => ({
-      packPath: nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder ?? "", packName),
-      fileName,
-      modIndex: -1,
-    }));
+    return Array.from(collectVanillaFilesUnderPrefix(vanillaIndex, "campaign_maps\\"))
+      .filter(([fileName]) => isCampaignMapAsset(fileName))
+      .map(([fileName, packName]) => ({
+        packPath: nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder ?? "", packName),
+        fileName,
+        modIndex: -1,
+      }));
   }
 
   const candidates: EsfFileCandidate[] = [];
@@ -93,7 +124,7 @@ const collectVanillaPackCandidates = async (
     try {
       const names = await getPackedFileNames(packPath);
       for (const fileName of names) {
-        if (isPackedFileNamed(fileName, basename)) {
+        if (isCampaignMapAsset(fileName)) {
           candidates.push({ packPath, fileName, modIndex: -1 });
         }
       }
@@ -135,7 +166,10 @@ const collectVanillaStartposCandidates = async (dataFolder: string): Promise<Esf
   return candidates;
 };
 
-const collectModCandidates = async (mods: Mod[], basename: string): Promise<EsfFileCandidate[]> => {
+const collectModCandidates = async (
+  mods: Mod[],
+  matches: (fileName: string) => boolean,
+): Promise<EsfFileCandidate[]> => {
   const candidates: EsfFileCandidate[] = [];
   const orderedMods = sortByNameAndLoadOrder(mods);
   for (let modIndex = 0; modIndex < orderedMods.length; modIndex += 1) {
@@ -143,7 +177,7 @@ const collectModCandidates = async (mods: Mod[], basename: string): Promise<EsfF
     try {
       const names = await getPackedFileNames(mod.path);
       for (const fileName of names) {
-        if (isPackedFileNamed(fileName, basename)) {
+        if (matches(fileName)) {
           candidates.push({ packPath: mod.path, fileName, modIndex });
         }
       }
@@ -157,7 +191,7 @@ const collectModCandidates = async (mods: Mod[], basename: string): Promise<EsfF
 const pickEffectiveModCandidate = (
   candidates: EsfFileCandidate[],
   campaignHint: string,
-  kind: "map" | "startpos",
+  kind: EsfAssetKind,
 ): EsfFileCandidate | undefined => {
   const highestModIndex = Math.max(...candidates.map((candidate) => candidate.modIndex), -1);
   if (highestModIndex < 0) return undefined;
@@ -172,7 +206,7 @@ const pickCandidateForCampaign = (
   modCandidates: EsfFileCandidate[],
   vanillaCandidates: EsfFileCandidate[],
   campaignKey: string,
-  kind: "map" | "startpos",
+  kind: EsfAssetKind,
 ): EsfFileCandidate | undefined => {
   const matchingMods = modCandidates.filter((candidate) => campaignMatches(candidate, campaignKey));
   const effectiveMod = pickEffectiveModCandidate(matchingMods, campaignKey, kind);
@@ -180,6 +214,23 @@ const pickCandidateForCampaign = (
 
   const matchingVanilla = vanillaCandidates.filter((candidate) => campaignMatches(candidate, campaignKey));
   return pickBestCandidate(matchingVanilla, campaignKey, kind);
+};
+
+const mapFolderMatches = (candidate: EsfFileCandidate, mapFolder: string): boolean =>
+  mapFolderFromPath(candidate.fileName)?.toLowerCase() === mapFolder.toLowerCase();
+
+const pickCandidateForMapFolder = (
+  modCandidates: EsfFileCandidate[],
+  vanillaCandidates: EsfFileCandidate[],
+  mapFolder: string,
+  kind: EsfAssetKind,
+): EsfFileCandidate | undefined => {
+  const matchingMods = modCandidates.filter((candidate) => mapFolderMatches(candidate, mapFolder));
+  const effectiveMod = pickEffectiveModCandidate(matchingMods, mapFolder, kind);
+  if (effectiveMod) return effectiveMod;
+
+  const matchingVanilla = vanillaCandidates.filter((candidate) => mapFolderMatches(candidate, mapFolder));
+  return pickBestCandidate(matchingVanilla, mapFolder, kind);
 };
 
 const readPackedFileBuffer = async (candidate: EsfFileCandidate): Promise<Buffer> => {
@@ -211,12 +262,22 @@ export async function loadEsfMapData(
 
   const vanillaPackPaths = getVanillaPackPathsInLoadOrder();
   const vanillaIndex = await getVanillaPackIndex();
-  const [vanillaMapCandidates, vanillaStartposCandidates, modMapCandidates, modStartposCandidates] = await Promise.all([
-    collectVanillaPackCandidates(vanillaIndex, vanillaPackPaths, "map_data.esf"),
+  const [vanillaMapAssets, vanillaStartposCandidates, modMapAssets, modStartposCandidates] = await Promise.all([
+    collectVanillaCampaignMapCandidates(vanillaIndex, vanillaPackPaths),
     collectVanillaStartposCandidates(dataFolder),
-    collectModCandidates(enabledMods, "map_data.esf"),
-    collectModCandidates(enabledMods, "startpos.esf"),
+    collectModCandidates(enabledMods, isCampaignMapAsset),
+    collectModCandidates(enabledMods, (fileName) => isPackedFileNamed(fileName, "startpos.esf")),
   ]);
+  const vanillaMapCandidates = vanillaMapAssets.filter((candidate) =>
+    isPackedFileNamed(candidate.fileName, "map_data.esf"),
+  );
+  const vanillaLookupCandidates = vanillaMapAssets.filter((candidate) => isLookupFileNamed(candidate.fileName));
+  const vanillaPathfindingCandidates = vanillaMapAssets.filter((candidate) =>
+    isPathfindingFileNamed(candidate.fileName),
+  );
+  const modMapCandidates = modMapAssets.filter((candidate) => isPackedFileNamed(candidate.fileName, "map_data.esf"));
+  const modLookupCandidates = modMapAssets.filter((candidate) => isLookupFileNamed(candidate.fileName));
+  const modPathfindingCandidates = modMapAssets.filter((candidate) => isPathfindingFileNamed(candidate.fileName));
 
   const allStartposCandidates = [...vanillaStartposCandidates, ...modStartposCandidates];
   const campaignByKey = new Map<string, string>();
@@ -260,13 +321,24 @@ export async function loadEsfMapData(
     throw new Error("No campaign map_data.esf was found in the enabled mods or Warhammer 3's vanilla packs.");
   }
 
-  const [mapDataBuffer, startposBuffer] = await Promise.all([
+  const mapFolder = mapFolderFromPath(mapDataCandidate.fileName);
+  const lookupCandidate = mapFolder
+    ? pickCandidateForMapFolder(modLookupCandidates, vanillaLookupCandidates, mapFolder, "lookup")
+    : undefined;
+  const pathfindingCandidate = mapFolder
+    ? pickCandidateForMapFolder(modPathfindingCandidates, vanillaPathfindingCandidates, mapFolder, "pathfinding")
+    : undefined;
+
+  const [mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer] = await Promise.all([
     readPackedFileBuffer(mapDataCandidate),
     readPackedFileBuffer(startposCandidate),
+    lookupCandidate ? readPackedFileBuffer(lookupCandidate) : Promise.resolve(undefined),
+    pathfindingCandidate ? readPackedFileBuffer(pathfindingCandidate) : Promise.resolve(undefined),
   ]);
-  const map = buildEsfMapData(mapDataBuffer, startposBuffer, {
+  const map = buildEsfMapData(mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer, {
     mapDataPath: mapDataCandidate.fileName,
     startposPath: startposCandidate.fileName,
+    lookupPath: lookupCandidate?.fileName ?? null,
   });
   return { ...map, campaignKey: requestedCampaignKey, availableCampaigns };
 }

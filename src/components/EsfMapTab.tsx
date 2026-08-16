@@ -8,18 +8,16 @@ type EsfMapTabProps = {
   isActive?: boolean;
 };
 
-const DISPLAY_FLIP_Y = true;
+const displayYFromVertex = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - y : y);
+const displayYFromCell = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - 1 - y : y);
 
-const displayYFromVertex = (height: number, y: number) => (DISPLAY_FLIP_Y ? height - y : y);
-const displayYFromCell = (height: number, y: number) => (DISPLAY_FLIP_Y ? height - 1 - y : y);
-
-const drawAreaPath = (context: CanvasRenderingContext2D, area: EsfMapArea, height: number) => {
+const drawAreaPath = (context: CanvasRenderingContext2D, area: EsfMapArea, height: number, displayFlipY: boolean) => {
   context.beginPath();
   for (const loop of area.loops) {
     if (loop.length < 6) continue;
-    context.moveTo(loop[0], displayYFromVertex(height, loop[1]));
+    context.moveTo(loop[0], displayYFromVertex(height, loop[1], displayFlipY));
     for (let index = 2; index < loop.length; index += 2) {
-      context.lineTo(loop[index], displayYFromVertex(height, loop[index + 1]));
+      context.lineTo(loop[index], displayYFromVertex(height, loop[index + 1], displayFlipY));
     }
     context.closePath();
   }
@@ -115,7 +113,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     context.clearRect(0, 0, map.width, map.height);
 
     for (const area of map.areas) {
-      drawAreaPath(context, area, map.height);
+      drawAreaPath(context, area, map.height, map.displayFlipY);
       context.fillStyle = `rgb(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]})`;
       context.fill("evenodd");
     }
@@ -128,7 +126,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       );
       for (const area of map.areas) {
         if (!selectedAreaIds.has(area.componentId)) continue;
-        drawAreaPath(context, area, map.height);
+        drawAreaPath(context, area, map.height, map.displayFlipY);
         context.fillStyle = "rgba(255, 255, 255, 0.18)";
         context.strokeStyle = "rgba(255, 255, 255, 0.95)";
         context.lineWidth = 1.2;
@@ -139,12 +137,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
     context.fillStyle = "rgba(255, 255, 255, 0.92)";
     for (const marker of map.markers) {
-      const y = displayYFromCell(map.height, marker.gy);
+      const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
       context.fillRect(marker.gx - 1, y - 1, 2, 2);
     }
 
     if (selected) {
-      const y = displayYFromCell(map.height, selected.gy);
+      const y = displayYFromCell(map.height, selected.gy, map.displayFlipY);
       context.strokeStyle = "#ffffff";
       context.lineWidth = 2;
       context.beginPath();
@@ -164,11 +162,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     const rect = canvas.getBoundingClientRect();
     const x = Math.max(0, Math.min(map.width - 1, ((event.clientX - rect.left) / rect.width) * map.width));
     const rawY = Math.max(0, Math.min(map.height - 1, ((event.clientY - rect.top) / rect.height) * map.height));
-    const y = DISPLAY_FLIP_Y ? map.height - rawY : rawY;
+    const y = map.displayFlipY ? map.height - rawY : rawY;
 
     let areaMarker: EsfMapMarker | undefined;
     for (const area of map.areas) {
-      drawAreaPath(context, area, map.height);
+      drawAreaPath(context, area, map.height, map.displayFlipY);
       if (context.isPointInPath(x, y, "evenodd")) {
         areaMarker = getMarkerForArea(map, area);
         if (areaMarker) break;
@@ -179,7 +177,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       let closest: EsfMapMarker | undefined;
       let closestDistance = Number.POSITIVE_INFINITY;
       for (const marker of map.markers) {
-        const markerY = displayYFromCell(map.height, marker.gy);
+        const markerY = displayYFromCell(map.height, marker.gy, map.displayFlipY);
         const distance = (marker.gx - x) ** 2 + (markerY - y) ** 2;
         if (distance < closestDistance) {
           closestDistance = distance;
