@@ -17,3 +17,5 @@ export { extractLookupGridFromTga } from "./extract/tgaLookup";
 export type { TgaLookupGrid } from "./extract/tgaLookup";
 export { parsePathfindingRegionKeys } from "./extract/pathfindingRegions";
 export type { PathfindingRegionList } from "./extract/pathfindingRegions";
+export { extractCampaignTableIdentity, extractCampaignTableRow } from "./extract/campaignTable";
+export type { StartposCampaignTableIdentity, StartposCampaignTableRow } from "./extract/campaignTable";

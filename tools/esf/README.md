@@ -10,6 +10,8 @@ Current parser behavior:
 - extracts `REGION_KEYS` and `REGION_DATA` region-center points from the node tree
 - decompresses the LZMA `COMPRESSED_DATA` block used by `startpos.esf`, and reads
   campaign regions from the `REGIONS_ARRAY` records inside it
+- reconstructs the `campaigns_tables` fields persisted across the startpos
+  campaign setup and map-data records
 
 The parser is also consumed by the Electron app's campaign-map tab; the CLI
 below remains useful for inspecting and validating files.
@@ -106,6 +108,37 @@ You can also pass the ESF input file by environment variable:
 ```bash
 ESF_FILE=/path/to/startpos.esf yarn esf:test-regions
 ```
+
+## Dump campaigns table metadata
+
+The fields from `campaigns_tables` which are persisted in a startpos can be
+written as a 14-column, schema-ordered TSV. Repeat `--file` to combine several
+campaigns, and use `--validate` to compare the ESF-backed columns with an
+existing table dump:
+
+```bash
+yarn esf:dump-campaigns \
+  --file /path/to/campaigns/wh3_main_chaos/startpos.esf \
+  --file /path/to/campaigns/wh3_main_combi/startpos.esf \
+  --out /path/to/campaigns_tables.tsv \
+  --validate /path/to/reference_campaigns_tables.tsv
+```
+
+If only `campaign_name` and `map_name` are needed, `--identity-only` reads them
+from the uncompressed outer wrapper. It is faster and still works when the
+inner compressed campaign state is damaged:
+
+```bash
+yarn esf:dump-campaigns --identity-only \
+  --file /path/to/campaigns/wh3_main_chaos/startpos.esf \
+  --file /path/to/campaigns/wh3_main_combi/startpos.esf \
+  --file /path/to/campaigns/wh3_main_prologue/startpos.esf
+```
+
+`--json` includes source paths and lists the columns unavailable from a
+startpos. Those unavailable fields are left empty in TSV output: the localised
+`onscreen_name`, `description` and `bullet_list`, plus the DB-only `exportable`,
+`mask`, `mp_sort_order` and `game`. Validation skips those seven fields.
 
 For a map it checks that region centres are extracted, that every key looks like
 a region key, and that `REGION_KEYS` holds no keys absent from `REGION_DATA`. For
