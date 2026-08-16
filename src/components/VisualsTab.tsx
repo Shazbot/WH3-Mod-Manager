@@ -518,10 +518,10 @@ const VisualsTab = memo(() => {
         </div>
       )}
 
-      <div style={{ width: "100%", display: "flex", minHeight: "82vh" }}>
+      <div style={{ width: "100%", display: "flex", height: "87vh" }}>
         {isLeftOpen && (
-          <Resizable defaultSize={{ width: "26%", height: "82vh" }} minWidth="220px" maxWidth="50%">
-            <div className="h-[82vh] border border-gray-700 bg-gray-800 rounded overflow-auto">
+          <Resizable defaultSize={{ width: "26%", height: "87vh" }} minWidth="220px" maxWidth="50%">
+            <div className="h-[87vh] border border-gray-700 bg-gray-800 rounded overflow-auto">
               {isLoadingUnits && units.length === 0 ? (
                 <div className="p-3 text-gray-300">Loading unit list...</div>
               ) : !isGroupedByOrigin || !groupedUnits ? (
@@ -673,7 +673,7 @@ const VisualsTab = memo(() => {
             )}
           </div>
 
-          <div className="flex-1 border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-auto h-[82vh]">
+          <div className="flex-1 border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-auto h-[87vh]">
             {!activeTab && (
               <div className="p-4 text-gray-400">
                 Single-click opens in the current tab. Double-click opens in a new tab.
@@ -698,8 +698,8 @@ const VisualsTab = memo(() => {
         </div>
 
         {isFilePanelOpen && (
-          <Resizable defaultSize={{ width: "25%", height: "82vh" }} minWidth="220px" maxWidth="45%" className="ml-3">
-            <div className="h-[82vh] border border-gray-700 bg-gray-800 rounded flex flex-col min-w-0">
+          <Resizable defaultSize={{ width: "25%", height: "87vh" }} minWidth="220px" maxWidth="45%" className="ml-3">
+            <div className="h-[87vh] border border-gray-700 bg-gray-800 rounded flex flex-col min-w-0">
               <div className="p-2 border-b border-gray-700">
                 <input
                   type="text"
