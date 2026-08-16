@@ -234,7 +234,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   }
 
   return (
-    <div className="flex h-[86vh] min-h-0 flex-col text-gray-200">
+    <div className="flex h-[92vh] min-h-0 flex-col text-gray-200">
       <div className="flex items-center gap-3 border-b border-gray-700 px-4 py-2 text-sm">
         <span className="font-medium text-gray-100">Campaign map</span>
         {map && campaignOptions.length > 0 && (

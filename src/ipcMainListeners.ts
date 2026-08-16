@@ -50,6 +50,7 @@ import type {
   BuildingsTableRows,
   BuiltBuildingsData,
 } from "./buildingsData/types";
+import { clearEsfMapMemoryCache, loadEsfMapDiskCache, saveEsfMapDiskCache } from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import type { EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
@@ -3087,27 +3088,67 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
 
   // --- Campaign map ----------------------------------------------------------
-  const getEsfMapSignature = (enabledMods: Mod[], campaignName: string | undefined) =>
-    JSON.stringify({
-      game: appData.currentGame,
-      dataFolder: appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder ?? null,
-      campaignName: campaignName ?? null,
-      mods: sortByNameAndLoadOrder(enabledMods).map((mod) => ({
-        path: mod.path,
-        loadOrder: mod.loadOrder ?? null,
-        lastChangedLocal: mod.lastChangedLocal ?? null,
-        lastChanged: mod.lastChanged ?? null,
-      })),
-    });
+  const getEsfMapSignature = async (enabledMods: Mod[], campaignName: string | undefined): Promise<string> => {
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+    const englishLocalizationPackPaths = dataFolder
+      ? getVanillaLocalisationPackPathsFor(appData.allVanillaPackNames, appData.currentLanguage, dataFolder, true)
+      : [];
+    const vanillaStartposPaths = dataFolder ? await getVanillaStartposFilePaths(dataFolder) : [];
+    const vanillaPackPaths = dataFolder
+      ? [...appData.allVanillaPackNames].map((packName) => nodePath.join(dataFolder, packName))
+      : [];
+    const identityPaths = [
+      ...vanillaPackPaths,
+      ...englishLocalizationPackPaths,
+      ...vanillaStartposPaths,
+      ...enabledMods.map((mod) => mod.path),
+    ];
+    const identities = await Promise.all(
+      [...new Set(identityPaths)].map(async (filePath) => {
+        try {
+          const stat = await fs.promises.stat(filePath);
+          return [nodePath.resolve(filePath), stat.size, stat.mtimeMs] as const;
+        } catch {
+          return [nodePath.resolve(filePath), -1, -1] as const;
+        }
+      }),
+    );
+    return createHash("sha256")
+      .update(
+        JSON.stringify({
+          feature: 1,
+          game: appData.currentGame,
+          dataFolder: dataFolder ?? null,
+          currentLanguage: appData.currentLanguage ?? null,
+          campaignName: campaignName ?? null,
+          vanillaPackNames: [...appData.allVanillaPackNames],
+          mods: sortByNameAndLoadOrder(enabledMods).map((mod) => ({
+            path: mod.path,
+            loadOrder: mod.loadOrder ?? null,
+            lastChangedLocal: mod.lastChangedLocal ?? null,
+            lastChanged: mod.lastChanged ?? null,
+          })),
+          identities,
+        }),
+      )
+      .digest("hex");
+  };
 
   ipcMain.handle("getEsfMap", async (_event, enabledMods: Mod[], campaignName?: string): Promise<EsfMapResponse> => {
     try {
-      const signature = getEsfMapSignature(enabledMods, campaignName);
+      const signature = await getEsfMapSignature(enabledMods, campaignName);
       if (cachedEsfMapData?.signature === signature) {
         return { success: true, map: cachedEsfMapData.data };
       }
 
+      const diskData = await loadEsfMapDiskCache(app.getPath("userData"), signature);
+      if (diskData) {
+        cachedEsfMapData = { signature, data: diskData };
+        return { success: true, map: diskData };
+      }
+
       const data = await loadEsfMapData(enabledMods, campaignName);
+      await saveEsfMapDiskCache(app.getPath("userData"), signature, data);
       cachedEsfMapData = { signature, data };
       return { success: true, map: data };
     } catch (error) {
@@ -3532,6 +3573,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // would otherwise serve icon URLs built with a generation clearIconAssets has just dropped.
       cachedBuildingsData = undefined;
       cachedEsfMapData = undefined;
+      clearEsfMapMemoryCache();
       clearBuildingsMemoryCache();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);
