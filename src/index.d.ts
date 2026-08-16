@@ -221,6 +221,8 @@ declare global {
     /** Bumped to make the node editor re-read the open flow when the selection itself cannot change. */
     currentFlowFileReloadNonce: number;
     currentTab: MainWindowTab;
+    mapCampaignName: string;
+    mapSelectedRegion?: MapRegionSelection;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;
     isPackSearcherOpen: boolean;
@@ -263,6 +265,11 @@ declare global {
     technologyTreesDisplayMode: TreeDisplayMode;
     skillNodesToLevel: Record<string, number>;
     currentRank: number;
+  }
+
+  interface MapRegionSelection {
+    campaign: string;
+    region: string;
   }
 
   type TreeDisplayMode = "off" | "tab" | "window";

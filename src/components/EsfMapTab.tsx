@@ -1,8 +1,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
-import { useAppSelector } from "../hooks";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import { clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
-import { DEFAULT_ESF_CAMPAIGN } from "../esfMap/constants";
 
 type EsfMapTabProps = {
   isActive?: boolean;
@@ -39,8 +39,11 @@ const getMarkerForArea = (map: EsfMapPayload, area: EsfMapArea): EsfMapMarker | 
   area.regionKey ? map.markers.find((marker) => marker.key === area.regionKey) : undefined;
 
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
+  const dispatch = useAppDispatch();
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const mapCampaignName = useAppSelector((state) => state.app.mapCampaignName);
+  const mapSelectedRegion = useAppSelector((state) => state.app.mapSelectedRegion);
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const enabledModsSignature = useMemo(
     () =>
@@ -56,7 +59,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
   const [map, setMap] = useState<EsfMapPayload>();
-  const [campaignName, setCampaignName] = useState(DEFAULT_ESF_CAMPAIGN);
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
   const [selectedMarkerId, setSelectedMarkerId] = useState<number>();
   const [filter, setFilter] = useState("");
@@ -70,7 +72,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setIsLoading(true);
     setError(undefined);
     window.api
-      ?.getEsfMap(enabledModsRef.current, campaignName)
+      ?.getEsfMap(enabledModsRef.current, mapCampaignName)
       .then((response) => {
         if (!current) return;
         if (!response.success) {
@@ -80,8 +82,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         }
         setMap(response.map);
         setCampaignOptions(response.map.availableCampaigns);
-        if (response.map.campaignKey !== campaignName) setCampaignName(response.map.campaignKey);
-        setSelectedMarkerId(undefined);
+        if (response.map.campaignKey !== mapCampaignName) dispatch(setMapCampaignName(response.map.campaignKey));
       })
       .catch((reason) => {
         if (current) {
@@ -95,7 +96,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     return () => {
       current = false;
     };
-  }, [campaignName, currentGame, signatureToRequest]);
+  }, [currentGame, dispatch, mapCampaignName, signatureToRequest]);
 
   const filteredMarkers = useMemo(() => {
     if (!map) return [];
@@ -112,6 +113,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     () => map?.markers.find((marker) => marker.id === selectedMarkerId),
     [map, selectedMarkerId],
   );
+
+  useEffect(() => {
+    if (!map) return;
+    const selectedRegion =
+      mapSelectedRegion?.campaign.toLowerCase() === map.campaignKey.toLowerCase()
+        ? mapSelectedRegion.region.toLowerCase()
+        : undefined;
+    setSelectedMarkerId(
+      selectedRegion === undefined
+        ? undefined
+        : map.markers.find((marker) => marker.key.toLowerCase() === selectedRegion)?.id,
+    );
+  }, [map, mapSelectedRegion]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -193,6 +207,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
   const changeZoom = (nextZoom: number) => setZoom(Math.max(0.5, Math.min(6, nextZoom)));
 
+  const selectMapMarker = (marker: EsfMapMarker | undefined) => {
+    setSelectedMarkerId(marker?.id);
+    if (marker && map) {
+      dispatch(selectMapRegion({ campaign: map.campaignKey, region: marker.key }));
+    } else {
+      dispatch(clearMapRegionSelection());
+    }
+  };
+
   const selectAtCanvasPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!map) return;
     const canvas = canvasRef.current;
@@ -226,7 +249,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       }
       if (closestDistance <= 256) areaMarker = closest;
     }
-    setSelectedMarkerId(areaMarker?.id);
+    selectMapMarker(areaMarker);
   };
 
   if (currentGame !== "wh3") {
@@ -239,8 +262,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         <span className="font-medium text-gray-100">Campaign map</span>
         {map && campaignOptions.length > 0 && (
           <select
-            value={campaignName}
-            onChange={(event) => setCampaignName(event.target.value)}
+            value={mapCampaignName}
+            onChange={(event) => dispatch(setMapCampaignName(event.target.value))}
             className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
             aria-label="Campaign map"
           >
@@ -338,7 +361,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 <button
                   key={`${marker.id}-${marker.key}`}
                   type="button"
-                  onClick={() => setSelectedMarkerId(marker.id)}
+                  onClick={() => selectMapMarker(marker)}
                   className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${
                     selectedMarkerId === marker.id
                       ? "border-blue-500 bg-blue-950/60 text-gray-100"

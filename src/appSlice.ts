@@ -1519,6 +1519,22 @@ const appSlice = createSlice({
       const tabType = action.payload;
       state.currentTab = isMainWindowTabAvailable(state, tabType) ? tabType : "mods";
     },
+    setMapCampaignName: (state: AppState, action: PayloadAction<string>) => {
+      state.mapCampaignName = action.payload;
+      state.mapSelectedRegion = undefined;
+    },
+    selectMapRegion: (state: AppState, action: PayloadAction<MapRegionSelection>) => {
+      state.mapCampaignName = action.payload.campaign;
+      state.mapSelectedRegion = action.payload;
+    },
+    clearMapRegionSelection: (state: AppState) => {
+      state.mapSelectedRegion = undefined;
+    },
+    openMapForRegion: (state: AppState, action: PayloadAction<MapRegionSelection>) => {
+      state.mapCampaignName = action.payload.campaign;
+      state.mapSelectedRegion = action.payload;
+      state.currentTab = isMainWindowTabAvailable(state, "map") ? "map" : "mods";
+    },
     setDataModsToEnableByName: (state: AppState, action: PayloadAction<string[]>) => {
       state.dataModsToEnableByName = action.payload;
     },
@@ -1735,6 +1751,10 @@ export const {
   selectFlowFile,
   requestFlowFileReload,
   setCurrentTab,
+  setMapCampaignName,
+  selectMapRegion,
+  clearMapRegionSelection,
+  openMapForRegion,
   setAreModsEnabled,
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,

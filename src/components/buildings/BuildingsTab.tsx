@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
-import { useAppSelector } from "../../hooks";
+import { useAppDispatch, useAppSelector } from "../../hooks";
+import { openMapForRegion } from "../../appSlice";
 import { useDeferredWhileInactive } from "../useDeferredWhileInactive";
 import BuildingsFilters from "./BuildingsFilters";
 import BuildingsBoard from "./BuildingsBoard";
@@ -42,8 +43,10 @@ const DEFAULT_QUERY: BuildingsRegionQuery = {
 };
 
 const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
+  const dispatch = useAppDispatch();
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const mapSelectedRegion = useAppSelector((state) => state.app.mapSelectedRegion);
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const enabledModsSignature = useMemo(
     () =>
@@ -70,6 +73,10 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const onQueryChange = useCallback((patch: Partial<BuildingsRegionQuery>) => {
     setQuery((previous) => ({ ...previous, ...patch }));
   }, []);
+
+  const openMapForCurrentRegion = useCallback(() => {
+    dispatch(openMapForRegion({ campaign: query.campaign, region: query.region }));
+  }, [dispatch, query.campaign, query.region]);
 
   // The tooltip is portalled out of the board so the board's own `overflow: auto` cannot clip it.
   const [hoveredTile, setHoveredTile] = useState<BuildingsTile | undefined>();
@@ -285,6 +292,28 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   }, [currentGame, reloadNonce, signatureToRequest]);
 
   useEffect(() => {
+    if (!catalog || !mapSelectedRegion) return;
+    const campaignIsAvailable = catalog.campaigns.some((campaign) => campaign.key === mapSelectedRegion.campaign);
+    const regionIsAvailable = catalog.regions.some(
+      (region) =>
+        region.key === mapSelectedRegion.region &&
+        (region.campaigns.length === 0 || region.campaigns.includes(mapSelectedRegion.campaign)),
+    );
+    if (!campaignIsAvailable || !regionIsAvailable) return;
+    setQuery((previous) => {
+      if (previous.campaign === mapSelectedRegion.campaign && previous.region === mapSelectedRegion.region) {
+        return previous;
+      }
+      return {
+        ...previous,
+        campaign: mapSelectedRegion.campaign,
+        region: mapSelectedRegion.region,
+        settlementType: undefined,
+      };
+    });
+  }, [catalog, mapSelectedRegion]);
+
+  useEffect(() => {
     if (currentGame !== "wh3" || !catalog || !query.campaign || !query.region) return;
     let isCurrent = true;
     setIsLoading(true);
@@ -341,6 +370,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           zoom={zoom}
           onQueryChange={onQueryChange}
           onZoomChange={setZoom}
+          onOpenMap={openMapForCurrentRegion}
         />
       )}
 

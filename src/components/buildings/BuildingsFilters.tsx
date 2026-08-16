@@ -1,5 +1,6 @@
-import React, { memo, useMemo } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import WindowedSelect from "react-windowed-select";
+import { FaMapMarkedAlt } from "react-icons/fa";
 import selectStyle from "../../styles/selectStyle";
 import type {
   BuildingsCatalog,
@@ -16,6 +17,7 @@ export type BuildingsFiltersProps = {
   zoom: number;
   onQueryChange: (patch: Partial<BuildingsRegionQuery>) => void;
   onZoomChange: (zoom: number) => void;
+  onOpenMap: (campaign: string, region: string) => void;
 };
 
 type SelectOption = { value: string; label: string; tone?: "quest" | "rebel" };
@@ -113,7 +115,9 @@ const FilterSelect = ({
 );
 
 const BuildingsFilters = memo(
-  ({ catalog, query, settlementTypeOptions, zoom, onQueryChange, onZoomChange }: BuildingsFiltersProps) => {
+  ({ catalog, query, settlementTypeOptions, zoom, onQueryChange, onZoomChange, onOpenMap }: BuildingsFiltersProps) => {
+    const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+    const optionsMenuRef = useRef<HTMLDivElement | null>(null);
     const campaignOptions = useMemo(() => toOptions(catalog.campaigns), [catalog.campaigns]);
 
     // Only regions the selected campaign actually places slot templates in are pickable; a region
@@ -154,6 +158,20 @@ const BuildingsFilters = memo(
 
     const settlementOptions = useMemo(() => toOptions(settlementTypeOptions), [settlementTypeOptions]);
 
+    useEffect(() => {
+      if (!isOptionsMenuOpen) return;
+
+      const onPointerDown = (event: MouseEvent) => {
+        if (optionsMenuRef.current?.contains(event.target as Node)) return;
+        setIsOptionsMenuOpen(false);
+      };
+
+      document.addEventListener("mousedown", onPointerDown);
+      return () => {
+        document.removeEventListener("mousedown", onPointerDown);
+      };
+    }, [isOptionsMenuOpen]);
+
     return (
       // Above the board: tiles carrying unit portraits are given a z-index so their overhang is not
       // clipped by the next tile, and without a stacking context of its own this bar - which comes
@@ -178,6 +196,16 @@ const BuildingsFilters = memo(
           value={query.region}
           onSelect={(region) => onQueryChange({ region, settlementType: undefined })}
         />
+
+        <button
+          type="button"
+          onClick={() => onOpenMap(query.campaign, query.region)}
+          className="mb-0.5 flex h-9 w-9 items-center justify-center rounded border border-gray-700 bg-gray-900 text-gray-300 hover:border-blue-500 hover:bg-gray-800 hover:text-white"
+          title="Choose region on map"
+          aria-label="Choose region on map"
+        >
+          <FaMapMarkedAlt size="1rem" />
+        </button>
 
         {settlementOptions.length > 0 && (
           <FilterSelect
@@ -224,61 +252,75 @@ const BuildingsFilters = memo(
           />
         </div>
 
-        <div className="flex flex-col gap-1 text-xs text-gray-400">
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={!!query.includeHiddenInUi}
-              onChange={(event) => onQueryChange({ includeHiddenInUi: event.target.checked })}
-            />
-            Hidden buildings
-          </label>
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={!!query.includeHiddenSets}
-              onChange={(event) => onQueryChange({ includeHiddenSets: event.target.checked })}
-            />
-            Hidden sets
-          </label>
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={!!query.includeLevelsWithoutVariant}
-              onChange={(event) => onQueryChange({ includeLevelsWithoutVariant: event.target.checked })}
-            />
-            No culture variant
-          </label>
-          <label className="flex items-center gap-1" title="The level-0 razed state of settlement and port chains.">
-            <input
-              type="checkbox"
-              checked={!!query.includeRuinLevels}
-              onChange={(event) => onQueryChange({ includeRuinLevels: event.target.checked })}
-            />
-            Ruin states
-          </label>
-          <label
-            className="flex items-center gap-1"
-            title="Levels bound to no building set. The game has no band to draw them in, so it leaves them out."
+        <div className="relative mb-0.5" ref={optionsMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
+            className="h-9 rounded border border-gray-700 bg-gray-900 px-3 text-xs text-gray-300 hover:border-blue-500 hover:bg-gray-800 hover:text-white"
           >
-            <input
-              type="checkbox"
-              checked={!!query.includeUnbandedLevels}
-              onChange={(event) => onQueryChange({ includeUnbandedLevels: event.target.checked })}
-            />
-            Unbanded levels
-          </label>
-          <label
-            className="flex items-center gap-1"
-            title="Chains whose levels name only cultures other than the selected one."
-          >
-            <input
-              type="checkbox"
-              checked={!!query.includeOtherCultureChains}
-              onChange={(event) => onQueryChange({ includeOtherCultureChains: event.target.checked })}
-            />
-            Other cultures' chains
-          </label>
+            Extra
+          </button>
+          {isOptionsMenuOpen && (
+            <div className="absolute right-0 z-[250] mt-1 w-56 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+              <label className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={!!query.includeHiddenInUi}
+                  onChange={(event) => onQueryChange({ includeHiddenInUi: event.target.checked })}
+                />
+                Hidden buildings
+              </label>
+              <label className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={!!query.includeHiddenSets}
+                  onChange={(event) => onQueryChange({ includeHiddenSets: event.target.checked })}
+                />
+                Hidden sets
+              </label>
+              <label className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={!!query.includeLevelsWithoutVariant}
+                  onChange={(event) => onQueryChange({ includeLevelsWithoutVariant: event.target.checked })}
+                />
+                No culture variant
+              </label>
+              <label
+                className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                title="The level-0 razed state of settlement and port chains."
+              >
+                <input
+                  type="checkbox"
+                  checked={!!query.includeRuinLevels}
+                  onChange={(event) => onQueryChange({ includeRuinLevels: event.target.checked })}
+                />
+                Ruin states
+              </label>
+              <label
+                className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                title="Levels bound to no building set. The game has no band to draw them in, so it leaves them out."
+              >
+                <input
+                  type="checkbox"
+                  checked={!!query.includeUnbandedLevels}
+                  onChange={(event) => onQueryChange({ includeUnbandedLevels: event.target.checked })}
+                />
+                Unbanded levels
+              </label>
+              <label
+                className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                title="Chains whose levels name only cultures other than the selected one."
+              >
+                <input
+                  type="checkbox"
+                  checked={!!query.includeOtherCultureChains}
+                  onChange={(event) => onQueryChange({ includeOtherCultureChains: event.target.checked })}
+                />
+                Other cultures' chains
+              </label>
+            </div>
+          )}
         </div>
       </div>
     );

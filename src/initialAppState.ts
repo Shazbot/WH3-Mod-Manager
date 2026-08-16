@@ -71,6 +71,8 @@ const initialState = {
   outdatedPackFiles: {},
   startArgs: [],
   currentTab: "mods",
+  mapCampaignName: "wh3_main_combi",
+  mapSelectedRegion: undefined,
   currentFlowFileReloadNonce: 0,
   isCreateSteamCollectionOpen: false,
   isImportSteamCollectionOpen: false,
