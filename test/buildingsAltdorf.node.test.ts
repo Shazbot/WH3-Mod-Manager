@@ -59,11 +59,6 @@ const EXPECTED_ALTDORF_SLOTS = [
  *
  * What is left has genuinely no signal:
  *
- * - **Culture-agnostic alternatives.** `wh2_main_VAMPIRES_terrorgheists`, `wh2_main_rogue_port` and
- *   `wh_main_horde_chaos_dragon_ogres` are reachable from the generic chain sets, carry no
- *   `building_chain_availability_sets` row, and every culture variant they have leaves `culture`
- *   empty - so the culture rule cannot see them either. Only the building set they are bound to
- *   suggests an owner, and building sets have no culture column.
  * - **Other Empire provinces' cults.** `wh_main_HUMAN_MIDDENHEIM_worship` and
  *   `wh_main_HUMAN_TALABEC_worship` are narrowed by faction in game; this query pins culture and
  *   subculture but not faction, so both stay in.
@@ -72,11 +67,8 @@ const EXPECTED_ALTDORF_SLOTS = [
  * them rather than hiding them.
  */
 const EXPECTED_EXTRAS = [
-  "wh2_main_VAMPIRES_terrorgheists",
-  "wh2_main_rogue_port",
   "wh_main_HUMAN_MIDDENHEIM_worship",
   "wh_main_HUMAN_TALABEC_worship",
-  "wh_main_horde_chaos_dragon_ogres",
 ];
 
 /** RPFM TSV: line 1 is the column names, line 2 is a `#table;version;path` comment, then rows. */

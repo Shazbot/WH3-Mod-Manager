@@ -39,6 +39,8 @@ export type BuildingsGetLoc = (key: string) => string | undefined;
 export const HIDDEN_BUILDING_CHAIN_PREFIX = "wh_main_horde_";
 export const VAMPIRE_BUILDING_CHAIN_PREFIX = "wh2_main_VAMPIRES_";
 export const VAMPIRE_BUILDING_AVAILABILITY_SET = "wh_main_bas_vmp";
+export const ROGUE_PORT_BUILDING_CHAIN = "wh2_main_rogue_port";
+export const ROGUE_BUILDING_AVAILABILITY_SET = "wh2_main_bas_rogue";
 
 export const BUILDINGS_TABLES = [
   "building_superchains_tables",
@@ -503,6 +505,12 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
     if (!chain.startsWith(VAMPIRE_BUILDING_CHAIN_PREFIX)) continue;
     const setIds = (availabilitySetsByChain[chain] ||= []);
     if (!setIds.includes(VAMPIRE_BUILDING_AVAILABILITY_SET)) setIds.push(VAMPIRE_BUILDING_AVAILABILITY_SET);
+  }
+  if (chains[ROGUE_PORT_BUILDING_CHAIN]) {
+    const roguePortSetIds = (availabilitySetsByChain[ROGUE_PORT_BUILDING_CHAIN] ||= []);
+    if (!roguePortSetIds.includes(ROGUE_BUILDING_AVAILABILITY_SET)) {
+      roguePortSetIds.push(ROGUE_BUILDING_AVAILABILITY_SET);
+    }
   }
   const availabilitiesBySetId: Record<string, AvailabilityRow[]> = {};
   for (const row of rowsOf("building_chain_availabilities_tables")) {

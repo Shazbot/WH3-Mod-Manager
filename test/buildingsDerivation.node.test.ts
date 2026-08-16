@@ -298,6 +298,53 @@ describe("resolveRegionBuildings: availability", () => {
     expect(chainKeysIn(resolveRegionBuildings(data, query({ culture: "vmp" })))).toContain(vampireChain);
   });
 
+  it("scopes the Rogue Port chain through the Rogue culture availability set", () => {
+    const tables = baseTables();
+    const roguePortChain = "wh2_main_rogue_port";
+    tables.building_chains_tables.push({ key: roguePortChain, building_superchain: "super_rogue" });
+    tables.building_levels_tables.push({
+      level_name: "rogue_port_1",
+      chain: roguePortChain,
+      level: "0",
+      visible_in_ui: "true",
+    });
+    tables.building_culture_variants_tables.push({
+      building: "rogue_port_1",
+      culture: "",
+      subculture: "",
+      faction: "",
+      disables: "false",
+    });
+    tables.building_set_to_building_junctions_tables.push({
+      building_chain: roguePortChain,
+      building_level: "",
+      building_set: "set_one",
+      exclude: "false",
+    });
+    tables.slot_template_permitted_building_chains_tables.push({
+      slot_template: "tmpl_main",
+      chain: roguePortChain,
+      chain_set: "",
+      super_chain: "",
+      remove: "false",
+    });
+    tables.building_chain_availabilities_tables = [
+      {
+        id: "rogue",
+        set_id: "wh2_main_bas_rogue",
+        culture: "wh2_main_rogue",
+        sub_culture: "",
+        faction: "",
+        campaign: "",
+      },
+    ];
+    const data = buildBuildingsData(tables, noLoc);
+
+    expect(data.availabilitySetsByChain[roguePortChain]).toContain("wh2_main_bas_rogue");
+    expect(chainKeysIn(resolveRegionBuildings(data, query()))).not.toContain(roguePortChain);
+    expect(chainKeysIn(resolveRegionBuildings(data, query({ culture: "wh2_main_rogue" })))).toContain(roguePortChain);
+  });
+
   it("keeps a chain whose row names the selected culture", () => {
     const data = withAvailability([
       { id: "1", set_id: "set_a", culture: "emp", sub_culture: "", faction: "", campaign: "" },
