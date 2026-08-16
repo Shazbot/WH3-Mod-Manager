@@ -52,6 +52,7 @@ import type {
 } from "./buildingsData/types";
 import { clearEsfMapMemoryCache, loadEsfMapDiskCache, saveEsfMapDiskCache } from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
+import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
 import type { EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
 import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
@@ -3116,10 +3117,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 1,
+          feature: 2,
           game: appData.currentGame,
           dataFolder: dataFolder ?? null,
           currentLanguage: appData.currentLanguage ?? null,
+          useEnglishLocalizations: appData.isUsingEnglishLocalizations,
           campaignName: campaignName ?? null,
           vanillaPackNames: [...appData.allVanillaPackNames],
           mods: sortByNameAndLoadOrder(enabledMods).map((mod) => ({
@@ -3147,7 +3149,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         return { success: true, map: diskData };
       }
 
-      const data = await loadEsfMapData(enabledMods, campaignName);
+      const extractedMap = await loadEsfMapData(enabledMods, campaignName);
+      const buildings = await ensureBuildingsData(enabledMods);
+      const data = addSettlementTypeDataToEsfMap(extractedMap, buildings.data);
       await saveEsfMapDiskCache(app.getPath("userData"), signature, data);
       cachedEsfMapData = { signature, data };
       return { success: true, map: data };

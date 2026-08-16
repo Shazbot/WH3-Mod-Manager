@@ -19,6 +19,7 @@ import type {
   BuildingsTile,
   BuildingsUpgradeEdge,
   BuiltBuildingsData,
+  RegionSlot,
 } from "./types";
 import { HIDDEN_BUILDING_CHAIN_PREFIX, variantLocKey } from "./data";
 
@@ -253,7 +254,25 @@ const tierRowOf = (level: { level: number; primarySlotLevelRequirement: number }
   return Number.isFinite(requirement) ? Math.max(0, requirement - 1) : 0;
 };
 
-export const resolveRegionBuildings = (data: BuiltBuildingsData, query: BuildingsRegionQuery): BuildingsRegionView => {
+interface RegionChainContext {
+  cultureOfSubculture: (subculture: string) => string | undefined;
+  cultureOfFaction: (faction: string) => string | undefined;
+  slotTemplates: RegionSlot[];
+  availableChains: string[];
+  sourcesByChain: Map<string, string[]>;
+  slotTypesByChain: Map<string, Set<string>>;
+  foreignSlotChains: Set<string>;
+  cultureChains: string[];
+  settlementTypeOptions: BuildingsOption[];
+  settlementTypeDisabled: boolean;
+}
+
+/**
+ * Resolves the inexpensive part of a region's building board: its slot templates, candidate
+ * chains, availability, and settlement types. The map tab uses this without constructing every
+ * building tile for every region on the campaign map.
+ */
+const resolveRegionChainContext = (data: BuiltBuildingsData, query: BuildingsRegionQuery): RegionChainContext => {
   const cultureBySubculture = new Map(data.subcultures.map((entry) => [entry.key, entry.culture]));
   const cultureByFaction = new Map(data.factions.map((entry) => [entry.key, entry.culture]));
   const cultureOfSubculture = (subculture: string) => cultureBySubculture.get(subculture);
@@ -361,6 +380,51 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
 
   const cultureChains = availableChains.filter((chain) => !isChainForAnotherCulture(data, chain, query.culture));
   const settlementTypeDisabled = !cultureChains.some((chain) => (data.settlementTypeBindings[chain] ?? []).length > 0);
+
+  return {
+    cultureOfSubculture,
+    cultureOfFaction,
+    slotTemplates,
+    availableChains,
+    sourcesByChain,
+    slotTypesByChain,
+    foreignSlotChains,
+    cultureChains,
+    settlementTypeOptions,
+    settlementTypeDisabled,
+  };
+};
+
+export const resolveRegionSettlementTypes = (data: BuiltBuildingsData, query: BuildingsRegionQuery): string[] => {
+  const { cultureChains } = resolveRegionChainContext(data, query);
+  const settlementTypeKeys = new Set<string>();
+  for (const chain of cultureChains) {
+    const bindings = data.settlementTypeBindings[chain] ?? [];
+    const excluded = new Set(bindings.filter((binding) => binding.exclude).map((binding) => binding.settlementType));
+    for (const binding of bindings) {
+      if (!binding.exclude && !excluded.has(binding.settlementType)) settlementTypeKeys.add(binding.settlementType);
+    }
+  }
+  for (const settlement of data.startPosSettlements[`${query.campaign}|${query.region}`] ?? []) {
+    if (settlement.settlementType) settlementTypeKeys.add(settlement.settlementType);
+  }
+  return [...settlementTypeKeys].sort((first, second) => first.localeCompare(second));
+};
+
+export const resolveRegionBuildings = (data: BuiltBuildingsData, query: BuildingsRegionQuery): BuildingsRegionView => {
+  const {
+    cultureOfSubculture,
+    cultureOfFaction,
+    slotTemplates,
+    availableChains,
+    sourcesByChain,
+    slotTypesByChain,
+    foreignSlotChains,
+    settlementTypeOptions,
+    settlementTypeDisabled,
+  } = resolveRegionChainContext(data, query);
+
+  const regionSettlements = data.startPosSettlements[`${query.campaign}|${query.region}`] ?? [];
   const selectedSettlementType = query.settlementType;
   const visibleChains = availableChains
     .filter((chain) => {

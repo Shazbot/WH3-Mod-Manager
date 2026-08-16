@@ -4,7 +4,7 @@ import * as nodePath from "path";
 import type { EsfMapPayload } from "./types";
 
 /** Bump whenever the derived map payload or the map extraction rules change. */
-const ESF_MAP_CACHE_VERSION = 1;
+const ESF_MAP_CACHE_VERSION = 2;
 const ESF_MAP_CACHE_FILE = "esf-map-data-cache.bin";
 
 type EsfMapDiskPayload = {

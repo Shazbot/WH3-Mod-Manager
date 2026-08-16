@@ -69,6 +69,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [map, setMap] = useState<EsfMapPayload>();
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
   const [selectedMarkerId, setSelectedMarkerId] = useState<number>();
+  const [selectedSettlementType, setSelectedSettlementType] = useState("");
   const [filter, setFilter] = useState("");
   const [zoom, setZoom] = useState(1);
   const [isDraggingMap, setIsDraggingMap] = useState(false);
@@ -91,6 +92,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         }
         setMap(response.map);
         setCampaignOptions(response.map.availableCampaigns);
+        setSelectedSettlementType("");
         if (response.map.campaignKey !== mapCampaignName) dispatch(setMapCampaignName(response.map.campaignKey));
       })
       .catch((reason) => {
@@ -152,7 +154,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       if (backgroundImage) context.drawImage(backgroundImage, 0, 0, map.width, map.height);
       if (backgroundTextImage) context.drawImage(backgroundTextImage, 0, 0, map.width, map.height);
 
+      const regionMatchesSettlementType = (regionKey: string | undefined) =>
+        !selectedSettlementType ||
+        (!!regionKey && map.settlementTypesByRegion[regionKey]?.includes(selectedSettlementType));
+
       for (const area of map.areas) {
+        if (!regionMatchesSettlementType(area.regionKey)) continue;
         drawAreaPath(context, area, map.height, map.displayFlipY);
         context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
         context.fill("evenodd");
@@ -160,7 +167,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
       const selected =
         selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
-      if (selected) {
+      if (selected && regionMatchesSettlementType(selected.key)) {
         const selectedAreaIds = new Set(
           map.areas.filter((area) => area.regionKey === selected.key).map((area) => area.componentId),
         );
@@ -212,7 +219,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     return () => {
       cancelled = true;
     };
-  }, [map, selectedMarkerId, zoom]);
+  }, [map, selectedMarkerId, selectedSettlementType, zoom]);
 
   const changeZoom = (nextZoom: number) => setZoom(Math.max(0.5, Math.min(6, nextZoom)));
 
@@ -325,6 +332,21 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             {campaignOptions.map((campaign) => (
               <option key={campaign.key} value={campaign.key}>
                 {campaign.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {map && map.settlementTypes.length > 0 && (
+          <select
+            value={selectedSettlementType}
+            onChange={(event) => setSelectedSettlementType(event.target.value)}
+            className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
+            aria-label="Settlement type"
+          >
+            <option value="">(none)</option>
+            {map.settlementTypes.map((settlementType) => (
+              <option key={settlementType.key} value={settlementType.key}>
+                {settlementType.label}
               </option>
             ))}
           </select>

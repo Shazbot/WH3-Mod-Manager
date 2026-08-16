@@ -28,6 +28,11 @@ export interface EsfMapCampaignOption {
   label: string;
 }
 
+export interface EsfMapSettlementTypeOption {
+  key: string;
+  label: string;
+}
+
 export type EsfMapGridSource = "lookup" | "region-areas";
 
 export interface EsfMapImage {
@@ -39,6 +44,8 @@ export interface EsfMapImage {
 export interface EsfMapPayload {
   campaignKey: string;
   availableCampaigns: EsfMapCampaignOption[];
+  settlementTypes: EsfMapSettlementTypeOption[];
+  settlementTypesByRegion: Record<string, string[]>;
   mapDataPath: string;
   startposPath: string;
   lookupPath: string | null;

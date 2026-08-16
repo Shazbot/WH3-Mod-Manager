@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { buildBuildingsData } from "../src/buildingsData/data";
-import { expandChainSet, NO_SET_KEY, resolveRegionBuildings, toRoman } from "../src/buildingsData/derive";
+import {
+  expandChainSet,
+  NO_SET_KEY,
+  resolveRegionBuildings,
+  resolveRegionSettlementTypes,
+  toRoman,
+} from "../src/buildingsData/derive";
 import type { BuildingsRegionQuery, BuildingsTableRows, BuiltBuildingsData } from "../src/buildingsData/types";
 
 const noLoc = () => undefined;
@@ -433,6 +439,31 @@ describe("resolveRegionBuildings: settlement types", () => {
     const view = resolveRegionBuildings(withBindings(), query());
     expect(view.settlementTypeOptions.map((option) => option.key)).toEqual(["capital", "minor"]);
     expect(view.settlementTypeDisabled).toBe(false);
+  });
+
+  it("resolves only settlement types assigned to chains in this region", () => {
+    const data = withBindings();
+    data.regionSlotTemplates[`${CAMPAIGN}|${REGION}`] = [
+      {
+        campaign: CAMPAIGN,
+        region: REGION,
+        slotTemplate: "tmpl_main",
+        slotType: "secondary",
+        id: "1",
+      },
+    ];
+    data.permittedByTemplate.tmpl_main = [{ slotTemplate: "tmpl_main", chain: "chain_a", remove: false }];
+
+    expect(resolveRegionSettlementTypes(data, query())).toEqual(["capital"]);
+  });
+
+  it("does not report a type from a chain belonging only to another culture", () => {
+    const data = withBindings();
+    data.variantsByLevel.b_1 = [
+      { building: "b_1", culture: "dwf", subculture: "", faction: "", disables: false, specificity: 1 },
+    ];
+
+    expect(resolveRegionSettlementTypes(data, query())).toEqual(["capital"]);
   });
 
   it("offers nothing when no visible chain binds to a settlement type", () => {
