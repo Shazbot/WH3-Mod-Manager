@@ -206,7 +206,13 @@ const BuildingEditModal = memo(
     };
 
     return (
-      <Modal onClose={onClose} show size="2xl" position="center">
+      <Modal
+        onClose={onClose}
+        show
+        size="2xl"
+        position="center"
+        explicitClasses={["first-child-div-second-child-div-flex-grow", "!h-[75vh]", "first-child-div-flex-col"]}
+      >
         <Modal.Header>Edit {tile.title}</Modal.Header>
         <Modal.Body>
           <div className="space-y-4">
