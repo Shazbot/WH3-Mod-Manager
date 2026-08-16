@@ -58,11 +58,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
+  const mapDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    startScrollTop: number;
+  }>();
+  const suppressMapClickRef = useRef(false);
   const [map, setMap] = useState<EsfMapPayload>();
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
   const [selectedMarkerId, setSelectedMarkerId] = useState<number>();
   const [filter, setFilter] = useState("");
   const [zoom, setZoom] = useState(1);
+  const [isDraggingMap, setIsDraggingMap] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -216,7 +225,53 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     }
   };
 
+  const beginMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0) return;
+    const canvasWrap = canvasWrapRef.current;
+    if (!canvasWrap) return;
+
+    mapDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: canvasWrap.scrollLeft,
+      startScrollTop: canvasWrap.scrollTop,
+    };
+    suppressMapClickRef.current = false;
+    setIsDraggingMap(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const moveMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = mapDragRef.current;
+    const canvasWrap = canvasWrapRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !canvasWrap) return;
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) suppressMapClickRef.current = true;
+    canvasWrap.scrollLeft = drag.startScrollLeft - deltaX;
+    canvasWrap.scrollTop = drag.startScrollTop - deltaY;
+    event.preventDefault();
+  };
+
+  const endMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = mapDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    mapDragRef.current = undefined;
+    setIsDraggingMap(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   const selectAtCanvasPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (suppressMapClickRef.current) {
+      suppressMapClickRef.current = false;
+      return;
+    }
     if (!map) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -325,8 +380,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             >
               <canvas
                 ref={canvasRef}
+                onPointerDown={beginMapDrag}
+                onPointerMove={moveMapDrag}
+                onPointerUp={endMapDrag}
+                onPointerCancel={endMapDrag}
                 onClick={selectAtCanvasPoint}
-                className="block cursor-crosshair rounded border border-gray-700 bg-slate-950"
+                className={`block ${isDraggingMap ? "cursor-grabbing" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
               />
             </div>
           </div>
