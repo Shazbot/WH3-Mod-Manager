@@ -14,6 +14,7 @@ import { FloatingOverlay } from "@floating-ui/react";
 import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
 import DBCloneRenameInput from "./DBCloneRenameInput";
+import type { PackedFile } from "../../packFileTypes";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -35,7 +36,12 @@ const MemoizedFloatingOverlay = memo(FloatingOverlay);
 
 export type DBDuplicationLaunchSource = "modsViewer" | "buildings";
 
-const DBDuplication = memo(({ launchSource }: { launchSource: DBDuplicationLaunchSource }) => {
+export type DBDuplicationProps = {
+  launchSource: DBDuplicationLaunchSource;
+  onSaveToBuildings?: (packedFiles: PackedFile[]) => void;
+};
+
+const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationProps) => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   // important to reload the component
@@ -495,14 +501,22 @@ const DBDuplication = memo(({ launchSource }: { launchSource: DBDuplicationLaunc
         console.error("executeDBDuplication failed:", result?.error ?? "Unknown error");
         setDuplicationError(result?.error ?? "Unknown duplication error");
         setIsErrorOpen(true);
+      } else if (destination == "memory") {
+        if (!result.generatedPackedFiles) {
+          setDuplicationError("DB Clone completed without returning any generated rows.");
+          setIsErrorOpen(true);
+          return;
+        }
+        if (!onSaveToBuildings) {
+          setDuplicationError("The Buildings tab is not available to receive the generated rows.");
+          setIsErrorOpen(true);
+          return;
+        }
+        onSaveToBuildings(result.generatedPackedFiles);
       } else {
         console.log("executeDBDuplication success, output:", result.outputPackPath);
         setDuplicationSuccessMessage(
-          destination == "memory"
-            ? `Created an in-memory pack and opened its generated tables in new Mods Viewer tabs:\n${result.outputPackPath ?? ""}`
-            : result.outputPackPath
-              ? `Created pack:\n${result.outputPackPath}`
-              : "Clone completed successfully.",
+          result.outputPackPath ? `Created pack:\n${result.outputPackPath}` : "Clone completed successfully.",
         );
         setIsSuccessOpen(true);
       }
@@ -576,9 +590,8 @@ const DBDuplication = memo(({ launchSource }: { launchSource: DBDuplicationLaunc
               </p>
               {launchSource == "buildings" && (
                 <p>
-                  "Save to memory/new tabs" creates an unsaved memory pack and opens every generated DB table in its own
-                  Mods Viewer tab. You can inspect or edit those tables there, then use the viewer&apos;s Save As action
-                  when you are ready to write a pack.
+                  "Save to memory" adds every generated DB and localization row to the Buildings tab. The generated
+                  tables can be inspected and edited under New rows before you save them to a pack.
                 </p>
               )}
               <p>
@@ -672,7 +685,7 @@ const DBDuplication = memo(({ launchSource }: { launchSource: DBDuplicationLaunc
               onClick={async () => await onSave("memory")}
               disabled={!isSavingPossible() || isSaving}
             >
-              Save to memory/new tabs
+              Save to memory
             </button>
           )}
         </div>

@@ -1820,6 +1820,7 @@ export async function executeDBDuplication(
         },
         { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer("Boolean", "0") },
       ];
+      const resolvedValues = [loc, origLoc, "false"];
 
       const currentLocSize =
         getFieldSize(loc, "StringU16") + getFieldSize(origLoc, "StringU16") + getFieldSize("0", "Boolean");
@@ -1833,7 +1834,7 @@ export async function executeDBDuplication(
 
         locFields.push({
           name: locField.name,
-          resolvedKeyValue: loc,
+          resolvedKeyValue: resolvedValues[i],
           type: "Buffer",
           fields: [fields[i]],
           isKey: locField.is_key,
@@ -1857,8 +1858,7 @@ export async function executeDBDuplication(
       DBCloneSaveOptions.savePackFileName != "" ? DBCloneSaveOptions.savePackFileName : `dbclone_${timestamp}`;
 
     if (DBCloneSaveOptions.destination == "memory") {
-      const memoryPackPath = `memory://${packFileBaseName}`;
-      report("writing", "Staging generated tables in memory");
+      report("writing", "Preparing generated rows for the Buildings tab");
       const generatedPackedFiles = toSaveWithSchema.map(
         (packedFile) =>
           ({
@@ -1866,8 +1866,8 @@ export async function executeDBDuplication(
             start_pos: -1,
           }) as PackedFile,
       );
-      report("done", "Generated tables opened in the Mods Viewer");
-      return { ok: true, outputPackPath: memoryPackPath, generatedPackedFiles };
+      report("done", "Generated rows are ready in the Buildings tab");
+      return { ok: true, generatedPackedFiles };
     }
 
     // console.log("toSave", toSave);

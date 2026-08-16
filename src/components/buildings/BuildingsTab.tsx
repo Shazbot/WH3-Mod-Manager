@@ -16,6 +16,7 @@ import BuildingsTablesTab from "./BuildingsTablesTab";
 import BuildingEditModal from "./BuildingEditModal";
 import AddChainModal from "./AddChainModal";
 import { buildingsEditReducer, emptyBuildingsEditState } from "../../buildingsData/edits";
+import { dbClonePackedFilesToBuildingsRows } from "../../buildingsData/dbCloneRows";
 import {
   addBuildingLevelRows,
   disableBuildingRows,
@@ -30,6 +31,7 @@ import type {
   BuildingsRegionView,
   BuildingsTile,
 } from "../../buildingsData/types";
+import type { DBVersion, PackedFile } from "../../packFileTypes";
 
 type BuildingsTabProps = {
   /** False while the tab is mounted but hidden, so rebuilds wait for the user to come back. */
@@ -101,6 +103,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   }, [refs, view]);
 
   const deepClone = useBuildingsDeepClone(catalog?.dbPackPath);
+  const closeDeepClone = deepClone.close;
   const [contextMenu, setContextMenu] = useState<
     | {
         x: number;
@@ -177,6 +180,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const [edits, dispatchEdit] = useReducer(buildingsEditReducer, undefined, () => emptyBuildingsEditState());
+  const [cloneTableSchemas, setCloneTableSchemas] = useState<Record<string, DBVersion>>({});
   const [addFrom, setAddFrom] = useState<BuildingsTile | undefined>();
   const [editTile, setEditTile] = useState<BuildingsTile | undefined>();
   const [addChainTo, setAddChainTo] = useState<{ setKey: string; setName: string } | undefined>();
@@ -206,6 +210,27 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const addEditRows = useCallback((rows: NewRowDraft[], numericIdCursors: Record<string, number>) => {
     dispatchEdit({ type: "addRows", rows, numericIdCursors });
   }, []);
+
+  const tableSchemas = useMemo(
+    () => ({ ...(catalog?.tableSchemas ?? {}), ...cloneTableSchemas }),
+    [catalog?.tableSchemas, cloneTableSchemas],
+  );
+
+  const saveCloneToBuildings = useCallback(
+    (packedFiles: PackedFile[]) => {
+      const cloneOutput = dbClonePackedFilesToBuildingsRows(packedFiles);
+      if (cloneOutput.rows.length === 0) {
+        setError("DB Clone did not generate any rows.");
+        return;
+      }
+      dispatchEdit({ type: "addRows", rows: cloneOutput.rows });
+      setCloneTableSchemas((current) => ({ ...current, ...cloneOutput.tableSchemas }));
+      setError(undefined);
+      setSubTab("tables");
+      closeDeepClone();
+    },
+    [closeDeepClone],
+  );
 
   /**
    * Effect rows we have already written for the building being edited, keyed by effect.
@@ -380,12 +405,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       {/* `z-0` keeps the tiles' own z-indices contained here rather than competing with the filters. */}
       <div className="relative z-0 min-h-0 flex-1 content-center">
         {subTab === "tables" && catalog && (
-          <BuildingsTablesTab
-            state={edits}
-            dispatch={dispatchEdit}
-            tableSchemas={catalog.tableSchemas}
-            rowIssues={rowIssues}
-          />
+          <BuildingsTablesTab state={edits} dispatch={dispatchEdit} tableSchemas={tableSchemas} rowIssues={rowIssues} />
         )}
         {subTab === "board" && isLoading && !view && (
           <div className="flex h-full items-center justify-center">
@@ -531,7 +551,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       {isSaveOpen && catalog && (
         <BuildingsSaveModal
           state={edits}
-          tableSchemas={catalog.tableSchemas}
+          tableSchemas={tableSchemas}
           moddersPrefix={moddersPrefix}
           onClose={() => setIsSaveOpen(false)}
           onSaved={() => {
@@ -567,7 +587,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           <Modal.Header>Deep Cloning...</Modal.Header>
           <Modal.Body>
             <div className="mt-8 text-center">
-              <DBDuplication launchSource="buildings" />
+              <DBDuplication launchSource="buildings" onSaveToBuildings={saveCloneToBuildings} />
             </div>
           </Modal.Body>
         </Modal>

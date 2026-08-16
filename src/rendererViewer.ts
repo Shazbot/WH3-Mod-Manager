@@ -22,7 +22,6 @@ import {
 import { DBFieldName, DBFileName, DBVersion, Pack, PackedFile } from "./packFileTypes";
 import { dataFromBackend, doneRequests, packDataStore } from "./components/viewer/packDataStore";
 import { tableNameWithDBPrefix } from "./utility/packFileHelpers";
-import { enqueueDBCloneViewerRequest } from "./components/viewer/dbCloneViewerRequests";
 
 setupRendererLogging();
 
@@ -60,10 +59,6 @@ window.api?.openModInViewer((event, modPath: string) => {
       dbSubname: "",
     }),
   );
-});
-
-window.api?.openDBCloneInViewer((event, packPath, tables) => {
-  enqueueDBCloneViewerRequest({ packPath, tables });
 });
 
 window.api?.setPacksData((event, packsData: PackViewData[]) => {

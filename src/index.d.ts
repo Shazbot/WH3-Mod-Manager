@@ -1252,7 +1252,7 @@ declare global {
   interface DBCloneExecutionResult {
     ok: boolean;
     outputPackPath?: string;
-    /** Main-process-only payload used to publish a newly generated memory pack. */
+    /** Generated clone output returned to the Buildings tab's in-memory edit model. */
     generatedPackedFiles?: PackedFile[];
     error?: string;
   }
