@@ -14,7 +14,8 @@ import {
 } from "../../tools/esf/src";
 import { DEFAULT_ESF_CAMPAIGN } from "./constants";
 import { buildEsfMapData } from "./data";
-import type { EsfMapCampaignOption, EsfMapPayload } from "./types";
+import { encodeDdsAsPng } from "./dds";
+import type { EsfMapCampaignOption, EsfMapImage, EsfMapPayload } from "./types";
 
 interface EsfFileCandidate {
   packPath?: string;
@@ -27,7 +28,7 @@ interface EsfCampaignStartposCandidate extends EsfFileCandidate, StartposCampaig
   buffer: Buffer;
 }
 
-type EsfAssetKind = "map" | "startpos" | "lookup" | "pathfinding";
+type EsfAssetKind = "map" | "startpos" | "lookup" | "pathfinding" | "background" | "background-text";
 
 const normalizePackPath = (value: string): string => value.replace(/\//g, "\\").toLowerCase();
 
@@ -46,8 +47,18 @@ const isLookupFileNamed = (name: string): boolean => {
 
 const isPathfindingFileNamed = (name: string): boolean => isPackedFileNamed(name, "pathfinding.ppd");
 
+const isCampaignMapBackgroundFileNamed = (name: string, textLayer: boolean): boolean => {
+  const normalized = normalizePackPath(name);
+  const basename = normalized.slice(normalized.lastIndexOf("\\") + 1);
+  return textLayer ? basename.endsWith("_map_text.dds") : basename.endsWith("_map.dds");
+};
+
 const isCampaignMapAsset = (name: string): boolean =>
-  isPackedFileNamed(name, "map_data.esf") || isLookupFileNamed(name) || isPathfindingFileNamed(name);
+  isPackedFileNamed(name, "map_data.esf") ||
+  isLookupFileNamed(name) ||
+  isPathfindingFileNamed(name) ||
+  isCampaignMapBackgroundFileNamed(name, false) ||
+  isCampaignMapBackgroundFileNamed(name, true);
 
 const mapFolderFromPath = (fileName: string): string | undefined => {
   const normalized = normalizePackPath(fileName);
@@ -77,6 +88,11 @@ const scoreCandidate = (candidate: EsfFileCandidate, campaignHint: string, kind:
     if (basename === `${mapBase}_lookup.tga`) score += 20;
     else if (basename === `${mapBase}_lookup_minimap.tga`) score += 10;
     else if (basename.endsWith("_lookup.tga")) score += 5;
+  }
+  if ((kind === "background" || kind === "background-text") && mapFolder) {
+    const mapBase = mapFolder.replace(/_map_\d+$/i, "");
+    const suffix = kind === "background-text" ? "_map_text.dds" : "_map.dds";
+    if (basename === `${mapBase}${suffix}`) score += 20;
   }
   return score;
 };
@@ -271,6 +287,25 @@ const pickStartposCandidateForCampaign = (
   );
 };
 
+const convertDdsToMapImage = (
+  buffer: Buffer,
+  candidate: EsfFileCandidate,
+  width: number,
+  height: number,
+): EsfMapImage => {
+  try {
+    return {
+      width,
+      height,
+      src: `data:image/png;base64,${encodeDdsAsPng(buffer, width, height).toString("base64")}`,
+    };
+  } catch (error) {
+    throw new Error(
+      `Could not decode ${candidate.fileName}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
+
 export async function loadEsfMapData(
   enabledMods: Mod[],
   requestedCampaign = DEFAULT_ESF_CAMPAIGN,
@@ -297,9 +332,21 @@ export async function loadEsfMapData(
   const vanillaPathfindingCandidates = vanillaMapAssets.filter((candidate) =>
     isPathfindingFileNamed(candidate.fileName),
   );
+  const vanillaBackgroundCandidates = vanillaMapAssets.filter((candidate) =>
+    isCampaignMapBackgroundFileNamed(candidate.fileName, false),
+  );
+  const vanillaBackgroundTextCandidates = vanillaMapAssets.filter((candidate) =>
+    isCampaignMapBackgroundFileNamed(candidate.fileName, true),
+  );
   const modMapCandidates = modMapAssets.filter((candidate) => isPackedFileNamed(candidate.fileName, "map_data.esf"));
   const modLookupCandidates = modMapAssets.filter((candidate) => isLookupFileNamed(candidate.fileName));
   const modPathfindingCandidates = modMapAssets.filter((candidate) => isPathfindingFileNamed(candidate.fileName));
+  const modBackgroundCandidates = modMapAssets.filter((candidate) =>
+    isCampaignMapBackgroundFileNamed(candidate.fileName, false),
+  );
+  const modBackgroundTextCandidates = modMapAssets.filter((candidate) =>
+    isCampaignMapBackgroundFileNamed(candidate.fileName, true),
+  );
 
   const allStartposCandidates = await readCampaignStartposCandidates([
     ...vanillaStartposCandidates,
@@ -346,17 +393,43 @@ export async function loadEsfMapData(
   const pathfindingCandidate = mapFolder
     ? pickCandidateForMapFolder(modPathfindingCandidates, vanillaPathfindingCandidates, mapFolder, "pathfinding")
     : undefined;
+  const backgroundCandidate = mapFolder
+    ? pickCandidateForMapFolder(modBackgroundCandidates, vanillaBackgroundCandidates, mapFolder, "background")
+    : undefined;
+  const backgroundTextCandidate = mapFolder
+    ? pickCandidateForMapFolder(
+        modBackgroundTextCandidates,
+        vanillaBackgroundTextCandidates,
+        mapFolder,
+        "background-text",
+      )
+    : undefined;
 
-  const [mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer] = await Promise.all([
-    readPackedFileBuffer(mapDataCandidate),
-    Promise.resolve(startposCandidate.buffer),
-    lookupCandidate ? readPackedFileBuffer(lookupCandidate) : Promise.resolve(undefined),
-    pathfindingCandidate ? readPackedFileBuffer(pathfindingCandidate) : Promise.resolve(undefined),
-  ]);
+  const [mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer, backgroundBuffer, backgroundTextBuffer] =
+    await Promise.all([
+      readPackedFileBuffer(mapDataCandidate),
+      Promise.resolve(startposCandidate.buffer),
+      lookupCandidate ? readPackedFileBuffer(lookupCandidate) : Promise.resolve(undefined),
+      pathfindingCandidate ? readPackedFileBuffer(pathfindingCandidate) : Promise.resolve(undefined),
+      backgroundCandidate ? readPackedFileBuffer(backgroundCandidate) : Promise.resolve(undefined),
+      backgroundTextCandidate ? readPackedFileBuffer(backgroundTextCandidate) : Promise.resolve(undefined),
+    ]);
   const map = buildEsfMapData(mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer, {
     mapDataPath: mapDataCandidate.fileName,
     startposPath: startposCandidate.fileName,
     lookupPath: lookupCandidate?.fileName ?? null,
   });
-  return { ...map, campaignKey: startposCandidate.campaignName, availableCampaigns };
+  return {
+    ...map,
+    backgroundImage:
+      backgroundBuffer && backgroundCandidate
+        ? convertDdsToMapImage(backgroundBuffer, backgroundCandidate, map.width, map.height)
+        : null,
+    backgroundTextImage:
+      backgroundTextBuffer && backgroundTextCandidate
+        ? convertDdsToMapImage(backgroundTextBuffer, backgroundTextCandidate, map.width, map.height)
+        : null,
+    campaignKey: startposCandidate.campaignName,
+    availableCampaigns,
+  };
 }

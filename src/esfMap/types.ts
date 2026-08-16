@@ -30,12 +30,20 @@ export interface EsfMapCampaignOption {
 
 export type EsfMapGridSource = "lookup" | "region-areas";
 
+export interface EsfMapImage {
+  width: number;
+  height: number;
+  src: string;
+}
+
 export interface EsfMapPayload {
   campaignKey: string;
   availableCampaigns: EsfMapCampaignOption[];
   mapDataPath: string;
   startposPath: string;
   lookupPath: string | null;
+  backgroundImage: EsfMapImage | null;
+  backgroundTextImage: EsfMapImage | null;
   startposWasCompressed: boolean;
   gridSource: EsfMapGridSource;
   displayFlipY: boolean;

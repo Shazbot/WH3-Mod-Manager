@@ -416,6 +416,8 @@ export function buildEsfMapData(
     mapDataPath: paths.mapDataPath,
     startposPath: paths.startposPath,
     lookupPath: paths.lookupPath,
+    backgroundImage: null,
+    backgroundTextImage: null,
     startposWasCompressed: ownershipData.wasCompressed,
     gridSource,
     displayFlipY,

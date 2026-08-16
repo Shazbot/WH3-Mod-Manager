@@ -8,8 +8,20 @@ type EsfMapTabProps = {
   isActive?: boolean;
 };
 
+const MAP_AREA_OPACITY = 0.36;
+
 const displayYFromVertex = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - y : y);
 const displayYFromCell = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - 1 - y : y);
+
+const loadMapImage = (src: string | undefined): Promise<HTMLImageElement | undefined> => {
+  if (!src) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(undefined);
+    image.src = src;
+  });
+};
 
 const drawAreaPath = (context: CanvasRenderingContext2D, area: EsfMapArea, height: number, displayFlipY: boolean) => {
   context.beginPath();
@@ -42,6 +54,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   enabledModsRef.current = enabledMods;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
   const [map, setMap] = useState<EsfMapPayload>();
   const [campaignName, setCampaignName] = useState(DEFAULT_ESF_CAMPAIGN);
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
@@ -110,45 +123,72 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     canvas.height = map.height;
     canvas.style.width = `${Math.max(320, Math.round(map.width * zoom))}px`;
     canvas.style.height = `${Math.max(240, Math.round(map.height * zoom))}px`;
-    context.clearRect(0, 0, map.width, map.height);
 
-    for (const area of map.areas) {
-      drawAreaPath(context, area, map.height, map.displayFlipY);
-      context.fillStyle = `rgb(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]})`;
-      context.fill("evenodd");
-    }
+    const drawMap = (backgroundImage?: HTMLImageElement, backgroundTextImage?: HTMLImageElement) => {
+      context.clearRect(0, 0, map.width, map.height);
+      if (backgroundImage) context.drawImage(backgroundImage, 0, 0, map.width, map.height);
+      if (backgroundTextImage) context.drawImage(backgroundTextImage, 0, 0, map.width, map.height);
 
-    const selected =
-      selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
-    if (selected) {
-      const selectedAreaIds = new Set(
-        map.areas.filter((area) => area.regionKey === selected.key).map((area) => area.componentId),
-      );
       for (const area of map.areas) {
-        if (!selectedAreaIds.has(area.componentId)) continue;
         drawAreaPath(context, area, map.height, map.displayFlipY);
-        context.fillStyle = "rgba(255, 255, 255, 0.18)";
-        context.strokeStyle = "rgba(255, 255, 255, 0.95)";
-        context.lineWidth = 1.2;
+        context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
         context.fill("evenodd");
+      }
+
+      const selected =
+        selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
+      if (selected) {
+        const selectedAreaIds = new Set(
+          map.areas.filter((area) => area.regionKey === selected.key).map((area) => area.componentId),
+        );
+        for (const area of map.areas) {
+          if (!selectedAreaIds.has(area.componentId)) continue;
+          drawAreaPath(context, area, map.height, map.displayFlipY);
+          context.fillStyle = "rgba(255, 255, 255, 0.18)";
+          context.strokeStyle = "rgba(255, 255, 255, 0.95)";
+          context.lineWidth = 1.2;
+          context.fill("evenodd");
+          context.stroke();
+        }
+      }
+
+      context.fillStyle = "rgba(255, 255, 255, 0.92)";
+      for (const marker of map.markers) {
+        const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
+        context.fillRect(marker.gx - 1, y - 1, 2, 2);
+      }
+
+      if (selected) {
+        const y = displayYFromCell(map.height, selected.gy, map.displayFlipY);
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(selected.gx, y, 5, 0, Math.PI * 2);
         context.stroke();
       }
-    }
+    };
 
-    context.fillStyle = "rgba(255, 255, 255, 0.92)";
-    for (const marker of map.markers) {
-      const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
-      context.fillRect(marker.gx - 1, y - 1, 2, 2);
-    }
+    const backgroundSrc = map.backgroundImage?.src;
+    const backgroundTextSrc = map.backgroundTextImage?.src;
+    const cachedBackgroundImage = backgroundSrc ? mapImagesRef.current.get(backgroundSrc) : undefined;
+    const cachedBackgroundTextImage = backgroundTextSrc ? mapImagesRef.current.get(backgroundTextSrc) : undefined;
+    drawMap(cachedBackgroundImage, cachedBackgroundTextImage);
 
-    if (selected) {
-      const y = displayYFromCell(map.height, selected.gy, map.displayFlipY);
-      context.strokeStyle = "#ffffff";
-      context.lineWidth = 2;
-      context.beginPath();
-      context.arc(selected.gx, y, 5, 0, Math.PI * 2);
-      context.stroke();
-    }
+    if ((!backgroundSrc || cachedBackgroundImage) && (!backgroundTextSrc || cachedBackgroundTextImage)) return;
+
+    let cancelled = false;
+    void Promise.all([
+      cachedBackgroundImage ? Promise.resolve(cachedBackgroundImage) : loadMapImage(backgroundSrc),
+      cachedBackgroundTextImage ? Promise.resolve(cachedBackgroundTextImage) : loadMapImage(backgroundTextSrc),
+    ]).then(([backgroundImage, backgroundTextImage]) => {
+      if (cancelled) return;
+      if (backgroundSrc && backgroundImage) mapImagesRef.current.set(backgroundSrc, backgroundImage);
+      if (backgroundTextSrc && backgroundTextImage) mapImagesRef.current.set(backgroundTextSrc, backgroundTextImage);
+      drawMap(backgroundImage, backgroundTextImage);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [map, selectedMarkerId, zoom]);
 
   const changeZoom = (nextZoom: number) => setZoom(Math.max(0.5, Math.min(6, nextZoom)));
