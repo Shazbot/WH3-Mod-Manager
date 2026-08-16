@@ -307,12 +307,24 @@ function parseOwnership(startposBuffer: Buffer | undefined): {
   wasCompressed: boolean;
 } {
   if (!startposBuffer) return { regions: [], wasCompressed: false };
-  const opened = openEsfBuffer(startposBuffer);
-  const document = parseEsfDocument(opened.buffer);
-  return {
-    regions: extractStartposRegions(opened.buffer, document),
-    wasCompressed: opened.wasCompressed,
-  };
+  try {
+    const opened = openEsfBuffer(startposBuffer);
+    const document = parseEsfDocument(opened.buffer);
+    return {
+      regions: extractStartposRegions(opened.buffer, document),
+      wasCompressed: opened.wasCompressed,
+    };
+  } catch (error) {
+    // The map geometry is independent of startpos ownership. Some campaigns ship a startpos
+    // compression variant that this reader cannot decode, so keep the map usable without the
+    // optional ownership overlay rather than failing the whole map load.
+    console.warn(
+      `Could not decode startpos ownership data; rendering without ownership: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return { regions: [], wasCompressed: false };
+  }
 }
 
 export function buildEsfMapData(
