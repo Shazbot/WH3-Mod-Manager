@@ -438,10 +438,10 @@ describe("resolveRegionBuildings: settlement types", () => {
     expect(resolveRegionBuildings(build(), query()).settlementTypeOptions).toEqual([]);
   });
 
-  it("keeps only chains permitted in the chosen type, and every unbound chain", () => {
+  it("keeps only chains assigned to the chosen type", () => {
     const view = resolveRegionBuildings(withBindings(), query({ settlementType: "capital" }));
-    // chain_b is excluded from capital; chain_c has no bindings at all so it stays.
-    expect(chainKeysIn(view)).toEqual(["chain_a", "chain_c"]);
+    // chain_b is excluded from capital and chain_c has no settlement-type assignment.
+    expect(chainKeysIn(view)).toEqual(["chain_a"]);
   });
 
   it("adds the region's own settlement type to the options", () => {

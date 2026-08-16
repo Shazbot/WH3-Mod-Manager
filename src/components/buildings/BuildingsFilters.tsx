@@ -180,7 +180,7 @@ const BuildingsFilters = memo(
       [catalog.factions, query.culture, query.subculture],
     );
 
-    const settlementOptions = useMemo(() => toOptions(settlementTypeOptions), [settlementTypeOptions]);
+    const settlementOptions = useMemo(() => [NONE, ...toOptions(settlementTypeOptions)], [settlementTypeOptions]);
 
     useEffect(() => {
       if (!isOptionsMenuOpen) return;
