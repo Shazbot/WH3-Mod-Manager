@@ -7,6 +7,11 @@ import { getVanillaPackIndex } from "../vanillaPackIndex/store";
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
+import {
+  extractCampaignTableIdentity,
+  parseEsfDocument,
+  type StartposCampaignTableIdentity,
+} from "../../tools/esf/src";
 import { DEFAULT_ESF_CAMPAIGN } from "./constants";
 import { buildEsfMapData } from "./data";
 import type { EsfMapCampaignOption, EsfMapPayload } from "./types";
@@ -16,6 +21,10 @@ interface EsfFileCandidate {
   filePath?: string;
   fileName: string;
   modIndex: number;
+}
+
+interface EsfCampaignStartposCandidate extends EsfFileCandidate, StartposCampaignTableIdentity {
+  buffer: Buffer;
 }
 
 type EsfAssetKind = "map" | "startpos" | "lookup" | "pathfinding";
@@ -72,26 +81,16 @@ const scoreCandidate = (candidate: EsfFileCandidate, campaignHint: string, kind:
   return score;
 };
 
-const pickBestCandidate = (
-  candidates: EsfFileCandidate[],
+const pickBestCandidate = <Candidate extends EsfFileCandidate>(
+  candidates: Candidate[],
   campaignHint: string,
   kind: EsfAssetKind,
-): EsfFileCandidate | undefined =>
+): Candidate | undefined =>
   [...candidates].sort((first, second) => {
     const score = scoreCandidate(second, campaignHint, kind) - scoreCandidate(first, campaignHint, kind);
     if (score !== 0) return score;
     return first.fileName.localeCompare(second.fileName);
   })[0];
-
-const campaignKeyFromPath = (fileName: string): string | undefined => {
-  const normalized = normalizePackPath(fileName);
-  const startposMatch = normalized.match(/(?:^|\\)campaigns\\([^\\]+)\\startpos\.esf$/i);
-  if (startposMatch) return startposMatch[1];
-  return mapFolderFromPath(normalized)?.replace(/_map_\d+$/i, "");
-};
-
-const campaignMatches = (candidate: EsfFileCandidate, campaignKey: string): boolean =>
-  campaignKeyFromPath(candidate.fileName)?.toLowerCase() === campaignKey.toLowerCase();
 
 const formatCampaignLabel = (campaignKey: string): string =>
   campaignKey
@@ -188,11 +187,11 @@ const collectModCandidates = async (
   return candidates;
 };
 
-const pickEffectiveModCandidate = (
-  candidates: EsfFileCandidate[],
+const pickEffectiveModCandidate = <Candidate extends EsfFileCandidate>(
+  candidates: Candidate[],
   campaignHint: string,
   kind: EsfAssetKind,
-): EsfFileCandidate | undefined => {
+): Candidate | undefined => {
   const highestModIndex = Math.max(...candidates.map((candidate) => candidate.modIndex), -1);
   if (highestModIndex < 0) return undefined;
   return pickBestCandidate(
@@ -200,20 +199,6 @@ const pickEffectiveModCandidate = (
     campaignHint,
     kind,
   );
-};
-
-const pickCandidateForCampaign = (
-  modCandidates: EsfFileCandidate[],
-  vanillaCandidates: EsfFileCandidate[],
-  campaignKey: string,
-  kind: EsfAssetKind,
-): EsfFileCandidate | undefined => {
-  const matchingMods = modCandidates.filter((candidate) => campaignMatches(candidate, campaignKey));
-  const effectiveMod = pickEffectiveModCandidate(matchingMods, campaignKey, kind);
-  if (effectiveMod) return effectiveMod;
-
-  const matchingVanilla = vanillaCandidates.filter((candidate) => campaignMatches(candidate, campaignKey));
-  return pickBestCandidate(matchingVanilla, campaignKey, kind);
 };
 
 const mapFolderMatches = (candidate: EsfFileCandidate, mapFolder: string): boolean =>
@@ -249,6 +234,43 @@ const readPackedFileBuffer = async (candidate: EsfFileCandidate): Promise<Buffer
   return Buffer.from(packedFile.buffer);
 };
 
+const readCampaignStartposCandidates = async (
+  candidates: EsfFileCandidate[],
+): Promise<EsfCampaignStartposCandidate[]> => {
+  const extracted = await Promise.all(
+    candidates.map(async (candidate): Promise<EsfCampaignStartposCandidate | undefined> => {
+      try {
+        const buffer = await readPackedFileBuffer(candidate);
+        const identity = extractCampaignTableIdentity(buffer, parseEsfDocument(buffer));
+        return identity ? { ...candidate, ...identity, buffer } : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return extracted.filter((candidate): candidate is EsfCampaignStartposCandidate => candidate !== undefined);
+};
+
+const pickStartposCandidateForCampaign = (
+  candidates: EsfCampaignStartposCandidate[],
+  campaignName: string,
+): EsfCampaignStartposCandidate | undefined => {
+  const matchingCandidates = candidates.filter(
+    (candidate) => candidate.campaignName.toLowerCase() === campaignName.toLowerCase(),
+  );
+  const effectiveMod = pickEffectiveModCandidate(
+    matchingCandidates.filter((candidate) => candidate.modIndex >= 0),
+    campaignName,
+    "startpos",
+  );
+  if (effectiveMod) return effectiveMod;
+  return pickBestCandidate(
+    matchingCandidates.filter((candidate) => candidate.modIndex < 0),
+    campaignName,
+    "startpos",
+  );
+};
+
 export async function loadEsfMapData(
   enabledMods: Mod[],
   requestedCampaign = DEFAULT_ESF_CAMPAIGN,
@@ -279,11 +301,13 @@ export async function loadEsfMapData(
   const modLookupCandidates = modMapAssets.filter((candidate) => isLookupFileNamed(candidate.fileName));
   const modPathfindingCandidates = modMapAssets.filter((candidate) => isPathfindingFileNamed(candidate.fileName));
 
-  const allStartposCandidates = [...vanillaStartposCandidates, ...modStartposCandidates];
+  const allStartposCandidates = await readCampaignStartposCandidates([
+    ...vanillaStartposCandidates,
+    ...modStartposCandidates,
+  ]);
   const campaignByKey = new Map<string, string>();
   for (const candidate of allStartposCandidates) {
-    const campaignKey = campaignKeyFromPath(candidate.fileName);
-    if (campaignKey) campaignByKey.set(campaignKey.toLowerCase(), campaignKey);
+    campaignByKey.set(candidate.campaignName.toLowerCase(), candidate.campaignName);
   }
   const availableCampaigns: EsfMapCampaignOption[] = Array.from(campaignByKey.values())
     .sort((first, second) => {
@@ -301,27 +325,21 @@ export async function loadEsfMapData(
     throw new Error("No campaign startpos.esf was found in the enabled mods or Warhammer 3's data/campaigns folders.");
   }
 
-  const startposCandidate = pickCandidateForCampaign(
-    modStartposCandidates,
-    vanillaStartposCandidates,
-    requestedCampaignKey,
-    "startpos",
-  );
-  const mapDataCandidate = pickCandidateForCampaign(
-    modMapCandidates,
-    vanillaMapCandidates,
-    requestedCampaignKey,
-    "map",
-  );
+  const startposCandidate = pickStartposCandidateForCampaign(allStartposCandidates, requestedCampaignKey);
+  const mapDataCandidate = startposCandidate
+    ? pickCandidateForMapFolder(modMapCandidates, vanillaMapCandidates, startposCandidate.mapName, "map")
+    : undefined;
 
   if (!startposCandidate) {
     throw new Error(`No startpos.esf was found for campaign ${requestedCampaignKey}.`);
   }
   if (!mapDataCandidate) {
-    throw new Error("No campaign map_data.esf was found in the enabled mods or Warhammer 3's vanilla packs.");
+    throw new Error(
+      `No campaign map_data.esf was found for map ${startposCandidate.mapName} in the enabled mods or Warhammer 3's vanilla packs.`,
+    );
   }
 
-  const mapFolder = mapFolderFromPath(mapDataCandidate.fileName);
+  const mapFolder = mapFolderFromPath(mapDataCandidate.fileName) ?? startposCandidate.mapName;
   const lookupCandidate = mapFolder
     ? pickCandidateForMapFolder(modLookupCandidates, vanillaLookupCandidates, mapFolder, "lookup")
     : undefined;
@@ -331,7 +349,7 @@ export async function loadEsfMapData(
 
   const [mapDataBuffer, startposBuffer, lookupBuffer, pathfindingBuffer] = await Promise.all([
     readPackedFileBuffer(mapDataCandidate),
-    readPackedFileBuffer(startposCandidate),
+    Promise.resolve(startposCandidate.buffer),
     lookupCandidate ? readPackedFileBuffer(lookupCandidate) : Promise.resolve(undefined),
     pathfindingCandidate ? readPackedFileBuffer(pathfindingCandidate) : Promise.resolve(undefined),
   ]);
@@ -340,5 +358,5 @@ export async function loadEsfMapData(
     startposPath: startposCandidate.fileName,
     lookupPath: lookupCandidate?.fileName ?? null,
   });
-  return { ...map, campaignKey: requestedCampaignKey, availableCampaigns };
+  return { ...map, campaignKey: startposCandidate.campaignName, availableCampaigns };
 }
