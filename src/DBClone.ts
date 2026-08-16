@@ -17,6 +17,7 @@ import Queue from "./utility/queue";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { format } from "date-fns";
 import * as fs from "fs";
+import * as nodePath from "path";
 import Trie from "./utility/trie";
 import {
   addUniqueDBCloneNode,
@@ -24,33 +25,79 @@ import {
   getDBCloneSourceRowKey,
   getUniqueDBCloneNodes,
 } from "./utility/dbCloneTree";
+import { getVanillaPackNamesForDBTable, toDBTablePrefix } from "./utility/dbCloneTableRouting";
+import { canUseVanillaDbCacheForPack, fillVanillaTablesFromCache } from "./vanillaDbCache/store";
+import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 
-const wasPackAlreadyRead = (newPackPath: string, tableToRead: string) => {
+/** True when the pack index proves the table absent, or every matching packed file already has rows. */
+const isPackTableResolved = (newPackPath: string, tableToRead: string) => {
   const packData = appData.packsData.find((pack) => pack.path == newPackPath);
   if (!packData) return false;
 
-  return packData.packedFiles.some(
-    (packedFile) =>
-      packedFile.name.startsWith(tableToRead) && packedFile.schemaFields && packedFile.schemaFields.length > 0,
+  const tablePrefix = toDBTablePrefix(tableToRead);
+  const matchingFiles = packData.packedFiles.filter((packedFile) => packedFile.name.startsWith(tablePrefix));
+  return matchingFiles.every(
+    (packedFile) => packedFile.schemaFields != undefined && packedFile.tableSchema != undefined,
   );
 };
 
-const wasPackAlreadyReadAll = (newPackPath: string, tablesToRead: string[]) => {
-  const packData = appData.packsData.find((pack) => pack.path == newPackPath);
-  if (!packData) return false;
+/**
+ * Uses the global vanilla file index to find only the pack(s) whose winning files can satisfy a DB
+ * table prefix. If the index is unavailable, preserve the old db.pack fallback.
+ */
+const getVanillaPackPathsForDBTable = async (tableName: string): Promise<string[]> => {
+  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+  if (!dataFolder) return [];
 
-  for (const tableToRead of tablesToRead) {
-    if (
-      !packData.packedFiles.some(
-        (packedFile) =>
-          packedFile.name.startsWith(tableToRead) && packedFile.schemaFields && packedFile.schemaFields.length > 0,
-      )
-    ) {
-      return false;
-    }
+  const fallbackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
+  const vanillaIndex = await getVanillaPackIndex();
+  if (!vanillaIndex) return [fallbackPath];
+
+  return getVanillaPackNamesForDBTable(vanillaIndex, tableName).map((packName) => nodePath.join(dataFolder, packName));
+};
+
+/**
+ * Makes requested DB tables available in appData. Vanilla db.pack gets its rows from the DB cache;
+ * only prefixes the cache cannot serve fall back to parsing the pack itself.
+ */
+const loadDBTablesForClone = async (packPath: string, tableNamesOrPrefixes: string[]): Promise<Pack | undefined> => {
+  const tablePrefixes = [...new Set(tableNamesOrPrefixes.map(toDBTablePrefix))];
+  let pack = appData.packsData.find((candidate) => candidate.path == packPath);
+
+  if (!pack) {
+    await readModsByPath([packPath], { skipParsingTables: true }, true);
+    pack = appData.packsData.find((candidate) => candidate.path == packPath);
+    if (!pack) return undefined;
   }
 
-  return true;
+  let prefixesToParse = tablePrefixes.filter((prefix) => !isPackTableResolved(packPath, prefix));
+  if (prefixesToParse.length === 0) return pack;
+
+  if (canUseVanillaDbCacheForPack(packPath)) {
+    const DBNameToDBVersions = gameToDBNameToDBVersions[appData.currentGame];
+    const cacheResult = await fillVanillaTablesFromCache(pack, prefixesToParse, (packedFile) =>
+      getDBVersion(packedFile, DBNameToDBVersions),
+    );
+    const unserved = new Set(cacheResult.unservedPrefixes);
+    const servedPrefixes = prefixesToParse.filter((prefix) => !unserved.has(prefix));
+    if (servedPrefixes.length > 0) {
+      console.log(`DBClone: vanilla DB cache served ${servedPrefixes.length} table prefix(es)`);
+      getPacksTableData([pack], servedPrefixes);
+    }
+    prefixesToParse = cacheResult.unservedPrefixes;
+  }
+
+  if (prefixesToParse.length > 0) {
+    if (canUseVanillaDbCacheForPack(packPath)) {
+      console.log("DBClone: vanilla DB cache missed table prefix(es), reading pack", prefixesToParse);
+    }
+    await readModsByPath([packPath], { tablesToRead: prefixesToParse, readLocs: false }, true);
+    pack = appData.packsData.find((candidate) => candidate.path == packPath);
+    if (!pack) return undefined;
+    getPacksTableData([pack], prefixesToParse);
+  }
+
+  return pack;
 };
 
 interface DBCloneExecutionContext {
@@ -101,17 +148,9 @@ export const buildDBReferenceTree = async (
   const gameFolderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
   if (!gameFolderPaths || !gameFolderPaths.dataFolder) return;
 
-  const nodePath = await import("path");
-  const dataPackPath = nodePath.join(gameFolderPaths.dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
-
-  const isCurrentPackDataPack = nodePath.relative(packPath, dataPackPath) == "";
-
   const isStartingSearchIndirect = selectedNodesByName.length > 0;
 
   console.log("isStartingSearchIndirect:", isStartingSearchIndirect);
-  console.log("isCurrentPackDataPack:", isCurrentPackDataPack);
-
-  const packsWithReadLocsByPackPath = [] as string[];
 
   let existingPack = appData.packsData.find((pack) => pack.path == packPath);
   if (!existingPack) {
@@ -121,23 +160,6 @@ export const buildDBReferenceTree = async (
     if (!existingPack) {
       console.log("buildDBReferenceTree: no existingPack");
       return;
-    }
-  }
-
-  if (!isCurrentPackDataPack) {
-    let tablesToReadInDataPack = existingPack.packedFiles
-      .filter((pf) => pf.schemaFields && pf.name.startsWith("db\\"))
-      .map((pf) => `db\\${getDBNameFromString(pf.name)}`);
-
-    tablesToReadInDataPack = Array.from(new Set(tablesToReadInDataPack));
-    console.log("tables to read from data pack:", tablesToReadInDataPack);
-
-    if (!wasPackAlreadyReadAll(dataPackPath, tablesToReadInDataPack)) {
-      await readModsByPath([dataPackPath], { tablesToRead: tablesToReadInDataPack }, true);
-      const existingDataPack = appData.packsData.find((pack) => pack.path == dataPackPath);
-      if (existingDataPack) {
-        getPacksTableData([existingDataPack], tablesToReadInDataPack);
-      }
     }
   }
 
@@ -172,12 +194,7 @@ export const buildDBReferenceTree = async (
   if (!schema || !packFile.schemaFields) {
     console.log("buildDBReferenceTree: selected table is not parsed, reading it now", packFile.name);
     const selectedPackFileName = packFile.name;
-    await readModsByPath([packPath], {
-      tablesToRead: [selectedPackFileName],
-      readLocs: false,
-    });
-
-    const refreshedPack = appData.packsData.find((pack) => pack.path == packPath);
+    const refreshedPack = await loadDBTablesForClone(packPath, [selectedPackFileName]);
     if (!refreshedPack) {
       console.log("buildDBReferenceTree: failed to refresh pack");
       return;
@@ -241,15 +258,8 @@ export const buildDBReferenceTree = async (
 
     const packPath = pack.path;
 
-    if (!wasPackAlreadyRead(packPath, tableToRead)) {
-      await readModsByPath([packPath], {
-        readLocs: !packsWithReadLocsByPackPath.includes(packPath),
-        tablesToRead: [tableToRead],
-      });
-
-      if (!packsWithReadLocsByPackPath.includes(packPath)) {
-        packsWithReadLocsByPackPath.push(packPath);
-      }
+    if (!isPackTableResolved(packPath, tableToRead)) {
+      await loadDBTablesForClone(packPath, [tableToRead]);
     }
 
     const newPack = appData.packsData.find((pack) => pack.path == packPath);
@@ -434,12 +444,14 @@ export const buildDBReferenceTree = async (
     let newPackFile = await tryGetPackWithReference(existingPack, newTableName, newTableColumnName, resolvedKeyValue);
 
     if (!newPackFile || !newPackFile.schemaFields) {
-      console.log("tryGetPackWithReference with existingPack FAILED, isCurrentPackDataPack:", isCurrentPackDataPack);
-      if (!isCurrentPackDataPack) {
-        const dataPack = appData.packsData.find((pack) => pack.path == dataPackPath);
-        if (dataPack) {
-          newPackFile = await tryGetPackWithReference(dataPack, newTableName, newTableColumnName, resolvedKeyValue);
-        }
+      console.log("tryGetPackWithReference with selected pack failed, checking indexed vanilla packs");
+      const vanillaPackPaths = await getVanillaPackPathsForDBTable(newTableName);
+      for (const vanillaPackPath of vanillaPackPaths) {
+        if (nodePath.relative(packPath, vanillaPackPath) == "") continue;
+        const vanillaPack = await loadDBTablesForClone(vanillaPackPath, [newTableName]);
+        if (!vanillaPack) continue;
+        newPackFile = await tryGetPackWithReference(vanillaPack, newTableName, newTableColumnName, resolvedKeyValue);
+        if (newPackFile?.schemaFields) break;
       }
 
       if (!newPackFile || !newPackFile.schemaFields) {
@@ -638,25 +650,10 @@ export const buildDBReferenceTree = async (
 
       packsToGet.push(packToGetCurrent);
 
-      if (!isCurrentPackDataPack) {
-        const packToGet = appData.packsData.find((pack) => pack.path == dataPackPath);
-
-        if (!packToGet) {
-          console.log(`no ${packPath} in packDataStore`);
-          continue;
-        }
-
-        if (packToGet.packedFiles.find((pf) => getDBNameFromString(pf.name) == tableName && !pf.schemaFields)) {
-          const tableToRead = `db\\${tableName}`;
-          console.log("reading from data pack:", tableToRead);
-
-          if (!wasPackAlreadyRead(packToGet.path, tableToRead)) {
-            await readModsByPath([packToGet.path], { tablesToRead: [tableToRead] }, true);
-            getPacksTableData([packToGet], [tableToRead]);
-          }
-        }
-
-        packsToGet.push(packToGet);
+      for (const vanillaPackPath of await getVanillaPackPathsForDBTable(tableName)) {
+        if (packsToGet.some((candidate) => nodePath.relative(candidate.path, vanillaPackPath) == "")) continue;
+        const vanillaPack = await loadDBTablesForClone(vanillaPackPath, [tableName]);
+        if (vanillaPack) packsToGet.push(vanillaPack);
       }
 
       for (const packToGet of packsToGet) {
@@ -776,9 +773,6 @@ export const buildDBIndirectReferences = async (
   const gameFolderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
   if (!gameFolderPaths || !gameFolderPaths.dataFolder) return [];
 
-  const nodePath = await import("path");
-  const dataPackPath = nodePath.join(gameFolderPaths.dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
-  const isCurrentPackDataPack = nodePath.relative(packPath, dataPackPath) == "";
   const currentGame = appData.currentGame;
 
   const packByPath = cacheContext?.packByPath ?? new Map<string, Pack>();
@@ -845,11 +839,7 @@ export const buildDBIndirectReferences = async (
     }
 
     const tableToRead = `db\\${tableName}`;
-    if (!wasPackAlreadyRead(targetPackPath, tableToRead)) {
-      await readModsByPath([targetPackPath], { tablesToRead: [tableToRead] }, true);
-    }
-
-    const refreshedPack = appData.packsData.find((pack) => pack.path == targetPackPath);
+    const refreshedPack = await loadDBTablesForClone(targetPackPath, [tableToRead]);
     if (!refreshedPack) {
       tableFilesByPackAndTable.set(cacheKey, []);
       return [] as PackedFile[];
@@ -900,7 +890,7 @@ export const buildDBIndirectReferences = async (
 
     const referencedColumns = tableToreferencedColumns[refTableName] || [];
     const valueToTargets = new Map<string, Set<string>>();
-    const packPathsToSearch = isCurrentPackDataPack ? [packPath] : [packPath, dataPackPath];
+    const packPathsToSearch = [...new Set([packPath, ...(await getVanillaPackPathsForDBTable(refTableName))])];
 
     for (const targetPackPath of packPathsToSearch) {
       const tableFiles = await getTableFilesForPackAndTable(targetPackPath, refTableName);
@@ -939,9 +929,6 @@ export const buildDBIndirectReferences = async (
 
   const selectedPack = await getPackByPath(packPath);
   if (!selectedPack) return [];
-  if (!isCurrentPackDataPack) {
-    await getPackByPath(dataPackPath);
-  }
 
   const seenRefs = new Set(
     existingRefs.map(([tableName, columnName, value]) => getCellLookupKey(tableName, columnName, value)),
@@ -1022,15 +1009,12 @@ export async function executeDBDuplication(
       }
     }
 
-    const nodePath = await import("path");
-
     const gameFolderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
     if (!gameFolderPaths || !gameFolderPaths.dataFolder) {
       return { ok: false, error: "No data folder configured for current game" };
     }
     const dataPackPath = nodePath.join(gameFolderPaths.dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
     const isCurrentPackDataPack = nodePath.relative(packPath, dataPackPath) == "";
-    const packPathsForCollisionChecks = isCurrentPackDataPack ? [packPath] : [packPath, dataPackPath];
 
     const validateOptionalFileName = (value: string, label: string) => {
       if (value == "") return undefined;
@@ -1066,7 +1050,6 @@ export async function executeDBDuplication(
       return getDBCloneNodeKey({ tableName, columnName, value });
     };
 
-    const packPathsToSearchDB = isCurrentPackDataPack ? [packPath] : [packPath, dataPackPath];
     const packByPathCache = new Map<string, Pack>();
     packByPathCache.set(packPath, pack);
 
@@ -1096,11 +1079,7 @@ export async function executeDBDuplication(
         return [];
       }
 
-      if (!wasPackAlreadyRead(targetPackPath, tableToRead)) {
-        await readModsByPath([targetPackPath], { tablesToRead: [tableToRead] }, true);
-      }
-
-      const refreshedPack = appData.packsData.find((iterPack) => iterPack.path == targetPackPath);
+      const refreshedPack = await loadDBTablesForClone(targetPackPath, [tableToRead]);
       if (!refreshedPack) {
         tableFilesByPackAndTable.set(cacheKey, []);
         return [];
@@ -1122,7 +1101,8 @@ export async function executeDBDuplication(
 
     const getTableFilesAcrossSearchPacks = async (tableName: string) => {
       const tableFiles = [] as PackedFile[];
-      for (const targetPackPath of packPathsToSearchDB) {
+      const packPathsToSearch = [...new Set([packPath, ...(await getVanillaPackPathsForDBTable(tableName))])];
+      for (const targetPackPath of packPathsToSearch) {
         const files = await getTableFilesForPackAndTable(targetPackPath, tableName);
         tableFiles.push(...files);
       }
@@ -1160,6 +1140,7 @@ export async function executeDBDuplication(
       if (existingCache) return existingCache;
 
       const existingValues = new Set<string>();
+      const packPathsForCollisionChecks = [...new Set([packPath, ...(await getVanillaPackPathsForDBTable(tableName))])];
       for (const targetPackPath of packPathsForCollisionChecks) {
         if (isCanceled()) {
           report("canceled", "Canceled");
