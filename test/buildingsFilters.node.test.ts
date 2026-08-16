@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFactionOptions, firstRegionForCampaign } from "../src/components/buildings/BuildingsFilters";
+import {
+  buildFactionOptions,
+  firstRegionForCampaign,
+  sortLocalizedOptions,
+} from "../src/components/buildings/BuildingsFilters";
 import type { BuildingsCatalog, BuildingsFactionOption } from "../src/buildingsData/types";
 
 const catalog = {
@@ -50,13 +54,7 @@ describe("buildFactionOptions", () => {
       faction("ordinary_a", "Alpha", "shared"),
     ]);
 
-    expect(options.map((option) => option.value)).toEqual([
-      "unique",
-      "ordinary_a",
-      "ordinary_b",
-      "rebel",
-      "quest",
-    ]);
+    expect(options.map((option) => option.value)).toEqual(["unique", "ordinary_a", "ordinary_b", "rebel", "quest"]);
     expect(options.find((option) => option.value === "rebel")?.tone).toBe("rebel");
     expect(options.find((option) => option.value === "quest")?.tone).toBe("quest");
   });
@@ -77,5 +75,28 @@ describe("buildFactionOptions", () => {
       "rebel",
       "quest",
     ]);
+  });
+
+  it("puts factions without localized names after localized factions", () => {
+    const options = buildFactionOptions([
+      faction("missing_z", "missing_z", "shared"),
+      faction("localized", "Localized faction", "shared"),
+      faction("missing_a", "missing_a", "shared"),
+    ]);
+
+    expect(options.map((option) => option.value)).toEqual(["localized", "missing_a", "missing_z"]);
+  });
+});
+
+describe("sortLocalizedOptions", () => {
+  it("sorts localized values first and unresolved keys last", () => {
+    expect(
+      sortLocalizedOptions([
+        { key: "missing_z", localizedName: "missing_z" },
+        { key: "localized_b", localizedName: "Beta" },
+        { key: "missing_a", localizedName: "missing_a" },
+        { key: "localized_a", localizedName: "Alpha" },
+      ]).map((option) => option.key),
+    ).toEqual(["localized_a", "localized_b", "missing_a", "missing_z"]);
   });
 });

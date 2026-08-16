@@ -27,8 +27,25 @@ const NONE: SelectOption = { value: "", label: "(none)" };
 const optionLabel = (option: BuildingsOption) =>
   option.localizedName === option.key ? option.key : `${option.localizedName} — ${option.key}`;
 
-const toOptions = (options: BuildingsOption[]): SelectOption[] =>
-  options.map((option) => ({ value: option.key, label: optionLabel(option) }));
+const isUnlocalized = (option: BuildingsOption) => option.localizedName === option.key;
+
+const compareLocalizedOptions = (first: BuildingsOption, second: BuildingsOption) => {
+  const unlocalizedDifference = Number(isUnlocalized(first)) - Number(isUnlocalized(second));
+  return (
+    unlocalizedDifference ||
+    first.localizedName.localeCompare(second.localizedName) ||
+    first.key.localeCompare(second.key)
+  );
+};
+
+export const sortLocalizedOptions = <T extends BuildingsOption>(options: T[]): T[] =>
+  [...options].sort(compareLocalizedOptions);
+
+const toOptions = (options: BuildingsOption[], putUnlocalizedLast = false): SelectOption[] =>
+  (putUnlocalizedLast ? sortLocalizedOptions(options) : options).map((option) => ({
+    value: option.key,
+    label: optionLabel(option),
+  }));
 
 /**
  * Keeps exceptional factions easy to find without allowing quest/rebel entries to crowd the normal
@@ -51,12 +68,16 @@ export const buildFactionOptions = (factions: BuildingsFactionOption[]): SelectO
   };
 
   return [...factions]
-    .sort(
-      (first, second) =>
+    .sort((first, second) => {
+      const unlocalizedDifference = Number(isUnlocalized(first)) - Number(isUnlocalized(second));
+      if (unlocalizedDifference) return unlocalizedDifference;
+      if (isUnlocalized(first)) return first.key.localeCompare(second.key);
+      return (
         rank(first) - rank(second) ||
         first.localizedName.localeCompare(second.localizedName) ||
-        first.key.localeCompare(second.key),
-    )
+        first.key.localeCompare(second.key)
+      );
+    })
     .map((faction) => ({
       value: faction.key,
       label: optionLabel(faction),
@@ -132,12 +153,15 @@ const BuildingsFilters = memo(
       [catalog.regions, query.campaign],
     );
 
-    const cultureOptions = useMemo(() => [NONE, ...toOptions(catalog.cultures)], [catalog.cultures]);
+    const cultureOptions = useMemo(() => [NONE, ...toOptions(catalog.cultures, true)], [catalog.cultures]);
 
     const subcultureOptions = useMemo(
       () => [
         NONE,
-        ...toOptions(catalog.subcultures.filter((entry) => !query.culture || entry.culture === query.culture)),
+        ...toOptions(
+          catalog.subcultures.filter((entry) => !query.culture || entry.culture === query.culture),
+          true,
+        ),
       ],
       [catalog.subcultures, query.culture],
     );
