@@ -11,7 +11,7 @@
  * board - which is honest, since the board only draws what these structures describe.
  */
 import { formatEffectLocalization } from "../skills";
-import { variantLocKey, variantSpecificity } from "./data";
+import { readSetColour, variantLocKey, variantSpecificity } from "./data";
 import { LOC_TABLE, newRowsByTable, type BuildingsEditState } from "./edits";
 import type { BuildingUnitRow, BuildingVariantRow, BuiltBuildingsData } from "./types";
 
@@ -20,7 +20,10 @@ export const BOARD_AFFECTING_TABLES = [
   "building_chains_tables",
   "building_levels_tables",
   "building_culture_variants_tables",
+  "building_sets_tables",
   "building_set_to_building_junctions_tables",
+  "building_chain_sets_tables",
+  "building_chain_set_items_tables",
   "building_upgrades_junction_tables",
   "building_effects_junction_tables",
   "building_units_allowed_tables",
@@ -69,6 +72,14 @@ export const applyNewRowsToBuiltData = (base: BuiltBuildingsData, state: Buildin
   // Shallow clone, then copy only the collections actually written to. Everything else stays shared.
   const data: BuiltBuildingsData = { ...base };
 
+  // DB Clone returns localization rows in the same action as their DB rows. Keep one lookup for
+  // every board structure below so cloned chains, sets and variants receive their generated names.
+  const locText: Record<string, string> = {};
+  for (const row of byTable[LOC_TABLE] ?? []) {
+    const key = str(row.values, "key");
+    if (key) locText[key] = row.values.text ?? "";
+  }
+
   for (const row of byTable.building_chains_tables ?? []) {
     const key = str(row.values, "key");
     if (!key) continue;
@@ -82,7 +93,8 @@ export const applyNewRowsToBuiltData = (base: BuiltBuildingsData, state: Buildin
       tierIcon: optional(str(row.values, "optional_tier_icon")),
       canBeDismantled: bool(row.values, "can_be_dismantled", true),
       isForeignSlotChain: bool(row.values, "is_foreign_slot_chain"),
-      localizedName: key,
+      localizedName: locText[`building_chains_encyclopedia_name_${key}`] || key,
+      tooltip: optional(locText[`building_chains_chain_tooltip_${key}`] ?? ""),
     };
     if (superChain) {
       data.superChains = { ...data.superChains, [superChain]: [...(data.superChains[superChain] ?? []), key] };
@@ -192,11 +204,43 @@ export const applyNewRowsToBuiltData = (base: BuiltBuildingsData, state: Buildin
     );
   }
 
-  // Loc rows are written alongside the variant, so the board can show the name the user typed.
-  const locText: Record<string, string> = {};
-  for (const row of byTable[LOC_TABLE] ?? []) {
+  for (const row of byTable.building_sets_tables ?? []) {
     const key = str(row.values, "key");
-    if (key) locText[key] = row.values.text ?? "";
+    if (!key) continue;
+    data.sets = { ...data.sets };
+    data.sets[key] = {
+      key,
+      icon: optional(str(row.values, "icon")),
+      sortOrder: num(row.values, "sort_order"),
+      ...readSetColour(row.values),
+      showInUi: bool(row.values, "show_in_ui", true),
+      localizedName: locText[`building_sets_onscreen_name_${key}`] || key,
+    };
+  }
+
+  for (const row of byTable.building_chain_sets_tables ?? []) {
+    const key = str(row.values, "key");
+    if (!key) continue;
+    data.chainSetParents = {
+      ...data.chainSetParents,
+      [key]: optional(str(row.values, "parent_set")),
+    };
+  }
+
+  const touchedChainSets = new Set<string>();
+  for (const row of byTable.building_chain_set_items_tables ?? []) {
+    const set = str(row.values, "set");
+    if (!set) continue;
+    if (!touchedChainSets.has(set)) {
+      data.chainSetItems = { ...data.chainSetItems, [set]: [...(data.chainSetItems[set] ?? [])] };
+      touchedChainSets.add(set);
+    }
+    data.chainSetItems[set].push({
+      set,
+      chain: optional(str(row.values, "chain")),
+      superChain: optional(str(row.values, "super_chain")),
+      remove: bool(row.values, "remove"),
+    });
   }
 
   for (const row of byTable.building_culture_variants_tables ?? []) {
@@ -215,6 +259,7 @@ export const applyNewRowsToBuiltData = (base: BuiltBuildingsData, state: Buildin
       icon: optional(str(row.values, "icon")),
       disables: bool(row.values, "disables"),
       displayTooltip: bool(row.values, "display_tooltip", true),
+      frameOverride: optional(str(row.values, "building_frame_override")),
       specificity: variantSpecificity(culture, subculture, faction),
     };
     // Appended, so `pickCultureVariant`'s "later candidate wins a tie" makes this the override.

@@ -218,7 +218,7 @@ const optional = (value: string) => (value === "" ? undefined : value);
  * whichever the row actually carries rather than trusting the schema. Falls back to a neutral grey
  * so a set with neither still gets a band that is visible.
  */
-const readSetColour = (row: Record<string, string>) => {
+export const readSetColour = (row: Record<string, string>) => {
   const hex = str(row, "colour_hex").replace(/^#/, "");
   if (/^[0-9a-f]{6}$/i.test(hex)) {
     return {

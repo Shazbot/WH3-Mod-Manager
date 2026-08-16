@@ -142,9 +142,12 @@ describe("numeric-id cursor seeding", () => {
   it("does not renumber IDs after pending rows exist", () => {
     const pending = buildingsEditReducer(emptyBuildingsEditState({ building_units_allowed_tables: 42 }), {
       type: "addRows",
-      rows: addRecruitableUnitRows({ levelKey: "a_1", unitKey: "spearmen" }, {
-        building_units_allowed_tables: 42,
-      }),
+      rows: addRecruitableUnitRows(
+        { levelKey: "a_1", unitKey: "spearmen" },
+        {
+          building_units_allowed_tables: 42,
+        },
+      ),
       numericIdCursors: { building_units_allowed_tables: 43 },
     });
     const refreshed = buildingsEditReducer(pending, {
@@ -417,6 +420,73 @@ describe("applyNewRowsToBuiltData", () => {
     expect(view.edges).toContainEqual(
       expect.objectContaining({ fromLevelKey: "a_1", toLevelKey: "a_2", isImplicit: false }),
     );
+  });
+
+  it("uses a cloned building set's name, colour, order and visibility on the board", () => {
+    const state = addRows([
+      {
+        table: "building_sets_tables",
+        origin: "clone",
+        values: {
+          key: "memory_set",
+          icon: "memory.png",
+          sort_order: "7",
+          colour_hex: "123456",
+          show_in_ui: "true",
+        },
+      },
+      {
+        table: "building_set_to_building_junctions_tables",
+        origin: "clone",
+        values: { building_chain: "chain_a", building_level: "", building_set: "memory_set", exclude: "false" },
+      },
+      {
+        table: LOC_TABLE,
+        origin: "clone",
+        values: { key: "building_sets_onscreen_name_memory_set", text: "Memory Set" },
+      },
+    ]);
+
+    const view = resolveRegionBuildings(applyNewRowsToBuiltData(data(), state), query);
+    expect(view.bands.find((band) => band.setKey === "memory_set")).toEqual(
+      expect.objectContaining({
+        localizedName: "Memory Set",
+        colourR: 0x12,
+        colourG: 0x34,
+        colourB: 0x56,
+        sortOrder: 7,
+        showInUi: true,
+      }),
+    );
+  });
+
+  it("expands cloned chain-set parents and items when deciding which chains the board offers", () => {
+    const base = buildBuildingsData({ ...baseTables(), slot_template_permitted_building_chains_tables: [] }, noLoc);
+    const state = addRows([
+      {
+        table: "building_chain_sets_tables",
+        origin: "clone",
+        values: { key: "memory_parent", parent_set: "" },
+      },
+      {
+        table: "building_chain_sets_tables",
+        origin: "clone",
+        values: { key: "memory_child", parent_set: "memory_parent" },
+      },
+      {
+        table: "building_chain_set_items_tables",
+        origin: "clone",
+        values: { set: "memory_parent", chain: "chain_a", super_chain: "", remove: "false" },
+      },
+      {
+        table: "slot_template_permitted_building_chains_tables",
+        origin: "clone",
+        values: { slot_template: "tmpl", chain: "", chain_set: "memory_child", super_chain: "", remove: "false" },
+      },
+    ]);
+
+    const view = resolveRegionBuildings(applyNewRowsToBuiltData(base, state), query);
+    expect(view.bands.flatMap((band) => band.columns.map((column) => column.chainKey))).toEqual(["chain_a"]);
   });
 
   it("hides a building a pending disables row covers", () => {
