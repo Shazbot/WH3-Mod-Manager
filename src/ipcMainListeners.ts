@@ -50,6 +50,8 @@ import type {
   BuildingsTableRows,
   BuiltBuildingsData,
 } from "./buildingsData/types";
+import { loadEsfMapData } from "./esfMap/loader";
+import type { EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
 import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
 import {
@@ -336,6 +338,7 @@ type CachedBuildingsData = {
   iconGeneration: number;
 };
 let cachedBuildingsData: CachedBuildingsData | undefined;
+let cachedEsfMapData: { signature: string; data: import("./esfMap/types").EsfMapPayload } | undefined;
 // Cache for vanilla pack file name lists, keyed by pack path.
 // Allows skipping readPack() on startup when the pack hasn't changed. Module scope rather than
 // inside registerIpcMainListeners so anything that only needs a pack's file names - the buildings
@@ -3083,6 +3086,35 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     });
   };
 
+  // --- Campaign map ----------------------------------------------------------
+  const getEsfMapSignature = (enabledMods: Mod[]) =>
+    JSON.stringify({
+      game: appData.currentGame,
+      dataFolder: appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder ?? null,
+      mods: sortByNameAndLoadOrder(enabledMods).map((mod) => ({
+        path: mod.path,
+        loadOrder: mod.loadOrder ?? null,
+        lastChangedLocal: mod.lastChangedLocal ?? null,
+        lastChanged: mod.lastChanged ?? null,
+      })),
+    });
+
+  ipcMain.handle("getEsfMap", async (_event, enabledMods: Mod[]): Promise<EsfMapResponse> => {
+    try {
+      const signature = getEsfMapSignature(enabledMods);
+      if (cachedEsfMapData?.signature === signature) {
+        return { success: true, map: cachedEsfMapData.data };
+      }
+
+      const data = await loadEsfMapData(enabledMods);
+      cachedEsfMapData = { signature, data };
+      return { success: true, map: data };
+    } catch (error) {
+      console.log("getEsfMap failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   // --- Buildings -------------------------------------------------------------
   const BUILDING_FRAME_PATH = "ui\\skins\\default\\building_frame.png";
   const BUILDING_FRAME_PACK_NAME = "ui2.pack";
@@ -3492,6 +3524,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // The buildings data is cached under a signature that includes the game, so coming back here
       // would otherwise serve icon URLs built with a generation clearIconAssets has just dropped.
       cachedBuildingsData = undefined;
+      cachedEsfMapData = undefined;
       clearBuildingsMemoryCache();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);

@@ -626,7 +626,7 @@ export function walkCaabNodes(
 ): void {
   const nodesStartOffset = 16;
   const nodesEndOffset = header.recordNamesOffset;
-  let offset = parseNode(buffer, nodesStartOffset, true, [], tables, visitor, nodesEndOffset);
+  const offset = parseNode(buffer, nodesStartOffset, true, [], tables, visitor, nodesEndOffset);
 
   if (offset !== nodesEndOffset) {
     throw new Error(`CAAB node parse ended at ${offset}, expected ${nodesEndOffset}.`);

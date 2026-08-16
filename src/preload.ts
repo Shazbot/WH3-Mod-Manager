@@ -16,6 +16,7 @@ import type {
   BuildingsRegionViewResponse,
 } from "./buildingsData/types";
 import type { BuildingsEditState } from "./buildingsData/edits";
+import type { EsfMapResponse } from "./esfMap/types";
 
 console.log("IN PRELOAD");
 
@@ -255,6 +256,7 @@ const api = {
     ipcRenderer.invoke("getBuildingsRegionView", enabledMods, query, pendingEdits),
   getBuildingsCaiRows: (enabledMods: Mod[], chainKey: string): Promise<BuildingsCaiRowsResponse> =>
     ipcRenderer.invoke("getBuildingsCaiRows", enabledMods, chainKey),
+  getEsfMap: (enabledMods: Mod[]): Promise<EsfMapResponse> => ipcRenderer.invoke("getEsfMap", enabledMods),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) => ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("setPackSearchResults", callback),

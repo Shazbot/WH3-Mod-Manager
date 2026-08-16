@@ -11,7 +11,8 @@ Current parser behavior:
 - decompresses the LZMA `COMPRESSED_DATA` block used by `startpos.esf`, and reads
   campaign regions from the `REGIONS_ARRAY` records inside it
 
-This is intentionally outside the Electron app codepath for now.
+The parser is also consumed by the Electron app's campaign-map tab; the CLI
+below remains useful for inspecting and validating files.
 
 `parseEsfDocument` returns the header, string table and codec metadata. Its
 `root` node holds only `HEADER` and `STRING_TABLE` — the record tree is **not**
@@ -42,12 +43,6 @@ environment variable. There are no built-in default paths.
 node tools/esf/dist/cli/dumpRegions.js --file /path/to/campaigns/main_warhammer/startpos.esf --json --limit 50 --assert-min 1
 ```
 
-Note that `dumpRegions` / `extractRegions` is a **heuristic** string-table scan: it
-recognises keys by their `wh_` / `wh2_` / `wh3_` prefixes and a hand-maintained
-stop-list. It will not find regions in non-Warhammer titles or in mods that use
-other prefixes. For structured, prefix-independent results use
-`extractMapPoints` or `extractRegionCenters`, which read the actual
-`REGION_KEYS` / `REGION_DATA` records.
 Region data is read from the actual `REGION_DATA` and `REGION_KEYS` records, so
 results are structural rather than prefix-based and work for any title or mod.
 The two sources are joined on the region key:
@@ -96,13 +91,12 @@ const document = parseEsfDocument(opened.buffer);
 // opened.wasCompressed / opened.uncompressedSize describe what happened
 ```
 
-Decompression uses `@napi-rs/lzma`, a devDependency with prebuilt binaries; it
-is not pulled into the packaged Electron app.
+Decompression uses `@napi-rs/lzma`, which is a runtime dependency because the
+in-app map tab reads compressed startpos data.
 
 ## Run test script
 
 ```bash
-yarn esf:test-regions /path/to/startpos.esf
 yarn esf:test-regions /path/to/campaign_maps/wh3_main_combi_map_3/map_data.esf
 yarn esf:test-regions /path/to/campaigns/wh3_main_combi/startpos.esf
 ```
