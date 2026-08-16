@@ -110,6 +110,7 @@ export interface RegionSlot {
   region: string;
   slotTemplate: string;
   slotType: string;
+  /** Internal row identity; the extracted startpos table itself has no index column. */
   id: string;
   /** True when this slot came from the selected faction's foreign/allied slot set. */
   isForeignSlot?: boolean;

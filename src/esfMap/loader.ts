@@ -10,6 +10,8 @@ import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import {
   extractCampaignTableIdentity,
+  extractStartposRegionSlotTemplates,
+  openEsfBuffer,
   parseEsfDocument,
   type StartposCampaignTableIdentity,
 } from "../../tools/esf/src";
@@ -211,6 +213,12 @@ const collectVanillaStartposCandidates = async (dataFolder: string): Promise<Esf
   return candidates;
 };
 
+/** Returns the loose vanilla startpos files so callers can include them in cache identities. */
+export const getVanillaStartposFilePaths = async (dataFolder: string): Promise<string[]> =>
+  (await collectVanillaStartposCandidates(dataFolder))
+    .map((candidate) => candidate.filePath)
+    .filter((filePath): filePath is string => !!filePath);
+
 const collectModCandidates = async (
   mods: Mod[],
   matches: (fileName: string) => boolean,
@@ -296,6 +304,54 @@ const readCampaignStartposCandidates = async (
   );
   return extracted.filter((candidate): candidate is EsfCampaignStartposCandidate => candidate !== undefined);
 };
+
+/**
+ * Reads the database-shaped region slot-template rows from the effective startpos for every
+ * campaign. Vanilla startpos files are loose under `data/campaigns`; enabled-mod startpos files
+ * are packed and follow the same campaign identity selection as the map tab.
+ */
+export async function loadStartposRegionSlotTemplates(
+  enabledMods: Mod[],
+): Promise<Array<{ campaign: string; region: string; slot_template: string; slot_type: string }>> {
+  if (appData.currentGame !== "wh3") return [];
+  const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+  if (!dataFolder) return [];
+
+  const [vanillaCandidates, modCandidates] = await Promise.all([
+    collectVanillaStartposCandidates(dataFolder),
+    collectModCandidates(enabledMods, (fileName) => isPackedFileNamed(fileName, "startpos.esf")),
+  ]);
+  const candidates = await readCampaignStartposCandidates([...vanillaCandidates, ...modCandidates]);
+  const campaignNames = [...new Set(candidates.map((candidate) => candidate.campaignName))].sort((first, second) =>
+    first.localeCompare(second),
+  );
+  const rows: Array<{ campaign: string; region: string; slot_template: string; slot_type: string }> = [];
+
+  for (const campaignName of campaignNames) {
+    const candidate = pickStartposCandidateForCampaign(candidates, campaignName);
+    if (!candidate) continue;
+    try {
+      const opened = openEsfBuffer(candidate.buffer);
+      const document = parseEsfDocument(opened.buffer);
+      rows.push(
+        ...extractStartposRegionSlotTemplates(opened.buffer, document, candidate.campaignName).map((row) => ({
+          campaign: row.campaign,
+          region: row.region,
+          slot_template: row.slotTemplate,
+          slot_type: row.slotType,
+        })),
+      );
+    } catch (error) {
+      console.warn(
+        `Could not extract startpos slot templates from ${candidate.fileName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  return rows;
+}
 
 const pickStartposCandidateForCampaign = (
   candidates: EsfCampaignStartposCandidate[],

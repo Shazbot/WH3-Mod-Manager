@@ -5,6 +5,8 @@ export { decompressEsfBlock, findCompressedEsfBlock, openEsfBuffer } from "./esf
 export type { CompressedEsfBlock, OpenedEsfBuffer } from "./esf/compressed";
 export { extractStartposRegions } from "./extract/startposRegions";
 export type { StartposRegion } from "./extract/startposRegions";
+export { extractStartposRegionSlotTemplates } from "./extract/startposSlotTemplates";
+export type { StartposRegionSlotTemplate } from "./extract/startposSlotTemplates";
 export { extractMapPoints, extractMapPointsWithTheatreBounds } from "./extract/mapPoints";
 export type { MapPoint, MapPointExtractionResult, TheatreBounds } from "./extract/mapPoints";
 export { extractRegionCenters } from "./extract/regionCenters";

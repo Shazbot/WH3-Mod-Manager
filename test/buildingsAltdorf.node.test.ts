@@ -5,6 +5,12 @@ import { describe, expect, it } from "vitest";
 import { BUILDINGS_TABLES, buildBuildingsData } from "../src/buildingsData/data";
 import { resolveRegionBuildings } from "../src/buildingsData/derive";
 import type { BuildingsRegionView, BuildingsTableRows } from "../src/buildingsData/types";
+import {
+  extractCampaignTableIdentity,
+  extractStartposRegionSlotTemplates,
+  openEsfBuffer,
+  parseEsfDocument,
+} from "../tools/esf/src";
 
 /**
  * Checks the derivation against what the game actually drew.
@@ -17,27 +23,25 @@ import type { BuildingsRegionView, BuildingsTableRows } from "../src/buildingsDa
  *
  * Skipped when either dump is absent, so it costs nothing on a machine without them.
  *
- * Two things this cannot check, both because the data is not in the DB at all:
+ * One thing this cannot check, because the data is not in the DB at all:
  *
- * - `start_pos_region_slot_templates_tables` lives in startpos.esf, not db.pack, so the region's
- *   slot templates are supplied here as a fixture. The two Altdorf ones are named in
- *   `slot_templates_tables`; the port slot the game clearly also gives Altdorf is not, which is why
- *   `wh_main_EMPIRE_port` is a known gap rather than a bug in the rules below.
  * - a primary slot holds exactly one chain at a time, decided by who owns the region and whether it
  *   is ruined. The DB lists every alternative, so the settlement_major band legitimately shows more
  *   here than in a live campaign.
  */
 const DB_DUMP = process.env.WHMM_BUILDINGS_DB_DUMP ?? "/mnt/k/projects/wh3dump/db";
 const UI_DUMP = process.env.WHMM_BUILDINGS_UI_DUMP ?? "/mnt/k/wh3mods/altdorf.txt";
+const STARTPOS_FILE =
+  process.env.WHMM_BUILDINGS_STARTPOS ?? "/mnt/k/projects/wh3dump/campaigns/wh3_main_combi/startpos.esf";
 
-const haveDumps = fs.existsSync(DB_DUMP) && fs.existsSync(UI_DUMP);
+const haveDumps = fs.existsSync(DB_DUMP) && fs.existsSync(UI_DUMP) && fs.existsSync(STARTPOS_FILE);
 
 const CAMPAIGN = "wh3_main_combi";
 const REGION = "wh3_main_combi_region_altdorf";
 const CULTURE = "wh_main_emp_empire";
 const SUBCULTURE = "wh_main_sc_emp_empire";
 
-/** What the bundled `startPosSlots.ts` fallback has to supply for this region. */
+/** What the startpos.esf-derived table supplies for this region. */
 const EXPECTED_ALTDORF_SLOTS = [
   { slotType: "primary", slotTemplate: "wh_main_special_altdorf_primary" },
   { slotType: "secondary", slotTemplate: "wh_main_special_altdorf_secondary" },
@@ -136,8 +140,20 @@ const flattenView = (view: BuildingsRegionView) => {
 describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf panel", () => {
   const tables: BuildingsTableRows = {};
   for (const tableName of BUILDINGS_TABLES) tables[tableName] = readTsvTable(tableName);
-  // Deliberately not injected: the dump has no start_pos_* tables, so this exercises the bundled
-  // fallback in src/buildingsData/startPosSlots.ts end to end.
+  // The DB dump has no start_pos_* tables. Supply the rows extracted from the real startpos.esf.
+  const startpos = fs.readFileSync(STARTPOS_FILE);
+  const identity = extractCampaignTableIdentity(startpos, parseEsfDocument(startpos));
+  const opened = openEsfBuffer(startpos);
+  tables.start_pos_region_slot_templates_tables = extractStartposRegionSlotTemplates(
+    opened.buffer,
+    parseEsfDocument(opened.buffer),
+    identity?.campaignName ?? CAMPAIGN,
+  ).map((row) => ({
+    campaign: row.campaign,
+    region: row.region,
+    slot_template: row.slotTemplate,
+    slot_type: row.slotType,
+  }));
   const data = buildBuildingsData(tables, () => undefined);
   const view = resolveRegionBuildings(data, {
     campaign: CAMPAIGN,
@@ -148,8 +164,7 @@ describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf pa
   const truth = readGroundTruth();
   const ours = flattenView(view);
 
-  it("gets the region's slots from the bundled startpos fallback", () => {
-    expect(tables.start_pos_region_slot_templates_tables).toEqual([]);
+  it("gets the region's slots from the supplied startpos rows", () => {
     expect(view.slotTemplates.map((slot) => ({ slotType: slot.slotType, slotTemplate: slot.slotTemplate }))).toEqual(
       expect.arrayContaining(EXPECTED_ALTDORF_SLOTS),
     );

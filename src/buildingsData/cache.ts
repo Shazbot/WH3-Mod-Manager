@@ -4,7 +4,7 @@ import * as nodePath from "path";
 import type { BuiltBuildingsData } from "./types";
 
 /** Bump whenever the shape of `BuiltBuildingsData` or the extraction rules change. */
-const BUILDINGS_CACHE_VERSION = 10;
+const BUILDINGS_CACHE_VERSION = 11;
 const BUILDINGS_CACHE_FILE = "buildings-data-cache.bin";
 
 type BuildingsDiskPayload = {

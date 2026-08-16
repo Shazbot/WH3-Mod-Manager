@@ -50,7 +50,7 @@ import type {
   BuildingsTableRows,
   BuiltBuildingsData,
 } from "./buildingsData/types";
-import { loadEsfMapData } from "./esfMap/loader";
+import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import type { EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
 import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
@@ -3211,6 +3211,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     );
     const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
     const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
+    const vanillaStartposPaths = await getVanillaStartposFilePaths(dataFolder);
     const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
     const vanillaIconPackPaths = [...appData.allVanillaPackNames]
       .filter(
@@ -3228,6 +3229,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       dbPackPath,
       buildingFramePackPath,
       ...localizationPackPaths,
+      ...vanillaStartposPaths,
       ...enabledMods.map((mod) => mod.path),
     ];
     const identities = await Promise.all(
@@ -3243,7 +3245,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 1,
+          feature: 2,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -3305,6 +3307,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         rows.push(schemaRowToRecord(schemaFieldRow));
       });
       tables[canonicalTableName] = rows;
+    }
+    const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods);
+    if (startposSlotTemplateRows.length > 0) {
+      tables.start_pos_region_slot_templates_tables.push(...startposSlotTemplateRows);
     }
 
     // Vanilla first so mod locs, which stay on the live path, still shadow it.

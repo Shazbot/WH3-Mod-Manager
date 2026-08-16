@@ -10,7 +10,6 @@ import {
   resolveTextReplacements,
   stripLocImgTags,
 } from "../skills";
-import { getBundledStartPosRegionSlotTemplates } from "./startPosSlots";
 import type {
   AvailabilityRow,
   BuildingChainRow,
@@ -92,7 +91,9 @@ export const BUILDINGS_TABLES = [
  * Rows arrive vanilla-first then mods in load order, so a later row with the same identity has to
  * *replace* an earlier one. Keying on the first column alone would collapse whole tables:
  * `building_culture_variants` has four key columns, and every variant of one building shares the
- * first. `test/buildingsData.node.test.ts` asserts this against the shipped schema.
+ * first. The start-position slot-template table is the one exception: its rows are reconstructed
+ * from ESF without the schema's per-instance index column. `test/buildingsData.node.test.ts` asserts
+ * this against the shipped schema.
  */
 export const BUILDINGS_TABLE_KEY_COLUMNS: Record<string, string[]> = {
   building_superchains_tables: ["key"],
@@ -110,7 +111,9 @@ export const BUILDINGS_TABLE_KEY_COLUMNS: Record<string, string[]> = {
   slot_set_items_tables: ["id"],
   slot_template_permitted_building_chains_tables: ["chain", "chain_set", "slot_template", "super_chain"],
   slot_template_to_building_superchain_junctions_tables: ["id"],
-  start_pos_region_slot_templates_tables: ["campaign", "id", "region", "slot_template", "slot_type"],
+  // This table is reconstructed from REGION_SLOT records in startpos.esf. The ESF's first value is
+  // the per-instance index/key and is deliberately not part of the DB-shaped row.
+  start_pos_region_slot_templates_tables: ["campaign", "region", "slot_template", "slot_type"],
   start_pos_regions_tables: ["region", "campaign"],
   start_pos_settlements_tables: ["settlement_id", "region"],
   start_pos_region_foreign_slots_tables: ["campaign", "faction", "region", "slot_set"],
@@ -253,12 +256,6 @@ const localize = (getLoc: BuildingsGetLoc, key: string) => {
 
 export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: BuildingsGetLoc): BuiltBuildingsData => {
   const rowsOf = (tableName: string) => {
-    // start_pos_region_slot_templates is the one table the derivation cannot do without and that
-    // db.pack does not contain - it lives in startpos.esf. Fall back to the bundled copy, and let a
-    // pack that does supply it win, so this disappears on its own once startpos reading exists.
-    if (tableName === "start_pos_region_slot_templates_tables" && !tables[tableName]?.length) {
-      return dedupeRowsByKey(tableName, getBundledStartPosRegionSlotTemplates());
-    }
     return dedupeRowsByKey(tableName, tables[tableName]);
   };
 
@@ -417,7 +414,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
   }
 
   const regionSlotTemplates: Record<string, RegionSlot[]> = {};
-  for (const row of rowsOf("start_pos_region_slot_templates_tables")) {
+  for (const [index, row] of rowsOf("start_pos_region_slot_templates_tables").entries()) {
     const campaign = str(row, "campaign");
     const region = str(row, "region");
     if (!campaign || !region) continue;
@@ -426,7 +423,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
       region,
       slotTemplate: str(row, "slot_template"),
       slotType: str(row, "slot_type"),
-      id: str(row, "id"),
+      id: str(row, "id") || `${index}`,
     });
   }
 

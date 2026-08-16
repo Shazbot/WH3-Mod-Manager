@@ -9,7 +9,6 @@ import {
   createBuildingsLocLookup,
   dedupeRowsByKey,
 } from "../src/buildingsData/data";
-import { getBundledStartPosRegionSlotTemplates } from "../src/buildingsData/startPosSlots";
 import type { BuildingsTableRows } from "../src/buildingsData/types";
 
 const noLoc = () => undefined;
@@ -46,6 +45,13 @@ describe("BUILDINGS_TABLE_KEY_COLUMNS", () => {
       const expected = version.fields.filter((field) => field.is_key).map((field) => field.name);
       if (expected.length === 0) continue;
       const actual = BUILDINGS_TABLE_KEY_COLUMNS[tableName];
+      // This table is reconstructed from REGION_SLOT records rather than written back to the DB.
+      // Its ESF instance/index value is intentionally omitted, so its identity is the remaining
+      // four fields instead of the schema's synthetic id column.
+      if (tableName === "start_pos_region_slot_templates_tables") {
+        expect(actual).toEqual(["campaign", "region", "slot_template", "slot_type"]);
+        continue;
+      }
       if ([...expected].sort().join("|") !== [...actual].sort().join("|")) {
         mismatches.push({ table: tableName, expected, actual });
       }
@@ -161,9 +167,7 @@ describe("buildBuildingsData", () => {
       noLoc,
     );
 
-    expect(withScopes.effects.find((effect) => effect.key === "eff_used")?.preferredScope).toBe(
-      "region_to_region_own",
-    );
+    expect(withScopes.effects.find((effect) => effect.key === "eff_used")?.preferredScope).toBe("region_to_region_own");
     expect(withScopes.effects.find((effect) => effect.key === "eff_unused")?.preferredScope).toBeUndefined();
   });
 
@@ -244,41 +248,25 @@ describe("buildBuildingsData", () => {
   });
 });
 
-describe("bundled startpos slot templates", () => {
-  it("covers all three campaigns and slot types", () => {
-    const rows = getBundledStartPosRegionSlotTemplates();
-    expect(rows.length).toBe(1810);
-    expect([...new Set(rows.map((row) => row.campaign))].sort()).toEqual([
-      "wh3_main_chaos",
-      "wh3_main_combi",
-      "wh3_main_prologue",
-    ]);
-    expect([...new Set(rows.map((row) => row.slot_type))].sort()).toEqual(["port", "primary", "secondary"]);
-  });
-
-  it("gives every row a unique id, since id is a key column", () => {
-    const rows = getBundledStartPosRegionSlotTemplates();
-    expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
-  });
-
-  it("fills the table in when the packs have none", () => {
-    const data = buildBuildingsData({}, noLoc);
-    expect(data.regionSlotTemplates["wh3_main_combi|wh3_main_combi_region_altdorf"]).toEqual(
-      expect.arrayContaining([expect.objectContaining({ slotTemplate: "wh_main_port", slotType: "port" })]),
-    );
-  });
-
-  it("steps aside when the packs do supply the table", () => {
+describe("ESF-derived startpos slot templates", () => {
+  it("accepts rows without the ESF instance/index column", () => {
     const data = buildBuildingsData(
       {
         start_pos_region_slot_templates_tables: [
-          { campaign: "c", id: "1", region: "r", slot_template: "from_pack", slot_type: "primary" },
+          { campaign: "c", region: "r", slot_template: "from_esf", slot_type: "primary" },
         ],
       },
       noLoc,
     );
-    expect(data.regionSlotTemplates["c|r"]?.[0].slotTemplate).toBe("from_pack");
-    expect(data.regionSlotTemplates["wh3_main_combi|wh3_main_combi_region_altdorf"]).toBeUndefined();
+    expect(data.regionSlotTemplates["c|r"]?.[0]).toMatchObject({
+      slotTemplate: "from_esf",
+      slotType: "primary",
+      id: "0",
+    });
+  });
+
+  it("does not invent rows when no startpos data was supplied", () => {
+    expect(buildBuildingsData({}, noLoc).regionSlotTemplates).toEqual({});
   });
 });
 
