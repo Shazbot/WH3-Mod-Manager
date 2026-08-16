@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppSelector } from "@/src/hooks";
 import { FaSquare, FaCheckSquare, FaMinusSquare, FaArrowRight } from "react-icons/fa";
 import { IoMdArrowDropright } from "react-icons/io";
@@ -14,7 +14,7 @@ import { FloatingOverlay } from "@floating-ui/react";
 import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
 import DBCloneRenameInput from "./DBCloneRenameInput";
-import { getDBCloneAutoSelectedParentNames } from "./dbCloneSelection";
+import { filterDBCloneRedundantIndirectReferences, getDBCloneAutoSelectedParentNames } from "./dbCloneSelection";
 import type { PackedFile } from "../../packFileTypes";
 import { applyDBCloneGlobalKey, getDBCloneGlobalKey, normalizeDBCloneModdersPrefix } from "./dbCloneGlobalKey";
 
@@ -57,6 +57,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   const [nodeNameToRenameValue, setNodeNameToRenameValue] = useState<Record<string, string>>({});
   const [globalRenameValue, setGlobalRenameValue] = useState("");
   const [appendModdersPrefix, setAppendModdersPrefix] = useState(true);
+  const [hideRepeatedIndirectTables, setHideRepeatedIndirectTables] = useState(true);
   const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [isAppendSave, setIsAppendSave] = useState<boolean>(false);
@@ -73,6 +74,17 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   const pendingOperations = useRef(0);
 
   const localized = useLocalizations();
+  const displayedTreeData = useMemo(
+    () => (treeData && hideRepeatedIndirectTables ? filterDBCloneRedundantIndirectReferences(treeData) : treeData),
+    [hideRepeatedIndirectTables, treeData],
+  );
+
+  useEffect(() => {
+    if (!hideRepeatedIndirectTables || !displayedTreeData) return;
+    const visibleNodeNames = new Set(getAllNodesInTree(displayedTreeData).map((node) => node.name));
+    setSelectedNodesByName((selectedNames) => selectedNames.filter((nodeName) => visibleNodeNames.has(nodeName)));
+    setExpandedNodesByName((expandedNames) => expandedNames.filter((nodeName) => visibleNodeNames.has(nodeName)));
+  }, [displayedTreeData, hideRepeatedIndirectTables]);
 
   const beginOverlayOperation = () => {
     pendingOperations.current += 1;
@@ -223,9 +235,9 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     children: [],
   } as ITreeNode;
 
-  if (!treeData) return <></>;
+  if (!treeData || !displayedTreeData) return <></>;
 
-  const data = flattenTree(treeData);
+  const data = flattenTree(displayedTreeData);
   const nodeById = new Map<INode["id"], INode>();
   const nodeIdsByName = new Map<string, INode["id"][]>();
   for (const node of data) {
@@ -240,7 +252,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     return nodeById.get(ids[0]);
   };
   const nodeNameToData = {} as Record<string, IViewerTreeNodeWithData>;
-  for (const node of getAllNodesInTree(treeData)) {
+  for (const node of getAllNodesInTree(displayedTreeData)) {
     const currentNode = node as IViewerTreeNodeWithData;
     nodeNameToData[currentNode.name] = currentNode;
   }
@@ -259,7 +271,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   console.log("SELECTED NODES ARE", selectedNodesByName);
   console.log("EXPANDED NODES ARE", expandedNodesByName);
 
-  const rootNodeName = (treeData.children[0] as IViewerTreeNodeWithData | undefined)?.name ?? rootNode.name;
+  const rootNodeName = (displayedTreeData.children[0] as IViewerTreeNodeWithData | undefined)?.name ?? rootNode.name;
 
   const defaultNodeNameToRenameValue = data.reduce(
     (acc, current) => {
@@ -768,6 +780,16 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
             {localized.help}
           </button>
         </div>
+        <label className="mx-auto flex w-52 items-start gap-2 text-sm text-gray-300">
+          <input
+            type="checkbox"
+            checked={hideRepeatedIndirectTables}
+            disabled={isSaving}
+            onChange={(event) => setHideRepeatedIndirectTables(event.target.checked)}
+            className="mt-1"
+          />
+          <span>Hide indirect references when their table already appears above</span>
+        </label>
       </div>
       <div className="mx-auto mb-4 flex w-full max-w-xl flex-col gap-2 px-4 text-left">
         <label htmlFor="dbclone-global-rename" className="text-sm font-medium text-gray-200">
