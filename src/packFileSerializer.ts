@@ -2370,7 +2370,7 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
       return Buffer.from(stringVal, "utf8");
     }
     case "Buffer": {
-      return field.val as Buffer;
+      return Buffer.isBuffer(field.val) ? field.val : Buffer.from(field.val as number[]);
     }
     default:
       throw new Error("NO WAY TO RESOLVE " + field.type);

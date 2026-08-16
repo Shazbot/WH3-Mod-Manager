@@ -8,6 +8,7 @@ import {
   releaseParsedTables,
 } from "./utility/packFileHelpers";
 import { planSaveAs } from "./utility/saveAsPlan";
+import { toRendererSafePackedFile } from "./utility/rendererSafePackedFile";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
@@ -9521,18 +9522,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           });
           const memoryPackPath = result.outputPackPath as string;
           appData.unsavedPacksData[memoryPackPath] = generatedPackedFiles;
+          const rendererPackedFiles = generatedPackedFiles.map(toRendererSafePackedFile);
 
           const packData: PackViewData = {
             packName: memoryPackPath.slice("memory://".length),
             packPath: memoryPackPath,
-            tables: generatedPackedFiles.map((packedFile) => packedFile.name),
-            packedFiles: Object.fromEntries(generatedPackedFiles.map((packedFile) => [packedFile.name, packedFile])),
+            tables: rendererPackedFiles.map((packedFile) => packedFile.name),
+            packedFiles: Object.fromEntries(rendererPackedFiles.map((packedFile) => [packedFile.name, packedFile])),
           };
-          const tables = generatedPackedFiles.flatMap((packedFile): DBTable[] => {
+          const tables = rendererPackedFiles.flatMap((packedFile): DBTable[] => {
             const match = /^db\\([^\\]+)\\(.+)$/.exec(packedFile.name);
             return match ? [{ dbName: match[1], dbSubname: match[2] }] : [];
           });
-          openDBCloneMemoryPackInViewer(packData, generatedPackedFiles, tables);
+          openDBCloneMemoryPackInViewer(packData, rendererPackedFiles, tables);
         }
         return { ...result, generatedPackedFiles: undefined };
       } finally {
