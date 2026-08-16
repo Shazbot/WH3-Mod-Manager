@@ -25,9 +25,12 @@ import {
   getDBCloneSourceRowKey,
   getUniqueDBCloneNodes,
 } from "./utility/dbCloneTree";
-import { getVanillaPackNamesForDBTable, toDBTablePrefix } from "./utility/dbCloneTableRouting";
+import { getVanillaPackNamesForDBTable, isDBCloneTableIgnored, toDBTablePrefix } from "./utility/dbCloneTableRouting";
 import { canUseVanillaDbCacheForPack, fillVanillaTablesFromCache } from "./vanillaDbCache/store";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
+
+const shouldIgnoreDBCloneTable = (tableName: string) =>
+  isDBCloneTableIgnored(tableName) || tablesToIgnore.includes(tableName);
 
 /** True when the pack index proves the table absent, or every matching packed file already has rows. */
 const isPackTableResolved = (newPackPath: string, tableToRead: string) => {
@@ -140,6 +143,7 @@ export const buildDBReferenceTree = async (
 ): Promise<IViewerTreeNodeWithData | undefined> => {
   console.log("ENTER buildDBReferenceTree");
   console.log("args:", packPath, currentDBTableSelection, deepCloneTarget, selectedNodesByName);
+  if (shouldIgnoreDBCloneTable(currentDBTableSelection.dbName)) return;
   const DBNameToDBVersions = gameToDBNameToDBVersions[appData.currentGame];
   const DBFieldsReferencedBy = gameToDBFieldsReferencedBy[appData.currentGame];
   const tableToreferencedColumns = gameToReferences[appData.currentGame];
@@ -288,6 +292,7 @@ export const buildDBReferenceTree = async (
     for (let i = 0; i < row.length; i++) {
       if (!schema.fields[i].is_reference) continue;
       const [tableName] = schema.fields[i].is_reference;
+      if (shouldIgnoreDBCloneTable(tableName)) continue;
 
       await getRef(tableName, existingPack);
     }
@@ -323,6 +328,7 @@ export const buildDBReferenceTree = async (
     isIndirectRefSearch: boolean,
   ) => {
     const [tableName, tableColumnName, resolvedKeyValue] = dbCell;
+    if (shouldIgnoreDBCloneTable(tableName)) return;
     console.log("addRefsRecursively for", tableName, tableColumnName, resolvedKeyValue, packFile.name);
     const dbVersion = packFile.tableSchema || getDBVersion(packFile, DBNameToDBVersions);
     if (!dbVersion || !packFile.schemaFields) {
@@ -344,7 +350,7 @@ export const buildDBReferenceTree = async (
         if (references) {
           console.log("REFERENCES FOR", tableName, tableColumnName, references);
           for (const [refTableName, refTableColumnName] of references) {
-            if (tablesToIgnore.includes(refTableName)) continue;
+            if (shouldIgnoreDBCloneTable(refTableName)) continue;
 
             console.log("REFERENCE:", refTableName, refTableColumnName, resolvedKeyValue);
 
@@ -440,6 +446,7 @@ export const buildDBReferenceTree = async (
     resolvedKeyValue: string,
     isIndirectReference: boolean,
   ) => {
+    if (shouldIgnoreDBCloneTable(newTableName)) return;
     // if (!isIndirectReference) {
     let newPackFile = await tryGetPackWithReference(existingPack, newTableName, newTableColumnName, resolvedKeyValue);
 
@@ -639,6 +646,7 @@ export const buildDBReferenceTree = async (
       if (selectedNodesByName.length > 0) continue;
       if (!schema.fields[currentFieldIndex].is_reference) continue;
       const [tableName, tableColumnName] = schema.fields[currentFieldIndex].is_reference;
+      if (shouldIgnoreDBCloneTable(tableName)) continue;
 
       const packsToGet = [] as Pack[];
       const packToGetCurrent = appData.packsData.find((pack) => pack.path == packPath);
@@ -764,6 +772,7 @@ export const buildDBIndirectReferences = async (
   existingRefs: DBCell[],
   cacheContext?: DBIndirectReferenceCacheContext,
 ): Promise<IViewerTreeNodeWithData[]> => {
+  if (shouldIgnoreDBCloneTable(selectedNode.tableName)) return [];
   const DBFieldsReferencedBy = gameToDBFieldsReferencedBy[appData.currentGame];
   const tableToreferencedColumns = gameToReferences[appData.currentGame];
 
@@ -956,7 +965,7 @@ export const buildDBIndirectReferences = async (
   };
 
   for (const [refTableName, refTableColumnName] of references) {
-    if (tablesToIgnore.includes(refTableName)) continue;
+    if (shouldIgnoreDBCloneTable(refTableName)) continue;
     const valueToTargets = await getReverseRefIndex(refTableName, refTableColumnName);
     const targets = valueToTargets.get(selectedNode.value);
     if (!targets) continue;
@@ -1201,6 +1210,7 @@ export async function executeDBDuplication(
     const nodeRefsToHandle = [] as IViewerTreeNodeWithData[];
     const nodeRefSet = new Set<string>();
     const addNodeRefToHandle = (node: IViewerTreeNodeWithData) => {
+      if (shouldIgnoreDBCloneTable(node.tableName)) return false;
       const key = getCellLookupKey(node.tableName, node.columnName, node.value);
       if (nodeRefSet.has(key)) return false;
       nodeRefSet.add(key);
@@ -1211,8 +1221,13 @@ export async function executeDBDuplication(
     const nodesToDuplicate = [] as IViewerTreeNodeWithData[];
     for (const nodeName of nodesNamesToDuplicate) {
       const node = nodeNameToRef[nodeName];
-      if (!node) continue;
+      if (!node || shouldIgnoreDBCloneTable(node.tableName)) continue;
       nodesToDuplicate.push(node);
+    }
+    if (nodesToDuplicate.length == 0) {
+      const errorMessage = "No cloneable tables selected";
+      report("error", errorMessage);
+      return { ok: false, error: errorMessage };
     }
     const selectedNodeLookupKeys = new Set(
       nodesToDuplicate.map((node) => getCellLookupKey(node.tableName, node.columnName, node.value)),
@@ -1358,7 +1373,7 @@ export async function executeDBDuplication(
       if (!references || references.length == 0) continue;
 
       for (const [refTableName, refTableColumnName] of references) {
-        if (tablesToIgnore.includes(refTableName)) continue;
+        if (shouldIgnoreDBCloneTable(refTableName)) continue;
 
         const valueToTargets = await getReverseRefIndex(refTableName, refTableColumnName);
         const indirectTargets = valueToTargets.get(currentNode.value);
@@ -1474,7 +1489,11 @@ export async function executeDBDuplication(
         );
       }
 
-      const tableNamesToHandle = Array.from(new Set(nodeRefsToHandle.map((node) => node.tableName)));
+      const tableNamesToHandle = Array.from(
+        new Set(
+          nodeRefsToHandle.map((node) => node.tableName).filter((tableName) => !shouldIgnoreDBCloneTable(tableName)),
+        ),
+      );
 
       for (let tableIndex = 0; tableIndex < tableNamesToHandle.length; tableIndex++) {
         if (isCanceled()) {
@@ -1621,6 +1640,7 @@ export async function executeDBDuplication(
       const indirectChildren = getIndirectChildrenNodes(node);
       for (const indirectChild of indirectChildren) {
         const indirectChildNode = indirectChild as IViewerTreeNodeWithData;
+        if (shouldIgnoreDBCloneTable(indirectChildNode.tableName)) continue;
         const key = getCellLookupKey(
           indirectChildNode.tableName,
           indirectChildNode.columnName,

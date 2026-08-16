@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { buildVanillaPackIndex } from "../src/vanillaPackIndex/format";
-import { getVanillaPackNamesForDBTable, toDBTablePrefix } from "../src/utility/dbCloneTableRouting";
+import {
+  getVanillaPackNamesForDBTable,
+  isDBCloneTableIgnored,
+  toDBTablePrefix,
+} from "../src/utility/dbCloneTableRouting";
 
 const index = buildVanillaPackIndex(
   {
@@ -28,6 +32,14 @@ const index = buildVanillaPackIndex(
 );
 
 describe("DB clone vanilla table routing", () => {
+  it("ignores every start_pos table because DB Clone cannot create rows in them", () => {
+    expect(isDBCloneTableIgnored("start_pos_regions_tables")).toBe(true);
+    expect(isDBCloneTableIgnored("start_pos_region_slot_templates_tables")).toBe(true);
+    expect(isDBCloneTableIgnored("db\\start_pos_settlements_tables\\data__")).toBe(true);
+    expect(isDBCloneTableIgnored("start_position_tables")).toBe(false);
+    expect(isDBCloneTableIgnored("main_units_tables")).toBe(false);
+  });
+
   it("normalizes bare table names without matching longer table names", () => {
     expect(toDBTablePrefix("main_units_tables")).toBe("db\\main_units_tables\\");
     expect(toDBTablePrefix("db\\main_units_tables")).toBe("db\\main_units_tables\\");

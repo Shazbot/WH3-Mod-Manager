@@ -28,6 +28,7 @@ import type { ShowViewerDialog } from "./viewerDialogs";
 import { pickWidestValue, type WidestValue } from "./viewerHelpers";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import { vanillaPackNames } from "@/src/supportedGames";
+import { isDBCloneTableIgnored } from "@/src/utility/dbCloneTableRouting";
 
 const BIG_TABLE_ROW_THRESHOLD = 20000;
 const BIG_TABLE_CELL_THRESHOLD = 2000000;
@@ -524,6 +525,7 @@ const AgGridWrapper = memo(
     columnHeaders,
     columnWidthHints,
     canEditTable,
+    canDeepCloneTable,
     onCellValueChangedCallback,
     onContextMenuCallback,
     keyColumnNamesUnderscore,
@@ -537,6 +539,7 @@ const AgGridWrapper = memo(
     columnHeaders: string[];
     columnWidthHints: Array<ColumnWidthHint | undefined>;
     canEditTable: boolean;
+    canDeepCloneTable: boolean;
     onCellValueChangedCallback: (event: CellValueChangedEvent<RowData>) => void;
     onContextMenuCallback: (row: number, col: number) => void;
     keyColumnNamesUnderscore: string[];
@@ -964,7 +967,7 @@ const AgGridWrapper = memo(
         ev.event?.preventDefault();
         ev.event?.stopPropagation();
 
-        if (keyColumnSet.size === 0) {
+        if (!canDeepCloneTable || keyColumnSet.size === 0) {
           setMenuState(undefined);
           return;
         }
@@ -998,7 +1001,7 @@ const AgGridWrapper = memo(
           label,
         });
       },
-      [currentSchema.fields, firstKeyColumnIndex, keyColumnSet],
+      [canDeepCloneTable, currentSchema.fields, firstKeyColumnIndex, keyColumnSet],
     );
 
     const onCellMouseDown = useCallback(
@@ -1646,6 +1649,7 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
           columnHeaders={activePreparedTableData.columnHeaders}
           columnWidthHints={activePreparedTableData.columnWidthHints}
           canEditTable={canEditTable}
+          canDeepCloneTable={!isDBCloneTableIgnored(currentDBTableSelection.dbName)}
           onCellValueChangedCallback={handleCellValueChangedCallback}
           onContextMenuCallback={handleContextMenuCallback}
           keyColumnNamesUnderscore={keyColumnNamesUnderscore}
