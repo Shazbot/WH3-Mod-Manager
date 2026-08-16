@@ -15,6 +15,7 @@ import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
 import DBCloneRenameInput from "./DBCloneRenameInput";
 import type { PackedFile } from "../../packFileTypes";
+import { applyDBCloneGlobalKey, getDBCloneGlobalKey, normalizeDBCloneModdersPrefix } from "./dbCloneGlobalKey";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -47,11 +48,14 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   // important to reload the component
   useAppSelector((state) => state.app.referencesHash);
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
+  const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const packPath = currentDBTableSelection?.packPath ?? "db.pack";
 
   const [selectedNodesByName, setSelectedNodesByName] = useState<string[]>([]);
   const [expandedNodesByName, setExpandedNodesByName] = useState<string[]>([]);
   const [nodeNameToRenameValue, setNodeNameToRenameValue] = useState<Record<string, string>>({});
+  const [globalRenameValue, setGlobalRenameValue] = useState("");
+  const [appendModdersPrefix, setAppendModdersPrefix] = useState(true);
   const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [isAppendSave, setIsAppendSave] = useState<boolean>(false);
@@ -409,12 +413,27 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     );
   };
 
+  const hasGlobalRenameValue = globalRenameValue.trim() !== "";
+  const normalizedModdersPrefix = normalizeDBCloneModdersPrefix(moddersPrefix);
+  const effectiveGlobalRenameValue = getDBCloneGlobalKey(
+    globalRenameValue,
+    normalizedModdersPrefix,
+    appendModdersPrefix,
+  );
+
   const isSavingPossible = () => {
     const selectedDirectNodes = selectedNodesByName.filter(
       (nodeName) => nodeNameToDataLookup[nodeName] && !nodeNameToDataLookup[nodeName].isIndirectRef,
     );
 
     if (selectedDirectNodes.length < 1) return false;
+
+    if (hasGlobalRenameValue) {
+      if (!effectiveGlobalRenameValue) return false;
+      return selectedDirectNodes.every(
+        (nodeName) => effectiveGlobalRenameValue !== nodeNameToDataLookup[nodeName]?.value,
+      );
+    }
 
     for (const nodeName of selectedDirectNodes) {
       const newValue =
@@ -475,6 +494,14 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     const selectedNodeNames = selectedNodesByName.includes(rootNodeName)
       ? selectedNodesByName
       : [rootNodeName, ...selectedNodesByName];
+    const renameValuesForSave = hasGlobalRenameValue
+      ? applyDBCloneGlobalKey(
+          nodeNameToRenameValue,
+          selectedNodeNames,
+          nodeNameToDataLookup,
+          effectiveGlobalRenameValue,
+        )
+      : nodeNameToRenameValue;
 
     try {
       beginOverlayOperation();
@@ -491,7 +518,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
         packData.packPath,
         selectedNodeNames,
         nodeNameToDataLookup,
-        nodeNameToRenameValue,
+        renameValuesForSave,
         defaultNodeNameToRenameValue,
         treeData,
         { isAppendSave, savePackedFileName, savePackFileName, destination },
@@ -594,6 +621,10 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
                   tables can be inspected and edited under New rows before you save them to a pack.
                 </p>
               )}
+              <p>
+                "New key for all cloned keys" assigns one replacement key to every selected direct key and hides the
+                individual key inputs. Leave it empty to rename each selected key separately.
+              </p>
               <p>
                 "(Optional) Name for new tables" specifices what name the new DB tables will have. Leave it blank for an
                 automaitc name with a timestamp (e.g. dbclone_140925_152525_).
@@ -733,6 +764,35 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           </button>
         </div>
       </div>
+      <div className="mx-auto mb-4 flex w-full max-w-xl flex-col gap-2 px-4 text-left">
+        <label htmlFor="dbclone-global-rename" className="text-sm font-medium text-gray-200">
+          New key for all cloned keys
+        </label>
+        <input
+          id="dbclone-global-rename"
+          type="text"
+          value={globalRenameValue}
+          disabled={isSaving}
+          onChange={(event) => setGlobalRenameValue(event.target.value)}
+          placeholder="Leave empty to rename keys individually"
+          className="block w-full rounded-lg border border-gray-600 bg-gray-700 p-2.5 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        {normalizedModdersPrefix && (
+          <label className="flex items-center gap-2 text-sm text-gray-300" htmlFor="dbclone-append-modders-prefix">
+            <input
+              id="dbclone-append-modders-prefix"
+              type="checkbox"
+              checked={appendModdersPrefix}
+              disabled={isSaving}
+              onChange={(event) => setAppendModdersPrefix(event.target.checked)}
+            />
+            Append modder prefix
+          </label>
+        )}
+        {hasGlobalRenameValue && effectiveGlobalRenameValue !== globalRenameValue.trim() && (
+          <div className="text-xs text-gray-400">New key: {effectiveGlobalRenameValue}</div>
+        )}
+      </div>
       <div>Cloning {toClone.resolvedKeyValue}</div>
       <div className="checkbox dark:text-gray-300">
         <TreeView
@@ -777,7 +837,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
                 <span className={`name ${nodeNameToDataLookup[element.name].isIndirectRef ? "text-amber-500" : ""}`}>
                   {element.name}
                 </span>
-                {!nodeNameToDataLookup[element.name].isIndirectRef && (
+                {!hasGlobalRenameValue && !nodeNameToDataLookup[element.name].isIndirectRef && (
                   <span className="flex items-center">
                     <span className="text-slate-100 ml-4">
                       <FaArrowRight></FaArrowRight>
