@@ -2,6 +2,7 @@ import { readFromExistingPack, readPack } from "../packFileSerializer";
 import type { Pack } from "../packFileTypes";
 import appData from "../appData";
 import { getVanillaPackPathsInLoadOrder } from "../utility/vanillaPackPaths";
+import { getVanillaLocalisationPackPaths } from "../vanillaLocCache/packs";
 import { collectVanillaFilesUnderPrefix, type VanillaPackIndex } from "../vanillaPackIndex/format";
 import { getVanillaPackIndex } from "../vanillaPackIndex/store";
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
@@ -123,29 +124,58 @@ const getPackedFileNames = async (packPath: string): Promise<string[]> => {
 const collectVanillaCampaignMapCandidates = async (
   vanillaIndex: VanillaPackIndex | undefined,
   vanillaPackPaths: string[],
+  englishLocalizationPackPaths: string[],
 ): Promise<EsfFileCandidate[]> => {
+  let candidates: EsfFileCandidate[];
   if (vanillaIndex) {
-    return Array.from(collectVanillaFilesUnderPrefix(vanillaIndex, "campaign_maps\\"))
+    candidates = Array.from(collectVanillaFilesUnderPrefix(vanillaIndex, "campaign_maps\\"))
       .filter(([fileName]) => isCampaignMapAsset(fileName))
       .map(([fileName, packName]) => ({
         packPath: nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder ?? "", packName),
         fileName,
         modIndex: -1,
       }));
+  } else {
+    candidates = [];
+    for (const packPath of vanillaPackPaths) {
+      try {
+        const names = await getPackedFileNames(packPath);
+        for (const fileName of names) {
+          if (isCampaignMapAsset(fileName)) {
+            candidates.push({ packPath, fileName, modIndex: -1 });
+          }
+        }
+      } catch {
+        // A single unreadable vanilla pack should not prevent the other packs from being searched.
+      }
+    }
   }
 
-  const candidates: EsfFileCandidate[] = [];
-  for (const packPath of vanillaPackPaths) {
+  // The vanilla files index correctly records the last vanilla pack that wins a path, but that
+  // can be a non-English local_* pack. Map text is an image asset rather than a loc table, so
+  // make the English local packs explicit here, in the same sorted order used by Unit Viewer.
+  // Replace only matching text assets so the normal vanilla pack selection remains unchanged for
+  // map data, lookup textures, and pathfinding files.
+  const englishTextCandidatesByPath = new Map<string, EsfFileCandidate>();
+  for (const packPath of englishLocalizationPackPaths) {
     try {
       const names = await getPackedFileNames(packPath);
       for (const fileName of names) {
-        if (isCampaignMapAsset(fileName)) {
-          candidates.push({ packPath, fileName, modIndex: -1 });
+        if (isCampaignMapBackgroundFileNamed(fileName, true)) {
+          englishTextCandidatesByPath.set(normalizePackPath(fileName), { packPath, fileName, modIndex: -1 });
         }
       }
     } catch {
-      // A single unreadable vanilla pack should not prevent the other packs from being searched.
+      // A missing or unreadable localization pack should leave the indexed vanilla candidate in place.
     }
+  }
+  if (englishTextCandidatesByPath.size > 0) {
+    candidates = candidates.filter(
+      (candidate) =>
+        !isCampaignMapBackgroundFileNamed(candidate.fileName, true) ||
+        !englishTextCandidatesByPath.has(normalizePackPath(candidate.fileName)),
+    );
+    candidates.push(...englishTextCandidatesByPath.values());
   }
   return candidates;
 };
@@ -318,9 +348,15 @@ export async function loadEsfMapData(
   if (!dataFolder) throw new Error("The Warhammer 3 data folder is not configured.");
 
   const vanillaPackPaths = getVanillaPackPathsInLoadOrder();
+  const englishLocalizationPackPaths = getVanillaLocalisationPackPaths(
+    appData.allVanillaPackNames,
+    appData.currentLanguage,
+    dataFolder,
+    true,
+  );
   const vanillaIndex = await getVanillaPackIndex();
   const [vanillaMapAssets, vanillaStartposCandidates, modMapAssets, modStartposCandidates] = await Promise.all([
-    collectVanillaCampaignMapCandidates(vanillaIndex, vanillaPackPaths),
+    collectVanillaCampaignMapCandidates(vanillaIndex, vanillaPackPaths, englishLocalizationPackPaths),
     collectVanillaStartposCandidates(dataFolder),
     collectModCandidates(enabledMods, isCampaignMapAsset),
     collectModCandidates(enabledMods, (fileName) => isPackedFileNamed(fileName, "startpos.esf")),
