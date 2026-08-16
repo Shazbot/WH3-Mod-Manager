@@ -16,6 +16,7 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
 export type BuildingsTablesTabProps = {
   state: BuildingsEditState;
   dispatch: (action: BuildingsEditAction) => void;
+  onClearAll: () => void;
   tableSchemas: Record<string, DBVersion>;
   rowIssues?: BuildingsRowIssue[];
 };
@@ -29,7 +30,7 @@ const schemaForTable = (table: string, tableSchemas: Record<string, DBVersion>):
 
 const columnLabel = (field: DBField) => (field.is_key ? `${field.name} *` : field.name);
 
-const BuildingsTablesTab = memo(({ state, dispatch, tableSchemas, rowIssues }: BuildingsTablesTabProps) => {
+const BuildingsTablesTab = memo(({ state, dispatch, onClearAll, tableSchemas, rowIssues }: BuildingsTablesTabProps) => {
   const tablesWithCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const id of state.order) {
@@ -153,6 +154,13 @@ const BuildingsTablesTab = memo(({ state, dispatch, tableSchemas, rowIssues }: B
           className="rounded bg-red-800 px-2 py-1 text-xs text-gray-100 hover:bg-red-700 disabled:opacity-50"
         >
           Delete {selectedRowIds.length > 0 ? `${selectedRowIds.length} ` : ""}selected
+        </button>
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-950"
+        >
+          Clear all pending edits
         </button>
 
         {!schema && <span className="text-xs text-red-400">No schema for {selectedTable}; it cannot be saved.</span>}

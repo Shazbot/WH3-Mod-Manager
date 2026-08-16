@@ -52,8 +52,17 @@ const stateWithTwoRows = (): BuildingsEditState =>
 
 const renderTab = (state: BuildingsEditState, rowIssues?: BuildingsRowIssue[]) => {
   const dispatch = vi.fn();
-  render(<BuildingsTablesTab state={state} dispatch={dispatch} tableSchemas={tableSchemas} rowIssues={rowIssues} />);
-  return { dispatch };
+  const onClearAll = vi.fn();
+  render(
+    <BuildingsTablesTab
+      state={state}
+      dispatch={dispatch}
+      onClearAll={onClearAll}
+      tableSchemas={tableSchemas}
+      rowIssues={rowIssues}
+    />,
+  );
+  return { dispatch, onClearAll };
 };
 
 /** Enters edit mode on a cell, replaces its text and commits, the way a user does. */
@@ -128,6 +137,15 @@ describe("BuildingsTablesTab", () => {
         },
       ],
     });
+  });
+
+  it("clears every pending edit through the tab-level action", async () => {
+    const user = userEvent.setup();
+    const { onClearAll } = renderTab(stateWithTwoRows());
+
+    await user.click(screen.getByRole("button", { name: "Clear all pending edits" }));
+
+    expect(onClearAll).toHaveBeenCalledOnce();
   });
 
   it("shows each row's issues and counts them across every table", async () => {

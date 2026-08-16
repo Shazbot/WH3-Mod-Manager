@@ -232,6 +232,16 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     [closeDeepClone],
   );
 
+  const clearPendingEdits = useCallback(() => {
+    dispatchEdit({ type: "reset" });
+    setCloneTableSchemas({});
+    setRowIssues(undefined);
+    setError(undefined);
+    // Pending rows may have added filter/catalog options. Reload the base catalog so those options
+    // disappear at the same time as the Board rows.
+    setReloadNonce((previous) => previous + 1);
+  }, []);
+
   /**
    * Effect rows we have already written for the building being edited, keyed by effect.
    *
@@ -408,7 +418,13 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       {/* `z-0` keeps the tiles' own z-indices contained here rather than competing with the filters. */}
       <div className="relative z-0 min-h-0 flex-1 content-center">
         {subTab === "tables" && catalog && (
-          <BuildingsTablesTab state={edits} dispatch={dispatchEdit} tableSchemas={tableSchemas} rowIssues={rowIssues} />
+          <BuildingsTablesTab
+            state={edits}
+            dispatch={dispatchEdit}
+            onClearAll={clearPendingEdits}
+            tableSchemas={tableSchemas}
+            rowIssues={rowIssues}
+          />
         )}
         {subTab === "board" && isLoading && !view && (
           <div className="flex h-full items-center justify-center">
