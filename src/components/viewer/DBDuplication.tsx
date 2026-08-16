@@ -823,6 +823,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
       <div>Cloning {toClone.resolvedKeyValue}</div>
       <div className="checkbox dark:text-gray-300">
         <TreeView
+          key={hideRepeatedIndirectTables ? "hide-repeated-indirect-tables" : "show-all-indirect-tables"}
           data={data}
           aria-label="Checkbox tree"
           multiSelect
