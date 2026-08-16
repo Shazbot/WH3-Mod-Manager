@@ -373,8 +373,10 @@ export interface BuildingsRegionView {
   buildingFrameUrl?: string;
   bands: BuildingsSetBand[];
   edges: BuildingsUpgradeEdge[];
-  /** Distinct settlement types the visible chains bind to; empty means: hide the dropdown. */
+  /** Distinct settlement types the available chains bind to; empty means: hide the dropdown. */
   settlementTypeOptions: BuildingsOption[];
+  /** True when the selected culture has no chain assigned to any settlement type. */
+  settlementTypeDisabled: boolean;
   /** Levels a `disables` culture variant removed, with the variant that did it. */
   disabledLevels: Array<{ levelKey: string; variant: BuildingVariantRow }>;
   /** Levels placed in this region by the campaign's start pos. */

@@ -432,6 +432,7 @@ describe("resolveRegionBuildings: settlement types", () => {
   it("offers the settlement types the visible chains bind to", () => {
     const view = resolveRegionBuildings(withBindings(), query());
     expect(view.settlementTypeOptions.map((option) => option.key)).toEqual(["capital", "minor"]);
+    expect(view.settlementTypeDisabled).toBe(false);
   });
 
   it("offers nothing when no visible chain binds to a settlement type", () => {
@@ -442,6 +443,12 @@ describe("resolveRegionBuildings: settlement types", () => {
     const view = resolveRegionBuildings(withBindings(), query({ settlementType: "capital" }));
     // chain_b is excluded from capital and chain_c has no settlement-type assignment.
     expect(chainKeysIn(view)).toEqual(["chain_a"]);
+  });
+
+  it("disables the settlement type filter when the selected culture has no assigned chains", () => {
+    const view = resolveRegionBuildings(withBindings(), query({ culture: "dwf" }));
+    expect(view.settlementTypeOptions.map((option) => option.key)).toEqual(["capital", "minor"]);
+    expect(view.settlementTypeDisabled).toBe(true);
   });
 
   it("adds the region's own settlement type to the options", () => {

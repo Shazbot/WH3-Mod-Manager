@@ -14,6 +14,7 @@ export type BuildingsFiltersProps = {
   query: BuildingsRegionQuery;
   /** Populated by the derivation; empty means the region has no mutually exclusive primary chains. */
   settlementTypeOptions: BuildingsOption[];
+  settlementTypeDisabled: boolean;
   zoom: number;
   onQueryChange: (patch: Partial<BuildingsRegionQuery>) => void;
   onZoomChange: (zoom: number) => void;
@@ -104,19 +105,22 @@ const FilterSelect = ({
   options,
   value,
   onSelect,
+  disabled = false,
 }: {
   label: string;
   options: SelectOption[];
   value: string | undefined;
   onSelect: (value: string) => void;
+  disabled?: boolean;
 }) => (
-  <label className={labelClass} style={selectWidth}>
+  <label className={`${labelClass}${disabled ? " cursor-not-allowed opacity-60" : ""}`} style={selectWidth}>
     {label}
     <WindowedSelect
       windowThreshold={WINDOW_THRESHOLD}
       styles={selectStyle}
       options={options}
       value={findOption(options, value)}
+      isDisabled={disabled}
       onChange={(option) => onSelect((option as SelectOption | null)?.value ?? "")}
       formatOptionLabel={(option) => (
         <span
@@ -136,7 +140,16 @@ const FilterSelect = ({
 );
 
 const BuildingsFilters = memo(
-  ({ catalog, query, settlementTypeOptions, zoom, onQueryChange, onZoomChange, onOpenMap }: BuildingsFiltersProps) => {
+  ({
+    catalog,
+    query,
+    settlementTypeOptions,
+    settlementTypeDisabled,
+    zoom,
+    onQueryChange,
+    onZoomChange,
+    onOpenMap,
+  }: BuildingsFiltersProps) => {
     const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
     const optionsMenuRef = useRef<HTMLDivElement | null>(null);
     const campaignOptions = useMemo(() => toOptions(catalog.campaigns), [catalog.campaigns]);
@@ -236,6 +249,7 @@ const BuildingsFilters = memo(
             label="Settlement type"
             options={settlementOptions}
             value={query.settlementType}
+            disabled={settlementTypeDisabled}
             onSelect={(settlementType) => onQueryChange({ settlementType: settlementType || undefined })}
           />
         )}
@@ -245,7 +259,12 @@ const BuildingsFilters = memo(
           options={cultureOptions}
           value={query.culture}
           onSelect={(culture) =>
-            onQueryChange({ culture: culture || undefined, subculture: undefined, faction: undefined })
+            onQueryChange({
+              culture: culture || undefined,
+              settlementType: undefined,
+              subculture: undefined,
+              faction: undefined,
+            })
           }
         />
 

@@ -367,6 +367,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           catalog={catalog}
           query={query}
           settlementTypeOptions={view?.settlementTypeOptions ?? []}
+          settlementTypeDisabled={view?.settlementTypeDisabled ?? true}
           zoom={zoom}
           onQueryChange={onQueryChange}
           onZoomChange={setZoom}

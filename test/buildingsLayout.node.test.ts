@@ -53,6 +53,7 @@ const view = (bands: BuildingsSetBand[]): BuildingsRegionView => ({
   bands,
   edges: [],
   settlementTypeOptions: [],
+  settlementTypeDisabled: false,
   disabledLevels: [],
   existingBuildings: [],
   slotTemplates: [],

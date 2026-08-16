@@ -359,6 +359,8 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
     .map((key) => ({ key, localizedName: settlementTypeNames.get(key) ?? key }))
     .sort((first, second) => first.key.localeCompare(second.key));
 
+  const cultureChains = availableChains.filter((chain) => !isChainForAnotherCulture(data, chain, query.culture));
+  const settlementTypeDisabled = !cultureChains.some((chain) => (data.settlementTypeBindings[chain] ?? []).length > 0);
   const selectedSettlementType = query.settlementType;
   const visibleChains = availableChains
     .filter((chain) => {
@@ -537,6 +539,7 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
     bands,
     edges,
     settlementTypeOptions,
+    settlementTypeDisabled,
     disabledLevels,
     existingBuildings,
     slotTemplates,
