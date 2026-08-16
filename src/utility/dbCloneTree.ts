@@ -30,6 +30,24 @@ export const isDBCloneSourceRowSelected = (
       row.some((cell) => cell.name == node.columnName && cell.resolvedKeyValue == node.value),
   );
 
+/**
+ * Only direct nodes define new keys. Indirect nodes identify rows to copy; their reference to a
+ * direct parent is rewritten through that parent's entry in this map.
+ */
+export const buildDBCloneDirectRenameMap = (
+  nodes: Array<Pick<IViewerTreeNodeWithData, "name" | "tableName" | "columnName" | "value" | "isIndirectRef">>,
+  renameValues: Record<string, string>,
+  defaultRenameValues: Record<string, string>,
+): Map<string, string> => {
+  const valuesByCellKey = new Map<string, string>();
+  for (const node of nodes) {
+    if (node.isIndirectRef) continue;
+    const newValue = renameValues[node.name] != null ? renameValues[node.name] : defaultRenameValues[node.name];
+    if (newValue != null) valuesByCellKey.set(getDBCloneNodeKey(node), newValue);
+  }
+  return valuesByCellKey;
+};
+
 export interface AddUniqueDBCloneNodeResult {
   node: IViewerTreeNodeWithData;
   added: boolean;

@@ -21,6 +21,7 @@ import * as nodePath from "path";
 import { createLocLookup } from "./unitViewer/data";
 import {
   addUniqueDBCloneNode,
+  buildDBCloneDirectRenameMap,
   getDBCloneNodeKey,
   getDBCloneSourceRowKey,
   getUniqueDBCloneNodes,
@@ -1478,18 +1479,11 @@ export async function executeDBDuplication(
       nodeRefsToHandle: IViewerTreeNodeWithData[],
       nodesToDuplicate: IViewerTreeNodeWithData[],
     ) => {
-      const renameValueByCellKey = new Map<string, string>();
-      for (const nodeToDupe of nodesToDuplicate) {
-        const newValue =
-          nodeNameToRenameValue[nodeToDupe.name] != null
-            ? nodeNameToRenameValue[nodeToDupe.name]
-            : defaultNodeNameToRenameValue[nodeToDupe.name];
-        if (newValue == null) continue;
-        renameValueByCellKey.set(
-          getCellLookupKey(nodeToDupe.tableName, nodeToDupe.columnName, nodeToDupe.value),
-          newValue,
-        );
-      }
+      const renameValueByCellKey = buildDBCloneDirectRenameMap(
+        nodesToDuplicate,
+        nodeNameToRenameValue,
+        defaultNodeNameToRenameValue,
+      );
 
       const tableNamesToHandle = Array.from(
         new Set(

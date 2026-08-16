@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addUniqueDBCloneNode,
+  buildDBCloneDirectRenameMap,
   getDBCloneNodeKey,
   getDBCloneSourceRowKey,
   getUniqueDBCloneNodes,
@@ -102,5 +103,18 @@ describe("DB clone tree identity", () => {
     ];
 
     expect(isDBCloneSourceRowSelected("building_chains_tables", chainRow, selectedNodes)).toBe(false);
+  });
+
+  it("uses the direct parent's new key without assigning an own-key rename to an indirect row", () => {
+    const parent = node("building_chains_tables", "wh_main_EMPIRE_barracks");
+    const indirect = node("building_chain_availability_sets_tables", "wh_main_EMPIRE_barracks", "building_chain", true);
+    const renameMap = buildDBCloneDirectRenameMap(
+      [parent, indirect],
+      { [parent.name]: "pj_xxx" },
+      { [parent.name]: parent.value, [indirect.name]: indirect.value },
+    );
+
+    expect(renameMap.get(getDBCloneNodeKey(parent))).toBe("pj_xxx");
+    expect(renameMap.has(getDBCloneNodeKey(indirect))).toBe(false);
   });
 });
