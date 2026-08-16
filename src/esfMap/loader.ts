@@ -5,12 +5,15 @@ import { getVanillaPackPathsInLoadOrder } from "../utility/vanillaPackPaths";
 import { collectVanillaFilesMatching, type VanillaPackIndex } from "../vanillaPackIndex/format";
 import { getVanillaPackIndex } from "../vanillaPackIndex/store";
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
+import * as fs from "node:fs";
 import * as nodePath from "node:path";
+import { DEFAULT_ESF_CAMPAIGN } from "./constants";
 import { buildEsfMapData } from "./data";
-import type { EsfMapPayload } from "./types";
+import type { EsfMapCampaignOption, EsfMapPayload } from "./types";
 
 interface EsfFileCandidate {
-  packPath: string;
+  packPath?: string;
+  filePath?: string;
   fileName: string;
   modIndex: number;
 }
@@ -47,11 +50,22 @@ const pickBestCandidate = (
     return first.fileName.localeCompare(second.fileName);
   })[0];
 
-const campaignHintFromStartpos = (startposPath: string | undefined): string => {
-  const normalized = startposPath ? normalizePackPath(startposPath) : "";
-  const campaignMatch = normalized.match(/\\campaigns\\([^\\]+)\\startpos\.esf$/i);
-  return campaignMatch?.[1] ?? "wh3_main_combi";
+const campaignKeyFromPath = (fileName: string): string | undefined => {
+  const normalized = normalizePackPath(fileName);
+  const startposMatch = normalized.match(/(?:^|\\)campaigns\\([^\\]+)\\startpos\.esf$/i);
+  if (startposMatch) return startposMatch[1];
+  const mapDataMatch = normalized.match(/(?:^|\\)campaign_maps\\([^\\]+)\\map_data\.esf$/i);
+  return mapDataMatch?.[1].replace(/_map_\d+$/i, "");
 };
+
+const campaignMatches = (candidate: EsfFileCandidate, campaignKey: string): boolean =>
+  campaignKeyFromPath(candidate.fileName)?.toLowerCase() === campaignKey.toLowerCase();
+
+const formatCampaignLabel = (campaignKey: string): string =>
+  campaignKey
+    .replace(/^wh3_main_/, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 
 const getPackedFileNames = async (packPath: string): Promise<string[]> => {
   const retainedPack = appData.packsData.find((pack) => pack.path === packPath);
@@ -59,7 +73,7 @@ const getPackedFileNames = async (packPath: string): Promise<string[]> => {
   return (await readPack(packPath, { skipParsingTables: true })).packedFiles.map((packedFile) => packedFile.name);
 };
 
-const collectVanillaCandidates = async (
+const collectVanillaPackCandidates = async (
   vanillaIndex: VanillaPackIndex | undefined,
   vanillaPackPaths: string[],
   basename: string,
@@ -86,6 +100,37 @@ const collectVanillaCandidates = async (
     } catch {
       // A single unreadable vanilla pack should not prevent the other packs from being searched.
     }
+  }
+  return candidates;
+};
+
+/** Vanilla startpos files are loose files under data/campaigns, not pack members. */
+const collectVanillaStartposCandidates = async (dataFolder: string): Promise<EsfFileCandidate[]> => {
+  const campaignsFolder = nodePath.join(dataFolder, "campaigns");
+  let campaignEntries: fs.Dirent[];
+  try {
+    campaignEntries = await fs.promises.readdir(campaignsFolder, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const candidates: EsfFileCandidate[] = [];
+  for (const campaignEntry of campaignEntries) {
+    if (!campaignEntry.isDirectory()) continue;
+    const campaignFolder = nodePath.join(campaignsFolder, campaignEntry.name);
+    let files: string[];
+    try {
+      files = await fs.promises.readdir(campaignFolder);
+    } catch {
+      continue;
+    }
+    const startposName = files.find((fileName) => fileName.toLowerCase() === "startpos.esf");
+    if (!startposName) continue;
+    candidates.push({
+      filePath: nodePath.join(campaignFolder, startposName),
+      fileName: `campaigns\\${campaignEntry.name}\\${startposName}`,
+      modIndex: -1,
+    });
   }
   return candidates;
 };
@@ -123,7 +168,24 @@ const pickEffectiveModCandidate = (
   );
 };
 
+const pickCandidateForCampaign = (
+  modCandidates: EsfFileCandidate[],
+  vanillaCandidates: EsfFileCandidate[],
+  campaignKey: string,
+  kind: "map" | "startpos",
+): EsfFileCandidate | undefined => {
+  const matchingMods = modCandidates.filter((candidate) => campaignMatches(candidate, campaignKey));
+  const effectiveMod = pickEffectiveModCandidate(matchingMods, campaignKey, kind);
+  if (effectiveMod) return effectiveMod;
+
+  const matchingVanilla = vanillaCandidates.filter((candidate) => campaignMatches(candidate, campaignKey));
+  return pickBestCandidate(matchingVanilla, campaignKey, kind);
+};
+
 const readPackedFileBuffer = async (candidate: EsfFileCandidate): Promise<Buffer> => {
+  if (candidate.filePath) return fs.promises.readFile(candidate.filePath);
+  if (!candidate.packPath) throw new Error(`No source pack was recorded for ${candidate.fileName}.`);
+
   const retainedPack = appData.packsData.find((pack) => pack.path === candidate.packPath);
   const pack: Pack = retainedPack
     ? await readFromExistingPack(retainedPack, { filesToRead: [candidate.fileName], skipParsingTables: true })
@@ -136,33 +198,63 @@ const readPackedFileBuffer = async (candidate: EsfFileCandidate): Promise<Buffer
   return Buffer.from(packedFile.buffer);
 };
 
-export async function loadEsfMapData(enabledMods: Mod[]): Promise<EsfMapPayload> {
+export async function loadEsfMapData(
+  enabledMods: Mod[],
+  requestedCampaign = DEFAULT_ESF_CAMPAIGN,
+): Promise<EsfMapPayload> {
   if (appData.currentGame !== "wh3") {
     throw new Error("The campaign map is available only for Warhammer 3.");
   }
 
+  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+  if (!dataFolder) throw new Error("The Warhammer 3 data folder is not configured.");
+
   const vanillaPackPaths = getVanillaPackPathsInLoadOrder();
   const vanillaIndex = await getVanillaPackIndex();
   const [vanillaMapCandidates, vanillaStartposCandidates, modMapCandidates, modStartposCandidates] = await Promise.all([
-    collectVanillaCandidates(vanillaIndex, vanillaPackPaths, "map_data.esf"),
-    collectVanillaCandidates(vanillaIndex, vanillaPackPaths, "startpos.esf"),
+    collectVanillaPackCandidates(vanillaIndex, vanillaPackPaths, "map_data.esf"),
+    collectVanillaStartposCandidates(dataFolder),
     collectModCandidates(enabledMods, "map_data.esf"),
     collectModCandidates(enabledMods, "startpos.esf"),
   ]);
 
-  const preliminaryStartpos =
-    pickEffectiveModCandidate(modStartposCandidates, "wh3_main_combi", "startpos") ??
-    pickBestCandidate(vanillaStartposCandidates, "wh3_main_combi", "startpos");
-  const campaignHint = campaignHintFromStartpos(preliminaryStartpos?.fileName);
-  const startposCandidate =
-    pickEffectiveModCandidate(modStartposCandidates, campaignHint, "startpos") ??
-    pickBestCandidate(vanillaStartposCandidates, campaignHint, "startpos");
-  const mapDataCandidate =
-    pickEffectiveModCandidate(modMapCandidates, campaignHint, "map") ??
-    pickBestCandidate(vanillaMapCandidates, campaignHint, "map");
+  const allStartposCandidates = [...vanillaStartposCandidates, ...modStartposCandidates];
+  const campaignByKey = new Map<string, string>();
+  for (const candidate of allStartposCandidates) {
+    const campaignKey = campaignKeyFromPath(candidate.fileName);
+    if (campaignKey) campaignByKey.set(campaignKey.toLowerCase(), campaignKey);
+  }
+  const availableCampaigns: EsfMapCampaignOption[] = Array.from(campaignByKey.values())
+    .sort((first, second) => {
+      if (first.toLowerCase() === DEFAULT_ESF_CAMPAIGN) return -1;
+      if (second.toLowerCase() === DEFAULT_ESF_CAMPAIGN) return 1;
+      return first.localeCompare(second);
+    })
+    .map((campaignKey) => ({ key: campaignKey, label: formatCampaignLabel(campaignKey) }));
+
+  const requestedCampaignKey =
+    campaignByKey.get(requestedCampaign.toLowerCase()) ??
+    campaignByKey.get(DEFAULT_ESF_CAMPAIGN) ??
+    availableCampaigns[0]?.key;
+  if (!requestedCampaignKey) {
+    throw new Error("No campaign startpos.esf was found in the enabled mods or Warhammer 3's data/campaigns folders.");
+  }
+
+  const startposCandidate = pickCandidateForCampaign(
+    modStartposCandidates,
+    vanillaStartposCandidates,
+    requestedCampaignKey,
+    "startpos",
+  );
+  const mapDataCandidate = pickCandidateForCampaign(
+    modMapCandidates,
+    vanillaMapCandidates,
+    requestedCampaignKey,
+    "map",
+  );
 
   if (!startposCandidate) {
-    throw new Error("No startpos.esf was found in the enabled mods or Warhammer 3's vanilla packs.");
+    throw new Error(`No startpos.esf was found for campaign ${requestedCampaignKey}.`);
   }
   if (!mapDataCandidate) {
     throw new Error("No campaign map_data.esf was found in the enabled mods or Warhammer 3's vanilla packs.");
@@ -172,8 +264,9 @@ export async function loadEsfMapData(enabledMods: Mod[]): Promise<EsfMapPayload>
     readPackedFileBuffer(mapDataCandidate),
     readPackedFileBuffer(startposCandidate),
   ]);
-  return buildEsfMapData(mapDataBuffer, startposBuffer, {
+  const map = buildEsfMapData(mapDataBuffer, startposBuffer, {
     mapDataPath: mapDataCandidate.fileName,
     startposPath: startposCandidate.fileName,
   });
+  return { ...map, campaignKey: requestedCampaignKey, availableCampaigns };
 }

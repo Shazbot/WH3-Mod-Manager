@@ -3087,10 +3087,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
 
   // --- Campaign map ----------------------------------------------------------
-  const getEsfMapSignature = (enabledMods: Mod[]) =>
+  const getEsfMapSignature = (enabledMods: Mod[], campaignName: string | undefined) =>
     JSON.stringify({
       game: appData.currentGame,
       dataFolder: appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder ?? null,
+      campaignName: campaignName ?? null,
       mods: sortByNameAndLoadOrder(enabledMods).map((mod) => ({
         path: mod.path,
         loadOrder: mod.loadOrder ?? null,
@@ -3099,14 +3100,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       })),
     });
 
-  ipcMain.handle("getEsfMap", async (_event, enabledMods: Mod[]): Promise<EsfMapResponse> => {
+  ipcMain.handle("getEsfMap", async (_event, enabledMods: Mod[], campaignName?: string): Promise<EsfMapResponse> => {
     try {
-      const signature = getEsfMapSignature(enabledMods);
+      const signature = getEsfMapSignature(enabledMods, campaignName);
       if (cachedEsfMapData?.signature === signature) {
         return { success: true, map: cachedEsfMapData.data };
       }
 
-      const data = await loadEsfMapData(enabledMods);
+      const data = await loadEsfMapData(enabledMods, campaignName);
       cachedEsfMapData = { signature, data };
       return { success: true, map: data };
     } catch (error) {

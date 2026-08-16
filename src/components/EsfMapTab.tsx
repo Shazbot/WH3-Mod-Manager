@@ -1,7 +1,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppSelector } from "../hooks";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
-import type { EsfMapArea, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
+import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
+import { DEFAULT_ESF_CAMPAIGN } from "../esfMap/constants";
 
 type EsfMapTabProps = {
   isActive?: boolean;
@@ -44,6 +45,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<EsfMapPayload>();
+  const [campaignName, setCampaignName] = useState(DEFAULT_ESF_CAMPAIGN);
+  const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
   const [selectedMarkerId, setSelectedMarkerId] = useState<number>();
   const [filter, setFilter] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -56,7 +59,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setIsLoading(true);
     setError(undefined);
     window.api
-      ?.getEsfMap(enabledModsRef.current)
+      ?.getEsfMap(enabledModsRef.current, campaignName)
       .then((response) => {
         if (!current) return;
         if (!response.success) {
@@ -65,6 +68,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           return;
         }
         setMap(response.map);
+        setCampaignOptions(response.map.availableCampaigns);
+        if (response.map.campaignKey !== campaignName) setCampaignName(response.map.campaignKey);
         setSelectedMarkerId(undefined);
       })
       .catch((reason) => {
@@ -79,7 +84,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     return () => {
       current = false;
     };
-  }, [currentGame, signatureToRequest]);
+  }, [campaignName, currentGame, signatureToRequest]);
 
   const filteredMarkers = useMemo(() => {
     if (!map) return [];
@@ -194,6 +199,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     <div className="flex h-[86vh] min-h-0 flex-col text-gray-200">
       <div className="flex items-center gap-3 border-b border-gray-700 px-4 py-2 text-sm">
         <span className="font-medium text-gray-100">Campaign map</span>
+        {map && campaignOptions.length > 0 && (
+          <select
+            value={campaignName}
+            onChange={(event) => setCampaignName(event.target.value)}
+            className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
+            aria-label="Campaign map"
+          >
+            {campaignOptions.map((campaign) => (
+              <option key={campaign.key} value={campaign.key}>
+                {campaign.label}
+              </option>
+            ))}
+          </select>
+        )}
         {map && (
           <span className="text-xs text-gray-500">
             {map.width}×{map.height} · {map.regionCount} regions · {map.ownedRegionCount} owned

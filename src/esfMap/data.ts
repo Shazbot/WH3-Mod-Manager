@@ -9,7 +9,7 @@ import {
   type RegionPolygonArea,
   type StartposRegion,
 } from "../../tools/esf/src";
-import type { EsfMapArea, EsfMapColour, EsfMapMarker, EsfMapPayload } from "./types";
+import type { EsfMapArea, EsfMapBasePayload, EsfMapColour, EsfMapMarker } from "./types";
 
 interface PolygonGridInput {
   width: number;
@@ -230,7 +230,7 @@ export function buildEsfMapData(
   mapDataBuffer: Buffer,
   startposBuffer: Buffer | undefined,
   paths: { mapDataPath: string; startposPath: string },
-): EsfMapPayload {
+): EsfMapBasePayload {
   const mapOpened = openEsfBuffer(mapDataBuffer);
   const mapDocument = parseEsfDocument(mapOpened.buffer);
   const grid: RegionAreasGrid = extractRegionAreasGrid(mapOpened.buffer);

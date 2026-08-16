@@ -256,7 +256,8 @@ const api = {
     ipcRenderer.invoke("getBuildingsRegionView", enabledMods, query, pendingEdits),
   getBuildingsCaiRows: (enabledMods: Mod[], chainKey: string): Promise<BuildingsCaiRowsResponse> =>
     ipcRenderer.invoke("getBuildingsCaiRows", enabledMods, chainKey),
-  getEsfMap: (enabledMods: Mod[]): Promise<EsfMapResponse> => ipcRenderer.invoke("getEsfMap", enabledMods),
+  getEsfMap: (enabledMods: Mod[], campaignName?: string): Promise<EsfMapResponse> =>
+    ipcRenderer.invoke("getEsfMap", enabledMods, campaignName),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) => ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("setPackSearchResults", callback),

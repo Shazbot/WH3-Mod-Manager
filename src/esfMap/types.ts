@@ -23,7 +23,14 @@ export interface EsfMapMarker {
   settlementKey: string | null;
 }
 
+export interface EsfMapCampaignOption {
+  key: string;
+  label: string;
+}
+
 export interface EsfMapPayload {
+  campaignKey: string;
+  availableCampaigns: EsfMapCampaignOption[];
   mapDataPath: string;
   startposPath: string;
   startposWasCompressed: boolean;
@@ -37,5 +44,7 @@ export interface EsfMapPayload {
   regionCount: number;
   ownedRegionCount: number;
 }
+
+export type EsfMapBasePayload = Omit<EsfMapPayload, "campaignKey" | "availableCampaigns">;
 
 export type EsfMapResponse = { success: true; map: EsfMapPayload } | { success: false; error: string };
