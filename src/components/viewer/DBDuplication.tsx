@@ -13,6 +13,7 @@ import { Spinner } from "flowbite-react";
 import { FloatingOverlay } from "@floating-ui/react";
 import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
+import DBCloneRenameInput from "./DBCloneRenameInput";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -387,23 +388,10 @@ const DBDuplication = memo(({ launchSource }: { launchSource: DBDuplicationLaunc
 
   console.log("expandedIds:", expandedIds);
 
-  const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>, nodeName: string) => {
+  const onFilterChange = (value: string, nodeName: string) => {
     if (isSaving) return;
-    console.log("textbox change:", e.target.value, nodeName);
-    setNodeNameToRenameValue((prev) => ({ ...prev, [nodeName]: e.target.value }));
-    e.stopPropagation();
-    e.preventDefault();
-  };
-
-  const onFocusChange = (e: React.FocusEvent<HTMLInputElement, Element>, node: INode) => {
-    // console.log("new focus:", e.relatedTarget?.tagName);
-    // if (e.relatedTarget?.tagName == "INPUT") return;
-    // e.target.focus();
-  };
-
-  const onInputClick = (e: React.MouseEvent<HTMLInputElement, MouseEvent>): void => {
-    e.stopPropagation();
-    e.preventDefault();
+    console.log("textbox change:", value, nodeName);
+    setNodeNameToRenameValue((prev) => ({ ...prev, [nodeName]: value }));
   };
 
   const needsWarningBorder = (nodeName: string) => {
@@ -782,18 +770,13 @@ const DBDuplication = memo(({ launchSource }: { launchSource: DBDuplicationLaunc
                       <FaArrowRight></FaArrowRight>
                     </span>
                     <span className="relative">
-                      <input
-                        onClick={(e) => onInputClick(e)}
-                        onBlur={(e) => onFocusChange(e, element)}
-                        id="filterInput"
-                        type="text"
+                      <DBCloneRenameInput
+                        id={`dbclone-rename-${element.id}`}
                         disabled={isSaving}
-                        onChange={(e) => onFilterChange(e, element.name)}
                         value={nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]}
-                        className={`ml-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 ${
-                          needsWarningBorder(element.name) ? "!border-yellow-300" : ""
-                        }`}
-                      ></input>
+                        hasWarning={needsWarningBorder(element.name)}
+                        onChange={(value) => onFilterChange(value, element.name)}
+                      />
                     </span>
                   </span>
                 )}
