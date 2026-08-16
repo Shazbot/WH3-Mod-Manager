@@ -14,6 +14,7 @@ import { FloatingOverlay } from "@floating-ui/react";
 import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
 import DBCloneRenameInput from "./DBCloneRenameInput";
+import { getDBCloneAutoSelectedParentNames } from "./dbCloneSelection";
 import type { PackedFile } from "../../packFileTypes";
 import { applyDBCloneGlobalKey, getDBCloneGlobalKey, normalizeDBCloneModdersPrefix } from "./dbCloneGlobalKey";
 
@@ -300,7 +301,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     for (const nodeName of [...newselectedNodesByName]) {
       const node = getFirstNodeByName(nodeName);
       if (node) {
-        const parentNodesNames = getParentNodeNames([], node);
+        const parentNodesNames = getDBCloneAutoSelectedParentNames(getParentNodeNames([], node), nodeNameToDataLookup);
         for (const parentNodeName of parentNodesNames) {
           if (!newselectedNodesByName.includes(parentNodeName)) newselectedNodesByName.push(parentNodeName);
         }
@@ -371,7 +372,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     for (const nodeName of [...newselectedNodesByName]) {
       const node = getFirstNodeByName(nodeName);
       if (node) {
-        const parentNodesNames = getParentNodeNames([], node);
+        const parentNodesNames = getDBCloneAutoSelectedParentNames(getParentNodeNames([], node), nodeNameToDataLookup);
         for (const parentNodeName of parentNodesNames) {
           if (!newselectedNodesByName.includes(parentNodeName)) newselectedNodesByName.push(parentNodeName);
         }
