@@ -6,7 +6,7 @@ import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-acce
 import cx from "classnames";
 import "./DBDuplicationStyles.css";
 import { IconBaseProps } from "react-icons";
-import { chunkTableIntoRows, findNodeInTree } from "./viewerHelpers";
+import { chunkTableIntoRows } from "./viewerHelpers";
 import { packDataStore } from "./packDataStore";
 import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
 import { Spinner } from "flowbite-react";
@@ -22,7 +22,6 @@ const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
     acc.push(tree);
     if (tree.children) {
       for (const child of tree.children) {
-        acc.push(child);
         getAllNodesInTreeIter(child, acc);
       }
     }
@@ -30,15 +29,6 @@ const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   };
   return getAllNodesInTreeIter(tree, []);
 };
-
-const getAllRefsFromTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
-  const nodes = getAllNodesInTree(tree);
-  return nodes
-    .map((node) => node as IViewerTreeNodeWithData)
-    .map((node) => [node.tableName, node.columnName, node.value] as DBCell);
-};
-
-const getDBCellKey = (tableName: string, columnName: string, value: string) => `${tableName}|${columnName}|${value}`;
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 
@@ -65,9 +55,6 @@ const DBDuplication = memo(() => {
   const [duplicationSuccessMessage, setDuplicationSuccessMessage] = useState<string>("");
   const [duplicationProgress, setDuplicationProgress] = useState<DBDuplicationProgress | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const loadedIndirectNodeNames = useRef<Set<string>>(new Set());
-  const allRefsLookup = useRef<Set<string>>(new Set());
-  const allRefsList = useRef<DBCell[]>([]);
   const isProgressSubscribed = useRef(false);
   const pendingOperations = useRef(0);
 
@@ -99,70 +86,6 @@ const DBDuplication = memo(() => {
     });
   }, []);
 
-  const resetRefsCache = () => {
-    allRefsLookup.current = new Set();
-    allRefsList.current = [];
-  };
-
-  const rebuildRefsCacheFromTree = (nextTreeData: IViewerTreeNodeWithData) => {
-    const refs = getAllRefsFromTree(nextTreeData);
-    allRefsList.current = refs;
-    allRefsLookup.current = new Set(
-      refs.map(([tableName, columnName, value]) => getDBCellKey(tableName, columnName, value)),
-    );
-  };
-
-  const addRefToCache = (node: IViewerTreeNodeWithData) => {
-    const key = getDBCellKey(node.tableName, node.columnName, node.value);
-    if (allRefsLookup.current.has(key)) return false;
-    allRefsLookup.current.add(key);
-    allRefsList.current.push([node.tableName, node.columnName, node.value]);
-    return true;
-  };
-
-  const getIndirectReferences = async (nodeName: string, treeData: IViewerTreeNodeWithData) => {
-    if (loadedIndirectNodeNames.current.has(nodeName)) return;
-
-    const selectedNode = findNodeInTree(treeData, nodeName) as IViewerTreeNodeWithData | undefined;
-    if (!selectedNode) return;
-
-    try {
-      beginOverlayOperation();
-
-      const indirectRefsResult = await window.api?.buildDBIndirectReferences(
-        packPath,
-        selectedNode,
-        allRefsList.current,
-      );
-
-      loadedIndirectNodeNames.current.add(nodeName);
-
-      if (indirectRefsResult) {
-        console.log("Indirect references received:", indirectRefsResult);
-        const targetNode = findNodeInTree(treeData, nodeName) as IViewerTreeNodeWithData | undefined;
-        if (targetNode) {
-          let hasAddedAnyNode = false;
-          for (const indirectNode of indirectRefsResult) {
-            if (!targetNode.children.some((existingChild) => existingChild.name === indirectNode.name)) {
-              targetNode.children.push(indirectNode);
-              addRefToCache(indirectNode);
-              hasAddedAnyNode = true;
-            }
-          }
-          if (hasAddedAnyNode) {
-            setTreeData({ ...treeData });
-          }
-        }
-      } else {
-        console.log("ERROR: no indirectRefsResult");
-      }
-    } catch (error) {
-      console.error("Failed to get indirect references:", error);
-    } finally {
-      endOverlayOperation();
-    }
-  };
-
   // Fetch tree data from backend
   useEffect(() => {
     if (!currentDBTableSelection || !deepCloneTarget) return;
@@ -170,8 +93,6 @@ const DBDuplication = memo(() => {
     const buildTree = async () => {
       try {
         beginOverlayOperation();
-        loadedIndirectNodeNames.current = new Set();
-        resetRefsCache();
         const treeNodeResult = await window.api?.buildDBReferenceTree(
           packPath,
           {
@@ -180,9 +101,9 @@ const DBDuplication = memo(() => {
             packPath: currentDBTableSelection.packPath,
           } as DBTableSelection,
           deepCloneTarget,
-          treeData ? getAllRefsFromTree(treeData) : [],
           [],
-          treeData ?? undefined,
+          [],
+          undefined,
         );
 
         if (treeNodeResult) {
@@ -192,13 +113,10 @@ const DBDuplication = memo(() => {
             currentDBTableSelection,
             "deepCloneTarget:",
             deepCloneTarget,
-            "selectedNodesByName:",
-            selectedNodesByName,
             "packPath:",
             packPath,
           );
           setTreeData(treeNodeResult);
-          rebuildRefsCacheFromTree(treeNodeResult);
           setNodeNameToRenameValue({});
           if (treeNodeResult.children.length > 0) {
             const rootNodeName = treeNodeResult.children[0].name;
@@ -388,7 +306,6 @@ const DBDuplication = memo(() => {
     //   .map((id) => data.find((node) => node.id == id)?.name)
     //   .filter((name): name is string => !!name);
 
-    const isExpanding = !expandedNodesByName.includes(currentName);
     let newExpandedNodesByName = [...expandedNodesByName];
     if (expandedNodesByName.includes(currentName))
       newExpandedNodesByName = newExpandedNodesByName.filter((name) => name != currentName);
@@ -405,9 +322,6 @@ const DBDuplication = memo(() => {
     }
 
     setExpandedNodesByName(newExpandedNodesByName);
-    if (isExpanding) {
-      void getIndirectReferences(currentName, treeData);
-    }
   };
 
   const ensureNodeExpanded = (nodeName: string) => {
@@ -428,7 +342,6 @@ const DBDuplication = memo(() => {
     }
 
     setExpandedNodesByName(newExpandedNodesByName);
-    void getIndirectReferences(nodeName, treeData);
   };
 
   const onNodeToggled = (nodeName: string) => {
@@ -660,8 +573,8 @@ const DBDuplication = memo(() => {
                 the main_units table doesn't reference it.
               </p>
               <p>
-                Non-direct refences are selectable. When you select one, we load its closure so you can choose which
-                additional non-direct references to include.
+                Non-direct references are selectable and are resolved with the rest of the dependency tree when the
+                clone window opens.
               </p>
               <p>
                 With "Append Existing Pack" enabled we will append an existing pack file instead of creating a new one,

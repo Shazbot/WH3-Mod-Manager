@@ -18,6 +18,12 @@ import { gameToPackWithDBTablesName } from "./supportedGames";
 import { format } from "date-fns";
 import * as fs from "fs";
 import Trie from "./utility/trie";
+import {
+  addUniqueDBCloneNode,
+  getDBCloneNodeKey,
+  getDBCloneSourceRowKey,
+  getUniqueDBCloneNodes,
+} from "./utility/dbCloneTree";
 
 const wasPackAlreadyRead = (newPackPath: string, tableToRead: string) => {
   const packData = appData.packsData.find((pack) => pack.path == newPackPath);
@@ -293,7 +299,7 @@ export const buildDBReferenceTree = async (
     value: "",
   };
 
-  const allTreeChildren: string[] = [];
+  const nodesByKey = new Map<string, IViewerTreeNodeWithData>();
 
   const refsQueue = new Queue<
     [acc: DBCell[], packFile: PackedFile, dbCell: DBCell, treeParent: IViewerTreeNodeWithData, isIndirect: boolean]
@@ -390,25 +396,25 @@ export const buildDBReferenceTree = async (
   ) => {
     console.log("tryGetPackWithReference:", pack.path, newTableName, newTableColumnName, resolvedKeyValue);
 
-    let newPackFile = pack.packedFiles.find(
-      (pf) =>
-        getDBNameFromString(pf.name) == newTableName &&
-        pf.schemaFields
-          ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
-          .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue),
-    );
-
-    if (!newPackFile || !newPackFile.schemaFields) {
-      console.log("CALLING getRef");
-      await getRef(newTableName, pack);
-
-      newPackFile = pack.packedFiles.find(
+    const findPackFile = (packToSearch: Pack) =>
+      packToSearch.packedFiles.find(
         (pf) =>
           getDBNameFromString(pf.name) == newTableName &&
           pf.schemaFields
             ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
             .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue),
       );
+
+    let newPackFile = findPackFile(pack);
+
+    if (!newPackFile || !newPackFile.schemaFields) {
+      console.log("CALLING getRef");
+      await getRef(newTableName, pack);
+
+      // readModsByPath may replace the Pack object in appData rather than mutating the object passed
+      // to it. Always search the refreshed object so a newly parsed dependency is not missed.
+      const refreshedPack = appData.packsData.find((candidate) => candidate.path == pack.path) ?? pack;
+      newPackFile = findPackFile(refreshedPack);
 
       return newPackFile;
     }
@@ -425,17 +431,6 @@ export const buildDBReferenceTree = async (
     isIndirectReference: boolean,
   ) => {
     // if (!isIndirectReference) {
-    if (
-      acc.some(
-        (dbCell) => dbCell[0] == newTableName && dbCell[1] == newTableColumnName && dbCell[2] == resolvedKeyValue,
-      )
-    )
-      return;
-
-    acc.push([newTableName, newTableColumnName, resolvedKeyValue]);
-    // }
-    // console.log("SEARCH", newTableName, newTableColumnName, resolvedKeyValue);
-
     let newPackFile = await tryGetPackWithReference(existingPack, newTableName, newTableColumnName, resolvedKeyValue);
 
     if (!newPackFile || !newPackFile.schemaFields) {
@@ -573,9 +568,15 @@ export const buildDBReferenceTree = async (
       columnName: newTableColumnName,
       value: resolvedKeyValue,
     } as IViewerTreeNodeWithData;
-    if (!treeParent.children.some((node) => node.name == newChild.name) && !allTreeChildren.includes(newChild.name)) {
-      treeParent.children.push(newChild);
-      allTreeChildren.push(newChild.name);
+    const addResult = addUniqueDBCloneNode(treeParent, newChild, nodesByKey);
+    if (addResult.added) {
+      if (
+        !acc.some(
+          (dbCell) => dbCell[0] == newTableName && dbCell[1] == newTableColumnName && dbCell[2] == resolvedKeyValue,
+        )
+      ) {
+        acc.push([newTableName, newTableColumnName, resolvedKeyValue]);
+      }
       // console.log("enqueue 1:", acc);
       if (!isIndirectRefSearch) {
         console.log("ENQUEUE", newTableName, newTableColumnName, resolvedKeyValue);
@@ -610,7 +611,7 @@ export const buildDBReferenceTree = async (
     value: toClone.resolvedKeyValue,
   } as IViewerTreeNodeWithData;
   tree.children.push(rootNode);
-  allTreeChildren.push(rootNode.name);
+  nodesByKey.set(getDBCloneNodeKey(rootNode), rootNode);
 
   // the starting refs we'll add to the queue, these will be then recursed from to find new refs
   let refsToUse = [] as DBCell[];
@@ -678,12 +679,7 @@ export const buildDBReferenceTree = async (
             value: currentField.resolvedKeyValue,
           } as IViewerTreeNodeWithData;
 
-          if (
-            !rootNode.children.some((node) => node.name == newChild.name) &&
-            !allTreeChildren.includes(newChild.name)
-          ) {
-            rootNode.children.push(newChild);
-            allTreeChildren.push(newChild.name);
+          if (addUniqueDBCloneNode(rootNode, newChild, nodesByKey).added) {
             childrenToAdd.push([pf, dbCell, newChild]);
             // addRefsRecursively(acc, pf, dbCell, newChild);
           }
@@ -734,8 +730,30 @@ export const buildDBReferenceTree = async (
     //   "refsQueue:",
     //   refsQueue.queue.map((rq) => rq[0])
     // );
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await addRefsRecursively(...refsQueue.dequeue()!);
+  }
+
+  // The flow deep-clone engine resolves reverse references as one dependency pass over every row
+  // whose key is being renamed. Do the same here while all table/row indexes are hot, instead of
+  // waiting for the user to expand each node and issuing another IPC request. Indirect rows keep
+  // their own keys, so they do not recursively introduce another generation of rename dependencies.
+  const indirectReferenceCache: DBIndirectReferenceCacheContext = {
+    packByPath: new Map(),
+    tableFilesByPackAndTable: new Map(),
+    rowsByPackedFile: new WeakMap(),
+    columnIndexesByPackedFile: new WeakMap(),
+    reverseRefIndexByKey: new Map(),
+    reverseRefTtlMs: 5 * 60 * 1000,
+    maxReverseRefEntries: 128,
+  };
+  const directNodes = getUniqueDBCloneNodes(rootNode).filter((node) => !node.isIndirectRef);
+  for (const directNode of directNodes) {
+    const indirectNodes = await buildDBIndirectReferences(packPath, directNode, refsToUse, indirectReferenceCache);
+    for (const indirectNode of indirectNodes) {
+      const addResult = addUniqueDBCloneNode(directNode, indirectNode, nodesByKey);
+      if (!addResult.added) continue;
+      refsToUse.push([indirectNode.tableName, indirectNode.columnName, indirectNode.value]);
+    }
   }
 
   console.log("biuldDBReferenceTree result:", tree);
@@ -773,7 +791,7 @@ export const buildDBIndirectReferences = async (
   const maxReverseRefEntries = cacheContext?.maxReverseRefEntries ?? 32;
 
   const getCellLookupKey = (tableName: string, columnName: string, value: string) => {
-    return `${tableName}|${columnName}|${value}`;
+    return getDBCloneNodeKey({ tableName, columnName, value });
   };
 
   const getPackByPath = async (targetPackPath: string) => {
@@ -1045,7 +1063,7 @@ export async function executeDBDuplication(
     };
 
     const getCellLookupKey = (tableName: string, columnName: string, value: string) => {
-      return `${tableName}|${columnName}|${value}`;
+      return getDBCloneNodeKey({ tableName, columnName, value });
     };
 
     const packPathsToSearchDB = isCurrentPackDataPack ? [packPath] : [packPath, dataPackPath];
@@ -1397,6 +1415,7 @@ export async function executeDBDuplication(
     const newNodesToDuplicate = [] as IViewerTreeNodeWithData[];
     const newNodesToDuplicateSet = new Set<string>();
     const generatedNumericIdsByTableField = new Map<string, Set<string>>();
+    const emittedSourceRows = new Set<string>();
 
     const createUniqueNumericId = async (tableName: string, fieldType: string, fieldName: string) => {
       const cacheKey = `${tableName}|${fieldName}`;
@@ -1492,7 +1511,6 @@ export async function executeDBDuplication(
 
           const rows = getRowsForPackedFile(packedFile);
           const rowsToSave = [] as AmendedSchemaField[][];
-          const rowsToSaveBothKeyAndRefToSave = [] as AmendedSchemaField[][];
 
           const numericIdFieldName = numericIdTables[tableName];
           const numericIdFieldIndex =
@@ -1501,9 +1519,12 @@ export async function executeDBDuplication(
             numericIdFieldIndex >= 0 && packedFile.tableSchema.fields[numericIdFieldIndex]
               ? packedFile.tableSchema.fields[numericIdFieldIndex]
               : undefined;
+          const identityColumns = new Set(tableToreferencedColumns[tableName] || []);
+          for (const field of packedFile.tableSchema.fields) {
+            if (field.is_key) identityColumns.add(field.name);
+          }
 
           for (const row of rows) {
-            let clonedReferenceField = false;
             let clonedRow = null as AmendedSchemaField[] | null;
 
             for (let i = 0; i < row.length; i++) {
@@ -1543,8 +1564,6 @@ export async function executeDBDuplication(
 
               cellToReplaceValue.fields = [{ type: "Buffer", val: await typeToBuffer(field.field_type, newValue) }];
               cellToReplaceValue.resolvedKeyValue = newValue;
-              clonedReferenceField = true;
-              rowsToSave.push(clonedRow);
             }
 
             for (let i = 0; i < row.length; i++) {
@@ -1563,15 +1582,18 @@ export async function executeDBDuplication(
 
               cellToReplaceValue.fields = [{ type: "Buffer", val: await typeToBuffer(field.field_type, newValue) }];
               cellToReplaceValue.resolvedKeyValue = newValue;
-
-              if (clonedReferenceField) {
-                rowsToSaveBothKeyAndRefToSave.push(clonedRow);
-              } else {
-                rowsToSave.push(clonedRow);
-              }
             }
 
-            if (numericIdField && clonedRow && numericIdFieldIndex >= 0) {
+            if (!clonedRow) continue;
+
+            // A row can be reached by several selected keys and can also exist in both the mod and
+            // base-game packs. Match the deep-clone node's seen-row behavior: materialize that source
+            // identity once, after applying every key/reference rewrite to the one clone.
+            const sourceRowKey = getDBCloneSourceRowKey(tableName, row, identityColumns);
+            if (emittedSourceRows.has(sourceRowKey)) continue;
+            emittedSourceRows.add(sourceRowKey);
+
+            if (numericIdField && numericIdFieldIndex >= 0) {
               const field = clonedRow[numericIdFieldIndex];
               const newNumericIdAsString = await createUniqueNumericId(
                 tableName,
@@ -1590,18 +1612,19 @@ export async function executeDBDuplication(
               ];
               field.resolvedKeyValue = newNumericIdAsString;
             }
+
+            rowsToSave.push(clonedRow);
           }
 
-          const clonedRows = rowsToSaveBothKeyAndRefToSave.length > 0 ? rowsToSaveBothKeyAndRefToSave : rowsToSave;
           let rowsSize = 0;
-          for (const clonedRow of clonedRows) {
+          for (const clonedRow of rowsToSave) {
             for (let i = 0; i < clonedRow.length; i++) {
               const field = packedFile.tableSchema.fields[i];
               rowsSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
             }
           }
 
-          mergeRowsIntoSaveOutput(tableName, packedFile, clonedRows, rowsSize);
+          mergeRowsIntoSaveOutput(tableName, packedFile, rowsToSave, rowsSize);
         }
       }
 
