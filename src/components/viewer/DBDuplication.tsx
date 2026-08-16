@@ -547,6 +547,10 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
         );
         setIsSuccessOpen(true);
       }
+    } catch (error) {
+      console.error("executeDBDuplication IPC failed:", error);
+      setDuplicationError(error instanceof Error ? error.message : String(error));
+      setIsErrorOpen(true);
     } finally {
       setIsSaving(false);
       endOverlayOperation();

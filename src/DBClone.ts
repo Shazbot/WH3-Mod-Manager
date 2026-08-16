@@ -28,6 +28,7 @@ import {
 import { getVanillaPackNamesForDBTable, isDBCloneTableIgnored, toDBTablePrefix } from "./utility/dbCloneTableRouting";
 import { canUseVanillaDbCacheForPack, fillVanillaTablesFromCache } from "./vanillaDbCache/store";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
+import { describeDBCloneSaveError, writeDBClonePackAtomically } from "./utility/dbCloneSave";
 
 const shouldIgnoreDBCloneTable = (tableName: string) =>
   isDBCloneTableIgnored(tableName) || tablesToIgnore.includes(tableName);
@@ -1937,7 +1938,9 @@ export async function executeDBDuplication(
       return { ok: false, error: "Canceled" };
     }
     report("writing", "Writing pack file");
-    await writePack(sortedToSave, newPackPath, existingPack);
+    await writeDBClonePackAtomically(newPackPath, (temporaryPath) =>
+      writePack(sortedToSave, temporaryPath, existingPack),
+    );
     if (isCanceled()) {
       report("canceled", "Canceled after write started");
       return { ok: false, error: "Canceled (too late to stop writing)" };
@@ -1950,7 +1953,7 @@ export async function executeDBDuplication(
       stage: "error",
       message: e instanceof Error ? e.message : String(e),
     });
-    return { ok: false, error: `DB duplication failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: describeDBCloneSaveError(e) };
   }
 }
 

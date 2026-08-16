@@ -9504,11 +9504,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       treeData: IViewerTreeNodeWithData,
       DBCloneSaveOptions: DBCloneSaveOptions,
     ) => {
-      const { executeDBDuplication } = await import("./DBClone");
       const webContentsId = event.sender.id;
       const cancelState = { canceled: false };
       dbDuplicationCancelStateByWebContentsId.set(webContentsId, cancelState);
       try {
+        const { executeDBDuplication } = await import("./DBClone");
         const result = await executeDBDuplication(
           packPath,
           nodesNamesToDuplicate,
@@ -9519,10 +9519,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           DBCloneSaveOptions,
           {
             isCanceled: () => cancelState.canceled,
-            report: (progress) => event.sender.send("setDBDuplicationProgress", progress),
+            report: (progress) => {
+              if (event.sender.isDestroyed()) return;
+              try {
+                event.sender.send("setDBDuplicationProgress", progress);
+              } catch (error) {
+                console.log("Couldn't report DB duplication progress:", error);
+              }
+            },
           },
         );
         return result;
+      } catch (error) {
+        console.log("executeDBDuplication IPC failed:", error);
+        return {
+          ok: false,
+          error: `DB duplication failed: ${error instanceof Error ? error.message : String(error)}`,
+        } as DBCloneExecutionResult;
       } finally {
         dbDuplicationCancelStateByWebContentsId.delete(webContentsId);
       }
