@@ -165,10 +165,10 @@ const BuildingTile = memo(
         )}
 
         {/* Revealed on hover, matching the in-game tile: turns top-left, cost bottom-right. */}
-        <span className="absolute left-0.5 top-0.5 hidden rounded bg-black/80 px-[3px] text-[0.55rem] leading-tight text-gray-100 group-hover:block">
+        <span className="pointer-events-none absolute left-0.5 top-0.5 z-[4] hidden rounded-sm border border-black/90 bg-black/95 px-1 py-0.5 text-xs font-bold leading-tight text-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.95)] group-hover:block">
           {tile.createTime}t
         </span>
-        <span className="absolute bottom-0.5 right-0.5 hidden rounded bg-black/80 px-[3px] text-[0.55rem] leading-tight text-amber-300 group-hover:block">
+        <span className="pointer-events-none absolute bottom-0.5 right-0.5 z-[4] hidden rounded-sm border border-black/90 bg-black/95 px-1 py-0.5 text-xs font-bold leading-tight text-amber-200 shadow-[0_1px_3px_rgba(0,0,0,0.95)] group-hover:block">
           {tile.createCost}
         </span>
       </button>
