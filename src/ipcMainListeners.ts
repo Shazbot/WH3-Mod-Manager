@@ -36,9 +36,8 @@ import {
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
 import { buildBuildingsData, createBuildingsLocLookup, BUILDINGS_TABLES } from "./buildingsData/data";
 import { resolveRegionBuildings } from "./buildingsData/derive";
-import { applyNewRowsToBuiltData } from "./buildingsData/applyEdits";
 import { validateNewRows } from "./buildingsData/validate";
-import type { BuildingsEditState } from "./buildingsData/edits";
+import { applyNewRowsToBuildingsData, LOC_TABLE, newRowsByTable, type BuildingsEditState } from "./buildingsData/edits";
 import { clearBuildingsMemoryCache, loadBuildingsDiskCache, saveBuildingsDiskCache } from "./buildingsData/cache";
 import type {
   BuildingsCatalog,
@@ -333,6 +332,10 @@ let cachedUnitViewerData: { signature: string; data: BuiltUnitViewerData; assetP
 type CachedBuildingsData = {
   signature: string;
   data: BuiltBuildingsData;
+  /** Effective source rows retained so every non-start-pos pending table can rebuild the view. */
+  tables: BuildingsTableRows;
+  /** Only localization keys consumed by `buildBuildingsData`, captured while the base is built. */
+  localizations: Record<string, string>;
   dbPackPath: string;
   /** Variant `icon` cell, normalised to a bare lowercase name -> the packed file that holds it. */
   iconPathByBaseName: Record<string, string>;
@@ -3301,12 +3304,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (cachedBuildingsData?.signature === signature) return cachedBuildingsData;
     const diskData = await loadBuildingsDiskCache(app.getPath("userData"), signature);
     if (diskData) {
-      const hadBuildingFrame = !!diskData.buildingFrame;
-      const icons = await registerBuildingIcons(diskData, dataFolder, vanillaIconPackPaths, modIconPackPaths);
-      if (!hadBuildingFrame && diskData.buildingFrame) {
-        await saveBuildingsDiskCache(app.getPath("userData"), signature, diskData);
+      const hadBuildingFrame = !!diskData.data.buildingFrame;
+      const icons = await registerBuildingIcons(diskData.data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
+      if (!hadBuildingFrame && diskData.data.buildingFrame) {
+        await saveBuildingsDiskCache(
+          app.getPath("userData"),
+          signature,
+          diskData.data,
+          diskData.tables,
+          diskData.localizations,
+        );
       }
-      cachedBuildingsData = { signature, data: diskData, dbPackPath, ...icons };
+      cachedBuildingsData = { signature, ...diskData, dbPackPath, ...icons };
       return cachedBuildingsData;
     }
 
@@ -3358,16 +3367,24 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       tables.start_pos_region_slot_templates_tables.push(...startposSlotTemplateRows);
     }
 
-    // Vanilla first so mod locs, which stay on the live path, still shadow it.
-    const data = buildBuildingsData(
-      tables,
-      createBuildingsLocLookup([...vanillaLocLookups, ...orderedModPacks.map((pack) => getLocsTrie(pack))]),
-    );
+    // Vanilla first so mod locs, which stay on the live path, still shadow it. Record every lookup
+    // the builder actually consumes; this compact snapshot is enough to rebuild after pending rows
+    // change without retaining the much larger localization tries.
+    const sourceLoc = createBuildingsLocLookup([
+      ...vanillaLocLookups,
+      ...orderedModPacks.map((pack) => getLocsTrie(pack)),
+    ]);
+    const localizations: Record<string, string> = {};
+    const data = buildBuildingsData(tables, (key) => {
+      const value = sourceLoc(key);
+      if (value != undefined) localizations[key] = value;
+      return value;
+    });
 
     releaseParsedTables(tablePacks, tablesToRead);
     const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
-    await saveBuildingsDiskCache(app.getPath("userData"), signature, data);
-    cachedBuildingsData = { signature, data, dbPackPath, ...icons };
+    await saveBuildingsDiskCache(app.getPath("userData"), signature, data, tables, localizations);
+    cachedBuildingsData = { signature, data, tables, localizations, dbPackPath, ...icons };
     return cachedBuildingsData;
   };
 
@@ -3488,6 +3505,34 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     nextNumericIds: built.data.nextNumericIds,
   });
 
+  /**
+   * Rebuilds every structure and option list from the effective rows. Keeping this as the same
+   * `buildBuildingsData` path used at initial load means a table cannot be consumed by the view yet
+   * forgotten by a separate incremental updater. `start_pos_*` rows are deliberately immutable.
+   */
+  const applyPendingBuildingsRows = (built: CachedBuildingsData, pendingEdits?: BuildingsEditState) => {
+    if (!pendingEdits) return built.data;
+    const rowsByTable = newRowsByTable(pendingEdits);
+    const hasApplicableRows = Object.keys(rowsByTable).some(
+      (table) => table === LOC_TABLE || !table.startsWith("start_pos_"),
+    );
+    if (!hasApplicableRows) return built.data;
+
+    const pendingLoc: Record<string, string> = {};
+    for (const row of rowsByTable[LOC_TABLE] ?? []) {
+      const key = (row.values.key ?? "").trim();
+      if (key) pendingLoc[key] = row.values.text ?? "";
+    }
+    const data = applyNewRowsToBuildingsData(built.tables, pendingEdits, (tables) =>
+      buildBuildingsData(tables, (key) =>
+        Object.prototype.hasOwnProperty.call(pendingLoc, key) ? pendingLoc[key] : built.localizations[key],
+      ),
+    );
+    // The shared frame is an asset added after table extraction rather than a DB-derived field.
+    data.buildingFrame = built.data.buildingFrame;
+    return data;
+  };
+
   /** Fills in the icon URLs the renderer renders; the data itself holds only pack-relative paths. */
   const decorateBuildingsView = (view: BuildingsRegionView, built: CachedBuildingsData): BuildingsRegionView => {
     const assetUrl = (packedFilePath: string | undefined) =>
@@ -3532,14 +3577,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     ): Promise<BuildingsRegionViewResponse> => {
       try {
         const built = await ensureBuildingsData(enabledMods);
-        // The raw rows were released after the build, so pending edits are folded into the built
-        // structures rather than by re-running the extraction. See applyEdits.ts.
-        const data = pendingEdits ? applyNewRowsToBuiltData(built.data, pendingEdits) : built.data;
+        const data = applyPendingBuildingsRows(built, pendingEdits);
         const view = resolveRegionBuildings(data, query);
         // Validated against the base data, not `data`: every pending row exists in the latter by
         // construction, so an override would look like a perfectly ordinary key.
         const rowIssues = pendingEdits ? validateNewRows(built.data, pendingEdits) : undefined;
-        return { success: true, view: decorateBuildingsView(view, built), rowIssues };
+        const catalog = toBuildingsCatalog({ ...built, data }, await getBuildingsTableSchemas());
+        return { success: true, view: decorateBuildingsView(view, built), catalog, rowIssues };
       } catch (error) {
         console.log("getBuildingsRegionView failed:", error);
         return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -3548,15 +3592,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   );
   ipcMain.handle(
     "getBuildingsCaiRows",
-    async (_event, enabledMods: Mod[], chainKey: string): Promise<BuildingsCaiRowsResponse> => {
+    async (
+      _event,
+      enabledMods: Mod[],
+      chainKey: string,
+      pendingEdits?: BuildingsEditState,
+    ): Promise<BuildingsCaiRowsResponse> => {
       try {
         const built = await ensureBuildingsData(enabledMods);
+        const data = applyPendingBuildingsRows(built, pendingEdits);
         const rowsByTable: Record<string, Array<Record<string, string>>> = {};
-        const values = built.data.caiValuesByChain[chainKey];
+        const values = data.caiValuesByChain[chainKey];
         if (values?.length) rowsByTable.cai_construction_system_building_values_tables = values;
-        const synergies = built.data.caiSynergiesByChain[chainKey];
+        const synergies = data.caiSynergiesByChain[chainKey];
         if (synergies?.length) rowsByTable.cai_construction_system_synergies_tables = synergies;
-        return { success: true, rowsByTable, superChain: built.data.chains[chainKey]?.superChain };
+        return { success: true, rowsByTable, superChain: data.chains[chainKey]?.superChain };
       } catch (error) {
         console.log("getBuildingsCaiRows failed:", error);
         return { success: false, error: error instanceof Error ? error.message : String(error) };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildBuildingsData } from "../src/buildingsData/data";
+import { buildBuildingsData, BUILDINGS_TABLES } from "../src/buildingsData/data";
 import { NO_SET_KEY, resolveRegionBuildings } from "../src/buildingsData/derive";
 import { applyNewRowsToBuiltData } from "../src/buildingsData/applyEdits";
 import {
@@ -337,6 +337,25 @@ describe("applyNewRowsToBuildingsData", () => {
     applyNewRowsToBuildingsData(baseTables(), state, (tables) => {
       expect(tables[LOC_TABLE]).toBeUndefined();
       return buildBuildingsData(tables, noLoc);
+    });
+  });
+
+  it("applies every Buildings source table except start_pos tables", () => {
+    const baseTablesByName: BuildingsTableRows = Object.fromEntries(
+      BUILDINGS_TABLES.map((table) => [table, [{ marker: `base:${table}` }]]),
+    );
+    const state = buildingsEditReducer(emptyBuildingsEditState(), {
+      type: "addRows",
+      rows: BUILDINGS_TABLES.map((table) => ({ table, origin: "clone" as const, values: { marker: `new:${table}` } })),
+    });
+
+    applyNewRowsToBuildingsData(baseTablesByName, state, (effectiveTables) => {
+      for (const table of BUILDINGS_TABLES) {
+        const markers = effectiveTables[table].map((row) => row.marker);
+        if (table.startsWith("start_pos_")) expect(markers).toEqual([`base:${table}`]);
+        else expect(markers).toEqual([`base:${table}`, `new:${table}`]);
+      }
+      return buildBuildingsData(effectiveTables, noLoc);
     });
   });
 

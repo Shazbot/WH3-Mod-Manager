@@ -420,6 +420,8 @@ export interface BuildingsRegionViewResponse {
   success: boolean;
   error?: string;
   view?: BuildingsRegionView;
+  /** Catalog options rebuilt from the same effective rows as the Board. */
+  catalog?: BuildingsCatalog;
   /**
    * Problems with the pending rows, checked against the data they will land in. Rides this response
    * because it is already the call that carries the pending rows to main on every edit.

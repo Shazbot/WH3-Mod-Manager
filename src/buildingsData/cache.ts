@@ -1,26 +1,30 @@
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as nodePath from "path";
-import type { BuiltBuildingsData } from "./types";
+import type { BuildingsTableRows, BuiltBuildingsData } from "./types";
 
 /** Bump whenever the shape of `BuiltBuildingsData` or the extraction rules change. */
-const BUILDINGS_CACHE_VERSION = 12;
+const BUILDINGS_CACHE_VERSION = 13;
 const BUILDINGS_CACHE_FILE = "buildings-data-cache.bin";
 
 type BuildingsDiskPayload = {
   version: number;
   signature: string;
   data: BuiltBuildingsData;
+  tables: BuildingsTableRows;
+  localizations: Record<string, string>;
 };
+
+export type BuildingsDiskData = Pick<BuildingsDiskPayload, "data" | "tables" | "localizations">;
 
 let cachedPayload: BuildingsDiskPayload | undefined;
 
 export const loadBuildingsDiskCache = async (
   userDataPath: string,
   signature: string,
-): Promise<BuiltBuildingsData | undefined> => {
+): Promise<BuildingsDiskData | undefined> => {
   if (cachedPayload?.signature === signature && cachedPayload.version === BUILDINGS_CACHE_VERSION) {
-    return cachedPayload.data;
+    return cachedPayload;
   }
   try {
     const compressed = await fs.promises.readFile(nodePath.join(userDataPath, BUILDINGS_CACHE_FILE));
@@ -28,7 +32,7 @@ export const loadBuildingsDiskCache = async (
     const payload = JSON.parse(json.toString("utf8")) as BuildingsDiskPayload;
     if (payload.version !== BUILDINGS_CACHE_VERSION || payload.signature !== signature) return undefined;
     cachedPayload = payload;
-    return payload.data;
+    return payload;
   } catch {
     return undefined;
   }
@@ -38,8 +42,16 @@ export const saveBuildingsDiskCache = async (
   userDataPath: string,
   signature: string,
   data: BuiltBuildingsData,
+  tables: BuildingsTableRows,
+  localizations: Record<string, string>,
 ): Promise<void> => {
-  const payload: BuildingsDiskPayload = { version: BUILDINGS_CACHE_VERSION, signature, data };
+  const payload: BuildingsDiskPayload = {
+    version: BUILDINGS_CACHE_VERSION,
+    signature,
+    data,
+    tables,
+    localizations,
+  };
   try {
     const json = Buffer.from(JSON.stringify(payload), "utf8");
     const compressed = await zstdCompress(json, 1);

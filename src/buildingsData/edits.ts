@@ -144,8 +144,9 @@ export const newRowsByTable = (state: BuildingsEditState): Record<string, Buildi
  * Appending rather than merging is what makes the override rule work for free: `dedupeRowsByKey`
  * keeps the last row for a key, and these are last.
  *
- * Needs the raw rows, which only the builder has. `applyNewRowsToBuiltData` is the variant the main
- * process uses once those rows have been released.
+ * The main process retains these string-only source rows in the Buildings cache so this complete
+ * rebuild remains the one update path. That prevents a table used by `buildBuildingsData` from
+ * being omitted by a separate incremental implementation. `start_pos_*` stays immutable.
  */
 export const applyNewRowsToBuildingsData = (
   baseTables: BuildingsTableRows,
@@ -155,7 +156,7 @@ export const applyNewRowsToBuildingsData = (
   const byTable = newRowsByTable(state);
   const tables: BuildingsTableRows = { ...baseTables };
   for (const [table, rows] of Object.entries(byTable)) {
-    if (table === LOC_TABLE) continue;
+    if (table === LOC_TABLE || table.startsWith("start_pos_")) continue;
     tables[table] = [...(baseTables[table] ?? []), ...rows.map((row) => row.values)];
   }
   return rebuild(tables);

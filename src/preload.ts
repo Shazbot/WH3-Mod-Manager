@@ -254,8 +254,12 @@ const api = {
     pendingEdits?: BuildingsEditState,
   ): Promise<BuildingsRegionViewResponse> =>
     ipcRenderer.invoke("getBuildingsRegionView", enabledMods, query, pendingEdits),
-  getBuildingsCaiRows: (enabledMods: Mod[], chainKey: string): Promise<BuildingsCaiRowsResponse> =>
-    ipcRenderer.invoke("getBuildingsCaiRows", enabledMods, chainKey),
+  getBuildingsCaiRows: (
+    enabledMods: Mod[],
+    chainKey: string,
+    pendingEdits?: BuildingsEditState,
+  ): Promise<BuildingsCaiRowsResponse> =>
+    ipcRenderer.invoke("getBuildingsCaiRows", enabledMods, chainKey, pendingEdits),
   getEsfMap: (enabledMods: Mod[], campaignName?: string): Promise<EsfMapResponse> =>
     ipcRenderer.invoke("getEsfMap", enabledMods, campaignName),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) => ipcRenderer.send("searchInsidePacks", searchTerm, mods),

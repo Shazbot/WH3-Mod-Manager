@@ -263,9 +263,9 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
   const fetchCaiRows = useCallback(
     (chainKey: string) =>
-      window.api?.getBuildingsCaiRows(enabledModsRef.current, chainKey) ??
+      window.api?.getBuildingsCaiRows(enabledModsRef.current, chainKey, edits) ??
       Promise.resolve({ success: false, error: "Unavailable." }),
-    [],
+    [edits],
   );
 
   const pickCloneTarget = useCallback(
@@ -339,7 +339,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   }, [catalog, mapSelectedRegion]);
 
   useEffect(() => {
-    if (currentGame !== "wh3" || !catalog || !query.campaign || !query.region) return;
+    if (currentGame !== "wh3" || !catalog?.dbPackPath || !query.campaign || !query.region) return;
     let isCurrent = true;
     setIsLoading(true);
     window.api
@@ -351,6 +351,9 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           return;
         }
         setError(undefined);
+        // With no pending rows the catalog-loading effect already owns this state. Updating it here
+        // would repeatedly reseed the empty edit state and request the same view again.
+        if (response.catalog && edits.order.length > 0) setCatalog(response.catalog);
         setView(response.view);
         setRowIssues(response.rowIssues);
       })
@@ -363,7 +366,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     return () => {
       isCurrent = false;
     };
-  }, [catalog, currentGame, edits, query]);
+  }, [catalog?.dbPackPath, currentGame, edits, query]);
 
   if (currentGame !== "wh3") {
     return <div className="px-6 py-4 text-gray-300">Buildings are unavailable for this game.</div>;
