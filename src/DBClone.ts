@@ -169,10 +169,11 @@ export const buildDBReferenceTree = async (
   }
 
   let schema = packFile.tableSchema;
-  if (!schema) {
-    console.log("buildDBReferenceTree: NO current schema, try to get it");
+  if (!schema || !packFile.schemaFields) {
+    console.log("buildDBReferenceTree: selected table is not parsed, reading it now", packFile.name);
+    const selectedPackFileName = packFile.name;
     await readModsByPath([packPath], {
-      tablesToRead: [packFile.name],
+      tablesToRead: [selectedPackFileName],
       readLocs: false,
     });
 
@@ -183,7 +184,7 @@ export const buildDBReferenceTree = async (
     }
 
     existingPack = refreshedPack;
-    getPacksTableData([existingPack], [packFile.name]);
+    getPacksTableData([existingPack], [selectedPackFileName]);
     packFile = getSelectedPackFile(existingPack);
     if (!packFile) {
       console.log("buildDBReferenceTree: no packFile found after refresh:", packedFilePath);
@@ -191,14 +192,13 @@ export const buildDBReferenceTree = async (
     }
 
     schema = packFile.tableSchema;
-    if (!schema) {
-      console.log("buildDBReferenceTree: still no schema after refresh");
+    if (!schema || !packFile.schemaFields) {
+      console.log("buildDBReferenceTree: selected table is still not parsed after refresh", selectedPackFileName, {
+        hasSchema: !!schema,
+        hasSchemaFields: !!packFile.schemaFields,
+      });
       return;
     }
-  }
-  if (!packFile.schemaFields) {
-    console.log("buildDBReferenceTree: NO packFile schemaFields");
-    return;
   }
 
   const rows = chunkSchemaIntoRows(packFile.schemaFields, schema) as AmendedSchemaField[][];
