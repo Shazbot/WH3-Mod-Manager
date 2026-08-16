@@ -1,6 +1,6 @@
 import { findNodeInTree, findParentOfNode } from "./components/viewer/viewerHelpers";
 import appData from "./appData";
-import { getLocsTrie, readModsByPath } from "./ipcMainListeners";
+import { getLocsTrie, getVanillaLocLookup, readModsByPath } from "./ipcMainListeners";
 import { chunkSchemaIntoRows, getPacksTableData } from "./packFileSerializer";
 import { AmendedSchemaField, DBVersion, LocVersion, PackedFile, LocFields, FIELD_TYPE, Pack } from "./packFileTypes";
 import {
@@ -18,7 +18,7 @@ import { gameToPackWithDBTablesName } from "./supportedGames";
 import { format } from "date-fns";
 import * as fs from "fs";
 import * as nodePath from "path";
-import Trie from "./utility/trie";
+import { createLocLookup } from "./unitViewer/data";
 import {
   addUniqueDBCloneNode,
   getDBCloneNodeKey,
@@ -1760,38 +1760,25 @@ export async function executeDBDuplication(
 
     const localePath = nodePath.join(dataPath, "local_en.pack");
 
-    const packPathsWithLocs = isCurrentPackDataPack ? [localePath] : [localePath, packPath];
-    const localePacks = await readModsByPath(
-      packPathsWithLocs,
-      {
-        skipParsingTables: true,
-        readLocs: true,
-      },
-      true,
-    );
-    if (!localePacks || localePacks.length < 1) {
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup([localePath]));
+    if (vanillaLocLookups.length < 1) {
       console.log("ERROR: couldn't read local_en.pack");
       return { ok: false, error: "Could not read locale packs for localization keys" };
     }
 
+    const selectedPackLocLookups = isCurrentPackDataPack
+      ? []
+      : (await readModsByPath([packPath], { skipParsingTables: true, readLocs: true }, true)).map((selectedPack) =>
+          getLocsTrie(selectedPack),
+        );
+    const getLoc = createLocLookup([...vanillaLocLookups, ...selectedPackLocLookups]);
+
     console.log("originalValueLookup:", originalValueLookup);
     console.log("origLocToNewLoc:", origLocToNewLoc);
-    console.log(
-      "localePacks:",
-      localePacks.map((pack) => pack.name),
-    );
-
-    const locsTries = localePacks.map((localePack) => getLocsTrie(localePack)).filter((trie) => trie) as Trie<string>[];
-    type locsTriesType = typeof locsTries;
-
-    const getLocFromTries = (locKey: string, locsTries: locsTriesType) => {
-      for (const locTrie of locsTries) {
-        const locValue = locTrie.get(locKey);
-        if (locValue) {
-          return locValue;
-        }
-      }
-    };
+    console.log("DBClone localization sources:", {
+      vanillaCacheLookups: vanillaLocLookups.length,
+      selectedPackLookups: selectedPackLocLookups.filter(Boolean).length,
+    });
 
     const locFields = [] as AmendedSchemaField[];
     let locFileSize = 0;
@@ -1808,10 +1795,10 @@ export async function executeDBDuplication(
         "LOC for",
         loc,
         origLocToNewLoc[loc],
-        origLocToNewLoc[loc] ? (getLocFromTries(origLocToNewLoc[loc], locsTries) ?? "") : "",
+        origLocToNewLoc[loc] ? (getLoc(origLocToNewLoc[loc]) ?? "") : "",
       );
 
-      const origLoc = origLocToNewLoc[loc] ? (getLocFromTries(origLocToNewLoc[loc], locsTries) ?? "") : "";
+      const origLoc = origLocToNewLoc[loc] ? (getLoc(origLocToNewLoc[loc]) ?? "") : "";
 
       const fields = [
         { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer("StringU16", loc) },

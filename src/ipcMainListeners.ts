@@ -899,7 +899,7 @@ const getVanillaLocalisationPackPaths = (dataFolder: string) =>
  * Falls back to reading the packs and building tries, so a cache that cannot be built or opened
  * degrades to the old behaviour instead of losing every localised string.
  */
-const getVanillaLocLookup = async (vanillaPackPaths: string[]): Promise<Record<string, KeyedLookup<string>>> => {
+export const getVanillaLocLookup = async (vanillaPackPaths: string[]): Promise<Record<string, KeyedLookup<string>>> => {
   const readVanillaLocPacks = async () => {
     if (vanillaPackPaths.length > 0) {
       await readModsByPath(vanillaPackPaths, { skipParsingTables: true, readLocs: true }, true, false);
