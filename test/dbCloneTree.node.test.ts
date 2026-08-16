@@ -5,6 +5,7 @@ import {
   getDBCloneNodeKey,
   getDBCloneSourceRowKey,
   getUniqueDBCloneNodes,
+  isDBCloneSourceRowSelected,
 } from "../src/utility/dbCloneTree";
 
 const node = (
@@ -76,5 +77,30 @@ describe("DB clone tree identity", () => {
     expect(getDBCloneSourceRowKey("D", first, ["key"])).not.toBe(
       getDBCloneSourceRowKey("D", [{ name: "key", resolvedKeyValue: "other-d" }], ["key"]),
     );
+  });
+
+  it("does not select a sibling row merely because it references a selected parent", () => {
+    const selectedNodes = [node("building_chains_tables", "wh_main_HUMAN_resource_pottery")];
+    const checkedRow = [
+      { name: "key", resolvedKeyValue: "wh_main_HUMAN_resource_pottery" },
+      { name: "superchain", resolvedKeyValue: "wh_main_sch_human_resource_pottery" },
+    ];
+    const uncheckedSibling = [
+      { name: "key", resolvedKeyValue: "wh2_dlc09_tmb_resource_pottery" },
+      { name: "superchain", resolvedKeyValue: "wh_main_sch_human_resource_pottery" },
+    ];
+
+    expect(isDBCloneSourceRowSelected("building_chains_tables", checkedRow, selectedNodes)).toBe(true);
+    expect(isDBCloneSourceRowSelected("building_chains_tables", uncheckedSibling, selectedNodes)).toBe(false);
+  });
+
+  it("does not let a selected node from another table select rows with the same referenced value", () => {
+    const selectedNodes = [node("building_superchains_tables", "wh_main_sch_human_resource_pottery")];
+    const chainRow = [
+      { name: "key", resolvedKeyValue: "wh2_dlc09_tmb_resource_pottery" },
+      { name: "superchain", resolvedKeyValue: "wh_main_sch_human_resource_pottery" },
+    ];
+
+    expect(isDBCloneSourceRowSelected("building_chains_tables", chainRow, selectedNodes)).toBe(false);
   });
 });

@@ -24,6 +24,7 @@ import {
   getDBCloneNodeKey,
   getDBCloneSourceRowKey,
   getUniqueDBCloneNodes,
+  isDBCloneSourceRowSelected,
 } from "./utility/dbCloneTree";
 import { getVanillaPackNamesForDBTable, isDBCloneTableIgnored, toDBTablePrefix } from "./utility/dbCloneTableRouting";
 import { canUseVanillaDbCacheForPack, fillVanillaTablesFromCache } from "./vanillaDbCache/store";
@@ -1526,6 +1527,8 @@ export async function executeDBDuplication(
           }
 
           for (const row of rows) {
+            if (!isDBCloneSourceRowSelected(tableName, row, nodeRefsToHandle)) continue;
+
             let clonedRow = null as AmendedSchemaField[] | null;
 
             for (let i = 0; i < row.length; i++) {

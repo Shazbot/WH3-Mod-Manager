@@ -18,6 +18,18 @@ export const getDBCloneSourceRowKey = (
   return JSON.stringify([tableName, identity]);
 };
 
+/** A checked tree node selects its own source row, not every sibling that references the same parent. */
+export const isDBCloneSourceRowSelected = (
+  tableName: string,
+  row: Array<Pick<AmendedSchemaField, "name" | "resolvedKeyValue">>,
+  selectedNodes: Array<Pick<IViewerTreeNodeWithData, "tableName" | "columnName" | "value">>,
+): boolean =>
+  selectedNodes.some(
+    (node) =>
+      node.tableName == tableName &&
+      row.some((cell) => cell.name == node.columnName && cell.resolvedKeyValue == node.value),
+  );
+
 export interface AddUniqueDBCloneNodeResult {
   node: IViewerTreeNodeWithData;
   added: boolean;
