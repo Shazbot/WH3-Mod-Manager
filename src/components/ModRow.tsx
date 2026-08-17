@@ -252,6 +252,15 @@ const ModRow = memo(
     const isCompact = layout === "compact";
     const checkboxId = mod.workshopId + "enabled";
 
+    /*
+     * A data mod with no workshop counterpart has neither a title nor an author, so the pack name is the
+     * only thing identifying it. Rather than leave it small under a blank line, it takes over the primary
+     * line. Keyed on the missing metadata rather than on isInData, so any mod with a blank title reads the
+     * same way.
+     */
+    const hasHumanName = decodedHumanName.trim() !== "";
+    const hasAuthor = isAuthorEnabled && decodedAuthor.trim() !== "";
+
     // A pinned load order is worth showing wherever the mod appears, since it survives being disabled and
     // is honoured again on re-enable. The derived index is only meaningful in a list whose order is the
     // one the game will use, so the dual layout's disabled pane leaves the cell blank instead.
@@ -341,22 +350,38 @@ const ModRow = memo(
 
             <div className="flex flex-col justify-center min-w-0" onContextMenu={(e) => onModRightClick(e, mod)}>
               <label className="cursor-pointer min-w-0 leading-tight" htmlFor={checkboxId}>
-                <span
-                  className={classNames("block", "truncate", "font-medium", {
-                    ["text-violet-400"]: isAlwaysEnabled,
-                  })}
-                  title={decodedHumanName}
-                >
-                  {decodedHumanName}
-                </span>
-                {isAuthorEnabled && decodedAuthor && (
+                {(hasHumanName && (
+                  <span
+                    className={classNames("block", "truncate", "font-medium", {
+                      ["text-violet-400"]: isAlwaysEnabled,
+                    })}
+                    title={decodedHumanName}
+                  >
+                    {decodedHumanName}
+                  </span>
+                )) || (
+                  <span className="block truncate font-medium" title={mod.name}>
+                    <PackName
+                      mod={mod}
+                      isEnabledInMergedMod={isEnabledInMergedMod}
+                      customFolderPath={customFolderPath}
+                    />
+                  </span>
+                )}
+                {hasAuthor && (
                   <span className="block truncate text-sm opacity-75" title={decodedAuthor}>
                     {decodedAuthor}
                   </span>
                 )}
-                <span className="block truncate text-sm opacity-90" title={mod.name}>
-                  <PackName mod={mod} isEnabledInMergedMod={isEnabledInMergedMod} customFolderPath={customFolderPath} />
-                </span>
+                {hasHumanName && (
+                  <span className="block truncate text-sm opacity-90" title={mod.name}>
+                    <PackName
+                      mod={mod}
+                      isEnabledInMergedMod={isEnabledInMergedMod}
+                      customFolderPath={customFolderPath}
+                    />
+                  </span>
+                )}
               </label>
             </div>
 

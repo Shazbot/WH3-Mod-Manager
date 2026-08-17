@@ -190,6 +190,30 @@ describe("dual mod list layout", () => {
     expect(alphaRow.textContent).toMatch(/\d/);
   });
 
+  it("promotes the pack name when a mod has no title or author", async () => {
+    // What a data mod with no workshop counterpart looks like: nothing but a pack name.
+    const bare = { ...createMod("local_only", false), humanName: "", author: "" };
+    renderDualLayout([bare, createMod("alpha", false)]);
+
+    const { left } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    // The pack name takes the primary line instead of sitting small under a blank one.
+    const bareRow = left.querySelector<HTMLElement>("[id='local_only.pack']") as HTMLElement;
+    const bareLines = Array.from(bareRow.querySelectorAll<HTMLElement>("label > span"));
+    expect(bareLines).toHaveLength(1);
+    expect(bareLines[0]).toHaveClass("font-medium");
+    expect(bareLines[0]).not.toHaveClass("text-sm");
+    expect(bareLines[0].textContent).toContain("local_only");
+
+    // A mod that has both keeps the title on top and the pack name small underneath.
+    const fullRow = left.querySelector<HTMLElement>("[id='alpha.pack']") as HTMLElement;
+    const fullLines = Array.from(fullRow.querySelectorAll<HTMLElement>("label > span"));
+    expect(fullLines).toHaveLength(3);
+    expect(fullLines[0].textContent).toBe("alpha human name");
+    expect(fullLines[2]).toHaveClass("text-sm");
+  });
+
   it("moves a mod to the other pane when its row is clicked", async () => {
     const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
 
