@@ -47,6 +47,60 @@ const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
   return mods.filter((mod) => (mod.isInData || !dataPackNames.has(mod.name)) && !hiddenModNames.has(mod.name));
 };
 
+type ModListView = {
+  loadOrderIndexByModName: Map<string, number>;
+  visibleMods: Mod[];
+  unfilteredVisibleMods: Mod[];
+};
+
+type ModListViewOptions = {
+  hiddenModNames: Set<string>;
+  alwaysEnabledModNames: Set<string>;
+  sortingType: SortingType;
+  customizableMods: Record<string, string[]>;
+  filter: string;
+  isAuthorEnabled: boolean;
+  isDev: boolean;
+};
+
+/**
+ * Sorting and filtering for one list of mods.
+ *
+ * A list has to be derived from its own set rather than by filtering a shared one. A pinned loadOrder is
+ * an index into whichever list it was set from - setModLoadOrderRelativeTo numbers the mods it was
+ * handed - so feeding a different set to sortByNameAndLoadOrder reads those indices against the wrong
+ * scale and drops the mod somewhere else entirely. The dual layout's enabled pane therefore orders
+ * enabledMods directly, the same set placement mode writes its indices against.
+ */
+const buildModListView = (sourceMods: Mod[], options: ModListViewOptions): ModListView => {
+  const { hiddenModNames, alwaysEnabledModNames, sortingType, customizableMods, filter, isAuthorEnabled, isDev } =
+    options;
+
+  const modsToOrder = sourceMods.filter((mod) => !hiddenModNames.has(mod.name) || alwaysEnabledModNames.has(mod.name));
+  const orderedMods = sortByNameAndLoadOrder(modsToOrder);
+
+  let unfilteredMods = modRowSorting.getSortedMods(sourceMods, orderedMods, sortingType, customizableMods);
+  if (isDev) {
+    // duplicates happen when we hot-reload in dev
+    const seenModNames = new Set<string>();
+    unfilteredMods = unfilteredMods.filter((mod) => {
+      if (seenModNames.has(mod.name)) return false;
+      seenModNames.add(mod.name);
+      return true;
+    });
+  }
+
+  const mods = filter !== "" ? getFilteredMods(unfilteredMods, filter.toLowerCase(), isAuthorEnabled) : unfilteredMods;
+
+  return {
+    loadOrderIndexByModName: new Map(orderedMods.map((mod, index) => [mod.name, index])),
+    visibleMods: getVisibleMods(mods, hiddenModNames),
+    unfilteredVisibleMods: getVisibleMods(unfilteredMods, hiddenModNames),
+  };
+};
+
+const emptyRowData: ModRowDatum[] = [];
+
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 const domParser = new DOMParser();
 
@@ -169,17 +223,42 @@ const ModRows = memo((props: ModRowsProps) => {
     () => new Map(orderedMods.map((mod, index) => [mod.name, index])),
     [orderedMods],
   );
-  /**
-   * The dual layout's right pane is the enabled list, so its position numbers have to count over the
-   * enabled mods alone the way the Enabled Mods tab does, not over every mod in the preset.
-   */
-  const enabledLoadOrderIndexByModName = useMemo(() => {
-    if (!isDualLayout) return loadOrderIndexByModName;
-    const orderedEnabledMods = sortByNameAndLoadOrder(
-      enabledMods.filter((mod) => !hiddenModNames.has(mod.name) || alwaysEnabledModNames.has(mod.name)),
-    );
-    return new Map(orderedEnabledMods.map((mod, index) => [mod.name, index]));
-  }, [alwaysEnabledModNames, enabledMods, hiddenModNames, isDualLayout, loadOrderIndexByModName]);
+  const disabledMods = useMemo(
+    () => currentPresetMods.filter((mod) => !mod.isEnabled && !alwaysEnabledModNames.has(mod.name)),
+    [alwaysEnabledModNames, currentPresetMods],
+  );
+
+  const modListViewOptions = useMemo(
+    (): ModListViewOptions => ({
+      hiddenModNames,
+      alwaysEnabledModNames,
+      sortingType,
+      customizableMods,
+      // Placement mode shows the whole enabled list, so a live search filter is ignored while it runs.
+      filter: loadOrderModName ? "" : filter,
+      isAuthorEnabled,
+      isDev,
+    }),
+    [
+      alwaysEnabledModNames,
+      customizableMods,
+      filter,
+      hiddenModNames,
+      isAuthorEnabled,
+      isDev,
+      loadOrderModName,
+      sortingType,
+    ],
+  );
+
+  const disabledModsView = useMemo(
+    () => (isDualLayout ? buildModListView(disabledMods, modListViewOptions) : undefined),
+    [disabledMods, isDualLayout, modListViewOptions],
+  );
+  const enabledModsView = useMemo(
+    () => (isDualLayout ? buildModListView(enabledMods, modListViewOptions) : undefined),
+    [enabledMods, isDualLayout, modListViewOptions],
+  );
 
   const unfilteredMods = useMemo(() => {
     const sortedMods = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
@@ -368,11 +447,23 @@ const ModRows = memo((props: ModRowsProps) => {
     [canReorderLoadOrder, canonicalEnabledMods, hiddenModNames, loadOrderModName, mods],
   );
 
-  const unfilteredVisibleMods = useMemo(
-    () =>
-      loadOrderModName && canReorderLoadOrder ? canonicalEnabledMods : getVisibleMods(unfilteredMods, hiddenModNames),
-    [canReorderLoadOrder, canonicalEnabledMods, hiddenModNames, loadOrderModName, unfilteredMods],
-  );
+  /**
+   * The list placement mode reorders against, and the one setModLoadOrderRelativeTo numbers its pins
+   * from. In the dual layout that is the enabled pane's own view, never the whole-preset one.
+   */
+  const unfilteredVisibleMods = useMemo(() => {
+    if (loadOrderModName && canReorderLoadOrder) return canonicalEnabledMods;
+    if (isDualLayout) return enabledModsView?.unfilteredVisibleMods ?? [];
+    return getVisibleMods(unfilteredMods, hiddenModNames);
+  }, [
+    canReorderLoadOrder,
+    canonicalEnabledMods,
+    enabledModsView,
+    hiddenModNames,
+    isDualLayout,
+    loadOrderModName,
+    unfilteredMods,
+  ]);
 
   const onSetLoadOrderMode = useCallback(
     (mod: Mod) => {
@@ -555,9 +646,9 @@ const ModRows = memo((props: ModRowsProps) => {
     [appFolderPaths.customModFolders],
   );
 
-  const rowData = useMemo(
-    (): ModRowDatum[] =>
-      visibleMods.map((mod) => ({
+  const buildRowData = useCallback(
+    (mods: Mod[]): ModRowDatum[] =>
+      mods.map((mod) => ({
         mod,
         isAlwaysEnabled: alwaysEnabledModNames.has(mod.name),
         isEnabledInMergedMod: mergedModPaths.has(mod.path),
@@ -570,24 +661,25 @@ const ModRows = memo((props: ModRowsProps) => {
         hasPackDataOverwrite: Boolean(packDataOverwrites[mod.path]),
         thumbnailSrc: getModThumbnailSrc(mod, isDev),
       })),
-    [
-      alwaysEnabledModNames,
-      customFolderPathBySourceId,
-      customizableMods,
-      isDev,
-      mergedModPaths,
-      packDataOverwrites,
-      visibleMods,
-    ],
+    [alwaysEnabledModNames, customFolderPathBySourceId, customizableMods, isDev, mergedModPaths, packDataOverwrites],
+  );
+
+  const rowData = useMemo(
+    () => (isDualLayout ? emptyRowData : buildRowData(visibleMods)),
+    [buildRowData, isDualLayout, visibleMods],
   );
 
   const disabledRowData = useMemo(
-    () => (isDualLayout ? rowData.filter((row) => !row.mod.isEnabled && !row.isAlwaysEnabled) : rowData),
-    [isDualLayout, rowData],
+    () => (disabledModsView ? buildRowData(loadOrderModName ? [] : disabledModsView.visibleMods) : emptyRowData),
+    [buildRowData, disabledModsView, loadOrderModName],
   );
+  /** Placement mode reorders against canonicalEnabledMods, so the pane has to be showing exactly that. */
   const enabledRowData = useMemo(
-    () => (isDualLayout ? rowData.filter((row) => row.mod.isEnabled || row.isAlwaysEnabled) : rowData),
-    [isDualLayout, rowData],
+    () =>
+      enabledModsView
+        ? buildRowData(loadOrderModName ? canonicalEnabledMods : enabledModsView.visibleMods)
+        : emptyRowData,
+    [buildRowData, canonicalEnabledMods, enabledModsView, loadOrderModName],
   );
 
   const callbacks = useMemo(
@@ -697,7 +789,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   showPositionIndex={isShowingDisabledModsLoadOrder}
                   gridClass={getModListGridClass("compact", { ...compactGridOptions, showConfigColumn: false })}
                   ghostClass={getModListGhostClass("compact", { ...compactGridOptions, showConfigColumn: false })}
-                  loadOrderIndexByModName={loadOrderIndexByModName}
+                  loadOrderIndexByModName={disabledModsView?.loadOrderIndexByModName ?? loadOrderIndexByModName}
                   isLoadOrderPlacementMode={false}
                 />
               </div>
@@ -729,7 +821,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   showPositionIndex
                   gridClass={getModListGridClass("compact", { ...compactGridOptions, showConfigColumn: true })}
                   ghostClass={getModListGhostClass("compact", { ...compactGridOptions, showConfigColumn: true })}
-                  loadOrderIndexByModName={enabledLoadOrderIndexByModName}
+                  loadOrderIndexByModName={enabledModsView?.loadOrderIndexByModName ?? loadOrderIndexByModName}
                   isLoadOrderPlacementMode={!!loadOrderModName}
                 />
               </div>

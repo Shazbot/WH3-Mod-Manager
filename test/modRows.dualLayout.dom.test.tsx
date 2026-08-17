@@ -198,4 +198,40 @@ describe("dual mod list layout", () => {
     await act(async () => fireEvent.keyDown(document, { key: "Escape" }));
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeNull());
   });
+
+  it("puts a reordered mod in the position that was picked", async () => {
+    /*
+     * setModLoadOrderRelativeTo pins a mod by its index in the list it was placed in - here the three
+     * enabled mods - so the pane has to re-derive its order from those same three. The disabled mods are
+     * named to sort first on purpose: sorting all five by those pins instead would let the disabled ones
+     * take the low slots, and the moved mod would land somewhere other than where it was dropped.
+     */
+    const mods = [
+      createMod("aaa_one", false),
+      createMod("aaa_two", false),
+      createMod("m_alpha", true),
+      createMod("m_beta", true),
+      createMod("m_gamma", true),
+    ];
+    const { testStore } = renderDualLayout(mods);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("m_alpha human name")).toBeInTheDocument());
+
+    // .row-div-paddings is the row element itself; the anchor and reorder ids also end in ".pack".
+    const renderedEnabledOrder = () =>
+      Array.from(right.querySelectorAll<HTMLElement>(".row-div-paddings")).map((row) => row.id);
+
+    expect(renderedEnabledOrder()).toEqual(["m_alpha.pack", "m_beta.pack", "m_gamma.pack"]);
+
+    // Move m_alpha from the top to the slot between m_beta and m_gamma.
+    fireEvent.mouseEnter(right.querySelector<HTMLElement>("[id='m_alpha.pack']") as HTMLElement);
+    await act(async () => fireEvent.click(document.getElementById("load-order-icon-m_alpha.pack") as HTMLElement));
+    await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-2")).toBeInTheDocument());
+    await act(async () => fireEvent.click(document.getElementById("enabled-mod-placeholder-2") as HTMLButtonElement));
+
+    await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeNull());
+    expect(testStore.getState().app.currentPreset.mods.find((mod) => mod.name === "m_alpha.pack")?.loadOrder).toBe(1);
+    expect(renderedEnabledOrder()).toEqual(["m_beta.pack", "m_alpha.pack", "m_gamma.pack"]);
+  });
 });
