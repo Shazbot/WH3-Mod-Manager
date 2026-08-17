@@ -200,7 +200,9 @@ import {
 } from "./assetProtocol";
 import { normalizeAssetPath } from "./assetUrls";
 import { collectVanillaFilesUnderPrefix, findVanillaPackContaining } from "./vanillaPackIndex/format";
+import { selectVanillaPacksHoldingFiles, selectVanillaPacksHoldingTables } from "./vanillaPackIndex/select";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
+import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import {
   gameToGameName,
   gameToPackWithDBTablesName,
@@ -880,6 +882,95 @@ const loadMissingIconsInto = async (icons: Record<string, AssetBytes>, packs: Pa
   return registerIconAssets(loaded);
 };
 
+/**
+ * The vanilla packs that actually hold one of `iconPaths`, in load order.
+ *
+ * The skills and technology builds each want a few dozen icons and used to find them by indexing
+ * every vanilla pack their filter let through - a full index parse per pack, repeated on every
+ * build, to read three or four of them. The global file index answers which pack wins for a path
+ * without opening anything.
+ *
+ * Undefined means there is no index to ask, which callers read as "fall back to the whole set".
+ */
+const findVanillaPacksHoldingIcons = async (iconPaths: readonly string[]): Promise<string[] | undefined> => {
+  if (iconPaths.length === 0) return [];
+  const vanillaIndex = await getVanillaPackIndex();
+  if (!vanillaIndex) return undefined;
+  return selectVanillaPacksHoldingFiles(vanillaIndex, iconPaths, getVanillaPackPathsInLoadOrder());
+};
+
+/**
+ * The vanilla rows for `tablePathPrefixes`, from the vanilla db cache wherever it can serve them.
+ *
+ * Vanilla ships its db tables in the database pack, but this asks the file index rather than
+ * assuming it, so a game or a table family that breaks the rule is read rather than missed. Only the
+ * database pack can come from the cache - that is all the cache holds - and anything else is read
+ * the way it always was.
+ *
+ * Undefined means the read did not produce every prefix's rows - usually because another operation
+ * was already reading a pack this one wanted. It matters because both callers distil these rows into
+ * a model they then cache: a model built without the base game's rows reads as a real answer, with
+ * mods present and vanilla missing, and would be served for the rest of the session.
+ */
+const readVanillaTablePacks = async (
+  dataFolder: string,
+  tablePathPrefixes: string[],
+  fallbackPackPaths: string[],
+  emitToMainWindow: boolean,
+): Promise<Pack[] | undefined> => {
+  const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
+  const vanillaIndex = await getVanillaPackIndex();
+
+  // No pack under any of these prefixes is not an answer worth acting on - an index built before the
+  // tables existed says the same thing as a game that genuinely has none. Read the old set.
+  const narrowed = vanillaIndex
+    ? selectVanillaPacksHoldingTables(vanillaIndex, tablePathPrefixes, getVanillaPackPathsInLoadOrder())
+    : [];
+  const packPaths = narrowed.length > 0 ? narrowed : fallbackPackPaths;
+
+  const stillToRead: string[] = [];
+  for (const packPath of packPaths) {
+    if (nodePath.resolve(packPath) !== nodePath.resolve(dbPackPath)) {
+      stillToRead.push(packPath);
+      continue;
+    }
+    // The file index still comes from the pack, which is cheap; the parse, which is not, comes from
+    // the cache. Partly served is no use: the rows below are read per prefix.
+    const indexedDbPack = await readPack(packPath, { skipParsingTables: true });
+    const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablePathPrefixes, getDBVersion);
+    if (unservedPrefixes.length === 0) {
+      indexedDbPack.readTables = [...tablePathPrefixes];
+      appendPacksData(indexedDbPack, undefined, emitToMainWindow);
+      continue;
+    }
+    console.log("readVanillaTablePacks: prefixes the vanilla db cache did not serve:", unservedPrefixes);
+    stillToRead.push(packPath);
+  }
+  if (stillToRead.length > 0) {
+    await readModsByPath(
+      stillToRead,
+      { skipParsingTables: false, tablesToRead: tablePathPrefixes },
+      true,
+      emitToMainWindow,
+    );
+  }
+
+  const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+  const packs = packPaths.map((packPath) => packsByPath.get(packPath)).filter((pack): pack is Pack => !!pack);
+  // Only the packs that carry one of these tables. When the index was unavailable the set above is
+  // the caller's whole vanilla filter, and handing a consumer packs with nothing in them would have
+  // it build view data per pack for no rows.
+  const carriers = packs.filter((pack) =>
+    pack.packedFiles.some((packedFile) => tablePathPrefixes.some((prefix) => packedFile.name.startsWith(prefix))),
+  );
+  // Not one pack carrying any of them means the pack that does was never read, not that the game
+  // ships none of these tables: `findUnparsedTablePrefixes` has nothing to report either way, so it
+  // cannot tell those apart on its own.
+  if (carriers.length === 0) return undefined;
+  if (findUnparsedTablePrefixes(carriers, tablePathPrefixes).length > 0) return undefined;
+  return carriers;
+};
+
 const getVanillaLocalisationPackPaths = (dataFolder: string) =>
   getVanillaLocalisationPackPathsFor(
     appData.allVanillaPackNames,
@@ -1212,10 +1303,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
       }
       const vanillaLocs = await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder));
-      // Still read the vanilla packs, without their locs: these packs carry no loc tables, but
-      // loadIconsFromPacks needs them indexed in appData.packsData further down.
-      await readModsByPath(vanillaPacksToRead, { skipParsingTables: true }, true, false);
-      const vanillaPacks = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
       const enabledModPacks = appData.packsData.filter((packData) => mods.some((mod) => mod.path == packData.path));
       const mergedSkillsCore = cloneSkillsDataCore(cachedVanillaSkillsCore);
       if (mods.length > 0) {
@@ -1236,6 +1323,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         mergedSkillsCore.skillsToEffects,
         mergedSkillsCore.effectsToEffectData,
       );
+      // Vanilla is read on this path for its icons and nothing else, so only the handful of packs
+      // that hold one gets indexed. The icon paths have to be known first, which is why this sits
+      // below the merge rather than beside the mod read.
+      const vanillaPacks = await getIconPacks(
+        (await findVanillaPacksHoldingIcons(skillIconPaths)) ?? vanillaPacksToRead,
+      );
       const icons = await loadIconsFromPacks(vanillaPacks.concat(enabledModPacks), skillIconPaths);
       appData.skillsData = {
         ...mergedSkillsCore,
@@ -1255,19 +1348,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       return;
     }
     await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
-    await readModsByPath(vanillaPacksToRead, { skipParsingTables: false, readLocs: true, tablesToRead }, true, false);
-    // readModsByPath skips a pack another operation is already reading, and says so only in a log
-    // line. Building on a vanilla pack with nothing parsed in it produces skills data holding only
-    // the mods' rows, which the vanilla core cache below would then persist as if it were the base
-    // game's. Give up instead: the next request rebuilds from scratch.
-    const vanillaSkillsPacks = appData.packsData.filter((pack) => vanillaPacksToRead.includes(pack.path));
-    const unparsedVanillaPrefixes = findUnparsedTablePrefixes(vanillaSkillsPacks, tablesToRead);
-    if (unparsedVanillaPrefixes.length > 0) {
-      console.log("getSkillsData: the vanilla skills tables were not read, not building:", unparsedVanillaPrefixes);
+    // Only the packs that hold these tables, and their rows from the vanilla db cache where it can
+    // serve them. The vanilla locs are not read here at all - they come from the loc cache below -
+    // and undefined means a pack another operation was reading was not parsed. Building on that
+    // produces skills data holding only the mods' rows, which the vanilla core cache would then
+    // persist as if it were the base game's. Give up instead: the next request rebuilds from scratch.
+    const vanillaSkillsPacks = await readVanillaTablePacks(dataFolder, tablesToRead, vanillaPacksToRead, false);
+    if (!vanillaSkillsPacks) {
+      console.log("getSkillsData: the vanilla skills tables were not read, not building");
       return;
     }
+    const vanillaSkillsPackPaths = new Set(vanillaSkillsPacks.map((pack) => pack.path));
     const unsortedPacksTableData = getPacksTableData(
-      appData.packsData.filter((pack) => pack.name == "db.pack" || mods.some((mod) => mod.path === pack.path)),
+      appData.packsData.filter(
+        (pack) => vanillaSkillsPackPaths.has(pack.path) || mods.some((mod) => mod.path === pack.path),
+      ),
       tablesToRead,
       true,
     );
@@ -1275,8 +1370,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const packsTableData = [] as PackViewData[];
     // sort the mods by load priority
     const sortedMods = sortByNameAndLoadOrder(mods);
-    const dbPackData = unsortedPacksTableData.find((ptd) => ptd.packName == "db.pack");
-    if (dbPackData) packsTableData.push(dbPackData);
+    const vanillaPacksTableData = vanillaSkillsPacks
+      .map((pack) => unsortedPacksTableData.find((ptd) => ptd.packPath == pack.path))
+      .filter((packTableData): packTableData is PackViewData => !!packTableData);
+    packsTableData.push(...vanillaPacksTableData);
     for (const mod of sortedMods.toReversed()) {
       const packTableData = unsortedPacksTableData.find((ptd) => ptd.packPath == mod.path);
       if (packTableData) packsTableData.push(packTableData);
@@ -1863,13 +1960,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     );
     // for (const pack of enabledModPacks)
     //   await readFromExistingPack(pack, { filesToRead: skillIconPaths, skipParsingTables: true });
-    console.log("vanillaPacksToRead", vanillaPacksToRead);
-    console.log(
-      "vanillaPacksToRead ARE:",
-      appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path)).map((pack) => pack.path),
+    // The packs the tables came from hold hardly any of the icons, so this is a second, separate set:
+    // the vanilla packs the file index says carry one, indexed and nothing more.
+    const vanillaIconPacks = await getIconPacks(
+      (await findVanillaPacksHoldingIcons(skillIconPaths)) ?? vanillaPacksToRead,
     );
-    const vanillaPacks = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
-    const icons = await loadIconsFromPacks(vanillaPacks.concat(enabledModPacks), skillIconPaths);
+    console.log(
+      "getSkillsData: vanilla packs holding skill icons:",
+      vanillaIconPacks.map((pack) => pack.name),
+    );
+    const icons = await loadIconsFromPacks(vanillaIconPacks.concat(enabledModPacks), skillIconPaths);
     // Vanilla first, then mods, matching the cached path above. These packs were read for their
     // tables regardless, so the saving here is the tries, which used to be retained for the session.
     const locs = {
@@ -1909,7 +2009,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     }
     const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
-    const skillsDataPackPaths = vanillaPacks.concat(enabledModPacks).map((pack) => pack.path);
+    const skillsDataPackPaths = vanillaIconPacks.concat(enabledModPacks).map((pack) => pack.path);
     appData.skillsData = {
       subtypesToSet,
       subtypeAndSets,
@@ -1951,10 +2051,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           userDataPath: app.getPath("userData"),
           skillsData: appData.skillsData,
         });
-      } else if (dbPackData) {
-        // Seed vanilla cache from db.pack only, even on a modded cold start.
+      } else if (vanillaPacksTableData.length > 0) {
+        // Seed the vanilla cache from the vanilla packs only, even on a modded cold start.
         const vanillaCoreForCache = createEmptySkillsDataCore();
-        applyModOverlayToSkillsDataCore(vanillaCoreForCache, [dbPackData], getTableRowData);
+        applyModOverlayToSkillsDataCore(vanillaCoreForCache, vanillaPacksTableData, getTableRowData);
         void saveVanillaSkillsDataCoreCache({
           dataFolder,
           currentGame: appData.currentGame,
@@ -1971,8 +2071,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     // Both the live data and the vanilla core cache have been built off these rows by now, and what
     // follows works entirely off the structures above. This is the cold path, so the rows dropped
-    // here are every skills table in the vanilla packs as well as the mods'.
-    releaseParsedTables(vanillaPacks.concat(enabledModPacks), tablesToRead);
+    // here are every skills table in the vanilla packs as well as the mods'. The icon packs are a
+    // different set and were never parsed, so they are not in this list.
+    releaseParsedTables(vanillaSkillsPacks.concat(enabledModPacks), tablesToRead);
     const nodesKF = setToNodes[setKF];
     // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
@@ -2023,9 +2124,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey,
       getLoc,
     });
+    // Same as on the subtype switch below: the tooltip icons are not part of the sweep the vanilla
+    // icon packs were chosen for, so whichever are still missing get their own packs looked up.
+    const missingAbilityIconPaths = kfAbilityIconPaths.filter((iconPath) => !icons[iconPath]);
+    const abilityIconPacks =
+      missingAbilityIconPaths.length > 0
+        ? await getIconPacks((await findVanillaPacksHoldingIcons(missingAbilityIconPaths)) ?? [])
+        : [];
     const addedIconGeneration = await loadMissingIconsInto(
       icons,
-      vanillaPacks.concat(enabledModPacks),
+      vanillaIconPacks
+        .concat(abilityIconPacks.filter((pack) => !vanillaIconPacks.includes(pack)))
+        .concat(enabledModPacks),
       kfAbilityIconPaths,
     );
     if (addedIconGeneration) appData.skillsData.iconGeneration = addedIconGeneration;
@@ -2124,9 +2234,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
       getLoc,
     });
+    // The tree's own icons were resolved when the data was built, so the build only had to index the
+    // vanilla packs holding those. A tooltip's icons are not known until a subtype is opened and can
+    // sit in a pack that set never included, so the ones still missing are looked up here rather than
+    // being lost to the narrower read.
+    const missingTooltipIconPaths = tooltipIconPaths.filter((iconPath) => !cachedSkillsData.icons[iconPath]);
+    const tooltipIconPackPaths =
+      missingTooltipIconPaths.length > 0 ? ((await findVanillaPacksHoldingIcons(missingTooltipIconPaths)) ?? []) : [];
+    const iconPackPaths = [
+      ...cachedSkillsData.skillsDataPackPaths,
+      ...tooltipIconPackPaths.filter((packPath) => !cachedSkillsData.skillsDataPackPaths.includes(packPath)),
+    ];
     const addedIconGeneration = await loadMissingIconsInto(
       cachedSkillsData.icons,
-      appData.packsData.filter((pack) => cachedSkillsData.skillsDataPackPaths.includes(pack.path)),
+      await getIconPacks(iconPackPaths),
       tooltipIconPaths,
     );
     if (addedIconGeneration) cachedSkillsData.iconGeneration = addedIconGeneration;
@@ -2718,10 +2839,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
 
+  const TECHNOLOGY_ICON_PREFIX = "ui\\campaign ui\\technologies\\";
+  const TECHNOLOGY_ICON_EXTENSION = /\.(png|jpg|jpeg)$/i;
   const getTechnologyIconPath = (iconName: string | undefined) => {
     if (!iconName || iconName.trim() === "") return undefined;
-    const withoutExtension = iconName.replace(/\.(png|jpg|jpeg)$/i, "");
-    return `ui\\campaign ui\\technologies\\${withoutExtension}.png`;
+    const withoutExtension = iconName.replace(TECHNOLOGY_ICON_EXTENSION, "");
+    return `${TECHNOLOGY_ICON_PREFIX}${withoutExtension}.png`;
   };
   const getTechnologyIconNameFromPath = (iconPath: string | undefined) => {
     if (!iconPath || iconPath.trim() === "") return "";
@@ -2817,15 +2940,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             !packName.startsWith("terrain")),
       )
       .map((packName) => nodePath.join(dataFolder, packName));
-    await readModsByPath(vanillaPacksToRead, { skipParsingTables: false, readLocs: true, tablesToRead }, true);
-    const vanillaPackPathSet = new Set(vanillaPacksToRead);
-    const vanillaPacks = appData.packsData.filter((packData) => vanillaPackPathSet.has(packData.path));
-    // A pack readModsByPath skipped, because something else was already reading it, still carries its
-    // technology tables - with no rows. The result is held under a cache key for the rest of the
-    // session, so a tech tree built from that would stay missing the base game's technologies.
-    const unparsedVanillaPrefixes = findUnparsedTablePrefixes(vanillaPacks, tablesToRead);
-    if (unparsedVanillaPrefixes.length > 0) {
-      console.log("buildTechnologyData: the vanilla technology tables were not read:", unparsedVanillaPrefixes);
+    // Only the packs that hold these tables, and their rows from the vanilla db cache where it can
+    // serve them. The locs are not read here - they come from the loc cache below - and undefined
+    // means a pack something else was already reading still carries its technology tables with no
+    // rows in them. The result is held under a cache key for the rest of the session, so a tech tree
+    // built from that would stay missing the base game's technologies.
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, tablesToRead, vanillaPacksToRead, true);
+    if (!vanillaPacks) {
+      console.log("buildTechnologyData: the vanilla technology tables were not read");
       return undefined;
     }
     const packsByPath = new Map(appData.packsData.map((packData) => [packData.path, packData]));
@@ -3019,15 +3141,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           .filter((iconPath): iconPath is string => !!iconPath),
       ).values(),
     );
+    // Every technology icon the game and the enabled mods ship, so the editor's picker can offer one
+    // the current tree does not use. Vanilla's come from the file index rather than from indexing the
+    // vanilla packs, which is what the whole vanilla set used to be read for.
+    const isTechnologyIconPath = (iconPath: string) =>
+      iconPath.toLowerCase().startsWith(TECHNOLOGY_ICON_PREFIX) && TECHNOLOGY_ICON_EXTENSION.test(iconPath);
+    const vanillaIndex = await getVanillaPackIndex();
     const allTechnologyIconPaths = Array.from(
       new Set(
-        orderedPacks
-          .flatMap((pack) => pack.packedFiles.map((packedFile) => packedFile.name))
-          .filter(
-            (iconPath) =>
-              iconPath.toLowerCase().startsWith("ui\\campaign ui\\technologies\\") &&
-              /\.(png|jpg|jpeg)$/i.test(iconPath),
-          ),
+        (vanillaIndex
+          ? [...collectVanillaFilesUnderPrefix(vanillaIndex, TECHNOLOGY_ICON_PREFIX).keys()]
+          : vanillaPacks.flatMap((pack) => pack.packedFiles.map((packedFile) => packedFile.name))
+        )
+          .concat(orderedModPacks.flatMap((pack) => pack.packedFiles.map((packedFile) => packedFile.name)))
+          .filter(isTechnologyIconPath),
       ).values(),
     );
     const effectIconPaths = Array.from(
@@ -3047,13 +3174,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       ...(await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder))),
       ...getLocsFromPacks(orderedModPacks, getLocsTrie),
     };
-    const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
+    // The table packs hold hardly any of these, so the packs the icons are read out of are resolved
+    // separately and indexed only if they turn out to carry one.
+    const vanillaIconPacks = await getIconPacks((await findVanillaPacksHoldingIcons(iconPaths)) ?? vanillaPacksToRead);
+    const iconPacks = vanillaIconPacks
+      .concat(vanillaPacks.filter((pack) => !vanillaIconPacks.includes(pack)))
+      .concat(orderedModPacks);
+    const icons = iconPaths.length > 0 ? await loadIconsFromPacks(iconPacks, iconPaths) : {};
     const iconGeneration = registerIconAssets(icons);
     // Every technology table has been read into the structures above, and the result is held in
-    // `cachedTechnologyData` for as long as it stays valid. This is the heaviest of these reads -
-    // the whole vanilla pack set, parsed - and nothing below the row extraction touches the rows
-    // again: the icon paths come from the pack index, and the locs from their own tables, which are
-    // not db tables and so are left parsed.
+    // `cachedTechnologyData` for as long as it stays valid, so nothing below the row extraction
+    // touches the rows again: the icon paths come from the file index, and the locs from the loc
+    // cache. Only the packs that were parsed are released; the icon packs never were.
     releaseParsedTables(orderedPacks, tablesToRead);
     return {
       setsByKey,
