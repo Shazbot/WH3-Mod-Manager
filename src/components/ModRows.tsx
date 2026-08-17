@@ -693,6 +693,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   showConfigColumn={false}
                   isInsidePane
                   canReorder={false}
+                  showPositionIndex={false}
                   gridClass={getModListGridClass("compact", { ...compactGridOptions, showConfigColumn: false })}
                   ghostClass={getModListGhostClass("compact", { ...compactGridOptions, showConfigColumn: false })}
                   loadOrderIndexByModName={loadOrderIndexByModName}
@@ -724,6 +725,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   showConfigColumn
                   isInsidePane
                   canReorder
+                  showPositionIndex
                   gridClass={getModListGridClass("compact", { ...compactGridOptions, showConfigColumn: true })}
                   ghostClass={getModListGhostClass("compact", { ...compactGridOptions, showConfigColumn: true })}
                   loadOrderIndexByModName={enabledLoadOrderIndexByModName}
@@ -744,6 +746,7 @@ const ModRows = memo((props: ModRowsProps) => {
             showConfigColumn
             isInsidePane={false}
             canReorder={canReorderLoadOrder}
+            showPositionIndex
             gridClass={getModListGridClass("wide", { ...compactGridOptions, showConfigColumn: true })}
             ghostClass={getModListGhostClass("wide", { ...compactGridOptions, showConfigColumn: true })}
             loadOrderIndexByModName={loadOrderIndexByModName}

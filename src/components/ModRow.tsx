@@ -42,6 +42,8 @@ type ModRowProps = {
   sortingType: SortingType;
   /** Whether this list lets the user pick a new load order position for the row. */
   canReorder: boolean;
+  /** False where the row's position in the list says nothing about the order the game will load in. */
+  showPositionIndex: boolean;
   layout: ModListLayout;
   /** The compact layout only shows the configuration column on the enabled-mods pane. */
   showConfigColumn: boolean;
@@ -224,6 +226,7 @@ const ModRow = memo(
     isRecentlyReordered,
     sortingType,
     canReorder,
+    showPositionIndex,
     layout,
     showConfigColumn,
     onCustomizeModClicked,
@@ -249,9 +252,13 @@ const ModRow = memo(
     const isCompact = layout === "compact";
     const checkboxId = mod.workshopId + "enabled";
 
-    const loadOrderNumber = (mod.loadOrder == undefined && <span>{loadOrderIndex + 1}</span>) || (
-      <span className="text-blue-500 font-bold">{(mod.loadOrder as number) + 1}</span>
-    );
+    // A pinned load order is worth showing wherever the mod appears, since it survives being disabled and
+    // is honoured again on re-enable. The derived index is only meaningful in a list whose order is the
+    // one the game will use, so the dual layout's disabled pane leaves the cell blank instead.
+    const loadOrderNumber =
+      (mod.loadOrder != undefined && <span className="text-blue-500 font-bold">{mod.loadOrder + 1}</span>) ||
+      (showPositionIndex && <span>{loadOrderIndex + 1}</span>) ||
+      null;
 
     const reorderButton = (
       <button

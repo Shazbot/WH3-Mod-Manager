@@ -47,6 +47,8 @@ type ModListPaneProps = {
   isInsidePane: boolean;
   /** Whether this list lets the user pick a new load order position for a row. */
   canReorder: boolean;
+  /** False where the row's position in the list says nothing about the order the game will load in. */
+  showPositionIndex: boolean;
   gridClass: string;
   ghostClass: string;
   areThumbnailsEnabled: boolean;
@@ -81,6 +83,7 @@ const ModListPane = memo(
     showConfigColumn,
     isInsidePane,
     canReorder,
+    showPositionIndex,
     gridClass,
     ghostClass,
     areThumbnailsEnabled,
@@ -185,6 +188,7 @@ const ModListPane = memo(
                 isRecentlyReordered: recentlyReorderedModNames.has(row.mod.name),
                 sortingType,
                 canReorder,
+                showPositionIndex,
                 layout,
                 showConfigColumn,
                 isLast: rowData.length == index + 1,

@@ -116,6 +116,22 @@ describe("dual mod list layout", () => {
     expect(within(left).queryByText("alpha")).toBeInTheDocument();
   });
 
+  it("blanks the position index for disabled mods but keeps a pinned load order", async () => {
+    renderDualLayout([createMod("alpha", false), createMod("delta", false, 6), createMod("beta", true, 0)]);
+
+    const { left, right } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    // The index a disabled mod happens to sit at says nothing about the order the game will load in.
+    const alphaRow = left.querySelector<HTMLElement>("[id='alpha.pack']") as HTMLElement;
+    expect(alphaRow.textContent).not.toMatch(/\d/);
+
+    // A pin survives being disabled and is honoured on re-enable, so it is still worth showing.
+    expect(within(left).getByText("7")).toBeInTheDocument();
+    // The enabled pane numbers every row, pinned or not.
+    expect(within(right).getByText("1")).toBeInTheDocument();
+  });
+
   it("moves a mod to the other pane when its row is clicked", async () => {
     const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
 
