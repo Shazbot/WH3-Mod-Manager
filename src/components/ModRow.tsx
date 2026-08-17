@@ -360,7 +360,10 @@ const ModRow = memo(
                     {decodedHumanName}
                   </span>
                 )) || (
-                  <span className="block truncate font-medium" title={mod.name}>
+                  // PackName colours itself by source, and those colours were picked for a small
+                  // secondary line. Promoted to the primary line the data-mod orange glares, so the line
+                  // is knocked back - dimming here rather than in PackName keeps the wide layout as it is.
+                  <span className="block truncate font-medium opacity-80" title={mod.name}>
                     <PackName
                       mod={mod}
                       isEnabledInMergedMod={isEnabledInMergedMod}
