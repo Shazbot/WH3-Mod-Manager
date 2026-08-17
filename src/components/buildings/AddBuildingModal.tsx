@@ -137,6 +137,14 @@ const AddBuildingModal = memo(({ from, query, keyPrefix, onCancel, onAdd }: AddB
                     value: effect.value,
                   }))
                 : undefined,
+              recruitableUnits: (from.recruitableRows ?? from.recruitable).map((unit) => ({
+                unitKey: unit.unitKey,
+                faction: unit.faction,
+                xp: unit.xp,
+              })),
+              garrisonUnitGroups: from.garrison
+                .map((unit) => unit.unitGroup)
+                .filter((unitGroup): unitGroup is string => Boolean(unitGroup)),
               upgradeFromLevelKey: from.levelKey,
             })
           }

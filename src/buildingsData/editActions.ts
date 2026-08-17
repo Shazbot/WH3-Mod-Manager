@@ -34,6 +34,10 @@ export interface AddBuildingLevelInput {
    * action rather than a separate one so undoing the addition takes them with it.
    */
   effects?: Array<{ effectKey: string; scope: string; value: number }>;
+  /** Recruitment rows to copy from the building this level upgrades. */
+  recruitableUnits?: Array<{ unitKey: string; faction?: string; xp?: number }>;
+  /** Garrison groups to copy from the building this level upgrades. */
+  garrisonUnitGroups?: string[];
   /** When set, the new building is the upgrade of this one. */
   upgradeFromLevelKey?: string;
   /**
@@ -98,6 +102,36 @@ export const addBuildingLevelRows = (input: AddBuildingLevelInput, cursors: Reco
     });
   }
 
+  for (const unit of input.recruitableUnits ?? []) {
+    rows.push({
+      table: "building_units_allowed_tables",
+      origin: "addBuilding",
+      values: {
+        key: takeNumericId(cursors, "building_units_allowed_tables"),
+        building: input.levelKey,
+        unit: unit.unitKey,
+        XP: `${unit.xp ?? 0}`,
+        faction: unit.faction ?? "",
+        enabled: bool(true),
+      },
+    });
+  }
+
+  // A group expands to several units on the board, but the database has one junction row per
+  // group. The tile therefore repeats a group once per expanded unit; keep one copied junction.
+  for (const unitGroup of [...new Set(input.garrisonUnitGroups ?? [])]) {
+    if (!unitGroup) continue;
+    rows.push({
+      table: "building_level_armed_citizenry_junctions_tables",
+      origin: "addBuilding",
+      values: {
+        id: takeNumericId(cursors, "building_level_armed_citizenry_junctions_tables"),
+        building_level: input.levelKey,
+        unit_group: unitGroup,
+      },
+    });
+  }
+
   for (const effect of input.effects ?? []) {
     rows.push({
       table: "building_effects_junction_tables",
@@ -145,8 +179,6 @@ export const addBuildingLevelRows = (input: AddBuildingLevelInput, cursors: Reco
     });
   }
 
-  // Referenced so the signature stays honest about allocating ids; no table here needs one yet.
-  void cursors;
   return rows;
 };
 

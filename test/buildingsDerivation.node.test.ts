@@ -422,6 +422,9 @@ describe("resolveRegionBuildings: recruitment unlocks", () => {
     expect(recruitmentOf("a_1")).toEqual(["spearmen"]);
     expect(recruitmentOf("a_2")).toEqual(["halberdiers"]);
     expect(recruitmentOf("b_1")).toEqual(["spearmen"]);
+
+    const secondLevel = tiles.find((tile) => tile.levelKey === "a_2");
+    expect(secondLevel?.recruitableRows?.map((unit) => unit.unitKey)).toEqual(["spearmen", "halberdiers"]);
   });
 });
 

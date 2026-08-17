@@ -326,6 +326,8 @@ export interface BuildingsTile {
   effects: BuildingEffectRow[];
   garrison: BuildingUnitRow[];
   recruitable: BuildingUnitRow[];
+  /** Every effective recruitment row on this level, including unlocks repeated by higher tiers. */
+  recruitableRows?: BuildingUnitRow[];
   /** Placed in this region by the campaign's start pos. */
   isExistingInRegion: boolean;
   /** Shown only because `includeLevelsWithoutVariant` is on. */

@@ -492,10 +492,10 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
       const loc = variant
         ? data.variantLoc[variantLocKey(levelKey, variant.culture, variant.subculture, variant.faction)]
         : undefined;
-      const recruitable = (data.recruitableByLevel[levelKey] ?? []).filter(
+      const recruitableRows = (data.recruitableByLevel[levelKey] ?? []).filter(
         (unit) => !unit.faction || !query.faction || unit.faction === query.faction,
       );
-      const newlyRecruitable = recruitable.filter((unit) => {
+      const newlyRecruitable = recruitableRows.filter((unit) => {
         if (recruitmentAlreadyUnlocked.has(unit.unitKey)) return false;
         recruitmentAlreadyUnlocked.add(unit.unitKey);
         return true;
@@ -527,6 +527,7 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
           effects: data.effectsByLevel[levelKey] ?? [],
           garrison: data.garrisonByLevel[levelKey] ?? [],
           recruitable: newlyRecruitable,
+          recruitableRows,
           tierRow: tierRowOf(level, isSettlementOrPortChain),
           isExistingInRegion: existingSet.has(levelKey),
           hasNoVariant,

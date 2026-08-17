@@ -225,6 +225,59 @@ describe("addBuildingLevelRows", () => {
     expect(effects.every((row) => row.origin === "addBuilding")).toBe(true);
   });
 
+  it("copies recruitment and garrison rows with fresh numeric ids", () => {
+    const cursors = {
+      building_units_allowed_tables: 41,
+      building_level_armed_citizenry_junctions_tables: 73,
+    };
+    const rows = addBuildingLevelRows(
+      {
+        ...input,
+        recruitableUnits: [{ unitKey: "spearmen", faction: "emp_faction", xp: 3 }, { unitKey: "archers" }],
+        garrisonUnitGroups: ["group_a", "group_a", "group_b"],
+      },
+      cursors,
+    );
+
+    expect(rows.filter((row) => row.table === "building_units_allowed_tables").map((row) => row.values)).toEqual([
+      {
+        key: "41",
+        building: "my_barracks_2",
+        unit: "spearmen",
+        XP: "3",
+        faction: "emp_faction",
+        enabled: "true",
+      },
+      {
+        key: "42",
+        building: "my_barracks_2",
+        unit: "archers",
+        XP: "0",
+        faction: "",
+        enabled: "true",
+      },
+    ]);
+    expect(
+      rows.filter((row) => row.table === "building_level_armed_citizenry_junctions_tables").map((row) => row.values),
+    ).toEqual([
+      { id: "73", building_level: "my_barracks_2", unit_group: "group_a" },
+      { id: "74", building_level: "my_barracks_2", unit_group: "group_b" },
+    ]);
+    expect(cursors).toEqual({
+      building_units_allowed_tables: 43,
+      building_level_armed_citizenry_junctions_tables: 75,
+    });
+    expect(
+      rows
+        .filter(
+          (row) =>
+            row.table === "building_units_allowed_tables" ||
+            row.table === "building_level_armed_citizenry_junctions_tables",
+        )
+        .every((row) => row.origin === "addBuilding"),
+    ).toBe(true);
+  });
+
   it("writes no effect rows when the copy is declined", () => {
     expect(addBuildingLevelRows(input, {}).some((row) => row.table === "building_effects_junction_tables")).toBe(false);
   });
