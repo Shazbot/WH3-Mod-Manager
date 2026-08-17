@@ -6,6 +6,7 @@ import {
   toggleIsClosedOnPlay,
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
+  toggleIsDualModListLayoutEnabled,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
@@ -98,6 +99,7 @@ const OptionsDrawer = memo(() => {
   const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+  const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
@@ -651,6 +653,23 @@ const OptionsDrawer = memo(() => {
             <p className="ml-1 mt-1 text-sm text-gray-500 dark:text-gray-400">
               {localized.useEnglishLocalizationsHelp ||
                 "Read the game's English text even when the manager is set to another language."}
+            </p>
+
+            <div className="flex items-center ml-1 mt-4">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="enable-dual-mod-list-layout"
+                checked={!!isDualModListLayoutEnabled}
+                onChange={() => dispatch(toggleIsDualModListLayoutEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="enable-dual-mod-list-layout">
+                {localized.dualModListLayout || "Dual List Layout"}
+              </label>
+            </div>
+            <p className="ml-1 mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {localized.dualModListLayoutHelp ||
+                "Split the All Mods tab into two lists: disabled mods on the left, enabled mods on the right. Click a mod to move it between them."}
             </p>
 
             <h6 className="mt-6">{localized.extraColumns}</h6>

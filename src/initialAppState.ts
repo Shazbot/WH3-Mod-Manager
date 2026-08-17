@@ -22,6 +22,7 @@ const initialState = {
   isClosedOnPlay: false,
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,
+  isDualModListLayoutEnabled: false,
   isPresetAuthorEnabled: false,
   arePresetThumbnailsEnabled: false,
   isCategoryAuthorEnabled: false,

@@ -1045,6 +1045,7 @@ const appSlice = createSlice({
       state.isCompatCheckingVanillaPacks =
         !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
+      state.isDualModListLayoutEnabled = !!fromConfigAppState.isDualModListLayoutEnabled;
       state.isPresetAuthorEnabled = !!fromConfigAppState.isPresetAuthorEnabled;
       state.arePresetThumbnailsEnabled = !!fromConfigAppState.arePresetThumbnailsEnabled;
       state.isCategoryAuthorEnabled = !!fromConfigAppState.isCategoryAuthorEnabled;
@@ -1339,6 +1340,9 @@ const appSlice = createSlice({
     },
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
+    },
+    toggleIsDualModListLayoutEnabled: (state: AppState) => {
+      state.isDualModListLayoutEnabled = !state.isDualModListLayoutEnabled;
     },
     toggleIsPresetAuthorEnabled: (state: AppState) => {
       state.isPresetAuthorEnabled = !state.isPresetAuthorEnabled;
@@ -1704,6 +1708,7 @@ export const {
   setWasOnboardingEverRun,
   toggleIsAuthorEnabled,
   toggleAreThumbnailsEnabled,
+  toggleIsDualModListLayoutEnabled,
   toggleIsPresetAuthorEnabled,
   toggleArePresetThumbnailsEnabled,
   toggleIsCategoryAuthorEnabled,

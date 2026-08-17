@@ -1,5 +1,4 @@
 import React, {
-  CSSProperties,
   memo,
   RefObject,
   useCallback,
@@ -23,24 +22,21 @@ import {
   setModBeingCustomized,
   removeAllPackDataOverwrites,
 } from "../appSlice";
-import { Tooltip } from "flowbite-react";
 import { getFilteredMods, getLoadOrderInsertionIndex, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
 import ModDropdown from "./ModDropdown";
 import { isModAlwaysEnabled } from "../modsHelpers";
 import * as modRowSorting from "../utility/modRowSorting";
 import { SortingType } from "../utility/modRowSorting";
-import ModRow from "./ModRow";
 import localizationContext from "../localizationContext";
-import { GoGear } from "react-icons/go";
 import ModCustomization from "./ModCustomization";
 import UserFlowOptionsModal from "./UserFlowOptionsModal";
-import { WindowScroller, AutoSizer, List, CellMeasurerCache, CellMeasurer } from "react-virtualized";
-import { MeasuredCellParent } from "react-virtualized/dist/es/CellMeasurer";
-import { GridCoreProps } from "react-virtualized/dist/es/Grid";
+import { List } from "react-virtualized";
 import hash from "object-hash";
 import { getModSourceId, getModSourceKind } from "../modSources";
 import { getModThumbnailSrc } from "../utility/frontend/modDisplay";
+import ModListPane, { ModListPaneHandle, ModRowCallbacks } from "./ModListPane";
+import { getModListGhostClass, getModListGridClass, ModRowDatum } from "../utility/frontend/modListLayout";
 
 const noHiddenModNames = new Set<string>();
 const REORDER_HIGHLIGHT_MS = 2400;
@@ -53,13 +49,6 @@ const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 const domParser = new DOMParser();
-
-const getGhostClass = (isAuthorEnabled: boolean, areThumbnailsEnabled: boolean) => {
-  if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-8";
-  if (isAuthorEnabled) return "grid-column-7";
-  if (areThumbnailsEnabled) return "grid-column-7";
-  return "grid-column-6";
-};
 
 const decodeHtml = (encoded: string) => {
   const doc = domParser.parseFromString(encoded, "text/html");
@@ -86,6 +75,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const alwaysEnabledModNamesList = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
+  const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
   const customizableMods = useAppSelector((state) => state.app.customizableMods);
@@ -97,7 +87,6 @@ const ModRows = memo((props: ModRowsProps) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isFlowOptionsModalOpen, setIsFlowOptionsModalOpen] = useState<boolean>(false);
   const [flowOptionsModSelected, setFlowOptionsModSelected] = useState<Mod | undefined>();
-  // const [modBeingCustomized, setModBeingCustomized] = useState<Mod>();
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
   const [loadOrderModName, setLoadOrderModName] = useState<string>();
@@ -109,10 +98,40 @@ const ModRows = memo((props: ModRowsProps) => {
   const reorderHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const isCurrentTabEnabledMods = currentTab == "enabledMods";
+  /** The two-pane view replaces the single All Mods list; the Enabled Mods tab is unaffected by it. */
+  const isDualLayout = isDualModListLayoutEnabled && currentTab == "mods";
+  /** Load order placement is available wherever an enabled-only list is on screen. */
+  const canReorderLoadOrder = isCurrentTabEnabledMods || isDualLayout;
 
   const localized: Record<string, string> = useContext(localizationContext);
 
-  const listRef = useRef<List>(null);
+  const singleListRef = useRef<List>(null);
+  const leftListRef = useRef<List>(null);
+  const rightListRef = useRef<List>(null);
+  const singlePaneHandleRef = useRef<ModListPaneHandle>(null);
+  const rightPaneHandleRef = useRef<ModListPaneHandle>(null);
+  // Callback refs rather than useRef: the panes only mount in the dual layout and WindowScroller needs a
+  // render to happen once the element exists.
+  const [leftPaneScroll, setLeftPaneScroll] = useState<HTMLDivElement | null>(null);
+  const [rightPaneScroll, setRightPaneScroll] = useState<HTMLDivElement | null>(null);
+  /**
+   * The page scroller belongs to a parent, so its ref is still empty while this first renders. Mirroring
+   * it into state is what gets the list a second render to mount WindowScroller against.
+   */
+  const [pageScroll, setPageScroll] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setPageScroll(props.scrollElement.current);
+  }, [props.scrollElement]);
+
+  /** Placement mode always runs in the list that holds the enabled mods. */
+  const getReorderScrollElement = useCallback(
+    () => (isDualLayout ? rightPaneScroll : pageScroll),
+    [isDualLayout, pageScroll, rightPaneScroll],
+  );
+  const getReorderPaneHandle = useCallback(
+    () => (isDualLayout ? rightPaneHandleRef.current : singlePaneHandleRef.current),
+    [isDualLayout],
+  );
 
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const hiddenModNames = useMemo(() => new Set(hiddenModNamesList), [hiddenModNamesList]);
@@ -149,6 +168,17 @@ const ModRows = memo((props: ModRowsProps) => {
     () => new Map(orderedMods.map((mod, index) => [mod.name, index])),
     [orderedMods],
   );
+  /**
+   * The dual layout's right pane is the enabled list, so its position numbers have to count over the
+   * enabled mods alone the way the Enabled Mods tab does, not over every mod in the preset.
+   */
+  const enabledLoadOrderIndexByModName = useMemo(() => {
+    if (!isDualLayout) return loadOrderIndexByModName;
+    const orderedEnabledMods = sortByNameAndLoadOrder(
+      enabledMods.filter((mod) => !hiddenModNames.has(mod.name) || alwaysEnabledModNames.has(mod.name)),
+    );
+    return new Map(orderedEnabledMods.map((mod, index) => [mod.name, index]));
+  }, [alwaysEnabledModNames, enabledMods, hiddenModNames, isDualLayout, loadOrderIndexByModName]);
 
   const unfilteredMods = useMemo(() => {
     const sortedMods = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
@@ -171,10 +201,17 @@ const ModRows = memo((props: ModRowsProps) => {
     [filter, isAuthorEnabled, loadOrderModName, unfilteredMods],
   );
 
+  const getScrollContainers = useCallback((): HTMLElement[] => {
+    if (isDualLayout)
+      return [leftPaneScroll, rightPaneScroll].filter((element): element is HTMLDivElement => !!element);
+    const pageScroll = document.getElementById("mod-rows-scroll");
+    return pageScroll ? [pageScroll] : [];
+  }, [isDualLayout, leftPaneScroll, rightPaneScroll]);
+
   const onModToggled = useCallback(
     (mod: Mod): void => {
-      const modRowsScroll = document.getElementById("mod-rows-scroll");
-      const lastScrollTop = modRowsScroll?.scrollTop;
+      const scrollContainers = getScrollContainers();
+      const lastScrollTops = scrollContainers.map((element) => element.scrollTop);
 
       // if always enabled don't allow unchecking
       if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList)) {
@@ -184,10 +221,13 @@ const ModRows = memo((props: ModRowsProps) => {
       dispatch(toggleMod(mod));
 
       setTimeout(() => {
-        if (lastScrollTop && modRowsScroll) modRowsScroll.scrollTop = lastScrollTop;
+        scrollContainers.forEach((element, index) => {
+          const lastScrollTop = lastScrollTops[index];
+          if (lastScrollTop) element.scrollTop = lastScrollTop;
+        });
       }, 1);
     },
-    [alwaysEnabledModNamesList, dispatch],
+    [alwaysEnabledModNamesList, dispatch, getScrollContainers],
   );
 
   const setSortingType = useCallback(
@@ -295,26 +335,16 @@ const ModRows = memo((props: ModRowsProps) => {
   );
 
   const onDropdownOverlayClick = useCallback(() => {
-    const modRowsScroll = document.getElementById("mod-rows-scroll");
-    if (!modRowsScroll) return;
-    const lastScrollTop = modRowsScroll.scrollTop;
+    const scrollContainers = getScrollContainers();
+    const lastScrollTops = scrollContainers.map((element) => element.scrollTop);
     setIsDropdownOpen(false);
 
     setTimeout(() => {
-      if (modRowsScroll) modRowsScroll.scrollTop = lastScrollTop;
+      scrollContainers.forEach((element, index) => {
+        element.scrollTop = lastScrollTops[index];
+      });
     }, 1);
-  }, []);
-
-  const gridClass = useMemo(() => {
-    if (isAuthorEnabled && areThumbnailsEnabled) return "grid-mods-thumbs-author";
-    if (isAuthorEnabled) return "grid-mods-author";
-    if (areThumbnailsEnabled) return "grid-mods-thumbs";
-    return "grid-mods";
-  }, [isAuthorEnabled, areThumbnailsEnabled]);
-  const ghostClass = useMemo(
-    () => getGhostClass(isAuthorEnabled, areThumbnailsEnabled),
-    [areThumbnailsEnabled, isAuthorEnabled],
-  );
+  }, [getScrollContainers]);
 
   useEffect(() => {
     const customizableTables = [
@@ -333,27 +363,25 @@ const ModRows = memo((props: ModRowsProps) => {
   }, [enabledMods, customizableMods]);
 
   const visibleMods = useMemo(
-    () => (loadOrderModName && isCurrentTabEnabledMods ? canonicalEnabledMods : getVisibleMods(mods, hiddenModNames)),
-    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, mods],
+    () => (loadOrderModName && canReorderLoadOrder ? canonicalEnabledMods : getVisibleMods(mods, hiddenModNames)),
+    [canReorderLoadOrder, canonicalEnabledMods, hiddenModNames, loadOrderModName, mods],
   );
 
   const unfilteredVisibleMods = useMemo(
     () =>
-      loadOrderModName && isCurrentTabEnabledMods
-        ? canonicalEnabledMods
-        : getVisibleMods(unfilteredMods, hiddenModNames),
-    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, unfilteredMods],
+      loadOrderModName && canReorderLoadOrder ? canonicalEnabledMods : getVisibleMods(unfilteredMods, hiddenModNames),
+    [canReorderLoadOrder, canonicalEnabledMods, hiddenModNames, loadOrderModName, unfilteredMods],
   );
 
   const onSetLoadOrderMode = useCallback(
     (mod: Mod) => {
-      if (!isCurrentTabEnabledMods || sortingType !== SortingType.Ordered) return;
+      if (!canReorderLoadOrder || sortingType !== SortingType.Ordered) return;
       if (loadOrderModName === mod.name) {
         setLoadOrderModName(undefined);
         return;
       }
 
-      const scrollElement = props.scrollElement.current;
+      const scrollElement = getReorderScrollElement();
       pendingLoadOrderAnchorFramesRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
       pendingLoadOrderAnchorFramesRef.current = [];
       document.querySelectorAll<HTMLElement>("[id^='load-order-icon-']").forEach((icon) => {
@@ -376,14 +404,14 @@ const ModRows = memo((props: ModRowsProps) => {
       setActiveLoadOrderPosition(Math.max(0, currentIndex));
       setLoadOrderModName(mod.name);
     },
-    [canonicalEnabledMods, isCurrentTabEnabledMods, loadOrderModName, props.scrollElement, sortingType],
+    [canonicalEnabledMods, canReorderLoadOrder, getReorderScrollElement, loadOrderModName, sortingType],
   );
 
   useLayoutEffect(() => {
     const snapshot = loadOrderScrollSnapshotRef.current;
     if (!snapshot) return;
 
-    const scrollElement = props.scrollElement.current;
+    const scrollElement = getReorderScrollElement();
     if (!loadOrderModName) {
       pendingLoadOrderAnchorFramesRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
       pendingLoadOrderAnchorFramesRef.current = [];
@@ -399,7 +427,7 @@ const ModRows = memo((props: ModRowsProps) => {
 
     const alignSourceRow = () => {
       if (loadOrderScrollSnapshotRef.current !== snapshot) return;
-      const currentScrollElement = props.scrollElement.current;
+      const currentScrollElement = getReorderScrollElement();
       const sourceElement = getLoadOrderRowAnchor(loadOrderModName);
       if (!currentScrollElement || !sourceElement || snapshot.sourceViewportOffset == null) return;
 
@@ -416,17 +444,17 @@ const ModRows = memo((props: ModRowsProps) => {
     });
     pendingLoadOrderAnchorFramesRef.current.push(firstFrameId);
     snapshot.didAnchorSource = true;
-  }, [loadOrderModName, props.scrollElement]);
+  }, [getReorderScrollElement, loadOrderModName]);
 
   useLayoutEffect(
     () => () => {
       pendingLoadOrderAnchorFramesRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
       pendingLoadOrderAnchorFramesRef.current = [];
       const snapshot = loadOrderScrollSnapshotRef.current;
-      const scrollElement = props.scrollElement.current;
+      const scrollElement = getReorderScrollElement();
       if (snapshot && scrollElement) scrollElement.scrollTop = snapshot.originalScrollTop;
     },
-    [props.scrollElement],
+    [getReorderScrollElement],
   );
 
   const onSelectLoadOrderPosition = useCallback(
@@ -472,13 +500,13 @@ const ModRows = memo((props: ModRowsProps) => {
   useEffect(() => {
     if (!loadOrderModName) return;
     if (
-      !isCurrentTabEnabledMods ||
+      !canReorderLoadOrder ||
       sortingType !== SortingType.Ordered ||
       !unfilteredVisibleMods.some((mod) => mod.name === loadOrderModName)
     ) {
       setLoadOrderModName(undefined);
     }
-  }, [isCurrentTabEnabledMods, loadOrderModName, sortingType, unfilteredVisibleMods]);
+  }, [canReorderLoadOrder, loadOrderModName, sortingType, unfilteredVisibleMods]);
 
   useEffect(() => {
     if (!loadOrderModName) return;
@@ -492,8 +520,11 @@ const ModRows = memo((props: ModRowsProps) => {
       skipInitialPlaceholderScrollRef.current = false;
       return;
     }
+    // The rows are virtualized, so the placeholder for a position further down the list does not exist
+    // yet. Bring its row into view first, then let scrollIntoView do the fine adjustment.
+    getReorderPaneHandle()?.scrollRowIntoView(Math.min(activeLoadOrderPosition, unfilteredVisibleMods.length - 1));
     document.getElementById(`enabled-mod-placeholder-${activeLoadOrderPosition}`)?.scrollIntoView({ block: "nearest" });
-  }, [activeLoadOrderPosition, loadOrderModName]);
+  }, [activeLoadOrderPosition, getReorderPaneHandle, loadOrderModName, unfilteredVisibleMods.length]);
 
   useEffect(() => {
     if (!loadOrderModName) return;
@@ -524,7 +555,7 @@ const ModRows = memo((props: ModRowsProps) => {
   );
 
   const rowData = useMemo(
-    () =>
+    (): ModRowDatum[] =>
       visibleMods.map((mod) => ({
         mod,
         isAlwaysEnabled: alwaysEnabledModNames.has(mod.name),
@@ -549,84 +580,56 @@ const ModRows = memo((props: ModRowsProps) => {
     ],
   );
 
-  const emptyFunc = useCallback(() => {}, []);
-
-  const cache = useMemo(
-    () =>
-      new CellMeasurerCache({
-        fixedWidth: true,
-        defaultHeight: 32,
-        minHeight: 32,
-      }),
-    [],
+  const disabledRowData = useMemo(
+    () => (isDualLayout ? rowData.filter((row) => !row.mod.isEnabled && !row.isAlwaysEnabled) : rowData),
+    [isDualLayout, rowData],
+  );
+  const enabledRowData = useMemo(
+    () => (isDualLayout ? rowData.filter((row) => row.mod.isEnabled || row.isAlwaysEnabled) : rowData),
+    [isDualLayout, rowData],
   );
 
-  useEffect(() => {
-    cache.clearAll();
-    listRef.current?.recomputeRowHeights();
-  }, [areThumbnailsEnabled, cache, isAuthorEnabled, visibleMods]);
+  const callbacks = useMemo(
+    (): ModRowCallbacks => ({
+      onRowHoverStart,
+      onRowHoverEnd,
+      onSetLoadOrderMode,
+      onSelectLoadOrderPosition,
+      onModToggled,
+      onModRightClick,
+      onCustomizeModClicked,
+      onCustomizeModRightClick,
+      onFlowOptionsClicked,
+      onRemoveModOrder,
+    }),
+    [
+      onCustomizeModClicked,
+      onCustomizeModRightClick,
+      onFlowOptionsClicked,
+      onModRightClick,
+      onModToggled,
+      onRemoveModOrder,
+      onRowHoverEnd,
+      onRowHoverStart,
+      onSelectLoadOrderPosition,
+      onSetLoadOrderMode,
+    ],
+  );
 
-  const Row = ({
-    index,
-    key,
-    parent,
-    style,
-  }: {
-    index: number;
-    parent: React.Component<GridCoreProps> & MeasuredCellParent;
-    key: string;
-    style: CSSProperties;
-  }) => {
-    const row = rowData[index];
-    return row ? (
-      <CellMeasurer cache={cache} index={index} key={key} parent={parent}>
-        {({ registerChild }) => (
-          <ModRow
-            key={key}
-            {...{
-              style,
-              loadOrderIndex: loadOrderIndexByModName.get(row.mod.name) ?? index,
-              rowIndex: index,
-              gridClass,
-              mod: row.mod,
-              onRowHoverStart,
-              onRowHoverEnd,
-              onSetLoadOrderMode,
-              onSelectLoadOrderPosition,
-              activeLoadOrderPosition,
-              isLoadOrderPlacementMode: isCurrentTabEnabledMods && !!loadOrderModName,
-              isLoadOrderPlacementSource: row.mod.name === loadOrderModName,
-              isRecentlyReordered: recentlyReorderedModNames.has(row.mod.name),
-              onModToggled,
-              onModRightClick,
-              onCustomizeModClicked,
-              onCustomizeModRightClick,
-              onFlowOptionsClicked,
-              onRemoveModOrder,
-              sortingType,
-              currentTab,
-              isLast: rowData.length == index + 1,
-              isAlwaysEnabled: row.isAlwaysEnabled,
-              isEnabledInMergedMod: row.isEnabledInMergedMod,
-              areThumbnailsEnabled,
-              isAuthorEnabled,
-              ghostClass,
-              thumbnailSrc: row.thumbnailSrc,
-              decodedHumanName: row.decodedHumanName,
-              decodedAuthor: row.decodedAuthor,
-              customFolderPath: row.customFolderPath,
-              hasDbCustomization: row.hasDbCustomization,
-              hasFlowCustomization: row.hasFlowCustomization,
-              hasPackDataOverwrite: row.hasPackDataOverwrite,
-              registerChild,
-            }}
-          ></ModRow>
-        )}
-      </CellMeasurer>
-    ) : (
-      <></>
-    );
+  const sharedPaneProps = {
+    areThumbnailsEnabled,
+    isAuthorEnabled,
+    sortingType,
+    setSortingType,
+    onOrderRightClick,
+    onEnabledRightClick,
+    loadOrderModName,
+    activeLoadOrderPosition,
+    recentlyReorderedModNames,
+    callbacks,
   };
+
+  const compactGridOptions = { isAuthorEnabled, areThumbnailsEnabled };
 
   return (
     <>
@@ -637,7 +640,7 @@ const ModRows = memo((props: ModRowsProps) => {
           event.stopPropagation();
           setLoadOrderModName(undefined);
         }}
-        className={`dark:text-slate-100 ` + (areThumbnailsEnabled ? "text-lg" : "")}
+        className={`dark:text-slate-100 ` + (areThumbnailsEnabled && !isDualLayout ? "text-lg" : "")}
         id="rowsParent"
       >
         <MemoizedFloatingOverlay
@@ -664,222 +667,89 @@ const ModRows = memo((props: ModRowsProps) => {
           />
         )}
 
-        <div className={"grid pt-1.5 parent " + gridClass} id="modsGrid">
-          <div
-            id="sortHeader"
-            className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
-            onClick={() => setSortingType(SortingType.Ordered)}
-            onContextMenu={onOrderRightClick}
-          >
-            {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-            <span className="tooltip-width-20">
-              <Tooltip
-                placement="bottom"
-                style="light"
-                content={
-                  <>
-                    <div>{localized.priorityTooltipOne}</div>
-                    <div>{localized.priorityTooltipTwo}</div>
-                    <div className="text-red-600 font-bold">{localized.priorityTooltipThree}</div>
-                  </>
-                }
+        {(isDualLayout && (
+          <div className="grid grid-cols-2 gap-3" id="dualModLists">
+            <div className="flex flex-col min-w-0">
+              <div
+                className="flex items-center justify-between px-2 pb-1 text-sm text-slate-300 cursor-default select-none"
+                onContextMenu={onEnabledRightClick}
+                title={localized.enableOrDisableAll}
+                id="disabledModsPaneCaption"
               >
-                <span
-                  className={`text-center w-full cursor-pointer ${
-                    modRowSorting.isOrderSort(sortingType) && "font-semibold"
-                  }`}
-                >
-                  {localized.order}
-                </span>
-              </Tooltip>
-            </span>
-          </div>
-          <div
-            className="flex place-items-center w-full justify-center z-10 mod-row-header"
-            onClick={() => setSortingType(SortingType.IsEnabled)}
-            onContextMenu={onEnabledRightClick}
-            id="enabledHeader"
-          >
-            {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-            <span className="tooltip-width-15">
-              <Tooltip placement="bottom" style="light" content={localized.enableOrDisableAll}>
-                <span
-                  className={`text-center cursor-pointer w-full ${
-                    modRowSorting.isEnabledSort(sortingType) && "font-semibold"
-                  }`}
-                >
-                  {localized.enabled}
-                </span>
-              </Tooltip>
-            </span>
-          </div>
-          <div
-            className={
-              "flex grid-area-autohide place-items-center pl-1 mod-row-header cursor-default " +
-              (areThumbnailsEnabled ? "" : "hidden")
-            }
-          >
-            {localized.thumbnail}
-          </div>
-          <div
-            className="flex grid-area-packName place-items-center pl-1 mod-row-header"
-            onClick={() => setSortingType(SortingType.PackName)}
-            onContextMenu={() => setSortingType(SortingType.IsDataPack)}
-          >
-            {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
-              modRowSorting.getSortingArrow(sortingType)}
-            <Tooltip placement="right" style="light" content={localized.sortByDataPacks}>
-              <span
-                className={`cursor-pointer ${
-                  (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
-                  "font-semibold"
-                }`}
+                <span>{localized.allMods}</span>
+                <span className="opacity-60">{disabledRowData.length}</span>
+              </div>
+              <div
+                ref={setLeftPaneScroll}
+                id="disabledModsPaneScroll"
+                className="dual-mod-list-pane overflow-y-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
               >
-                {(modRowSorting.isDataPackSort(sortingType) && localized.dataPacks) || localized.pack}
-              </span>
-            </Tooltip>
-          </div>
-          <div
-            className="flex grid-area-humanName place-items-center pl-1 mod-row-header"
-            onClick={() => setSortingType(SortingType.HumanName)}
-          >
-            {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-            <span className={`cursor-pointer ${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>
-              {localized.name}
-            </span>
-          </div>
-          <div
-            className={
-              "flex grid-area-autohide place-items-center pl-1 mod-row-header " + (isAuthorEnabled ? "" : "hidden")
-            }
-            onClick={() => setSortingType(SortingType.Author)}
-          >
-            {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-            <span className={`cursor-pointer ${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>
-              {localized.author}
-            </span>
-          </div>
-          <div
-            className="flex grid-area-autohide place-items-center pl-1 mod-row-header"
-            onClick={() => setSortingType(SortingType.LastUpdated)}
-            onContextMenu={() => setSortingType(SortingType.SubbedTime)}
-          >
-            {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
-              modRowSorting.getSortingArrow(sortingType)}
-            <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
-              <span
-                className={`cursor-pointer ${
-                  (modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
-                  "font-semibold"
-                }`}
-              >
-                {(modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) || localized.lastUpdated}
-              </span>
-            </Tooltip>
-          </div>
-          <div
-            className="flex place-items-center pl-1 mod-row-header rounded-tr-xl justify-center"
-            onClick={() => setSortingType(SortingType.IsCustomizable)}
-          >
-            {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-            <span className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}>
-              <GoGear></GoGear>
-            </span>
-          </div>
+                <ModListPane
+                  {...sharedPaneProps}
+                  rowData={disabledRowData}
+                  scrollElement={leftPaneScroll}
+                  listRef={leftListRef}
+                  layout="compact"
+                  showConfigColumn={false}
+                  isInsidePane
+                  canReorder={false}
+                  gridClass={getModListGridClass("compact", { ...compactGridOptions, showConfigColumn: false })}
+                  ghostClass={getModListGhostClass("compact", { ...compactGridOptions, showConfigColumn: false })}
+                  loadOrderIndexByModName={loadOrderIndexByModName}
+                  isLoadOrderPlacementMode={false}
+                />
+              </div>
+            </div>
 
-          {currentTab == "mods" && props.scrollElement.current && (
-            <WindowScroller scrollElement={props.scrollElement.current as Element}>
-              {({ height, isScrolling, onChildScroll, scrollTop, registerChild }) => (
-                <AutoSizer disableHeight>
-                  {({ width }) => (
-                    // @ts-expect-error react-virtualized is outdated and registerChild complains about wrong type
-                    <div ref={registerChild}>
-                      <List
-                        ref={listRef}
-                        autoHeight
-                        height={height || 500}
-                        width={width}
-                        scrollTop={scrollTop}
-                        isScrolling={isScrolling}
-                        onScroll={onChildScroll}
-                        // rowHeight={areThumbnailsEnabled ? 112 - 8 : 32}
-                        rowHeight={({ index }: { index: number }) =>
-                          areThumbnailsEnabled
-                            ? Math.max(112 - 8, cache.rowHeight({ index }))
-                            : cache.rowHeight({ index })
-                        }
-                        rowRenderer={Row}
-                        estimatedRowSize={areThumbnailsEnabled ? 104 : 32}
-                        rowCount={visibleMods.length}
-                        overscanRowCount={areThumbnailsEnabled ? 6 : 12}
-                        deferredMeasurementCache={cache}
-                      />
-                    </div>
-                  )}
-                </AutoSizer>
-              )}
-            </WindowScroller>
-          )}
-          {currentTab == "enabledMods" &&
-            rowData.map(
-              (
-                {
-                  mod,
-                  isAlwaysEnabled,
-                  isEnabledInMergedMod,
-                  thumbnailSrc,
-                  decodedHumanName,
-                  decodedAuthor,
-                  customFolderPath,
-                  hasDbCustomization,
-                  hasFlowCustomization,
-                  hasPackDataOverwrite,
-                },
-                i,
-              ) => (
-                <ModRow
-                  key={mod.path}
-                  {...{
-                    loadOrderIndex: loadOrderIndexByModName.get(mod.name) ?? i,
-                    rowIndex: i,
-                    mod,
-                    onRowHoverStart,
-                    onRowHoverEnd,
-                    onSetLoadOrderMode,
-                    onSelectLoadOrderPosition,
-                    activeLoadOrderPosition,
-                    isLoadOrderPlacementMode: !!loadOrderModName,
-                    isLoadOrderPlacementSource: mod.name === loadOrderModName,
-                    isRecentlyReordered: recentlyReorderedModNames.has(mod.name),
-                    onModToggled,
-                    onModRightClick,
-                    onCustomizeModClicked,
-                    onCustomizeModRightClick,
-                    onFlowOptionsClicked,
-                    onRemoveModOrder,
-                    sortingType,
-                    currentTab,
-                    isLast: rowData.length == i + 1,
-                    isAlwaysEnabled,
-                    isEnabledInMergedMod,
-                    areThumbnailsEnabled,
-                    isAuthorEnabled,
-                    ghostClass,
-                    thumbnailSrc,
-                    decodedHumanName,
-                    decodedAuthor,
-                    customFolderPath,
-                    hasDbCustomization,
-                    hasFlowCustomization,
-                    hasPackDataOverwrite,
-                    style: {},
-                    gridClass: "row",
-                    registerChild: emptyFunc,
-                  }}
-                ></ModRow>
-              ),
-            )}
-        </div>
+            <div className="flex flex-col min-w-0">
+              <div
+                className="flex items-center justify-between px-2 pb-1 text-sm text-slate-300 cursor-default select-none"
+                id="enabledModsPaneCaption"
+              >
+                <span>{localized.enabledModsCapitalized}</span>
+                <span className="opacity-60">{enabledRowData.length}</span>
+              </div>
+              <div
+                ref={setRightPaneScroll}
+                id="enabledModsPaneScroll"
+                className="dual-mod-list-pane overflow-y-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+              >
+                <ModListPane
+                  {...sharedPaneProps}
+                  rowData={enabledRowData}
+                  scrollElement={rightPaneScroll}
+                  listRef={rightListRef}
+                  paneHandleRef={rightPaneHandleRef}
+                  layout="compact"
+                  showConfigColumn
+                  isInsidePane
+                  canReorder
+                  gridClass={getModListGridClass("compact", { ...compactGridOptions, showConfigColumn: true })}
+                  ghostClass={getModListGhostClass("compact", { ...compactGridOptions, showConfigColumn: true })}
+                  loadOrderIndexByModName={enabledLoadOrderIndexByModName}
+                  isLoadOrderPlacementMode={!!loadOrderModName}
+                />
+              </div>
+            </div>
+          </div>
+        )) || (
+          <ModListPane
+            {...sharedPaneProps}
+            rowData={rowData}
+            scrollElement={pageScroll}
+            listRef={singleListRef}
+            paneHandleRef={singlePaneHandleRef}
+            gridId="modsGrid"
+            layout="wide"
+            showConfigColumn
+            isInsidePane={false}
+            canReorder={canReorderLoadOrder}
+            gridClass={getModListGridClass("wide", { ...compactGridOptions, showConfigColumn: true })}
+            ghostClass={getModListGhostClass("wide", { ...compactGridOptions, showConfigColumn: true })}
+            loadOrderIndexByModName={loadOrderIndexByModName}
+            isLoadOrderPlacementMode={canReorderLoadOrder && !!loadOrderModName}
+          />
+        )}
         {loadOrderModName && (
           <div
             className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"

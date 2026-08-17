@@ -198,6 +198,8 @@
   "contentVsDataMsg": "Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from the data folder. Don't touch unless you know what you're doing!",
   "extraColumns": "Extra Columns",
   "modThumbnailColumn": "Mod Thumbnail Column",
+  "dualModListLayout": "Dual List Layout",
+  "dualModListLayoutHelp": "Split the All Mods tab into two lists: disabled mods on the left, enabled mods on the right. Click a mod to move it between them.",
   "closeOnPlay": "Close Manager On Play",
   "useEnglishLocalizations": "Use English Localizations",
   "useEnglishLocalizationsHelp": "Read the game's English text even when the manager is set to another language. Affects the Unit Viewer, skills, tech trees and visuals.",

@@ -181,6 +181,8 @@ declare global {
     isUsingEnglishLocalizations: boolean;
     isCompatCheckingVanillaPacks: boolean;
     isAuthorEnabled: boolean;
+    /** Split the All Mods tab into a disabled-mods list on the left and an enabled-mods list on the right. */
+    isDualModListLayoutEnabled: boolean;
     /** Show the mod author under the mod name in the presets tab lists. */
     isPresetAuthorEnabled: boolean;
     /** Show a thumbnail column in the presets tab lists. */
@@ -288,6 +290,7 @@ declare global {
     | "wasOnboardingEverRun"
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
+    | "isDualModListLayoutEnabled"
     | "isPresetAuthorEnabled"
     | "arePresetThumbnailsEnabled"
     | "isCategoryAuthorEnabled"

@@ -178,6 +178,43 @@ body {
   grid-column: span 5 / span 5;
 }
 
+/*
+ * Dual layout panes. Each pane is roughly half the width the single list gets, so the wide columns are
+ * collapsed into one stacked name cell and the enabled checkbox column is dropped entirely. The column
+ * count is driven by the thumbnail option and by whether the pane shows the configuration column, so
+ * unlike .grid-mods* these do not change at a breakpoint.
+ */
+.grid-mods-compact {
+  grid-template-columns: 56px 1fr 5.5rem;
+}
+.grid-mods-compact-thumbs {
+  grid-template-columns: 56px max-content 1fr 5.5rem;
+}
+.grid-mods-compact-config {
+  grid-template-columns: 56px 1fr 5.5rem 44px;
+}
+.grid-mods-compact-thumbs-config {
+  grid-template-columns: 56px max-content 1fr 5.5rem 44px;
+}
+
+/*
+ * Each pane scrolls itself, so it needs a height rather than growing with its content. Subtracted:
+ * the top bar, the page container's top padding, the pane caption and the page's bottom padding.
+ */
+.dual-mod-list-pane {
+  height: calc(100vh - 28px - 2.75rem - 1.75rem - 1rem);
+}
+
+.grid-column-compact-3 {
+  grid-column: span 3 / span 3;
+}
+.grid-column-compact-4 {
+  grid-column: span 4 / span 4;
+}
+.grid-column-compact-5 {
+  grid-column: span 5 / span 5;
+}
+
 @media (min-width: 1024px) {
   .grid-mods {
     grid-template-columns: 57px 80px 1fr 1fr 0.5fr 80px;
@@ -227,10 +264,6 @@ body {
 .drop-ghost {
   border: 3px dotted #666;
   width: 100%;
-}
-
-.row {
-  display: contents;
 }
 
 .row-div-paddings div {
@@ -303,6 +336,14 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 .mod-row-header:hover,
 .mod-row-header:focus-within {
   z-index: 12;
+}
+
+/*
+ * The -2.75rem above compensates for the page scroll container's pt-11. A pane scrolls itself and has no
+ * such padding, so its headers stick to its own top edge.
+ */
+.mod-row-header-pane {
+  top: 0;
 }
 
 #top-bar {

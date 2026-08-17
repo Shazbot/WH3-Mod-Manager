@@ -14,6 +14,17 @@ vi.mock("../src/components/ModDropdown", () => ({
   default: () => null,
 }));
 
+// Both mod lists are virtualized now, and react-virtualized renders nothing at the zero width jsdom
+// reports. Only AutoSizer is replaced so the real List, CellMeasurer and cache still run.
+vi.mock("react-virtualized", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-virtualized")>();
+  return {
+    ...actual,
+    AutoSizer: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) =>
+      children({ width: 800, height: 600 }),
+  };
+});
+
 const createMod = (name: string, loadOrder: number): Mod => ({
   name,
   humanName: name,
