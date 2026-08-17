@@ -8,6 +8,7 @@ import {
   toggleIsAuthorEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
+  setModListDensity,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
@@ -102,6 +103,7 @@ const OptionsDrawer = memo(() => {
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
+  const modListDensity = useAppSelector((state) => state.app.modListDensity);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
@@ -292,6 +294,12 @@ const OptionsDrawer = memo(() => {
   const availableGames = supportedGames.map((gameKey) => ({ value: gameKey, label: localized[gameKey] }) as OptionType);
 
   const [areOptionsOpen, setAreOptionsOpen] = useState(false);
+
+  const modListDensityOptions: { value: ModListDensity; label: string }[] = [
+    { value: "compact", label: localized.modListDensityCompact || "Compact" },
+    { value: "comfortable", label: localized.modListDensityComfortable || "Comfortable" },
+    { value: "roomy", label: localized.modListDensityRoomy || "Roomy" },
+  ];
 
   const treeDisplayModeOptions: { value: TreeDisplayMode; label: string }[] = [
     { value: "off", label: localized.off || "Off" },
@@ -673,6 +681,29 @@ const OptionsDrawer = memo(() => {
               {localized.dualModListLayoutHelp ||
                 "Split the All Mods tab into two lists: disabled mods on the left, enabled mods on the right. Click a mod to move it between them."}
             </p>
+
+            {/* Both sub-options only bite in the dual layout, so they follow its checkbox and grey out with it. */}
+            <div className={"ml-6 mt-3 " + (isDualModListLayoutEnabled ? "" : "opacity-40")}>
+              <label className="block mb-1" htmlFor="modListDensity">
+                {localized.modListDensity || "Row Size"}
+              </label>
+              <FormSelect
+                id="modListDensity"
+                disabled={!isDualModListLayoutEnabled}
+                value={modListDensity}
+                onChange={(event) => dispatch(setModListDensity(event.target.value as ModListDensity))}
+              >
+                {modListDensityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </FormSelect>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {localized.modListDensityHelp ||
+                  "How much room each mod gets in the two lists. Larger rows are easier to read but fewer fit on screen."}
+              </p>
+            </div>
 
             {/* Only affects the disabled list, which exists solely in the dual layout. */}
             <div className={"flex items-center ml-6 mt-3 " + (isDualModListLayoutEnabled ? "" : "opacity-40")}>

@@ -23,6 +23,7 @@ const initialState = {
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,
   isDualModListLayoutEnabled: false,
+  modListDensity: "compact",
   isShowingDisabledModsLoadOrder: false,
   isPresetAuthorEnabled: false,
   arePresetThumbnailsEnabled: false,

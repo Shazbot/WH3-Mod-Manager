@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import appReducer, {
   setFromConfig,
+  setModListDensity,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
 } from "../src/appSlice";
@@ -62,5 +63,31 @@ describe("disabled mods load order option", () => {
     resetConfigSavePayloadCache();
     const payload = selectConfigSavePayload({ ...initialState, isShowingDisabledModsLoadOrder: true });
     expect(payload.config.isShowingDisabledModsLoadOrder).toBe(true);
+  });
+});
+
+describe("mod list density option", () => {
+  it("starts compact, which is what the layout shipped with", () => {
+    expect(initialState.modListDensity).toBe("compact");
+  });
+
+  it("is set to any of the three densities", () => {
+    const roomy = appReducer(initialState, setModListDensity("roomy"));
+    expect(roomy.modListDensity).toBe("roomy");
+    expect(appReducer(roomy, setModListDensity("comfortable")).modListDensity).toBe("comfortable");
+  });
+
+  it("is restored from the config, and falls back to compact when the config predates it", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, modListDensity: "comfortable" }));
+    expect(restored.modListDensity).toBe("comfortable");
+
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.modListDensity;
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).modListDensity).toBe("compact");
+  });
+
+  it("is written to the config, so it survives a restart", () => {
+    resetConfigSavePayloadCache();
+    expect(selectConfigSavePayload({ ...initialState, modListDensity: "roomy" }).config.modListDensity).toBe("roomy");
   });
 });

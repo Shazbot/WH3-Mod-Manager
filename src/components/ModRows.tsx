@@ -131,6 +131,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
+  const modListDensity = useAppSelector((state) => state.app.modListDensity);
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
   const customizableMods = useAppSelector((state) => state.app.customizableMods);
@@ -716,6 +717,7 @@ const ModRows = memo((props: ModRowsProps) => {
     setSortingType,
     onOrderRightClick,
     onEnabledRightClick,
+    density: modListDensity,
     loadOrderModName,
     activeLoadOrderPosition,
     recentlyReorderedModNames,

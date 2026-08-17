@@ -343,16 +343,16 @@ const ModRow = memo(
             {areThumbnailsEnabled && (
               <div onContextMenu={(e) => onModRightClick(e, mod)} className="flex place-items-center">
                 <label className="cursor-pointer" htmlFor={checkboxId}>
-                  <img className="max-w-[4rem] aspect-square" src={thumbnailSrc} decoding="async"></img>
+                  <img className="mod-row-thumb aspect-square" src={thumbnailSrc} decoding="async"></img>
                 </label>
               </div>
             )}
 
             <div className="flex flex-col justify-center min-w-0" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="cursor-pointer min-w-0 leading-tight" htmlFor={checkboxId}>
+              <label className="cursor-pointer min-w-0" htmlFor={checkboxId}>
                 {(hasHumanName && (
                   <span
-                    className={classNames("block", "truncate", "font-medium", {
+                    className={classNames("block", "truncate", "mod-row-title", {
                       ["text-violet-400"]: isAlwaysEnabled,
                     })}
                     title={decodedHumanName}
@@ -363,7 +363,7 @@ const ModRow = memo(
                   // PackName colours itself by source, and those colours were picked for a small
                   // secondary line. Promoted to the primary line the data-mod orange glares, so the line
                   // is knocked back - dimming here rather than in PackName keeps the wide layout as it is.
-                  <span className="block truncate font-medium opacity-80" title={mod.name}>
+                  <span className="block truncate mod-row-title opacity-80" title={mod.name}>
                     <PackName
                       mod={mod}
                       isEnabledInMergedMod={isEnabledInMergedMod}
@@ -372,12 +372,12 @@ const ModRow = memo(
                   </span>
                 )}
                 {hasAuthor && (
-                  <span className="block truncate text-sm opacity-75" title={decodedAuthor}>
+                  <span className="block truncate mod-row-meta opacity-75" title={decodedAuthor}>
                     {decodedAuthor}
                   </span>
                 )}
                 {hasHumanName && (
-                  <span className="block truncate text-sm opacity-90" title={mod.name}>
+                  <span className="block truncate mod-row-meta opacity-90" title={mod.name}>
                     <PackName
                       mod={mod}
                       isEnabledInMergedMod={isEnabledInMergedMod}
@@ -389,7 +389,7 @@ const ModRow = memo(
             </div>
 
             <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="cursor-pointer text-sm leading-tight" htmlFor={checkboxId}>
+              <label className="cursor-pointer mod-row-meta" htmlFor={checkboxId}>
                 {timeColumnValue}
               </label>
             </div>

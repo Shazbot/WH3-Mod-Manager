@@ -16,6 +16,16 @@ import ModListHeader from "./ModListHeader";
 import { SortingType } from "../utility/modRowSorting";
 import { ModListLayout, ModRowDatum } from "../utility/frontend/modListLayout";
 
+/**
+ * How tall a row is before CellMeasurer has measured it. The thumbnail drives the height when it is on;
+ * otherwise it is three stacked lines of text. Keyed to the density variables in index.css.
+ */
+const compactRowFloors: Record<ModListDensity, { withThumbnails: number; textOnly: number }> = {
+  compact: { withThumbnails: 80, textOnly: 72 },
+  comfortable: { withThumbnails: 104, textOnly: 96 },
+  roomy: { withThumbnails: 128, textOnly: 112 },
+};
+
 /** The row handlers, bundled so they can be forwarded through the pane without ten more props. */
 export type ModRowCallbacks = {
   onRowHoverStart: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
@@ -45,6 +55,7 @@ type ModListPaneProps = {
   layout: ModListLayout;
   showConfigColumn: boolean;
   isInsidePane: boolean;
+  density: ModListDensity;
   /** Whether this list lets the user pick a new load order position for a row. */
   canReorder: boolean;
   /** False where the row's position in the list says nothing about the order the game will load in. */
@@ -82,6 +93,7 @@ const ModListPane = memo(
     layout,
     showConfigColumn,
     isInsidePane,
+    density,
     canReorder,
     showPositionIndex,
     gridClass,
@@ -120,6 +132,7 @@ const ModListPane = memo(
     }, [
       areThumbnailsEnabled,
       cache,
+      density,
       isAuthorEnabled,
       isCompact,
       isLoadOrderPlacementMode,
@@ -148,10 +161,11 @@ const ModListPane = memo(
       [listRef, scrollElement],
     );
 
-    // Compact: a 4rem thumbnail plus the row's 0.5rem vertical padding, or three lines of text when
-    // thumbnails are off. CellMeasurer still measures the real height; these only floor it.
-    const minRowHeight = isCompact ? (areThumbnailsEnabled ? 80 : 72) : areThumbnailsEnabled ? 112 - 8 : 0;
-    const estimatedRowSize = isCompact ? (areThumbnailsEnabled ? 80 : 72) : areThumbnailsEnabled ? 104 : 32;
+    const compactFloor = compactRowFloors[density];
+    const compactRowHeight = areThumbnailsEnabled ? compactFloor.withThumbnails : compactFloor.textOnly;
+    // CellMeasurer still measures the real height; these only floor it and seed the scrollbar.
+    const minRowHeight = isCompact ? compactRowHeight : areThumbnailsEnabled ? 112 - 8 : 0;
+    const estimatedRowSize = isCompact ? compactRowHeight : areThumbnailsEnabled ? 104 : 32;
 
     const rowHeight = useCallback(
       ({ index }: { index: number }) => Math.max(minRowHeight, cache.rowHeight({ index })),
@@ -215,7 +229,10 @@ const ModListPane = memo(
     };
 
     return (
-      <div className={"grid pt-1.5 " + gridClass} id={gridId}>
+      <div
+        className={`grid pt-1.5 ${(isCompact && `mod-list-compact mod-list-${density}`) || ""} ${gridClass}`}
+        id={gridId}
+      >
         <ModListHeader
           {...{
             layout,

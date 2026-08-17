@@ -183,6 +183,8 @@ declare global {
     isAuthorEnabled: boolean;
     /** Split the All Mods tab into a disabled-mods list on the left and an enabled-mods list on the right. */
     isDualModListLayoutEnabled: boolean;
+    /** How much room a row gets in the dual layout, where two lists share the width one used to have. */
+    modListDensity: ModListDensity;
     /**
      * Number the rows of the dual layout's disabled list. Off by default: that index is the mod's rank
      * among every mod, which says nothing about where it lands once enabled. Pinned load orders show
@@ -282,6 +284,8 @@ declare global {
 
   type TreeDisplayMode = "off" | "tab" | "window";
 
+  type ModListDensity = "compact" | "comfortable" | "roomy";
+
   type SkillsViewOptions = Pick<
     AppState,
     | "isShowingSkillNodeSetNames"
@@ -297,6 +301,7 @@ declare global {
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
     | "isDualModListLayoutEnabled"
+    | "modListDensity"
     | "isShowingDisabledModsLoadOrder"
     | "isPresetAuthorEnabled"
     | "arePresetThumbnailsEnabled"

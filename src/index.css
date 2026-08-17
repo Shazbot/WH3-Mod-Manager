@@ -191,16 +191,74 @@ body {
  * 4.5rem is the 4rem thumbnail plus the row cell's horizontal padding.
  */
 .grid-mods-compact {
-  grid-template-columns: 56px 1fr 6.25rem;
+  grid-template-columns: var(--mod-row-order-w) 1fr var(--mod-row-time-w);
 }
 .grid-mods-compact-thumbs {
-  grid-template-columns: 56px 4.5rem 1fr 6.25rem;
+  grid-template-columns: var(--mod-row-order-w) var(--mod-row-thumb-col) 1fr var(--mod-row-time-w);
 }
 .grid-mods-compact-config {
-  grid-template-columns: 56px 1fr 6.25rem 44px;
+  grid-template-columns: var(--mod-row-order-w) 1fr var(--mod-row-time-w) var(--mod-row-gear-w);
 }
 .grid-mods-compact-thumbs-config {
-  grid-template-columns: 56px 4.5rem 1fr 6.25rem 44px;
+  grid-template-columns: var(--mod-row-order-w) var(--mod-row-thumb-col) 1fr var(--mod-row-time-w) var(--mod-row-gear-w);
+}
+
+/*
+ * Row density. These sit on the pane's grid container so the sticky header cells and the virtualized
+ * rows below both inherit one set of numbers - they are separate grid containers and would otherwise
+ * size their tracks independently. Every value is fixed rather than intrinsic, for the same reason.
+ */
+.mod-list-compact {
+  --mod-row-order-w: 56px;
+  --mod-row-thumb-col: 4.5rem;
+  --mod-row-time-w: 6.25rem;
+  --mod-row-gear-w: 44px;
+  --mod-row-thumb: 4rem;
+  --mod-row-pad-y: 0.5rem;
+  --mod-row-title-size: 1rem;
+  --mod-row-title-weight: 500;
+  --mod-row-meta-size: 0.875rem;
+  --mod-row-leading: 1.25;
+}
+
+.mod-list-compact.mod-list-comfortable {
+  --mod-row-order-w: 60px;
+  --mod-row-thumb-col: 5.5rem;
+  --mod-row-time-w: 6.75rem;
+  --mod-row-gear-w: 48px;
+  --mod-row-thumb: 5rem;
+  --mod-row-pad-y: 0.75rem;
+  --mod-row-title-size: 1.125rem;
+  --mod-row-meta-size: 1rem;
+  --mod-row-leading: 1.375;
+}
+
+.mod-list-compact.mod-list-roomy {
+  --mod-row-order-w: 64px;
+  --mod-row-thumb-col: 6.5rem;
+  --mod-row-time-w: 7.5rem;
+  --mod-row-gear-w: 52px;
+  --mod-row-thumb: 6rem;
+  --mod-row-pad-y: 1rem;
+  --mod-row-title-size: 1.25rem;
+  --mod-row-title-weight: 600;
+  --mod-row-meta-size: 1rem;
+  --mod-row-leading: 1.5;
+}
+
+.mod-row-thumb {
+  max-width: var(--mod-row-thumb);
+}
+
+.mod-row-title {
+  font-size: var(--mod-row-title-size);
+  font-weight: var(--mod-row-title-weight);
+  line-height: var(--mod-row-leading);
+}
+
+.mod-row-meta {
+  font-size: var(--mod-row-meta-size);
+  line-height: var(--mod-row-leading);
 }
 
 /*
@@ -289,8 +347,8 @@ body {
  * margin is not part of that measurement, so it would make rows overlap.
  */
 .row-div-paddings-compact div {
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  padding-top: var(--mod-row-pad-y);
+  padding-bottom: var(--mod-row-pad-y);
 }
 
 .row-bg-color-manually > :not(.drop-ghost) {
