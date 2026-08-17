@@ -39,6 +39,50 @@ export const selectVanillaPacksHoldingFiles = (
 };
 
 /**
+ * The packs still worth searching for `filePaths`, keeping the order they were given in.
+ *
+ * For a caller that walks a priority-ordered list of packs opening each one until a file turns up,
+ * where most of that list is vanilla. Packs whose name is not in `vanillaPackNames` - mods - are
+ * always kept: the index knows nothing of them and they outrank vanilla anyway. A vanilla pack is
+ * kept only where the index says it wins one of the paths, so a search for a file no vanilla pack
+ * holds - the case that used to pay for the entire list - opens none of them.
+ *
+ * `packPathsByPriority` need not hold every vanilla pack; a caller that filters some out gets the
+ * whole list back untouched the moment a winning pack is one of those. Whether a lower-priority pack
+ * it did keep carries the file too is the one thing the index cannot answer, and narrowing on that
+ * would silently lose the file.
+ *
+ * `vanillaPackNames` is matched lowercased, as pack names are everywhere else here.
+ */
+export const selectPackPathsToSearch = (
+  index: VanillaPackIndex,
+  filePaths: readonly string[],
+  packPathsByPriority: readonly string[],
+  vanillaPackNames: ReadonlySet<string>,
+): string[] => {
+  const vanillaPackNameOf = (packPath: string): string | undefined => {
+    const packName = packNameOf(packPath);
+    return vanillaPackNames.has(packName) ? packName : undefined;
+  };
+  const searchableVanillaPackNames = new Set(
+    packPathsByPriority.map(vanillaPackNameOf).filter((packName): packName is string => !!packName),
+  );
+
+  const wantedVanillaPackNames = new Set<string>();
+  for (const filePath of filePaths) {
+    const packName = findVanillaPackContaining(index, filePath)?.toLowerCase();
+    if (!packName) continue;
+    if (!searchableVanillaPackNames.has(packName)) return [...packPathsByPriority];
+    wantedVanillaPackNames.add(packName);
+  }
+
+  return packPathsByPriority.filter((packPath) => {
+    const packName = vanillaPackNameOf(packPath);
+    return !packName || wantedVanillaPackNames.has(packName);
+  });
+};
+
+/**
  * The packs holding any table under `tablePathPrefixes`, in load order.
  *
  * Every pack that wins at least one file under a prefix is named, not just the one that wins the

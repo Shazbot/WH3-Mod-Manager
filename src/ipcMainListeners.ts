@@ -200,7 +200,11 @@ import {
 } from "./assetProtocol";
 import { normalizeAssetPath } from "./assetUrls";
 import { collectVanillaFilesUnderPrefix, findVanillaPackContaining } from "./vanillaPackIndex/format";
-import { selectVanillaPacksHoldingFiles, selectVanillaPacksHoldingTables } from "./vanillaPackIndex/select";
+import {
+  selectPackPathsToSearch,
+  selectVanillaPacksHoldingFiles,
+  selectVanillaPacksHoldingTables,
+} from "./vanillaPackIndex/select";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import {
@@ -2504,12 +2508,41 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return cached;
   };
 
+  /**
+   * The packs worth opening for a set of asset paths, highest priority first.
+   *
+   * A session's pack list is every vanilla pack the game ships bar the audio and terrain ones -
+   * around 200 of them - and the walk below used to open each one's index in turn until the file
+   * turned up, worst of all for a path nothing carries, which paid for all 200. The mods stay in the
+   * walk: there are a handful and they outrank vanilla anyway. Vanilla is asked of the global file
+   * index instead, which names the pack that wins a path without opening anything, and answers for
+   * every vanilla pack there is - so a path it does not know is one no vanilla pack holds.
+   *
+   * Falls back to the whole list wherever the index cannot answer for certain: no index at all, or a
+   * winning pack this session's filter excludes, where whether some lower-priority pack it does hold
+   * carries the file too is exactly what the index cannot say.
+   */
+  const narrowUnitViewerAssetPackPaths = async (session: UnitViewerSession, normalizedPaths: readonly string[]) => {
+    const packPathsByPriority = session.assetPackPaths.toReversed();
+    const vanillaIndex = await getVanillaPackIndex();
+    if (!vanillaIndex) return packPathsByPriority;
+    return selectPackPathsToSearch(
+      vanillaIndex,
+      // Every spelling the walk itself would try, so a pack is kept if it wins any of them.
+      normalizedPaths.flatMap((normalizedPath) => getUnitViewerAssetCandidates(normalizedPath)),
+      packPathsByPriority,
+      // The session's paths were built by joining these very names onto the data folder, so this
+      // tells its vanilla packs from its mods exactly the way the list was assembled.
+      new Set([...appData.allVanillaPackNames].map((packName) => packName.toLowerCase())),
+    );
+  };
+
   const getUnitViewerAsset = async (session: UnitViewerSession, requestedPath: string) => {
     const normalized = normalizePackFilePath(requestedPath).toLowerCase();
     const cached = takeCachedUnitViewerAsset(session, normalized);
     if (cached) return cached;
     const candidates = getUnitViewerAssetCandidates(normalized);
-    for (const packPath of session.assetPackPaths.toReversed()) {
+    for (const packPath of await narrowUnitViewerAssetPackPaths(session, [normalized])) {
       const pack = await getOrLoadPackFromAppData(packPath);
       if (!pack) continue;
       const indexedFile = candidates
@@ -2559,7 +2592,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       outstanding.set(normalized, requestedFor);
     }
 
-    for (const packPath of session.assetPackPaths.toReversed()) {
+    // Narrowed once against everything still outstanding rather than per pack: the set only shrinks
+    // as the walk resolves paths, so the list picked here stays a superset of what is still wanted.
+    for (const packPath of await narrowUnitViewerAssetPackPaths(session, Array.from(outstanding.keys()))) {
       if (outstanding.size === 0) break;
       const pack = await getOrLoadPackFromAppData(packPath);
       if (!pack) continue;
@@ -5432,7 +5467,22 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         for (const pack of packs) freshlyReadPacks.set(pack.path, pack);
       };
       if (missingDbTables) {
-        retainFreshPacks(await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true));
+        // The same route the Unit Viewer and Buildings take. variants_tables and land_units_tables
+        // are among the larger ones the game ships, and this ran a full parse of them out of the
+        // pack every time the schema changed or the visuals cache missed; the vanilla db cache hands
+        // back the same rows without touching db.pack. Only prefixes it cannot serve are parsed.
+        const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
+        const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
+        if (unservedPrefixes.length === 0) {
+          indexedDbPack.readTables = [...tablesToRead];
+          appendPacksData(indexedDbPack);
+          // appendPacksData merges into a pack already held rather than replacing it, so the rows
+          // just filled can land on the retained instance instead of this one. Retain whichever of
+          // the two ends up in packsData, since that is the one carrying them.
+          retainFreshPacks([appData.packsData.find((pack) => pack.path === dbPackPath) ?? indexedDbPack]);
+        } else {
+          retainFreshPacks(await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true));
+        }
       }
       if (missingModContributions.length > 0) {
         retainFreshPacks(

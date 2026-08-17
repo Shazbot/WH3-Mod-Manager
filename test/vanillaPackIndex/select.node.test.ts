@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { VanillaPackIndexIdentity, buildVanillaPackIndex } from "../../src/vanillaPackIndex/format";
-import { selectVanillaPacksHoldingFiles, selectVanillaPacksHoldingTables } from "../../src/vanillaPackIndex/select";
+import {
+  selectPackPathsToSearch,
+  selectVanillaPacksHoldingFiles,
+  selectVanillaPacksHoldingTables,
+} from "../../src/vanillaPackIndex/select";
 
 const identity: VanillaPackIndexIdentity = {
   game: "wh3",
@@ -144,5 +148,59 @@ describe("selectVanillaPacksHoldingTables", () => {
     expect(
       selectVanillaPacksHoldingTables(index, ["db\\character_skill_node_links_tables\\"], packPathsInLoadOrder),
     ).toEqual([]);
+  });
+});
+
+describe("selectPackPathsToSearch", () => {
+  const alphaMod = "C:\\mods\\alpha.pack";
+  const betaMod = "C:\\mods\\beta.pack";
+  // How an asset walk orders its packs: mods first, then vanilla from highest priority down.
+  const packPathsByPriority = [betaMod, alphaMod, uiBlPack, uiPack, dbPack, dataPack];
+  const vanillaPackNames = new Set(["data.pack", "db.pack", "ui.pack", "ui_bl.pack"]);
+
+  const search = (filePaths: string[], packPaths = packPathsByPriority) =>
+    selectPackPathsToSearch(index, filePaths, packPaths, vanillaPackNames);
+
+  it("keeps every mod and only the vanilla pack that wins the path", () => {
+    expect(search(["ui\\campaign ui\\technologies\\emp_tech.png"])).toEqual([betaMod, alphaMod, uiPack]);
+  });
+
+  it("opens no vanilla pack at all for a path none of them carries", () => {
+    // The case the narrowing exists for: a miss used to cost an index parse of every vanilla pack.
+    expect(search(["ui\\campaign ui\\skills\\does_not_exist.png"])).toEqual([betaMod, alphaMod]);
+  });
+
+  it("keeps the pack that wins a path several carry, and not the ones it beat", () => {
+    expect(search(["ui\\campaign ui\\skills\\shared_icon.png"])).toEqual([betaMod, alphaMod, uiBlPack]);
+  });
+
+  it("unions the packs across paths without disturbing the priority order", () => {
+    expect(search(["ui\\campaign ui\\technologies\\emp_tech.png", "ui\\campaign ui\\skills\\shared_icon.png"])).toEqual(
+      [betaMod, alphaMod, uiBlPack, uiPack],
+    );
+  });
+
+  it("hands back the whole list when a winning pack is one the caller left out", () => {
+    // ui_bl.pack wins shared_icon.png and is not being searched, so whether data.pack's own copy
+    // would have answered instead is unknowable here - every pack has to stay in the walk.
+    const withoutUiBl = [betaMod, alphaMod, uiPack, dbPack, dataPack];
+    expect(search(["ui\\campaign ui\\skills\\shared_icon.png"], withoutUiBl)).toEqual(withoutUiBl);
+  });
+
+  it("still searches the mods when there is nothing to look up", () => {
+    expect(search([])).toEqual([betaMod, alphaMod]);
+  });
+
+  it("matches pack paths spelled with either separator", () => {
+    expect(
+      search(
+        ["ui\\campaign ui\\technologies\\emp_tech.png"],
+        ["/mods/alpha.pack", "/games/wh3/data/ui.pack", "/games/wh3/data/db.pack"],
+      ),
+    ).toEqual(["/mods/alpha.pack", "/games/wh3/data/ui.pack"]);
+  });
+
+  it("looks a path up however it is spelled, since the index stores one spelling", () => {
+    expect(search(["UI/campaign UI/technologies/EMP_tech.png"])).toEqual([betaMod, alphaMod, uiPack]);
   });
 });
