@@ -36,6 +36,28 @@ const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 
+const DBCloneOperationOverlay = ({ statusText, onCancel }: { statusText: string; onCancel?: () => void }) => (
+  <MemoizedFloatingOverlay
+    className="absolute h-full w-full z-50 dark flex justify-center bg-black opacity-25"
+    id="DBDuplicationOverlay"
+  >
+    <div className="self-center text-center flex flex-col items-center gap-4 bg-gray-900/80 px-6 py-5 rounded-xl">
+      <div className="scale-[2] self-center">
+        <Spinner color="purple" size="xl" />
+      </div>
+      <div className="text-white text-sm max-w-[520px]">{statusText}</div>
+      {onCancel && (
+        <button
+          className="bg-red-700 border-red-500 border-2 hover:bg-red-800 text-white font-medium text-sm px-4 rounded h-8"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  </MemoizedFloatingOverlay>
+);
+
 export type DBDuplicationLaunchSource = "modsViewer" | "buildings";
 
 export type DBDuplicationProps = {
@@ -59,7 +81,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   const [appendModdersPrefix, setAppendModdersPrefix] = useState(true);
   const [hideRepeatedIndirectTables, setHideRepeatedIndirectTables] = useState(true);
   const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const [pendingOperations, setPendingOperations] = useState(0);
   const [isAppendSave, setIsAppendSave] = useState<boolean>(false);
   const [savePackedFileName, setSavePackedFileName] = useState<string>("");
   const [savePackFileName, setSavePackFileName] = useState<string>("");
@@ -71,7 +93,6 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   const [duplicationProgress, setDuplicationProgress] = useState<DBDuplicationProgress | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const isProgressSubscribed = useRef(false);
-  const pendingOperations = useRef(0);
 
   const localized = useLocalizations();
   const displayedTreeData = useMemo(
@@ -87,18 +108,12 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   }, [displayedTreeData, hideRepeatedIndirectTables]);
 
   const beginOverlayOperation = () => {
-    pendingOperations.current += 1;
-    if (overlayRef.current) overlayRef.current.style.visibility = "visible";
+    setPendingOperations((current) => current + 1);
   };
 
   const endOverlayOperation = () => {
-    pendingOperations.current = Math.max(0, pendingOperations.current - 1);
-    if (pendingOperations.current == 0 && overlayRef.current) overlayRef.current.style.visibility = "hidden";
+    setPendingOperations((current) => Math.max(0, current - 1));
   };
-
-  useEffect(() => {
-    if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
-  }, []);
 
   useEffect(() => {
     if (!window.api || isProgressSubscribed.current) return;
@@ -119,6 +134,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     const buildTree = async () => {
       try {
         beginOverlayOperation();
+        setDuplicationError("");
         const treeNodeResult = await window.api?.buildDBReferenceTree(
           packPath,
           {
@@ -152,9 +168,12 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
             setSelectedNodesByName([]);
             setExpandedNodesByName([]);
           }
+        } else {
+          setDuplicationError("DB Clone could not build the reference tree.");
         }
       } catch (error) {
         console.error("Failed to build reference tree:", error);
+        setDuplicationError(error instanceof Error ? error.message : String(error));
       } finally {
         endOverlayOperation();
       }
@@ -235,7 +254,16 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     children: [],
   } as ITreeNode;
 
-  if (!treeData || !displayedTreeData) return <></>;
+  if (!treeData || !displayedTreeData) {
+    if (duplicationError) {
+      return (
+        <div className="m-8 rounded border border-red-600 bg-red-950/50 p-4 text-red-100" role="alert">
+          Failed to load DB Clone references: {duplicationError}
+        </div>
+      );
+    }
+    return <DBCloneOperationOverlay statusText="Loading references..." />;
+  }
 
   const data = flattenTree(displayedTreeData);
   const nodeById = new Map<INode["id"], INode>();
@@ -687,26 +715,12 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           </Modal.Body>
         </Modal>
       )}
-      <MemoizedFloatingOverlay
-        ref={overlayRef}
-        className={`absolute h-full w-full z-50 dark flex justify-center bg-black opacity-25`}
-        id="DBDuplicationOverlay"
-      >
-        <div className="self-center text-center flex flex-col items-center gap-4 bg-gray-900/80 px-6 py-5 rounded-xl">
-          <div className="scale-[2] self-center">
-            <Spinner color="purple" size="xl" className="" />
-          </div>
-          <div className="text-white text-sm max-w-[520px]">{overlayStatusText}</div>
-          {isSaving && duplicationProgress?.stage != "writing" && (
-            <button
-              className="bg-red-700 border-red-500 border-2 hover:bg-red-800 text-white font-medium text-sm px-4 rounded h-8"
-              onClick={() => onCancelDuplication()}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </MemoizedFloatingOverlay>
+      {pendingOperations > 0 && (
+        <DBCloneOperationOverlay
+          statusText={overlayStatusText}
+          onCancel={isSaving && duplicationProgress?.stage != "writing" ? onCancelDuplication : undefined}
+        />
+      )}
 
       <div className="absolute right-8 top-24 flex flex-col gap-6">
         <div className="flex flex-col items-center gap-2">
