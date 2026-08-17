@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES,
   filterDBCloneRedundantIndirectReferences,
   getDBCloneAutoSelectedParentNames,
+  getDBCloneInitialSelectedNodeNames,
 } from "../src/components/viewer/dbCloneSelection";
 
 const treeNode = (
@@ -20,6 +22,47 @@ const treeNode = (
 });
 
 describe("DB Clone selection", () => {
+  it("selects one row per requested table in breadth-first order", () => {
+    const tree = treeNode("tree", "", [
+      treeNode("culture variant", "building_culture_variants_tables", [
+        treeNode("first level", "building_levels_tables", [
+          treeNode("first chain", "building_chains_tables", [
+            treeNode("second level", "building_levels_tables"),
+          ]),
+        ]),
+        treeNode("first instance", "building_instances_tables"),
+      ]),
+    ]);
+
+    expect(
+      getDBCloneInitialSelectedNodeNames(tree, [
+        "building_chains_tables",
+        "building_levels_tables",
+        "building_instances_tables",
+      ]),
+    ).toEqual(["culture variant", "first level", "first instance", "first chain"]);
+  });
+
+  it("keeps the building culture variant defaults in the requested order", () => {
+    expect(BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES).toEqual([
+      "building_levels_tables",
+      "building_chains_tables",
+      "building_chain_availability_sets_tables",
+      "building_chain_set_items_tables",
+      "building_set_to_building_junctions_tables",
+      "building_instances_tables",
+      "building_effects_junction_tables",
+      "building_units_allowed_tables",
+      "building_upgrades_junction_tables",
+      "building_level_armed_citizenry_junctions_tables",
+      "cai_construction_system_synergies_tables",
+      "cai_construction_system_building_values_tables",
+      "building_superchains_tables",
+      "effect_bonus_value_building_chain_junctions_tables",
+      "cai_construction_system_unblocking_buildings_tables",
+    ]);
+  });
+
   it("does not auto-select indirect ancestors", () => {
     const nodes = {
       root: { name: "root", isIndirectRef: false },

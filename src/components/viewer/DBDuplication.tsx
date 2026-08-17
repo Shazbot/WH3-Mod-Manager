@@ -14,7 +14,12 @@ import { FloatingOverlay } from "@floating-ui/react";
 import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
 import DBCloneRenameInput from "./DBCloneRenameInput";
-import { filterDBCloneRedundantIndirectReferences, getDBCloneAutoSelectedParentNames } from "./dbCloneSelection";
+import {
+  BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES,
+  filterDBCloneRedundantIndirectReferences,
+  getDBCloneAutoSelectedParentNames,
+  getDBCloneInitialSelectedNodeNames,
+} from "./dbCloneSelection";
 import type { PackedFile } from "../../packFileTypes";
 import { applyDBCloneGlobalKey, getDBCloneGlobalKey, normalizeDBCloneModdersPrefix } from "./dbCloneGlobalKey";
 
@@ -160,14 +165,13 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           );
           setTreeData(treeNodeResult);
           setNodeNameToRenameValue({});
-          if (treeNodeResult.children.length > 0) {
-            const rootNodeName = treeNodeResult.children[0].name;
-            setSelectedNodesByName([rootNodeName]);
-            setExpandedNodesByName([rootNodeName]);
-          } else {
-            setSelectedNodesByName([]);
-            setExpandedNodesByName([]);
-          }
+          const preselectedTables =
+            launchSource == "buildings" && currentDBTableSelection.dbName == "building_culture_variants_tables"
+              ? BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES
+              : [];
+          setSelectedNodesByName(getDBCloneInitialSelectedNodeNames(treeNodeResult, preselectedTables));
+          const rootNodeName = treeNodeResult.children[0]?.name;
+          setExpandedNodesByName(rootNodeName ? [rootNodeName] : []);
         } else {
           setDuplicationError("DB Clone could not build the reference tree.");
         }
@@ -180,7 +184,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     };
 
     buildTree();
-  }, [currentDBTableSelection, deepCloneTarget, packPath]);
+  }, [currentDBTableSelection, deepCloneTarget, launchSource, packPath]);
   // }, [currentDBTableSelection, deepCloneTarget, selectedNodesByName, packPath]);
 
   if (!currentDBTableSelection) {
