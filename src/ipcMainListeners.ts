@@ -2365,7 +2365,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const getTableRowData = (
     packsTableData: PackViewData[],
     tableName: string,
-    rowDataExtractor: (schemaFieldRow: AmendedSchemaField[]) => void,
+    rowDataExtractor: (schemaFieldRow: AmendedSchemaField[], packViewData: PackViewData) => void,
   ) => {
     packsTableData.forEach((pTD) => {
       const skillNodeSetsFiles = Object.keys(pTD.packedFiles).filter((pFName) =>
@@ -2378,7 +2378,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const schemaFields = packedFile.schemaFields as AmendedSchemaField[];
         const chunkedShemaFields = chunkSchemaIntoRows(schemaFields, dbVersion) as AmendedSchemaField[][];
         for (const schemaFieldRow of chunkedShemaFields) {
-          rowDataExtractor(schemaFieldRow);
+          rowDataExtractor(schemaFieldRow, pTD);
         }
       }
     });
@@ -2668,7 +2668,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 13,
+          feature: 14,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -2724,18 +2724,33 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const tablePacks = [dbPack, ...orderedMods];
     const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
     const tables: UnitViewerTableRows = {};
+    const originPackPathByUnit = new Map<string, string>();
+    const originPackPathByLandUnit = new Map<string, string>();
     for (const canonicalTableName of UNIT_VIEWER_TABLES) {
       const rows: Array<Record<string, string>> = [];
-      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow) => {
-        rows.push(schemaRowToRecord(schemaFieldRow));
+      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
+        const row = schemaRowToRecord(schemaFieldRow);
+        rows.push(row);
+        if (packViewData.packPath === dbPackPath) return;
+        if (canonicalTableName === "main_units_tables" && row.unit) {
+          originPackPathByUnit.set(row.unit, packViewData.packPath);
+        } else if (canonicalTableName === "land_units_tables" && row.key) {
+          originPackPathByLandUnit.set(row.key, packViewData.packPath);
+        }
       });
       tables[canonicalTableName] = rows;
+    }
+    for (const row of tables.main_units_tables || []) {
+      const unitKey = row.unit;
+      const landUnitOrigin = row.land_unit ? originPackPathByLandUnit.get(row.land_unit) : undefined;
+      if (unitKey && landUnitOrigin) originPackPathByUnit.set(unitKey, landUnitOrigin);
     }
 
     // Vanilla first so mod locs, which stay on the live path, still shadow it.
     const data = buildUnitViewerData(
       tables,
       createLocLookup([...vanillaLocLookups, ...orderedMods.map((pack) => getLocsTrie(pack))]),
+      originPackPathByUnit,
     );
     const statIconSession: UnitViewerSession = {
       sessionId: "unit-viewer-cache-build",

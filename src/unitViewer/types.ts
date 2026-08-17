@@ -212,6 +212,8 @@ export interface UnitViewerCatalogUnit {
   subcultureKeys: string[];
   uiGroupKey: string;
   unitCardPath?: string;
+  /** Pack path that introduced or overrides this unit; absent means the vanilla database pack. */
+  originPackPath?: string;
 }
 
 export interface UnitViewerCatalogGroup {

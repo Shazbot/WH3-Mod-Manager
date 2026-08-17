@@ -111,14 +111,14 @@ const built = buildUnitViewerData(
     })[key],
 );
 
-const renderViewer = () => {
+const renderViewer = (mods: Mod[] = []) => {
   const store = configureStore({
     reducer: { app: appReducer },
     preloadedState: {
       app: {
         ...initialState,
         currentGame: "wh3" as const,
-        currentPreset: { ...initialState.currentPreset, mods: [] },
+        currentPreset: { ...initialState.currentPreset, mods },
       },
     },
   });
@@ -181,6 +181,45 @@ describe("Unit Viewer UI", () => {
         resolved: assetPaths,
       })),
     } as NonNullable<Window["api"]>;
+  });
+
+  it("filters the unit list to vanilla or an enabled mod", async () => {
+    const mod = createEnabledMod();
+    const groups = built.groups.map((group) => ({
+      ...group,
+      units: group.units.map((unit) => ({
+        ...unit,
+        originPackPath: unit.key === "unit_b" ? mod.path : undefined,
+      })),
+    }));
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups,
+      unitGroups: built.unitGroups,
+      constants: built.constants,
+      statIcons: {},
+    });
+
+    renderViewer([mod]);
+    await screen.findByText("Culture");
+    const modFilter = screen.getByLabelText("Filter by mod");
+    expect(modFilter).toHaveValue("all");
+    expect(within(modFilter).getByRole("option", { name: "All" })).toBeInTheDocument();
+    expect(within(modFilter).getByRole("option", { name: "Vanilla" })).toBeInTheDocument();
+    expect(within(modFilter).getByRole("option", { name: "Example" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Culture"));
+    expect(screen.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
+
+    fireEvent.change(modFilter, { target: { value: "vanilla" } });
+    expect(screen.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Beta" })).not.toBeInTheDocument();
+
+    fireEvent.change(modFilter, { target: { value: mod.path } });
+    expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
   });
 
   it("selects multiple units without duplicates and exposes the shared comparison controls", async () => {

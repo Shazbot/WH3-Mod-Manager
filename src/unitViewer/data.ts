@@ -388,6 +388,7 @@ export interface BuiltUnitViewerData {
 export const buildUnitViewerData = (
   tables: UnitViewerTableRows,
   getLoc: (key: string) => string | undefined,
+  originPackPathByUnit = new Map<string, string>(),
 ): BuiltUnitViewerData => {
   const landUnits = indexRows(tables.land_units_tables, "key");
   const entities = indexRows(tables.battle_entities_tables, "key");
@@ -707,6 +708,7 @@ export const buildUnitViewerData = (
             .map(([subculture]) => subculture),
           uiGroupKey: uiGroupKeyByUnit.get(unit.key) || EXTENDED_ROSTER_GROUP_KEY,
           unitCardPath: unit.unitCardPath,
+          originPackPath: originPackPathByUnit.get(unit.key),
         }))
         .sort(
           (first, second) =>

@@ -515,4 +515,19 @@ describe("Unit Viewer catalog", () => {
     expect(built.constants.experienceBonuses).toEqual([{ stat: "stat_morale", growthRate: 0, growthScalar: 3 }]);
     expect(built.constants.sizeScaling[0].singleEntityValue).toBe(0.5);
   });
+
+  it("carries a unit's source pack into the catalog", () => {
+    const built = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "unit", land_unit: "land", num_men: "1" }],
+        land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      },
+      () => undefined,
+      new Map([["unit", "/mods/example.pack"]]),
+    );
+
+    expect(built.groups[0].units[0].originPackPath).toBe("/mods/example.pack");
+  });
 });
