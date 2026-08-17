@@ -39,6 +39,14 @@ type VisualsAssetEditorContextMenu = {
   preferredPackPath?: string;
 };
 
+const ALL_VISUALS_PACKS_VALUE = "all";
+const VANILLA_VISUALS_PACK_VALUE = "vanilla";
+
+type VisualsPackOption = {
+  value: string;
+  label: string;
+};
+
 let nextVisualsTabId = 1;
 let nextVisualsRequestId = 1;
 
@@ -67,6 +75,7 @@ const VisualsTab = memo(() => {
   const [unitsError, setUnitsError] = useState<string | null>(null);
   const [unitFilterInput, setUnitFilterInput] = useState("");
   const [unitFilter, setUnitFilter] = useState("");
+  const [packFilter, setPackFilter] = useState(ALL_VISUALS_PACKS_VALUE);
   const [isGroupedByOrigin, setIsGroupedByOrigin] = useState(false);
   const [collapsedOriginGroups, setCollapsedOriginGroups] = useState<Record<string, boolean>>({});
   const [viewerMessage, setViewerMessage] = useState<string | null>(null);
@@ -157,13 +166,43 @@ const VisualsTab = memo(() => {
 
   const compiledUnitFilter = useMemo(() => compileVisualsUnitFilter(unitFilter), [unitFilter]);
 
+  const packOptions = useMemo<VisualsPackOption[]>(() => {
+    const optionsByPath = new Map<string, VisualsPackOption>();
+    for (const unit of units) {
+      if (unit.originLabel.toLowerCase() === "vanilla" || !unit.originPackPath) continue;
+      if (!optionsByPath.has(unit.originPackPath)) {
+        optionsByPath.set(unit.originPackPath, {
+          value: unit.originPackPath,
+          label: unit.originLabel || getBaseName(unit.originPackPath),
+        });
+      }
+    }
+
+    return Array.from(optionsByPath.values()).sort((first, second) => collator.compare(first.label, second.label));
+  }, [units]);
+
+  useEffect(() => {
+    if (packFilter === ALL_VISUALS_PACKS_VALUE || packFilter === VANILLA_VISUALS_PACK_VALUE) return;
+    if (!packOptions.some((option) => option.value === packFilter)) {
+      setPackFilter(ALL_VISUALS_PACKS_VALUE);
+    }
+  }, [packFilter, packOptions]);
+
+  const packFilteredUnits = useMemo(() => {
+    if (packFilter === ALL_VISUALS_PACKS_VALUE) return units;
+    if (packFilter === VANILLA_VISUALS_PACK_VALUE) {
+      return units.filter((entry) => entry.originLabel.toLowerCase() === "vanilla");
+    }
+    return units.filter((entry) => entry.originPackPath === packFilter);
+  }, [packFilter, units]);
+
   const filteredUnits = useMemo(() => {
-    if (!compiledUnitFilter.regex) return units;
-    return units.filter((entry) => {
+    if (!compiledUnitFilter.regex) return packFilteredUnits;
+    return packFilteredUnits.filter((entry) => {
       const haystack = `${entry.localizedName} ${entry.unitKey} ${entry.faction} ${entry.variantName || ""}`;
       return compiledUnitFilter.regex!.test(haystack);
     });
-  }, [compiledUnitFilter.regex, units]);
+  }, [compiledUnitFilter.regex, packFilteredUnits]);
 
   const unitComparator = useMemo(() => {
     return (first: VisualsUnitEntry, second: VisualsUnitEntry) => {
@@ -498,6 +537,25 @@ const VisualsTab = memo(() => {
             </span>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="visuals-pack-filter" className="text-gray-300">
+            Pack
+          </label>
+          <select
+            id="visuals-pack-filter"
+            value={packFilter}
+            onChange={(event) => setPackFilter(event.target.value)}
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white min-w-[12rem]"
+          >
+            <option value={ALL_VISUALS_PACKS_VALUE}>All packs</option>
+            <option value={VANILLA_VISUALS_PACK_VALUE}>Vanilla</option>
+            {packOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <label className="flex items-center gap-2 text-gray-300">
           <input type="checkbox" checked={isFilePanelOpen} onChange={() => setIsFilePanelOpen((prev) => !prev)} />
           Show all model files
@@ -507,7 +565,7 @@ const VisualsTab = memo(() => {
           Group by source
         </label>
         <span className="text-gray-400">
-          {isLoadingUnits ? "Loading..." : `${filteredUnits.length}/${units.length} units`}
+          {isLoadingUnits ? "Loading..." : `${filteredUnits.length}/${packFilteredUnits.length} units`}
         </span>
       </div>
 
