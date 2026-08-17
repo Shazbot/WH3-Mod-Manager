@@ -38,7 +38,13 @@ import { buildBuildingsData, createBuildingsLocLookup, BUILDINGS_TABLES } from "
 import { resolveRegionBuildings } from "./buildingsData/derive";
 import { validateNewRows } from "./buildingsData/validate";
 import { applyNewRowsToBuildingsData, LOC_TABLE, newRowsByTable, type BuildingsEditState } from "./buildingsData/edits";
-import { clearBuildingsMemoryCache, loadBuildingsDiskCache, saveBuildingsDiskCache } from "./buildingsData/cache";
+import {
+  clearBuildingsMemoryCache,
+  describeBuildingsCacheSignatureChanges,
+  loadBuildingsDiskCache,
+  saveBuildingsDiskCache,
+  type BuildingsCacheSignatureInputs,
+} from "./buildingsData/cache";
 import type {
   BuildingsCatalog,
   BuildingsCaiRowsResponse,
@@ -262,6 +268,15 @@ const buildSkillsDataSignature = (mods: Mod[], currentGame: SupportedGames) =>
       lastChanged: mod.lastChanged ?? null,
     })),
   });
+const buildBuildingsModsSignature = (mods: Mod[]) =>
+  JSON.stringify(
+    sortByNameAndLoadOrder(mods).map((mod) => ({
+      path: mod.path,
+      loadOrder: mod.loadOrder ?? null,
+    })),
+  );
+const buildBuildingsBuildKey = (mods: Mod[], currentGame: SupportedGames) =>
+  JSON.stringify({ currentGame, mods: buildBuildingsModsSignature(mods) });
 const resolveSkillGenerationTemplate = (
   template: string,
   variables: { prefix: string; setSuffix: string; timestamp: string; row: string; column: string },
@@ -337,6 +352,7 @@ const UNIT_VIEWER_ASSET_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 let cachedUnitViewerData: { signature: string; data: BuiltUnitViewerData; assetPackPaths: string[] } | undefined;
 type CachedBuildingsData = {
   signature: string;
+  signatureInputs?: BuildingsCacheSignatureInputs;
   data: BuiltBuildingsData;
   /** Effective source rows retained so every non-start-pos pending table can rebuild the view. */
   tables: BuildingsTableRows;
@@ -3470,16 +3486,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
       }),
     );
+    const signatureInputs: BuildingsCacheSignatureInputs = {
+      feature: 3,
+      game: appData.currentGame,
+      schema: getVisualsSchemaHash(appData.currentGame),
+      mods: buildBuildingsModsSignature(enabledMods),
+      identities,
+    };
     const signature = createHash("sha256")
-      .update(
-        JSON.stringify({
-          feature: 2,
-          game: appData.currentGame,
-          schema: getVisualsSchemaHash(appData.currentGame),
-          mods: getUnitViewerSignature(enabledMods),
-          identities,
-        }),
-      )
+      .update(JSON.stringify(signatureInputs))
       .digest("hex");
     if (cachedBuildingsData?.signature === signature) {
       console.log("buildBuildingsSessionData: using in-memory Buildings cache", { signature });
@@ -3489,13 +3504,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       console.log("buildBuildingsSessionData: in-memory Buildings cache miss: signature changed", {
         cachedSignature: cachedBuildingsData.signature,
         requestedSignature: signature,
+        changedInputs: describeBuildingsCacheSignatureChanges(cachedBuildingsData.signatureInputs, signatureInputs),
       });
     } else {
       console.log("buildBuildingsSessionData: in-memory Buildings cache miss: no cached data", {
         requestedSignature: signature,
       });
     }
-    const diskData = await loadBuildingsDiskCache(app.getPath("userData"), signature);
+    const diskData = await loadBuildingsDiskCache(app.getPath("userData"), signature, signatureInputs);
     if (diskData) {
       console.log("buildBuildingsSessionData: using disk Buildings cache", { signature });
       const hadBuildingFrame = !!diskData.data.buildingFrame;
@@ -3507,6 +3523,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           diskData.data,
           diskData.tables,
           diskData.localizations,
+          signatureInputs,
         );
       }
       cachedBuildingsData = { signature, ...diskData, dbPackPath, ...icons };
@@ -3582,8 +3599,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
     releaseParsedTables(tablePacks, tablesToRead);
     const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
-    await saveBuildingsDiskCache(app.getPath("userData"), signature, data, tables, localizations);
-    cachedBuildingsData = { signature, data, tables, localizations, dbPackPath, ...icons };
+    await saveBuildingsDiskCache(app.getPath("userData"), signature, data, tables, localizations, signatureInputs);
+    cachedBuildingsData = { signature, signatureInputs, data, tables, localizations, dbPackPath, ...icons };
     return cachedBuildingsData;
   };
 
@@ -3662,7 +3679,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
   const buildingsBuilds = createSerializedBuilds();
   const ensureBuildingsData = async (enabledMods: Mod[]) =>
-    buildingsBuilds.run(getUnitViewerSignature(enabledMods), () => buildBuildingsSessionData(enabledMods));
+    buildingsBuilds.run(buildBuildingsBuildKey(enabledMods, appData.currentGame), () =>
+      buildBuildingsSessionData(enabledMods),
+    );
 
   /**
    * The schema each buildings table's rows have to be written with.

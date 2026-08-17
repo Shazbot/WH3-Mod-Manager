@@ -54,7 +54,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const enabledModsSignature = useMemo(
     () =>
       `${currentGame}|${sortByNameAndLoadOrder(enabledMods)
-        .map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}:${mod.lastChanged ?? ""}`)
+        .map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}`)
         .join("|")}`,
     [currentGame, enabledMods],
   );
