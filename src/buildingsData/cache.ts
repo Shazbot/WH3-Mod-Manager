@@ -26,14 +26,40 @@ export const loadBuildingsDiskCache = async (
   if (cachedPayload?.signature === signature && cachedPayload.version === BUILDINGS_CACHE_VERSION) {
     return cachedPayload;
   }
+  const cacheFilePath = nodePath.join(userDataPath, BUILDINGS_CACHE_FILE);
   try {
-    const compressed = await fs.promises.readFile(nodePath.join(userDataPath, BUILDINGS_CACHE_FILE));
+    const compressed = await fs.promises.readFile(cacheFilePath);
     const json = await zstdDecompress(compressed);
     const payload = JSON.parse(json.toString("utf8")) as BuildingsDiskPayload;
-    if (payload.version !== BUILDINGS_CACHE_VERSION || payload.signature !== signature) return undefined;
+    if (payload.version !== BUILDINGS_CACHE_VERSION) {
+      console.log("Buildings disk cache miss: version mismatch", {
+        cacheFilePath,
+        cachedVersion: payload.version,
+        expectedVersion: BUILDINGS_CACHE_VERSION,
+      });
+      return undefined;
+    }
+    if (payload.signature !== signature) {
+      console.log("Buildings disk cache miss: signature mismatch", {
+        cacheFilePath,
+        cachedSignature: payload.signature,
+        requestedSignature: signature,
+      });
+      return undefined;
+    }
     cachedPayload = payload;
     return payload;
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException).code;
+    console.log(
+      errorCode === "ENOENT"
+        ? "Buildings disk cache miss: cache file does not exist"
+        : "Buildings disk cache miss: cache file could not be read or decoded",
+      {
+        cacheFilePath,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
     return undefined;
   }
 };

@@ -3481,9 +3481,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }),
       )
       .digest("hex");
-    if (cachedBuildingsData?.signature === signature) return cachedBuildingsData;
+    if (cachedBuildingsData?.signature === signature) {
+      console.log("buildBuildingsSessionData: using in-memory Buildings cache", { signature });
+      return cachedBuildingsData;
+    }
+    if (cachedBuildingsData) {
+      console.log("buildBuildingsSessionData: in-memory Buildings cache miss: signature changed", {
+        cachedSignature: cachedBuildingsData.signature,
+        requestedSignature: signature,
+      });
+    } else {
+      console.log("buildBuildingsSessionData: in-memory Buildings cache miss: no cached data", {
+        requestedSignature: signature,
+      });
+    }
     const diskData = await loadBuildingsDiskCache(app.getPath("userData"), signature);
     if (diskData) {
+      console.log("buildBuildingsSessionData: using disk Buildings cache", { signature });
       const hadBuildingFrame = !!diskData.data.buildingFrame;
       const icons = await registerBuildingIcons(diskData.data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
       if (!hadBuildingFrame && diskData.data.buildingFrame) {
@@ -3498,6 +3512,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       cachedBuildingsData = { signature, ...diskData, dbPackPath, ...icons };
       return cachedBuildingsData;
     }
+
+    console.log("buildBuildingsSessionData: rebuilding Buildings cache from vanilla and mod packs", {
+      reason: "no matching in-memory or disk cache entry",
+      signature,
+    });
 
     const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
     const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
@@ -3805,6 +3824,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       clearIconAssets();
       // The buildings data is cached under a signature that includes the game, so coming back here
       // would otherwise serve icon URLs built with a generation clearIconAssets has just dropped.
+      console.log("Buildings cache: clearing in-memory cache because the game/folders changed", { game: newGame });
       cachedBuildingsData = undefined;
       cachedEsfMapData = undefined;
       clearEsfMapMemoryCache();
