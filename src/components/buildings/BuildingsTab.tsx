@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useSt
 import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { openMapForRegion } from "../../appSlice";
+import { sortByNameAndLoadOrder } from "../../modSortingHelpers";
 import { useDeferredWhileInactive } from "../useDeferredWhileInactive";
 import BuildingsFilters from "./BuildingsFilters";
 import BuildingsBoard from "./BuildingsBoard";
@@ -52,7 +53,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const enabledModsSignature = useMemo(
     () =>
-      `${currentGame}|${enabledMods
+      `${currentGame}|${sortByNameAndLoadOrder(enabledMods)
         .map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}:${mod.lastChanged ?? ""}`)
         .join("|")}`,
     [currentGame, enabledMods],

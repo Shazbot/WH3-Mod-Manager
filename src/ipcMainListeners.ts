@@ -3458,7 +3458,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       dbPackPath,
       buildingFramePackPath,
       ...localizationPackPaths,
-      ...enabledMods.map((mod) => mod.path),
+      ...orderedEnabledMods.map((mod) => mod.path),
     ];
     const identities = await Promise.all(
       identityPaths.map(async (packPath) => {
