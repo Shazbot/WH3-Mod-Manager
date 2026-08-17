@@ -334,7 +334,7 @@ const ModRow = memo(
             {areThumbnailsEnabled && (
               <div onContextMenu={(e) => onModRightClick(e, mod)} className="flex place-items-center">
                 <label className="cursor-pointer" htmlFor={checkboxId}>
-                  <img className="max-w-[3.5rem] aspect-square" src={thumbnailSrc} decoding="async"></img>
+                  <img className="max-w-[4rem] aspect-square" src={thumbnailSrc} decoding="async"></img>
                 </label>
               </div>
             )}
