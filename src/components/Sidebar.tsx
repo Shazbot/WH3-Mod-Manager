@@ -499,14 +499,6 @@ const Sidebar = memo(() => {
     setIsWorkshopRepairModalOpen(true);
   };
 
-  const repairSelectedWorkshopMods = () => {
-    const requests = selectedWorkshopRepairMods
-      .filter((mod) => mod.lastChanged != null)
-      .map((mod) => ({ mod, remoteTimestampMs: mod.lastChanged as number }));
-    if (requests.length === 0) return;
-    window.api?.repairOutdatedWorkshopMods(requests);
-  };
-
   const resubscribeSelectedWorkshopMods = () => {
     if (selectedWorkshopRepairMods.length === 0) return;
     if (isWorkshopRepairRunning) {
@@ -588,8 +580,7 @@ const Sidebar = memo(() => {
         <Modal.Header>{localized.repairWorkshopMods || "Repair Workshop Mods"}</Modal.Header>
         <Modal.Body>
           <p className="mb-4 text-gray-500 dark:text-gray-300">
-            {localized.repairWorkshopModsHelp ||
-              "Force Update asks Steam to download and verifies the installed timestamp. If that fails, the mod is automatically unsubscribed and resubscribed."}
+            {localized.forceResubscribeMsg || "Force Steam to unsubscribe and resubscribe the selected mods."}
           </p>
           <div className="max-h-72 overflow-y-auto space-y-2">
             {workshopRepairCandidateMods.map((mod) => {
@@ -646,16 +637,6 @@ const Sidebar = memo(() => {
             {isWorkshopRepairRunning
               ? localized.cancelAndResubscribe || "Cancel and Resubscribe"
               : localized.forceResubscribe || "Force Resubscribe"}
-          </button>
-          <button
-            type="button"
-            className="px-4 py-2 bg-purple-600 text-white font-medium text-sm rounded hover:bg-purple-700 disabled:opacity-50"
-            disabled={selectedWorkshopRepairMods.length === 0 || isWorkshopRepairRunning}
-            onClick={repairSelectedWorkshopMods}
-          >
-            {isWorkshopRepairRunning
-              ? localized.updating || "Updating…"
-              : localized.forceUpdateWithFallback || "Force Update"}
           </button>
         </Modal.Footer>
       </Modal>

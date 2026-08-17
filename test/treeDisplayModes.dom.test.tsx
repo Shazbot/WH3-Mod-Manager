@@ -301,8 +301,11 @@ describe("tree display DOM behavior", () => {
 
     fireEvent.click(screen.getByText("Workshop mods may be outdated"));
     expect(screen.getByText("Repair Workshop Mods")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Force Update" }));
-    expect(window.api?.repairOutdatedWorkshopMods).toHaveBeenCalledWith([{ mod, remoteTimestampMs: 200_000 }]);
+    expect(screen.queryByRole("button", { name: "Force Update" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Force Resubscribe" }));
+    expect(window.api?.forceResubscribeMods).toHaveBeenCalledWith([mod]);
+
+    fireEvent.click(screen.getByText("Workshop mods may be outdated"));
 
     act(() => {
       store.dispatch(
