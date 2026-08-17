@@ -155,10 +155,20 @@ describe("dual mod list layout", () => {
     expect(leftHeaders.every((header) => header.querySelector("svg"))).toBe(true);
     expect(right.querySelectorAll(".mod-row-header-pane")).toHaveLength(5);
 
+    // Every compact header centres its icon rather than hugging the left edge.
+    expect(leftHeaders.every((header) => header.classList.contains("justify-center"))).toBe(true);
+
     // The wording is gone from view but still reaches screen readers and the hover title.
     const orderHeader = leftHeaders[0];
     expect(within(orderHeader).getByText(localization.order)).toHaveClass("sr-only");
-    expect(orderHeader.querySelector("[title]")).toHaveAttribute("title", localization.order);
+    const orderLabel = orderHeader.querySelector("[title]") as HTMLElement;
+    expect(orderLabel).toHaveAttribute("title", localization.order);
+
+    // Ordered is the active sort here, so its icon is tinted; font weight would do nothing to an SVG.
+    expect(orderLabel).toHaveClass("text-blue-400");
+    const nameLabel = leftHeaders[2].querySelector("[title]") as HTMLElement;
+    expect(nameLabel).toHaveClass("opacity-60");
+    expect(nameLabel).not.toHaveClass("text-blue-400");
 
     // The single list keeps its worded headers.
     cleanup();

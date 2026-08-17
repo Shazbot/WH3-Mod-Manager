@@ -38,5 +38,6 @@
   "nodeEditorEditTextFileValuePlaceholder": "nodeEditorEditTextFileValuePlaceholder",
   "nodeEditorEditTextFileFindPlaceholder": "nodeEditorEditTextFileFindPlaceholder",
   "nodeEditorEditTextFileRequired": "nodeEditorEditTextFileRequired",
-  "nodeEditorTargetNameHasPath": "nodeEditorTargetNameHasPath"
+  "nodeEditorTargetNameHasPath": "nodeEditorTargetNameHasPath",
+  "configurationColumn": "configurationColumn"
 }

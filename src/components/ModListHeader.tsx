@@ -44,22 +44,21 @@ const ModListHeader = memo(
     /**
      * The panes are half the width the single list gets, so their columns are named with icons instead of
      * words. The wording still goes out as the accessible name and the hover title, which matters more
-     * once the visible label is gone.
+     * once the visible label is gone. The active sort column is tinted rather than emboldened, since font
+     * weight does nothing to an SVG.
      */
-    const columnLabel = (label: string, Icon: IconType, isActiveSort: boolean, className = "") => (
-      <span
-        className={`cursor-pointer ${className} ${isActiveSort ? "font-semibold" : ""}`}
-        title={(isCompact && label) || undefined}
-      >
-        {(isCompact && (
-          <>
-            <Icon className="inline" aria-hidden />
-            <span className="sr-only">{label}</span>
-          </>
-        )) ||
-          label}
-      </span>
-    );
+    const columnLabel = (label: string, Icon: IconType, isActiveSort: boolean, wideClassName = "") =>
+      (isCompact && (
+        <span
+          className={`inline-flex items-center cursor-pointer transition-opacity ${
+            isActiveSort ? "text-blue-400 opacity-100" : "opacity-60 hover:opacity-100"
+          }`}
+          title={label}
+        >
+          <Icon size="1.25rem" aria-hidden />
+          <span className="sr-only">{label}</span>
+        </span>
+      )) || <span className={`cursor-pointer ${wideClassName} ${isActiveSort ? "font-semibold" : ""}`}>{label}</span>;
 
     const orderHeader = (
       <div
@@ -90,7 +89,7 @@ const ModListHeader = memo(
 
     const lastUpdatedHeader = (
       <div
-        className={`flex place-items-center pl-1 ${isCompact ? "" : "grid-area-autohide "}${headerClass}`}
+        className={`flex place-items-center ${isCompact ? "justify-center " : "pl-1 grid-area-autohide "}${headerClass}`}
         onClick={() => setSortingType(SortingType.LastUpdated)}
         onContextMenu={() => setSortingType(SortingType.SubbedTime)}
       >
@@ -108,13 +107,20 @@ const ModListHeader = memo(
 
     const configHeader = (
       <div
-        className={`flex place-items-center pl-1 rounded-tr-xl justify-center ${headerClass}`}
+        className={`flex place-items-center justify-center rounded-tr-xl ${isCompact ? "" : "pl-1 "}${headerClass}`}
         onClick={() => setSortingType(SortingType.IsCustomizable)}
       >
         {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-        <span className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}>
-          <GoGear></GoGear>
-        </span>
+        {(isCompact &&
+          columnLabel(
+            localized.configurationColumn || "Configuration",
+            GoGear,
+            modRowSorting.isCustomizableSort(sortingType),
+          )) || (
+          <span className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}>
+            <GoGear></GoGear>
+          </span>
+        )}
       </div>
     );
 
@@ -123,13 +129,17 @@ const ModListHeader = memo(
         <>
           {orderHeader}
           {areThumbnailsEnabled && (
-            <div className={`flex place-items-center pl-1 cursor-default ${headerClass}`} title={localized.thumbnail}>
-              <GoImage className="inline" aria-hidden />
+            <div
+              className={`flex place-items-center justify-center cursor-default ${headerClass}`}
+              title={localized.thumbnail}
+            >
+              {/* Not a sort control, so it stays muted and does not react to hover. */}
+              <GoImage className="opacity-60" size="1.25rem" aria-hidden />
               <span className="sr-only">{localized.thumbnail}</span>
             </div>
           )}
           <div
-            className={`flex place-items-center pl-1 ${headerClass}`}
+            className={`flex place-items-center justify-center ${headerClass}`}
             onClick={() => setSortingType(SortingType.HumanName)}
             onContextMenu={() => setSortingType(SortingType.PackName)}
           >
