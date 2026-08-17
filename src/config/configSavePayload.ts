@@ -92,6 +92,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isAuthorEnabled: appState.isAuthorEnabled,
       areThumbnailsEnabled: appState.areThumbnailsEnabled,
       isDualModListLayoutEnabled: appState.isDualModListLayoutEnabled,
+      isShowingDisabledModsLoadOrder: appState.isShowingDisabledModsLoadOrder,
       isPresetAuthorEnabled: appState.isPresetAuthorEnabled,
       arePresetThumbnailsEnabled: appState.arePresetThumbnailsEnabled,
       isCategoryAuthorEnabled: appState.isCategoryAuthorEnabled,

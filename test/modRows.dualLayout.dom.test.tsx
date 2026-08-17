@@ -132,6 +132,18 @@ describe("dual mod list layout", () => {
     expect(within(right).getByText("1")).toBeInTheDocument();
   });
 
+  it("numbers the disabled list when the option is turned on", async () => {
+    renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)], {
+      isShowingDisabledModsLoadOrder: true,
+    });
+
+    const { left } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    const alphaRow = left.querySelector<HTMLElement>("[id='alpha.pack']") as HTMLElement;
+    expect(alphaRow.textContent).toMatch(/\d/);
+  });
+
   it("moves a mod to the other pane when its row is clicked", async () => {
     const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
 

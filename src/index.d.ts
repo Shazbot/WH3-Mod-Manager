@@ -183,6 +183,12 @@ declare global {
     isAuthorEnabled: boolean;
     /** Split the All Mods tab into a disabled-mods list on the left and an enabled-mods list on the right. */
     isDualModListLayoutEnabled: boolean;
+    /**
+     * Number the rows of the dual layout's disabled list. Off by default: that index is the mod's rank
+     * among every mod, which says nothing about where it lands once enabled. Pinned load orders show
+     * either way.
+     */
+    isShowingDisabledModsLoadOrder: boolean;
     /** Show the mod author under the mod name in the presets tab lists. */
     isPresetAuthorEnabled: boolean;
     /** Show a thumbnail column in the presets tab lists. */
@@ -291,6 +297,7 @@ declare global {
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
     | "isDualModListLayoutEnabled"
+    | "isShowingDisabledModsLoadOrder"
     | "isPresetAuthorEnabled"
     | "arePresetThumbnailsEnabled"
     | "isCategoryAuthorEnabled"

@@ -7,6 +7,7 @@ import {
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
   toggleIsDualModListLayoutEnabled,
+  toggleIsShowingDisabledModsLoadOrder,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
@@ -100,6 +101,7 @@ const OptionsDrawer = memo(() => {
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
+  const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
@@ -670,6 +672,32 @@ const OptionsDrawer = memo(() => {
             <p className="ml-1 mt-1 text-sm text-gray-500 dark:text-gray-400">
               {localized.dualModListLayoutHelp ||
                 "Split the All Mods tab into two lists: disabled mods on the left, enabled mods on the right. Click a mod to move it between them."}
+            </p>
+
+            {/* Only affects the disabled list, which exists solely in the dual layout. */}
+            <div className={"flex items-center ml-6 mt-3 " + (isDualModListLayoutEnabled ? "" : "opacity-40")}>
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="show-disabled-mods-load-order"
+                disabled={!isDualModListLayoutEnabled}
+                checked={!!isShowingDisabledModsLoadOrder}
+                onChange={() => dispatch(toggleIsShowingDisabledModsLoadOrder())}
+              ></input>
+              <label
+                className={"ml-2 mt-1 " + (isDualModListLayoutEnabled ? "" : "cursor-not-allowed")}
+                htmlFor="show-disabled-mods-load-order"
+              >
+                {localized.showDisabledModsLoadOrder || "Number The Disabled Mods List"}
+              </label>
+            </div>
+            <p
+              className={
+                "ml-6 mt-1 text-sm text-gray-500 dark:text-gray-400 " + (isDualModListLayoutEnabled ? "" : "opacity-40")
+              }
+            >
+              {localized.showDisabledModsLoadOrderHelp ||
+                "A disabled mod's position is its rank among all mods, which is not where it lands once enabled. Load orders you have pinned are shown either way."}
             </p>
 
             <h6 className="mt-6">{localized.extraColumns}</h6>

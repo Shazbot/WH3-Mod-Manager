@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import appReducer, { setFromConfig, toggleIsDualModListLayoutEnabled } from "../src/appSlice";
+import appReducer, {
+  setFromConfig,
+  toggleIsDualModListLayoutEnabled,
+  toggleIsShowingDisabledModsLoadOrder,
+} from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import { selectConfigSavePayload, resetConfigSavePayloadCache } from "../src/config/configSavePayload";
 
@@ -30,5 +34,33 @@ describe("dual mod list layout option", () => {
     resetConfigSavePayloadCache();
     const payload = selectConfigSavePayload({ ...initialState, isDualModListLayoutEnabled: true });
     expect(payload.config.isDualModListLayoutEnabled).toBe(true);
+  });
+});
+
+describe("disabled mods load order option", () => {
+  it("is off by default, so the disabled list is not numbered", () => {
+    expect(initialState.isShowingDisabledModsLoadOrder).toBe(false);
+  });
+
+  it("toggles", () => {
+    const on = appReducer(initialState, toggleIsShowingDisabledModsLoadOrder());
+    expect(on.isShowingDisabledModsLoadOrder).toBe(true);
+    expect(appReducer(on, toggleIsShowingDisabledModsLoadOrder()).isShowingDisabledModsLoadOrder).toBe(false);
+  });
+
+  it("is restored from the config, and stays off when the config predates it", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, isShowingDisabledModsLoadOrder: true }));
+    expect(restored.isShowingDisabledModsLoadOrder).toBe(true);
+
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.isShowingDisabledModsLoadOrder;
+    const fromLegacy = appReducer(initialState, setFromConfig(legacyConfig as AppState));
+    expect(fromLegacy.isShowingDisabledModsLoadOrder).toBe(false);
+  });
+
+  it("is written to the config, so it survives a restart", () => {
+    resetConfigSavePayloadCache();
+    const payload = selectConfigSavePayload({ ...initialState, isShowingDisabledModsLoadOrder: true });
+    expect(payload.config.isShowingDisabledModsLoadOrder).toBe(true);
   });
 });

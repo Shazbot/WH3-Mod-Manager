@@ -76,6 +76,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
+  const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
   const customizableMods = useAppSelector((state) => state.app.customizableMods);
@@ -693,7 +694,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   showConfigColumn={false}
                   isInsidePane
                   canReorder={false}
-                  showPositionIndex={false}
+                  showPositionIndex={isShowingDisabledModsLoadOrder}
                   gridClass={getModListGridClass("compact", { ...compactGridOptions, showConfigColumn: false })}
                   ghostClass={getModListGhostClass("compact", { ...compactGridOptions, showConfigColumn: false })}
                   loadOrderIndexByModName={loadOrderIndexByModName}
