@@ -424,6 +424,7 @@
   "compatHelpEight": "The Missing Files tab lists files that are referenced in some other file, but don't actually exist. It's possible for this to not be an issue since mods can contain unused files. Icons for the file types:",
   "forceResubscribe": "Force Resubscribe",
   "forceResubscribeMsg": "Force steam to unsubscribe and then subscribe to the same mods, which deletes and downloads the mods. In cases where Force Re-Download isn't enough. By default this is for enabled mods, hold Shift for all mods. A backup reminder will appear before continuing. Takes a lot of time if you have a lot of mods.",
+  "repairWorkshopModsHelp": "Select the mods to repair. Only checked mods will be unsubscribed and resubscribed through Steam.",
   "forceResubscribeBackupRecommendation": "Before forcing a resubscribe, it is recommended to create a Steam collection as a backup first. That collection can be private.",
   "forceResubscribeContinue": "Continue Force Resubscribe",
   "collapseAll": "Collapse All",

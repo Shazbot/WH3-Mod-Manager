@@ -301,6 +301,11 @@ describe("tree display DOM behavior", () => {
 
     fireEvent.click(screen.getByText("Workshop mods may be outdated"));
     expect(screen.getByText("Repair Workshop Mods")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Select the mods to repair. Only checked mods will be unsubscribed and resubscribed through Steam.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Force Update" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Force Resubscribe" }));
     expect(window.api?.forceResubscribeMods).toHaveBeenCalledWith([mod]);

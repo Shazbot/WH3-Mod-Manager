@@ -580,7 +580,8 @@ const Sidebar = memo(() => {
         <Modal.Header>{localized.repairWorkshopMods || "Repair Workshop Mods"}</Modal.Header>
         <Modal.Body>
           <p className="mb-4 text-gray-500 dark:text-gray-300">
-            {localized.forceResubscribeMsg || "Force Steam to unsubscribe and resubscribe the selected mods."}
+            {localized.repairWorkshopModsHelp ||
+              "Select the mods to repair. Only checked mods will be unsubscribed and resubscribed through Steam."}
           </p>
           <div className="max-h-72 overflow-y-auto space-y-2">
             {workshopRepairCandidateMods.map((mod) => {
