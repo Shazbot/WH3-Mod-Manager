@@ -48,7 +48,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const enabledModsSignature = useMemo(
     () =>
       `${currentGame}|${enabledMods
-        .map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}:${mod.lastChanged ?? ""}`)
+        .map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}`)
         .join("|")}`,
     [currentGame, enabledMods],
   );

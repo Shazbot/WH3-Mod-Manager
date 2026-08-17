@@ -265,7 +265,6 @@ const buildSkillsDataSignature = (mods: Mod[], currentGame: SupportedGames) =>
       path: mod.path,
       loadOrder: mod.loadOrder ?? null,
       lastChangedLocal: mod.lastChangedLocal ?? null,
-      lastChanged: mod.lastChanged ?? null,
     })),
   });
 const buildBuildingsModsSignature = (mods: Mod[]) =>
@@ -2965,7 +2964,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       enabledMods: sortByNameAndLoadOrder(appData.enabledMods).map((mod) => ({
         path: mod.path,
         loadOrder: mod.loadOrder,
-        lastChanged: mod.lastChanged,
         lastChangedLocal: mod.lastChangedLocal,
       })),
     });
@@ -3329,7 +3327,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             path: mod.path,
             loadOrder: mod.loadOrder ?? null,
             lastChangedLocal: mod.lastChangedLocal ?? null,
-            lastChanged: mod.lastChanged ?? null,
           })),
           identities,
         }),
@@ -3493,9 +3490,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       mods: buildBuildingsModsSignature(enabledMods),
       identities,
     };
-    const signature = createHash("sha256")
-      .update(JSON.stringify(signatureInputs))
-      .digest("hex");
+    const signature = createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex");
     if (cachedBuildingsData?.signature === signature) {
       console.log("buildBuildingsSessionData: using in-memory Buildings cache", { signature });
       return cachedBuildingsData;
@@ -4437,7 +4432,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   };
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    // if (isDev) return;
+    // if we keep restarting the app in dev steam refuse requests eventually
+    if (isDev) return;
     fetchModData(
       ids.filter((id) => id !== ""),
       (modData) => {
