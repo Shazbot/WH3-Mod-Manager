@@ -774,7 +774,11 @@ const Sidebar = memo(() => {
           )}
           {possiblyOutdatedWorkshopMods.length > 0 && (
             <div className="text-center text-amber-500 font-semibold mb-4">
-              <button type="button" className="make-tooltip-w-full w-full" onClick={openWorkshopRepairModal}>
+              <button
+                type="button"
+                className="make-tooltip-w-full w-full cursor-pointer"
+                onClick={openWorkshopRepairModal}
+              >
                 <Tooltip
                   placement="left"
                   content={
@@ -804,7 +808,7 @@ const Sidebar = memo(() => {
                     </>
                   }
                 >
-                  <span className="cursor-default">
+                  <span className="cursor-pointer">
                     {localized.workshopModsMayBeOutdated || "Workshop mods may be outdated"}
                   </span>
                 </Tooltip>

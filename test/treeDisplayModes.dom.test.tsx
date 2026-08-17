@@ -298,6 +298,7 @@ describe("tree display DOM behavior", () => {
     });
 
     expect(screen.getByText("Workshop mods may be outdated")).toBeInTheDocument();
+    expect(screen.getByText("Workshop mods may be outdated")).toHaveClass("cursor-pointer");
 
     fireEvent.click(screen.getByText("Workshop mods may be outdated"));
     expect(screen.getByText("Repair Workshop Mods")).toBeInTheDocument();
