@@ -39,36 +39,40 @@ describe("dual mod list layout option", () => {
 });
 
 describe("disabled mods load order option", () => {
-  it("is off by default, so the disabled list is not numbered", () => {
-    expect(initialState.isShowingDisabledModsLoadOrder).toBe(false);
+  it("is on by default", () => {
+    expect(initialState.isShowingDisabledModsLoadOrder).toBe(true);
   });
 
   it("toggles", () => {
-    const on = appReducer(initialState, toggleIsShowingDisabledModsLoadOrder());
-    expect(on.isShowingDisabledModsLoadOrder).toBe(true);
-    expect(appReducer(on, toggleIsShowingDisabledModsLoadOrder()).isShowingDisabledModsLoadOrder).toBe(false);
+    const off = appReducer(initialState, toggleIsShowingDisabledModsLoadOrder());
+    expect(off.isShowingDisabledModsLoadOrder).toBe(false);
+    expect(appReducer(off, toggleIsShowingDisabledModsLoadOrder()).isShowingDisabledModsLoadOrder).toBe(true);
   });
 
-  it("is restored from the config, and stays off when the config predates it", () => {
-    const restored = appReducer(initialState, setFromConfig({ ...initialState, isShowingDisabledModsLoadOrder: true }));
-    expect(restored.isShowingDisabledModsLoadOrder).toBe(true);
+  it("is restored from the config, and a config predating it keeps the on default", () => {
+    const restored = appReducer(
+      initialState,
+      setFromConfig({ ...initialState, isShowingDisabledModsLoadOrder: false }),
+    );
+    expect(restored.isShowingDisabledModsLoadOrder).toBe(false);
 
+    // Defaulting to on means the "?? state" idiom, not "!!" - the latter reads a missing key as off.
     const legacyConfig = { ...initialState } as Partial<AppState>;
     delete legacyConfig.isShowingDisabledModsLoadOrder;
     const fromLegacy = appReducer(initialState, setFromConfig(legacyConfig as AppState));
-    expect(fromLegacy.isShowingDisabledModsLoadOrder).toBe(false);
+    expect(fromLegacy.isShowingDisabledModsLoadOrder).toBe(true);
   });
 
   it("is written to the config, so it survives a restart", () => {
     resetConfigSavePayloadCache();
-    const payload = selectConfigSavePayload({ ...initialState, isShowingDisabledModsLoadOrder: true });
-    expect(payload.config.isShowingDisabledModsLoadOrder).toBe(true);
+    const payload = selectConfigSavePayload({ ...initialState, isShowingDisabledModsLoadOrder: false });
+    expect(payload.config.isShowingDisabledModsLoadOrder).toBe(false);
   });
 });
 
 describe("mod list density option", () => {
-  it("starts compact, which is what the layout shipped with", () => {
-    expect(initialState.modListDensity).toBe("compact");
+  it("starts comfortable", () => {
+    expect(initialState.modListDensity).toBe("comfortable");
   });
 
   it("is set to any of the three densities", () => {
@@ -77,13 +81,13 @@ describe("mod list density option", () => {
     expect(appReducer(roomy, setModListDensity("comfortable")).modListDensity).toBe("comfortable");
   });
 
-  it("is restored from the config, and falls back to compact when the config predates it", () => {
+  it("is restored from the config, and falls back to the default when the config predates it", () => {
     const restored = appReducer(initialState, setFromConfig({ ...initialState, modListDensity: "comfortable" }));
     expect(restored.modListDensity).toBe("comfortable");
 
     const legacyConfig = { ...initialState } as Partial<AppState>;
     delete legacyConfig.modListDensity;
-    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).modListDensity).toBe("compact");
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).modListDensity).toBe("comfortable");
   });
 
   it("is written to the config, so it survives a restart", () => {

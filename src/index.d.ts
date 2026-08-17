@@ -186,9 +186,9 @@ declare global {
     /** How much room a row gets in the dual layout, where two lists share the width one used to have. */
     modListDensity: ModListDensity;
     /**
-     * Number the rows of the dual layout's disabled list. Off by default: that index is the mod's rank
-     * among every mod, which says nothing about where it lands once enabled. Pinned load orders show
-     * either way.
+     * Number the rows of the dual layout's disabled list. The index is the mod's rank among every mod
+     * rather than a prediction of where it lands once enabled, so it can be turned off for a quieter
+     * list. Pinned load orders show either way.
      */
     isShowingDisabledModsLoadOrder: boolean;
     /** Show the mod author under the mod name in the presets tab lists. */

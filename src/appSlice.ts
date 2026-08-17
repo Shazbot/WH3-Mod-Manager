@@ -1047,7 +1047,8 @@ const appSlice = createSlice({
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
       state.isDualModListLayoutEnabled = !!fromConfigAppState.isDualModListLayoutEnabled;
       state.modListDensity = fromConfigAppState.modListDensity ?? state.modListDensity;
-      state.isShowingDisabledModsLoadOrder = !!fromConfigAppState.isShowingDisabledModsLoadOrder;
+      state.isShowingDisabledModsLoadOrder =
+        fromConfigAppState.isShowingDisabledModsLoadOrder ?? state.isShowingDisabledModsLoadOrder;
       state.isPresetAuthorEnabled = !!fromConfigAppState.isPresetAuthorEnabled;
       state.arePresetThumbnailsEnabled = !!fromConfigAppState.arePresetThumbnailsEnabled;
       state.isCategoryAuthorEnabled = !!fromConfigAppState.isCategoryAuthorEnabled;

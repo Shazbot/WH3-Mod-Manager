@@ -128,7 +128,9 @@ describe("dual mod list layout", () => {
   });
 
   it("blanks the position index for disabled mods but keeps a pinned load order", async () => {
-    renderDualLayout([createMod("alpha", false), createMod("delta", false, 6), createMod("beta", true, 0)]);
+    renderDualLayout([createMod("alpha", false), createMod("delta", false, 6), createMod("beta", true, 0)], {
+      isShowingDisabledModsLoadOrder: false,
+    });
 
     const { left, right } = getPanes();
     await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
@@ -178,10 +180,8 @@ describe("dual mod list layout", () => {
     expect(within(singleOrderHeader).getByText(localization.order)).not.toHaveClass("sr-only");
   });
 
-  it("numbers the disabled list when the option is turned on", async () => {
-    renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)], {
-      isShowingDisabledModsLoadOrder: true,
-    });
+  it("numbers the disabled list by default", async () => {
+    renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
 
     const { left } = getPanes();
     await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
