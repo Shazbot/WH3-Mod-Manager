@@ -148,10 +148,10 @@ const ModListPane = memo(
       [listRef, scrollElement],
     );
 
-    // Compact: a 4rem thumbnail plus the row's 0.375rem vertical padding, or three lines of text when
+    // Compact: a 4rem thumbnail plus the row's 0.5rem vertical padding, or three lines of text when
     // thumbnails are off. CellMeasurer still measures the real height; these only floor it.
-    const minRowHeight = isCompact ? (areThumbnailsEnabled ? 76 : 64) : areThumbnailsEnabled ? 112 - 8 : 0;
-    const estimatedRowSize = isCompact ? (areThumbnailsEnabled ? 76 : 64) : areThumbnailsEnabled ? 104 : 32;
+    const minRowHeight = isCompact ? (areThumbnailsEnabled ? 80 : 72) : areThumbnailsEnabled ? 112 - 8 : 0;
+    const estimatedRowSize = isCompact ? (areThumbnailsEnabled ? 80 : 72) : areThumbnailsEnabled ? 104 : 32;
 
     const rowHeight = useCallback(
       ({ index }: { index: number }) => Math.max(minRowHeight, cache.rowHeight({ index })),
