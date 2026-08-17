@@ -66,10 +66,7 @@ const EXPECTED_ALTDORF_SLOTS = [
  * Showing these is defensible for a modding tool - it shows what the data permits - and the UI marks
  * them rather than hiding them.
  */
-const EXPECTED_EXTRAS = [
-  "wh_main_HUMAN_MIDDENHEIM_worship",
-  "wh_main_HUMAN_TALABEC_worship",
-];
+const EXPECTED_EXTRAS = ["wh_main_HUMAN_MIDDENHEIM_worship", "wh_main_HUMAN_TALABEC_worship"];
 
 /** RPFM TSV: line 1 is the column names, line 2 is a `#table;version;path` comment, then rows. */
 const readTsvTable = (tableName: string): Array<Record<string, string>> => {
@@ -259,8 +256,8 @@ describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf pa
     // Every vanilla row has `enabled = false`, so gating on it emptied the whole table.
     expect(tiles.some((tile) => tile.recruitable.length > 0)).toBe(true);
 
-    const barracks3 = tiles.find((tile) => tile.levelKey === "wh_main_emp_barracks_3");
-    expect(barracks3?.recruitable.map((unit) => unit.unitKey)).toContain("wh_main_emp_inf_swordsmen");
+    const barracks1 = tiles.find((tile) => tile.levelKey === "wh_main_emp_barracks_1");
+    expect(barracks1?.recruitable.map((unit) => unit.unitKey)).toContain("wh_main_emp_inf_swordsmen");
   });
 
   it("draws real upgrade arrows, from building_upgrades_junction rather than the downgrade table", () => {
