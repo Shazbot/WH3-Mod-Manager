@@ -185,16 +185,16 @@ body {
  * unlike .grid-mods* these do not change at a breakpoint.
  */
 .grid-mods-compact {
-  grid-template-columns: 56px 1fr 5.5rem;
+  grid-template-columns: 56px 1fr 6.25rem;
 }
 .grid-mods-compact-thumbs {
-  grid-template-columns: 56px max-content 1fr 5.5rem;
+  grid-template-columns: 56px max-content 1fr 6.25rem;
 }
 .grid-mods-compact-config {
-  grid-template-columns: 56px 1fr 5.5rem 44px;
+  grid-template-columns: 56px 1fr 6.25rem 44px;
 }
 .grid-mods-compact-thumbs-config {
-  grid-template-columns: 56px max-content 1fr 5.5rem 44px;
+  grid-template-columns: 56px max-content 1fr 6.25rem 44px;
 }
 
 /*

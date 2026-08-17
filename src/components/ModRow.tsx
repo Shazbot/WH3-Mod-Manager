@@ -342,24 +342,26 @@ const ModRow = memo(
             <div className="flex flex-col justify-center min-w-0" onContextMenu={(e) => onModRightClick(e, mod)}>
               <label className="cursor-pointer min-w-0 leading-tight" htmlFor={checkboxId}>
                 <span
-                  className={classNames("block", "truncate", { ["text-violet-400"]: isAlwaysEnabled })}
+                  className={classNames("block", "truncate", "font-medium", {
+                    ["text-violet-400"]: isAlwaysEnabled,
+                  })}
                   title={decodedHumanName}
                 >
                   {decodedHumanName}
                 </span>
                 {isAuthorEnabled && decodedAuthor && (
-                  <span className="block truncate text-xs opacity-60" title={decodedAuthor}>
+                  <span className="block truncate text-sm opacity-75" title={decodedAuthor}>
                     {decodedAuthor}
                   </span>
                 )}
-                <span className="block truncate text-xs opacity-80" title={mod.name}>
+                <span className="block truncate text-sm opacity-90" title={mod.name}>
                   <PackName mod={mod} isEnabledInMergedMod={isEnabledInMergedMod} customFolderPath={customFolderPath} />
                 </span>
               </label>
             </div>
 
             <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="cursor-pointer text-xs" htmlFor={checkboxId}>
+              <label className="cursor-pointer text-sm leading-tight" htmlFor={checkboxId}>
                 {timeColumnValue}
               </label>
             </div>
