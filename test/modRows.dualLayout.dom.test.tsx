@@ -1,12 +1,13 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import appReducer from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import ModRows from "../src/components/ModRows";
+import LocalizationContext from "../src/localizationContext";
 import { SortingType } from "../src/utility/modRowSorting";
 
 vi.mock("../src/components/ModDropdown", () => ({
@@ -43,6 +44,14 @@ const createMod = (name: string, isEnabled: boolean, loadOrder?: number): Mod =>
   reqModIdToName: [],
 });
 
+/** Only the keys these tests read back; the app fills this from the translation catalogue. */
+const localization = {
+  order: "Order",
+  name: "Name",
+  thumbnail: "Thumbnail",
+  lastUpdated: "Last Updated",
+};
+
 const renderDualLayout = (mods: Mod[], extraState: Partial<AppState> = {}) => {
   const testStore = configureStore({
     reducer: { app: appReducer },
@@ -62,9 +71,11 @@ const renderDualLayout = (mods: Mod[], extraState: Partial<AppState> = {}) => {
 
   const utils = render(
     <Provider store={testStore}>
-      <div ref={scrollRef} id="mod-rows-scroll">
-        <ModRows scrollElement={scrollRef} />
-      </div>
+      <LocalizationContext.Provider value={localization}>
+        <div ref={scrollRef} id="mod-rows-scroll">
+          <ModRows scrollElement={scrollRef} />
+        </div>
+      </LocalizationContext.Provider>
     </Provider>,
   );
 
@@ -130,6 +141,31 @@ describe("dual mod list layout", () => {
     expect(within(left).getByText("7")).toBeInTheDocument();
     // The enabled pane numbers every row, pinned or not.
     expect(within(right).getByText("1")).toBeInTheDocument();
+  });
+
+  it("names the compact columns with icons, and leaves the single list on text", async () => {
+    renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)], { areThumbnailsEnabled: true });
+
+    const { left, right } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    // order, thumbnail, name, last updated - and the gear on the enabled pane.
+    const leftHeaders = Array.from(left.querySelectorAll<HTMLElement>(".mod-row-header-pane"));
+    expect(leftHeaders).toHaveLength(4);
+    expect(leftHeaders.every((header) => header.querySelector("svg"))).toBe(true);
+    expect(right.querySelectorAll(".mod-row-header-pane")).toHaveLength(5);
+
+    // The wording is gone from view but still reaches screen readers and the hover title.
+    const orderHeader = leftHeaders[0];
+    expect(within(orderHeader).getByText(localization.order)).toHaveClass("sr-only");
+    expect(orderHeader.querySelector("[title]")).toHaveAttribute("title", localization.order);
+
+    // The single list keeps its worded headers.
+    cleanup();
+    renderDualLayout([createMod("alpha", false)], { isDualModListLayoutEnabled: false });
+    await waitFor(() => expect(document.getElementById("sortHeader")).toBeInTheDocument());
+    const singleOrderHeader = document.getElementById("sortHeader") as HTMLElement;
+    expect(within(singleOrderHeader).getByText(localization.order)).not.toHaveClass("sr-only");
   });
 
   it("numbers the disabled list when the option is turned on", async () => {

@@ -1,6 +1,7 @@
 import React, { memo, useContext } from "react";
 import { Tooltip } from "flowbite-react";
-import { GoGear } from "react-icons/go";
+import { GoClock, GoGear, GoImage, GoListOrdered, GoTypography } from "react-icons/go";
+import { IconType } from "react-icons";
 import * as modRowSorting from "../utility/modRowSorting";
 import { SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
@@ -40,6 +41,26 @@ const ModListHeader = memo(
     const isCompact = layout === "compact";
     const headerClass = "mod-row-header" + (isInsidePane ? " mod-row-header-pane" : "");
 
+    /**
+     * The panes are half the width the single list gets, so their columns are named with icons instead of
+     * words. The wording still goes out as the accessible name and the hover title, which matters more
+     * once the visible label is gone.
+     */
+    const columnLabel = (label: string, Icon: IconType, isActiveSort: boolean, className = "") => (
+      <span
+        className={`cursor-pointer ${className} ${isActiveSort ? "font-semibold" : ""}`}
+        title={(isCompact && label) || undefined}
+      >
+        {(isCompact && (
+          <>
+            <Icon className="inline" aria-hidden />
+            <span className="sr-only">{label}</span>
+          </>
+        )) ||
+          label}
+      </span>
+    );
+
     const orderHeader = (
       <div
         // Onboarding points at this cell, and the dual layout would otherwise render the id twice.
@@ -61,11 +82,7 @@ const ModListHeader = memo(
               </>
             }
           >
-            <span
-              className={`text-center w-full cursor-pointer ${modRowSorting.isOrderSort(sortingType) && "font-semibold"}`}
-            >
-              {localized.order}
-            </span>
+            {columnLabel(localized.order, GoListOrdered, modRowSorting.isOrderSort(sortingType), "text-center w-full")}
           </Tooltip>
         </span>
       </div>
@@ -80,14 +97,11 @@ const ModListHeader = memo(
         {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
           modRowSorting.getSortingArrow(sortingType)}
         <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
-          <span
-            className={`cursor-pointer ${
-              (modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
-              "font-semibold"
-            }`}
-          >
-            {(modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) || localized.lastUpdated}
-          </span>
+          {columnLabel(
+            (modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) || localized.lastUpdated,
+            GoClock,
+            modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType),
+          )}
         </Tooltip>
       </div>
     );
@@ -109,7 +123,10 @@ const ModListHeader = memo(
         <>
           {orderHeader}
           {areThumbnailsEnabled && (
-            <div className={`flex place-items-center pl-1 cursor-default ${headerClass}`}>{localized.thumbnail}</div>
+            <div className={`flex place-items-center pl-1 cursor-default ${headerClass}`} title={localized.thumbnail}>
+              <GoImage className="inline" aria-hidden />
+              <span className="sr-only">{localized.thumbnail}</span>
+            </div>
           )}
           <div
             className={`flex place-items-center pl-1 ${headerClass}`}
@@ -121,16 +138,13 @@ const ModListHeader = memo(
               modRowSorting.isDataPackSort(sortingType)) &&
               modRowSorting.getSortingArrow(sortingType)}
             <Tooltip placement="bottom" style="light" content={localized.sortByDataPacks}>
-              <span
-                className={`cursor-pointer ${
-                  (modRowSorting.isHumanNameSort(sortingType) ||
-                    modRowSorting.isPackNameSort(sortingType) ||
-                    modRowSorting.isDataPackSort(sortingType)) &&
-                  "font-semibold"
-                }`}
-              >
-                {localized.name}
-              </span>
+              {columnLabel(
+                localized.name,
+                GoTypography,
+                modRowSorting.isHumanNameSort(sortingType) ||
+                  modRowSorting.isPackNameSort(sortingType) ||
+                  modRowSorting.isDataPackSort(sortingType),
+              )}
             </Tooltip>
           </div>
           {lastUpdatedHeader}
