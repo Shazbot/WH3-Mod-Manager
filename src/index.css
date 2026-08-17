@@ -183,18 +183,24 @@ body {
  * collapsed into one stacked name cell and the enabled checkbox column is dropped entirely. The column
  * count is driven by the thumbnail option and by whether the pane shows the configuration column, so
  * unlike .grid-mods* these do not change at a breakpoint.
+ *
+ * Every track here must be a fixed size or a fraction, never an intrinsic one like max-content. The
+ * header row and each virtualized mod row are separate grid containers that only share this template, so
+ * an intrinsic track resolves against each one's own contents - the header would size the thumbnail
+ * column to its little icon and the rows to a 4rem image, and every column after it would stop lining up.
+ * 4.5rem is the 4rem thumbnail plus the row cell's horizontal padding.
  */
 .grid-mods-compact {
   grid-template-columns: 56px 1fr 6.25rem;
 }
 .grid-mods-compact-thumbs {
-  grid-template-columns: 56px max-content 1fr 6.25rem;
+  grid-template-columns: 56px 4.5rem 1fr 6.25rem;
 }
 .grid-mods-compact-config {
   grid-template-columns: 56px 1fr 6.25rem 44px;
 }
 .grid-mods-compact-thumbs-config {
-  grid-template-columns: 56px max-content 1fr 6.25rem 44px;
+  grid-template-columns: 56px 4.5rem 1fr 6.25rem 44px;
 }
 
 /*
