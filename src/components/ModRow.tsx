@@ -291,7 +291,7 @@ const ModRow = memo(
 
     return (
       <div
-        className={`relative grid row-div-paddings ${
+        className={`relative grid row-div-paddings ${isCompact ? "row-div-paddings-compact" : ""} ${
           isLoadOrderPlacementMode ? "" : "row-hover-highlight"
         } ${gridClass} ${
           isLoadOrderPlacementSource ? "row-bg-color-manually" : ""
