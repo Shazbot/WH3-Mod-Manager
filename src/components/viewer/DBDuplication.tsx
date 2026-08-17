@@ -15,9 +15,11 @@ import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
 import DBCloneRenameInput from "./DBCloneRenameInput";
 import {
+  BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
   BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES,
   filterDBCloneRedundantIndirectReferences,
   getDBCloneAutoSelectedParentNames,
+  getDBCloneExpandedNodeNamesForSelection,
   getDBCloneInitialSelectedNodeNames,
 } from "./dbCloneSelection";
 import type { PackedFile } from "../../packFileTypes";
@@ -169,9 +171,13 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
             launchSource == "buildings" && currentDBTableSelection.dbName == "building_culture_variants_tables"
               ? BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES
               : [];
-          setSelectedNodesByName(getDBCloneInitialSelectedNodeNames(treeNodeResult, preselectedTables));
-          const rootNodeName = treeNodeResult.children[0]?.name;
-          setExpandedNodesByName(rootNodeName ? [rootNodeName] : []);
+          const preselectedNodeNames = getDBCloneInitialSelectedNodeNames(
+            treeNodeResult,
+            preselectedTables,
+            BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
+          );
+          setSelectedNodesByName(preselectedNodeNames);
+          setExpandedNodesByName(getDBCloneExpandedNodeNamesForSelection(treeNodeResult, preselectedNodeNames));
         } else {
           setDuplicationError("DB Clone could not build the reference tree.");
         }
@@ -382,24 +388,10 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     setExpandedNodesByName(newExpandedNodesByName);
   };
 
-  const ensureNodeExpanded = (nodeName: string) => {
-    if (isSaving) return;
-    const newExpandedNodesByName = [...expandedNodesByName];
-    if (!newExpandedNodesByName.includes(nodeName)) {
-      newExpandedNodesByName.push(nodeName);
-    }
-
-    for (const expandedNodeName of [...newExpandedNodesByName]) {
-      const node = getFirstNodeByName(expandedNodeName);
-      if (node) {
-        const parentNodesNames = getParentNodeNames([], node);
-        for (const parentNodeName of parentNodesNames) {
-          if (!newExpandedNodesByName.includes(parentNodeName)) newExpandedNodesByName.push(parentNodeName);
-        }
-      }
-    }
-
-    setExpandedNodesByName(newExpandedNodesByName);
+  const ensureNodesExpanded = (nodeNames: string[]) => {
+    if (isSaving || !displayedTreeData) return;
+    const requiredExpandedNames = getDBCloneExpandedNodeNamesForSelection(displayedTreeData, nodeNames);
+    setExpandedNodesByName((currentNames) => [...new Set([...currentNames, ...requiredExpandedNames])]);
   };
 
   const onNodeToggled = (nodeName: string) => {
@@ -429,7 +421,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     console.log("SELECTED NODES ARE NOW:", newselectedNodesByName);
     setSelectedNodesByName(newselectedNodesByName);
     if (isSelecting) {
-      ensureNodeExpanded(currentName);
+      ensureNodesExpanded([currentName]);
     }
   };
 

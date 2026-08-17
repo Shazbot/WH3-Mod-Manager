@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
   BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES,
   filterDBCloneRedundantIndirectReferences,
   getDBCloneAutoSelectedParentNames,
+  getDBCloneExpandedNodeNamesForSelection,
   getDBCloneInitialSelectedNodeNames,
 } from "../src/components/viewer/dbCloneSelection";
 
@@ -26,9 +28,7 @@ describe("DB Clone selection", () => {
     const tree = treeNode("tree", "", [
       treeNode("culture variant", "building_culture_variants_tables", [
         treeNode("first level", "building_levels_tables", [
-          treeNode("first chain", "building_chains_tables", [
-            treeNode("second level", "building_levels_tables"),
-          ]),
+          treeNode("first chain", "building_chains_tables", [treeNode("second level", "building_levels_tables")]),
         ]),
         treeNode("first instance", "building_instances_tables"),
       ]),
@@ -41,6 +41,39 @@ describe("DB Clone selection", () => {
         "building_instances_tables",
       ]),
     ).toEqual(["culture variant", "first level", "first instance", "first chain"]);
+  });
+
+  it("selects every requested row for tables allowed to repeat", () => {
+    const tree = treeNode("tree", "", [
+      treeNode("culture variant", "building_culture_variants_tables", [
+        treeNode("first level", "building_levels_tables", [
+          treeNode("synergy under level", "cai_construction_system_synergies_tables"),
+        ]),
+        treeNode("first synergy", "cai_construction_system_synergies_tables"),
+      ]),
+    ]);
+
+    expect(
+      getDBCloneInitialSelectedNodeNames(
+        tree,
+        ["building_levels_tables", "cai_construction_system_synergies_tables"],
+        BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
+      ),
+    ).toEqual(["culture variant", "first level", "first synergy", "synergy under level"]);
+  });
+
+  it("returns the ancestor path needed to reveal a selected node", () => {
+    const tree = treeNode("tree", "", [
+      treeNode("culture variant", "building_culture_variants_tables", [
+        treeNode("first level", "building_levels_tables", [treeNode("first chain", "building_chains_tables")]),
+      ]),
+    ]);
+
+    expect(getDBCloneExpandedNodeNamesForSelection(tree, ["first chain"])).toEqual([
+      "culture variant",
+      "first level",
+      "first chain",
+    ]);
   });
 
   it("keeps the building culture variant defaults in the requested order", () => {
@@ -61,6 +94,7 @@ describe("DB Clone selection", () => {
       "effect_bonus_value_building_chain_junctions_tables",
       "cai_construction_system_unblocking_buildings_tables",
     ]);
+    expect(BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES).toEqual(["cai_construction_system_synergies_tables"]);
   });
 
   it("does not auto-select indirect ancestors", () => {
