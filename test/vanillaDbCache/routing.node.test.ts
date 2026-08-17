@@ -26,4 +26,10 @@ describe("vanilla DB cache routing", () => {
       "db\\units_tables\\campaign_override",
     ]);
   });
+
+  it("returns no files for an absent table family, which is a valid empty result", () => {
+    const files = [indexedFile("db\\units_tables\\data__")];
+
+    expect(getIndexedDbTablePathsForPrefix(files, "db\\start_pos_settlements_tables\\")).toEqual([]);
+  });
 });

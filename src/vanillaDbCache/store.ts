@@ -477,6 +477,8 @@ const fillPackedFileFromReader = async (
  * anything visible, so the scan is not restructured until the source is proven in place.
  *
  * Returns the prefixes it could not fully serve, which the caller still has to read from the pack.
+ * A prefix with no indexed table files is an empty table family, not a cache miss: some schema
+ * tables are stored in startpos.esf or are simply absent from a particular game's db.pack.
  */
 export const fillVanillaTablesFromCache = async (
   pack: Pack,
@@ -500,9 +502,13 @@ export const fillVanillaTablesFromCache = async (
   for (const prefix of tablePathPrefixes) {
     // Completeness is defined by the pack index. Looking only at the cache directory would hide a
     // packed file the builder deliberately skipped and incorrectly turn a partial result into a hit.
+    // An empty result, however, means this pack has no table files under the prefix and therefore
+    // has no rows for the cache to provide.
     const tablePaths = getIndexedDbTablePathsForPrefix(pack.packedFiles, prefix);
     if (tablePaths.length === 0) {
-      unservedPrefixes.push(prefix);
+      // There is no vanilla row source to read for an absent prefix. In particular, WH3's
+      // start_pos_* data is reconstructed from startpos.esf by the Buildings loader, rather than
+      // being part of db.pack or this cache.
       continue;
     }
 

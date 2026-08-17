@@ -3441,7 +3441,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     );
     const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
     const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
-    const vanillaStartposPaths = await getVanillaStartposFilePaths(dataFolder);
     const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
     const vanillaIconPackPaths = [...appData.allVanillaPackNames]
       .filter(
@@ -3459,7 +3458,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       dbPackPath,
       buildingFramePackPath,
       ...localizationPackPaths,
-      ...vanillaStartposPaths,
       ...enabledMods.map((mod) => mod.path),
     ];
     const identities = await Promise.all(
@@ -3507,8 +3505,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       indexedDbPack.readTables = [...tablesToRead];
       appendPacksData(indexedDbPack, undefined, false);
     } else {
-      // Worth knowing which ones: a prefix the vanilla db cache cannot serve puts this whole build
-      // on the slow path, and the start_pos_* family is the one most likely to be the culprit.
+      // At this point every reported prefix has files in db.pack; an absent table family is already
+      // a complete empty result, so these are genuine cache gaps or schema mismatches.
       console.log("buildBuildingsSessionData: prefixes the vanilla db cache did not serve:", unservedPrefixes);
       const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
       if (readDbPacks.length === 0) throw new Error("The game's database pack could not be read for Buildings");
