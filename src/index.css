@@ -200,9 +200,16 @@ body {
 /*
  * Each pane scrolls itself, so it needs a height rather than growing with its content. Subtracted:
  * the top bar, the page container's top padding, the pane caption and the page's bottom padding.
+ *
+ * The gutter is reserved whether or not the pane currently overflows, because AutoSizer measures the
+ * pane before its vertical scrollbar exists and would otherwise size every row ~17px too wide. Setting
+ * only overflow-y makes overflow-x compute to auto, so it is pinned to hidden as well - without that,
+ * even a sub-pixel rounding in the measured width raises a horizontal scrollbar.
  */
 .dual-mod-list-pane {
   height: calc(100vh - 28px - 2.75rem - 1.75rem - 1rem);
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 
 .grid-column-compact-3 {
