@@ -185,6 +185,7 @@ describe("Unit Viewer UI", () => {
 
   it("filters the unit list to vanilla or an enabled mod", async () => {
     const mod = createEnabledMod();
+    const emptyMod = { ...mod, humanName: "Empty", name: "empty.pack", path: "/game/data/empty.pack" };
     const groups = built.groups.map((group) => ({
       ...group,
       units: group.units.map((unit) => ({
@@ -201,13 +202,14 @@ describe("Unit Viewer UI", () => {
       statIcons: {},
     });
 
-    renderViewer([mod]);
+    renderViewer([mod, emptyMod]);
     await screen.findByText("Culture");
     const modFilter = screen.getByLabelText("Filter by mod");
     expect(modFilter).toHaveValue("all");
     expect(within(modFilter).getByRole("option", { name: "All" })).toBeInTheDocument();
     expect(within(modFilter).getByRole("option", { name: "Vanilla" })).toBeInTheDocument();
     expect(within(modFilter).getByRole("option", { name: "Example" })).toBeInTheDocument();
+    expect(within(modFilter).queryByRole("option", { name: "Empty" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Culture"));
     expect(screen.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
