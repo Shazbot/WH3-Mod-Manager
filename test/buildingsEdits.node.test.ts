@@ -18,9 +18,11 @@ import {
   addBuildingLevelRows,
   addGarrisonRows,
   addRecruitableUnitRows,
+  canAddBuildingBelow,
   cloneCaiRows,
   disableBuildingRows,
   excludeFromSetRows,
+  levelsToShiftForBuildingBelow,
 } from "../src/buildingsData/editActions";
 import type { BuildingsTableRows } from "../src/buildingsData/types";
 
@@ -201,6 +203,44 @@ describe("addBuildingLevelRows", () => {
     expect(upgrade?.values).toEqual({ from: "a_1", to: "my_barracks_2" });
   });
 
+  it("writes the reverse upgrade when adding a lower level", () => {
+    const rows = addBuildingLevelRows({ ...input, upgradeFromLevelKey: undefined, upgradeToLevelKey: "a_2" }, {});
+    expect(rows.find((row) => row.table === "building_upgrades_junction_tables")?.values).toEqual({
+      from: "my_barracks_2",
+      to: "a_2",
+    });
+  });
+
+  it("inserts a lower level at the old level and shifts the existing row up", () => {
+    const rows = addBuildingLevelRows(
+      {
+        ...input,
+        levelKey: "my_barracks_1",
+        level: 0,
+        upgradeFromLevelKey: undefined,
+        upgradeToLevelKey: "a_1",
+        shiftedLevelRows: [
+          {
+            levelKey: "a_1",
+            level: 0,
+            values: { level_name: "a_1", chain: "chain_a", level: "0", create_time: "7" },
+          },
+        ],
+      },
+      {},
+    );
+    expect(
+      rows
+        .filter((row) => row.table === "building_levels_tables")
+        .map((row) => ({ key: row.values.level_name, level: row.values.level })),
+    ).toEqual([
+      { key: "my_barracks_1", level: "0" },
+      { key: "a_1", level: "1" },
+    ]);
+    expect(rows.find((row) => row.values.level_name === "a_1")?.values.create_time).toBe("7");
+    expect(rows.find((row) => row.values.level_name === "a_1")?.origin).toBe("shiftBuildingLevel");
+  });
+
   it("copies effects onto the new building, under the same group as everything else", () => {
     const rows = addBuildingLevelRows(
       {
@@ -298,6 +338,109 @@ describe("addBuildingLevelRows", () => {
     expect(addBuildingLevelRows(input, {}).filter((row) => row.table === LOC_TABLE)).toHaveLength(1);
     const withText = addBuildingLevelRows({ ...input, shortDescription: "short", longDescription: "long" }, {});
     expect(withText.filter((row) => row.table === LOC_TABLE)).toHaveLength(3);
+  });
+});
+
+describe("canAddBuildingBelow", () => {
+  const tile = { chainKey: "chain_a", level: 1, tierRow: 1 } as const;
+  const view = (
+    tiles: Array<{ chainKey: string; level: number; tierRow: number; levelRowValues?: Record<string, string> }>,
+  ) => ({ bands: [{ columns: [{ chainKey: "chain_a", tiles }] }] }) as Parameters<typeof canAddBuildingBelow>[1];
+
+  it("allows a lower board row when this is the chain's lowest row", () => {
+    expect(canAddBuildingBelow(tile, view([{ chainKey: "chain_a", level: 1, tierRow: 1 }]))).toBe(true);
+  });
+
+  it("allows a level-0 secondary building whose primary requirement places it above row zero", () => {
+    expect(
+      canAddBuildingBelow(
+        { chainKey: "chain_a", level: 0, tierRow: 4 },
+        view([{ chainKey: "chain_a", level: 0, tierRow: 4 }]),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not allow a level below tier zero", () => {
+    expect(
+      canAddBuildingBelow(
+        { chainKey: "chain_a", level: 1, tierRow: 0 },
+        view([{ chainKey: "chain_a", level: 1, tierRow: 0 }]),
+      ),
+    ).toBe(false);
+    expect(
+      canAddBuildingBelow(
+        { chainKey: "chain_a", level: 0, tierRow: 0 },
+        view([{ chainKey: "chain_a", level: 0, tierRow: 0 }]),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not allow a lower row when any other building in the chain is below it", () => {
+    expect(
+      canAddBuildingBelow(
+        tile,
+        view([
+          { chainKey: "chain_a", level: 0, tierRow: 0 },
+          { chainKey: "chain_a", level: 1, tierRow: 1 },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("uses the primary requirement row rather than the database level", () => {
+    expect(
+      canAddBuildingBelow(
+        { chainKey: "chain_a", level: 0, tierRow: 4 },
+        view([
+          { chainKey: "chain_a", level: 0, tierRow: 2 },
+          { chainKey: "chain_a", level: 0, tierRow: 4 },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores lower levels belonging to another chain", () => {
+    expect(
+      canAddBuildingBelow(
+        tile,
+        view([
+          { chainKey: "chain_b", level: 0, tierRow: 0 },
+          { chainKey: "chain_a", level: 1, tierRow: 1 },
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("collects each existing level at and above the insertion point once", () => {
+    expect(
+      levelsToShiftForBuildingBelow(
+        { chainKey: "chain_a", level: 0 },
+        view([
+          {
+            chainKey: "chain_a",
+            levelKey: "a_0",
+            level: 0,
+            tierRow: 4,
+            levelRowValues: { level_name: "a_0", chain: "chain_a", level: "0" },
+          },
+          {
+            chainKey: "chain_a",
+            levelKey: "a_1",
+            level: 1,
+            tierRow: 5,
+            levelRowValues: { level_name: "a_1", chain: "chain_a", level: "1" },
+          },
+          {
+            chainKey: "chain_a",
+            levelKey: "a_1",
+            level: 1,
+            tierRow: 5,
+            levelRowValues: { level_name: "a_1", chain: "chain_a", level: "1" },
+          },
+          { chainKey: "chain_b", level: 0, tierRow: 4 },
+        ]),
+      ).map((row) => row.levelKey),
+    ).toEqual(["a_1", "a_0"]);
   });
 });
 

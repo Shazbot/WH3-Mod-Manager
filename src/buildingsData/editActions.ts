@@ -6,8 +6,15 @@
  */
 import { LOC_TABLE, takeNumericId, type BuildingsNewRow } from "./edits";
 import { buildVariantNameLocKey } from "./data";
+import type { BuildingsRegionView, BuildingsTile } from "./types";
 
 export type NewRowDraft = Omit<BuildingsNewRow, "id" | "groupId">;
+
+export interface BuildingLevelShift {
+  levelKey: string;
+  level: number;
+  values: Record<string, string>;
+}
 
 export interface AddBuildingLevelInput {
   levelKey: string;
@@ -40,6 +47,10 @@ export interface AddBuildingLevelInput {
   garrisonUnitGroups?: string[];
   /** When set, the new building is the upgrade of this one. */
   upgradeFromLevelKey?: string;
+  /** When set, the existing building is the upgrade of this new, lower level. */
+  upgradeToLevelKey?: string;
+  /** Existing rows at and above a newly inserted lower level, copied with their level incremented. */
+  shiftedLevelRows?: BuildingLevelShift[];
   /**
    * Whether the chain is already bound to `setKey`. Passed in rather than looked up so this stays
    * usable from the renderer, which never holds the built dataset.
@@ -88,6 +99,21 @@ export const addBuildingLevelRows = (input: AddBuildingLevelInput, cursors: Reco
       },
     },
   ];
+
+  // A lower building is inserted at the selected building's current level. The selected building
+  // and every level above it therefore need full-row overrides with their DB level incremented.
+  for (const shifted of input.shiftedLevelRows ?? []) {
+    if (!shifted.levelKey || shifted.levelKey === input.levelKey) continue;
+    rows.push({
+      table: "building_levels_tables",
+      origin: "shiftBuildingLevel",
+      values: {
+        ...shifted.values,
+        level_name: shifted.levelKey,
+        level: `${shifted.level + 1}`,
+      },
+    });
+  }
 
   if (input.setKey && !input.isChainAlreadyInSet) {
     rows.push({
@@ -145,11 +171,16 @@ export const addBuildingLevelRows = (input: AddBuildingLevelInput, cursors: Reco
     });
   }
 
-  if (input.upgradeFromLevelKey) {
+  const upgrade = input.upgradeFromLevelKey
+    ? { from: input.upgradeFromLevelKey, to: input.levelKey }
+    : input.upgradeToLevelKey
+      ? { from: input.levelKey, to: input.upgradeToLevelKey }
+      : undefined;
+  if (upgrade) {
     rows.push({
       table: "building_upgrades_junction_tables",
       origin: "addBuilding",
-      values: { from: input.upgradeFromLevelKey, to: input.levelKey },
+      values: upgrade,
     });
   }
 
@@ -180,6 +211,44 @@ export const addBuildingLevelRows = (input: AddBuildingLevelInput, cursors: Reco
   }
 
   return rows;
+};
+
+/** Whether the chain has an empty board row below this tile for a new building. */
+export const canAddBuildingBelow = (
+  tile: Pick<BuildingsTile, "chainKey" | "tierRow">,
+  view: Pick<BuildingsRegionView, "bands"> | undefined,
+): boolean => {
+  if (tile.tierRow <= 0 || !view) return false;
+  return !view.bands.some((band) =>
+    band.columns.some(
+      (column) =>
+        column.chainKey === tile.chainKey &&
+        column.tiles.some((candidate) => candidate.chainKey === tile.chainKey && candidate.tierRow < tile.tierRow),
+    ),
+  );
+};
+
+/** The complete existing rows that must move up when a new lower level is inserted. */
+export const levelsToShiftForBuildingBelow = (
+  tile: Pick<BuildingsTile, "chainKey" | "level">,
+  view: Pick<BuildingsRegionView, "bands"> | undefined,
+): BuildingLevelShift[] => {
+  if (!view) return [];
+  const byLevelKey = new Map<string, BuildingLevelShift>();
+  for (const band of view.bands) {
+    for (const column of band.columns) {
+      if (column.chainKey !== tile.chainKey) continue;
+      for (const candidate of column.tiles) {
+        if (candidate.level < tile.level || !candidate.levelRowValues) continue;
+        byLevelKey.set(candidate.levelKey, {
+          levelKey: candidate.levelKey,
+          level: candidate.level,
+          values: { ...candidate.levelRowValues },
+        });
+      }
+    }
+  }
+  return [...byLevelKey.values()].sort((first, second) => second.level - first.level);
 };
 
 export interface AddBuildingChainInput {

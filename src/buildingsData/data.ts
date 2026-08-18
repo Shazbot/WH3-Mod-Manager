@@ -306,6 +306,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
       commodity: optional(str(row, "commodity")),
       resourceRequirement: optional(str(row, "resource_requirement")),
       religionRequirement: optional(str(row, "religion_requirement")),
+      rawValues: { ...row },
     };
     if (chain) (levelKeysByChain[chain] ||= []).push(levelKey);
   }

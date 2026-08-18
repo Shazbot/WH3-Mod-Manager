@@ -20,9 +20,12 @@ import { buildingsEditReducer, emptyBuildingsEditState } from "../../buildingsDa
 import { dbClonePackedFilesToBuildingsRows } from "../../buildingsData/dbCloneRows";
 import {
   addBuildingLevelRows,
+  canAddBuildingBelow,
   disableBuildingRows,
   excludeFromSetRows,
+  levelsToShiftForBuildingBelow,
   type AddBuildingLevelInput,
+  type BuildingLevelShift,
   type NewRowDraft,
 } from "../../buildingsData/editActions";
 import type { BuildingsRowIssue } from "../../buildingsData/validate";
@@ -182,7 +185,9 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const [edits, dispatchEdit] = useReducer(buildingsEditReducer, undefined, () => emptyBuildingsEditState());
   const [cloneTableSchemas, setCloneTableSchemas] = useState<Record<string, DBVersion>>({});
-  const [addFrom, setAddFrom] = useState<BuildingsTile | undefined>();
+  const [addFrom, setAddFrom] = useState<
+    { tile: BuildingsTile; direction: "above" | "below"; shiftedLevelRows?: BuildingLevelShift[] } | undefined
+  >();
   const [editTile, setEditTile] = useState<BuildingsTile | undefined>();
   const [addChainTo, setAddChainTo] = useState<{ setKey: string; setName: string } | undefined>();
   const [isSaveOpen, setIsSaveOpen] = useState(false);
@@ -498,7 +503,23 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
               ? [{ label: "Add a new chain to this band", run: () => setAddChainTo(contextMenu.band) }]
               : contextMenu.tile
                 ? [
-                    { label: "Add a building above this", run: () => setAddFrom(contextMenu.tile) },
+                    {
+                      label: "Add a building above this",
+                      run: () => setAddFrom({ tile: contextMenu.tile!, direction: "above" }),
+                    },
+                    ...(canAddBuildingBelow(contextMenu.tile, view)
+                      ? [
+                          {
+                            label: "Add a building below this",
+                            run: () =>
+                              setAddFrom({
+                                tile: contextMenu.tile!,
+                                direction: "below",
+                                shiftedLevelRows: levelsToShiftForBuildingBelow(contextMenu.tile!, view),
+                              }),
+                          },
+                        ]
+                      : []),
                     { label: "Recruitment, garrison, AI scoring...", run: () => setEditTile(contextMenu.tile) },
                     {
                       label: "Disable for this culture",
@@ -532,7 +553,9 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
       {addFrom && (
         <AddBuildingModal
-          from={addFrom}
+          from={addFrom.tile}
+          direction={addFrom.direction}
+          shiftedLevelRows={addFrom.shiftedLevelRows}
           query={query}
           keyPrefix={keyPrefix}
           onCancel={() => setAddFrom(undefined)}

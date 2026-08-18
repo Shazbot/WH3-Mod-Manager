@@ -528,6 +528,7 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
           garrison: data.garrisonByLevel[levelKey] ?? [],
           recruitable: newlyRecruitable,
           recruitableRows,
+          levelRowValues: level.rawValues,
           tierRow: tierRowOf(level, isSettlementOrPortChain),
           isExistingInRegion: existingSet.has(levelKey),
           hasNoVariant,

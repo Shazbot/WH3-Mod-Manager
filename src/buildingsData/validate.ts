@@ -119,7 +119,7 @@ export const validateNewRows = (base: BuiltBuildingsData, state: BuildingsEditSt
       if (identityUniverse && identityColumn) {
         const column = identityColumn;
         const value = row.values[column] ?? "";
-        if (value !== "" && baseUniverses[identityUniverse].has(value)) {
+        if (row.origin !== "shiftBuildingLevel" && value !== "" && baseUniverses[identityUniverse].has(value)) {
           issues.push({
             rowId: row.id,
             table,

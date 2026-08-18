@@ -189,6 +189,7 @@ export const applyNewRowsToBuiltData = (base: BuiltBuildingsData, state: Buildin
       visibleInUi: bool(row.values, "visible_in_ui", true),
       primarySlotLevelRequirement: num(row.values, "primary_slot_building_building_level_requirement"),
       instanceKey: optional(str(row.values, "building_instance_key")),
+      rawValues: { ...row.values },
     };
     if (chain) {
       if (!touchedChains.has(chain)) {
