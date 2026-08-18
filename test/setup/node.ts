@@ -10,6 +10,7 @@ vi.mock("electron", () => ({
 
 vi.mock("../../src/ipcMainListeners", () => ({
   getDefaultTableVersions: vi.fn(() => ({})),
+  getVanillaLocLookup: vi.fn(async () => ({})),
 }));
 
 afterEach(() => {

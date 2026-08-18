@@ -23,8 +23,8 @@ import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
-import { getDefaultTableVersions, getLocsTrie, openModInViewer } from "./ipcMainListeners";
-import Trie from "./utility/trie";
+import { getDefaultTableVersions, getLocsTrie, getVanillaLocLookup, openModInViewer } from "./ipcMainListeners";
+import type { KeyedLookup } from "./utility/trie";
 import { evaluateFormula } from "./utility/formulaEvaluation";
 import {
   FlowExecutionContext,
@@ -7112,11 +7112,28 @@ async function executeDeepCloneNode(
 
   let lookupLocText: ((locKey: string) => string | undefined) | undefined;
   if (parsed.generateLoc !== false) {
-    const locTries: Trie<string>[] = [];
+    const locLookups: KeyedLookup<string>[] = [];
     const localePath = baseGameFolder ? path.join(baseGameFolder, "local_en.pack") : undefined;
+    let vanillaLocCacheLoaded = false;
+
+    if (localePath && fs.existsSync(localePath)) {
+      try {
+        const vanillaLocLookups = Object.values(await getVanillaLocLookup([localePath]));
+        if (vanillaLocLookups.length > 0) {
+          locLookups.push(...vanillaLocLookups);
+          vanillaLocCacheLoaded = true;
+        }
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Could not read cached vanilla locs:`, error);
+      }
+    }
+
     const locPackPaths = [
-      ...(localePath && fs.existsSync(localePath) ? [localePath] : []),
-      ...searchPacks.filter((searchPack) => searchPack.loaded).map((searchPack) => searchPack.path),
+      ...(!vanillaLocCacheLoaded && localePath ? [localePath] : []),
+      ...searchPacks
+        .filter((searchPack) => searchPack.loaded)
+        .map((searchPack) => searchPack.path)
+        .filter((locPackPath) => !vanillaLocCacheLoaded || locPackPath !== localePath),
     ];
 
     for (const locPackPath of new Set(locPackPaths)) {
@@ -7127,15 +7144,15 @@ async function executeDeepCloneNode(
           executionContext,
         );
         const trie = getLocsTrie(locPack);
-        if (trie) locTries.push(trie);
+        if (trie) locLookups.push(trie);
       } catch (error) {
         console.error(`Deep Clone Node ${nodeId}: Could not read locs from ${locPackPath}:`, error);
       }
     }
 
     lookupLocText = (locKey: string) => {
-      for (const trie of locTries) {
-        const value = trie.get(locKey);
+      for (const lookup of locLookups) {
+        const value = lookup.get(locKey);
         if (value) return value;
       }
       return undefined;
