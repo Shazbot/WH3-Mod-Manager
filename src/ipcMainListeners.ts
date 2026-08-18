@@ -34,7 +34,7 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
-import { buildBuildingsData, createBuildingsLocLookup, BUILDINGS_TABLES } from "./buildingsData/data";
+import { buildBuildingsData, createBuildingsLocLookup, BUILDINGS_TABLES, variantLocKey } from "./buildingsData/data";
 import { resolveRegionBuildings } from "./buildingsData/derive";
 import { validateNewRows } from "./buildingsData/validate";
 import { applyNewRowsToBuildingsData, LOC_TABLE, newRowsByTable, type BuildingsEditState } from "./buildingsData/edits";
@@ -3640,10 +3640,40 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const tablePacks = [dbPack, ...orderedModPacks];
     const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
     const tables: BuildingsTableRows = {};
+    const cloneSourcePackPaths: NonNullable<BuiltBuildingsData["cloneSourcePackPaths"]> = {
+      levels: {},
+      cultureVariants: {},
+      sets: {},
+    };
     for (const canonicalTableName of BUILDINGS_TABLES) {
       const rows: Array<Record<string, string>> = [];
-      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow) => {
-        rows.push(schemaRowToRecord(schemaFieldRow));
+      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
+        const row = schemaRowToRecord(schemaFieldRow);
+        rows.push(row);
+
+        // `packsTableData` is vanilla first and then mods in load order. Assigning on every row
+        // leaves the source of the effective (last-wins) row, including mod-only and mod-overridden
+        // culture variants. The Buildings tab needs this path to hand DB Clone the actual source
+        // pack rather than always reopening vanilla db.pack.
+        if (canonicalTableName === "building_levels_tables") {
+          const levelKey = row.level_name?.trim();
+          if (levelKey) cloneSourcePackPaths.levels[levelKey] = packViewData.packPath;
+        } else if (canonicalTableName === "building_culture_variants_tables") {
+          const building = row.building?.trim() ?? "";
+          if (building) {
+            cloneSourcePackPaths.cultureVariants[
+              variantLocKey(
+                building,
+                row.culture?.trim() ?? "",
+                row.subculture?.trim() ?? "",
+                row.faction?.trim() ?? "",
+              )
+            ] = packViewData.packPath;
+          }
+        } else if (canonicalTableName === "building_sets_tables") {
+          const setKey = row.key?.trim();
+          if (setKey) cloneSourcePackPaths.sets[setKey] = packViewData.packPath;
+        }
       });
       tables[canonicalTableName] = rows;
     }
@@ -3665,6 +3695,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (value != undefined) localizations[key] = value;
       return value;
     });
+    data.cloneSourcePackPaths = cloneSourcePackPaths;
 
     releaseParsedTables(tablePacks, tablesToRead);
     const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
@@ -3863,6 +3894,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const band of view.bands) {
       for (const column of band.columns) {
         for (const tile of column.tiles) {
+          const variant = tile.variant;
+          const variantSource = variant
+            ? built.data.cloneSourcePackPaths?.cultureVariants[
+                variantLocKey(tile.levelKey, variant.culture, variant.subculture, variant.faction)
+              ]
+            : undefined;
+          tile.cloneSourcePackPath =
+            variantSource ?? built.data.cloneSourcePackPaths?.levels[tile.levelKey] ?? built.dbPackPath;
           tile.iconUrl = assetUrl(
             tile.iconPath ? built.iconPathByBaseName[buildingIconBaseName(tile.iconPath)] : undefined,
           );
@@ -3874,6 +3913,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
       }
+    }
+    for (const band of view.bands) {
+      band.cloneSourcePackPath = built.data.cloneSourcePackPaths?.sets[band.setKey] ?? built.dbPackPath;
     }
     return view;
   };

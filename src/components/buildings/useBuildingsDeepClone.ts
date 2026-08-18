@@ -11,6 +11,8 @@ export interface BuildingsCloneTarget {
   keyValue: string;
   /** Shown while the table loads, so the dialog's subject is obvious. */
   label: string;
+  /** The enabled mod or vanilla pack that actually supplied the effective source row. */
+  sourcePackPath?: string;
 }
 
 /** The table has to arrive from the main process before its row index can be resolved. */
@@ -48,17 +50,18 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
         setError(localized.buildingsDatabasePackNotLoaded || "The game's database pack is not loaded yet.");
         return;
       }
+      const sourcePackPath = target.sourcePackPath || dbPackPath;
       setError(undefined);
       setPending(target);
-      dispatch(selectDBTable({ packPath: dbPackPath, dbName: target.tableName, dbSubname: "" }));
-      window.api?.getPackData(dbPackPath, { dbName: target.tableName, dbSubname: "" });
+      dispatch(selectDBTable({ packPath: sourcePackPath, dbName: target.tableName, dbSubname: "" }));
+      window.api?.getPackData(sourcePackPath, { dbName: target.tableName, dbSubname: "" });
 
       clearTimer();
       timeoutRef.current = window.setTimeout(() => {
         setPending((current) => {
           if (!current) return current;
           setError(
-            (localized.buildingsCloneTimeout || "Timed out reading {{table}} out of the game's database pack.").replace(
+            (localized.buildingsCloneTimeout || "Timed out reading {{table}} out of the selected source pack.").replace(
               "{{table}}",
               target.tableName,
             ),
@@ -82,7 +85,8 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
   // Resolve the row and column once the requested table has actually landed in packsData.
   useEffect(() => {
     if (!pending || !dbPackPath) return;
-    const packData = packsData[dbPackPath];
+    const sourcePackPath = pending.sourcePackPath || dbPackPath;
+    const packData = packsData[sourcePackPath];
     if (!packData) return;
 
     // `getLoadedPackViewData` only sends packed files that already carry both, so waiting for them
@@ -112,7 +116,10 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
     clearTimer();
     if (rowIndex < 0) {
       setError(
-        (localized.buildingsCloneMissingRow || "{{key}} is not in the vanilla {{table}}; it may be a modded row.")
+        (
+          localized.buildingsCloneMissingRow ||
+          "{{key}} was not found in the selected {{table}}; it may be a modded row."
+        )
           .replace("{{key}}", pending.keyValue)
           .replace("{{table}}", pending.tableName),
       );

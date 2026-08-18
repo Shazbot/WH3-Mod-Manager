@@ -30,12 +30,12 @@ const LeftSidebar = memo(() => {
   const tabIndexToTabType: MainWindowTab[] = useMemo(() => {
     const tabs: MainWindowTab[] = ["mods", "enabledMods", "categories", "presets"];
     if (isSkillsTabVisible) tabs.push("skills");
-    if (isUnitViewerVisible) tabs.push("unitViewer");
-    if (showVisualsTab) tabs.push("visuals");
     if (isTechTreesTabVisible) tabs.push("techTrees");
+    if (isUnitViewerVisible) tabs.push("unitViewer");
     if (isBuildingsTabVisible) tabs.push("buildings");
     if (isAncillariesTabVisible) tabs.push("ancillaries");
     if (isMapTabVisible) tabs.push("map");
+    if (showVisualsTab) tabs.push("visuals");
     if (isFeaturesForModdersEnabled) tabs.push("nodeEditor");
     return tabs;
   }, [
@@ -142,28 +142,6 @@ const LeftSidebar = memo(() => {
               </div>
             </Tab>
           )}
-          {isUnitViewerVisible && (
-            <Tab>
-              <div className="flex items-center h-full parent-unhide-child relative">
-                <GiCrossedSwords size="1.35rem" />
-                <span className="ml-2 mr-2 hidden-child">{localized.unitViewerTab || "Unit Viewer"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
-                  Ctrl+{tabIndexToTabType.indexOf("unitViewer") + 1}
-                </span>
-              </div>
-            </Tab>
-          )}
-          {showVisualsTab && (
-            <Tab>
-              <div className="flex items-center h-full parent-unhide-child relative">
-                <BsPersonVcard size="1.25rem" />
-                <span className="ml-2 mr-2 hidden-child">{localized.visualsTab || "Visuals"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
-                  Ctrl+{tabIndexToTabType.indexOf("visuals") + 1}
-                </span>
-              </div>
-            </Tab>
-          )}
           {isTechTreesTabVisible && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
@@ -171,6 +149,17 @@ const LeftSidebar = memo(() => {
                 <span className="ml-2 mr-2 hidden-child">{localized.techTreesTab || "Tech Trees"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("techTrees") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {isUnitViewerVisible && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <GiCrossedSwords size="1.35rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.unitViewerTab || "Unit Viewer"}</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("unitViewer") + 1}
                 </span>
               </div>
             </Tab>
@@ -204,6 +193,17 @@ const LeftSidebar = memo(() => {
                 <span className="ml-2 mr-2 hidden-child">{localized.mapTab || "Map"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("map") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {showVisualsTab && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <BsPersonVcard size="1.25rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.visualsTab || "Visuals"}</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("visuals") + 1}
                 </span>
               </div>
             </Tab>

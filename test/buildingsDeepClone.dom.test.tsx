@@ -9,6 +9,7 @@ import initialState from "../src/initialAppState";
 import { useBuildingsDeepClone } from "../src/components/buildings/useBuildingsDeepClone";
 
 const DB_PACK = "C:\\data\\db.pack";
+const MOD_PACK = "C:\\mods\\my_buildings.pack";
 const TABLE = "building_culture_variants_tables";
 
 /** Four columns, so `chunkTableIntoRows` slices the flat array into rows of four. */
@@ -32,6 +33,16 @@ const packedFile = {
   schemaFields: rowValues
     .flat()
     .map((value) => ({ type: "StringU8", fields: [{ type: "String", val: value }], resolvedKeyValue: value })),
+};
+
+const modPackedFile = {
+  ...packedFile,
+  name: `db\\${TABLE}\\mod__`,
+  schemaFields: ["teb_worship_myrmidia_1", "teb", "", ""].map((value) => ({
+    type: "StringU8",
+    fields: [{ type: "String", val: value }],
+    resolvedKeyValue: value,
+  })),
 };
 
 const makeStore = () =>
@@ -120,6 +131,39 @@ describe("useBuildingsDeepClone", () => {
 
     await waitFor(() => expect(result.current.error).toContain("some_modded_building"));
     expect(store.getState().app.deepCloneTarget).toBeUndefined();
+  });
+
+  it("resolves a modded key from the source pack supplied by the Buildings board", async () => {
+    const store = makeStore();
+    const { result } = renderDeepClone(store);
+
+    act(() => {
+      result.current.openDeepCloneFor({
+        tableName: TABLE,
+        keyColumn: "building",
+        keyValue: "teb_worship_myrmidia_1",
+        label: "Worship of Myrmidia",
+        sourcePackPath: MOD_PACK,
+      });
+    });
+
+    expect(window.api?.getPackData).toHaveBeenCalledWith(MOD_PACK, { dbName: TABLE, dbSubname: "" });
+    expect(store.getState().app.currentDBTableSelection).toMatchObject({ packPath: MOD_PACK, dbName: TABLE });
+    act(() => {
+      store.dispatch(
+        setPacksData([
+          {
+            packName: "my_buildings.pack",
+            packPath: MOD_PACK,
+            tables: [TABLE],
+            packedFiles: { [modPackedFile.name]: modPackedFile },
+          },
+        ] as never),
+      );
+    });
+
+    await waitFor(() => expect(store.getState().app.deepCloneTarget).toEqual({ row: 0, col: 0 }));
+    expect(result.current.error).toBeUndefined();
   });
 
   it("reports a column the table does not have", async () => {

@@ -63,6 +63,11 @@ describe("Buildings disk cache", () => {
     temporaryDirectories.push(directory);
     const data = buildBuildingsData({}, () => undefined);
     data.buildingFrame = Buffer.from("cached-frame").toString("base64");
+    data.cloneSourcePackPaths = {
+      levels: { cached: "C:\\mods\\buildings.pack" },
+      cultureVariants: { "cached|emp||": "C:\\mods\\buildings.pack" },
+      sets: { cached_set: "C:\\mods\\buildings.pack" },
+    };
     const tables = { building_levels_tables: [{ level_name: "cached" }] };
     const localizations = { building_levels_onscreen_name_cached: "Cached" };
 
@@ -71,6 +76,7 @@ describe("Buildings disk cache", () => {
 
     const restored = await loadBuildingsDiskCache(directory, "current");
     expect(restored?.data.buildingFrame).toBe(data.buildingFrame);
+    expect(restored?.data.cloneSourcePackPaths).toEqual(data.cloneSourcePackPaths);
     expect(restored?.tables).toEqual(tables);
     expect(restored?.localizations).toEqual(localizations);
     await expect(loadBuildingsDiskCache(directory, "stale")).resolves.toBeUndefined();

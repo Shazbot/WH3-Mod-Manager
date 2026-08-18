@@ -95,6 +95,18 @@ export interface BuildingSetRow {
   localizedName: string;
 }
 
+/**
+ * The winning pack for each row that can be opened by the Buildings tab's DB Clone actions.
+ *
+ * The board is built from vanilla rows followed by enabled-mod rows, so the last source recorded
+ * for a key is the row the game uses. These paths are metadata for the editor, not DB columns.
+ */
+export interface BuildingsCloneSourcePackPaths {
+  levels: Record<string, string>;
+  cultureVariants: Record<string, string>;
+  sets: Record<string, string>;
+}
+
 /** A `building_set_to_building_junctions` row: binds a chain *or* a level to a set. */
 export interface BuildingSetBinding {
   chain?: string;
@@ -249,6 +261,8 @@ export interface BuiltBuildingsData {
   caiSynergiesByChain: Record<string, Array<Record<string, string>>>;
   /** max observed + 1, per table in `gameToTablesWithNumericIds` this feature writes to. */
   nextNumericIds: Record<string, number>;
+  /** Source packs for rows the Buildings tab can send to DB Clone. Absent in old/test data. */
+  cloneSourcePackPaths?: BuildingsCloneSourcePackPaths;
 }
 
 export interface BuildingsOption {
@@ -309,6 +323,8 @@ export interface BuildingsTile {
   levelKey: string;
   chainKey: string;
   setKey: string;
+  /** Pack containing the effective culture-variant row used by this tile. */
+  cloneSourcePackPath?: string;
   level: number;
   /**
    * Which row of the board the tile sits on, 0 at the bottom.
@@ -370,6 +386,8 @@ export interface BuildingsChainColumn {
 
 export interface BuildingsSetBand {
   setKey: string;
+  /** Pack containing the effective set row used by the Buildings tab's clone action. */
+  cloneSourcePackPath?: string;
   localizedName: string;
   colourR: number;
   colourG: number;

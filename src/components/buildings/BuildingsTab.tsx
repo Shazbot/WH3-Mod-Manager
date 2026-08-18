@@ -137,6 +137,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
             keyColumn: "building",
             keyValue: tile.levelKey,
             label: tile.title,
+            sourcePackPath: tile.cloneSourcePackPath,
           },
         },
       ];
@@ -156,13 +157,19 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         items: [
           {
             label: localized.buildingsCloneBuildingSet || "Deep clone this building set",
-            target: { tableName: "building_sets_tables", keyColumn: "key", keyValue: setKey, label: setName },
+            target: {
+              tableName: "building_sets_tables",
+              keyColumn: "key",
+              keyValue: setKey,
+              label: setName,
+              sourcePackPath: view?.bands.find((band) => band.setKey === setKey)?.cloneSourcePackPath,
+            },
           },
         ],
         band: { setKey, setName },
       });
     },
-    [isFeaturesForModdersEnabled, localized.buildingsCloneBuildingSet],
+    [isFeaturesForModdersEnabled, localized.buildingsCloneBuildingSet, view],
   );
 
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
