@@ -231,6 +231,11 @@ declare global {
     /** Bumped to make the node editor re-read the open flow when the selection itself cannot change. */
     currentFlowFileReloadNonce: number;
     currentTab: MainWindowTab;
+    /**
+     * Left sidebar tabs the user has hidden. All Mods can never be in here: it is what the current
+     * tab falls back to. Skill Trees and Tech Trees are steered by the tree display modes instead.
+     */
+    hiddenMainWindowTabs: MainWindowTab[];
     mapCampaignName: string;
     mapSelectedRegion?: MapRegionSelection;
     isCreateSteamCollectionOpen: boolean;
@@ -331,6 +336,7 @@ declare global {
     | "isCheckingSkillRequirements"
     | "skillTreesDisplayMode"
     | "technologyTreesDisplayMode"
+    | "hiddenMainWindowTabs"
   >;
 
   /** Everything stored for one game. Per-mod data lives in modUserData, one copy, not once per preset. */

@@ -25,8 +25,11 @@ import { getUsedModImport } from "./usedMods";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
 import { isWorkshopMod, resolveModsBySourcePriority } from "./modSources";
 import { sharedModMatchesInstalledMod } from "./sharedModList";
+import { isHideableMainWindowTab } from "./utility/frontend/mainWindowTabs";
 
 const isMainWindowTabAvailable = (state: AppState, tab: MainWindowTab) => {
+  if (isHideableMainWindowTab(tab) && state.hiddenMainWindowTabs.includes(tab)) return false;
+
   switch (tab) {
     case "mods":
     case "enabledMods":
@@ -1080,6 +1083,7 @@ const appSlice = createSlice({
       state.skillTreesDisplayMode = fromConfigAppState.skillTreesDisplayMode ?? state.skillTreesDisplayMode;
       state.technologyTreesDisplayMode =
         fromConfigAppState.technologyTreesDisplayMode ?? state.technologyTreesDisplayMode;
+      state.hiddenMainWindowTabs = (fromConfigAppState.hiddenMainWindowTabs || []).filter(isHideableMainWindowTab);
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -1658,6 +1662,18 @@ const appSlice = createSlice({
       state.technologyTreesDisplayMode = action.payload;
       ensureValidCurrentTab(state);
     },
+    toggleMainWindowTabHidden: (state: AppState, action: PayloadAction<MainWindowTab>) => {
+      const tab = action.payload;
+      // All Mods is the tab everything falls back to, so it can never be hidden.
+      if (!isHideableMainWindowTab(tab)) return;
+
+      if (state.hiddenMainWindowTabs.includes(tab)) {
+        state.hiddenMainWindowTabs = state.hiddenMainWindowTabs.filter((hiddenTab) => hiddenTab !== tab);
+      } else {
+        state.hiddenMainWindowTabs.push(tab);
+      }
+      ensureValidCurrentTab(state);
+    },
     setSkillNodeLevel: (state: AppState, action: PayloadAction<{ skillNodeId: string; level: number }>) => {
       state.skillNodesToLevel[action.payload.skillNodeId] = action.payload.level;
 
@@ -1808,6 +1824,7 @@ export const {
   setSkillsViewOptions,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
+  toggleMainWindowTabHidden,
   setUserFlowOptions,
 
   // for DB viewer

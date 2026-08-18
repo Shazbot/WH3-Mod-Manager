@@ -150,6 +150,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     packDataOverwrites: config.packDataOverwrites ?? {},
     userFlowOptions: config.userFlowOptions ?? {},
     nodeEditorFavorites: config.nodeEditorFavorites ?? [],
+    hiddenMainWindowTabs: config.hiddenMainWindowTabs ?? [],
     moddersPrefix: config.moddersPrefix ?? "",
     modRowsSortingType: config.modRowsSortingType ?? SortingType.Ordered,
     currentGame: config.currentGame ?? "wh3",

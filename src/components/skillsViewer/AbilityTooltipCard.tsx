@@ -1,4 +1,5 @@
 import React from "react";
+import { useLocalizations } from "../../localizationContext";
 
 const getIconData = (
   iconPath: string | undefined,
@@ -87,6 +88,7 @@ const AbilityTooltipCard = ({
   icons: Record<string, string>;
   fallbackIconData?: string;
 }) => {
+  const localized = useLocalizations();
   const abilityIcon = getIconData(ability.iconPath, icons, fallbackIconData);
   const typeIcon = getIconData(ability.typeIconPath, icons, undefined);
   const loreIcon = getIconData(ability.loreIconPath, icons, undefined);
@@ -123,7 +125,7 @@ const AbilityTooltipCard = ({
 
       {ability.projectile && (
         <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
-          <Row label="Ranged Damage">
+          <Row label={localized.unitViewerTooltipRangedDamage || "Ranged Damage"}>
             {renderValueWithDiff(ability.projectile.totalDamage, compareAbility?.projectile?.totalDamage)}
             {ability.projectile.apPct != undefined && (
               <span className="text-gray-400">
@@ -143,7 +145,7 @@ const AbilityTooltipCard = ({
           </Row>
 
           {ability.projectile.explosion && (
-            <Row label="Explosive Damage">
+            <Row label={localized.unitViewerTooltipExplosiveDamage || "Explosive Damage"}>
               {renderValueWithDiff(
                 ability.projectile.explosion.totalDamage,
                 compareAbility?.projectile?.explosion?.totalDamage,
@@ -173,7 +175,7 @@ const AbilityTooltipCard = ({
           )}
 
           {ability.projectile.numProjectiles != undefined && (
-            <Row label="Number of projectiles">
+            <Row label={localized.unitViewerTooltipNumberOfProjectiles || "Number of projectiles"}>
               {renderValueWithDiff(ability.projectile.numProjectiles, compareAbility?.projectile?.numProjectiles)}
             </Row>
           )}
@@ -183,7 +185,7 @@ const AbilityTooltipCard = ({
       {displayedVortex && (
         <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
           {displayedVortex.dps != undefined && (
-            <Row label="Damage Per Second">
+            <Row label={localized.unitViewerTooltipDamagePerSecond || "Damage Per Second"}>
               {renderValueWithDiff(displayedVortex.dps, displayedCompareVortex?.dps)}
               {displayedVortex.apPct != undefined && (
                 <span className="text-gray-400">
@@ -203,15 +205,17 @@ const AbilityTooltipCard = ({
             </Row>
           )}
           {displayedVortex.duration != undefined && (
-            <Row label="Duration">
+            <Row label={localized.unitViewerTooltipDuration || "Duration"}>
               {renderValueWithDiff(displayedVortex.duration, displayedCompareVortex?.duration, "s")}
             </Row>
           )}
           {displayedVortex.radius != undefined && (
-            <Row label="Radius">{renderValueWithDiff(displayedVortex.radius, displayedCompareVortex?.radius, "m")}</Row>
+            <Row label={localized.unitViewerTooltipRadius || "Radius"}>
+              {renderValueWithDiff(displayedVortex.radius, displayedCompareVortex?.radius, "m")}
+            </Row>
           )}
           {displayedVortex.movementSpeed != undefined && (
-            <Row label="Movement Speed">
+            <Row label={localized.unitViewerTooltipMovementSpeed || "Movement Speed"}>
               {renderValueWithDiff(displayedVortex.movementSpeed, displayedCompareVortex?.movementSpeed, "m/s")}
             </Row>
           )}
@@ -221,7 +225,7 @@ const AbilityTooltipCard = ({
       {ability.directDamage && (
         <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
           {(ability.directDamage.dpsMin != undefined || ability.directDamage.dpsMax != undefined) && (
-            <Row label="Damage Per Second">
+            <Row label={localized.unitViewerTooltipDamagePerSecond || "Damage Per Second"}>
               <>
                 {renderValueWithDiff(ability.directDamage.dpsMin, compareAbility?.directDamage?.dpsMin)}-
                 {renderValueWithDiff(ability.directDamage.dpsMax, compareAbility?.directDamage?.dpsMax)}
@@ -229,7 +233,7 @@ const AbilityTooltipCard = ({
             </Row>
           )}
           {ability.directDamage.duration != undefined && (
-            <Row label="Duration">
+            <Row label={localized.unitViewerTooltipDuration || "Duration"}>
               {renderValueWithDiff(ability.directDamage.duration, compareAbility?.directDamage?.duration, "s")}
             </Row>
           )}
@@ -272,31 +276,41 @@ const AbilityTooltipCard = ({
 
       <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
         {ability.stats.range != undefined && (
-          <Row label="Range">{renderValueWithDiff(ability.stats.range, compareAbility?.stats.range, "m")}</Row>
+          <Row label={localized.unitViewerTooltipRange || "Range"}>
+            {renderValueWithDiff(ability.stats.range, compareAbility?.stats.range, "m")}
+          </Row>
         )}
         {ability.stats.effectRange != undefined && (
-          <Row label="Effect range">
+          <Row label={localized.unitViewerTooltipEffectRange || "Effect range"}>
             {renderValueWithDiff(ability.stats.effectRange, compareAbility?.stats.effectRange, "m")}
           </Row>
         )}
         {ability.stats.cooldown != undefined && (
-          <Row label="Cooldown">{renderValueWithDiff(ability.stats.cooldown, compareAbility?.stats.cooldown, "s")}</Row>
+          <Row label={localized.unitViewerTooltipCooldown || "Cooldown"}>
+            {renderValueWithDiff(ability.stats.cooldown, compareAbility?.stats.cooldown, "s")}
+          </Row>
         )}
         {ability.stats.duration != undefined && !isStatsDurationDuplicated && (
-          <Row label="Duration">{renderValueWithDiff(ability.stats.duration, compareAbility?.stats.duration, "s")}</Row>
+          <Row label={localized.unitViewerTooltipDuration || "Duration"}>
+            {renderValueWithDiff(ability.stats.duration, compareAbility?.stats.duration, "s")}
+          </Row>
         )}
         {ability.stats.womCost != undefined && (
-          <Row label="Winds of Magic Cost">
+          <Row label={localized.unitViewerTooltipWindsOfMagicCost || "Winds of Magic Cost"}>
             {renderValueWithDiff(ability.stats.womCost, compareAbility?.stats.womCost)}
           </Row>
         )}
         {ability.stats.miscastChance != undefined && (
-          <Row label="Miscast Chance">
+          <Row label={localized.unitViewerTooltipMiscastChance || "Miscast Chance"}>
             {renderValueWithDiff(ability.stats.miscastChance, compareAbility?.stats.miscastChance, "%")}
           </Row>
         )}
-        {ability.affectedUnitsText && <Row label="Affected units">{ability.affectedUnitsText}</Row>}
-        {ability.enabledIfText && <Row label="Enabled if">{ability.enabledIfText}</Row>}
+        {ability.affectedUnitsText && (
+          <Row label={localized.unitViewerTooltipAffectedUnits || "Affected units"}>{ability.affectedUnitsText}</Row>
+        )}
+        {ability.enabledIfText && (
+          <Row label={localized.unitViewerTooltipEnabledIf || "Enabled if"}>{ability.enabledIfText}</Row>
+        )}
       </div>
 
       {ability.additionalUiEffects.length > 0 && (

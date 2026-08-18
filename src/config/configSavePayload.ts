@@ -122,6 +122,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
       skillTreesDisplayMode: appState.skillTreesDisplayMode,
       technologyTreesDisplayMode: appState.technologyTreesDisplayMode,
+      hiddenMainWindowTabs: appState.hiddenMainWindowTabs,
     },
   };
 

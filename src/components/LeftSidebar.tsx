@@ -1,4 +1,4 @@
-import React, { memo, useContext, useEffect, useMemo } from "react";
+import React, { memo, useCallback, useContext, useEffect, useMemo } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-tabs";
 import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
@@ -20,15 +20,24 @@ const LeftSidebar = memo(() => {
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
   const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
-  const showVisualsTab = isFeaturesForModdersEnabled && isDev;
+  const hiddenMainWindowTabs = useAppSelector((state) => state.app.hiddenMainWindowTabs);
+  const isHidden = useCallback((tab: MainWindowTab) => hiddenMainWindowTabs.includes(tab), [hiddenMainWindowTabs]);
+  const showVisualsTab = isFeaturesForModdersEnabled && isDev && !isHidden("visuals");
+  const showNodeEditorTab = isFeaturesForModdersEnabled && !isHidden("nodeEditor");
+  const isEnabledModsTabVisible = !isHidden("enabledMods");
+  const isCategoriesTabVisible = !isHidden("categories");
+  const isPresetsTabVisible = !isHidden("presets");
   const isSkillsTabVisible = currentGame === "wh3" && skillTreesDisplayMode === "tab";
   const isTechTreesTabVisible = currentGame === "wh3" && technologyTreesDisplayMode === "tab";
-  const isUnitViewerVisible = currentGame === "wh3";
-  const isBuildingsTabVisible = currentGame === "wh3";
-  const isAncillariesTabVisible = currentGame === "wh3";
-  const isMapTabVisible = currentGame === "wh3";
+  const isUnitViewerVisible = currentGame === "wh3" && !isHidden("unitViewer");
+  const isBuildingsTabVisible = currentGame === "wh3" && !isHidden("buildings");
+  const isAncillariesTabVisible = currentGame === "wh3" && !isHidden("ancillaries");
+  const isMapTabVisible = currentGame === "wh3" && !isHidden("map");
   const tabIndexToTabType: MainWindowTab[] = useMemo(() => {
-    const tabs: MainWindowTab[] = ["mods", "enabledMods", "categories", "presets"];
+    const tabs: MainWindowTab[] = ["mods"];
+    if (isEnabledModsTabVisible) tabs.push("enabledMods");
+    if (isCategoriesTabVisible) tabs.push("categories");
+    if (isPresetsTabVisible) tabs.push("presets");
     if (isSkillsTabVisible) tabs.push("skills");
     if (isTechTreesTabVisible) tabs.push("techTrees");
     if (isUnitViewerVisible) tabs.push("unitViewer");
@@ -36,16 +45,19 @@ const LeftSidebar = memo(() => {
     if (isAncillariesTabVisible) tabs.push("ancillaries");
     if (isMapTabVisible) tabs.push("map");
     if (showVisualsTab) tabs.push("visuals");
-    if (isFeaturesForModdersEnabled) tabs.push("nodeEditor");
+    if (showNodeEditorTab) tabs.push("nodeEditor");
     return tabs;
   }, [
     isAncillariesTabVisible,
     isBuildingsTabVisible,
+    isCategoriesTabVisible,
+    isEnabledModsTabVisible,
     isMapTabVisible,
-    isFeaturesForModdersEnabled,
+    isPresetsTabVisible,
     isSkillsTabVisible,
     isTechTreesTabVisible,
     isUnitViewerVisible,
+    showNodeEditorTab,
     showVisualsTab,
   ]);
 
@@ -102,35 +114,41 @@ const LeftSidebar = memo(() => {
               </span>
             </div>
           </Tab>
-          <Tab>
-            <div className="flex items-center h-full parent-unhide-child relative">
-              <IoMdCheckboxOutline size="1.5rem" />
-              <span className="ml-2 mr-2 hidden-child">{localized.enabledModsCapitalized}</span>
-              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
-                Ctrl+{tabIndexToTabType.indexOf("enabledMods") + 1}
-              </span>
-            </div>
-          </Tab>
-          <Tab>
-            <div className="flex items-center h-full parent-unhide-child relative">
-              <MdCategory size="1.5rem" />
-              <span className="ml-2 mr-2 hidden-child">{localized.categories}</span>
-              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
-                Ctrl+{tabIndexToTabType.indexOf("categories") + 1}
-              </span>
-            </div>
-          </Tab>
-          <Tab>
-            <div className="flex items-center h-full parent-unhide-child relative">
-              <BsCollection size="1.3rem" />
-              <span className="ml-2 mr-2 hidden-child">
-                {localized.presetsTab || localized.editPresets || "Presets"}
-              </span>
-              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
-                Ctrl+{tabIndexToTabType.indexOf("presets") + 1}
-              </span>
-            </div>
-          </Tab>
+          {isEnabledModsTabVisible && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <IoMdCheckboxOutline size="1.5rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.enabledModsCapitalized}</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("enabledMods") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {isCategoriesTabVisible && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <MdCategory size="1.5rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.categories}</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("categories") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {isPresetsTabVisible && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <BsCollection size="1.3rem" />
+                <span className="ml-2 mr-2 hidden-child">
+                  {localized.presetsTab || localized.editPresets || "Presets"}
+                </span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("presets") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
           {isSkillsTabVisible && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
@@ -208,7 +226,7 @@ const LeftSidebar = memo(() => {
               </div>
             </Tab>
           )}
-          {isFeaturesForModdersEnabled && (
+          {showNodeEditorTab && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
                 <FaProjectDiagram size="1.5rem" />

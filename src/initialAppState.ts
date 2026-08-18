@@ -74,6 +74,7 @@ const initialState = {
   outdatedPackFiles: {},
   startArgs: [],
   currentTab: "mods",
+  hiddenMainWindowTabs: [],
   mapCampaignName: "wh3_main_combi",
   mapSelectedRegion: undefined,
   currentFlowFileReloadNonce: 0,

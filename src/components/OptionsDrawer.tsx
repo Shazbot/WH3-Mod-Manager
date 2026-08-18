@@ -24,6 +24,7 @@ import {
   setIsPackSearcherOpen,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
+  toggleMainWindowTabHidden,
   setAppFolderPaths,
 } from "../appSlice";
 import Drawer from "./Drawer";
@@ -52,6 +53,7 @@ import {
   WORKSHOP_MOD_SOURCE_ID,
 } from "../modSources";
 import { selectConfigSavePayload } from "../config/configSavePayload";
+import { hideableMainWindowTabs } from "../utility/frontend/mainWindowTabs";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -113,6 +115,7 @@ const OptionsDrawer = memo(() => {
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
   const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
+  const hiddenMainWindowTabs = useAppSelector((state) => state.app.hiddenMainWindowTabs);
   const isDev = useAppSelector((state) => state.app.isDev);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
@@ -306,6 +309,12 @@ const OptionsDrawer = memo(() => {
     { value: "tab", label: localized.tab || "Tab" },
     { value: "window", label: localized.window || "Window" },
   ];
+
+  // Tabs that need Features For Modders stay listed, with a badge, so they can be set up ahead of
+  // time. The ones that also need a dev build are dropped, since nothing would come of toggling them.
+  const sidebarTabOptions = useMemo(() => hideableMainWindowTabs.filter((entry) => !entry.isDevOnly || isDev), [isDev]);
+  // Their labels are looked up by key, which the type generated from the English translations cannot index.
+  const localizedByKey = localized as Record<string, string | undefined>;
 
   const forceDownloadMods = useCallback((contentModsWorshopIds: string[]) => {
     window.api?.forceDownloadMods(contentModsWorshopIds);
@@ -1263,6 +1272,36 @@ const OptionsDrawer = memo(() => {
                     </option>
                   ))}
                 </FormSelect>
+              </div>
+            </div>
+
+            <div className="mt-6 max-w-md">
+              <div className="block text-sm font-medium text-gray-900 dark:text-gray-100">
+                {localized.sidebarTabs || "Sidebar Tabs"}
+              </div>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                {localized.sidebarTabsDescription ||
+                  "Uncheck a tab to hide it from the left sidebar. All Mods is always shown, and Skill Trees and Tech Trees are set above."}
+              </p>
+              <div className="mt-3 grid gap-2">
+                {sidebarTabOptions.map((tabOption) => (
+                  <div key={tabOption.tab} className="flex items-center ml-1">
+                    <input
+                      type="checkbox"
+                      id={`toggleSidebarTab-${tabOption.tab}`}
+                      checked={!hiddenMainWindowTabs.includes(tabOption.tab)}
+                      onChange={() => dispatch(toggleMainWindowTabHidden(tabOption.tab))}
+                    ></input>
+                    <label className="ml-2" htmlFor={`toggleSidebarTab-${tabOption.tab}`}>
+                      {localizedByKey[tabOption.labelKey] || tabOption.fallbackLabel}
+                      {tabOption.isForModders && (
+                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                          ({localized.needsFeaturesForModders || "needs Features For Modders"})
+                        </span>
+                      )}
+                    </label>
+                  </div>
+                ))}
               </div>
             </div>
 
