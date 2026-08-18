@@ -15,9 +15,8 @@ export type BuildingContextMenuProps = {
 /**
  * The right-click menu over a building or a set label.
  *
- * A menu rather than a single action because the spec's "clone from the culture variant, or the
- * instance, or the set" is a real choice: which row you start from decides what the reference walk
- * pulls in.
+ * The building menu keeps the culture-variant clone as its deep-clone entry; set-level actions are
+ * still supplied separately when the user right-clicks a set label.
  */
 const BuildingContextMenu = memo(({ x, y, heading, items, onPick, onClose, editActions }: BuildingContextMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);

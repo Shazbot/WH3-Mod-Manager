@@ -15,8 +15,6 @@ import { ancillaryColourTextLocKey, ancillaryExplanationLocKey, ancillaryNameLoc
 import AncillaryTypesModal from "./AncillaryTypesModal";
 import type { AncillariesCatalog, AncillaryDetail as AncillaryDetailModel } from "../../ancillariesData/types";
 
-const tooltipFrame = require("../../assets/skills/tooltip_frame.png");
-
 /** A menu that renders in a portal needs to sit above the rest of the app. */
 const portalSelectStyle = {
   ...selectStyle,
@@ -312,9 +310,11 @@ const AncillaryDetail = memo(
 
     return (
       <div className="h-full overflow-y-auto p-4">
+        {/* The frame is drawn in CSS rather than with the tooltip background image, so it stays
+            crisp at any card height instead of stretching. */}
         <div
-          style={{ backgroundImage: `url('${tooltipFrame}')`, fontFamily: '"Libre Baskerville", serif' }}
-          className="skillTooltip space-y-2 rounded p-3 text-sm text-gray-100"
+          style={{ fontFamily: '"Libre Baskerville", serif' }}
+          className="space-y-2 rounded-md border-2 border-amber-900/70 bg-gradient-to-b from-gray-900 to-gray-950 p-4 text-sm text-gray-100 shadow-[inset_0_0_0_1px_rgba(217,164,80,0.35)]"
         >
           <div className="flex items-start gap-3">
             {detail.iconUrl ? (
@@ -388,72 +388,6 @@ const AncillaryDetail = memo(
                       onChange={(event) => setLocField(entry.locKey, event.target.value)}
                       className="mt-1 w-full resize-y rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
                     />
-                  </label>
-                ))}
-              </div>
-            </Section>
-
-            <Section title="Fields">
-              <div className="grid grid-cols-2 gap-2">
-                {fields.map((field) => (
-                  <label key={field.column} className="text-xs text-gray-400">
-                    {field.label}
-                    {field.kind === "select" && field.withIcons ? (
-                      <div className="flex items-end gap-2">
-                        <div className="min-w-0 flex-1">
-                          <IconSelect
-                            options={field.options()}
-                            value={valueOf(field.column)}
-                            onChange={(value) => setAncillaryField(field.column, value)}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          title="Browse the types at a readable size, or make a new one"
-                          onClick={() => setIsTypesOpen(true)}
-                          className="mt-1 shrink-0 rounded bg-gray-700 px-3 py-2 text-xs text-gray-100 hover:bg-gray-600"
-                        >
-                          Browse…
-                        </button>
-                      </div>
-                    ) : field.kind === "select" ? (
-                      <select
-                        value={valueOf(field.column)}
-                        onChange={(event) => setAncillaryField(field.column, event.target.value)}
-                        className="mt-1 w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
-                      >
-                        {/* A value the options do not cover would silently reset the cell on render. */}
-                        {!field.options().some((option) => option.value === valueOf(field.column)) && (
-                          <option value={valueOf(field.column)}>{valueOf(field.column) || "—"}</option>
-                        )}
-                        {field.options().map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="number"
-                        value={valueOf(field.column)}
-                        onChange={(event) => setAncillaryField(field.column, event.target.value)}
-                        className="mt-1 w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
-                      />
-                    )}
-                  </label>
-                ))}
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-1">
-                {BOOLEAN_FIELDS.map((field) => (
-                  <label key={field.column} className="flex items-center gap-2 text-xs text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={isTrue(valueOf(field.column))}
-                      onChange={(event) => setAncillaryField(field.column, event.target.checked ? "true" : "false")}
-                      className="rounded border-gray-600 bg-gray-800"
-                    />
-                    {field.label}
                   </label>
                 ))}
               </div>
@@ -561,6 +495,72 @@ const AncillaryDetail = memo(
                 >
                   <IoAdd size={14} /> Add
                 </button>
+              </div>
+            </Section>
+
+            <Section title="Fields">
+              <div className="grid grid-cols-2 gap-2">
+                {fields.map((field) => (
+                  <label key={field.column} className="text-xs text-gray-400">
+                    {field.label}
+                    {field.kind === "select" && field.withIcons ? (
+                      <div className="flex items-end gap-2">
+                        <div className="min-w-0 flex-1">
+                          <IconSelect
+                            options={field.options()}
+                            value={valueOf(field.column)}
+                            onChange={(value) => setAncillaryField(field.column, value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          title="Browse the types at a readable size, or make a new one"
+                          onClick={() => setIsTypesOpen(true)}
+                          className="mt-1 shrink-0 rounded bg-gray-700 px-3 py-2 text-xs text-gray-100 hover:bg-gray-600"
+                        >
+                          Browse…
+                        </button>
+                      </div>
+                    ) : field.kind === "select" ? (
+                      <select
+                        value={valueOf(field.column)}
+                        onChange={(event) => setAncillaryField(field.column, event.target.value)}
+                        className="mt-1 w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
+                      >
+                        {/* A value the options do not cover would silently reset the cell on render. */}
+                        {!field.options().some((option) => option.value === valueOf(field.column)) && (
+                          <option value={valueOf(field.column)}>{valueOf(field.column) || "—"}</option>
+                        )}
+                        {field.options().map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="number"
+                        value={valueOf(field.column)}
+                        onChange={(event) => setAncillaryField(field.column, event.target.value)}
+                        className="mt-1 w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-1">
+                {BOOLEAN_FIELDS.map((field) => (
+                  <label key={field.column} className="flex items-center gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={isTrue(valueOf(field.column))}
+                      onChange={(event) => setAncillaryField(field.column, event.target.checked ? "true" : "false")}
+                      className="rounded border-gray-600 bg-gray-800"
+                    />
+                    {field.label}
+                  </label>
+                ))}
               </div>
             </Section>
 

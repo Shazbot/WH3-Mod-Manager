@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -194,8 +194,9 @@ describe("AncillaryDetail inline editing", () => {
 
   it("overrides an effect value on the (ancillary, effect) pair, carrying its scope", () => {
     const { getState } = renderDetail();
-    // The effects section's number box, not the uniqueness one.
-    fireEvent.change(screen.getAllByRole("spinbutton").at(-1)!, { target: { value: "99" } });
+    // The box on the effect's own row, rather than one of the numeric fields.
+    const effectRow = screen.getByTitle("effect_melee").closest("div")!;
+    fireEvent.change(within(effectRow).getByRole("spinbutton"), { target: { value: "99" } });
 
     const rows = newRowsByTable(getState()).ancillary_to_effects_tables;
     expect(rows).toHaveLength(1);

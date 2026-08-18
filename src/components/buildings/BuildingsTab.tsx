@@ -134,36 +134,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           label: tile.title,
         },
       },
-      {
-        label: "Deep clone the building level",
-        target: {
-          tableName: "building_levels_tables",
-          keyColumn: "level_name",
-          keyValue: tile.levelKey,
-          label: tile.levelKey,
-        },
-      },
-      {
-        label: "Deep clone the whole chain",
-        target: {
-          tableName: "building_chains_tables",
-          keyColumn: "key",
-          keyValue: tile.chainKey,
-          label: tile.chainKey,
-        },
-      },
     ];
-    if (tile.instanceKey) {
-      items.splice(2, 0, {
-        label: "Deep clone the building instance",
-        target: {
-          tableName: "building_instances_tables",
-          keyColumn: "key",
-          keyValue: tile.instanceKey,
-          label: tile.instanceKey,
-        },
-      });
-    }
     setContextMenu({ x: event.clientX, y: event.clientY, heading: tile.title, items, tile });
   }, []);
 
