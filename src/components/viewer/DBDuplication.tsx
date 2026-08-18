@@ -82,6 +82,7 @@ export type DBDuplicationProps = {
 const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationProps) => {
   const canSaveToMemory = SOURCES_WITH_PENDING_ROWS.includes(launchSource);
   const memoryTargetName = launchSource === "ancillaries" ? "Ancillaries" : "Buildings";
+  const memoryActionLabel = launchSource === "buildings" ? "Add to buildings" : "Save to memory";
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   // important to reload the component
@@ -609,6 +610,20 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     // }
   };
 
+  const memoryActionButton = canSaveToMemory ? (
+    <button
+      className={`bg-cyan-700 border-cyan-600 border-2 hover:bg-cyan-800 text-white font-medium text-sm px-4 rounded h-8 min-w-44 m-auto ${
+        ((!isSavingPossible() || isSaving) &&
+          "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+        ""
+      }`}
+      onClick={async () => await onSave("memory")}
+      disabled={!isSavingPossible() || isSaving}
+    >
+      {memoryActionLabel}
+    </button>
+  ) : null;
+
   return (
     <>
       {isHelpOpen && (
@@ -667,7 +682,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
               </p>
               {canSaveToMemory && (
                 <p>
-                  "Save to memory" adds every generated DB and localization row to the {memoryTargetName} tab. The
+                  "{memoryActionLabel}" adds every generated DB and localization row to the {memoryTargetName} tab. The
                   generated tables can be inspected and edited under New rows before you save them to a pack.
                 </p>
               )}
@@ -729,6 +744,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
 
       <div className="absolute right-8 top-24 flex flex-col gap-6">
         <div className="flex flex-col items-center gap-2">
+          {launchSource === "buildings" && memoryActionButton}
           <button
             className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 min-w-32 m-auto ${
               ((!isSavingPossible() || isSaving) &&
@@ -742,19 +758,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
               <span>{"Save to pack"}</span>
             </div>
           </button>
-          {canSaveToMemory && (
-            <button
-              className={`bg-cyan-700 border-cyan-600 border-2 hover:bg-cyan-800 text-white font-medium text-sm px-4 rounded h-8 min-w-44 m-auto ${
-                ((!isSavingPossible() || isSaving) &&
-                  "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
-                ""
-              }`}
-              onClick={async () => await onSave("memory")}
-              disabled={!isSavingPossible() || isSaving}
-            >
-              Save to memory
-            </button>
-          )}
+          {launchSource !== "buildings" && memoryActionButton}
         </div>
         <div className="flex items-center justify-center mt-2">
           <input
