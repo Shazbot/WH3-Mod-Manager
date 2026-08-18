@@ -89,7 +89,8 @@
                   "js": "./src/rendererMain.ts",
                   "name": "main_window",
                   "preload": {
-                    "js": "./src/preload.ts"
+                    "js": "./src/preload.ts",
+                    "config": "./webpack.preload.config.js"
                   }
                 },
                 {
@@ -97,7 +98,8 @@
                   "js": "./src/rendererViewer.ts",
                   "name": "viewer",
                   "preload": {
-                    "js": "./src/preload.ts"
+                    "js": "./src/preload.ts",
+                    "config": "./webpack.preload.config.js"
                   }
                 },
                 {
@@ -105,7 +107,8 @@
                   "js": "./src/rendererSkills.ts",
                   "name": "skills",
                   "preload": {
-                    "js": "./src/preload.ts"
+                    "js": "./src/preload.ts",
+                    "config": "./webpack.preload.config.js"
                   }
                 },
                 {
@@ -113,7 +116,8 @@
                   "js": "./src/rendererTechTrees.ts",
                   "name": "tech_trees",
                   "preload": {
-                    "js": "./src/preload.ts"
+                    "js": "./src/preload.ts",
+                    "config": "./webpack.preload.config.js"
                   }
                 }
               ]
