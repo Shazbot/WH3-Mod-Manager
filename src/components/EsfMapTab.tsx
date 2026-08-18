@@ -537,7 +537,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       {error && <div className="px-4 py-2 text-sm text-red-400">{error}</div>}
 
       {map && (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] gap-3 p-3">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_22rem] gap-3 p-3">
           <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-gray-700 bg-gray-950">
             <div className="flex items-center gap-2 border-b border-gray-800 px-3 py-2 text-xs text-gray-400">
               <button
@@ -580,24 +580,26 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           </div>
 
           <div className="flex min-h-0 flex-col overflow-hidden rounded border border-gray-700 bg-gray-900">
-            <div className="border-b border-gray-800 px-3 py-2 text-xs text-gray-400">
+            <div className="border-b border-gray-800 px-3 py-2 text-sm text-gray-300">
               {mapView === "factions"
                 ? `${map.factions.length} factions · flags at settlements`
                 : map.startposWasCompressed
                   ? "Compressed startpos decoded"
                   : "Startpos loaded"}
-              <div className="mt-1 truncate text-[0.65rem] text-gray-600" title={map.startposPath}>
+              <div className="mt-1 truncate text-[0.75rem] text-gray-400" title={map.startposPath}>
                 {map.startposPath}
               </div>
             </div>
             {selectedMarker && (
-              <div className="border-b border-gray-800 px-3 py-2 text-xs">
+              <div className="border-b border-gray-800 px-3 py-2 text-sm">
                 <div className="font-medium text-gray-100">{selectedMarker.key}</div>
-                <div className="mt-1 text-gray-400">
+                <div className="mt-1 text-gray-300">
                   {selectedMarker.ownerFaction ?? "Unowned"}
                   {selectedMarker.subculture ? ` · ${selectedMarker.subculture}` : ""}
                 </div>
-                {selectedMarker.settlementKey && <div className="text-gray-500">{selectedMarker.settlementKey}</div>}
+                {selectedMarker.settlementKey && (
+                  <div className="text-[0.8125rem] text-gray-400">{selectedMarker.settlementKey}</div>
+                )}
               </div>
             )}
             <div className="border-b border-gray-800 p-2">
@@ -605,7 +607,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
                 placeholder={mapView === "factions" ? "Filter factions…" : "Filter regions…"}
-                className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500"
+                className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500"
               />
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-2">
@@ -615,14 +617,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       key={`${marker.id}-${marker.key}`}
                       type="button"
                       onClick={() => selectMapMarker(marker)}
-                      className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${
+                      className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-sm ${
                         selectedMarkerId === marker.id
                           ? "border-blue-500 bg-blue-950/60 text-gray-100"
                           : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
                       }`}
                     >
                       <span className="block truncate">{marker.key}</span>
-                      <span className="block truncate text-[0.65rem] text-gray-500">
+                      <span className="block truncate text-[0.8125rem] text-gray-400">
                         {marker.ownerFaction ?? "Unowned"}
                       </span>
                     </button>
@@ -634,7 +636,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         key={faction.key}
                         type="button"
                         onClick={() => selectMapFaction(faction.key.toLowerCase())}
-                        className={`mb-1 flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-xs ${
+                        className={`mb-1 flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-sm ${
                           isSelected
                             ? "border-blue-500 bg-blue-950/60 text-gray-100"
                             : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
@@ -647,7 +649,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         )}
                         <span className="min-w-0">
                           <span className="block truncate">{faction.label}</span>
-                          <span className="block truncate text-[0.65rem] text-gray-500">
+                          <span className="block truncate text-[0.8125rem] text-gray-400">
                             {faction.regionCount} {faction.regionCount === 1 ? "region" : "regions"} · {faction.key}
                           </span>
                         </span>
@@ -655,7 +657,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     );
                   })}
               {(mapView === "regions" ? filteredMarkers.length : filteredFactions.length) === 0 && (
-                <div className="px-2 py-3 text-xs text-gray-500">
+                <div className="px-2 py-3 text-sm text-gray-400">
                   {mapView === "factions" ? "No matching factions." : "No matching regions."}
                 </div>
               )}
