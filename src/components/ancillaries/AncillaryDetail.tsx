@@ -16,6 +16,13 @@ import type { AncillariesCatalog, AncillaryDetail as AncillaryDetailModel } from
 
 const tooltipFrame = require("../../assets/skills/tooltip_frame.png");
 
+/** The effects menu renders in a portal, so it needs to sit above the rest of the app. */
+const effectSelectStyle = {
+  ...selectStyle,
+  menuPortal: (base: any) => ({ ...base, zIndex: 70 }),
+  menu: (base: any) => ({ ...selectStyle.menu(base), zIndex: 70 }),
+};
+
 export type AncillaryDetailProps = {
   detail?: AncillaryDetailModel;
   catalog?: AncillariesCatalog;
@@ -398,9 +405,14 @@ const AncillaryDetail = memo(
                     }
                     // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(option: { value: string } | null) => setPendingEffectKey(option?.value)}
-                    styles={selectStyle}
+                    styles={effectSelectStyle}
                     placeholder="Search effects…"
                     isClearable
+                    // The panel scrolls and this select sits at its bottom: portal the menu out of the
+                    // clipping container and let react-select flip it upwards when the viewport is tight.
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </div>
                 <button
