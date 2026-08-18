@@ -200,24 +200,50 @@ describe("buildPackedFilesFromNewRows", () => {
 });
 
 describe("buildAncillariesFileName", () => {
+  const TAG = /_[a-z0-9]{6}$/;
+
   it("prefixes with !!! so the file sorts last and nothing vanilla shares the name", () => {
-    expect(buildAncillariesFileName("me", [])).toBe("!!!me_ancillaries");
+    expect(buildAncillariesFileName("me", [])).toMatch(/^!!!me_ancillaries_[a-z0-9]{6}$/);
   });
 
   it("trims trailing underscores from the modder prefix", () => {
-    expect(buildAncillariesFileName("me__", [])).toBe("!!!me_ancillaries");
+    expect(buildAncillariesFileName("me__", [])).toMatch(/^!!!me_ancillaries_/);
   });
 
   it("falls back to whmm when the prefix is blank", () => {
-    expect(buildAncillariesFileName("   ", [])).toBe("!!!whmm_ancillaries");
+    expect(buildAncillariesFileName("   ", [])).toMatch(/^!!!whmm_ancillaries_/);
+  });
+
+  // Two packs saved from the same prefix must not both claim db\<table>\!!!me_ancillaries.
+  it("ends in a different tag every time, so separate output packs never collide", () => {
+    const names = new Set(Array.from({ length: 50 }, () => buildAncillariesFileName("me", [])));
+    expect(names.size).toBe(50);
+    for (const name of names) expect(name).toMatch(TAG);
   });
 
   it("picks a free name rather than replacing someone else's file", () => {
-    const taken = ["db\\ancillaries_tables\\!!!me_ancillaries", "text\\db\\!!!me_ancillaries_2.loc"];
-    expect(buildAncillariesFileName("me", taken)).toBe("!!!me_ancillaries_3");
+    // The first tag it draws is already in the pack, so it has to draw again.
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
+    const firstTag = (0.5).toString(36).slice(2, 8);
+    const taken = [`db\\ancillaries_tables\\!!!me_ancillaries_${firstTag}`];
+
+    expect(buildAncillariesFileName("me", taken)).toBe(`!!!me_ancillaries_${(0.25).toString(36).slice(2, 8)}`);
+    random.mockRestore();
+  });
+
+  it("steps around a colliding loc file too", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
+    const taken = [`text\\db\\!!!me_ancillaries_${(0.5).toString(36).slice(2, 8)}.loc`];
+
+    expect(buildAncillariesFileName("me", taken)).toBe(`!!!me_ancillaries_${(0.25).toString(36).slice(2, 8)}`);
+    random.mockRestore();
   });
 
   it("compares case-insensitively, as pack paths are compared everywhere else", () => {
-    expect(buildAncillariesFileName("me", ["DB\\ANCILLARIES_TABLES\\!!!ME_ANCILLARIES"])).toBe("!!!me_ancillaries_2");
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
+    const taken = [`DB\\ANCILLARIES_TABLES\\!!!ME_ANCILLARIES_${(0.5).toString(36).slice(2, 8).toUpperCase()}`];
+
+    expect(buildAncillariesFileName("me", taken)).toBe(`!!!me_ancillaries_${(0.25).toString(36).slice(2, 8)}`);
+    random.mockRestore();
   });
 });

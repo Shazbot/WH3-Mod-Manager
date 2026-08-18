@@ -155,22 +155,34 @@ describe("buildPackedFilesFromNewRows", () => {
 
 describe("buildBuildingsFileName", () => {
   it("uses the modder's prefix", () => {
-    expect(buildBuildingsFileName("tilic", [])).toBe("!!!tilic_buildings");
+    expect(buildBuildingsFileName("tilic", [])).toMatch(/^!!!tilic_buildings_[a-z0-9]{6}$/);
   });
 
   it("trims trailing underscores and falls back when there is no prefix", () => {
-    expect(buildBuildingsFileName("tilic__", [])).toBe("!!!tilic_buildings");
-    expect(buildBuildingsFileName("   ", [])).toBe("!!!whmm_buildings");
+    expect(buildBuildingsFileName("tilic__", [])).toMatch(/^!!!tilic_buildings_/);
+    expect(buildBuildingsFileName("   ", [])).toMatch(/^!!!whmm_buildings_/);
+  });
+
+  // Two packs saved from the same prefix must not both claim db\<table>\!!!tilic_buildings.
+  it("ends in a different tag every time, so separate output packs never collide", () => {
+    const names = new Set(Array.from({ length: 50 }, () => buildBuildingsFileName("tilic", [])));
+    expect(names.size).toBe(50);
   });
 
   // A collision would make saveDBTableEdits replace someone else's file rather than add ours.
   it("steps around a name the target pack already uses", () => {
-    const existing = ["db\\building_levels_tables\\!!!tilic_buildings"];
-    expect(buildBuildingsFileName("tilic", existing)).toBe("!!!tilic_buildings_2");
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
+    const existing = [`db\\building_levels_tables\\!!!tilic_buildings_${(0.5).toString(36).slice(2, 8)}`];
+
+    expect(buildBuildingsFileName("tilic", existing)).toBe(`!!!tilic_buildings_${(0.25).toString(36).slice(2, 8)}`);
+    random.mockRestore();
   });
 
   it("also steps around a colliding loc file", () => {
-    const existing = ["text\\db\\!!!tilic_buildings.loc"];
-    expect(buildBuildingsFileName("tilic", existing)).toBe("!!!tilic_buildings_2");
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
+    const existing = [`text\\db\\!!!tilic_buildings_${(0.5).toString(36).slice(2, 8)}.loc`];
+
+    expect(buildBuildingsFileName("tilic", existing)).toBe(`!!!tilic_buildings_${(0.25).toString(36).slice(2, 8)}`);
+    random.mockRestore();
   });
 });

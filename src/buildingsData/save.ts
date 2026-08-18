@@ -77,10 +77,16 @@ export const buildPackedFilesFromNewRows = ({
   return { files, skippedTables };
 };
 
+/** Six base36 characters, enough that two saves picking the same tag is not worth handling. */
+const randomFileNameTag = () => Math.random().toString(36).slice(2, 8);
+
 /**
  * A file name nothing else in the target pack uses.
  *
- * A collision would make `saveDBTableEdits` replace someone else's file rather than add ours.
+ * A collision would make `saveDBTableEdits` replace someone else's file rather than add ours, so
+ * the name ends in a random tag: the packs this writes are meant to sit next to each other, and a
+ * pack saved yesterday, or one saved later into the same load order, must not claim the same
+ * `db\<table>\<file>` path. Existing names are still checked, since a tag can repeat.
  */
 export const buildBuildingsFileName = (moddersPrefix: string, existingFileNames: Iterable<string>): string => {
   const prefix = moddersPrefix.trim().replace(/_+$/, "") || "whmm";
@@ -97,10 +103,9 @@ export const buildBuildingsFileName = (moddersPrefix: string, existingFileNames:
     return true;
   };
 
-  if (isFree(base)) return base;
-  for (let suffix = 2; suffix < 1000; suffix++) {
-    const candidate = `${base}_${suffix}`;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const candidate = `${base}_${randomFileNameTag()}`;
     if (isFree(candidate)) return candidate;
   }
-  return `${base}_${Date.now()}`;
+  return `${base}_${Date.now().toString(36)}`;
 };
