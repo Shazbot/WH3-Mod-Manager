@@ -44,6 +44,7 @@ const catalog: AncillariesCatalog = {
   effects: [],
   effectScopes: [],
   types: [],
+  icons: [],
   dbPackPath: "C:\\game\\data\\db.pack",
   tableSchemas: {},
   moddersPrefix: "me",

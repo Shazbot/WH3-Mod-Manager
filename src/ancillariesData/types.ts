@@ -139,6 +139,15 @@ export interface AncillariesOption {
   iconUrl?: string;
 }
 
+/** One pickable `ancillary_types_tables.ui_icon`, for the type browser's icon grid. */
+export interface AncillariesIconOption {
+  /** The pack-relative path, which is what `ui_icon` stores. */
+  path: string;
+  /** The file name without its folder or extension, which is all the grid has room for. */
+  name: string;
+  iconUrl: string;
+}
+
 export interface AncillariesEffectOption extends AncillariesOption {
   /**
    * Whether some ancillary already has this effect.
@@ -163,6 +172,8 @@ export interface AncillariesCatalog {
   effectScopes: string[];
   /** Every `ancillary_types_tables.type`, sorted. The type picker's options. */
   types: AncillariesOption[];
+  /** Every icon some type uses, deduped: what a new type can choose from. */
+  icons: AncillariesIconOption[];
   /** Where the vanilla DB tables live, so the renderer never joins paths itself. */
   dbPackPath: string;
   /** Per ancillaries table, the schema its new rows have to be written with. */

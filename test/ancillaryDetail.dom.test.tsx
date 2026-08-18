@@ -32,6 +32,7 @@ const catalog: AncillariesCatalog = {
     { key: "type_sword", localizedName: "type_sword" },
     { key: "type_charm", localizedName: "type_charm" },
   ],
+  icons: [],
   dbPackPath: "C:\\game\\data\\db.pack",
   tableSchemas: {},
   moddersPrefix: "me",
@@ -232,5 +233,69 @@ describe("AncillaryDetail inline editing", () => {
     renderDetail({ onClone });
     await userEvent.click(screen.getByText("Clone"));
     expect(onClone).toHaveBeenCalledWith("anc_sword");
+  });
+});
+
+describe("AncillaryDetail type browser", () => {
+  const catalogWithIcons = {
+    ...catalog,
+    icons: [
+      { path: "ui\\campaign ui\\ancillaries\\sword.png", name: "sword", iconUrl: "whmm://icon/sword" },
+      { path: "ui\\campaign ui\\ancillaries\\charm.png", name: "charm", iconUrl: "whmm://icon/charm" },
+    ],
+  };
+
+  const openBrowser = async () => {
+    const view = renderDetail({ catalog: catalogWithIcons });
+    await userEvent.click(screen.getByText("Browse…"));
+    return view;
+  };
+
+  it("lists every type at a size you can see, and writes the one that is clicked", async () => {
+    const { getState } = await openBrowser();
+    expect(screen.getByText("type_charm")).toBeTruthy();
+
+    await userEvent.click(screen.getByText("type_charm"));
+
+    expect(newRowsByTable(getState()).ancillaries_tables[0].values.type).toBe("type_charm");
+    // Picking a type closes the panel.
+    expect(screen.queryByText("Ancillary types")).toBeNull();
+  });
+
+  it("narrows the grid with the search box", async () => {
+    await openBrowser();
+    await userEvent.type(screen.getByLabelText("Search types"), "charm");
+    expect(screen.queryByText("type_sword")).toBeNull();
+    expect(screen.getByText("type_charm")).toBeTruthy();
+  });
+
+  it("refuses a new type until it has a free key and an icon", async () => {
+    await openBrowser();
+    await userEvent.click(screen.getByText("New type…"));
+    const create = screen.getByText("Create type") as HTMLButtonElement;
+
+    expect(create.disabled).toBe(true);
+    expect(screen.getByText("Pick an icon for the type.")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Type key"), { target: { value: "type_sword" } });
+    expect(screen.getByText("That type key already exists.")).toBeTruthy();
+    expect(create.disabled).toBe(true);
+  });
+
+  it("adds the type row and points the ancillary at it", async () => {
+    const { getState } = await openBrowser();
+    await userEvent.click(screen.getByText("New type…"));
+    fireEvent.change(screen.getByLabelText("Type key"), { target: { value: "me_type_banner" } });
+    await userEvent.click(screen.getByText("charm"));
+    await userEvent.click(screen.getByText("Create type"));
+
+    const typeRows = newRowsByTable(getState()).ancillary_types_tables;
+    expect(typeRows).toHaveLength(1);
+    expect(typeRows[0].values).toMatchObject({
+      type: "me_type_banner",
+      ui_icon: "ui\\campaign ui\\ancillaries\\charm.png",
+    });
+    expect(typeRows[0].origin).toBe("newType");
+    expect(newRowsByTable(getState()).ancillaries_tables[0].values.type).toBe("me_type_banner");
   });
 });

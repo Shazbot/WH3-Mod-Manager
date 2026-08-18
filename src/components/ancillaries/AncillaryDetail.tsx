@@ -12,6 +12,7 @@ import {
   type AncillariesRowOrigin,
 } from "../../ancillariesData/edits";
 import { ancillaryColourTextLocKey, ancillaryExplanationLocKey, ancillaryNameLocKey } from "../../ancillariesData/data";
+import AncillaryTypesModal from "./AncillaryTypesModal";
 import type { AncillariesCatalog, AncillaryDetail as AncillaryDetailModel } from "../../ancillariesData/types";
 
 const tooltipFrame = require("../../assets/skills/tooltip_frame.png");
@@ -119,6 +120,7 @@ const IconSelect = ({
 const AncillaryDetail = memo(
   ({ detail, catalog, edits, dispatch, isEditingEnabled, onClone, isCloning }: AncillaryDetailProps) => {
     const [pendingEffectKey, setPendingEffectKey] = useState<string>();
+    const [isTypesOpen, setIsTypesOpen] = useState(false);
 
     /**
      * Writes one column, keeping a single override row per `(table, key)`.
@@ -173,6 +175,24 @@ const AncillaryDetail = memo(
         );
       },
       [detail, setField],
+    );
+
+    /**
+     * A brand new `ancillary_types_tables` row, pointed at an icon that already ships with the game.
+     *
+     * One group with the field write, so undoing the row and the reference to it is a single step.
+     */
+    const createType = useCallback(
+      (typeKey: string, iconPath: string) => {
+        const schema = catalog?.tableSchemas.ancillary_types_tables;
+        const values: Record<string, string> = {};
+        for (const field of schema?.fields ?? []) values[field.name] = field.default_value ?? "";
+        values.type = typeKey;
+        values.ui_icon = iconPath;
+        dispatch({ type: "addRows", rows: [{ table: "ancillary_types_tables", origin: "newType", values }] });
+        setAncillaryField("type", typeKey);
+      },
+      [catalog, dispatch, setAncillaryField],
     );
 
     const setLocField = useCallback(
@@ -354,11 +374,23 @@ const AncillaryDetail = memo(
                   <label key={field.column} className="text-xs text-gray-400">
                     {field.label}
                     {field.kind === "select" && field.withIcons ? (
-                      <IconSelect
-                        options={field.options()}
-                        value={valueOf(field.column)}
-                        onChange={(value) => setAncillaryField(field.column, value)}
-                      />
+                      <div className="flex items-end gap-2">
+                        <div className="min-w-0 flex-1">
+                          <IconSelect
+                            options={field.options()}
+                            value={valueOf(field.column)}
+                            onChange={(value) => setAncillaryField(field.column, value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          title="Browse the types at a readable size, or make a new one"
+                          onClick={() => setIsTypesOpen(true)}
+                          className="mt-1 shrink-0 rounded bg-gray-700 px-3 py-2 text-xs text-gray-100 hover:bg-gray-600"
+                        >
+                          Browse…
+                        </button>
+                      </div>
                     ) : field.kind === "select" ? (
                       <select
                         value={valueOf(field.column)}
@@ -488,6 +520,18 @@ const AncillaryDetail = memo(
                 </button>
               </div>
             </Section>
+
+            {isTypesOpen && (
+              <AncillaryTypesModal
+                types={catalog?.types ?? []}
+                icons={catalog?.icons ?? []}
+                selectedType={valueOf("type")}
+                moddersPrefix={catalog?.moddersPrefix ?? ""}
+                onSelect={(typeKey) => setAncillaryField("type", typeKey)}
+                onCreate={createType}
+                onClose={() => setIsTypesOpen(false)}
+              />
+            )}
           </>
         )}
       </div>

@@ -14,7 +14,8 @@ import type { AncillariesTableRows, BuiltAncillariesData } from "./types";
 /** Loc entries ride the same store as db rows; this is their pseudo-table. */
 export const LOC_TABLE = "__loc__";
 
-export type AncillariesRowOrigin = "newAncillary" | "editAncillary" | "addEffect" | "editEffect" | "clone" | "manual";
+export type AncillariesRowOrigin =
+  "newAncillary" | "editAncillary" | "addEffect" | "editEffect" | "newType" | "clone" | "manual";
 
 export interface AncillariesNewRow {
   /** Stable across both views, so a grid edit and a panel edit address the same row. */

@@ -4183,6 +4183,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return built.icons[normalized] ? iconAssetUrl(built.iconGeneration, normalized) : undefined;
   };
 
+  /** `ui\campaign ui\ancillaries\foo.png` -> `foo`, which is all the icon grid has room for. */
+  const ancillaryIconName = (iconPath: string) =>
+    (iconPath.split("\\").pop() ?? iconPath).replace(/\.(png|jpg|jpeg|tga|dds)$/i, "");
+
   const toAncillariesCatalog = (
     built: CachedAncillariesData,
     data: BuiltAncillariesData,
@@ -4204,6 +4208,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       localizedName: key,
       iconUrl: ancillaryIconUrl(built, data.typeIcons[key]),
     })),
+    // Deduped because most icons are shared by several types, and an icon that failed to load is
+    // left out rather than offered as an empty tile.
+    icons: [...new Set(Object.values(data.typeIcons))]
+      .map((iconPath) => ({
+        path: iconPath,
+        name: ancillaryIconName(iconPath),
+        iconUrl: ancillaryIconUrl(built, iconPath),
+      }))
+      .filter((icon): icon is { path: string; name: string; iconUrl: string } => icon.iconUrl !== undefined)
+      .sort((firstIcon, secondIcon) => collator.compare(firstIcon.name, secondIcon.name)),
     dbPackPath: built.dbPackPath,
     tableSchemas,
     moddersPrefix: appData.moddersPrefix,
