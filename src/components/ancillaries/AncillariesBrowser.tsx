@@ -24,7 +24,7 @@ export type AncillariesBrowserProps = {
 type BrowserRow =
   | { kind: "category"; key: string; name: string; iconUrl?: string; count: number }
   | { kind: "subcategory"; key: string; name: string; count: number }
-  | { kind: "ancillary"; key: string; ancillary: AncillarySummary };
+  | { kind: "ancillary"; key: string; ancillary: AncillarySummary; nested: boolean };
 
 /** Collapse key for a subcategory, kept distinct from a category of the same name. */
 const subcategoryRowKey = (category: string, subcategory: string) => `${category} ${subcategory}`;
@@ -120,6 +120,14 @@ const AncillariesBrowser = memo(
           return (subcategoryNames.get(a) ?? a).localeCompare(subcategoryNames.get(b) ?? b);
         });
 
+        // A lone subcategory says nothing the category header does not: list its ancillaries directly.
+        if (orderedSubcategories.length === 1) {
+          for (const ancillary of bySubcategory.get(orderedSubcategories[0])!) {
+            result.push({ kind: "ancillary", key: ancillary.key, ancillary, nested: false });
+          }
+          continue;
+        }
+
         for (const subcategory of orderedSubcategories) {
           const inSubcategory = bySubcategory.get(subcategory)!;
           const rowKey = subcategoryRowKey(category.key, subcategory);
@@ -131,7 +139,7 @@ const AncillariesBrowser = memo(
           });
           if (collapsed[rowKey] === true && ancillaryFilter.isEmpty) continue;
           for (const ancillary of inSubcategory) {
-            result.push({ kind: "ancillary", key: ancillary.key, ancillary });
+            result.push({ kind: "ancillary", key: ancillary.key, ancillary, nested: true });
           }
         }
       }
@@ -191,7 +199,7 @@ const AncillariesBrowser = memo(
               title={ancillary.key}
               onClick={() => onSelect(ancillary.key)}
               onContextMenu={(event) => onContextMenu?.(ancillary, event)}
-              className={`flex h-full w-full items-center gap-2 px-2 pl-9 text-left text-sm ${
+              className={`flex h-full w-full items-center gap-2 px-2 ${row.nested ? "pl-9" : "pl-5"} text-left text-sm ${
                 isSelected ? "bg-amber-800/70 text-white" : "text-gray-200 hover:bg-gray-700/60"
               }`}
             >

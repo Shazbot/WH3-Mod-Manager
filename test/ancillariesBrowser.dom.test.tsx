@@ -50,6 +50,15 @@ const catalog: AncillariesCatalog = {
   nextNumericIds: {},
 };
 
+/** Weapon here holds two subcategories, so the subcategory rows survive. */
+const mixedSubcategoryCatalog: AncillariesCatalog = {
+  ...catalog,
+  ancillaries: [
+    ...catalog.ancillaries,
+    ancillary({ key: "anc_runeblade", localizedName: "Runeblade", subcategory: "rune" }),
+  ],
+};
+
 const mods = [{ path: MOD_PACK, label: "Extra Items" }];
 
 const renderBrowser = (props: Partial<React.ComponentProps<typeof AncillariesBrowser>> = {}) =>
@@ -183,12 +192,22 @@ describe("AncillariesBrowser", () => {
   });
 
   it("files an empty subcategory under its own bucket", async () => {
+    renderBrowser({ catalog: mixedSubcategoryCatalog });
+    await userEvent.click(screen.getByText("Weapon"));
+
+    expect(screen.getByText("(no subcategory)")).toBeTruthy();
+    expect(screen.getByText("Rune")).toBeTruthy();
+  });
+
+  it("skips the subcategory row when a category has only one", async () => {
     renderBrowser();
     await userEvent.click(screen.getByText("Talisman"));
-    expect(screen.getByText("Rune")).toBeTruthy();
+    expect(screen.queryByText("Rune")).toBeNull();
+    expect(visibleAncillaryNames()).toEqual(["Armour of Destiny"]);
 
     await userEvent.click(screen.getByText("Weapon"));
-    expect(screen.getByText("(no subcategory)")).toBeTruthy();
+    expect(screen.queryByText("(no subcategory)")).toBeNull();
+    expect(visibleAncillaryNames()).toContain("Sword of Khaine");
   });
 
   it("reports the selection to its parent", async () => {
