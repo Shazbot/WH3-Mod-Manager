@@ -201,13 +201,15 @@ export const buildAncillariesData = (
   }
 
   // Every effect in the game, flagged with whether an ancillary uses it, so the picker can offer
-  // the used ones first but still reach the rest.
+  // the used ones first but still reach the rest. All of them are localised: the loc entries are
+  // recorded per effects_tables row, not per ancillary_to_effects_tables row.
   const effects: AncillariesEffectOption[] = rowsOf("effects_tables")
     .map((row) => str(row, "effect"))
     .filter((key) => key !== "")
     .map((key) => ({
       key,
-      localizedName: effectMeta[key]?.description || key,
+      localizedName: effectMeta[key]?.description || getRawEffectLocalization(key, getLoc),
+      icon: effectIcons[key],
       usedByAncillaries: effectMeta[key] != undefined,
       preferredScope: [...(effectScopeCounts[key] ?? [])].sort(
         (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),

@@ -397,6 +397,8 @@ type CachedBuildingsData = {
   dbPackPath: string;
   /** Variant `icon` cell, normalised to a bare lowercase name -> the packed file that holds it. */
   iconPathByBaseName: Record<string, string>;
+  /** Every indexed icon under the building icon folder, including icons not used by current rows. */
+  buildingIconPaths: string[];
   icons: Record<string, AssetBytes>;
   iconGeneration: number;
 };
@@ -3415,6 +3417,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const BUILDING_FRAME_PACK_NAME = "ui2.pack";
   /** Folders the game keeps building icons in. Scanned, not assumed: `icon` holds a bare name. */
   const BUILDING_ICON_PREFIXES = ["ui\\campaign ui\\building_icons\\", "ui\\buildings\\"];
+  const BUILDING_ICON_BROWSE_PREFIX = "ui\\buildings\\icons\\";
   const IMAGE_EXTENSION = /\.(png|jpg|jpeg|webp|tga)$/i;
 
   /**
@@ -3425,6 +3428,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    */
   const buildBuildingIconIndex = async (dataFolder: string, vanillaPackPaths: string[], modPackPaths: string[]) => {
     const byBaseName: Record<string, string> = {};
+    const browsePathsByNormalizedPath = new Map<string, string>();
     const recordBuildingIcons = (packedFileNames: Iterable<string>) => {
       for (const name of packedFileNames) {
         const lower = name.toLowerCase();
@@ -3432,6 +3436,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (!IMAGE_EXTENSION.test(lower)) continue;
         const baseName = lower.slice(lower.lastIndexOf("\\") + 1).replace(IMAGE_EXTENSION, "");
         byBaseName[baseName] = name;
+        if (lower.startsWith(BUILDING_ICON_BROWSE_PREFIX)) {
+          browsePathsByNormalizedPath.set(normalizeAssetPath(name), name);
+        }
       }
     };
 
@@ -3482,7 +3489,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       return source;
     };
 
-    return { byBaseName, sourcePackPath };
+    return { byBaseName, buildingIconPaths: [...browsePathsByNormalizedPath.values()], sourcePackPath };
   };
 
   /** Strips any folder and extension so a raw `icon` cell can be matched against the index. */
@@ -3697,6 +3704,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const wantedPaths = Array.from(
       new Set([
         ...(buildingFrame ? [BUILDING_FRAME_PATH] : []),
+        ...iconIndex.buildingIconPaths,
         ...Object.values(iconPathByBaseName),
         ...effectIconPaths,
         ...unitCardPaths,
@@ -3709,7 +3717,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const icons =
       wantedPaths.length > 0 ? await loadIconsFromPacks(await getIconPacks(neededPackPaths), wantedPaths) : {};
     if (buildingFrame) icons[BUILDING_FRAME_PATH] = buildingFrame;
-    return { iconPathByBaseName, icons, iconGeneration: registerIconAssets(icons) };
+    return {
+      iconPathByBaseName,
+      buildingIconPaths: iconIndex.buildingIconPaths,
+      icons,
+      iconGeneration: registerIconAssets(icons),
+    };
   };
 
   /** The packs icon bytes are read out of, loaded lazily and only once per session. */
@@ -3752,6 +3765,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     built: CachedBuildingsData,
     tableSchemas: Record<string, DBVersion>,
   ): BuildingsCatalog => {
+    const assetUrl = (packedFilePath: string | undefined) =>
+      packedFilePath && built.icons[packedFilePath] ? iconAssetUrl(built.iconGeneration, packedFilePath) : undefined;
+    const buildingIcons = built.buildingIconPaths
+      .map((path) => ({
+        path,
+        name: buildingIconBaseName(path),
+        iconUrl: assetUrl(path),
+      }))
+      .filter((icon): icon is { path: string; name: string; iconUrl: string } => icon.iconUrl !== undefined)
+      .sort((first, second) => collator.compare(first.name, second.name) || collator.compare(first.path, second.path));
     const unitGroupsByUnit: Record<string, string[]> = {};
     for (const [unitGroup, units] of Object.entries(built.data.garrisonUnitsByGroup)) {
       for (const unit of units) {
@@ -3771,6 +3794,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       unitGroups: built.data.unitGroups,
       unitGroupsByUnit,
       cultureVariantsByBuilding: built.data.variantsByLevel,
+      buildingIcons,
       effects: built.data.effects,
       effectScopes: built.data.effectScopes,
       chainKeys: Object.keys(built.data.chains).sort(),
@@ -3900,6 +3924,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     "ancillaries_categories_onscreen_name_",
     "ancillaries_subcategories_onscreen_name_",
     "effects_description_",
+    "ui_text_replacements_localised_text_",
   ];
 
   /**
@@ -3949,9 +3974,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const key = (row.subcategory ?? "").trim();
       if (key) record(`ancillaries_subcategories_onscreen_name_${key}`);
     }
-    for (const row of tables.ancillary_to_effects_tables ?? []) {
+    // Every effect, not only the ones an ancillary already has: the "+ Add effect" picker offers
+    // all of them, and a key recorded here is the only way the panel can name one later.
+    for (const row of tables.effects_tables ?? []) {
       const effect = (row.effect ?? "").trim();
-      if (effect) record(`effects_description_${effect}`);
+      if (!effect) continue;
+      const description = record(`effects_description_${effect}`);
+      // A description can be built out of {{tr:...}} tokens, which are loc keys of their own.
+      for (const match of description?.matchAll(/{{tr:(.*?)}}/gi) ?? []) {
+        const token = match[1];
+        if (!token) continue;
+        const replacement = record(`ui_text_replacements_localised_text_${token}`) ?? record(token);
+        const nested = replacement?.match(/^{{tr:(.*?)}}$/i)?.[1];
+        if (nested && record(`ui_text_replacements_localised_text_${nested}`) === undefined) record(nested);
+      }
     }
     for (const [key, value] of Object.entries(ownLocEntries ?? {})) {
       if (ANCILLARY_LOC_PREFIXES.some((prefix) => key.startsWith(prefix))) localizations[key] = value;
@@ -4072,6 +4108,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    * pack wins" without opening anything: the ancillary's own `ui_icon`, its category's icon, one
    * per effect, and every ancillary type's icon for the type picker.
    */
+  const effectIconPath = (icon: string | undefined) => (icon ? `ui\\campaign ui\\effect_bundles\\${icon}` : undefined);
+
   const registerAncillaryIcons = async (data: BuiltAncillariesData, dataFolder: string, modPackPaths: string[]) => {
     const wantedPaths = new Set<string>();
     for (const ancillary of data.ancillaries) {
@@ -4082,8 +4120,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     // Types no ancillary uses yet still need their icon: the type picker offers all of them.
     for (const iconPath of Object.values(data.typeIcons)) wantedPaths.add(normalizeAssetPath(iconPath));
-    for (const meta of Object.values(data.effectMeta)) {
-      if (meta.icon) wantedPaths.add(normalizeAssetPath(`ui\\campaign ui\\effect_bundles\\${meta.icon}`));
+    // Every effect, not only the ones in use: the "+ Add effect" picker shows an icon per option.
+    // Effects share icons heavily, so the deduped set stays a fraction of the effect count.
+    for (const effect of data.effects) {
+      const iconPath = effectIconPath(effect.icon);
+      if (iconPath) wantedPaths.add(normalizeAssetPath(iconPath));
     }
     const paths = [...wantedPaths];
     if (paths.length === 0) return { icons: {} as Record<string, AssetBytes>, iconGeneration: registerIconAssets({}) };
@@ -4201,7 +4242,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       ...ancillary,
       iconUrl: ancillaryIconUrl(built, ancillary.iconPath),
     })),
-    effects: data.effects,
+    effects: data.effects.map((effect) => ({
+      ...effect,
+      iconUrl: ancillaryIconUrl(built, effectIconPath(effect.icon)),
+    })),
     effectScopes: data.effectScopes,
     types: data.typeKeys.map((key) => ({
       key,
@@ -4284,7 +4328,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       subcategoryName: subcategory?.localizedName,
       effects: markPendingEffects(data.effectsByAncillary[key] ?? [], pendingEdits).map((effect) => ({
         ...effect,
-        iconUrl: ancillaryIconUrl(built, effect.icon ? `ui\\campaign ui\\effect_bundles\\${effect.icon}` : undefined),
+        iconUrl: ancillaryIconUrl(built, effectIconPath(effect.icon)),
       })),
       rowValues: data.rowValuesByKey[key] ?? {},
       hasInfoRow: data.infoKeys.includes(key),

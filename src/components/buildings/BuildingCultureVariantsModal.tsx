@@ -1,10 +1,17 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
+import { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
 import { Modal } from "../../flowbite";
 import selectStyle from "../../styles/selectStyle";
 import { addBuildingCultureVariantRows } from "../../buildingsData/editActions";
 import type { BuildingsEditAction, BuildingsEditState } from "../../buildingsData/edits";
-import type { BuildingVariantRow, BuildingsCatalog, BuildingsOption, BuildingsTile } from "../../buildingsData/types";
+import type {
+  BuildingVariantRow,
+  BuildingsCatalog,
+  BuildingsIconOption,
+  BuildingsOption,
+  BuildingsTile,
+} from "../../buildingsData/types";
 import { buildFactionOptions } from "./BuildingsFilters";
 
 export type BuildingCultureVariantsModalProps = {
@@ -16,12 +23,18 @@ export type BuildingCultureVariantsModalProps = {
 };
 
 type SelectOption = { value: string; label: string };
+type IconSelectOption = SelectOption & { iconUrl?: string; path?: string };
 type EditableVariantColumn = "disables" | "icon";
 
 const WINDOW_THRESHOLD = 60;
 const NONE: SelectOption = { value: "", label: "(any)" };
 const labelClass = "flex min-w-0 flex-1 flex-col gap-1 text-xs text-gray-400";
 const inputClass = "rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-gray-100";
+const portalSelectStyle = {
+  ...selectStyle,
+  menuPortal: (base: any) => ({ ...base, zIndex: 80 }),
+  menu: (base: any) => ({ ...selectStyle.menu(base), zIndex: 80 }),
+};
 
 const optionLabel = (option: BuildingsOption) =>
   option.localizedName === option.key ? option.key : `${option.localizedName} — ${option.key}`;
@@ -35,6 +48,168 @@ const variantKey = (variant: Pick<BuildingVariantRow, "culture" | "subculture" |
   `${variant.culture}|${variant.subculture}|${variant.faction}`;
 
 const variantPart = (value: string) => value || "(any)";
+
+/** The icon beside an option's name, or the space it occupies when an old value has no asset. */
+const OptionIcon = ({ iconUrl, large = false }: { iconUrl?: string; large?: boolean }) =>
+  iconUrl ? (
+    <img src={iconUrl} alt="" className={`${large ? "h-16 w-16" : "h-5 w-5"} shrink-0 object-contain`} />
+  ) : (
+    <span
+      className={`${large ? "h-16 w-16" : "h-5 w-5"} flex shrink-0 items-center justify-center text-[0.6rem] text-gray-500`}
+    >
+      —
+    </span>
+  );
+
+const IconTile = ({
+  option,
+  isSelected,
+  onClick,
+}: {
+  option: IconSelectOption;
+  isSelected: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    title={option.label}
+    aria-label={`Select icon ${option.label}`}
+    className={`rounded border-2 p-2 text-center transition-colors ${
+      isSelected ? "border-blue-500 bg-gray-700" : "border-gray-600 hover:border-gray-500 hover:bg-gray-700"
+    }`}
+  >
+    <OptionIcon iconUrl={option.iconUrl} large />
+    <div className="mt-2 truncate text-xs text-gray-300">{option.label}</div>
+  </button>
+);
+
+const iconNameFromValue = (value: string) => {
+  const normalized = value.replace(/\\/g, "/").split("/").pop() ?? value;
+  return normalized.replace(/\.(png|jpg|jpeg|webp|tga)$/i, "");
+};
+
+/** An image-backed icon select with the same large browser used by the technology node editor. */
+const BuildingIconSelect = ({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  options: IconSelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+}) => {
+  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const normalizedValue = iconNameFromValue(value);
+  const selected =
+    options.find((option) => option.value === value || option.value === normalizedValue) ??
+    (value ? { value, label: value } : null);
+  const filteredOptions = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter(
+      (option) => option.label.toLowerCase().includes(needle) || option.path?.toLowerCase().includes(needle),
+    );
+  }, [options, search]);
+
+  return (
+    <>
+      <div className="flex min-w-0 gap-1">
+        <div className="min-w-0 flex-1">
+          <WindowedSelect
+            windowThreshold={WINDOW_THRESHOLD}
+            filterOption={createFilter({ ignoreAccents: false })}
+            options={options}
+            value={selected}
+            // @ts-expect-error react-select value type does not match the windowed select wrapper.
+            onChange={(option: IconSelectOption | null) => onChange(option?.value ?? "")}
+            styles={portalSelectStyle}
+            placeholder="Choose icon..."
+            isClearable
+            aria-label={ariaLabel}
+            menuPortalTarget={document.body}
+            menuPosition="fixed"
+            menuPlacement="auto"
+            // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
+            formatOptionLabel={(option: IconSelectOption) => (
+              <div className="flex min-w-0 items-center gap-2">
+                <OptionIcon iconUrl={option.iconUrl} />
+                <span className="truncate">{option.label}</span>
+              </div>
+            )}
+          />
+        </div>
+        <button
+          type="button"
+          aria-label="Browse icons"
+          title="Browse all building icons"
+          onClick={() => setIsBrowserOpen(true)}
+          className="shrink-0 rounded bg-gray-700 px-2 text-xs text-gray-100 hover:bg-gray-600"
+        >
+          Browse…
+        </button>
+      </div>
+
+      {isBrowserOpen && (
+        <Modal
+          show
+          onClose={() => setIsBrowserOpen(false)}
+          size="5xl"
+          explicitClasses={[
+            "max-w-[90vw]",
+            "first-child-div-second-child-div-flex-grow",
+            "first-child-div-flex-col",
+            "!h-[85vh]",
+          ]}
+        >
+          <Modal.Header>Browse building icons</Modal.Header>
+          <Modal.Body>
+            <div className="flex h-full flex-col gap-3">
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search icons..."
+                aria-label="Search building icons"
+                className={inputClass}
+              />
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="grid grid-cols-6 gap-3 p-1">
+                  {filteredOptions.map((option) => (
+                    <IconTile
+                      key={option.path ?? option.value}
+                      option={option}
+                      isSelected={selected?.value === option.value}
+                      onClick={() => {
+                        onChange(option.value);
+                        setIsBrowserOpen(false);
+                      }}
+                    />
+                  ))}
+                </div>
+                {filteredOptions.length === 0 && (
+                  <div className="py-8 text-center text-sm text-gray-400">No icons match this search.</div>
+                )}
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <button
+              type="button"
+              onClick={() => setIsBrowserOpen(false)}
+              className="rounded bg-gray-700 px-4 py-2 text-sm text-gray-100 hover:bg-gray-600"
+            >
+              Close
+            </button>
+          </Modal.Footer>
+        </Modal>
+      )}
+    </>
+  );
+};
 
 /** Reconstructs a complete row when an older cache has no rawValues on its parsed variants. */
 const valuesForVariant = (variant: BuildingVariantRow): Record<string, string> => ({
@@ -55,23 +230,15 @@ const VariantRow = memo(
   ({
     variant,
     isPending,
+    iconOptions,
     onChange,
   }: {
     variant: BuildingVariantRow;
     isPending: boolean;
+    iconOptions: IconSelectOption[];
     onChange: (column: EditableVariantColumn, value: string) => void;
   }) => {
-    const [icon, setIcon] = useState(variant.icon ?? "");
-
-    useEffect(() => {
-      setIcon(variant.icon ?? "");
-    }, [variant.icon]);
-
     const label = [variant.culture, variant.subculture, variant.faction].map(variantPart).join(" / ");
-    const commitIcon = () => {
-      const nextIcon = icon.trim();
-      if (nextIcon !== (variant.icon ?? "")) onChange("icon", nextIcon);
-    };
 
     return (
       <div className="grid min-w-[48rem] grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_5rem_minmax(12rem,1.5fr)_4rem] items-center gap-2 border-t border-gray-700 px-2 py-1.5 text-xs">
@@ -93,16 +260,11 @@ const VariantRow = memo(
           />
           <span className="sr-only">Disables</span>
         </label>
-        <input
-          aria-label={`Icon for ${label}`}
-          value={icon}
-          onChange={(event) => setIcon(event.target.value)}
-          onBlur={commitIcon}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-          className={`${inputClass} min-w-0`}
-          placeholder="building icon"
+        <BuildingIconSelect
+          options={iconOptions}
+          value={variant.icon ?? ""}
+          onChange={(value) => onChange("icon", value)}
+          ariaLabel={`Icon for ${label}`}
         />
         <span className="text-[0.65rem] text-gray-500">{isPending ? "pending" : "vanilla"}</span>
       </div>
@@ -117,6 +279,17 @@ const BuildingCultureVariantsModal = memo(
     const [newFaction, setNewFaction] = useState("");
     const [newIcon, setNewIcon] = useState("");
     const [newDisables, setNewDisables] = useState(false);
+
+    const iconOptions = useMemo<IconSelectOption[]>(
+      () =>
+        catalog.buildingIcons.map((icon: BuildingsIconOption) => ({
+          value: icon.name,
+          label: icon.name,
+          path: icon.path,
+          iconUrl: icon.iconUrl,
+        })),
+      [catalog.buildingIcons],
+    );
 
     // Pending rows are appended after the effective base rows. Last row for a composite key is the
     // one the game uses, so dedupe here to show one editable row per actual variant.
@@ -224,6 +397,7 @@ const BuildingCultureVariantsModal = memo(
                     key={variantKey(variant)}
                     variant={variant}
                     isPending={pendingByVariantKey.has(variantKey(variant))}
+                    iconOptions={iconOptions}
                     onChange={(column, value) => updateVariantCell(variant, column, value)}
                   />
                 ))
@@ -274,14 +448,9 @@ const BuildingCultureVariantsModal = memo(
                     onChange={(option) => setNewFaction((option as SelectOption | null)?.value ?? "")}
                   />
                 </label>
-                <label className={`${labelClass} min-w-[12rem]`}>
+                <label className={`${labelClass} min-w-[15rem]`}>
                   Icon
-                  <input
-                    value={newIcon}
-                    onChange={(event) => setNewIcon(event.target.value)}
-                    className={inputClass}
-                    placeholder="building icon"
-                  />
+                  <BuildingIconSelect options={iconOptions} value={newIcon} onChange={setNewIcon} ariaLabel="Icon" />
                 </label>
                 <label className="flex items-center gap-2 pb-1 text-xs text-gray-400">
                   <input

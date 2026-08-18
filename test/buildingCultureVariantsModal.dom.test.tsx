@@ -2,6 +2,9 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import BuildingCultureVariantsModal from "../src/components/buildings/BuildingCultureVariantsModal";
+import { emptyBuildingsEditState } from "../src/buildingsData/edits";
+import type { BuildingsCatalog, BuildingsTile } from "../src/buildingsData/types";
 
 type TestOption = { value: string; label: string };
 
@@ -11,12 +14,15 @@ vi.mock("react-windowed-select", () => ({
     options,
     value,
     onChange,
+    "aria-label": ariaLabel,
   }: {
     options: TestOption[];
     value: TestOption | null;
     onChange: (option: TestOption | null) => void;
+    "aria-label"?: string;
   }) => (
     <select
+      aria-label={ariaLabel}
       value={value?.value ?? ""}
       onChange={(event) => onChange(options.find((option) => option.value === event.target.value) ?? null)}
     >
@@ -28,10 +34,6 @@ vi.mock("react-windowed-select", () => ({
     </select>
   ),
 }));
-
-import BuildingCultureVariantsModal from "../src/components/buildings/BuildingCultureVariantsModal";
-import { emptyBuildingsEditState } from "../src/buildingsData/edits";
-import type { BuildingsCatalog, BuildingsTile } from "../src/buildingsData/types";
 
 const catalog: BuildingsCatalog = {
   campaigns: [],
@@ -83,6 +85,18 @@ const catalog: BuildingsCatalog = {
       },
     ],
   },
+  buildingIcons: [
+    {
+      name: "building_icon_a",
+      path: "ui\\buildings\\icons\\building_icon_a.png",
+      iconUrl: "whmm://icon/test/building_icon_a",
+    },
+    {
+      name: "building_icon_b",
+      path: "ui\\buildings\\icons\\building_icon_b.png",
+      iconUrl: "whmm://icon/test/building_icon_b",
+    },
+  ],
   effects: [],
   effectScopes: [],
   chainKeys: [],
@@ -125,17 +139,15 @@ describe("BuildingCultureVariantsModal", () => {
       ],
     });
 
-    const existingIcon = screen.getByRole("textbox", { name: "Icon for culture_a / (any) / (any)" });
-    await user.clear(existingIcon);
-    await user.type(existingIcon, "changed_icon");
-    await user.tab();
+    const existingIcon = screen.getByRole("combobox", { name: "Icon for culture_a / (any) / (any)" });
+    await user.selectOptions(existingIcon, "building_icon_b");
     expect(dispatch).toHaveBeenLastCalledWith({
       type: "addRows",
       rows: [
         {
           table: "building_culture_variants_tables",
           origin: "manual",
-          values: expect.objectContaining({ icon: "changed_icon", description: "existing_description" }),
+          values: expect.objectContaining({ icon: "building_icon_b", description: "existing_description" }),
         },
       ],
     });
@@ -143,7 +155,7 @@ describe("BuildingCultureVariantsModal", () => {
     await user.selectOptions(screen.getByLabelText("Culture"), "culture_a");
     await user.selectOptions(screen.getByLabelText("Subculture"), "sub_a");
     await user.selectOptions(screen.getByLabelText("Faction"), "faction_a");
-    await user.type(screen.getByLabelText("Icon"), "new_icon");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Icon" }), "building_icon_a");
     await user.click(screen.getByRole("button", { name: "Add variant row" }));
 
     expect(dispatch).toHaveBeenLastCalledWith({
@@ -157,12 +169,37 @@ describe("BuildingCultureVariantsModal", () => {
             culture: "culture_a",
             subculture: "sub_a",
             faction: "faction_a",
-            icon: "new_icon",
+            icon: "building_icon_a",
             disables: "false",
             display_tooltip: "true",
           },
         },
       ],
     });
+  });
+
+  it("opens the large browser and applies the selected image", async () => {
+    const user = userEvent.setup();
+    const dispatch = vi.fn();
+    render(
+      <BuildingCultureVariantsModal
+        tile={tile}
+        catalog={catalog}
+        edits={emptyBuildingsEditState()}
+        onClose={vi.fn()}
+        dispatch={dispatch}
+      />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Browse icons" })[0]);
+    expect(screen.getByText("Browse building icons")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Select icon building_icon_b" }));
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "addRows",
+        rows: [expect.objectContaining({ values: expect.objectContaining({ icon: "building_icon_b" }) })],
+      }),
+    );
   });
 });

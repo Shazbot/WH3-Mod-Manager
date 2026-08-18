@@ -16,6 +16,7 @@ const LOC: Record<string, string> = {
   effects_description_effect_melee: "+%n melee attack",
   effects_description_effect_leadership: "%+n leadership",
   effects_description_effect_resist: "+%n% magic resistance",
+  effects_description_effect_unused: "An effect nothing uses",
 };
 const getLoc = (key: string) => LOC[key];
 
@@ -91,16 +92,27 @@ describe("buildAncillariesData", () => {
     expect(data.effectsByAncillary.anc_charm[0].localizedKey).toBe("+50% magic resistance");
   });
 
-  it("names only the effects an ancillary uses and derives their preferred scope", () => {
+  it("names every effect, and derives a preferred scope for the ones in use", () => {
     const data = buildAncillariesData(fixtureTables(), getLoc);
     const melee = data.effects.find((effect) => effect.key === "effect_melee");
     expect(melee?.usedByAncillaries).toBe(true);
+    expect(melee?.localizedName).toBe("+%n melee attack");
     expect(melee?.preferredScope).toBe("character_to_character_own");
+    expect(melee?.icon).toBe("melee.png");
 
+    // Named too, so the picker is readable rather than a wall of keys; nothing uses it, so it has
+    // no scope to prefer.
     const unused = data.effects.find((effect) => effect.key === "effect_unused");
     expect(unused?.usedByAncillaries).toBe(false);
-    // Left as a bare key rather than inflating the cache with 15k descriptions.
-    expect(unused?.localizedName).toBe("effect_unused");
+    expect(unused?.localizedName).toBe("An effect nothing uses");
+    expect(unused?.preferredScope).toBeUndefined();
+  });
+
+  it("falls back to the key for an effect the loc tables do not cover", () => {
+    const tables = fixtureTables();
+    tables.effects_tables.push({ effect: "effect_no_loc", icon: "", is_positive_value_good: "true" });
+    const data = buildAncillariesData(tables, getLoc);
+    expect(data.effects.find((effect) => effect.key === "effect_no_loc")?.localizedName).toBe("effect_no_loc");
   });
 
   it("collects the effect_scope values the junction table actually uses", () => {

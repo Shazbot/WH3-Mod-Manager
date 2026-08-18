@@ -21,7 +21,7 @@ import { ANCILLARY_TABLES } from "./data";
 import type { AncillariesTableRows } from "./types";
 
 /** Bump whenever the extraction rules or the cached shape change. */
-const ANCILLARIES_CACHE_VERSION = 1;
+const ANCILLARIES_CACHE_VERSION = 2;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const ANCILLARIES_CACHE_DIR = "ancillaries";
 const VANILLA_CACHE_FILE = "vanilla.bin";

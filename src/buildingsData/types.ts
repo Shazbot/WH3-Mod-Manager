@@ -74,6 +74,16 @@ export interface BuildingVariantRow {
   rawValues?: Record<string, string>;
 }
 
+/** One pickable `ui/buildings/icons` asset for the culture-variant icon editor. */
+export interface BuildingsIconOption {
+  /** The bare file name written to `building_culture_variants_tables.icon`. */
+  name: string;
+  /** The pack-relative path, retained as the stable React key and for searching. */
+  path: string;
+  /** Asset-protocol URL for the icon bytes. */
+  iconUrl: string;
+}
+
 export interface BuildingSetRow {
   key: string;
   icon?: string;
@@ -410,6 +420,8 @@ export interface BuildingsCatalog {
   unitGroupsByUnit: Record<string, string[]>;
   /** Every effective culture variant row, grouped by building level key. */
   cultureVariantsByBuilding: Record<string, BuildingVariantRow[]>;
+  /** Every icon found under `ui/buildings/icons/`, with bytes registered for the renderer. */
+  buildingIcons: BuildingsIconOption[];
   effects: BuildingsEffectOption[];
   effectScopes: string[];
   /** Every building chain key, sorted. The CAI clone picker's options. */

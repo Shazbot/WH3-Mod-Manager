@@ -2,6 +2,8 @@ import React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import BuildingEditModal from "../src/components/buildings/BuildingEditModal";
+import type { BuildingsCatalog, BuildingsTile } from "../src/buildingsData/types";
 
 type TestOption = { value: string; label: string };
 
@@ -30,9 +32,6 @@ vi.mock("react-windowed-select", () => ({
   ),
 }));
 
-import BuildingEditModal from "../src/components/buildings/BuildingEditModal";
-import type { BuildingsCatalog, BuildingsTile } from "../src/buildingsData/types";
-
 const catalog: BuildingsCatalog = {
   campaigns: [],
   regions: [],
@@ -54,6 +53,7 @@ const catalog: BuildingsCatalog = {
     unit_b: ["group_b"],
   },
   cultureVariantsByBuilding: {},
+  buildingIcons: [],
   effects: [],
   effectScopes: [],
   chainKeys: [],

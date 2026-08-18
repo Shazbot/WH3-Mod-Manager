@@ -24,6 +24,25 @@ const portalSelectStyle = {
   menu: (base: any) => ({ ...selectStyle.menu(base), zIndex: 70 }),
 };
 
+/**
+ * react-windowed-select measures a row by the `height` in the option style, falling back to 35px.
+ * An option taller than that overlaps the next one, so every taller row states its height here.
+ */
+const withOptionHeight = (height: number) => ({
+  ...portalSelectStyle,
+  option: (base: any, state: any) => ({
+    ...selectStyle.option(base, state),
+    height,
+    display: "flex",
+    alignItems: "center",
+  }),
+});
+
+/** One line next to a 20px icon. */
+const typeSelectStyle = withOptionHeight(44);
+/** Two lines - the description and the effect key - next to a 20px icon. */
+const effectSelectStyle = withOptionHeight(58);
+
 export type AncillaryDetailProps = {
   detail?: AncillaryDetailModel;
   catalog?: AncillariesCatalog;
@@ -108,7 +127,7 @@ const IconSelect = ({
           <span className="truncate">{(option as SelectOption).label}</span>
         </div>
       )}
-      styles={portalSelectStyle}
+      styles={typeSelectStyle}
       className="mt-1"
       menuPortalTarget={document.body}
       menuPosition="fixed"
@@ -245,13 +264,18 @@ const AncillaryDetail = memo(
 
     const effectOptions = useMemo(() => {
       const options = catalog?.effects ?? [];
-      // Effects an ancillary already uses come first: they are the ones with a readable name, and
-      // the other ~13k are bare keys nobody scrolls to on purpose.
+      // Effects an ancillary already uses come first: they are the ones that make sense here, and
+      // the other ~13k are mostly for buildings and technologies.
       return [...options].sort(
         (a, b) =>
           Number(b.usedByAncillaries) - Number(a.usedByAncillaries) || a.localizedName.localeCompare(b.localizedName),
       );
     }, [catalog]);
+
+    const selectedEffect = useMemo(
+      () => catalog?.effects.find((effect) => effect.key === pendingEffectKey),
+      [catalog, pendingEffectKey],
+    );
 
     const addEffect = useCallback(() => {
       if (!detail || !pendingEffectKey) return;
@@ -352,8 +376,9 @@ const AncillaryDetail = memo(
               <div className="space-y-2">
                 {[
                   { locKey: ancillaryNameLocKey(detail.key), label: "Name", value: name },
-                  { locKey: ancillaryExplanationLocKey(detail.key), label: "Explanation", value: explanation },
+                  // Flavour first, the order the card above shows them in.
                   { locKey: ancillaryColourTextLocKey(detail.key), label: "Flavour text", value: colourText },
+                  { locKey: ancillaryExplanationLocKey(detail.key), label: "Explanation", value: explanation },
                 ].map((entry) => (
                   <label key={entry.locKey} className="block text-xs text-gray-400">
                     {entry.label}
@@ -438,6 +463,7 @@ const AncillaryDetail = memo(
               <div className="space-y-1">
                 {detail.effects.map((effect) => (
                   <div key={effect.effectKey} className="flex items-center gap-2">
+                    <OptionIcon iconUrl={effect.iconUrl} />
                     <span className="min-w-0 flex-1 truncate text-xs text-gray-300" title={effect.effectKey}>
                       {effect.localizedKey}
                     </span>
@@ -487,20 +513,37 @@ const AncillaryDetail = memo(
                     options={effectOptions.map((effect) => ({
                       value: effect.key,
                       label: effect.localizedName,
+                      iconUrl: effect.iconUrl,
                     }))}
+                    // Name and key both, because the description is what the player reads and the
+                    // key is what goes in the row - and the default filter searches label and value
+                    // alike, so either one finds the effect.
+                    formatOptionLabel={(option: unknown, meta: { context: string }) => {
+                      const { value, label, iconUrl } = option as SelectOption;
+                      return (
+                        <div className="flex min-w-0 items-center gap-2">
+                          <OptionIcon iconUrl={iconUrl} />
+                          <div className="min-w-0">
+                            <div className="truncate">{label}</div>
+                            {meta.context === "menu" && label !== value && (
+                              <div className="truncate text-xs text-gray-400">{value}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }}
                     value={
                       pendingEffectKey
                         ? {
                             value: pendingEffectKey,
-                            label:
-                              effectOptions.find((effect) => effect.key === pendingEffectKey)?.localizedName ??
-                              pendingEffectKey,
+                            label: selectedEffect?.localizedName ?? pendingEffectKey,
+                            iconUrl: selectedEffect?.iconUrl,
                           }
                         : null
                     }
                     // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(option: { value: string } | null) => setPendingEffectKey(option?.value)}
-                    styles={portalSelectStyle}
+                    styles={effectSelectStyle}
                     placeholder="Search effects…"
                     isClearable
                     // The panel scrolls and this select sits at its bottom: portal the menu out of the

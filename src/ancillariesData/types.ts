@@ -149,11 +149,13 @@ export interface AncillariesIconOption {
 }
 
 export interface AncillariesEffectOption extends AncillariesOption {
+  /** The `effects_tables.icon` file name, before the folder prefix. */
+  icon?: string;
   /**
    * Whether some ancillary already has this effect.
    *
-   * Only these carry a localised name and a registered icon; the other ~13k are left as bare keys
-   * rather than inflating the disk cache. The "+ Add effect" picker defaults to these.
+   * Only these carry a registered icon; every effect is localised, but the "+ Add effect" picker
+   * still offers these first, since they are the ones that make sense on an ancillary.
    */
   usedByAncillaries: boolean;
   /** Most frequent non-empty scope in `ancillary_to_effects_tables`; alphabetical on a tie. */
