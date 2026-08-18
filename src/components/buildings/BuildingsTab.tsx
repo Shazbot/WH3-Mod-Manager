@@ -500,7 +500,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           onClose={closeContextMenu}
           editActions={
             contextMenu.band
-              ? [{ label: "Add a new chain to this band", run: () => setAddChainTo(contextMenu.band) }]
+              ? [{ label: "Add a new chain to this set", run: () => setAddChainTo(contextMenu.band) }]
               : contextMenu.tile
                 ? [
                     {
@@ -520,7 +520,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                           },
                         ]
                       : []),
-                    { label: "Recruitment, garrison, AI scoring...", run: () => setEditTile(contextMenu.tile) },
+                    { label: "Edit Building...", run: () => setEditTile(contextMenu.tile) },
                     {
                       label: "Disable for this culture",
                       run: () =>
@@ -535,7 +535,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                         }),
                     },
                     {
-                      label: "Remove this chain from its band",
+                      label: "Remove this chain from its set",
                       run: () =>
                         dispatchEdit({
                           type: "addRows",
