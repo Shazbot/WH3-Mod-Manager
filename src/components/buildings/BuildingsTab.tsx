@@ -52,6 +52,7 @@ const DEFAULT_QUERY: BuildingsRegionQuery = {
 const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const dispatch = useAppDispatch();
   const currentGame = useAppSelector((state) => state.app.currentGame);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const mapSelectedRegion = useAppSelector((state) => state.app.mapSelectedRegion);
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
@@ -122,37 +123,45 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   >();
   const closeContextMenu = useCallback(() => setContextMenu(undefined), []);
 
-  const onTileContextMenu = useCallback((tile: BuildingsTile, event: React.MouseEvent) => {
-    setHoveredTile(undefined);
-    const items: Array<{ label: string; target: BuildingsCloneTarget }> = [
-      {
-        label: "Deep clone this building (culture variant)",
-        target: {
-          tableName: "building_culture_variants_tables",
-          keyColumn: "building",
-          keyValue: tile.levelKey,
-          label: tile.title,
-        },
-      },
-    ];
-    setContextMenu({ x: event.clientX, y: event.clientY, heading: tile.title, items, tile });
-  }, []);
-
-  const onBandContextMenu = useCallback((setKey: string, setName: string, event: React.MouseEvent) => {
-    setHoveredTile(undefined);
-    setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      heading: setName,
-      items: [
+  const onTileContextMenu = useCallback(
+    (tile: BuildingsTile, event: React.MouseEvent) => {
+      if (!isFeaturesForModdersEnabled) return;
+      setHoveredTile(undefined);
+      const items: Array<{ label: string; target: BuildingsCloneTarget }> = [
         {
-          label: "Deep clone this building set",
-          target: { tableName: "building_sets_tables", keyColumn: "key", keyValue: setKey, label: setName },
+          label: "Deep clone this building (culture variant)",
+          target: {
+            tableName: "building_culture_variants_tables",
+            keyColumn: "building",
+            keyValue: tile.levelKey,
+            label: tile.title,
+          },
         },
-      ],
-      band: { setKey, setName },
-    });
-  }, []);
+      ];
+      setContextMenu({ x: event.clientX, y: event.clientY, heading: tile.title, items, tile });
+    },
+    [isFeaturesForModdersEnabled],
+  );
+
+  const onBandContextMenu = useCallback(
+    (setKey: string, setName: string, event: React.MouseEvent) => {
+      if (!isFeaturesForModdersEnabled) return;
+      setHoveredTile(undefined);
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        heading: setName,
+        items: [
+          {
+            label: "Deep clone this building set",
+            target: { tableName: "building_sets_tables", keyColumn: "key", keyValue: setKey, label: setName },
+          },
+        ],
+        band: { setKey, setName },
+      });
+    },
+    [isFeaturesForModdersEnabled],
+  );
 
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const [edits, dispatchEdit] = useReducer(buildingsEditReducer, undefined, () => emptyBuildingsEditState());
@@ -178,17 +187,22 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
   const addBuilding = useCallback(
     (input: AddBuildingLevelInput) => {
+      if (!isFeaturesForModdersEnabled) return;
       setAddFrom(undefined);
       // The cursors are carried on the edit state, so ids stay unique across several additions.
       const cursors = { ...edits.numericIdCursors };
       dispatchEdit({ type: "addRows", rows: addBuildingLevelRows(input, cursors), numericIdCursors: cursors });
     },
-    [edits.numericIdCursors],
+    [edits.numericIdCursors, isFeaturesForModdersEnabled],
   );
 
-  const addEditRows = useCallback((rows: NewRowDraft[], numericIdCursors: Record<string, number>) => {
-    dispatchEdit({ type: "addRows", rows, numericIdCursors });
-  }, []);
+  const addEditRows = useCallback(
+    (rows: NewRowDraft[], numericIdCursors: Record<string, number>) => {
+      if (!isFeaturesForModdersEnabled) return;
+      dispatchEdit({ type: "addRows", rows, numericIdCursors });
+    },
+    [isFeaturesForModdersEnabled],
+  );
 
   const tableSchemas = useMemo(
     () => ({ ...(catalog?.tableSchemas ?? {}), ...cloneTableSchemas }),
@@ -197,6 +211,10 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
   const saveCloneToBuildings = useCallback(
     (packedFiles: PackedFile[]) => {
+      if (!isFeaturesForModdersEnabled) {
+        closeDeepClone();
+        return;
+      }
       const cloneOutput = dbClonePackedFilesToBuildingsRows(packedFiles);
       if (cloneOutput.rows.length === 0) {
         setError("DB Clone did not generate any rows.");
@@ -208,7 +226,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       setSubTab("tables");
       closeDeepClone();
     },
-    [closeDeepClone],
+    [closeDeepClone, isFeaturesForModdersEnabled],
   );
 
   const clearPendingEdits = useCallback(() => {
@@ -251,19 +269,39 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   }, [editTile, view]);
 
   const fetchCaiRows = useCallback(
-    (chainKey: string) =>
-      window.api?.getBuildingsCaiRows(enabledModsRef.current, chainKey, edits) ??
-      Promise.resolve({ success: false, error: "Unavailable." }),
-    [edits],
+    (chainKey: string) => {
+      if (!isFeaturesForModdersEnabled) return Promise.resolve({ success: false, error: "Unavailable." });
+      return (
+        window.api?.getBuildingsCaiRows(enabledModsRef.current, chainKey, edits) ??
+        Promise.resolve({ success: false, error: "Unavailable." })
+      );
+    },
+    [edits, isFeaturesForModdersEnabled],
   );
 
   const pickCloneTarget = useCallback(
     (target: BuildingsCloneTarget) => {
+      if (!isFeaturesForModdersEnabled) return;
       closeContextMenu();
       deepClone.openDeepCloneFor(target);
     },
-    [closeContextMenu, deepClone],
+    [closeContextMenu, deepClone, isFeaturesForModdersEnabled],
   );
+
+  // Editing dialogs and the context menu must not remain usable after the option is switched off.
+  // Pending rows stay in memory so enabling the option again does not silently discard the user's
+  // work, but they cannot be changed or saved while the option is disabled. The deep-clone hook
+  // shares its Redux target with the main database viewer, so its UI is hidden here rather than
+  // clearing that shared target from another feature.
+  useEffect(() => {
+    if (isFeaturesForModdersEnabled) return;
+    setContextMenu(undefined);
+    setAddFrom(undefined);
+    setEditTile(undefined);
+    setEditCultureVariantsTile(undefined);
+    setAddChainTo(undefined);
+    setIsSaveOpen(false);
+  }, [isFeaturesForModdersEnabled]);
 
   useEffect(() => {
     if (currentGame !== "wh3") return;
@@ -361,25 +399,31 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     return <div className="px-6 py-4 text-gray-300">Buildings are unavailable for this game.</div>;
   }
 
+  // Everything that writes rows is modder-only. When the option is off, the board remains a
+  // read-only browser regardless of whichever sub-tab was selected before it was disabled.
+  const activeSubTab = isFeaturesForModdersEnabled ? subTab : "board";
+
   return (
     <div className="flex h-[86vh] flex-col text-gray-200">
-      <div className="flex items-center gap-1 border-b border-gray-700 px-4">
-        {(["board", "tables"] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setSubTab(tab)}
-            className={`px-3 py-1.5 text-sm ${
-              subTab === tab ? "border-b-2 border-blue-500 text-gray-100" : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            {tab === "board" ? "Board" : `New rows${edits.order.length > 0 ? ` (${edits.order.length})` : ""}`}
-            {tab === "tables" && rowIssues && rowIssues.length > 0 && <span className="ml-1 text-amber-400">!</span>}
-          </button>
-        ))}
-      </div>
+      {isFeaturesForModdersEnabled && (
+        <div className="flex items-center gap-1 border-b border-gray-700 px-4">
+          {(["board", "tables"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setSubTab(tab)}
+              className={`px-3 py-1.5 text-sm ${
+                activeSubTab === tab ? "border-b-2 border-blue-500 text-gray-100" : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              {tab === "board" ? "Board" : `New rows${edits.order.length > 0 ? ` (${edits.order.length})` : ""}`}
+              {tab === "tables" && rowIssues && rowIssues.length > 0 && <span className="ml-1 text-amber-400">!</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {catalog && subTab === "board" && (
+      {catalog && activeSubTab === "board" && (
         <BuildingsFilters
           catalog={catalog}
           query={query}
@@ -396,7 +440,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
       {/* `z-0` keeps the tiles' own z-indices contained here rather than competing with the filters. */}
       <div className="relative z-0 min-h-0 flex-1 content-center">
-        {subTab === "tables" && catalog && (
+        {activeSubTab === "tables" && catalog && (
           <BuildingsTablesTab
             state={edits}
             dispatch={dispatchEdit}
@@ -405,21 +449,21 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
             rowIssues={rowIssues}
           />
         )}
-        {subTab === "board" && isLoading && !view && (
+        {activeSubTab === "board" && isLoading && !view && (
           <div className="flex h-full items-center justify-center">
             <div className="dots-loader" />
           </div>
         )}
-        {subTab === "board" && view && (
+        {activeSubTab === "board" && view && (
           <BuildingsBoard
             view={view}
             zoom={zoom}
             onTileHover={onTileHover}
-            onTileContextMenu={onTileContextMenu}
-            onBandContextMenu={onBandContextMenu}
+            onTileContextMenu={isFeaturesForModdersEnabled ? onTileContextMenu : undefined}
+            onBandContextMenu={isFeaturesForModdersEnabled ? onBandContextMenu : undefined}
           />
         )}
-        {subTab === "board" && hoveredTile && (
+        {activeSubTab === "board" && hoveredTile && (
           <div
             ref={refs.setFloating}
             style={{ ...floatingStyles, zIndex: 60 }}
@@ -433,7 +477,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
       {(view || edits.order.length > 0) && (
         <div className="border-t border-gray-700 px-4 py-1 text-[0.7rem] text-gray-500">
-          {view && subTab === "board" && (
+          {view && activeSubTab === "board" && (
             <>
               {view.bands.length} sets · {view.bands.reduce((total, band) => total + band.columns.length, 0)} chains ·{" "}
               {view.slotTemplates.length} slot templates
@@ -441,7 +485,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
               {isLoading && " · refreshing..."}
             </>
           )}
-          {edits.order.length > 0 && (
+          {isFeaturesForModdersEnabled && edits.order.length > 0 && (
             <span className="ml-3 text-emerald-400">
               {edits.order.length} new row{edits.order.length === 1 ? "" : "s"}
               <button
@@ -463,7 +507,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         </div>
       )}
 
-      {contextMenu && (
+      {contextMenu && isFeaturesForModdersEnabled && (
         <BuildingContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
@@ -528,7 +572,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         />
       )}
 
-      {addFrom && (
+      {addFrom && isFeaturesForModdersEnabled && (
         <AddBuildingModal
           from={addFrom.tile}
           direction={addFrom.direction}
@@ -540,7 +584,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         />
       )}
 
-      {addChainTo && view && (
+      {addChainTo && view && isFeaturesForModdersEnabled && (
         <AddChainModal
           setKey={addChainTo.setKey}
           setName={addChainTo.setName}
@@ -556,7 +600,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         />
       )}
 
-      {liveEditTile && catalog && (
+      {liveEditTile && catalog && isFeaturesForModdersEnabled && (
         <BuildingEditModal
           tile={liveEditTile}
           catalog={catalog}
@@ -568,7 +612,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         />
       )}
 
-      {editCultureVariantsTile && catalog && (
+      {editCultureVariantsTile && catalog && isFeaturesForModdersEnabled && (
         <BuildingCultureVariantsModal
           tile={editCultureVariantsTile}
           catalog={catalog}
@@ -578,7 +622,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         />
       )}
 
-      {isSaveOpen && catalog && (
+      {isSaveOpen && catalog && isFeaturesForModdersEnabled && (
         <BuildingsSaveModal
           state={edits}
           tableSchemas={tableSchemas}
@@ -591,13 +635,13 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         />
       )}
 
-      {deepClone.isResolving && (
+      {isFeaturesForModdersEnabled && deepClone.isResolving && (
         <div className="fixed bottom-4 right-4 z-[80] rounded bg-gray-800 px-3 py-2 text-xs text-gray-200 shadow-lg">
           Reading the table for {deepClone.resolvingLabel}...
         </div>
       )}
 
-      {deepClone.error && (
+      {isFeaturesForModdersEnabled && deepClone.error && (
         <Modal onClose={deepClone.dismissError} show size="md" position="center">
           <Modal.Header>Deep clone</Modal.Header>
           <Modal.Body>
@@ -606,7 +650,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         </Modal>
       )}
 
-      {deepClone.isDialogOpen && (
+      {isFeaturesForModdersEnabled && deepClone.isDialogOpen && (
         <Modal
           onClose={deepClone.close}
           show
