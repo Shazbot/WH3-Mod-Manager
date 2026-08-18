@@ -100,6 +100,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
   const [pendingOperations, setPendingOperations] = useState(0);
   const [isAppendSave, setIsAppendSave] = useState<boolean>(false);
+  const [openInWindows, setOpenInWindows] = useState<boolean>(false);
   const [savePackedFileName, setSavePackedFileName] = useState<string>("");
   const [savePackFileName, setSavePackFileName] = useState<string>("");
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
@@ -589,6 +590,9 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
         onSaveToBuildings(result.generatedPackedFiles);
       } else {
         console.log("executeDBDuplication success, output:", result.outputPackPath);
+        if (openInWindows && result.outputPackPath) {
+          window.api?.openPack(result.outputPackPath);
+        }
         setDuplicationSuccessMessage(
           result.outputPackPath ? `Created pack:\n${result.outputPackPath}` : "Clone completed successfully.",
         );
@@ -680,6 +684,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
                 With "Append Existing Pack" enabled we will append an existing pack file instead of creating a new one,
                 using the pack name from "(Optional) Name for new pack".
               </p>
+              <p>"Open in Windows" opens the newly created pack with the operating system after the clone is saved.</p>
               {canSaveToMemory && (
                 <p>
                   "{memoryActionLabel}" adds every generated DB and localization row to the {memoryTargetName} tab. The
@@ -742,9 +747,9 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
         />
       )}
 
-      <div className="absolute right-8 top-24 flex flex-col gap-6">
-        <div className="flex flex-col items-center gap-2">
-          {launchSource === "buildings" && memoryActionButton}
+      <div className="absolute right-8 top-24 flex flex-col items-center gap-6">
+        {launchSource === "buildings" && memoryActionButton}
+        <div className="flex w-60 flex-col items-center gap-3 rounded-lg border border-gray-600 bg-gray-800/60 p-3">
           <button
             className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 min-w-32 m-auto ${
               ((!isSavingPossible() || isSaving) &&
@@ -758,37 +763,43 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
               <span>{"Save to pack"}</span>
             </div>
           </button>
-          {launchSource !== "buildings" && memoryActionButton}
-        </div>
-        <div className="flex items-center justify-center mt-2">
           <input
-            type="checkbox"
-            id="enable-closed-on-play"
-            checked={isAppendSave}
+            defaultValue={savePackFileName}
+            placeholder={"(Optional) Name for new pack"}
             disabled={isSaving}
-            onChange={() => setIsAppendSave(!isAppendSave)}
-          ></input>
-          <label className="ml-2" htmlFor="enable-closed-on-play">
-            {"Append Existing Pack"}
+            onChange={(e) => setSavePackFileName(e.target.value)}
+            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
+              isSaving ? "opacity-60 cursor-not-allowed" : ""
+            }`}
+          />
+          <label className="flex w-52 items-center gap-2 text-sm text-gray-300" htmlFor="dbclone-append-existing-pack">
+            <input
+              type="checkbox"
+              id="dbclone-append-existing-pack"
+              checked={isAppendSave}
+              disabled={isSaving}
+              onChange={(event) => setIsAppendSave(event.target.checked)}
+            />
+            <span>Append Existing Pack</span>
+          </label>
+          <label className="flex w-52 items-center gap-2 text-sm text-gray-300" htmlFor="dbclone-open-in-windows">
+            <input
+              type="checkbox"
+              id="dbclone-open-in-windows"
+              checked={openInWindows}
+              disabled={isSaving}
+              onChange={(event) => setOpenInWindows(event.target.checked)}
+            />
+            <span>Open in Windows</span>
           </label>
         </div>
+        {launchSource !== "buildings" && memoryActionButton}
         <div>
           <input
             defaultValue={savePackedFileName}
             placeholder={"(Optional) Name for new tables"}
             disabled={isSaving}
             onChange={(e) => setSavePackedFileName(e.target.value)}
-            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
-              isSaving ? "opacity-60 cursor-not-allowed" : ""
-            }`}
-          />
-        </div>
-        <div>
-          <input
-            defaultValue={savePackFileName}
-            placeholder={"(Optional) Name for new pack"}
-            disabled={isSaving}
-            onChange={(e) => setSavePackFileName(e.target.value)}
             className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
               isSaving ? "opacity-60 cursor-not-allowed" : ""
             }`}
