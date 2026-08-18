@@ -16,8 +16,8 @@ import type { AncillariesCatalog, AncillaryDetail as AncillaryDetailModel } from
 
 const tooltipFrame = require("../../assets/skills/tooltip_frame.png");
 
-/** The effects menu renders in a portal, so it needs to sit above the rest of the app. */
-const effectSelectStyle = {
+/** A menu that renders in a portal needs to sit above the rest of the app. */
+const portalSelectStyle = {
   ...selectStyle,
   menuPortal: (base: any) => ({ ...base, zIndex: 70 }),
   menu: (base: any) => ({ ...selectStyle.menu(base), zIndex: 70 }),
@@ -40,10 +40,13 @@ export type AncillaryDetailProps = {
  * A deliberate subset: the rest of the row is still reachable through the New rows tab, but a form
  * with all 29 columns would bury the handful anyone actually changes.
  */
+type SelectOption = { value: string; label: string; iconUrl?: string };
+
 type FieldSpec =
   | { column: string; label: string; kind: "number" }
   | { column: string; label: string; kind: "boolean" }
-  | { column: string; label: string; kind: "select"; options: () => Array<{ value: string; label: string }> };
+  /** `withIcons` swaps the native select for a picker that can draw each option's icon. */
+  | { column: string; label: string; kind: "select"; options: () => SelectOption[]; withIcons?: boolean };
 
 const BOOLEAN_FIELDS: Array<{ column: string; label: string }> = [
   { column: "transferrable", label: "Transferrable" },
@@ -64,6 +67,54 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
     <div className="p-3">{children}</div>
   </section>
 );
+
+/** The icon that goes with an option, or the space it would take, so the labels stay aligned. */
+const OptionIcon = ({ iconUrl }: { iconUrl?: string }) =>
+  iconUrl ? (
+    <img src={iconUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
+  ) : (
+    <span className="h-5 w-5 shrink-0" />
+  );
+
+/**
+ * A select that draws each option's icon next to its name.
+ *
+ * A native `<select>` cannot render an image inside an `<option>`, so this is the one field that
+ * goes through react-select. The menu is portalled for the same reason the effects picker is: the
+ * panel scrolls, and the field can sit near the bottom of the window.
+ */
+const IconSelect = ({
+  options,
+  value,
+  onChange,
+}: {
+  options: SelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+}) => {
+  // A value the options do not cover still has to show, or the cell would look empty and get reset.
+  const selected = options.find((option) => option.value === value) ?? { value, label: value || "—" };
+  return (
+    <WindowedSelect
+      filterOption={createFilter({ ignoreAccents: false })}
+      options={options}
+      value={selected}
+      // @ts-expect-error react-select value type does not match the windowed select wrapper.
+      onChange={(option: SelectOption | null) => onChange(option?.value ?? "")}
+      formatOptionLabel={(option: unknown) => (
+        <div className="flex min-w-0 items-center gap-2">
+          <OptionIcon iconUrl={(option as SelectOption).iconUrl} />
+          <span className="truncate">{(option as SelectOption).label}</span>
+        </div>
+      )}
+      styles={portalSelectStyle}
+      className="mt-1"
+      menuPortalTarget={document.body}
+      menuPosition="fixed"
+      menuPlacement="auto"
+    />
+  );
+};
 
 const AncillaryDetail = memo(
   ({ detail, catalog, edits, dispatch, isEditingEnabled, onClone, isCloning }: AncillaryDetailProps) => {
@@ -158,7 +209,13 @@ const AncillaryDetail = memo(
           column: "type",
           label: "Type (icon)",
           kind: "select",
-          options: () => (catalog?.types ?? []).map((row) => ({ value: row.key, label: row.localizedName })),
+          withIcons: true,
+          options: () =>
+            (catalog?.types ?? []).map((row) => ({
+              value: row.key,
+              label: row.localizedName,
+              iconUrl: row.iconUrl,
+            })),
         },
         { column: "uniqueness_score", label: "Uniqueness score", kind: "number" },
         { column: "precedence", label: "Precedence", kind: "number" },
@@ -296,7 +353,13 @@ const AncillaryDetail = memo(
                 {fields.map((field) => (
                   <label key={field.column} className="text-xs text-gray-400">
                     {field.label}
-                    {field.kind === "select" ? (
+                    {field.kind === "select" && field.withIcons ? (
+                      <IconSelect
+                        options={field.options()}
+                        value={valueOf(field.column)}
+                        onChange={(value) => setAncillaryField(field.column, value)}
+                      />
+                    ) : field.kind === "select" ? (
                       <select
                         value={valueOf(field.column)}
                         onChange={(event) => setAncillaryField(field.column, event.target.value)}
@@ -405,7 +468,7 @@ const AncillaryDetail = memo(
                     }
                     // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(option: { value: string } | null) => setPendingEffectKey(option?.value)}
-                    styles={effectSelectStyle}
+                    styles={portalSelectStyle}
                     placeholder="Search effects…"
                     isClearable
                     // The panel scrolls and this select sits at its bottom: portal the menu out of the

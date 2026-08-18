@@ -3770,6 +3770,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       units: built.data.units,
       unitGroups: built.data.unitGroups,
       unitGroupsByUnit,
+      cultureVariantsByBuilding: built.data.variantsByLevel,
       effects: built.data.effects,
       effectScopes: built.data.effectScopes,
       chainKeys: Object.keys(built.data.chains).sort(),
@@ -4067,9 +4068,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   /**
    * Loads every icon the data mentions and registers it for serving.
    *
-   * Three sources, all addressed by exact path, so the global vanilla file index answers "which
-   * pack wins" without opening anything: the ancillary's own `ui_icon`, its category's icon, and
-   * one per effect.
+   * Four sources, all addressed by exact path, so the global vanilla file index answers "which
+   * pack wins" without opening anything: the ancillary's own `ui_icon`, its category's icon, one
+   * per effect, and every ancillary type's icon for the type picker.
    */
   const registerAncillaryIcons = async (data: BuiltAncillariesData, dataFolder: string, modPackPaths: string[]) => {
     const wantedPaths = new Set<string>();
@@ -4079,6 +4080,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const category of data.categories) {
       if (category.iconName) wantedPaths.add(normalizeAssetPath(categoryIconPath(category.iconName)));
     }
+    // Types no ancillary uses yet still need their icon: the type picker offers all of them.
+    for (const iconPath of Object.values(data.typeIcons)) wantedPaths.add(normalizeAssetPath(iconPath));
     for (const meta of Object.values(data.effectMeta)) {
       if (meta.icon) wantedPaths.add(normalizeAssetPath(`ui\\campaign ui\\effect_bundles\\${meta.icon}`));
     }
@@ -4196,7 +4199,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     })),
     effects: data.effects,
     effectScopes: data.effectScopes,
-    types: data.typeKeys.map((key) => ({ key, localizedName: key })),
+    types: data.typeKeys.map((key) => ({
+      key,
+      localizedName: key,
+      iconUrl: ancillaryIconUrl(built, data.typeIcons[key]),
+    })),
     dbPackPath: built.dbPackPath,
     tableSchemas,
     moddersPrefix: appData.moddersPrefix,

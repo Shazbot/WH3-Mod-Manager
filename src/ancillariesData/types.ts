@@ -135,6 +135,8 @@ export interface BuiltAncillariesData {
 export interface AncillariesOption {
   key: string;
   localizedName: string;
+  /** Set by the main process for the type options, whose `ui_icon` the picker draws. */
+  iconUrl?: string;
 }
 
 export interface AncillariesEffectOption extends AncillariesOption {
