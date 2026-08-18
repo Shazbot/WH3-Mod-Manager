@@ -3959,35 +3959,46 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (value != undefined) localizations[key] = value;
       return value;
     };
-    for (const row of tables.ancillaries_tables ?? []) {
-      const key = (row.key ?? "").trim();
-      if (!key) continue;
-      record(`ancillaries_onscreen_name_${key}`);
-      record(`ancillaries_explanation_text_${key}`);
-      record(`ancillaries_colour_text_${key}`);
-    }
-    for (const row of tables.ancillaries_categories_tables ?? []) {
-      const key = (row.category ?? "").trim();
-      if (key) record(`ancillaries_categories_onscreen_name_${key}`);
-    }
-    for (const row of tables.ancillaries_subcategories_tables ?? []) {
-      const key = (row.subcategory ?? "").trim();
-      if (key) record(`ancillaries_subcategories_onscreen_name_${key}`);
-    }
-    // Every effect, not only the ones an ancillary already has: the "+ Add effect" picker offers
-    // all of them, and a key recorded here is the only way the panel can name one later.
-    for (const row of tables.effects_tables ?? []) {
-      const effect = (row.effect ?? "").trim();
-      if (!effect) continue;
-      const description = record(`effects_description_${effect}`);
-      // A description can be built out of {{tr:...}} tokens, which are loc keys of their own.
-      for (const match of description?.matchAll(/{{tr:(.*?)}}/gi) ?? []) {
+    /**
+     * Records a key, and the keys its own text is built out of.
+     *
+     * Any of these strings can be a `{{tr:...}}` token, which `resolveTextReplacements` looks up as
+     * a loc key of its own - one level of nesting included. Without recording those too, the cached
+     * snapshot resolves the token to its bare name: a category reads "{{tr:foo}}" rather than its
+     * name.
+     */
+    const recordWithReplacements = (key: string) => {
+      const text = record(key);
+      for (const match of text?.matchAll(/{{tr:(.*?)}}/gi) ?? []) {
         const token = match[1];
         if (!token) continue;
         const replacement = record(`ui_text_replacements_localised_text_${token}`) ?? record(token);
         const nested = replacement?.match(/^{{tr:(.*?)}}$/i)?.[1];
         if (nested && record(`ui_text_replacements_localised_text_${nested}`) === undefined) record(nested);
       }
+      return text;
+    };
+
+    for (const row of tables.ancillaries_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (!key) continue;
+      recordWithReplacements(`ancillaries_onscreen_name_${key}`);
+      recordWithReplacements(`ancillaries_explanation_text_${key}`);
+      recordWithReplacements(`ancillaries_colour_text_${key}`);
+    }
+    for (const row of tables.ancillaries_categories_tables ?? []) {
+      const key = (row.category ?? "").trim();
+      if (key) recordWithReplacements(`ancillaries_categories_onscreen_name_${key}`);
+    }
+    for (const row of tables.ancillaries_subcategories_tables ?? []) {
+      const key = (row.subcategory ?? "").trim();
+      if (key) recordWithReplacements(`ancillaries_subcategories_onscreen_name_${key}`);
+    }
+    // Every effect, not only the ones an ancillary already has: the "+ Add effect" picker offers
+    // all of them, and a key recorded here is the only way the panel can name one later.
+    for (const row of tables.effects_tables ?? []) {
+      const effect = (row.effect ?? "").trim();
+      if (effect) recordWithReplacements(`effects_description_${effect}`);
     }
     for (const [key, value] of Object.entries(ownLocEntries ?? {})) {
       if (ANCILLARY_LOC_PREFIXES.some((prefix) => key.startsWith(prefix))) localizations[key] = value;

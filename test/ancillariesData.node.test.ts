@@ -52,6 +52,24 @@ const fixtureTables = (): AncillariesTableRows => {
 };
 
 describe("buildAncillariesData", () => {
+  it("resolves {{tr:...}} tokens in a category or subcategory name", () => {
+    const tables = fixtureTables();
+    tables.ancillaries_categories_tables.push({ category: "banner", icon_name: "", sort_order: "3" });
+    const data = buildAncillariesData(
+      tables,
+      (key) =>
+        ({
+          ancillaries_categories_onscreen_name_banner: "{{tr:banner_word}}",
+          ui_text_replacements_localised_text_banner_word: "Banner",
+          ancillaries_subcategories_onscreen_name_rune: "{{tr:rune_word}}",
+          ui_text_replacements_localised_text_rune_word: "Rune",
+        })[key],
+    );
+
+    expect(data.categories.find((category) => category.key === "banner")?.localizedName).toBe("Banner");
+    expect(data.subcategories[0].localizedName).toBe("Rune");
+  });
+
   it("orders categories by sort_order and localizes them", () => {
     const data = buildAncillariesData(fixtureTables(), getLoc);
     expect(data.categories.map((category) => category.key)).toEqual(["weapon", "talisman"]);
