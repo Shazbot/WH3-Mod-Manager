@@ -3751,23 +3751,33 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const toBuildingsCatalog = (
     built: CachedBuildingsData,
     tableSchemas: Record<string, DBVersion>,
-  ): BuildingsCatalog => ({
-    tableSchemas,
-    campaigns: built.data.campaigns,
-    regions: built.data.regions,
-    cultures: built.data.cultures,
-    subcultures: built.data.subcultures,
-    factions: built.data.factions,
-    settlementTypes: built.data.settlementTypes,
-    units: built.data.units,
-    unitGroups: built.data.unitGroups,
-    effects: built.data.effects,
-    effectScopes: built.data.effectScopes,
-    chainKeys: Object.keys(built.data.chains).sort(),
-    dbPackPath: built.dbPackPath,
-    moddersPrefix: appData.moddersPrefix,
-    nextNumericIds: built.data.nextNumericIds,
-  });
+  ): BuildingsCatalog => {
+    const unitGroupsByUnit: Record<string, string[]> = {};
+    for (const [unitGroup, units] of Object.entries(built.data.garrisonUnitsByGroup)) {
+      for (const unit of units) {
+        (unitGroupsByUnit[unit.unitKey] ||= []).push(unitGroup);
+      }
+    }
+
+    return {
+      tableSchemas,
+      campaigns: built.data.campaigns,
+      regions: built.data.regions,
+      cultures: built.data.cultures,
+      subcultures: built.data.subcultures,
+      factions: built.data.factions,
+      settlementTypes: built.data.settlementTypes,
+      units: built.data.units,
+      unitGroups: built.data.unitGroups,
+      unitGroupsByUnit,
+      effects: built.data.effects,
+      effectScopes: built.data.effectScopes,
+      chainKeys: Object.keys(built.data.chains).sort(),
+      dbPackPath: built.dbPackPath,
+      moddersPrefix: appData.moddersPrefix,
+      nextNumericIds: built.data.nextNumericIds,
+    };
+  };
 
   /**
    * Rebuilds every structure and option list from the effective rows. Keeping this as the same

@@ -404,6 +404,8 @@ export interface BuildingsCatalog {
   /** Options for the recruitment and garrison editors. */
   units: BuildingsOption[];
   unitGroups: BuildingsOption[];
+  /** Unit key -> armed-citizenry groups that contain that unit. */
+  unitGroupsByUnit: Record<string, string[]>;
   effects: BuildingsEffectOption[];
   effectScopes: string[];
   /** Every building chain key, sorted. The CAI clone picker's options. */

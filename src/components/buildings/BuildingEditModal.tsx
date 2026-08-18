@@ -66,6 +66,12 @@ const BuildingEditModal = memo(
 
     const unitOptions = useMemo(() => toOptions(catalog.units), [catalog.units]);
     const unitGroupOptions = useMemo(() => toOptions(catalog.unitGroups), [catalog.unitGroups]);
+    const [garrisonUnitKey, setGarrisonUnitKey] = useState("");
+    const garrisonUnitGroupOptions = useMemo(() => {
+      if (!garrisonUnitKey) return unitGroupOptions;
+      const groupKeys = new Set(catalog.unitGroupsByUnit[garrisonUnitKey] ?? []);
+      return unitGroupOptions.filter((option) => groupKeys.has(option.value));
+    }, [catalog.unitGroupsByUnit, garrisonUnitKey, unitGroupOptions]);
 
     const [unitKey, setUnitKey] = useState("");
     const [unitXp, setUnitXp] = useState("0");
@@ -290,12 +296,32 @@ const BuildingEditModal = memo(
                   whole unit group, not one unit.
                 </p>
                 <label className={labelClass}>
+                  Unit
+                  <WindowedSelect
+                    windowThreshold={WINDOW_THRESHOLD}
+                    styles={selectStyle}
+                    options={unitOptions}
+                    value={unitOptions.find((option) => option.value === garrisonUnitKey) ?? null}
+                    onChange={(option) => {
+                      const nextUnitKey = (option as SelectOption | null)?.value ?? "";
+                      setGarrisonUnitKey(nextUnitKey);
+                      if (
+                        nextUnitKey &&
+                        unitGroup &&
+                        !(catalog.unitGroupsByUnit[nextUnitKey] ?? []).includes(unitGroup)
+                      ) {
+                        setUnitGroup("");
+                      }
+                    }}
+                  />
+                </label>
+                <label className={labelClass}>
                   Unit group
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
-                    options={unitGroupOptions}
-                    value={unitGroupOptions.find((option) => option.value === unitGroup) ?? null}
+                    options={garrisonUnitGroupOptions}
+                    value={garrisonUnitGroupOptions.find((option) => option.value === unitGroup) ?? null}
                     onChange={(option) => setUnitGroup((option as SelectOption | null)?.value ?? "")}
                   />
                 </label>
