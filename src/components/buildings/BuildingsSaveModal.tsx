@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useMemo, useState } from "react";
 import { Modal } from "../../flowbite";
 import { useAppSelector } from "../../hooks";
+import { useLocalizations } from "../../localizationContext";
 import { vanillaPackNames } from "../../supportedGames";
 import { buildBuildingsFileName, buildPackedFilesFromNewRows } from "../../buildingsData/save";
 import { newRowsByTable, type BuildingsEditState } from "../../buildingsData/edits";
@@ -18,6 +19,7 @@ export type BuildingsSaveModalProps = {
 type Result = { kind: "ok"; message: string } | { kind: "error"; message: string };
 
 const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, onSaved }: BuildingsSaveModalProps) => {
+  const localized = useLocalizations();
   const mods = useAppSelector((appState) => appState.app.currentPreset.mods);
   const unsavedPacksData = useAppSelector((appState) => appState.app.unsavedPacksData);
 
@@ -28,7 +30,12 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
 
   const [target, setTarget] = useState<"existing" | "new">(targetPacks.length > 0 ? "existing" : "new");
   const [packPath, setPackPath] = useState(targetPacks[0]?.path ?? "");
-  const [newPackName, setNewPackName] = useState("buildings_edits");
+  const [newPackName, setNewPackName] = useState(() => {
+    // The modder's prefix, the way the written file name uses it, so a new pack sorts with the
+    // author's other packs instead of under "buildings".
+    const prefix = moddersPrefix.trim().replace(/_+$/, "");
+    return prefix ? `${prefix}_buildings_edits` : "buildings_edits";
+  });
   const [newPackDirectory, setNewPackDirectory] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [result, setResult] = useState<Result | undefined>();
@@ -55,11 +62,11 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
       const isNew = target === "new";
       const destination = isNew ? `memory://${newPackName.trim()}` : packPath;
       if (!isNew && !destination) {
-        setResult({ kind: "error", message: "Pick a pack to save into." });
+        setResult({ kind: "error", message: localized.buildingsSavePickPack || "Pick a pack to save into." });
         return;
       }
       if (isNew && !newPackName.trim()) {
-        setResult({ kind: "error", message: "Give the new pack a name." });
+        setResult({ kind: "error", message: localized.buildingsSaveNameNewPack || "Give the new pack a name." });
         return;
       }
 
@@ -67,7 +74,7 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
       if (isNew && !resolvedNewPackDirectory) {
         resolvedNewPackDirectory = (await window.api?.getDataFolder()) ?? "";
         if (!resolvedNewPackDirectory) {
-          setResult({ kind: "error", message: "Pick a folder for the new pack." });
+          setResult({ kind: "error", message: localized.buildingsSavePickFolder || "Pick a folder for the new pack." });
           return;
         }
       }
@@ -79,13 +86,13 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
         // include files another editor has staged but not written yet.
         const diskFileNames = await window.api?.getPackFilesList(destination);
         if (!diskFileNames) {
-          setResult({ kind: "error", message: "Could not inspect the target pack before saving." });
+          setResult({
+            kind: "error",
+            message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
+          });
           return;
         }
-        existingFileNames = [
-          ...diskFileNames,
-          ...(unsavedPacksData[destination] ?? []).map((file) => file.name),
-        ];
+        existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
       }
       const { files, skippedTables } = buildPackedFilesFromNewRows({
         state,
@@ -93,36 +100,49 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
         fileName: buildBuildingsFileName(moddersPrefix, existingFileNames),
       });
       if (files.length === 0) {
-        setResult({ kind: "error", message: "Nothing to save." });
+        setResult({ kind: "error", message: localized.buildingsSaveNothing || "Nothing to save." });
         return;
       }
 
       for (const file of files) {
         const staged = await window.api?.saveDBTableEdits(destination, file);
         if (staged && !staged.success) {
-          setResult({ kind: "error", message: staged.error || `Could not stage ${file.name}.` });
+          setResult({
+            kind: "error",
+            message:
+              staged.error ||
+              (localized.buildingsSaveStageFailed || "Could not stage {{file}}.").replace("{{file}}", file.name),
+          });
           return;
         }
       }
 
       const written = isNew
-        ? await window.api?.savePackAsWithUnsavedFiles(
-            destination,
-            newPackName.trim(),
-            resolvedNewPackDirectory,
-          )
+        ? await window.api?.savePackAsWithUnsavedFiles(destination, newPackName.trim(), resolvedNewPackDirectory)
         : await window.api?.savePackWithUnsavedFiles(destination);
 
       if (!written?.success) {
-        setResult({ kind: "error", message: written?.error || "The pack could not be written." });
+        setResult({
+          kind: "error",
+          message: written?.error || localized.buildingsSaveWriteFailed || "The pack could not be written.",
+        });
         return;
       }
 
-      const skipped = skippedTables.length > 0 ? ` Skipped (no schema): ${skippedTables.join(", ")}.` : "";
+      const skipped =
+        skippedTables.length > 0
+          ? ` ${localized.buildingsSaveSkipped || "Skipped (no schema):"} ${skippedTables.join(", ")}.`
+          : "";
       const warning = written.warning ? ` ${written.warning}` : "";
       setResult({
         kind: "ok",
-        message: `Wrote ${files.length} table file${files.length === 1 ? "" : "s"} to ${written.savedPath ?? destination}.${warning}${skipped}`,
+        message:
+          (localized.buildingsSaveWrote || "Wrote {{count}} table file(s) to {{path}}.")
+            .replace("{{count}}", `${files.length}`)
+            .replace("file(s)", files.length === 1 ? "file" : "files")
+            .replace("{{path}}", `${written.savedPath ?? destination}`) +
+          warning +
+          skipped,
       });
       onSaved(written.savedPath ?? destination);
     } catch (error) {
@@ -134,13 +154,18 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
 
   return (
     <Modal onClose={onClose} show size="lg" position="center">
-      <Modal.Header>Save buildings</Modal.Header>
+      <Modal.Header>{localized.buildingsSaveTitle || "Save buildings"}</Modal.Header>
       <Modal.Body>
         <div className="space-y-4 text-sm text-gray-200">
           <p className="text-xs text-gray-400">
-            {rowCount} new row{rowCount === 1 ? "" : "s"} across {Object.keys(rowsByTable).length} table
-            {Object.keys(rowsByTable).length === 1 ? "" : "s"}. Only these rows are written; everything else in the pack
-            is left alone.
+            {(
+              localized.buildingsSaveSummary ||
+              "{{rows}} new row(s) across {{tables}} table(s). Only these rows are written; everything else in the pack is left alone."
+            )
+              .replace("{{rows}}", `${rowCount}`)
+              .replace("row(s)", rowCount === 1 ? "row" : "rows")
+              .replace("{{tables}}", `${Object.keys(rowsByTable).length}`)
+              .replace("table(s)", Object.keys(rowsByTable).length === 1 ? "table" : "tables")}
           </p>
 
           <label className="flex items-center gap-2">
@@ -150,7 +175,7 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
               disabled={targetPacks.length === 0}
               onChange={() => setTarget("existing")}
             />
-            Existing mod pack
+            {localized.buildingsSaveExistingPack || "Existing mod pack"}
           </label>
           {target === "existing" && (
             <select
@@ -158,7 +183,9 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
               onChange={(event) => setPackPath(event.target.value)}
               className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
             >
-              {targetPacks.length === 0 && <option value="">No mod packs found</option>}
+              {targetPacks.length === 0 && (
+                <option value="">{localized.buildingsSaveNoModPacks || "No mod packs found"}</option>
+              )}
               {targetPacks.map((mod) => (
                 <option key={mod.path} value={mod.path}>
                   {mod.name}
@@ -169,20 +196,20 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
 
           <label className="flex items-center gap-2">
             <input type="radio" checked={target === "new"} onChange={() => setTarget("new")} />
-            New pack
+            {localized.buildingsSaveNewPack || "New pack"}
           </label>
           {target === "new" && (
             <div className="space-y-2">
               <input
                 value={newPackName}
                 onChange={(event) => setNewPackName(event.target.value)}
-                placeholder="Pack name (without .pack)"
+                placeholder={localized.buildingsSavePackNamePlaceholder || "Pack name (without .pack)"}
                 className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
               />
               <input
                 value={newPackDirectory}
                 onChange={(event) => setNewPackDirectory(event.target.value)}
-                placeholder="Folder (defaults to the game's data folder)"
+                placeholder={localized.buildingsSaveFolderPlaceholder || "Folder (defaults to the game's data folder)"}
                 className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
               />
             </div>
@@ -209,7 +236,7 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
           onClick={onClose}
           className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
         >
-          Close
+          {localized.buildingsClose || "Close"}
         </button>
         <button
           type="button"
@@ -217,7 +244,7 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
           disabled={isSaving || rowCount === 0}
           className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSaving ? "Saving..." : "Save"}
+          {isSaving ? localized.buildingsSaving || "Saving..." : localized.buildingsSave || "Save"}
         </button>
       </Modal.Footer>
     </Modal>

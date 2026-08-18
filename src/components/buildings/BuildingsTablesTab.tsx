@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-community";
+import { useLocalizations } from "../../localizationContext";
 import { LOC_TABLE, type BuildingsEditAction, type BuildingsEditState } from "../../buildingsData/edits";
 import { groupIssuesByRow, type BuildingsRowIssue } from "../../buildingsData/validate";
 import { parseEditedCellValue } from "../../utility/dbRowCells";
@@ -31,6 +32,7 @@ const schemaForTable = (table: string, tableSchemas: Record<string, DBVersion>):
 const columnLabel = (field: DBField) => (field.is_key ? `${field.name} *` : field.name);
 
 const BuildingsTablesTab = memo(({ state, dispatch, onClearAll, tableSchemas, rowIssues }: BuildingsTablesTabProps) => {
+  const localized = useLocalizations();
   const tablesWithCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const id of state.order) {
@@ -94,14 +96,14 @@ const BuildingsTablesTab = memo(({ state, dispatch, onClearAll, tableSchemas, ro
       })),
       {
         field: "__issues",
-        headerName: "Issues",
+        headerName: localized.buildingsIssues || "Issues",
         editable: false,
         minWidth: 200,
         flex: 2,
         cellClass: "text-amber-400",
       },
     ];
-  }, [dispatch, issuesByRow, schema]);
+  }, [dispatch, issuesByRow, localized.buildingsIssues, schema]);
 
   const addBlankRow = useCallback(() => {
     if (!schema || !selectedTable) return;
@@ -119,7 +121,8 @@ const BuildingsTablesTab = memo(({ state, dispatch, onClearAll, tableSchemas, ro
   if (tablesWithCounts.length === 0) {
     return (
       <div className="px-6 py-4 text-sm text-gray-400">
-        No new rows yet. Add a building on the board, or clone one, and its rows show up here.
+        {localized.buildingsNoNewRows ||
+          "No new rows yet. Add a building on the board, or clone one, and its rows show up here."}
       </div>
     );
   }
@@ -134,7 +137,7 @@ const BuildingsTablesTab = memo(({ state, dispatch, onClearAll, tableSchemas, ro
         >
           {tablesWithCounts.map(([table, count]) => (
             <option key={table} value={table}>
-              {table === LOC_TABLE ? "localisation" : table} ({count})
+              {table === LOC_TABLE ? localized.buildingsLocalisation || "localisation" : table} ({count})
             </option>
           ))}
         </select>
@@ -145,7 +148,7 @@ const BuildingsTablesTab = memo(({ state, dispatch, onClearAll, tableSchemas, ro
           disabled={!schema}
           className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600 disabled:opacity-50"
         >
-          Add blank row
+          {localized.buildingsAddBlankRow || "Add blank row"}
         </button>
         <button
           type="button"
@@ -153,20 +156,31 @@ const BuildingsTablesTab = memo(({ state, dispatch, onClearAll, tableSchemas, ro
           disabled={selectedRowIds.length === 0}
           className="rounded bg-red-800 px-2 py-1 text-xs text-gray-100 hover:bg-red-700 disabled:opacity-50"
         >
-          Delete {selectedRowIds.length > 0 ? `${selectedRowIds.length} ` : ""}selected
+          {localized.buildingsDelete || "Delete"} {selectedRowIds.length > 0 ? `${selectedRowIds.length} ` : ""}
+          {localized.buildingsSelected || "selected"}
         </button>
         <button
           type="button"
           onClick={onClearAll}
           className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-950"
         >
-          Clear all pending edits
+          {localized.buildingsClearPending || "Clear all pending edits"}
         </button>
 
-        {!schema && <span className="text-xs text-red-400">No schema for {selectedTable}; it cannot be saved.</span>}
+        {!schema && (
+          <span className="text-xs text-red-400">
+            {(localized.buildingsNoSchemaFor || "No schema for {{table}}; it cannot be saved.").replace(
+              "{{table}}",
+              selectedTable,
+            )}
+          </span>
+        )}
         {rowIssues && rowIssues.length > 0 && (
           <span className="ml-auto text-xs text-amber-400">
-            {rowIssues.length} issue{rowIssues.length === 1 ? "" : "s"} across all tables
+            {(rowIssues.length === 1
+              ? localized.buildingsIssueOneAllTables || "1 issue across all tables"
+              : localized.buildingsIssuesOtherAllTables || "{{count}} issues across all tables"
+            ).replace("{{count}}", `${rowIssues.length}`)}
           </span>
         )}
       </div>

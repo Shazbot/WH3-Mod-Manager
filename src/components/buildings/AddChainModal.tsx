@@ -1,5 +1,6 @@
 import React, { memo, useMemo, useState } from "react";
 import { Modal } from "../../flowbite";
+import { useLocalizations } from "../../localizationContext";
 import { addBuildingChainRows, addBuildingLevelRows, type NewRowDraft } from "../../buildingsData/editActions";
 import type { BuildingsRegionQuery, BuildingsRegionView } from "../../buildingsData/types";
 
@@ -28,6 +29,7 @@ const inputClass = "rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm
  */
 const AddChainModal = memo(
   ({ setKey, setName, query, view, keyPrefix, numericIdCursors, onCancel, onAdd }: AddChainModalProps) => {
+    const localized = useLocalizations();
     const [name, setName_] = useState("");
     const [chainKey, setChainKey] = useState(`${keyPrefix}_chain`);
     const [superChain, setSuperChain] = useState("");
@@ -44,6 +46,10 @@ const AddChainModal = memo(
 
     const trimmedKey = chainKey.trim();
     const canAdd = trimmedKey !== "" && name.trim() !== "" && superChain.trim() !== "" && slotTemplates.length > 0;
+    const scope =
+      [query.culture, query.subculture, query.faction].filter(Boolean).join(" / ") ||
+      localized.buildingsEveryCulture ||
+      "every culture";
 
     const add = () => {
       const cursors = { ...numericIdCursors };
@@ -87,34 +93,41 @@ const AddChainModal = memo(
 
     return (
       <Modal onClose={onCancel} show size="lg" position="center">
-        <Modal.Header>New chain in {setName}</Modal.Header>
+        <Modal.Header>
+          {(localized.buildingsNewChainIn || "New chain in {{set}}").replace("{{set}}", setName)}
+        </Modal.Header>
         <Modal.Body>
           <div className="space-y-3">
             <p className="text-xs text-gray-400">
-              Offered on {slotTemplates.length} slot template{slotTemplates.length === 1 ? "" : "s"} of{" "}
-              <span className="text-gray-300">{query.region}</span>, available to{" "}
-              {[query.culture, query.subculture, query.faction].filter(Boolean).join(" / ") || "every culture"}.
+              {(
+                localized.buildingsOfferedOnTemplates ||
+                "Offered on {{count}} slot template(s) of {{region}}, available to {{scope}}."
+              )
+                .replace("{{count}}", `${slotTemplates.length}`)
+                .replace("slot template(s)", slotTemplates.length === 1 ? "slot template" : "slot templates")
+                .replace("{{region}}", query.region)
+                .replace("{{scope}}", scope)}
             </p>
 
             <label className={labelClass}>
-              Chain key
+              {localized.buildingsChainKey || "Chain key"}
               <input value={chainKey} onChange={(event) => setChainKey(event.target.value)} className={inputClass} />
             </label>
             <label className={labelClass}>
-              Superchain
+              {localized.buildingsSuperchain || "Superchain"}
               <input
                 value={superChain}
                 onChange={(event) => setSuperChain(event.target.value)}
-                placeholder="wh2_main_sch_military1_barracks"
+                placeholder={localized.buildingsSuperchainPlaceholder || "wh2_main_sch_military1_barracks"}
                 className={inputClass}
               />
             </label>
             <label className={labelClass}>
-              First building's name
+              {localized.buildingsFirstBuildingName || "First building's name"}
               <input
                 value={name}
                 onChange={(event) => setName_(event.target.value)}
-                placeholder="Shown in game"
+                placeholder={localized.buildingsShownInGame || "Shown in game"}
                 className={inputClass}
                 autoFocus
               />
@@ -122,7 +135,7 @@ const AddChainModal = memo(
 
             <div className="flex gap-3">
               <label className={`${labelClass} flex-1`}>
-                Turns
+                {localized.buildingsTurns || "Turns"}
                 <input
                   value={createTime}
                   onChange={(event) => setCreateTime(event.target.value)}
@@ -131,7 +144,7 @@ const AddChainModal = memo(
                 />
               </label>
               <label className={`${labelClass} flex-1`}>
-                Cost
+                {localized.buildingsCost || "Cost"}
                 <input
                   value={createCost}
                   onChange={(event) => setCreateCost(event.target.value)}
@@ -140,7 +153,7 @@ const AddChainModal = memo(
                 />
               </label>
               <label className={`${labelClass} flex-1`}>
-                Upkeep
+                {localized.buildingsUpkeep || "Upkeep"}
                 <input
                   value={upkeepCost}
                   onChange={(event) => setUpkeepCost(event.target.value)}
@@ -152,7 +165,8 @@ const AddChainModal = memo(
 
             {slotTemplates.length === 0 && (
               <p className="text-xs text-red-400">
-                This region has no slot templates, so a new chain here could never be built.
+                {localized.buildingsNoSlotTemplates ||
+                  "This region has no slot templates, so a new chain here could never be built."}
               </p>
             )}
           </div>
@@ -163,7 +177,7 @@ const AddChainModal = memo(
             onClick={onCancel}
             className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
           >
-            Cancel
+            {localized.buildingsCancel || "Cancel"}
           </button>
           <button
             type="button"
@@ -171,7 +185,7 @@ const AddChainModal = memo(
             onClick={add}
             className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Add chain
+            {localized.buildingsAddChain || "Add chain"}
           </button>
         </Modal.Footer>
       </Modal>

@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { useLocalizations } from "../../localizationContext";
 import BuildingSetBand from "./BuildingSetBand";
 import BuildingUpgradeArrows from "./BuildingUpgradeArrows";
 import { computeBoardLayout } from "./buildingsLayout";
@@ -23,6 +24,7 @@ const WHEEL_LINE_PX = 16;
 
 const BuildingsBoard = memo(
   ({ view, zoom, onTileContextMenu, onBandContextMenu, onTileHover }: BuildingsBoardProps) => {
+    const localized = useLocalizations();
     const layout = useMemo(() => computeBoardLayout(view), [view]);
     const boardRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,7 +71,7 @@ const BuildingsBoard = memo(
     if (layout.bands.length === 0) {
       return (
         <div className="flex h-full items-center justify-center px-6 text-sm text-gray-400">
-          No buildings match these filters.
+          {localized.buildingsNoMatches || "No buildings match these filters."}
         </div>
       );
     }

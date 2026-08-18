@@ -2,6 +2,7 @@ import React, { memo, useCallback, useMemo, useState } from "react";
 import WindowedSelect from "react-windowed-select";
 import { createFilter } from "react-select";
 import { Modal } from "../../flowbite";
+import { useLocalizations } from "../../localizationContext";
 import selectStyle from "../../styles/selectStyle";
 import {
   addEffectRows,
@@ -61,6 +62,7 @@ const toOptions = (options: BuildingsOption[]): SelectOption[] =>
  */
 const BuildingEditModal = memo(
   ({ tile, catalog, numericIdCursors, fetchCaiRows, pendingEffects, onClose, dispatch }: BuildingEditModalProps) => {
+    const localized = useLocalizations();
     const [tab, setTab] = useState<Tab>("recruitment");
     const [note, setNote] = useState<string | undefined>();
 
@@ -109,13 +111,13 @@ const BuildingEditModal = memo(
     const emit = useCallback(
       (rows: NewRowDraft[], cursors: Record<string, number>, message: string) => {
         if (rows.length === 0) {
-          setNote("That produced no rows.");
+          setNote(localized.buildingsThatProducedNoRows || "That produced no rows.");
           return;
         }
         dispatch({ type: "addRows", rows, numericIdCursors: cursors });
         setNote(message);
       },
-      [dispatch],
+      [dispatch, localized.buildingsThatProducedNoRows],
     );
 
     /** Typed-but-not-yet-committed effect values, so each keystroke does not re-derive the board. */
@@ -144,9 +146,13 @@ const BuildingEditModal = memo(
             rows: addEffectRows({ levelKey: tile.levelKey, effectKey, scope, value }),
           });
         }
-        setNote(`${effectKey} set to ${value}.`);
+        setNote(
+          (localized.buildingsEffectSetTo || "{{effect}} set to {{value}}.")
+            .replace("{{effect}}", effectKey)
+            .replace("{{value}}", `${value}`),
+        );
       },
-      [dispatch, pendingEffects, tile.levelKey],
+      [dispatch, localized.buildingsEffectSetTo, pendingEffects, tile.levelKey],
     );
 
     const addRecruitment = () => {
@@ -157,7 +163,7 @@ const BuildingEditModal = memo(
           cursors,
         ),
         cursors,
-        `${unitKey} can now be recruited here.`,
+        (localized.buildingsUnitRecruitable || "{{unit}} can now be recruited here.").replace("{{unit}}", unitKey),
       );
     };
 
@@ -166,7 +172,7 @@ const BuildingEditModal = memo(
       emit(
         addGarrisonRows({ levelKey: tile.levelKey, unitGroup }, cursors),
         cursors,
-        `${unitGroup} added to the garrison.`,
+        (localized.buildingsUnitGroupAdded || "{{group}} added to the garrison.").replace("{{group}}", unitGroup),
       );
     };
 
@@ -179,7 +185,7 @@ const BuildingEditModal = memo(
           value: Number(effectValue) || 0,
         }),
         { ...numericIdCursors },
-        `${effectKey} added.`,
+        (localized.buildingsEffectAdded || "{{effect}} added.").replace("{{effect}}", effectKey),
       );
       setEffectKey("");
     };
@@ -190,7 +196,7 @@ const BuildingEditModal = memo(
       try {
         const response = await fetchCaiRows(caiSource);
         if (!response.success || !response.rowsByTable) {
-          setNote(response.error || "Could not read that chain's CAI rows.");
+          setNote(response.error || localized.buildingsCaiReadFailed || "Could not read that chain's CAI rows.");
           return;
         }
         const rows = cloneCaiRows({
@@ -200,10 +206,21 @@ const BuildingEditModal = memo(
           fromSuperChain: response.superChain,
         });
         if (rows.length === 0) {
-          setNote(`${caiSource} has no CAI rows of its own to copy.`);
+          setNote(
+            (localized.buildingsCaiNoRows || "{{chain}} has no CAI rows of its own to copy.").replace(
+              "{{chain}}",
+              caiSource,
+            ),
+          );
           return;
         }
-        emit(rows, { ...numericIdCursors }, `Copied ${rows.length} CAI row${rows.length === 1 ? "" : "s"}.`);
+        emit(
+          rows,
+          { ...numericIdCursors },
+          (localized.buildingsCaiRowsCopied || "Copied {{count}} CAI row(s).")
+            .replace("{{count}}", `${rows.length}`)
+            .replace("row(s)", rows.length === 1 ? "row" : "rows"),
+        );
       } catch (error) {
         setNote(error instanceof Error ? error.message : String(error));
       } finally {
@@ -219,16 +236,18 @@ const BuildingEditModal = memo(
         position="center"
         explicitClasses={["first-child-div-second-child-div-flex-grow", "!h-[75vh]", "first-child-div-flex-col"]}
       >
-        <Modal.Header>Edit {tile.title}</Modal.Header>
+        <Modal.Header>
+          {(localized.buildingsEditTitle || "Edit {{title}}").replace("{{title}}", tile.title)}
+        </Modal.Header>
         <Modal.Body>
           <div className="space-y-4">
             <div className="flex gap-1 border-b border-gray-700">
               {(
                 [
-                  ["recruitment", "Recruitment"],
-                  ["garrison", "Garrison"],
-                  ["effects", "Effects"],
-                  ["cai", "AI scoring"],
+                  ["recruitment", localized.buildingsRecruitment || "Recruitment"],
+                  ["garrison", localized.buildingsGarrison || "Garrison"],
+                  ["effects", localized.buildingsEffects || "Effects"],
+                  ["cai", localized.buildingsAiScoring || "AI scoring"],
                 ] as const
               ).map(([key, label]) => (
                 <button
@@ -247,10 +266,12 @@ const BuildingEditModal = memo(
             {tab === "recruitment" && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-400">
-                  Currently unlocks {tile.recruitable.length} unit{tile.recruitable.length === 1 ? "" : "s"}.
+                  {(localized.buildingsCurrentlyUnlocks || "Currently unlocks {{count}} unit(s).")
+                    .replace("{{count}}", `${tile.recruitable.length}`)
+                    .replace("unit(s)", tile.recruitable.length === 1 ? "unit" : "units")}
                 </p>
                 <label className={labelClass}>
-                  Unit
+                  {localized.buildingsUnit || "Unit"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -261,7 +282,7 @@ const BuildingEditModal = memo(
                 </label>
                 <div className="flex gap-3">
                   <label className={`${labelClass} flex-1`}>
-                    Starting XP
+                    {localized.buildingsStartingXp || "Starting XP"}
                     <input
                       value={unitXp}
                       onChange={(event) => setUnitXp(event.target.value)}
@@ -270,7 +291,7 @@ const BuildingEditModal = memo(
                     />
                   </label>
                   <label className={`${labelClass} flex-1`}>
-                    Faction (blank for all)
+                    {localized.buildingsFactionBlankForAll || "Faction (blank for all)"}
                     <input
                       value={unitFaction}
                       onChange={(event) => setUnitFaction(event.target.value)}
@@ -284,7 +305,7 @@ const BuildingEditModal = memo(
                   onClick={addRecruitment}
                   className="rounded bg-blue-700 px-3 py-1.5 text-sm text-white hover:bg-blue-600 disabled:opacity-50"
                 >
-                  Add recruitment
+                  {localized.buildingsAddRecruitment || "Add recruitment"}
                 </button>
               </div>
             )}
@@ -292,11 +313,15 @@ const BuildingEditModal = memo(
             {tab === "garrison" && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-400">
-                  Currently provides {tile.garrison.length} unit{tile.garrison.length === 1 ? "" : "s"}. A garrison is a
-                  whole unit group, not one unit.
+                  {(
+                    localized.buildingsCurrentlyProvides ||
+                    "Currently provides {{count}} unit(s). A garrison is a whole unit group, not one unit."
+                  )
+                    .replace("{{count}}", `${tile.garrison.length}`)
+                    .replace("unit(s)", tile.garrison.length === 1 ? "unit" : "units")}
                 </p>
                 <label className={labelClass}>
-                  Unit
+                  {localized.buildingsUnit || "Unit"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -316,7 +341,7 @@ const BuildingEditModal = memo(
                   />
                 </label>
                 <label className={labelClass}>
-                  Unit group
+                  {localized.buildingsUnitGroup || "Unit group"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -331,7 +356,7 @@ const BuildingEditModal = memo(
                   onClick={addGarrison}
                   className="rounded bg-blue-700 px-3 py-1.5 text-sm text-white hover:bg-blue-600 disabled:opacity-50"
                 >
-                  Add garrison group
+                  {localized.buildingsAddGarrisonGroup || "Add garrison group"}
                 </button>
               </div>
             )}
@@ -369,18 +394,24 @@ const BuildingEditModal = memo(
                           {pending ? (
                             <button
                               type="button"
-                              title="Drops the row we added. An effect the game ships comes back at its own value."
+                              title={
+                                localized.buildingsRemovePendingEffectTooltip ||
+                                "Drops the row we added. An effect the game ships comes back at its own value."
+                              }
                               onClick={() => dispatch({ type: "removeRow", id: pending.id })}
                               className="shrink-0 rounded bg-red-800 px-2 py-0.5 text-gray-100 hover:bg-red-700"
                             >
-                              Remove
+                              {localized.buildingsRemove || "Remove"}
                             </button>
                           ) : (
                             <span
                               className="w-[4.6rem] shrink-0 text-center text-[0.65rem] text-gray-500"
-                              title="Shipped with the game. A pack can only add rows, so this cannot be deleted - only its value overridden."
+                              title={
+                                localized.buildingsShippedEffectTooltip ||
+                                "Shipped with the game. A pack can only add rows, so this cannot be deleted - only its value overridden."
+                              }
                             >
-                              vanilla
+                              {localized.buildingsVanilla || "vanilla"}
                             </span>
                           )}
                         </div>
@@ -390,9 +421,8 @@ const BuildingEditModal = memo(
                 )}
 
                 <p className="text-xs text-gray-400">
-                  Editing a value writes a row that overrides the one the game ships; only effects added here can be
-                  removed again. The scope decides who a new effect reaches - `building_to_building_own` stays on this
-                  building, `region_to_region_own` covers the region.
+                  {localized.buildingsEffectsHelp ||
+                    "Editing a value writes a row that overrides the one the game ships; only effects added here can be removed again. The scope decides who a new effect reaches - `building_to_building_own` stays on this building, `region_to_region_own` covers the region."}
                 </p>
                 <label className="flex items-center gap-2 text-xs text-gray-400">
                   <input
@@ -400,11 +430,12 @@ const BuildingEditModal = memo(
                     checked={buildingEffectsOnly}
                     onChange={(event) => setBuildingEffectsOnly(event.target.checked)}
                   />
-                  Only effects buildings use ({catalog.effects.filter((effect) => effect.usedByBuildings).length} of{" "}
-                  {catalog.effects.length})
+                  {(localized.buildingsOnlyBuildingEffects || "Only effects buildings use ({{used}} of {{total}})")
+                    .replace("{{used}}", `${catalog.effects.filter((effect) => effect.usedByBuildings).length}`)
+                    .replace("{{total}}", `${catalog.effects.length}`)}
                 </label>
                 <label className={labelClass}>
-                  Effect
+                  {localized.buildingsEffect || "Effect"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -416,7 +447,7 @@ const BuildingEditModal = memo(
                       if (selected?.preferredScope) setEffectScope(selected.preferredScope);
                     }}
                     filterOption={createFilter({ ignoreAccents: false })}
-                    placeholder="Search effects..."
+                    placeholder={localized.buildingsSearchEffects || "Search effects..."}
                     // @ts-expect-error react-select's option type is narrower than the runtime shape.
                     formatOptionLabel={(option: EffectOption) => (
                       <div className="flex items-baseline gap-2">
@@ -430,13 +461,15 @@ const BuildingEditModal = memo(
                 </label>
                 {effectKey && (
                   <p className="text-xs text-gray-400">
-                    Most frequently used scope: {" "}
-                    <span className="text-gray-200">{preferredEffectScope ?? "(none found)"}</span>
+                    {localized.buildingsMostFrequentScope || "Most frequently used scope:"}{" "}
+                    <span className="text-gray-200">
+                      {preferredEffectScope ?? (localized.buildingsNoneFound || "(none found)")}
+                    </span>
                   </p>
                 )}
                 <div className="flex gap-3">
                   <label className={`${labelClass} flex-1`}>
-                    Scope
+                    {localized.buildingsScope || "Scope"}
                     <WindowedSelect
                       windowThreshold={WINDOW_THRESHOLD}
                       styles={selectStyle}
@@ -446,7 +479,7 @@ const BuildingEditModal = memo(
                     />
                   </label>
                   <label className={`${labelClass} w-32`}>
-                    Value
+                    {localized.buildingsValue || "Value"}
                     <input
                       value={effectValue}
                       onChange={(event) => setEffectValue(event.target.value)}
@@ -461,7 +494,7 @@ const BuildingEditModal = memo(
                   onClick={addEffect}
                   className="rounded bg-blue-700 px-3 py-1.5 text-sm text-white hover:bg-blue-600 disabled:opacity-50"
                 >
-                  Add effect
+                  {localized.buildingsAddEffect || "Add effect"}
                 </button>
               </div>
             )}
@@ -469,12 +502,13 @@ const BuildingEditModal = memo(
             {tab === "cai" && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-400">
-                  The AI will not build <span className="text-gray-300">{tile.chainKey}</span> without scoring rows.
-                  Copying them from a chain that plays the same role is how these are normally written - only the
-                  columns naming that chain are rewritten, so a synergy with some third building carries over intact.
+                  {(
+                    localized.buildingsCaiHelp ||
+                    "The AI will not build {{chain}} without scoring rows. Copying them from a chain that plays the same role is how these are normally written - only the columns naming that chain are rewritten, so a synergy with some third building carries over intact."
+                  ).replace("{{chain}}", tile.chainKey)}
                 </p>
                 <label className={labelClass}>
-                  Copy CAI rows from chain
+                  {localized.buildingsCopyCaiFrom || "Copy CAI rows from chain"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -482,7 +516,7 @@ const BuildingEditModal = memo(
                     value={chainOptions.find((option) => option.value === caiSource) ?? null}
                     onChange={(option) => setCaiSource((option as SelectOption | null)?.value ?? "")}
                     filterOption={createFilter({ ignoreAccents: false })}
-                    placeholder="Search building chains..."
+                    placeholder={localized.buildingsSearchBuildingChains || "Search building chains..."}
                   />
                 </label>
                 <button
@@ -491,7 +525,9 @@ const BuildingEditModal = memo(
                   onClick={cloneCai}
                   className="rounded bg-blue-700 px-3 py-1.5 text-sm text-white hover:bg-blue-600 disabled:opacity-50"
                 >
-                  {isCloningCai ? "Copying..." : "Copy CAI rows"}
+                  {isCloningCai
+                    ? localized.buildingsCopying || "Copying..."
+                    : localized.buildingsCopyCaiRows || "Copy CAI rows"}
                 </button>
               </div>
             )}
@@ -505,7 +541,7 @@ const BuildingEditModal = memo(
             onClick={onClose}
             className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
           >
-            Done
+            {localized.buildingsDone || "Done"}
           </button>
         </Modal.Footer>
       </Modal>

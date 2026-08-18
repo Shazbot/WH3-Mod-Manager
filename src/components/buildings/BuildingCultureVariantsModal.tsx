@@ -2,6 +2,7 @@ import React, { memo, useCallback, useMemo, useState } from "react";
 import { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
 import { Modal } from "../../flowbite";
+import { useLocalizations } from "../../localizationContext";
 import selectStyle from "../../styles/selectStyle";
 import { addBuildingCultureVariantRows } from "../../buildingsData/editActions";
 import type { BuildingsEditAction, BuildingsEditState } from "../../buildingsData/edits";
@@ -27,7 +28,6 @@ type IconSelectOption = SelectOption & { iconUrl?: string; path?: string };
 type EditableVariantColumn = "disables" | "icon";
 
 const WINDOW_THRESHOLD = 60;
-const NONE: SelectOption = { value: "", label: "(any)" };
 const labelClass = "flex min-w-0 flex-1 flex-col gap-1 text-xs text-gray-400";
 const inputClass = "rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-gray-100";
 const portalSelectStyle = {
@@ -47,7 +47,7 @@ const findOption = (options: SelectOption[], value: string) => options.find((opt
 const variantKey = (variant: Pick<BuildingVariantRow, "culture" | "subculture" | "faction">) =>
   `${variant.culture}|${variant.subculture}|${variant.faction}`;
 
-const variantPart = (value: string) => value || "(any)";
+const variantPart = (value: string, anyLabel = "(any)") => value || anyLabel;
 
 /** The icon beside an option's name, or the space it occupies when an old value has no asset. */
 const OptionIcon = ({ iconUrl, large = false }: { iconUrl?: string; large?: boolean }) =>
@@ -69,20 +69,23 @@ const IconTile = ({
   option: IconSelectOption;
   isSelected: boolean;
   onClick: () => void;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    title={option.label}
-    aria-label={`Select icon ${option.label}`}
-    className={`rounded border-2 p-2 text-center transition-colors ${
-      isSelected ? "border-blue-500 bg-gray-700" : "border-gray-600 hover:border-gray-500 hover:bg-gray-700"
-    }`}
-  >
-    <OptionIcon iconUrl={option.iconUrl} large />
-    <div className="mt-2 truncate text-xs text-gray-300">{option.label}</div>
-  </button>
-);
+}) => {
+  const localized = useLocalizations();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={option.label}
+      aria-label={(localized.buildingsSelectIcon || "Select icon {{label}}").replace("{{label}}", option.label)}
+      className={`rounded border-2 p-2 text-center transition-colors ${
+        isSelected ? "border-blue-500 bg-gray-700" : "border-gray-600 hover:border-gray-500 hover:bg-gray-700"
+      }`}
+    >
+      <OptionIcon iconUrl={option.iconUrl} large />
+      <div className="mt-2 truncate text-xs text-gray-300">{option.label}</div>
+    </button>
+  );
+};
 
 const iconNameFromValue = (value: string) => {
   const normalized = value.replace(/\\/g, "/").split("/").pop() ?? value;
@@ -101,6 +104,7 @@ const BuildingIconSelect = ({
   onChange: (value: string) => void;
   ariaLabel: string;
 }) => {
+  const localized = useLocalizations();
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [search, setSearch] = useState("");
   const normalizedValue = iconNameFromValue(value);
@@ -127,7 +131,7 @@ const BuildingIconSelect = ({
             // @ts-expect-error react-select value type does not match the windowed select wrapper.
             onChange={(option: IconSelectOption | null) => onChange(option?.value ?? "")}
             styles={portalSelectStyle}
-            placeholder="Choose icon..."
+            placeholder={localized.buildingsChooseIcon || "Choose icon..."}
             isClearable
             aria-label={ariaLabel}
             menuPortalTarget={document.body}
@@ -144,12 +148,12 @@ const BuildingIconSelect = ({
         </div>
         <button
           type="button"
-          aria-label="Browse icons"
-          title="Browse all building icons"
+          aria-label={localized.buildingsBrowseIcons || "Browse icons"}
+          title={localized.buildingsBrowseAllIcons || "Browse all building icons"}
           onClick={() => setIsBrowserOpen(true)}
           className="shrink-0 rounded bg-gray-700 px-2 text-xs text-gray-100 hover:bg-gray-600"
         >
-          Browse…
+          {localized.buildingsBrowse || "Browse…"}
         </button>
       </div>
 
@@ -165,15 +169,15 @@ const BuildingIconSelect = ({
             "!h-[85vh]",
           ]}
         >
-          <Modal.Header>Browse building icons</Modal.Header>
+          <Modal.Header>{localized.buildingsBrowseBuildingIcons || "Browse building icons"}</Modal.Header>
           <Modal.Body>
             <div className="flex h-full flex-col gap-3">
               <input
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search icons..."
-                aria-label="Search building icons"
+                placeholder={localized.buildingsSearchIcons || "Search icons..."}
+                aria-label={localized.buildingsSearchBuildingIcons || "Search building icons"}
                 className={inputClass}
               />
               <div className="min-h-0 flex-1 overflow-y-auto">
@@ -191,7 +195,9 @@ const BuildingIconSelect = ({
                   ))}
                 </div>
                 {filteredOptions.length === 0 && (
-                  <div className="py-8 text-center text-sm text-gray-400">No icons match this search.</div>
+                  <div className="py-8 text-center text-sm text-gray-400">
+                    {localized.buildingsNoIconsMatch || "No icons match this search."}
+                  </div>
                 )}
               </div>
             </div>
@@ -202,7 +208,7 @@ const BuildingIconSelect = ({
               onClick={() => setIsBrowserOpen(false)}
               className="rounded bg-gray-700 px-4 py-2 text-sm text-gray-100 hover:bg-gray-600"
             >
-              Close
+              {localized.buildingsClose || "Close"}
             </button>
           </Modal.Footer>
         </Modal>
@@ -238,35 +244,44 @@ const VariantRow = memo(
     iconOptions: IconSelectOption[];
     onChange: (column: EditableVariantColumn, value: string) => void;
   }) => {
-    const label = [variant.culture, variant.subculture, variant.faction].map(variantPart).join(" / ");
+    const localized = useLocalizations();
+    const anyLabel = localized.buildingsAny || "(any)";
+    const label = [variant.culture, variant.subculture, variant.faction]
+      .map((value) => variantPart(value, anyLabel))
+      .join(" / ");
 
     return (
       <div className="grid min-w-[48rem] grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_5rem_minmax(12rem,1.5fr)_4rem] items-center gap-2 border-t border-gray-700 px-2 py-1.5 text-xs">
         <span className="truncate" title={variant.culture}>
-          {variantPart(variant.culture)}
+          {variantPart(variant.culture, anyLabel)}
         </span>
         <span className="truncate" title={variant.subculture}>
-          {variantPart(variant.subculture)}
+          {variantPart(variant.subculture, anyLabel)}
         </span>
         <span className="truncate" title={variant.faction}>
-          {variantPart(variant.faction)}
+          {variantPart(variant.faction, anyLabel)}
         </span>
-        <label className="flex items-center justify-center gap-1" title={`Disable ${label}`}>
+        <label
+          className="flex items-center justify-center gap-1"
+          title={(localized.buildingsDisableVariant || "Disable {{label}}").replace("{{label}}", label)}
+        >
           <input
             type="checkbox"
-            aria-label={`Disable ${label}`}
+            aria-label={(localized.buildingsDisableVariant || "Disable {{label}}").replace("{{label}}", label)}
             checked={variant.disables}
             onChange={(event) => onChange("disables", event.target.checked ? "true" : "false")}
           />
-          <span className="sr-only">Disables</span>
+          <span className="sr-only">{localized.buildingsDisables || "Disables"}</span>
         </label>
         <BuildingIconSelect
           options={iconOptions}
           value={variant.icon ?? ""}
           onChange={(value) => onChange("icon", value)}
-          ariaLabel={`Icon for ${label}`}
+          ariaLabel={(localized.buildingsIconFor || "Icon for {{label}}").replace("{{label}}", label)}
         />
-        <span className="text-[0.65rem] text-gray-500">{isPending ? "pending" : "vanilla"}</span>
+        <span className="text-[0.65rem] text-gray-500">
+          {isPending ? localized.buildingsPending || "pending" : localized.buildingsVanilla || "vanilla"}
+        </span>
       </div>
     );
   },
@@ -274,6 +289,7 @@ const VariantRow = memo(
 
 const BuildingCultureVariantsModal = memo(
   ({ tile, catalog, edits, onClose, dispatch }: BuildingCultureVariantsModalProps) => {
+    const localized = useLocalizations();
     const [newCulture, setNewCulture] = useState("");
     const [newSubculture, setNewSubculture] = useState("");
     const [newFaction, setNewFaction] = useState("");
@@ -340,14 +356,21 @@ const BuildingCultureVariantsModal = memo(
       [dispatch, pendingByVariantKey],
     );
 
-    const cultureOptions = useMemo(() => [NONE, ...toOptions(catalog.cultures)], [catalog.cultures]);
+    const noneOption = useMemo<SelectOption>(
+      () => ({ value: "", label: localized.buildingsAny || "(any)" }),
+      [localized.buildingsAny],
+    );
+    const cultureOptions = useMemo(() => [noneOption, ...toOptions(catalog.cultures)], [catalog.cultures, noneOption]);
     const subcultureOptions = useMemo(
-      () => [NONE, ...toOptions(catalog.subcultures.filter((entry) => !newCulture || entry.culture === newCulture))],
-      [catalog.subcultures, newCulture],
+      () => [
+        noneOption,
+        ...toOptions(catalog.subcultures.filter((entry) => !newCulture || entry.culture === newCulture)),
+      ],
+      [catalog.subcultures, newCulture, noneOption],
     );
     const factionOptions = useMemo(
       () => [
-        NONE,
+        noneOption,
         ...buildFactionOptions(
           catalog.factions.filter(
             (entry) =>
@@ -355,7 +378,7 @@ const BuildingCultureVariantsModal = memo(
           ),
         ),
       ],
-      [catalog.factions, newCulture, newSubculture],
+      [catalog.factions, newCulture, newSubculture, noneOption],
     );
 
     const addVariant = () => {
@@ -374,22 +397,31 @@ const BuildingCultureVariantsModal = memo(
 
     return (
       <Modal onClose={onClose} show size="4xl" position="center">
-        <Modal.Header>Edit culture variants — {tile.title}</Modal.Header>
+        <Modal.Header>
+          {(localized.buildingsEditCultureVariantsTitle || "Edit culture variants — {{title}}").replace(
+            "{{title}}",
+            tile.title,
+          )}
+        </Modal.Header>
         <Modal.Body>
           <div className="space-y-4">
             <p className="text-xs text-gray-400">
-              {variants.length} culture variant{variants.length === 1 ? "" : "s"}. Empty culture, subculture or faction
-              fields mean the row applies to every value in that scope.
+              {(
+                localized.buildingsCultureVariantSummary ||
+                "{{count}} culture variant(s). Empty culture, subculture or faction fields mean the row applies to every value in that scope."
+              )
+                .replace("{{count}}", `${variants.length}`)
+                .replace("variant(s)", variants.length === 1 ? "variant" : "variants")}
             </p>
 
             <div className="max-h-[45vh] overflow-auto rounded border border-gray-700">
               <div className="grid min-w-[48rem] grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_5rem_minmax(12rem,1.5fr)_4rem] gap-2 bg-gray-800 px-2 py-1.5 text-[0.65rem] text-gray-400">
-                <span>Culture</span>
-                <span>Subculture</span>
-                <span>Faction</span>
-                <span className="text-center">Disables</span>
-                <span>Icon</span>
-                <span>Source</span>
+                <span>{localized.buildingsCulture || "Culture"}</span>
+                <span>{localized.buildingsSubculture || "Subculture"}</span>
+                <span>{localized.buildingsFaction || "Faction"}</span>
+                <span className="text-center">{localized.buildingsDisables || "Disables"}</span>
+                <span>{localized.buildingsIcon || "Icon"}</span>
+                <span>{localized.buildingsSource || "Source"}</span>
               </div>
               {variants.length > 0 ? (
                 variants.map((variant) => (
@@ -403,16 +435,18 @@ const BuildingCultureVariantsModal = memo(
                 ))
               ) : (
                 <div className="border-t border-gray-700 px-2 py-3 text-xs text-gray-500">
-                  No culture variant rows exist for this building.
+                  {localized.buildingsNoVariantRows || "No culture variant rows exist for this building."}
                 </div>
               )}
             </div>
 
             <div className="space-y-2 rounded border border-gray-700 p-3">
-              <div className="text-xs font-medium text-gray-300">Add a variant row</div>
+              <div className="text-xs font-medium text-gray-300">
+                {localized.buildingsAddVariantRow || "Add a variant row"}
+              </div>
               <div className="flex flex-wrap items-end gap-3">
                 <label className={labelClass}>
-                  Culture
+                  {localized.buildingsCulture || "Culture"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -426,7 +460,7 @@ const BuildingCultureVariantsModal = memo(
                   />
                 </label>
                 <label className={labelClass}>
-                  Subculture
+                  {localized.buildingsSubculture || "Subculture"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -439,7 +473,7 @@ const BuildingCultureVariantsModal = memo(
                   />
                 </label>
                 <label className={labelClass}>
-                  Faction
+                  {localized.buildingsFaction || "Faction"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={selectStyle}
@@ -449,8 +483,13 @@ const BuildingCultureVariantsModal = memo(
                   />
                 </label>
                 <label className={`${labelClass} min-w-[15rem]`}>
-                  Icon
-                  <BuildingIconSelect options={iconOptions} value={newIcon} onChange={setNewIcon} ariaLabel="Icon" />
+                  {localized.buildingsIcon || "Icon"}
+                  <BuildingIconSelect
+                    options={iconOptions}
+                    value={newIcon}
+                    onChange={setNewIcon}
+                    ariaLabel={localized.buildingsIcon || "Icon"}
+                  />
                 </label>
                 <label className="flex items-center gap-2 pb-1 text-xs text-gray-400">
                   <input
@@ -458,14 +497,14 @@ const BuildingCultureVariantsModal = memo(
                     checked={newDisables}
                     onChange={(event) => setNewDisables(event.target.checked)}
                   />
-                  Disables
+                  {localized.buildingsDisables || "Disables"}
                 </label>
                 <button
                   type="button"
                   onClick={addVariant}
                   className="rounded bg-blue-700 px-3 py-1.5 text-sm text-white hover:bg-blue-600"
                 >
-                  Add variant row
+                  {localized.buildingsAddVariantRowButton || "Add variant row"}
                 </button>
               </div>
             </div>
@@ -477,7 +516,7 @@ const BuildingCultureVariantsModal = memo(
             onClick={onClose}
             className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
           >
-            Close
+            {localized.buildingsClose || "Close"}
           </button>
         </Modal.Footer>
       </Modal>

@@ -1,4 +1,5 @@
 import React, { memo, useMemo } from "react";
+import { useLocalizations } from "../../localizationContext";
 import type { BuildingUnitRow, BuildingsTile } from "../../buildingsData/types";
 
 const tooltipFrame = require("../../assets/skills/tooltip_frame.png");
@@ -31,16 +32,17 @@ const UnitList = ({ heading, units }: { heading: string; units: BuildingUnitRow[
  * `src/components/techTrees/TechNode.tsx`.
  */
 const BuildingTooltip = memo(({ tile }: BuildingTooltipProps) => {
+  const localized = useLocalizations();
   const costs = useMemo(
     () =>
       [
-        { label: "Turns", value: tile.createTime },
-        { label: "Cost", value: tile.createCost },
-        { label: "Upkeep", value: tile.upkeepCost },
-        { label: "Food", value: tile.foodCost },
-        { label: "Growth", value: tile.developmentPointCost },
+        { label: localized.buildingsTurns || "Turns", value: tile.createTime },
+        { label: localized.buildingsCost || "Cost", value: tile.createCost },
+        { label: localized.buildingsUpkeep || "Upkeep", value: tile.upkeepCost },
+        { label: localized.buildingsFood || "Food", value: tile.foodCost },
+        { label: localized.buildingsGrowth || "Growth", value: tile.developmentPointCost },
       ].filter((entry) => entry.value !== 0),
-    [tile],
+    [localized, tile],
   );
 
   return (
@@ -50,7 +52,11 @@ const BuildingTooltip = memo(({ tile }: BuildingTooltipProps) => {
     >
       <div className="text-center text-base font-bold">{tile.title}</div>
 
-      {tile.isRuin && <div className="text-center text-[0.7rem] italic text-red-300">Ruined state</div>}
+      {tile.isRuin && (
+        <div className="text-center text-[0.7rem] italic text-red-300">
+          {localized.buildingsRuinedState || "Ruined state"}
+        </div>
+      )}
 
       {tile.shortDescription && (
         <div className="border-t border-red-900/40 pt-1.5 text-xs">{tile.shortDescription}</div>
@@ -84,21 +90,47 @@ const BuildingTooltip = memo(({ tile }: BuildingTooltipProps) => {
         </div>
       )}
 
-      {tile.garrison.length > 0 && <UnitList heading="Provides garrison:" units={tile.garrison} />}
-      {tile.recruitable.length > 0 && <UnitList heading="Unlocks recruitment of:" units={tile.recruitable} />}
+      {tile.garrison.length > 0 && (
+        <UnitList heading={localized.buildingsProvidesGarrison || "Provides garrison:"} units={tile.garrison} />
+      )}
+      {tile.recruitable.length > 0 && (
+        <UnitList
+          heading={localized.buildingsUnlocksRecruitment || "Unlocks recruitment of:"}
+          units={tile.recruitable}
+        />
+      )}
 
       <div className="space-y-0.5 border-t border-red-900/40 pt-1.5 text-[0.65rem] opacity-60">
         <div>{tile.levelKey}</div>
-        <div>chain: {tile.chainKey}</div>
-        {tile.instanceLimit != undefined && tile.instanceLimit > 0 && <div>Max {tile.instanceLimit} per region</div>}
-        {tile.onlyInCapital && <div>Only in the provincial capital</div>}
-        {tile.factionUnique && <div>Faction unique</div>}
-        {tile.variant && (tile.variant.culture || tile.variant.subculture || tile.variant.faction) && (
+        <div>{(localized.buildingsChainInfo || "chain: {{key}}").replace("{{key}}", tile.chainKey)}</div>
+        {tile.instanceLimit != undefined && tile.instanceLimit > 0 && (
           <div>
-            variant: {[tile.variant.culture, tile.variant.subculture, tile.variant.faction].filter(Boolean).join(" / ")}
+            {(localized.buildingsMaxPerRegion || "Max {{count}} per region").replace(
+              "{{count}}",
+              `${tile.instanceLimit}`,
+            )}
           </div>
         )}
-        {tile.variantCount > 1 && <div>{tile.variantCount} culture variants</div>}
+        {tile.onlyInCapital && (
+          <div>{localized.buildingsOnlyProvincialCapital || "Only in the provincial capital"}</div>
+        )}
+        {tile.factionUnique && <div>{localized.buildingsFactionUnique || "Faction unique"}</div>}
+        {tile.variant && (tile.variant.culture || tile.variant.subculture || tile.variant.faction) && (
+          <div>
+            {(localized.buildingsVariantInfo || "variant: {{values}}").replace(
+              "{{values}}",
+              [tile.variant.culture, tile.variant.subculture, tile.variant.faction].filter(Boolean).join(" / "),
+            )}
+          </div>
+        )}
+        {tile.variantCount > 1 && (
+          <div>
+            {(localized.buildingsCultureVariantsCount || "{{count}} culture variants").replace(
+              "{{count}}",
+              `${tile.variantCount}`,
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

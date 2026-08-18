@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useRef } from "react";
+import { useLocalizations } from "../../localizationContext";
 import type { BuildingsTile } from "../../buildingsData/types";
 
 export type BuildingTileProps = {
@@ -54,6 +55,7 @@ const portraitStripStyle: React.CSSProperties = {
 
 const BuildingTile = memo(
   ({ tile, gridRow, gridColumn, colour, buildingFrameUrl, registerRef, onContextMenu, onHover }: BuildingTileProps) => {
+    const localized = useLocalizations();
     const elementRef = useRef<HTMLButtonElement | null>(null);
 
     const setRef = useCallback(
@@ -115,7 +117,7 @@ const BuildingTile = memo(
           <img className="absolute inset-[8%] z-[1] h-[84%] w-[84%] object-contain" src={tile.iconUrl} alt="" />
         ) : (
           <span className="absolute inset-0 z-[1] flex items-center justify-center text-[0.55rem] leading-tight text-gray-500">
-            no icon
+            {localized.buildingsNoIcon || "no icon"}
           </span>
         )}
 

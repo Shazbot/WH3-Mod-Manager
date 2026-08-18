@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
+import { useLocalizations } from "../../localizationContext";
 import { openMapForRegion } from "../../appSlice";
 import { sortByNameAndLoadOrder } from "../../modSortingHelpers";
 import { useDeferredWhileInactive } from "../useDeferredWhileInactive";
@@ -51,6 +52,7 @@ const DEFAULT_QUERY: BuildingsRegionQuery = {
 
 const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const dispatch = useAppDispatch();
+  const localized = useLocalizations();
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -129,7 +131,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       setHoveredTile(undefined);
       const items: Array<{ label: string; target: BuildingsCloneTarget }> = [
         {
-          label: "Deep clone this building (culture variant)",
+          label: localized.buildingsCloneBuildingVariant || "Deep clone this building (culture variant)",
           target: {
             tableName: "building_culture_variants_tables",
             keyColumn: "building",
@@ -140,7 +142,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       ];
       setContextMenu({ x: event.clientX, y: event.clientY, heading: tile.title, items, tile });
     },
-    [isFeaturesForModdersEnabled],
+    [isFeaturesForModdersEnabled, localized.buildingsCloneBuildingVariant],
   );
 
   const onBandContextMenu = useCallback(
@@ -153,14 +155,14 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         heading: setName,
         items: [
           {
-            label: "Deep clone this building set",
+            label: localized.buildingsCloneBuildingSet || "Deep clone this building set",
             target: { tableName: "building_sets_tables", keyColumn: "key", keyValue: setKey, label: setName },
           },
         ],
         band: { setKey, setName },
       });
     },
-    [isFeaturesForModdersEnabled],
+    [isFeaturesForModdersEnabled, localized.buildingsCloneBuildingSet],
   );
 
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
@@ -217,7 +219,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       }
       const cloneOutput = dbClonePackedFilesToBuildingsRows(packedFiles);
       if (cloneOutput.rows.length === 0) {
-        setError("DB Clone did not generate any rows.");
+        setError(localized.buildingsCloneNoRows || "DB Clone did not generate any rows.");
         return;
       }
       dispatchEdit({ type: "addRows", rows: cloneOutput.rows });
@@ -226,7 +228,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       setSubTab("tables");
       closeDeepClone();
     },
-    [closeDeepClone, isFeaturesForModdersEnabled],
+    [closeDeepClone, isFeaturesForModdersEnabled, localized.buildingsCloneNoRows],
   );
 
   const clearPendingEdits = useCallback(() => {
@@ -270,13 +272,14 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
   const fetchCaiRows = useCallback(
     (chainKey: string) => {
-      if (!isFeaturesForModdersEnabled) return Promise.resolve({ success: false, error: "Unavailable." });
+      if (!isFeaturesForModdersEnabled)
+        return Promise.resolve({ success: false, error: localized.buildingsUnavailable || "Unavailable." });
       return (
         window.api?.getBuildingsCaiRows(enabledModsRef.current, chainKey, edits) ??
-        Promise.resolve({ success: false, error: "Unavailable." })
+        Promise.resolve({ success: false, error: localized.buildingsUnavailable || "Unavailable." })
       );
     },
-    [edits, isFeaturesForModdersEnabled],
+    [edits, isFeaturesForModdersEnabled, localized.buildingsUnavailable],
   );
 
   const pickCloneTarget = useCallback(
@@ -312,7 +315,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       .then((response) => {
         if (!isCurrent) return;
         if (!response.success || !response.catalog) {
-          setError(response.error || "Could not read the game's building tables.");
+          setError(response.error || localized.buildingsLoadFailed || "Could not read the game's building tables.");
           return;
         }
         setError(undefined);
@@ -341,7 +344,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     return () => {
       isCurrent = false;
     };
-  }, [currentGame, reloadNonce, signatureToRequest]);
+  }, [currentGame, localized.buildingsLoadFailed, reloadNonce, signatureToRequest]);
 
   useEffect(() => {
     if (!catalog || !mapSelectedRegion) return;
@@ -374,7 +377,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       .then((response) => {
         if (!isCurrent) return;
         if (!response.success || !response.view) {
-          setError(response.error || "Could not build the buildings view.");
+          setError(response.error || localized.buildingsViewFailed || "Could not build the buildings view.");
           return;
         }
         setError(undefined);
@@ -393,10 +396,14 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     return () => {
       isCurrent = false;
     };
-  }, [catalog?.dbPackPath, currentGame, edits, query]);
+  }, [catalog?.dbPackPath, currentGame, edits, localized.buildingsViewFailed, query]);
 
   if (currentGame !== "wh3") {
-    return <div className="px-6 py-4 text-gray-300">Buildings are unavailable for this game.</div>;
+    return (
+      <div className="px-6 py-4 text-gray-300">
+        {localized.buildingsNotAvailableForGame || "Buildings are unavailable for this game."}
+      </div>
+    );
   }
 
   // Everything that writes rows is modder-only. When the option is off, the board remains a
@@ -416,7 +423,9 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                 activeSubTab === tab ? "border-b-2 border-blue-500 text-gray-100" : "text-gray-400 hover:text-gray-200"
               }`}
             >
-              {tab === "board" ? "Board" : `New rows${edits.order.length > 0 ? ` (${edits.order.length})` : ""}`}
+              {tab === "board"
+                ? localized.buildingsBoardTab || "Board"
+                : `${localized.buildingsNewRowsTab || "New rows"}${edits.order.length > 0 ? ` (${edits.order.length})` : ""}`}
               {tab === "tables" && rowIssues && rowIssues.length > 0 && <span className="ml-1 text-amber-400">!</span>}
             </button>
           ))}
@@ -479,28 +488,36 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         <div className="border-t border-gray-700 px-4 py-1 text-[0.7rem] text-gray-500">
           {view && activeSubTab === "board" && (
             <>
-              {view.bands.length} sets · {view.bands.reduce((total, band) => total + band.columns.length, 0)} chains ·{" "}
-              {view.slotTemplates.length} slot templates
-              {view.existingBuildings.length > 0 && ` · ${view.existingBuildings.length} placed in this region`}
-              {isLoading && " · refreshing..."}
+              {(localized.buildingsStatusSummary || "{{sets}} sets · {{chains}} chains · {{slots}} slot templates")
+                .replace("{{sets}}", `${view.bands.length}`)
+                .replace("{{chains}}", `${view.bands.reduce((total, band) => total + band.columns.length, 0)}`)
+                .replace("{{slots}}", `${view.slotTemplates.length}`)}
+              {view.existingBuildings.length > 0 &&
+                (localized.buildingsStatusPlaced || " · {{count}} placed in this region").replace(
+                  "{{count}}",
+                  `${view.existingBuildings.length}`,
+                )}
+              {isLoading && (localized.buildingsRefreshing || " · refreshing...")}
             </>
           )}
           {isFeaturesForModdersEnabled && edits.order.length > 0 && (
             <span className="ml-3 text-emerald-400">
-              {edits.order.length} new row{edits.order.length === 1 ? "" : "s"}
+              {(localized.buildingsNewRowCount || "{{count}} new row(s)")
+                .replace("{{count}}", `${edits.order.length}`)
+                .replace("row(s)", edits.order.length === 1 ? "row" : "rows")}
               <button
                 type="button"
                 onClick={() => setIsSaveOpen(true)}
                 className="ml-2 rounded bg-blue-700 px-2 py-0.5 text-[0.7rem] text-white hover:bg-blue-600"
               >
-                Save to pack
+                {localized.buildingsSaveToPack || "Save to pack"}
               </button>
               <button
                 type="button"
                 onClick={() => dispatchEdit({ type: "reset" })}
                 className="ml-1 rounded bg-gray-700 px-2 py-0.5 text-[0.7rem] text-gray-200 hover:bg-gray-600"
               >
-                Discard
+                {localized.buildingsDiscard || "Discard"}
               </button>
             </span>
           )}
@@ -517,17 +534,22 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           onClose={closeContextMenu}
           editActions={
             contextMenu.band
-              ? [{ label: "Add a new chain to this set", run: () => setAddChainTo(contextMenu.band) }]
+              ? [
+                  {
+                    label: localized.buildingsAddChainToSet || "Add a new chain to this set",
+                    run: () => setAddChainTo(contextMenu.band),
+                  },
+                ]
               : contextMenu.tile
                 ? [
                     {
-                      label: "Add a building above this",
+                      label: localized.buildingsAddAbove || "Add a building above this",
                       run: () => setAddFrom({ tile: contextMenu.tile!, direction: "above" }),
                     },
                     ...(canAddBuildingBelow(contextMenu.tile, view)
                       ? [
                           {
-                            label: "Add a building below this",
+                            label: localized.buildingsAddBelow || "Add a building below this",
                             run: () =>
                               setAddFrom({
                                 tile: contextMenu.tile!,
@@ -537,13 +559,16 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                           },
                         ]
                       : []),
-                    { label: "Edit Building...", run: () => setEditTile(contextMenu.tile) },
                     {
-                      label: "Edit culture variants...",
+                      label: localized.buildingsEditBuilding || "Edit Building...",
+                      run: () => setEditTile(contextMenu.tile),
+                    },
+                    {
+                      label: localized.buildingsEditCultureVariants || "Edit culture variants...",
                       run: () => setEditCultureVariantsTile(contextMenu.tile),
                     },
                     {
-                      label: "Disable for this culture",
+                      label: localized.buildingsDisableCulture || "Disable for this culture",
                       run: () =>
                         dispatchEdit({
                           type: "addRows",
@@ -556,7 +581,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                         }),
                     },
                     {
-                      label: "Remove this chain from its set",
+                      label: localized.buildingsRemoveChainFromSet || "Remove this chain from its set",
                       run: () =>
                         dispatchEdit({
                           type: "addRows",
@@ -637,13 +662,13 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
       {isFeaturesForModdersEnabled && deepClone.isResolving && (
         <div className="fixed bottom-4 right-4 z-[80] rounded bg-gray-800 px-3 py-2 text-xs text-gray-200 shadow-lg">
-          Reading the table for {deepClone.resolvingLabel}...
+          {localized.buildingsReadTableFor || "Reading the table for"} {deepClone.resolvingLabel}...
         </div>
       )}
 
       {isFeaturesForModdersEnabled && deepClone.error && (
         <Modal onClose={deepClone.dismissError} show size="md" position="center">
-          <Modal.Header>Deep clone</Modal.Header>
+          <Modal.Header>{localized.buildingsDeepClone || "Deep clone"}</Modal.Header>
           <Modal.Body>
             <p className="text-sm text-gray-300">{deepClone.error}</p>
           </Modal.Body>
@@ -658,7 +683,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           position="top-center"
           explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
-          <Modal.Header>Deep Cloning...</Modal.Header>
+          <Modal.Header>{localized.buildingsDeepCloning || "Deep Cloning..."}</Modal.Header>
           <Modal.Body>
             <div className="mt-8 text-center">
               <DBDuplication launchSource="buildings" onSaveToBuildings={saveCloneToBuildings} />

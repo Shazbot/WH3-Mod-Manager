@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
+import { useLocalizations } from "../../localizationContext";
 import { selectDBTable, setDeepCloneTarget } from "../../appSlice";
 import { chunkTableIntoRows } from "../viewer/viewerHelpers";
 
@@ -26,6 +27,7 @@ const LOAD_TIMEOUT_MS = 10_000;
  */
 export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
   const dispatch = useAppDispatch();
+  const localized = useLocalizations();
   const packsData = useAppSelector((state) => state.app.packsData);
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
 
@@ -43,7 +45,7 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
   const openDeepCloneFor = useCallback(
     (target: BuildingsCloneTarget) => {
       if (!dbPackPath) {
-        setError("The game's database pack is not loaded yet.");
+        setError(localized.buildingsDatabasePackNotLoaded || "The game's database pack is not loaded yet.");
         return;
       }
       setError(undefined);
@@ -55,12 +57,17 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
       timeoutRef.current = window.setTimeout(() => {
         setPending((current) => {
           if (!current) return current;
-          setError(`Timed out reading ${target.tableName} out of the game's database pack.`);
+          setError(
+            (localized.buildingsCloneTimeout || "Timed out reading {{table}} out of the game's database pack.").replace(
+              "{{table}}",
+              target.tableName,
+            ),
+          );
           return undefined;
         });
       }, LOAD_TIMEOUT_MS);
     },
-    [clearTimer, dbPackPath, dispatch],
+    [clearTimer, dbPackPath, dispatch, localized.buildingsCloneTimeout, localized.buildingsDatabasePackNotLoaded],
   );
 
   const close = useCallback(() => {
@@ -91,7 +98,11 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
     const columnIndex = schema.fields.findIndex((field) => field.name === pending.keyColumn);
     if (columnIndex < 0) {
       clearTimer();
-      setError(`${pending.tableName} has no ${pending.keyColumn} column.`);
+      setError(
+        (localized.buildingsCloneMissingColumn || "{{table}} has no {{column}} column.")
+          .replace("{{table}}", pending.tableName)
+          .replace("{{column}}", pending.keyColumn),
+      );
       setPending(undefined);
       return;
     }
@@ -100,14 +111,26 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
     const rowIndex = rows.findIndex((row) => row[columnIndex]?.resolvedKeyValue === pending.keyValue);
     clearTimer();
     if (rowIndex < 0) {
-      setError(`${pending.keyValue} is not in the vanilla ${pending.tableName}; it may be a modded row.`);
+      setError(
+        (localized.buildingsCloneMissingRow || "{{key}} is not in the vanilla {{table}}; it may be a modded row.")
+          .replace("{{key}}", pending.keyValue)
+          .replace("{{table}}", pending.tableName),
+      );
       setPending(undefined);
       return;
     }
 
     setPending(undefined);
     dispatch(setDeepCloneTarget({ row: rowIndex, col: columnIndex }));
-  }, [clearTimer, dbPackPath, dispatch, packsData, pending]);
+  }, [
+    clearTimer,
+    dbPackPath,
+    dispatch,
+    localized.buildingsCloneMissingColumn,
+    localized.buildingsCloneMissingRow,
+    packsData,
+    pending,
+  ]);
 
   return {
     openDeepCloneFor,

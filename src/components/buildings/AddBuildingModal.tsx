@@ -1,5 +1,6 @@
 import React, { memo, useState } from "react";
 import { Modal } from "../../flowbite";
+import { useLocalizations } from "../../localizationContext";
 import type { AddBuildingLevelInput, BuildingLevelShift } from "../../buildingsData/editActions";
 import type { BuildingsRegionQuery, BuildingsTile } from "../../buildingsData/types";
 
@@ -19,6 +20,7 @@ const inputClass = "rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm
 
 const AddBuildingModal = memo(
   ({ from, direction = "above", shiftedLevelRows = [], query, keyPrefix, onCancel, onAdd }: AddBuildingModalProps) => {
+    const localized = useLocalizations();
     const isBelow = direction === "below";
     const newLevel = isBelow ? from.level : from.level + 1;
     const suggestedKey = `${keyPrefix}_${from.chainKey.replace(/^wh[0-9_a-z]*?_/, "")}_${newLevel + 1}`;
@@ -33,37 +35,50 @@ const AddBuildingModal = memo(
 
     const trimmedKey = levelKey.trim();
     const canAdd = trimmedKey !== "" && title.trim() !== "";
+    const scope =
+      [query.culture, query.subculture, query.faction].filter(Boolean).join(" / ") ||
+      localized.buildingsEveryCulture ||
+      "every culture";
+    const description = (
+      isBelow
+        ? localized.buildingsAddBuildingDescriptionBelow ||
+          "Goes into {{chain}} at level {{level}}, upgrading to {{building}}. The culture variant is written for {{scope}}."
+        : localized.buildingsAddBuildingDescriptionAbove ||
+          "Goes into {{chain}} at level {{level}}, upgrading from {{building}}. The culture variant is written for {{scope}}."
+    )
+      .replace("{{chain}}", from.chainKey)
+      .replace("{{level}}", `${newLevel}`)
+      .replace("{{building}}", from.levelKey)
+      .replace("{{scope}}", scope);
 
     return (
       <Modal onClose={onCancel} show size="lg" position="center">
         <Modal.Header>
-          Add a building {isBelow ? "below" : "above"} {from.title}
+          {(isBelow
+            ? localized.buildingsAddBuildingBelowTitle || "Add a building below {{title}}"
+            : localized.buildingsAddBuildingAboveTitle || "Add a building above {{title}}"
+          ).replace("{{title}}", from.title)}
         </Modal.Header>
         <Modal.Body>
           <div className="space-y-3">
-            <p className="text-xs text-gray-400">
-              Goes into <span className="text-gray-300">{from.chainKey}</span> at level {newLevel},{" "}
-              {isBelow ? "upgrading to" : "upgrading from"} <span className="text-gray-300">{from.levelKey}</span>. The
-              culture variant is written for{" "}
-              {[query.culture, query.subculture, query.faction].filter(Boolean).join(" / ") || "every culture"}.
-            </p>
+            <p className="text-xs text-gray-400">{description}</p>
 
             <label className={labelClass}>
-              Building key
+              {localized.buildingsBuildingKey || "Building key"}
               <input value={levelKey} onChange={(event) => setLevelKey(event.target.value)} className={inputClass} />
             </label>
             <label className={labelClass}>
-              Name
+              {localized.buildingsName || "Name"}
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Shown in game"
+                placeholder={localized.buildingsShownInGame || "Shown in game"}
                 className={inputClass}
                 autoFocus
               />
             </label>
             <label className={labelClass}>
-              Short description
+              {localized.buildingsShortDescription || "Short description"}
               <input
                 value={shortDescription}
                 onChange={(event) => setShortDescription(event.target.value)}
@@ -78,13 +93,18 @@ const AddBuildingModal = memo(
                   checked={copyEffects}
                   onChange={(event) => setCopyEffects(event.target.checked)}
                 />
-                Copy the {from.effects.length} effect{from.effects.length === 1 ? "" : "s"} from {from.title}
+                {(from.effects.length === 1
+                  ? localized.buildingsCopyEffectsOne || "Copy the effect from {{title}}"
+                  : localized.buildingsCopyEffectsOther || "Copy the {{count}} effects from {{title}}"
+                )
+                  .replace("{{count}}", `${from.effects.length}`)
+                  .replace("{{title}}", from.title)}
               </label>
             )}
 
             <div className="flex gap-3">
               <label className={`${labelClass} flex-1`}>
-                Turns
+                {localized.buildingsTurns || "Turns"}
                 <input
                   value={createTime}
                   onChange={(event) => setCreateTime(event.target.value)}
@@ -93,7 +113,7 @@ const AddBuildingModal = memo(
                 />
               </label>
               <label className={`${labelClass} flex-1`}>
-                Cost
+                {localized.buildingsCost || "Cost"}
                 <input
                   value={createCost}
                   onChange={(event) => setCreateCost(event.target.value)}
@@ -102,7 +122,7 @@ const AddBuildingModal = memo(
                 />
               </label>
               <label className={`${labelClass} flex-1`}>
-                Upkeep
+                {localized.buildingsUpkeep || "Upkeep"}
                 <input
                   value={upkeepCost}
                   onChange={(event) => setUpkeepCost(event.target.value)}
@@ -119,7 +139,7 @@ const AddBuildingModal = memo(
             onClick={onCancel}
             className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
           >
-            Cancel
+            {localized.buildingsCancel || "Cancel"}
           </button>
           <button
             type="button"
@@ -163,7 +183,7 @@ const AddBuildingModal = memo(
             }
             className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Add
+            {localized.buildingsAdd || "Add"}
           </button>
         </Modal.Footer>
       </Modal>

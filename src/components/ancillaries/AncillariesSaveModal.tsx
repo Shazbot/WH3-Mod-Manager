@@ -31,7 +31,12 @@ const AncillariesSaveModal = memo(
 
     const [target, setTarget] = useState<"existing" | "new">(targetPacks.length > 0 ? "existing" : "new");
     const [packPath, setPackPath] = useState(targetPacks[0]?.path ?? "");
-    const [newPackName, setNewPackName] = useState("ancillaries_edits");
+    const [newPackName, setNewPackName] = useState(() => {
+      // The modder's prefix, the way the written file name uses it, so a new pack sorts with the
+      // author's other packs instead of under "ancillaries".
+      const prefix = moddersPrefix.trim().replace(/_+$/, "");
+      return prefix ? `${prefix}_ancillaries_edits` : "ancillaries_edits";
+    });
     const [newPackDirectory, setNewPackDirectory] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [result, setResult] = useState<Result | undefined>();
