@@ -15,6 +15,7 @@ import AddBuildingModal from "./AddBuildingModal";
 import BuildingsSaveModal from "./BuildingsSaveModal";
 import BuildingsTablesTab from "./BuildingsTablesTab";
 import BuildingEditModal from "./BuildingEditModal";
+import BuildingCultureVariantsModal from "./BuildingCultureVariantsModal";
 import AddChainModal from "./AddChainModal";
 import { buildingsEditReducer, emptyBuildingsEditState } from "../../buildingsData/edits";
 import { dbClonePackedFilesToBuildingsRows } from "../../buildingsData/dbCloneRows";
@@ -189,6 +190,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     { tile: BuildingsTile; direction: "above" | "below"; shiftedLevelRows?: BuildingLevelShift[] } | undefined
   >();
   const [editTile, setEditTile] = useState<BuildingsTile | undefined>();
+  const [editCultureVariantsTile, setEditCultureVariantsTile] = useState<BuildingsTile | undefined>();
   const [addChainTo, setAddChainTo] = useState<{ setKey: string; setName: string } | undefined>();
   const [isSaveOpen, setIsSaveOpen] = useState(false);
   // Bumped after a save so the catalog is re-read: the rows are in a pack now, and should come back
@@ -522,6 +524,10 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                       : []),
                     { label: "Edit Building...", run: () => setEditTile(contextMenu.tile) },
                     {
+                      label: "Edit culture variants...",
+                      run: () => setEditCultureVariantsTile(contextMenu.tile),
+                    },
+                    {
                       label: "Disable for this culture",
                       run: () =>
                         dispatchEdit({
@@ -587,6 +593,16 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           fetchCaiRows={fetchCaiRows}
           pendingEffects={pendingEffectsForTile}
           onClose={() => setEditTile(undefined)}
+          dispatch={dispatchEdit}
+        />
+      )}
+
+      {editCultureVariantsTile && catalog && (
+        <BuildingCultureVariantsModal
+          tile={editCultureVariantsTile}
+          catalog={catalog}
+          edits={edits}
+          onClose={() => setEditCultureVariantsTile(undefined)}
           dispatch={dispatchEdit}
         />
       )}

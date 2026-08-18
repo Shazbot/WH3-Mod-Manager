@@ -53,6 +53,7 @@ const catalog: BuildingsCatalog = {
     unit_a: ["group_a", "group_shared"],
     unit_b: ["group_b"],
   },
+  cultureVariantsByBuilding: {},
   effects: [],
   effectScopes: [],
   chainKeys: [],

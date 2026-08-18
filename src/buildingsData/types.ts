@@ -70,6 +70,8 @@ export interface BuildingVariantRow {
   frameOverride?: string;
   /** How specific this variant is: 4*faction + 2*subculture + 1*culture. */
   specificity: number;
+  /** Complete source row, retained so editing one column can write a faithful override row. */
+  rawValues?: Record<string, string>;
 }
 
 export interface BuildingSetRow {
@@ -406,6 +408,8 @@ export interface BuildingsCatalog {
   unitGroups: BuildingsOption[];
   /** Unit key -> armed-citizenry groups that contain that unit. */
   unitGroupsByUnit: Record<string, string[]>;
+  /** Every effective culture variant row, grouped by building level key. */
+  cultureVariantsByBuilding: Record<string, BuildingVariantRow[]>;
   effects: BuildingsEffectOption[];
   effectScopes: string[];
   /** Every building chain key, sorted. The CAI clone picker's options. */

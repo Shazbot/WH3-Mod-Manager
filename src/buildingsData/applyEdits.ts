@@ -262,6 +262,7 @@ export const applyNewRowsToBuiltData = (base: BuiltBuildingsData, state: Buildin
       displayTooltip: bool(row.values, "display_tooltip", true),
       frameOverride: optional(str(row.values, "building_frame_override")),
       specificity: variantSpecificity(culture, subculture, faction),
+      rawValues: { ...row.values },
     };
     // Appended, so `pickCultureVariant`'s "later candidate wins a tie" makes this the override.
     data.variantsByLevel = {

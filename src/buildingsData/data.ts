@@ -337,6 +337,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
       displayTooltip: bool(row, "display_tooltip", true),
       frameOverride: optional(str(row, "building_frame_override")),
       specificity: variantSpecificity(culture, subculture, faction),
+      rawValues: { ...row },
     });
     variantLoc[variantLocKey(building, culture, subculture, faction)] = {
       name: localize(getLoc, buildVariantNameLocKey(building, culture, subculture, faction)),

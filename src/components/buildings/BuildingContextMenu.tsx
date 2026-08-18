@@ -21,6 +21,7 @@ export type BuildingContextMenuProps = {
  */
 const BuildingContextMenu = memo(({ x, y, heading, items, onPick, onClose, editActions }: BuildingContextMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuHeight = 40 + items.length * 32 + (editActions && editActions.length > 0 ? editActions.length * 32 + 8 : 0);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -44,7 +45,7 @@ const BuildingContextMenu = memo(({ x, y, heading, items, onPick, onClose, editA
       // Clamped so a right-click near the right or bottom edge does not open off screen.
       style={{
         left: Math.min(x, Math.max(0, window.innerWidth - 320)),
-        top: Math.min(y, Math.max(0, window.innerHeight - 40 - items.length * 32)),
+        top: Math.min(y, Math.max(0, window.innerHeight - menuHeight)),
       }}
       className="fixed z-[80] w-[300px] rounded border border-gray-600 bg-gray-800 py-1 shadow-lg"
     >

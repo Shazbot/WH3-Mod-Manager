@@ -369,6 +369,30 @@ export const disableBuildingRows = (input: {
   },
 ];
 
+/** Adds one culture-variant row for a building. Empty culture fields mean "all" in the game. */
+export const addBuildingCultureVariantRows = (input: {
+  levelKey: string;
+  culture: string;
+  subculture: string;
+  faction: string;
+  icon?: string;
+  disables?: boolean;
+}): NewRowDraft[] => [
+  {
+    table: "building_culture_variants_tables",
+    origin: "manual",
+    values: {
+      building: input.levelKey,
+      culture: input.culture,
+      subculture: input.subculture,
+      faction: input.faction,
+      icon: input.icon ?? "",
+      disables: bool(input.disables ?? false),
+      display_tooltip: bool(!(input.disables ?? false)),
+    },
+  },
+];
+
 /** Removes a chain from one building set's band, leaving the chain itself alone. */
 export const excludeFromSetRows = (input: { chainKey: string; setKey: string }): NewRowDraft[] => [
   {
