@@ -111,6 +111,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   const [duplicationProgress, setDuplicationProgress] = useState<DBDuplicationProgress | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const isProgressSubscribed = useRef(false);
+  const treeBuildRequestId = useRef(0);
 
   const localized = useLocalizations();
   const displayedTreeData = useMemo(
@@ -149,6 +150,12 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
   useEffect(() => {
     if (!currentDBTableSelection || !deepCloneTarget) return;
 
+    const requestId = ++treeBuildRequestId.current;
+    let isCurrentRequest = true;
+    setTreeData(null);
+    setSelectedNodesByName([]);
+    setExpandedNodesByName([]);
+
     const buildTree = async () => {
       try {
         beginOverlayOperation();
@@ -165,6 +172,8 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           [],
           undefined,
         );
+
+        if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
 
         if (treeNodeResult) {
           console.log("buildDBReferenceTree RECIEVED", treeNodeResult);
@@ -193,6 +202,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           setDuplicationError("DB Clone could not build the reference tree.");
         }
       } catch (error) {
+        if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
         console.error("Failed to build reference tree:", error);
         setDuplicationError(error instanceof Error ? error.message : String(error));
       } finally {
@@ -201,6 +211,9 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     };
 
     buildTree();
+    return () => {
+      isCurrentRequest = false;
+    };
   }, [currentDBTableSelection, deepCloneTarget, launchSource, packPath]);
   // }, [currentDBTableSelection, deepCloneTarget, selectedNodesByName, packPath]);
 

@@ -7,6 +7,9 @@ import {
   DBNameToDBVersions as gameToDBNameToDBVersions,
   gameToDBFieldsReferencedBy,
   gameToReferences,
+  getDBFieldsReferencedByForGame,
+  getDBFieldsThatReferenceForGame,
+  getSchemaForGame,
   getReferencesForGame,
   gameToDBFieldsThatReference,
   tablesToIgnore,
@@ -34,6 +37,22 @@ import { describeDBCloneSaveError, writeDBClonePackAtomically } from "./utility/
 
 const shouldIgnoreDBCloneTable = (tableName: string) =>
   isDBCloneTableIgnored(tableName) || tablesToIgnore.includes(tableName);
+
+/**
+ * DB clone can be launched from the main window, before the viewer's schema-ready handshake has
+ * happened. Make every schema-derived map used by the clone path ready before taking references to
+ * them; DBNameToDBVersions is replaced during initialization, so capturing it too early leaves a
+ * permanently stale empty object.
+ */
+const ensureDBCloneSchemaReady = async () => {
+  const game = appData.currentGame;
+  await Promise.all([
+    getSchemaForGame(game),
+    getReferencesForGame(game),
+    getDBFieldsThatReferenceForGame(game),
+    getDBFieldsReferencedByForGame(game),
+  ]);
+};
 
 /** True when the pack index proves the table absent, or every matching packed file already has rows. */
 const isPackTableResolved = (newPackPath: string, tableToRead: string) => {
@@ -147,6 +166,7 @@ export const buildDBReferenceTree = async (
   console.log("ENTER buildDBReferenceTree");
   console.log("args:", packPath, currentDBTableSelection, deepCloneTarget, selectedNodesByName);
   if (shouldIgnoreDBCloneTable(currentDBTableSelection.dbName)) return;
+  await ensureDBCloneSchemaReady();
   const DBNameToDBVersions = gameToDBNameToDBVersions[appData.currentGame];
   const DBFieldsReferencedBy = gameToDBFieldsReferencedBy[appData.currentGame];
   const tableToreferencedColumns = gameToReferences[appData.currentGame];
@@ -776,6 +796,7 @@ export const buildDBIndirectReferences = async (
   cacheContext?: DBIndirectReferenceCacheContext,
 ): Promise<IViewerTreeNodeWithData[]> => {
   if (shouldIgnoreDBCloneTable(selectedNode.tableName)) return [];
+  await ensureDBCloneSchemaReady();
   const DBFieldsReferencedBy = gameToDBFieldsReferencedBy[appData.currentGame];
   const tableToreferencedColumns = gameToReferences[appData.currentGame];
 
@@ -995,6 +1016,7 @@ export async function executeDBDuplication(
   executionContext?: DBCloneExecutionContext,
 ): Promise<DBCloneExecutionResult> {
   try {
+    await ensureDBCloneSchemaReady();
     const isCanceled = () => executionContext?.isCanceled?.() ?? false;
     const report = (stage: DBDuplicationProgress["stage"], message?: string, current?: number, total?: number) => {
       executionContext?.report?.({ stage, message, current, total });

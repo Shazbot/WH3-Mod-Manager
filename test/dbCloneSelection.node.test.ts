@@ -93,6 +93,8 @@ describe("DB Clone selection", () => {
       "building_superchains_tables",
       "effect_bonus_value_building_chain_junctions_tables",
       "cai_construction_system_unblocking_buildings_tables",
+      "building_levels_campaign_bmd_layer_group_junctions_tables",
+      "campaign_building_level_factorial_effect_junctions_tables",
     ]);
     expect(BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES).toEqual(["cai_construction_system_synergies_tables"]);
   });
