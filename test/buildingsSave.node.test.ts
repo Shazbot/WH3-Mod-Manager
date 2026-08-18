@@ -153,6 +153,43 @@ describe("buildPackedFilesFromNewRows", () => {
   });
 });
 
+describe("buildPackedFilesFromNewRows duplicates", () => {
+  const rowsWith = (values: Array<Record<string, string>>) =>
+    buildingsEditReducer(emptyBuildingsEditState(), {
+      type: "addRows",
+      rows: values.map((row) => ({ table: "building_levels_tables", origin: "manual" as const, values: row })),
+    });
+
+  it("writes an identical row once, however many times it was added", () => {
+    const state = rowsWith([
+      { level_name: "a", level: "1" },
+      { level_name: "a", level: "1" },
+      { level_name: "b", level: "1" },
+    ]);
+    const { files } = buildPackedFilesFromNewRows({
+      state,
+      tableSchemas: { building_levels_tables: schema },
+      fileName: "f",
+    });
+
+    expect(roundTrip(files[0], schema).map((row) => row[0].resolvedKeyValue)).toEqual(["a", "b"]);
+  });
+
+  it("keeps two rows that share a key but differ in a written column", () => {
+    const state = rowsWith([
+      { level_name: "a", level: "1" },
+      { level_name: "a", level: "2" },
+    ]);
+    const { files } = buildPackedFilesFromNewRows({
+      state,
+      tableSchemas: { building_levels_tables: schema },
+      fileName: "f",
+    });
+
+    expect(roundTrip(files[0], schema)).toHaveLength(2);
+  });
+});
+
 describe("buildBuildingsFileName", () => {
   it("uses the modder's prefix", () => {
     expect(buildBuildingsFileName("tilic", [])).toMatch(/^!!!tilic_buildings_[a-z0-9]{6}$/);

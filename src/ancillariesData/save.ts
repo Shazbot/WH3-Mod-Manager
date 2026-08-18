@@ -30,6 +30,24 @@ const emptyPackedFile = (
   schemaFields: PackedFile["schemaFields"],
 ) => ({ name, file_size: 0, start_pos: -1, version, tableSchema, schemaFields }) as PackedFile;
 
+/**
+ * Rows that would be written identically, collapsed to one.
+ *
+ * Two edits can converge on the same row - the same source cloned twice, or an override that ends
+ * up matching a row already added - and the game reads a table with a repeated row as a table with
+ * a repeated key. Only *completely* identical rows go; two rows that share a key but differ in any
+ * written column are still both written, since which one wins is the modder's business.
+ */
+const dedupeIdenticalRows = <TRow>(rows: TRow[], project: (row: TRow) => unknown[]): TRow[] => {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const signature = JSON.stringify(project(row));
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+    return true;
+  });
+};
+
 export const buildPackedFilesFromNewRows = ({
   state,
   tableSchemas,
@@ -47,7 +65,7 @@ export const buildPackedFilesFromNewRows = ({
           `text\\db\\${fileName}.loc`,
           LocVersion.version,
           LocVersion,
-          rows.flatMap((row) =>
+          dedupeIdenticalRows(rows, (row) => [row.values.key ?? "", row.values.text ?? ""]).flatMap((row) =>
             buildRowFromValues(LocVersion, {
               key: row.values.key ?? "",
               text: row.values.text ?? "",
@@ -69,7 +87,11 @@ export const buildPackedFilesFromNewRows = ({
         `db\\${table}\\${fileName}`,
         schema.version,
         schema,
-        rows.flatMap((row) => buildRowFromValues(schema, row.values)),
+        // Projected through the schema: only the columns the file carries decide whether two
+        // pending rows are the same row.
+        dedupeIdenticalRows(rows, (row) => schema.fields.map((field) => row.values[field.name] ?? null)).flatMap(
+          (row) => buildRowFromValues(schema, row.values),
+        ),
       ),
     );
   }

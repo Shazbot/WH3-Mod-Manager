@@ -188,6 +188,38 @@ describe("buildPackedFilesFromNewRows", () => {
     expect(byName).toEqual({ key: "ancillaries_onscreen_name_my_anc_1", text: "My Ancillary", tooltip: "0" });
   });
 
+  it("writes an identical row once, however many times it was added", () => {
+    const state = stateWith([
+      { table: "ancillaries_tables", values: { key: "anc_a", uniqueness_score: "5" } },
+      { table: "ancillaries_tables", values: { key: "anc_a", uniqueness_score: "5" } },
+      { table: "ancillaries_tables", values: { key: "anc_b" } },
+    ]);
+    const { files } = buildPackedFilesFromNewRows({ state, tableSchemas: schemas, fileName: "f" });
+
+    expect(roundTrip(files[0], ancillariesSchema).map((row) => row[0].resolvedKeyValue)).toEqual(["anc_a", "anc_b"]);
+  });
+
+  it("keeps two rows that share a key but differ in a written column", () => {
+    const state = stateWith([
+      { table: "ancillaries_tables", values: { key: "anc_a", uniqueness_score: "5" } },
+      { table: "ancillaries_tables", values: { key: "anc_a", uniqueness_score: "6" } },
+    ]);
+    const { files } = buildPackedFilesFromNewRows({ state, tableSchemas: schemas, fileName: "f" });
+
+    expect(roundTrip(files[0], ancillariesSchema)).toHaveLength(2);
+  });
+
+  it("drops a loc row that repeats both key and text", () => {
+    const state = stateWith([
+      { table: LOC_TABLE, values: { key: "ancillaries_onscreen_name_a", text: "A" } },
+      { table: LOC_TABLE, values: { key: "ancillaries_onscreen_name_a", text: "A" } },
+      { table: LOC_TABLE, values: { key: "ancillaries_onscreen_name_a", text: "Renamed" } },
+    ]);
+    const { files } = buildPackedFilesFromNewRows({ state, tableSchemas: {}, fileName: "f" });
+
+    expect(roundTrip(files[0], LocVersion).map((row) => row[1].resolvedKeyValue)).toEqual(["A", "Renamed"]);
+  });
+
   it("writes one row per new row, in order", () => {
     const state = stateWith([
       { table: "ancillaries_tables", values: { key: "anc_a" } },
