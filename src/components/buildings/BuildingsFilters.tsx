@@ -22,7 +22,11 @@ export type BuildingsFiltersProps = {
   onOpenMap: (campaign: string, region: string) => void;
 };
 
-type SelectOption = { value: string; label: string; tone?: "quest" | "rebel" };
+/**
+ * `label` stays the `Name — key` pair so the built-in filter still matches either half; `name` is
+ * what the menu draws on its own line, and `value` doubles as the key line under it.
+ */
+type SelectOption = { value: string; label: string; name?: string; tone?: "quest" | "rebel" };
 
 const optionLabel = (option: BuildingsOption) =>
   option.localizedName === option.key ? option.key : `${option.localizedName} — ${option.key}`;
@@ -45,6 +49,7 @@ const toOptions = (options: BuildingsOption[], putUnlocalizedLast = false): Sele
   (putUnlocalizedLast ? sortLocalizedOptions(options) : options).map((option) => ({
     value: option.key,
     label: optionLabel(option),
+    name: option.localizedName,
   }));
 
 /**
@@ -81,6 +86,7 @@ export const buildFactionOptions = (factions: BuildingsFactionOption[]): SelectO
     .map((faction) => ({
       value: faction.key,
       label: optionLabel(faction),
+      name: faction.localizedName,
       tone: faction.isQuestFaction ? "quest" : faction.isRebel ? "rebel" : undefined,
     }));
 };
@@ -88,8 +94,34 @@ export const buildFactionOptions = (factions: BuildingsFactionOption[]): SelectO
 const findOption = (options: SelectOption[], value: string | undefined) =>
   (value && options.find((option) => option.value === value)) || null;
 
-const labelClass = "flex flex-col gap-1 text-xs text-gray-400";
-const selectWidth = { minWidth: "13rem" };
+const labelClass = "flex flex-col gap-1 text-sm text-gray-300";
+const selectWidth = { minWidth: "15rem" };
+
+/**
+ * The filter bar sits above a dense board, so its own text was left small enough to be hard to
+ * read. These bump the control and its menu to the body size. Menu rows carry the localized name
+ * over the key on two lines instead of wrapping one long `Name — key` string, and the height that
+ * costs has to be stated here because react-windowed-select measures virtualised rows by it.
+ */
+const CONTROL_HEIGHT = 38;
+const OPTION_HEIGHT = 50;
+const filterSelectStyle = {
+  ...selectStyle,
+  control: (base: any, state: any) => ({
+    ...selectStyle.control(base, state),
+    fontSize: "0.875rem",
+    minHeight: CONTROL_HEIGHT,
+  }),
+  menu: (base: any) => ({ ...selectStyle.menu(base), fontSize: "0.875rem" }),
+  option: (base: any, state: any) => ({
+    ...selectStyle.option(base, state),
+    height: OPTION_HEIGHT,
+    padding: "6px 12px",
+    display: "flex",
+    alignItems: "center",
+    overflow: "hidden",
+  }),
+};
 
 /** Above this many options the menu is virtualised; regions and factions are well past it. */
 const WINDOW_THRESHOLD = 60;
@@ -116,24 +148,31 @@ const FilterSelect = ({
     {label}
     <WindowedSelect
       windowThreshold={WINDOW_THRESHOLD}
-      styles={selectStyle}
+      styles={filterSelectStyle}
       options={options}
       value={findOption(options, value)}
       isDisabled={disabled}
       onChange={(option) => onSelect((option as SelectOption | null)?.value ?? "")}
-      formatOptionLabel={(option) => (
-        <span
-          className={
-            (option as SelectOption).tone === "quest"
-              ? "text-yellow-300"
-              : (option as SelectOption).tone === "rebel"
-                ? "text-red-400"
-                : undefined
-          }
-        >
-          {(option as SelectOption).label}
-        </span>
-      )}
+      formatOptionLabel={(option, meta) => {
+        const entry = option as SelectOption;
+        const toneClass =
+          entry.tone === "quest" ? "text-yellow-300" : entry.tone === "rebel" ? "text-red-400" : "text-slate-100";
+        // The closed control has one line to work with, and an option whose key is its own name
+        // would only repeat itself on a second line.
+        if (meta.context === "value" || !entry.name || entry.name === entry.value) {
+          return (
+            <span className={`${meta.context === "menu" ? "w-full min-w-0 truncate " : ""}${toneClass}`}>
+              {entry.label}
+            </span>
+          );
+        }
+        return (
+          <span className="flex w-full min-w-0 flex-col leading-tight">
+            <span className={`truncate ${toneClass}`}>{entry.name}</span>
+            <span className="truncate text-[0.8125rem] text-gray-300">{entry.value}</span>
+          </span>
+        );
+      }}
     />
   </label>
 );
@@ -292,7 +331,7 @@ const BuildingsFilters = memo(
           onSelect={(faction) => onQueryChange({ faction: faction || undefined })}
         />
 
-        <div className="flex flex-col gap-1 text-xs text-gray-400">
+        <div className="flex flex-col gap-1 text-sm text-gray-300">
           <span>
             {(localized.buildingsZoom || "Zoom {{percent}}%").replace("{{percent}}", `${Math.round(zoom * 100)}`)}
           </span>
@@ -311,7 +350,7 @@ const BuildingsFilters = memo(
           <button
             type="button"
             onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
-            className="h-9 rounded border border-gray-700 bg-gray-900 px-3 text-xs text-gray-300 hover:border-blue-500 hover:bg-gray-800 hover:text-white"
+            className="h-9 rounded border border-gray-700 bg-gray-900 px-3 text-sm text-gray-300 hover:border-blue-500 hover:bg-gray-800 hover:text-white"
           >
             {localized.buildingsExtra || "Extra"}
           </button>
