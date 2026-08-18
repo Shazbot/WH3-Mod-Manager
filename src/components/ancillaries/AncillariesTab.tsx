@@ -223,27 +223,29 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
   }
 
   const pendingRowCount = edits.order.length;
+  // Everything that writes rows is modder-only, and so is the grid that lists them: without the
+  // option the tab is a read-only browser, whichever sub-tab was left selected.
+  const activeSubTab = isFeaturesForModdersEnabled ? subTab : "browser";
 
   return (
     <div className="flex h-[calc(100vh-6rem)] flex-col text-gray-100">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-700 bg-gray-900 px-4 py-2">
-        <div className="flex overflow-hidden rounded border border-gray-700">
-          {(["browser", "tables"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setSubTab(tab)}
-              className={`px-3 py-1 text-sm ${
-                subTab === tab ? "bg-amber-700 text-white" : "bg-gray-900 text-gray-400 hover:text-white"
-              }`}
-            >
-              {tab === "browser" ? "Browser" : `New rows${pendingRowCount > 0 ? ` (${pendingRowCount})` : ""}`}
-            </button>
-          ))}
-        </div>
-
         {isFeaturesForModdersEnabled && (
           <>
+            <div className="flex overflow-hidden rounded border border-gray-700">
+              {(["browser", "tables"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setSubTab(tab)}
+                  className={`px-3 py-1 text-sm ${
+                    subTab === tab ? "bg-amber-700 text-white" : "bg-gray-900 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {tab === "browser" ? "Browser" : `New rows${pendingRowCount > 0 ? ` (${pendingRowCount})` : ""}`}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={addAncillary}
@@ -270,7 +272,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
         {error && <span className="ml-auto truncate text-xs text-red-400">{error}</span>}
       </div>
 
-      {subTab === "browser" ? (
+      {activeSubTab === "browser" ? (
         <div className="flex min-h-0 flex-1">
           <aside className="flex w-80 shrink-0 flex-col border-r border-gray-700 bg-gray-900">
             <AncillariesBrowser
@@ -314,7 +316,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
         </div>
       )}
 
-      {isSaveOpen && (
+      {isSaveOpen && isFeaturesForModdersEnabled && (
         <AncillariesSaveModal
           state={edits}
           tableSchemas={tableSchemas}
