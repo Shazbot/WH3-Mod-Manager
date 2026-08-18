@@ -326,6 +326,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
               edits={edits}
               dispatch={dispatchEdit}
               isEditingEnabled={isFeaturesForModdersEnabled}
+              onKeyChange={setSelectedKey}
               onClone={openCloneFor}
               isCloning={deepClone.isResolving}
             />

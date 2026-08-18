@@ -1,10 +1,11 @@
-import React, { memo, useCallback, useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import WindowedSelect from "react-windowed-select";
 import { createFilter } from "react-select";
 import { IoAdd, IoCopy, IoLockClosed, IoTrash } from "react-icons/io5";
 import selectStyle from "../../styles/selectStyle";
 import {
   LOC_TABLE,
+  ancillaryRenameActions,
   findPendingRow,
   type AncillariesEditAction,
   type AncillariesEditState,
@@ -51,6 +52,8 @@ export type AncillaryDetailProps = {
   isEditingEnabled: boolean;
   onClone?: (key: string) => void;
   isCloning?: boolean;
+  /** Follows a rename, so the tab keeps showing the ancillary the user is editing. */
+  onKeyChange?: (key: string) => void;
 };
 
 /**
@@ -125,7 +128,7 @@ const IconSelect = ({
 };
 
 const AncillaryDetail = memo(
-  ({ detail, catalog, edits, dispatch, isEditingEnabled, onClone, isCloning }: AncillaryDetailProps) => {
+  ({ detail, catalog, edits, dispatch, isEditingEnabled, onClone, isCloning, onKeyChange }: AncillaryDetailProps) => {
     const [pendingEffectKey, setPendingEffectKey] = useState<string>();
     const [isTypesOpen, setIsTypesOpen] = useState(false);
     const localized = useLocalizations();
@@ -183,6 +186,42 @@ const AncillaryDetail = memo(
       (column: string) => pendingRow?.values[column] ?? detail?.rowValues[column] ?? "",
       [detail, pendingRow],
     );
+
+    /**
+     * A key the user can still change: only a *new* ancillary has one, since renaming an override
+     * would just point it at a different ancillary. The New ancillary action writes both rows in
+     * one group, which is what tells it apart from an edit to a vanilla row that has no info row.
+     */
+    const isNewAncillary = useMemo(() => {
+      if (pendingRow?.origin !== "newAncillary") return false;
+      const infoRow = findPendingRow(edits, "ancillary_info_tables", { ancillary: ancillaryKey });
+      return infoRow?.groupId === pendingRow.groupId;
+    }, [ancillaryKey, edits, pendingRow]);
+
+    const [draftKey, setDraftKey] = useState(ancillaryKey);
+    const [keyError, setKeyError] = useState<string>();
+    // A different ancillary, or one the rename already went through for, starts the box over.
+    useEffect(() => {
+      setDraftKey(ancillaryKey);
+      setKeyError(undefined);
+    }, [ancillaryKey]);
+
+    /** Committed on blur or Enter rather than per keystroke: a rename rewrites every row at once. */
+    const commitKey = useCallback(() => {
+      const nextKey = draftKey.trim();
+      if (!detail || nextKey === detail.key) return;
+      if (!nextKey) {
+        setKeyError(localized.ancillariesKeyRequired || "Give the ancillary a key.");
+        return;
+      }
+      if (catalog?.ancillaries.some((ancillary) => ancillary.key === nextKey)) {
+        setKeyError(localized.ancillariesKeyTaken || "That ancillary key already exists.");
+        return;
+      }
+      setKeyError(undefined);
+      for (const action of ancillaryRenameActions(edits, detail.key, nextKey)) dispatch(action);
+      onKeyChange?.(nextKey);
+    }, [catalog, detail, dispatch, draftKey, edits, localized, onKeyChange]);
 
     const setAncillaryField = useCallback(
       (column: string, value: string) => {
@@ -383,6 +422,23 @@ const AncillaryDetail = memo(
 
         {isEditingEnabled && (
           <>
+            {isNewAncillary && (
+              <Section title={localized.ancillariesSectionKey || "Key"}>
+                <input
+                  type="text"
+                  value={draftKey}
+                  aria-label={localized.ancillariesAncillaryKey || "Ancillary key"}
+                  onChange={(event) => setDraftKey(event.target.value)}
+                  onBlur={commitKey}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                  className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
+                />
+                {keyError && <div className="mt-1 text-xs text-amber-300">{keyError}</div>}
+              </Section>
+            )}
+
             <Section title={localized.ancillariesSectionText || "Text"}>
               <div className="space-y-2">
                 {[

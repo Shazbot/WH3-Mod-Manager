@@ -299,3 +299,85 @@ describe("AncillaryDetail type browser", () => {
     expect(newRowsByTable(getState()).ancillaries_tables[0].values.type).toBe("me_type_banner");
   });
 });
+
+describe("AncillaryDetail key box", () => {
+  /** The rows "New ancillary" writes: the box only shows for one of these. */
+  const newAncillaryEdits = (key: string) =>
+    ancillariesEditReducer(emptyAncillariesEditState(), {
+      type: "addRows",
+      rows: [
+        { table: "ancillaries_tables", origin: "newAncillary", values: { key, category: "weapon" } },
+        { table: "ancillary_info_tables", origin: "newAncillary", values: { ancillary: key } },
+        { table: LOC_TABLE, origin: "newAncillary", values: { key: `ancillaries_onscreen_name_${key}`, text: "New" } },
+      ],
+    });
+
+  const renderNew = (over: Partial<React.ComponentProps<typeof AncillaryDetail>> = {}) => {
+    let state = newAncillaryEdits("me_anc_1");
+    const dispatch = vi.fn((action: AncillariesEditAction) => {
+      state = ancillariesEditReducer(state, action);
+      rerender();
+    });
+    const props = () => ({
+      detail: { ...detail, key: "me_anc_1", rowValues: { ...detail.rowValues, key: "me_anc_1" } },
+      catalog,
+      edits: state,
+      dispatch,
+      isEditingEnabled: true,
+      ...over,
+    });
+    const view = render(<AncillaryDetail {...props()} />);
+    const rerender = () => view.rerender(<AncillaryDetail {...props()} />);
+    return { ...view, getState: () => state };
+  };
+
+  it("is prefilled with the generated key", () => {
+    renderNew();
+    expect((screen.getByLabelText("Ancillary key") as HTMLInputElement).value).toBe("me_anc_1");
+  });
+
+  it("stays hidden for an override of an existing ancillary, which has no key to rename", () => {
+    renderDetail();
+    expect(screen.queryByLabelText("Ancillary key")).toBeNull();
+  });
+
+  it("renames every pending row once the box is left", () => {
+    const onKeyChange = vi.fn();
+    const { getState } = renderNew({ onKeyChange });
+    const input = screen.getByLabelText("Ancillary key");
+    fireEvent.change(input, { target: { value: "me_sword" } });
+    // Still the old key: a rename per keystroke would rewrite every row eight times.
+    expect(newRowsByTable(getState()).ancillaries_tables[0].values.key).toBe("me_anc_1");
+
+    fireEvent.blur(input);
+
+    const rows = newRowsByTable(getState());
+    expect(rows.ancillaries_tables[0].values.key).toBe("me_sword");
+    expect(rows.ancillary_info_tables[0].values.ancillary).toBe("me_sword");
+    expect(rows[LOC_TABLE][0].values.key).toBe("ancillaries_onscreen_name_me_sword");
+    expect(onKeyChange).toHaveBeenCalledWith("me_sword");
+  });
+
+  it("refuses a key that is already taken, and an empty one", () => {
+    const onKeyChange = vi.fn();
+    const { getState } = renderNew({
+      onKeyChange,
+      catalog: {
+        ...catalog,
+        ancillaries: [{ key: "anc_sword", localizedName: "Sword", category: "weapon", subcategory: "", type: "t" }],
+      },
+    });
+    const input = screen.getByLabelText("Ancillary key");
+
+    fireEvent.change(input, { target: { value: "anc_sword" } });
+    fireEvent.blur(input);
+    expect(screen.getByText("That ancillary key already exists.")).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "  " } });
+    fireEvent.blur(input);
+    expect(screen.getByText("Give the ancillary a key.")).toBeTruthy();
+
+    expect(newRowsByTable(getState()).ancillaries_tables[0].values.key).toBe("me_anc_1");
+    expect(onKeyChange).not.toHaveBeenCalled();
+  });
+});

@@ -8,7 +8,13 @@
  * Structurally the same model as `buildingsData/edits.ts`; kept separate rather than shared because
  * the two features seed different tables and grow different origins.
  */
-import { ANCILLARY_TABLE_KEY_COLUMNS, dedupeRowsByKey } from "./data";
+import {
+  ANCILLARY_TABLE_KEY_COLUMNS,
+  ancillaryColourTextLocKey,
+  ancillaryExplanationLocKey,
+  ancillaryNameLocKey,
+  dedupeRowsByKey,
+} from "./data";
 import type { AncillariesTableRows, BuiltAncillariesData } from "./types";
 
 /** Loc entries ride the same store as db rows; this is their pseudo-table. */
@@ -186,6 +192,35 @@ export const applyNewRowsToAncillariesData = (
     tables[table] = [...(baseTables[table] ?? []), ...rows.map((row) => row.values)];
   }
   return rebuild(tables);
+};
+
+/**
+ * Every cell edit that renames a pending ancillary, so the key can still be changed after creation.
+ *
+ * A key is not one cell: the `ancillaries_tables` row holds it, `ancillary_info_tables` and
+ * `ancillary_to_effects_tables` reference it, and each loc row embeds it in its own key. Renaming
+ * one and not the rest would leave a new ancillary with no info row and no name.
+ */
+export const ancillaryRenameActions = (
+  state: AncillariesEditState,
+  oldKey: string,
+  newKey: string,
+): AncillariesEditAction[] => {
+  if (!newKey || newKey === oldKey) return [];
+  const locKeyBuilders = [ancillaryNameLocKey, ancillaryExplanationLocKey, ancillaryColourTextLocKey];
+  const actions: AncillariesEditAction[] = [];
+  for (const id of state.order) {
+    const row = state.rowsById[id];
+    if (!row) continue;
+    if (row.table === LOC_TABLE) {
+      const builder = locKeyBuilders.find((build) => build(oldKey) === row.values.key);
+      if (builder) actions.push({ type: "setCell", id, column: "key", value: builder(newKey) });
+      continue;
+    }
+    const column = row.table === "ancillaries_tables" ? "key" : "ancillary";
+    if (row.values[column] === oldKey) actions.push({ type: "setCell", id, column, value: newKey });
+  }
+  return actions;
 };
 
 /** Flags a row whose key collides with one already in the base data, which would silently override. */

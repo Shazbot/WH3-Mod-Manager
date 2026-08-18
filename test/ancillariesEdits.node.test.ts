@@ -4,6 +4,7 @@ import { ANCILLARY_TABLES, buildAncillariesData } from "../src/ancillariesData/d
 import {
   LOC_TABLE,
   ancillariesEditReducer,
+  ancillaryRenameActions,
   applyNewRowsToAncillariesData,
   emptyAncillariesEditState,
   findKeyCollisions,
@@ -276,5 +277,63 @@ describe("validateNewRows", () => {
       { table: "ancillaries_tables", origin: "newAncillary", values: { key: "" } },
     ]);
     expect(validateNewRows(base(), state).some((issue) => issue.kind === "missingKey")).toBe(true);
+  });
+});
+
+describe("ancillaryRenameActions", () => {
+  /** What "New ancillary" creates, plus an effect added to it afterwards. */
+  const newAncillaryState = () => {
+    let state = withRows([
+      { table: "ancillaries_tables", origin: "newAncillary", values: { key: "me_anc_1", category: "weapon" } },
+      { table: "ancillary_info_tables", origin: "newAncillary", values: { ancillary: "me_anc_1" } },
+      { table: LOC_TABLE, origin: "newAncillary", values: { key: "ancillaries_onscreen_name_me_anc_1", text: "New" } },
+      { table: LOC_TABLE, origin: "newAncillary", values: { key: "ancillaries_colour_text_me_anc_1", text: "" } },
+      { table: LOC_TABLE, origin: "newAncillary", values: { key: "ancillaries_explanation_text_me_anc_1", text: "" } },
+    ]);
+    state = ancillariesEditReducer(state, {
+      type: "addRows",
+      rows: [
+        {
+          table: "ancillary_to_effects_tables",
+          origin: "addEffect",
+          values: { ancillary: "me_anc_1", effect: "effect_melee", value: "5" },
+        },
+      ],
+    });
+    return state;
+  };
+
+  it("renames every row that carries the key, loc rows included", () => {
+    const state = newAncillaryState();
+    const renamed = ancillaryRenameActions(state, "me_anc_1", "me_sword").reduce(ancillariesEditReducer, state);
+    const byTable = newRowsByTable(renamed);
+
+    expect(byTable.ancillaries_tables[0].values.key).toBe("me_sword");
+    expect(byTable.ancillary_info_tables[0].values.ancillary).toBe("me_sword");
+    expect(byTable.ancillary_to_effects_tables[0].values.ancillary).toBe("me_sword");
+    expect(byTable[LOC_TABLE].map((row) => row.values.key)).toEqual([
+      "ancillaries_onscreen_name_me_sword",
+      "ancillaries_colour_text_me_sword",
+      "ancillaries_explanation_text_me_sword",
+    ]);
+    // The text the user already typed rides along with its row.
+    expect(byTable[LOC_TABLE][0].values.text).toBe("New");
+  });
+
+  it("leaves rows belonging to another ancillary alone", () => {
+    let state = newAncillaryState();
+    state = ancillariesEditReducer(state, {
+      type: "addRows",
+      rows: [{ table: "ancillaries_tables", origin: "newAncillary", values: { key: "me_anc_2" } }],
+    });
+    const renamed = ancillaryRenameActions(state, "me_anc_1", "me_sword").reduce(ancillariesEditReducer, state);
+
+    expect(newRowsByTable(renamed).ancillaries_tables.map((row) => row.values.key)).toEqual(["me_sword", "me_anc_2"]);
+  });
+
+  it("is a no-op for an unchanged or empty key", () => {
+    const state = newAncillaryState();
+    expect(ancillaryRenameActions(state, "me_anc_1", "me_anc_1")).toEqual([]);
+    expect(ancillaryRenameActions(state, "me_anc_1", "")).toEqual([]);
   });
 });
