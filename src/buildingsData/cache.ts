@@ -4,7 +4,7 @@ import * as nodePath from "path";
 import type { BuildingsTableRows, BuiltBuildingsData } from "./types";
 
 /** Bump whenever the shape of `BuiltBuildingsData` or the extraction rules change. */
-const BUILDINGS_CACHE_VERSION = 15;
+const BUILDINGS_CACHE_VERSION = 16;
 const BUILDINGS_CACHE_FILE = "buildings-data-cache.bin";
 
 export type BuildingsCacheSignatureInputs = {

@@ -23,6 +23,15 @@ export interface EsfMapMarker {
   settlementKey: string | null;
 }
 
+export interface EsfMapFaction {
+  key: string;
+  label: string;
+  flagPath?: string;
+  /** Runtime asset-protocol URL; omitted from the persisted map cache. */
+  flagUrl?: string;
+  regionCount: number;
+}
+
 export interface EsfMapCampaignOption {
   key: string;
   label: string;
@@ -58,6 +67,7 @@ export interface EsfMapPayload {
   height: number;
   areas: EsfMapArea[];
   markers: EsfMapMarker[];
+  factions: EsfMapFaction[];
   componentCount: number;
   totalLoops: number;
   totalVertices: number;

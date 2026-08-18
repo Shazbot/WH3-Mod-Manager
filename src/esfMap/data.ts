@@ -439,6 +439,7 @@ export function buildEsfMapData(
     height: renderGrid.height,
     areas: polygons.areas.map((area) => mapArea(area, baseMarkers, lookupMarkerByAreaId)),
     markers,
+    factions: [],
     componentCount: polygons.componentCount,
     totalLoops: polygons.totalLoops,
     totalVertices: polygons.totalVertices,

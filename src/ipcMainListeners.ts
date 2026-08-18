@@ -94,6 +94,7 @@ import type {
 } from "./ancillariesData/types";
 import { clearEsfMapMemoryCache, loadEsfMapDiskCache, saveEsfMapDiskCache } from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
+import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
 import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
 import type { EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
@@ -3369,7 +3370,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 2,
+          feature: 3,
           game: appData.currentGame,
           dataFolder: dataFolder ?? null,
           currentLanguage: appData.currentLanguage ?? null,
@@ -3390,21 +3391,36 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("getEsfMap", async (_event, enabledMods: Mod[], campaignName?: string): Promise<EsfMapResponse> => {
     try {
       const signature = await getEsfMapSignature(enabledMods, campaignName);
+      const buildings = await ensureBuildingsData(enabledMods);
+      const registeredIconPath = (requestedPath: string) =>
+        Object.keys(buildings.icons).find(
+          (iconPath) => normalizeAssetPath(iconPath) === normalizeAssetPath(requestedPath),
+        );
+      const decorate = (map: import("./esfMap/types").EsfMapPayload) => {
+        const withFactions = addFactionDataToEsfMap(map, buildings.data, (flagPath) => {
+          const registeredPath = registeredIconPath(flagPath);
+          return registeredPath ? iconAssetUrl(buildings.iconGeneration, registeredPath) : undefined;
+        });
+        return addSettlementTypeDataToEsfMap(withFactions, buildings.data);
+      };
       if (cachedEsfMapData?.signature === signature) {
-        return { success: true, map: cachedEsfMapData.data };
+        return { success: true, map: decorate(cachedEsfMapData.data) };
       }
 
       const diskData = await loadEsfMapDiskCache(app.getPath("userData"), signature);
       if (diskData) {
         cachedEsfMapData = { signature, data: diskData };
-        return { success: true, map: diskData };
+        return { success: true, map: decorate(diskData) };
       }
 
       const extractedMap = await loadEsfMapData(enabledMods, campaignName);
-      const buildings = await ensureBuildingsData(enabledMods);
-      const data = addSettlementTypeDataToEsfMap(extractedMap, buildings.data);
-      await saveEsfMapDiskCache(app.getPath("userData"), signature, data);
-      cachedEsfMapData = { signature, data };
+      const data = decorate(extractedMap);
+      const cacheData = {
+        ...data,
+        factions: data.factions.map(({ flagUrl: _flagUrl, ...faction }) => faction),
+      };
+      await saveEsfMapDiskCache(app.getPath("userData"), signature, cacheData);
+      cachedEsfMapData = { signature, data: cacheData };
       return { success: true, map: data };
     } catch (error) {
       console.log("getEsfMap failed:", error);
@@ -3701,6 +3717,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const units of [...Object.values(data.garrisonByLevel), ...Object.values(data.recruitableByLevel)]) {
       for (const unit of units) if (unit.cardPath) unitCardPaths.add(unit.cardPath);
     }
+    const factionFlagPaths = new Set<string>();
+    for (const faction of data.factions) {
+      const flagPath = factionFlagPath(faction.flagPath);
+      if (flagPath) factionFlagPaths.add(flagPath);
+    }
     const wantedPaths = Array.from(
       new Set([
         ...(buildingFrame ? [BUILDING_FRAME_PATH] : []),
@@ -3708,6 +3729,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         ...Object.values(iconPathByBaseName),
         ...effectIconPaths,
         ...unitCardPaths,
+        ...factionFlagPaths,
       ]),
     );
     const wantedPackPaths = new Set(

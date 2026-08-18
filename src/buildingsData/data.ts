@@ -723,6 +723,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
       militaryGroup: str(row, "military_group"),
       isQuestFaction: bool(row, "is_quest_faction"),
       isRebel: bool(row, "is_rebel"),
+      flagPath: optional(str(row, "flags_path")),
     }))
     .filter((entry) => entry.key !== "")
     .map((entry) => ({

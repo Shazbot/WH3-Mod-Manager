@@ -266,6 +266,8 @@ export interface BuildingsFactionOption extends BuildingsOption {
   militaryGroup: string;
   isQuestFaction: boolean;
   isRebel: boolean;
+  /** Folder from `factions_tables.flags_path`; the map appends `mon_64.png`. */
+  flagPath?: string;
 }
 
 export interface BuildingsEffectOption extends BuildingsOption {

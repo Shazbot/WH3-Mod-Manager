@@ -64,6 +64,14 @@ describe("ESF map disk cache", () => {
           settlementKey: "settlement_1",
         },
       ],
+      factions: [
+        {
+          key: "wh3_main_faction",
+          label: "Faction",
+          flagPath: "ui\\flags\\wh3_main_faction\\mon_64.png",
+          regionCount: 1,
+        },
+      ],
       componentCount: 1,
       totalLoops: 1,
       totalVertices: 4,

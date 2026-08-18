@@ -9,6 +9,9 @@ type EsfMapTabProps = {
 };
 
 const MAP_AREA_OPACITY = 0.36;
+const FACTION_FLAG_SIZE = 20;
+
+type MapView = "regions" | "factions";
 
 const displayYFromVertex = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - y : y);
 const displayYFromCell = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - 1 - y : y);
@@ -37,6 +40,17 @@ const drawAreaPath = (context: CanvasRenderingContext2D, area: EsfMapArea, heigh
 
 const getMarkerForArea = (map: EsfMapPayload, area: EsfMapArea): EsfMapMarker | undefined =>
   area.regionKey ? map.markers.find((marker) => marker.key === area.regionKey) : undefined;
+
+const factionKey = (value: string | null | undefined) => value?.trim().toLowerCase();
+
+const factionColour = (key: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `hsla(${Math.abs(hash) % 360}, 72%, 48%, 0.46)`;
+};
 
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
@@ -70,6 +84,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
   const [selectedMarkerId, setSelectedMarkerId] = useState<number>();
   const [selectedSettlementType, setSelectedSettlementType] = useState("");
+  const [mapView, setMapView] = useState<MapView>("regions");
   const [filter, setFilter] = useState("");
   const [zoom, setZoom] = useState(1);
   const [isDraggingMap, setIsDraggingMap] = useState(false);
@@ -125,6 +140,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [map, selectedMarkerId],
   );
 
+  const factionsByKey = useMemo(
+    () => new Map((map?.factions ?? []).map((faction) => [faction.key.toLowerCase(), faction])),
+    [map],
+  );
+
+  const filteredFactions = useMemo(() => {
+    if (!map) return [];
+    const query = filter.trim().toLowerCase();
+    if (!query) return map.factions;
+    return map.factions.filter((faction) =>
+      [faction.key, faction.label].some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [filter, map]);
+
   useEffect(() => {
     if (!map) return;
     const selectedRegion =
@@ -149,7 +178,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     canvas.style.width = `${Math.max(320, Math.round(map.width * zoom))}px`;
     canvas.style.height = `${Math.max(240, Math.round(map.height * zoom))}px`;
 
-    const drawMap = (backgroundImage?: HTMLImageElement, backgroundTextImage?: HTMLImageElement) => {
+    const selected =
+      selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
+    const selectedFactionKey = factionKey(selected?.ownerFaction);
+
+    const drawMap = (
+      backgroundImage: HTMLImageElement | undefined,
+      backgroundTextImage: HTMLImageElement | undefined,
+      flagImages: Map<string, HTMLImageElement>,
+    ) => {
       context.clearRect(0, 0, map.width, map.height);
       if (backgroundImage) context.drawImage(backgroundImage, 0, 0, map.width, map.height);
       if (backgroundTextImage) context.drawImage(backgroundTextImage, 0, 0, map.width, map.height);
@@ -158,16 +195,27 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         !selectedSettlementType ||
         (!!regionKey && map.settlementTypesByRegion[regionKey]?.includes(selectedSettlementType));
 
-      for (const area of map.areas) {
-        if (!regionMatchesSettlementType(area.regionKey)) continue;
-        drawAreaPath(context, area, map.height, map.displayFlipY);
-        context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
-        context.fill("evenodd");
+      if (mapView === "regions") {
+        for (const area of map.areas) {
+          if (!regionMatchesSettlementType(area.regionKey)) continue;
+          drawAreaPath(context, area, map.height, map.displayFlipY);
+          context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
+          context.fill("evenodd");
+        }
       }
 
-      const selected =
-        selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
-      if (selected && regionMatchesSettlementType(selected.key)) {
+      if (mapView === "factions" && selectedFactionKey) {
+        for (const area of map.areas) {
+          if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== selectedFactionKey)
+            continue;
+          drawAreaPath(context, area, map.height, map.displayFlipY);
+          context.fillStyle = factionColour(selectedFactionKey);
+          context.strokeStyle = "rgba(255, 255, 255, 0.9)";
+          context.lineWidth = 1.2;
+          context.fill("evenodd");
+          context.stroke();
+        }
+      } else if (mapView === "regions" && selected && regionMatchesSettlementType(selected.key)) {
         const selectedAreaIds = new Set(
           map.areas.filter((area) => area.regionKey === selected.key).map((area) => area.componentId),
         );
@@ -182,10 +230,29 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         }
       }
 
-      context.fillStyle = "rgba(255, 255, 255, 0.92)";
       for (const marker of map.markers) {
         const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
-        context.fillRect(marker.gx - 1, y - 1, 2, 2);
+        const markerFaction = marker.ownerFaction
+          ? factionsByKey.get(factionKey(marker.ownerFaction) ?? "")
+          : undefined;
+        const flagImage =
+          mapView === "factions" && markerFaction?.flagUrl ? flagImages.get(markerFaction.flagUrl) : undefined;
+        if (flagImage) {
+          context.save();
+          context.shadowColor = "rgba(0, 0, 0, 0.8)";
+          context.shadowBlur = 2;
+          context.drawImage(
+            flagImage,
+            marker.gx - FACTION_FLAG_SIZE / 2,
+            y - FACTION_FLAG_SIZE / 2,
+            FACTION_FLAG_SIZE,
+            FACTION_FLAG_SIZE,
+          );
+          context.restore();
+        } else {
+          context.fillStyle = "rgba(255, 255, 255, 0.92)";
+          context.fillRect(marker.gx - 1, y - 1, 2, 2);
+        }
       }
 
       if (selected) {
@@ -200,26 +267,49 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
     const backgroundSrc = map.backgroundImage?.src;
     const backgroundTextSrc = map.backgroundTextImage?.src;
-    const cachedBackgroundImage = backgroundSrc ? mapImagesRef.current.get(backgroundSrc) : undefined;
-    const cachedBackgroundTextImage = backgroundTextSrc ? mapImagesRef.current.get(backgroundTextSrc) : undefined;
-    drawMap(cachedBackgroundImage, cachedBackgroundTextImage);
+    const flagSources =
+      mapView === "factions"
+        ? map.factions.map((faction) => faction.flagUrl).filter((src): src is string => !!src)
+        : [];
+    const imageSources = Array.from(
+      new Set([backgroundSrc, backgroundTextSrc, ...flagSources].filter(Boolean)),
+    ) as string[];
+    const cachedImages = new Map(
+      imageSources
+        .map((src) => [src, mapImagesRef.current.get(src)] as const)
+        .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
+    );
+    const flagImages = new Map(
+      flagSources
+        .map((src) => [src, cachedImages.get(src)] as const)
+        .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
+    );
+    drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), flagImages);
 
-    if ((!backgroundSrc || cachedBackgroundImage) && (!backgroundTextSrc || cachedBackgroundTextImage)) return;
+    const missingSources = imageSources.filter((src) => !cachedImages.has(src));
+    if (missingSources.length === 0) return;
 
     let cancelled = false;
-    void Promise.all([
-      cachedBackgroundImage ? Promise.resolve(cachedBackgroundImage) : loadMapImage(backgroundSrc),
-      cachedBackgroundTextImage ? Promise.resolve(cachedBackgroundTextImage) : loadMapImage(backgroundTextSrc),
-    ]).then(([backgroundImage, backgroundTextImage]) => {
+    void Promise.all(missingSources.map((src) => loadMapImage(src))).then((images) => {
       if (cancelled) return;
-      if (backgroundSrc && backgroundImage) mapImagesRef.current.set(backgroundSrc, backgroundImage);
-      if (backgroundTextSrc && backgroundTextImage) mapImagesRef.current.set(backgroundTextSrc, backgroundTextImage);
-      drawMap(backgroundImage, backgroundTextImage);
+      for (const [index, image] of images.entries()) {
+        const src = missingSources[index];
+        if (image) {
+          mapImagesRef.current.set(src, image);
+          cachedImages.set(src, image);
+        }
+      }
+      const loadedFlagImages = new Map(
+        flagSources
+          .map((src) => [src, cachedImages.get(src)] as const)
+          .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
+      );
+      drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), loadedFlagImages);
     });
     return () => {
       cancelled = true;
     };
-  }, [map, selectedMarkerId, selectedSettlementType, zoom]);
+  }, [factionsByKey, map, mapView, selectedMarkerId, selectedSettlementType, zoom]);
 
   const changeZoom = (nextZoom: number) => setZoom(Math.max(0.5, Math.min(6, nextZoom)));
 
@@ -230,6 +320,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     } else {
       dispatch(clearMapRegionSelection());
     }
+  };
+
+  const selectMapFaction = (factionKeyToSelect: string) => {
+    const marker = map?.markers.find((candidate) => factionKey(candidate.ownerFaction) === factionKeyToSelect);
+    selectMapMarker(marker);
   };
 
   const beginMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -322,6 +417,22 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     <div className="flex h-[92vh] min-h-0 flex-col text-gray-200">
       <div className="flex items-center gap-3 border-b border-gray-700 px-4 py-2 text-sm">
         <span className="font-medium text-gray-100">Campaign map</span>
+        <div className="flex rounded border border-gray-700 bg-gray-900 p-0.5" role="tablist" aria-label="Map view">
+          {(["regions", "factions"] as const).map((view) => (
+            <button
+              key={view}
+              type="button"
+              role="tab"
+              aria-selected={mapView === view}
+              onClick={() => setMapView(view)}
+              className={`rounded px-2 py-1 text-xs ${
+                mapView === view ? "bg-blue-800 text-gray-100" : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+              }`}
+            >
+              {view === "regions" ? "Regions" : "Factions"}
+            </button>
+          ))}
+        </div>
         {map && campaignOptions.length > 0 && (
           <select
             value={mapCampaignName}
@@ -414,7 +525,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
           <div className="flex min-h-0 flex-col overflow-hidden rounded border border-gray-700 bg-gray-900">
             <div className="border-b border-gray-800 px-3 py-2 text-xs text-gray-400">
-              {map.startposWasCompressed ? "Compressed startpos decoded" : "Startpos loaded"}
+              {mapView === "factions"
+                ? `${map.factions.length} factions · flags at settlements`
+                : map.startposWasCompressed
+                  ? "Compressed startpos decoded"
+                  : "Startpos loaded"}
               <div className="mt-1 truncate text-[0.65rem] text-gray-600" title={map.startposPath}>
                 {map.startposPath}
               </div>
@@ -433,30 +548,60 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               <input
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
-                placeholder="Filter regions…"
+                placeholder={mapView === "factions" ? "Filter factions…" : "Filter regions…"}
                 className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500"
               />
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-2">
-              {filteredMarkers.map((marker) => (
-                <button
-                  key={`${marker.id}-${marker.key}`}
-                  type="button"
-                  onClick={() => selectMapMarker(marker)}
-                  className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${
-                    selectedMarkerId === marker.id
-                      ? "border-blue-500 bg-blue-950/60 text-gray-100"
-                      : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
-                  }`}
-                >
-                  <span className="block truncate">{marker.key}</span>
-                  <span className="block truncate text-[0.65rem] text-gray-500">
-                    {marker.ownerFaction ?? "Unowned"}
-                  </span>
-                </button>
-              ))}
-              {filteredMarkers.length === 0 && (
-                <div className="px-2 py-3 text-xs text-gray-500">No matching regions.</div>
+              {mapView === "regions"
+                ? filteredMarkers.map((marker) => (
+                    <button
+                      key={`${marker.id}-${marker.key}`}
+                      type="button"
+                      onClick={() => selectMapMarker(marker)}
+                      className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${
+                        selectedMarkerId === marker.id
+                          ? "border-blue-500 bg-blue-950/60 text-gray-100"
+                          : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
+                      }`}
+                    >
+                      <span className="block truncate">{marker.key}</span>
+                      <span className="block truncate text-[0.65rem] text-gray-500">
+                        {marker.ownerFaction ?? "Unowned"}
+                      </span>
+                    </button>
+                  ))
+                : filteredFactions.map((faction) => {
+                    const isSelected = factionKey(selectedMarker?.ownerFaction) === faction.key.toLowerCase();
+                    return (
+                      <button
+                        key={faction.key}
+                        type="button"
+                        onClick={() => selectMapFaction(faction.key.toLowerCase())}
+                        className={`mb-1 flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-xs ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-950/60 text-gray-100"
+                            : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
+                        }`}
+                      >
+                        {faction.flagUrl ? (
+                          <img src={faction.flagUrl} alt="" className="h-6 w-6 shrink-0 object-contain" />
+                        ) : (
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-gray-500" />
+                        )}
+                        <span className="min-w-0">
+                          <span className="block truncate">{faction.label}</span>
+                          <span className="block truncate text-[0.65rem] text-gray-500">
+                            {faction.regionCount} {faction.regionCount === 1 ? "region" : "regions"} · {faction.key}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+              {(mapView === "regions" ? filteredMarkers.length : filteredFactions.length) === 0 && (
+                <div className="px-2 py-3 text-xs text-gray-500">
+                  {mapView === "factions" ? "No matching factions." : "No matching regions."}
+                </div>
               )}
             </div>
           </div>

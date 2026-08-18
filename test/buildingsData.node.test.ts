@@ -122,6 +122,7 @@ describe("buildBuildingsData", () => {
         military_group: "military_group_a",
         is_rebel: "true",
         is_quest_faction: "false",
+        flags_path: "ui/flags/faction_a",
       },
     ],
   };
@@ -214,6 +215,7 @@ describe("buildBuildingsData", () => {
         militaryGroup: "military_group_a",
         isRebel: true,
         isQuestFaction: false,
+        flagPath: "ui/flags/faction_a",
       }),
     ]);
   });
