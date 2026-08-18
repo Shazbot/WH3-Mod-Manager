@@ -57,6 +57,8 @@ export default defineConfig({
       {
         esbuild: false,
         plugins: [transformTypescript],
+        // Projects do not inherit the root `resolve`, and src code imports through the "@" alias.
+        resolve: { alias: { "@": projectRoot } },
         test: {
           name: "node",
           include: ["test/**/*.node.test.ts"],
@@ -67,6 +69,7 @@ export default defineConfig({
       {
         esbuild: false,
         plugins: [transformTypescript],
+        resolve: { alias: { "@": projectRoot } },
         test: {
           name: "dom",
           include: ["test/**/*.dom.test.ts", "test/**/*.dom.test.tsx"],

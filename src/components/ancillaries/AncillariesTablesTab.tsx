@@ -4,6 +4,7 @@ import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-communi
 import { LOC_TABLE, type AncillariesEditAction, type AncillariesEditState } from "../../ancillariesData/edits";
 import { groupIssuesByRow, type AncillariesRowIssue } from "../../ancillariesData/validate";
 import { parseEditedCellValue } from "../../utility/dbRowCells";
+import { useLocalizations } from "../../localizationContext";
 import { LocVersion, type DBField, type DBVersion } from "../../packFileTypes";
 
 const AG_GRID_MODULES_KEY = "__whmmAgGridModulesRegistered";
@@ -41,6 +42,7 @@ const AncillariesTablesTab = memo(
       return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     }, [state]);
 
+    const localized = useLocalizations();
     const [selectedTable, setSelectedTable] = useState("");
     // The selected table disappears when its last row is deleted, which would otherwise leave the
     // grid pointed at nothing.
@@ -94,14 +96,14 @@ const AncillariesTablesTab = memo(
         })),
         {
           field: "__issues",
-          headerName: "Issues",
+          headerName: localized.ancillariesIssuesColumn || "Issues",
           editable: false,
           minWidth: 200,
           flex: 2,
           cellClass: "text-amber-400",
         },
       ];
-    }, [dispatch, issuesByRow, schema]);
+    }, [dispatch, issuesByRow, localized, schema]);
 
     const addBlankRow = useCallback(() => {
       if (!schema || !selectedTable) return;
@@ -119,7 +121,8 @@ const AncillariesTablesTab = memo(
     if (tablesWithCounts.length === 0) {
       return (
         <div className="px-6 py-4 text-sm text-gray-400">
-          No new rows yet. Edit an ancillary, create one, or clone one, and its rows show up here.
+          {localized.ancillariesNoNewRows ||
+            "No new rows yet. Edit an ancillary, create one, or clone one, and its rows show up here."}
         </div>
       );
     }
@@ -134,7 +137,7 @@ const AncillariesTablesTab = memo(
           >
             {tablesWithCounts.map(([table, count]) => (
               <option key={table} value={table}>
-                {table === LOC_TABLE ? "localisation" : table} ({count})
+                {table === LOC_TABLE ? localized.ancillariesLocalisationTable || "localisation" : table} ({count})
               </option>
             ))}
           </select>
@@ -145,7 +148,7 @@ const AncillariesTablesTab = memo(
             disabled={!schema}
             className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600 disabled:opacity-50"
           >
-            Add blank row
+            {localized.ancillariesAddBlankRow || "Add blank row"}
           </button>
           <button
             type="button"
@@ -153,20 +156,31 @@ const AncillariesTablesTab = memo(
             disabled={selectedRowIds.length === 0}
             className="rounded bg-red-800 px-2 py-1 text-xs text-gray-100 hover:bg-red-700 disabled:opacity-50"
           >
-            Delete {selectedRowIds.length > 0 ? `${selectedRowIds.length} ` : ""}selected
+            {localized.ancillariesDelete || "Delete"} {selectedRowIds.length > 0 ? `${selectedRowIds.length} ` : ""}
+            {localized.ancillariesSelected || "selected"}
           </button>
           <button
             type="button"
             onClick={onClearAll}
             className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-950"
           >
-            Clear all pending edits
+            {localized.ancillariesClearPending || "Clear all pending edits"}
           </button>
 
-          {!schema && <span className="text-xs text-red-400">No schema for {selectedTable}; it cannot be saved.</span>}
+          {!schema && (
+            <span className="text-xs text-red-400">
+              {localized.ancillariesNoSchemaFor || "No schema for"} {selectedTable};{" "}
+              {localized.ancillariesCannotBeSaved || "it cannot be saved."}
+            </span>
+          )}
           {rowIssues && rowIssues.length > 0 && (
             <span className="ml-auto text-xs text-amber-400">
-              {rowIssues.length} issue{rowIssues.length === 1 ? "" : "s"} across all tables
+              {rowIssues.length === 1
+                ? localized.ancillariesIssueOneAllTables || "1 issue across all tables"
+                : (localized.ancillariesIssuesOtherAllTables || "{{count}} issues across all tables").replace(
+                    "{{count}}",
+                    `${rowIssues.length}`,
+                  )}
             </span>
           )}
         </div>

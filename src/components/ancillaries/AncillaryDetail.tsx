@@ -13,6 +13,7 @@ import {
 } from "../../ancillariesData/edits";
 import { ancillaryColourTextLocKey, ancillaryExplanationLocKey, ancillaryNameLocKey } from "../../ancillariesData/data";
 import AncillaryTypesModal from "./AncillaryTypesModal";
+import { useLocalizations } from "../../localizationContext";
 import type { AncillariesCatalog, AncillaryDetail as AncillaryDetailModel } from "../../ancillariesData/types";
 
 /** A menu that renders in a portal needs to sit above the rest of the app. */
@@ -65,17 +66,6 @@ type FieldSpec =
   | { column: string; label: string; kind: "boolean" }
   /** `withIcons` swaps the native select for a picker that can draw each option's icon. */
   | { column: string; label: string; kind: "select"; options: () => SelectOption[]; withIcons?: boolean };
-
-const BOOLEAN_FIELDS: Array<{ column: string; label: string }> = [
-  { column: "transferrable", label: "Transferrable" },
-  { column: "legendary_item", label: "Legendary" },
-  { column: "immortal", label: "Immortal" },
-  { column: "unique_to_world", label: "Unique to world" },
-  { column: "unique_to_faction", label: "Unique to faction" },
-  { column: "randomly_dropped", label: "Randomly dropped" },
-  { column: "can_be_stolen", label: "Can be stolen" },
-  { column: "can_be_destroyed", label: "Can be destroyed" },
-];
 
 const isTrue = (value: string | undefined) => (value ?? "").trim().toLowerCase() === "true";
 
@@ -138,6 +128,21 @@ const AncillaryDetail = memo(
   ({ detail, catalog, edits, dispatch, isEditingEnabled, onClone, isCloning }: AncillaryDetailProps) => {
     const [pendingEffectKey, setPendingEffectKey] = useState<string>();
     const [isTypesOpen, setIsTypesOpen] = useState(false);
+    const localized = useLocalizations();
+
+    const booleanFields = useMemo(
+      () => [
+        { column: "transferrable", label: localized.ancillariesFieldTransferrable || "Transferrable" },
+        { column: "legendary_item", label: localized.ancillariesFieldLegendary || "Legendary" },
+        { column: "immortal", label: localized.ancillariesFieldImmortal || "Immortal" },
+        { column: "unique_to_world", label: localized.ancillariesFieldUniqueToWorld || "Unique to world" },
+        { column: "unique_to_faction", label: localized.ancillariesFieldUniqueToFaction || "Unique to faction" },
+        { column: "randomly_dropped", label: localized.ancillariesFieldRandomlyDropped || "Randomly dropped" },
+        { column: "can_be_stolen", label: localized.ancillariesFieldCanBeStolen || "Can be stolen" },
+        { column: "can_be_destroyed", label: localized.ancillariesFieldCanBeDestroyed || "Can be destroyed" },
+      ],
+      [localized],
+    );
 
     /**
      * Writes one column, keeping a single override row per `(table, key)`.
@@ -229,13 +234,13 @@ const AncillaryDetail = memo(
       () => [
         {
           column: "category",
-          label: "Category",
+          label: localized.ancillariesFieldCategory || "Category",
           kind: "select",
           options: () => (catalog?.categories ?? []).map((row) => ({ value: row.key, label: row.localizedName })),
         },
         {
           column: "subcategory",
-          label: "Subcategory",
+          label: localized.ancillariesFieldSubcategory || "Subcategory",
           kind: "select",
           options: () => [
             { value: "", label: "—" },
@@ -244,7 +249,7 @@ const AncillaryDetail = memo(
         },
         {
           column: "type",
-          label: "Type (icon)",
+          label: localized.ancillariesFieldType || "Type (icon)",
           kind: "select",
           withIcons: true,
           options: () =>
@@ -254,10 +259,14 @@ const AncillaryDetail = memo(
               iconUrl: row.iconUrl,
             })),
         },
-        { column: "uniqueness_score", label: "Uniqueness score", kind: "number" },
-        { column: "precedence", label: "Precedence", kind: "number" },
+        {
+          column: "uniqueness_score",
+          label: localized.ancillariesFieldUniquenessScore || "Uniqueness score",
+          kind: "number",
+        },
+        { column: "precedence", label: localized.ancillariesFieldPrecedence || "Precedence", kind: "number" },
       ],
-      [catalog],
+      [catalog, localized],
     );
 
     const effectOptions = useMemo(() => {
@@ -299,7 +308,7 @@ const AncillaryDetail = memo(
     if (!detail) {
       return (
         <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
-          Pick an ancillary on the left to see its effects.
+          {localized.ancillariesPickOne || "Pick an ancillary on the left to see its effects."}
         </div>
       );
     }
@@ -335,10 +344,11 @@ const AncillaryDetail = memo(
                 type="button"
                 onClick={() => onClone(detail.key)}
                 disabled={isCloning}
-                title="Deep clone this ancillary and everything it references"
+                title={localized.ancillariesCloneTooltip || "Deep clone this ancillary and everything it references"}
                 className="flex shrink-0 items-center gap-1 rounded bg-gray-800/80 px-2 py-1 text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50"
               >
-                <IoCopy size={13} /> {isCloning ? "Opening…" : "Clone"}
+                <IoCopy size={13} />{" "}
+                {isCloning ? localized.ancillariesCloneOpening || "Opening…" : localized.ancillariesClone || "Clone"}
               </button>
             )}
           </div>
@@ -366,25 +376,38 @@ const AncillaryDetail = memo(
 
         {!detail.hasInfoRow && (
           <div className="mt-3 rounded border border-amber-700 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
-            No <code>ancillary_info_tables</code> row for this key. The game drops ancillaries without one.
+            {localized.ancillariesNoInfoRow ||
+              "No ancillary_info_tables row for this key. The game drops ancillaries without one."}
           </div>
         )}
 
         {isEditingEnabled && (
           <>
-            <Section title="Text">
+            <Section title={localized.ancillariesSectionText || "Text"}>
               <div className="space-y-2">
                 {[
-                  { locKey: ancillaryNameLocKey(detail.key), label: "Name", value: name },
+                  {
+                    locKey: ancillaryNameLocKey(detail.key),
+                    label: localized.ancillariesTextName || "Name",
+                    value: name,
+                  },
                   // Flavour first, the order the card above shows them in.
-                  { locKey: ancillaryColourTextLocKey(detail.key), label: "Flavour text", value: colourText },
-                  { locKey: ancillaryExplanationLocKey(detail.key), label: "Explanation", value: explanation },
+                  {
+                    locKey: ancillaryColourTextLocKey(detail.key),
+                    label: localized.ancillariesTextFlavour || "Flavour text",
+                    value: colourText,
+                  },
+                  {
+                    locKey: ancillaryExplanationLocKey(detail.key),
+                    label: localized.ancillariesTextExplanation || "Explanation",
+                    value: explanation,
+                  },
                 ].map((entry) => (
                   <label key={entry.locKey} className="block text-xs text-gray-400">
                     {entry.label}
                     <textarea
                       value={entry.value}
-                      rows={entry.label === "Name" ? 1 : 2}
+                      rows={entry.locKey === ancillaryNameLocKey(detail.key) ? 1 : 2}
                       onChange={(event) => setLocField(entry.locKey, event.target.value)}
                       className="mt-1 w-full resize-y rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
                     />
@@ -393,7 +416,7 @@ const AncillaryDetail = memo(
               </div>
             </Section>
 
-            <Section title="Effects">
+            <Section title={localized.ancillariesSectionEffects || "Effects"}>
               <div className="space-y-1">
                 {detail.effects.map((effect) => (
                   <div key={effect.effectKey} className="flex items-center gap-2">
@@ -420,7 +443,7 @@ const AncillaryDetail = memo(
                     {effect.isPending && effect.pendingRowId ? (
                       <button
                         type="button"
-                        title="Remove this pending effect row"
+                        title={localized.ancillariesRemovePendingEffect || "Remove this pending effect row"}
                         onClick={() => dispatch({ type: "removeRow", id: effect.pendingRowId! })}
                         className="shrink-0 rounded p-1 text-red-300 hover:bg-red-950"
                       >
@@ -428,7 +451,10 @@ const AncillaryDetail = memo(
                       </button>
                     ) : (
                       <span
-                        title="ancillary_to_effects_tables is keyed on (ancillary, effect); a pack can override a pair but never delete one."
+                        title={
+                          localized.ancillariesEffectLocked ||
+                          "ancillary_to_effects_tables is keyed on (ancillary, effect); a pack can override a pair but never delete one."
+                        }
                         className="shrink-0 p-1 text-gray-600"
                       >
                         <IoLockClosed size={13} />
@@ -436,12 +462,14 @@ const AncillaryDetail = memo(
                     )}
                   </div>
                 ))}
-                {detail.effects.length === 0 && <div className="text-xs text-gray-500">No effects yet.</div>}
+                {detail.effects.length === 0 && (
+                  <div className="text-xs text-gray-500">{localized.ancillariesNoEffectsYet || "No effects yet."}</div>
+                )}
               </div>
 
               <div className="mt-3 flex items-end gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 text-xs text-gray-400">Add effect</div>
+                  <div className="mb-1 text-xs text-gray-400">{localized.ancillariesAddEffect || "Add effect"}</div>
                   <WindowedSelect
                     filterOption={createFilter({ ignoreAccents: false })}
                     options={effectOptions.map((effect) => ({
@@ -478,7 +506,7 @@ const AncillaryDetail = memo(
                     // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(option: { value: string } | null) => setPendingEffectKey(option?.value)}
                     styles={effectSelectStyle}
-                    placeholder="Search effects…"
+                    placeholder={localized.ancillariesSearchEffects || "Search effects…"}
                     isClearable
                     // The panel scrolls and this select sits at its bottom: portal the menu out of the
                     // clipping container and let react-select flip it upwards when the viewport is tight.
@@ -493,12 +521,12 @@ const AncillaryDetail = memo(
                   disabled={!pendingEffectKey}
                   className="flex shrink-0 items-center gap-1 rounded bg-amber-800 px-3 py-2 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
                 >
-                  <IoAdd size={14} /> Add
+                  <IoAdd size={14} /> {localized.ancillariesAdd || "Add"}
                 </button>
               </div>
             </Section>
 
-            <Section title="Fields">
+            <Section title={localized.ancillariesSectionFields || "Fields"}>
               <div className="grid grid-cols-2 gap-2">
                 {fields.map((field) => (
                   <label key={field.column} className="text-xs text-gray-400">
@@ -514,11 +542,14 @@ const AncillaryDetail = memo(
                         </div>
                         <button
                           type="button"
-                          title="Browse the types at a readable size, or make a new one"
+                          title={
+                            localized.ancillariesBrowseTypesTooltip ||
+                            "Browse the types at a readable size, or make a new one"
+                          }
                           onClick={() => setIsTypesOpen(true)}
                           className="mt-1 shrink-0 rounded bg-gray-700 px-3 py-2 text-xs text-gray-100 hover:bg-gray-600"
                         >
-                          Browse…
+                          {localized.ancillariesBrowse || "Browse…"}
                         </button>
                       </div>
                     ) : field.kind === "select" ? (
@@ -550,7 +581,7 @@ const AncillaryDetail = memo(
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-1">
-                {BOOLEAN_FIELDS.map((field) => (
+                {booleanFields.map((field) => (
                   <label key={field.column} className="flex items-center gap-2 text-xs text-gray-300">
                     <input
                       type="checkbox"

@@ -116,8 +116,7 @@ describe("AncillaryDetail card", () => {
 
   it("warns when the ancillary has no ancillary_info row", () => {
     renderDetail({ detail: { ...detail, hasInfoRow: false } });
-    expect(screen.getByText(/No/)).toBeTruthy();
-    expect(screen.getByText("ancillary_info_tables")).toBeTruthy();
+    expect(screen.getByText(/No ancillary_info_tables row for this key/)).toBeTruthy();
   });
 });
 

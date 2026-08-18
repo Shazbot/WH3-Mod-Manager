@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { AutoSizer, List, type ListRowProps } from "react-virtualized";
 import { IoChevronDown, IoChevronForward, IoSearch } from "react-icons/io5";
+import { useLocalizations } from "../../localizationContext";
 import {
   ALL_ANCILLARY_MODS,
   VANILLA_ANCILLARY_MODS,
@@ -29,9 +30,6 @@ type BrowserRow =
 /** Collapse key for a subcategory, kept distinct from a category of the same name. */
 const subcategoryRowKey = (category: string, subcategory: string) => `${category} ${subcategory}`;
 
-/** Ancillaries whose `subcategory` cell is empty still need a bucket to sit in. */
-const NO_SUBCATEGORY_LABEL = "(no subcategory)";
-
 const ROW_HEIGHT = 30;
 
 const AncillariesBrowser = memo(
@@ -39,6 +37,9 @@ const AncillariesBrowser = memo(
     const [filter, setFilter] = useState("");
     const [modFilter, setModFilter] = useState(ALL_ANCILLARY_MODS);
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const localized = useLocalizations();
+    /** Ancillaries whose `subcategory` cell is empty still need a bucket to sit in. */
+    const noSubcategoryLabel = localized.ancillariesNoSubcategory || "(no subcategory)";
 
     // Categories start collapsed, and a category the catalog no longer has must not keep its entry.
     useEffect(() => {
@@ -134,7 +135,7 @@ const AncillariesBrowser = memo(
           result.push({
             kind: "subcategory",
             key: rowKey,
-            name: subcategory === "" ? NO_SUBCATEGORY_LABEL : (subcategoryNames.get(subcategory) ?? subcategory),
+            name: subcategory === "" ? noSubcategoryLabel : (subcategoryNames.get(subcategory) ?? subcategory),
             count: inSubcategory.length,
           });
           if (collapsed[rowKey] === true && ancillaryFilter.isEmpty) continue;
@@ -144,7 +145,7 @@ const AncillariesBrowser = memo(
         }
       }
       return result;
-    }, [ancillaryFilter, catalog, collapsed, modFilter]);
+    }, [ancillaryFilter, catalog, collapsed, modFilter, noSubcategoryLabel]);
 
     const toggleCollapsed = useCallback((key: string, defaultCollapsed: boolean) => {
       setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? defaultCollapsed) }));
@@ -210,28 +211,30 @@ const AncillariesBrowser = memo(
               )}
               <span className="truncate">{ancillary.localizedName}</span>
               {ancillary.originPackPath && (
-                <span className="ml-auto shrink-0 rounded bg-cyan-900/70 px-1 text-[10px] text-cyan-200">mod</span>
+                <span className="ml-auto shrink-0 rounded bg-cyan-900/70 px-1 text-[10px] text-cyan-200">
+                  {localized.ancillariesModBadge || "mod"}
+                </span>
               )}
             </button>
           </div>
         );
       },
-      [collapsed, onContextMenu, onSelect, rows, selectedKey, toggleCollapsed],
+      [collapsed, localized, onContextMenu, onSelect, rows, selectedKey, toggleCollapsed],
     );
 
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 border-b border-gray-700 p-2">
           <label className="mb-2 flex items-center gap-2 text-xs text-gray-400">
-            <span className="shrink-0">Filter by mod</span>
+            <span className="shrink-0">{localized.ancillariesFilterByMod || "Filter by mod"}</span>
             <select
-              aria-label="Filter by mod"
+              aria-label={localized.ancillariesFilterByMod || "Filter by mod"}
               value={modFilter}
               onChange={(event) => setModFilter(event.target.value)}
               className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-900 px-2 py-1.5 text-white"
             >
-              <option value={ALL_ANCILLARY_MODS}>All</option>
-              <option value={VANILLA_ANCILLARY_MODS}>Vanilla</option>
+              <option value={ALL_ANCILLARY_MODS}>{localized.ancillariesModFilterAll || "All"}</option>
+              <option value={VANILLA_ANCILLARY_MODS}>{localized.ancillariesModFilterVanilla || "Vanilla"}</option>
               {modOptions.map((mod) => (
                 <option key={mod.path} value={mod.path}>
                   {mod.label}
@@ -246,25 +249,31 @@ const AncillariesBrowser = memo(
           >
             <IoSearch className="text-gray-500" />
             <input
-              aria-label="Filter ancillaries"
+              aria-label={localized.ancillariesFilterLabel || "Filter ancillaries"}
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter (regex)"
+              placeholder={localized.ancillariesFilterPlaceholder || "Filter (regex)"}
               className="w-full bg-transparent py-2 text-sm outline-none"
             />
           </label>
           {!ancillaryFilter.isValidRegex && (
-            <div className="pt-1 text-[11px] text-amber-500">Incomplete regex - matching as plain text.</div>
+            <div className="pt-1 text-[11px] text-amber-500">
+              {localized.ancillariesIncompleteRegex || "Incomplete regex - matching as plain text."}
+            </div>
           )}
         </div>
 
         <div className="min-h-0 flex-1">
           {isLoading ? (
-            <div className="p-4 text-sm text-gray-400">Loading ancillaries and enabled mods…</div>
+            <div className="p-4 text-sm text-gray-400">
+              {localized.ancillariesLoading || "Loading ancillaries and enabled mods…"}
+            </div>
           ) : error && !catalog ? (
             <div className="p-4 text-sm text-red-300">{error}</div>
           ) : rows.length === 0 ? (
-            <div className="p-4 text-sm text-gray-400">No ancillaries match this filter.</div>
+            <div className="p-4 text-sm text-gray-400">
+              {localized.ancillariesNoMatches || "No ancillaries match this filter."}
+            </div>
           ) : (
             <AutoSizer>
               {({ height, width }) => (

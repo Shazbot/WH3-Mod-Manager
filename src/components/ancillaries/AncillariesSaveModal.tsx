@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useMemo, useState } from "react";
 import { Modal } from "../../flowbite";
 import { useAppSelector } from "../../hooks";
+import { useLocalizations } from "../../localizationContext";
 import { vanillaPackNames } from "../../supportedGames";
 import { buildAncillariesFileName, buildPackedFilesFromNewRows } from "../../ancillariesData/save";
 import { newRowsByTable, type AncillariesEditState } from "../../ancillariesData/edits";
@@ -19,6 +20,7 @@ type Result = { kind: "ok"; message: string } | { kind: "error"; message: string
 
 const AncillariesSaveModal = memo(
   ({ state, tableSchemas, moddersPrefix, onClose, onSaved }: AncillariesSaveModalProps) => {
+    const localized = useLocalizations();
     const mods = useAppSelector((appState) => appState.app.currentPreset.mods);
     const unsavedPacksData = useAppSelector((appState) => appState.app.unsavedPacksData);
 
@@ -56,11 +58,11 @@ const AncillariesSaveModal = memo(
         const isNew = target === "new";
         const destination = isNew ? `memory://${newPackName.trim()}` : packPath;
         if (!isNew && !destination) {
-          setResult({ kind: "error", message: "Pick a pack to save into." });
+          setResult({ kind: "error", message: localized.ancillariesSavePickPack || "Pick a pack to save into." });
           return;
         }
         if (isNew && !newPackName.trim()) {
-          setResult({ kind: "error", message: "Give the new pack a name." });
+          setResult({ kind: "error", message: localized.ancillariesSaveNameNewPack || "Give the new pack a name." });
           return;
         }
 
@@ -68,7 +70,10 @@ const AncillariesSaveModal = memo(
         if (isNew && !resolvedNewPackDirectory) {
           resolvedNewPackDirectory = (await window.api?.getDataFolder()) ?? "";
           if (!resolvedNewPackDirectory) {
-            setResult({ kind: "error", message: "Pick a folder for the new pack." });
+            setResult({
+              kind: "error",
+              message: localized.ancillariesSavePickFolder || "Pick a folder for the new pack.",
+            });
             return;
           }
         }
@@ -80,7 +85,10 @@ const AncillariesSaveModal = memo(
           // include files another editor has staged but not written yet.
           const diskFileNames = await window.api?.getPackFilesList(destination);
           if (!diskFileNames) {
-            setResult({ kind: "error", message: "Could not inspect the target pack before saving." });
+            setResult({
+              kind: "error",
+              message: localized.ancillariesSaveInspectFailed || "Could not inspect the target pack before saving.",
+            });
             return;
           }
           existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
@@ -91,7 +99,7 @@ const AncillariesSaveModal = memo(
           fileName: buildAncillariesFileName(moddersPrefix, existingFileNames),
         });
         if (files.length === 0) {
-          setResult({ kind: "error", message: "Nothing to save." });
+          setResult({ kind: "error", message: localized.ancillariesSaveNothing || "Nothing to save." });
           return;
         }
 
@@ -108,15 +116,23 @@ const AncillariesSaveModal = memo(
           : await window.api?.savePackWithUnsavedFiles(destination);
 
         if (!written?.success) {
-          setResult({ kind: "error", message: written?.error || "The pack could not be written." });
+          setResult({
+            kind: "error",
+            message: written?.error || localized.ancillariesSaveWriteFailed || "The pack could not be written.",
+          });
           return;
         }
 
-        const skipped = skippedTables.length > 0 ? ` Skipped (no schema): ${skippedTables.join(", ")}.` : "";
+        const skipped =
+          skippedTables.length > 0
+            ? ` ${localized.ancillariesSaveSkipped || "Skipped (no schema):"} ${skippedTables.join(", ")}.`
+            : "";
         const warning = written.warning ? ` ${written.warning}` : "";
         setResult({
           kind: "ok",
-          message: `Wrote ${files.length} table file${files.length === 1 ? "" : "s"} to ${written.savedPath ?? destination}.${warning}${skipped}`,
+          message: `${(localized.ancillariesSaveWrote || "Wrote {{count}} table file(s) to {{path}}.")
+            .replace("{{count}}", `${files.length}`)
+            .replace("{{path}}", `${written.savedPath ?? destination}`)}${warning}${skipped}`,
         });
         onSaved(written.savedPath ?? destination);
       } catch (error) {
@@ -128,13 +144,16 @@ const AncillariesSaveModal = memo(
 
     return (
       <Modal onClose={onClose} show size="lg" position="center">
-        <Modal.Header>Save ancillaries</Modal.Header>
+        <Modal.Header>{localized.ancillariesSaveTitle || "Save ancillaries"}</Modal.Header>
         <Modal.Body>
           <div className="space-y-4 text-sm text-gray-200">
             <p className="text-xs text-gray-400">
-              {rowCount} new row{rowCount === 1 ? "" : "s"} across {Object.keys(rowsByTable).length} table
-              {Object.keys(rowsByTable).length === 1 ? "" : "s"}. Only these rows are written; everything else in the
-              pack is left alone.
+              {(
+                localized.ancillariesSaveSummary ||
+                "{{rows}} new row(s) across {{tables}} table(s). Only these rows are written; everything else in the pack is left alone."
+              )
+                .replace("{{rows}}", `${rowCount}`)
+                .replace("{{tables}}", `${Object.keys(rowsByTable).length}`)}
             </p>
 
             <label className="flex items-center gap-2">
@@ -144,7 +163,7 @@ const AncillariesSaveModal = memo(
                 disabled={targetPacks.length === 0}
                 onChange={() => setTarget("existing")}
               />
-              Existing mod pack
+              {localized.ancillariesSaveExistingPack || "Existing mod pack"}
             </label>
             {target === "existing" && (
               <select
@@ -152,7 +171,9 @@ const AncillariesSaveModal = memo(
                 onChange={(event) => setPackPath(event.target.value)}
                 className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
               >
-                {targetPacks.length === 0 && <option value="">No mod packs found</option>}
+                {targetPacks.length === 0 && (
+                  <option value="">{localized.ancillariesSaveNoModPacks || "No mod packs found"}</option>
+                )}
                 {targetPacks.map((mod) => (
                   <option key={mod.path} value={mod.path}>
                     {mod.name}
@@ -163,20 +184,22 @@ const AncillariesSaveModal = memo(
 
             <label className="flex items-center gap-2">
               <input type="radio" checked={target === "new"} onChange={() => setTarget("new")} />
-              New pack
+              {localized.ancillariesSaveNewPack || "New pack"}
             </label>
             {target === "new" && (
               <div className="space-y-2">
                 <input
                   value={newPackName}
                   onChange={(event) => setNewPackName(event.target.value)}
-                  placeholder="Pack name (without .pack)"
+                  placeholder={localized.ancillariesSavePackNamePlaceholder || "Pack name (without .pack)"}
                   className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
                 />
                 <input
                   value={newPackDirectory}
                   onChange={(event) => setNewPackDirectory(event.target.value)}
-                  placeholder="Folder (defaults to the game's data folder)"
+                  placeholder={
+                    localized.ancillariesSaveFolderPlaceholder || "Folder (defaults to the game's data folder)"
+                  }
                   className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
                 />
               </div>
@@ -203,7 +226,7 @@ const AncillariesSaveModal = memo(
             onClick={onClose}
             className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
           >
-            Close
+            {localized.ancillariesClose || "Close"}
           </button>
           <button
             type="button"
@@ -211,7 +234,7 @@ const AncillariesSaveModal = memo(
             disabled={isSaving || rowCount === 0}
             className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? localized.ancillariesSaving || "Saving..." : localized.ancillariesSave || "Save"}
           </button>
         </Modal.Footer>
       </Modal>

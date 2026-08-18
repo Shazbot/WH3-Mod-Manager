@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Modal } from "../../flowbite";
 import { useAppSelector } from "../../hooks";
+import { useLocalizations } from "../../localizationContext";
 import { useDeferredWhileInactive } from "../useDeferredWhileInactive";
 import { useBuildingsDeepClone } from "../buildings/useBuildingsDeepClone";
 import { dbClonePackedFilesToBuildingsRows } from "../../buildingsData/dbCloneRows";
@@ -27,6 +28,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const localized = useLocalizations();
 
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const enabledModsSignature = useMemo(
@@ -83,7 +85,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
       .then((result) => {
         if (cancelled) return;
         if (!result?.success || !result.catalog) {
-          setError(result?.error || "Failed to load Ancillaries");
+          setError(result?.error || localized.ancillariesLoadFailed || "Failed to load Ancillaries");
           setCatalog(undefined);
           return;
         }
@@ -95,7 +97,10 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
         );
       })
       .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "Failed to load Ancillaries");
+        if (!cancelled)
+          setError(
+            reason instanceof Error ? reason.message : localized.ancillariesLoadFailed || "Failed to load Ancillaries",
+          );
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -106,7 +111,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
     // `signatureToRequest` already encodes every enabled mod's path, load order and change stamps,
     // so it is the dependency that matters; depending on `enabledMods` too would rebuild every time
     // pack reading handed Redux a fresh array.
-  }, [currentGame, reloadNonce, signatureToRequest]);
+  }, [currentGame, localized.ancillariesLoadFailed, reloadNonce, signatureToRequest]);
 
   /**
    * The pending rows, settled.
@@ -135,7 +140,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
       .then((result) => {
         if (cancelled) return;
         if (!result?.success) {
-          setError(result?.error || `Failed to load ${selectedKey}`);
+          setError(result?.error || `${localized.ancillariesDetailLoadFailed || "Failed to load"} ${selectedKey}`);
           return;
         }
         setDetail(result.detail);
@@ -144,12 +149,17 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
         setError(undefined);
       })
       .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : `Failed to load ${selectedKey}`);
+        if (!cancelled)
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : `${localized.ancillariesDetailLoadFailed || "Failed to load"} ${selectedKey}`,
+          );
       });
     return () => {
       cancelled = true;
     };
-  }, [currentGame, selectedKey, settledEdits]);
+  }, [currentGame, localized.ancillariesDetailLoadFailed, selectedKey, settledEdits]);
 
   const openCloneFor = useCallback(
     (key: string) => {
@@ -168,7 +178,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
       // The clone output is already generic over table name; only the origin literal is shared.
       const cloneOutput = dbClonePackedFilesToBuildingsRows(packedFiles);
       if (cloneOutput.rows.length === 0) {
-        setError("DB Clone did not generate any rows.");
+        setError(localized.ancillariesCloneNoRows || "DB Clone did not generate any rows.");
         return;
       }
       dispatchEdit({ type: "addRows", rows: cloneOutput.rows });
@@ -177,7 +187,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
       setSubTab("tables");
       closeDeepClone();
     },
-    [closeDeepClone],
+    [closeDeepClone, localized.ancillariesCloneNoRows],
   );
 
   /**
@@ -199,14 +209,18 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
     const rows: Array<Omit<AncillariesNewRow, "id" | "groupId">> = [
       { table: "ancillaries_tables", origin: "newAncillary", values },
       { table: "ancillary_info_tables", origin: "newAncillary", values: { ancillary: key } },
-      { table: LOC_TABLE, origin: "newAncillary", values: { key: ancillaryNameLocKey(key), text: "New Ancillary" } },
+      {
+        table: LOC_TABLE,
+        origin: "newAncillary",
+        values: { key: ancillaryNameLocKey(key), text: localized.ancillariesNewAncillaryName || "New Ancillary" },
+      },
       { table: LOC_TABLE, origin: "newAncillary", values: { key: ancillaryExplanationLocKey(key), text: "" } },
       { table: LOC_TABLE, origin: "newAncillary", values: { key: ancillaryColourTextLocKey(key), text: "" } },
     ];
     dispatchEdit({ type: "addRows", rows });
     setSelectedKey(key);
     setSubTab("browser");
-  }, [catalog, moddersPrefix, tableSchemas]);
+  }, [catalog, localized.ancillariesNewAncillaryName, moddersPrefix, tableSchemas]);
 
   const clearPendingEdits = useCallback(() => {
     dispatchEdit({ type: "reset" });
@@ -219,7 +233,11 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
   }, []);
 
   if (currentGame !== "wh3") {
-    return <div className="p-6 text-sm text-gray-400">Ancillaries are available only for Warhammer 3.</div>;
+    return (
+      <div className="p-6 text-sm text-gray-400">
+        {localized.ancillariesWh3Only || "Ancillaries are available only for Warhammer 3."}
+      </div>
+    );
   }
 
   const pendingRowCount = edits.order.length;
@@ -242,7 +260,11 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
                     subTab === tab ? "bg-amber-700 text-white" : "bg-gray-900 text-gray-400 hover:text-white"
                   }`}
                 >
-                  {tab === "browser" ? "Browser" : `New rows${pendingRowCount > 0 ? ` (${pendingRowCount})` : ""}`}
+                  {tab === "browser"
+                    ? localized.ancillariesBrowserTab || "Browser"
+                    : `${localized.ancillariesNewRowsTab || "New rows"}${
+                        pendingRowCount > 0 ? ` (${pendingRowCount})` : ""
+                      }`}
                 </button>
               ))}
             </div>
@@ -251,7 +273,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
               onClick={addAncillary}
               className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600"
             >
-              New ancillary
+              {localized.ancillariesNewAncillary || "New ancillary"}
             </button>
             <button
               type="button"
@@ -259,14 +281,19 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
               disabled={pendingRowCount === 0}
               className="rounded bg-blue-700 px-2 py-1 text-xs text-white hover:bg-blue-600 disabled:opacity-50"
             >
-              Save to pack
+              {localized.ancillariesSaveToPack || "Save to pack"}
             </button>
           </>
         )}
 
         {rowIssues && rowIssues.length > 0 && (
           <span className="text-xs text-amber-400">
-            {rowIssues.length} issue{rowIssues.length === 1 ? "" : "s"} in the new rows
+            {rowIssues.length === 1
+              ? localized.ancillariesRowIssueOne || "1 issue in the new rows"
+              : (localized.ancillariesRowIssuesOther || "{{count}} issues in the new rows").replace(
+                  "{{count}}",
+                  `${rowIssues.length}`,
+                )}
           </span>
         )}
         {error && <span className="ml-auto truncate text-xs text-red-400">{error}</span>}
@@ -328,13 +355,13 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
 
       {deepClone.isResolving && (
         <div className="fixed bottom-4 right-4 z-[80] rounded bg-gray-800 px-3 py-2 text-xs text-gray-200 shadow-lg">
-          Reading the table for {deepClone.resolvingLabel}...
+          {localized.ancillariesReadingTableFor || "Reading the table for"} {deepClone.resolvingLabel}...
         </div>
       )}
 
       {deepClone.error && (
         <Modal onClose={deepClone.dismissError} show size="md" position="center">
-          <Modal.Header>Deep clone</Modal.Header>
+          <Modal.Header>{localized.ancillariesDeepClone || "Deep clone"}</Modal.Header>
           <Modal.Body>
             <p className="text-sm text-gray-300">{deepClone.error}</p>
           </Modal.Body>
@@ -349,7 +376,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
           position="top-center"
           explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
-          <Modal.Header>Deep Cloning...</Modal.Header>
+          <Modal.Header>{localized.ancillariesDeepCloning || "Deep Cloning..."}</Modal.Header>
           <Modal.Body>
             <div className="mt-8 text-center">
               <DBDuplication launchSource="ancillaries" onSaveToBuildings={saveCloneToAncillaries} />

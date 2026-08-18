@@ -1,5 +1,6 @@
 import React, { memo, useMemo, useState } from "react";
 import { Modal } from "../../flowbite";
+import { useLocalizations } from "../../localizationContext";
 import type { AncillariesIconOption, AncillariesOption } from "../../ancillariesData/types";
 
 export type AncillaryTypesModalProps = {
@@ -27,23 +28,28 @@ const IconTile = ({
   label: string;
   isSelected: boolean;
   onClick: () => void;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    title={label}
-    className={`rounded border-2 p-2 text-center transition-colors ${
-      isSelected ? "border-amber-500 bg-gray-700" : "border-gray-600 hover:border-gray-500 hover:bg-gray-700"
-    }`}
-  >
-    {iconUrl ? (
-      <img src={iconUrl} alt="" className="mx-auto h-16 w-16 object-contain" />
-    ) : (
-      <div className="mx-auto flex h-16 w-16 items-center justify-center text-xs text-gray-500">no icon</div>
-    )}
-    <div className="mt-2 truncate text-xs text-gray-300">{label}</div>
-  </button>
-);
+}) => {
+  const localized = useLocalizations();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      className={`rounded border-2 p-2 text-center transition-colors ${
+        isSelected ? "border-amber-500 bg-gray-700" : "border-gray-600 hover:border-gray-500 hover:bg-gray-700"
+      }`}
+    >
+      {iconUrl ? (
+        <img src={iconUrl} alt="" className="mx-auto h-16 w-16 object-contain" />
+      ) : (
+        <div className="mx-auto flex h-16 w-16 items-center justify-center text-xs text-gray-500">
+          {localized.ancillariesNoIcon || "no icon"}
+        </div>
+      )}
+      <div className="mt-2 truncate text-xs text-gray-300">{label}</div>
+    </button>
+  );
+};
 
 /**
  * The type browser: the same icons the dropdown lists, at a size you can actually recognise.
@@ -54,6 +60,7 @@ const IconTile = ({
  */
 const AncillaryTypesModal = memo(
   ({ types, icons, selectedType, moddersPrefix, onSelect, onCreate, onClose }: AncillaryTypesModalProps) => {
+    const localized = useLocalizations();
     const [mode, setMode] = useState<"browse" | "create">("browse");
     const [search, setSearch] = useState("");
     const [newKey, setNewKey] = useState(`${moddersPrefix.trim().replace(/_+$/, "") || "custom"}_anc_type_`);
@@ -75,11 +82,11 @@ const AncillaryTypesModal = memo(
     const trimmedKey = newKey.trim();
     const isDuplicateKey = types.some((type) => type.key === trimmedKey);
     const createError = !trimmedKey
-      ? "Give the type a key."
+      ? localized.ancillariesTypeKeyMissing || "Give the type a key."
       : isDuplicateKey
-        ? "That type key already exists."
+        ? localized.ancillariesTypeKeyTaken || "That type key already exists."
         : !newIconPath
-          ? "Pick an icon for the type."
+          ? localized.ancillariesTypeIconMissing || "Pick an icon for the type."
           : undefined;
 
     return (
@@ -95,7 +102,11 @@ const AncillaryTypesModal = memo(
           "!h-[85vh]",
         ]}
       >
-        <Modal.Header>{mode === "browse" ? "Ancillary types" : "New ancillary type"}</Modal.Header>
+        <Modal.Header>
+          {mode === "browse"
+            ? localized.ancillariesTypesTitle || "Ancillary types"
+            : localized.ancillariesNewTypeTitle || "New ancillary type"}
+        </Modal.Header>
         <Modal.Body>
           <div className="flex h-full flex-col gap-3">
             <div className="flex shrink-0 items-center gap-2">
@@ -103,8 +114,16 @@ const AncillaryTypesModal = memo(
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder={mode === "browse" ? "Search types…" : "Search icons…"}
-                aria-label={mode === "browse" ? "Search types" : "Search icons"}
+                placeholder={
+                  mode === "browse"
+                    ? localized.ancillariesSearchTypesPlaceholder || "Search types…"
+                    : localized.ancillariesSearchIconsPlaceholder || "Search icons…"
+                }
+                aria-label={
+                  mode === "browse"
+                    ? localized.ancillariesSearchTypes || "Search types"
+                    : localized.ancillariesSearchIcons || "Search icons"
+                }
                 className={inputClass}
               />
               <button
@@ -115,24 +134,28 @@ const AncillaryTypesModal = memo(
                 }}
                 className="shrink-0 rounded bg-gray-700 px-3 py-1 text-sm text-gray-100 hover:bg-gray-600"
               >
-                {mode === "browse" ? "New type…" : "Back to types"}
+                {mode === "browse"
+                  ? localized.ancillariesNewType || "New type…"
+                  : localized.ancillariesBackToTypes || "Back to types"}
               </button>
             </div>
 
             {mode === "create" && (
               <div className="shrink-0 space-y-1">
                 <label className="block text-xs text-gray-400">
-                  Type key
+                  {localized.ancillariesTypeKey || "Type key"}
                   <input
                     type="text"
                     value={newKey}
                     onChange={(event) => setNewKey(event.target.value)}
-                    aria-label="Type key"
+                    aria-label={localized.ancillariesTypeKey || "Type key"}
                     className={`mt-1 ${inputClass}`}
                   />
                 </label>
                 <div className="text-xs text-gray-500">
-                  {newIconPath ? `Icon: ${newIconPath}` : "Pick an icon below."}
+                  {newIconPath
+                    ? `${localized.ancillariesIconLabel || "Icon"}: ${newIconPath}`
+                    : localized.ancillariesPickIconBelow || "Pick an icon below."}
                 </div>
               </div>
             )}
@@ -164,7 +187,9 @@ const AncillaryTypesModal = memo(
               </div>
               {(mode === "browse" ? shownTypes.length : shownIcons.length) === 0 && (
                 <div className="py-8 text-center text-sm text-gray-400">
-                  {mode === "browse" ? "No types match this search." : "No icons match this search."}
+                  {mode === "browse"
+                    ? localized.ancillariesNoTypesMatch || "No types match this search."
+                    : localized.ancillariesNoIconsMatch || "No icons match this search."}
                 </div>
               )}
             </div>
@@ -183,7 +208,7 @@ const AncillaryTypesModal = memo(
                 }}
                 className="rounded bg-amber-800 px-4 py-2 text-sm text-white hover:bg-amber-700 disabled:opacity-50"
               >
-                Create type
+                {localized.ancillariesCreateType || "Create type"}
               </button>
             )}
             <button
@@ -191,7 +216,7 @@ const AncillaryTypesModal = memo(
               onClick={onClose}
               className="rounded bg-gray-700 px-4 py-2 text-sm text-gray-100 hover:bg-gray-600"
             >
-              Close
+              {localized.ancillariesClose || "Close"}
             </button>
           </div>
         </Modal.Footer>
