@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
+import { useLocalizations } from "../localizationContext";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
 
@@ -52,8 +53,12 @@ const factionColour = (key: string) => {
   return `hsla(${Math.abs(hash) % 360}, 72%, 48%, 0.46)`;
 };
 
+const interpolateMapText = (template: string, values: Record<string, string | number>) =>
+  Object.entries(values).reduce((text, [key, value]) => text.split(`{{${key}}}`).join(String(value)), template);
+
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
+  const localized: Record<string, string> = useLocalizations();
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const mapCampaignName = useAppSelector((state) => state.app.mapCampaignName);
@@ -98,6 +103,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [isDraggingMap, setIsDraggingMap] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
+
+  const mapText = (key: string, fallback: string) => localized[key] || fallback;
+  const mapMessage = (key: string, fallback: string, values: Record<string, string | number>) =>
+    interpolateMapText(mapText(key, fallback), values);
 
   useEffect(() => {
     if (currentGame !== "wh3") return;
@@ -474,14 +483,22 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   };
 
   if (currentGame !== "wh3") {
-    return <div className="px-6 py-4 text-gray-300">The campaign map is unavailable for this game.</div>;
+    return (
+      <div className="px-6 py-4 text-gray-300">
+        {mapText("mapUnavailableForGame", "The campaign map is unavailable for this game.")}
+      </div>
+    );
   }
 
   return (
     <div className="flex h-[92vh] min-h-0 flex-col text-gray-200">
       <div className="flex items-center gap-3 border-b border-gray-700 px-4 py-2 text-sm">
-        <span className="font-medium text-gray-100">Campaign map</span>
-        <div className="flex rounded border border-gray-700 bg-gray-900 p-0.5" role="tablist" aria-label="Map view">
+        <span className="font-medium text-gray-100">{mapText("mapTitle", "Campaign map")}</span>
+        <div
+          className="flex rounded border border-gray-700 bg-gray-900 p-0.5"
+          role="tablist"
+          aria-label={mapText("mapView", "Map view")}
+        >
           {(["regions", "factions"] as const).map((view) => (
             <button
               key={view}
@@ -493,7 +510,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 mapView === view ? "bg-blue-800 text-gray-100" : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
               }`}
             >
-              {view === "regions" ? "Regions" : "Factions"}
+              {view === "regions" ? mapText("mapRegions", "Regions") : mapText("mapFactions", "Factions")}
             </button>
           ))}
         </div>
@@ -502,7 +519,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             value={mapCampaignName}
             onChange={(event) => dispatch(setMapCampaignName(event.target.value))}
             className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
-            aria-label="Campaign map"
+            aria-label={mapText("mapTitle", "Campaign map")}
           >
             {campaignOptions.map((campaign) => (
               <option key={campaign.key} value={campaign.key}>
@@ -516,9 +533,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             value={selectedSettlementType}
             onChange={(event) => setSelectedSettlementType(event.target.value)}
             className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
-            aria-label="Settlement type"
+            aria-label={mapText("mapSettlementType", "Settlement type")}
           >
-            <option value="">(none)</option>
+            <option value="">{mapText("mapNone", "(none)")}</option>
             {map.settlementTypes.map((settlementType) => (
               <option key={settlementType.key} value={settlementType.key}>
                 {settlementType.label}
@@ -528,10 +545,21 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         )}
         {map && (
           <span className="text-xs text-gray-500">
-            {map.width}×{map.height} · {map.regionCount} regions · {map.ownedRegionCount} owned
+            {mapMessage(
+              "mapRegionSummary",
+              "{{width}}×{{height}} · {{regionCount}} regions · {{ownedRegionCount}} owned",
+              {
+                width: map.width,
+                height: map.height,
+                regionCount: map.regionCount,
+                ownedRegionCount: map.ownedRegionCount,
+              },
+            )}
           </span>
         )}
-        {isLoading && <span className="text-xs text-blue-300">Reading ESF data…</span>}
+        {isLoading && (
+          <span className="text-xs text-blue-300">{mapText("mapReadingEsfData", "Reading ESF data…")}</span>
+        )}
       </div>
 
       {error && <div className="px-4 py-2 text-sm text-red-400">{error}</div>}
@@ -552,7 +580,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 onClick={() => changeZoom(1)}
                 className="rounded bg-gray-800 px-2 py-1 hover:bg-gray-700"
               >
-                Reset
+                {mapText("mapReset", "Reset")}
               </button>
               <button
                 type="button"
@@ -582,10 +610,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           <div className="flex min-h-0 flex-col overflow-hidden rounded border border-gray-700 bg-gray-900">
             <div className="border-b border-gray-800 px-3 py-2 text-sm text-gray-300">
               {mapView === "factions"
-                ? `${map.factions.length} factions · flags at settlements`
+                ? mapMessage("mapFactionSummary", "{{count}} factions · flags at settlements", {
+                    count: map.factions.length,
+                  })
                 : map.startposWasCompressed
-                  ? "Compressed startpos decoded"
-                  : "Startpos loaded"}
+                  ? mapText("mapCompressedStartpos", "Compressed startpos decoded")
+                  : mapText("mapStartposLoaded", "Startpos loaded")}
               <div className="mt-1 truncate text-[0.75rem] text-gray-400" title={map.startposPath}>
                 {map.startposPath}
               </div>
@@ -594,7 +624,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               <div className="border-b border-gray-800 px-3 py-2 text-sm">
                 <div className="font-medium text-gray-100">{selectedMarker.key}</div>
                 <div className="mt-1 text-gray-300">
-                  {selectedMarker.ownerFaction ?? "Unowned"}
+                  {selectedMarker.ownerFaction ?? mapText("mapUnowned", "Unowned")}
                   {selectedMarker.subculture ? ` · ${selectedMarker.subculture}` : ""}
                 </div>
                 {selectedMarker.settlementKey && (
@@ -606,7 +636,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               <input
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
-                placeholder={mapView === "factions" ? "Filter factions…" : "Filter regions…"}
+                placeholder={
+                  mapView === "factions"
+                    ? mapText("mapFilterFactions", "Filter factions…")
+                    : mapText("mapFilterRegions", "Filter regions…")
+                }
                 className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500"
               />
             </div>
@@ -625,7 +659,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     >
                       <span className="block truncate">{marker.key}</span>
                       <span className="block truncate text-[0.8125rem] text-gray-400">
-                        {marker.ownerFaction ?? "Unowned"}
+                        {marker.ownerFaction ?? mapText("mapUnowned", "Unowned")}
                       </span>
                     </button>
                   ))
@@ -650,7 +684,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         <span className="min-w-0">
                           <span className="block truncate">{faction.label}</span>
                           <span className="block truncate text-[0.8125rem] text-gray-400">
-                            {faction.regionCount} {faction.regionCount === 1 ? "region" : "regions"} · {faction.key}
+                            {mapMessage(
+                              faction.regionCount === 1 ? "mapFactionRegionOne" : "mapFactionRegionOther",
+                              faction.regionCount === 1 ? "{{count}} region · {{key}}" : "{{count}} regions · {{key}}",
+                              { count: faction.regionCount, key: faction.key },
+                            )}
                           </span>
                         </span>
                       </button>
@@ -658,7 +696,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   })}
               {(mapView === "regions" ? filteredMarkers.length : filteredFactions.length) === 0 && (
                 <div className="px-2 py-3 text-sm text-gray-400">
-                  {mapView === "factions" ? "No matching factions." : "No matching regions."}
+                  {mapView === "factions"
+                    ? mapText("mapNoMatchingFactions", "No matching factions.")
+                    : mapText("mapNoMatchingRegions", "No matching regions.")}
                 </div>
               )}
             </div>
@@ -667,7 +707,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       )}
 
       {!map && isLoading && (
-        <div className="flex flex-1 items-center justify-center text-sm text-gray-500">Loading campaign map…</div>
+        <div className="flex flex-1 items-center justify-center text-sm text-gray-500">
+          {mapText("mapLoading", "Loading campaign map…")}
+        </div>
       )}
     </div>
   );
