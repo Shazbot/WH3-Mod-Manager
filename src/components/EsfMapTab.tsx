@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
@@ -78,6 +78,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     startY: number;
     startScrollLeft: number;
     startScrollTop: number;
+  }>();
+  const mapZoomAnchorRef = useRef<{
+    mapX: number;
+    mapY: number;
+    scaleX: number;
+    scaleY: number;
+    scrollLeft: number;
+    scrollTop: number;
   }>();
   const suppressMapClickRef = useRef(false);
   const [map, setMap] = useState<EsfMapPayload>();
@@ -311,7 +319,63 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     };
   }, [factionsByKey, map, mapView, selectedMarkerId, selectedSettlementType, zoom]);
 
-  const changeZoom = (nextZoom: number) => setZoom(Math.max(0.5, Math.min(6, nextZoom)));
+  useEffect(() => {
+    const anchor = mapZoomAnchorRef.current;
+    const canvas = canvasRef.current;
+    const canvasWrap = canvasWrapRef.current;
+    if (!anchor || !canvas || !canvasWrap || !map) return;
+
+    mapZoomAnchorRef.current = undefined;
+    const scaleX = canvas.clientWidth / map.width;
+    const scaleY = canvas.clientHeight / map.height;
+    if (!scaleX || !scaleY) return;
+
+    canvasWrap.scrollLeft = anchor.scrollLeft + anchor.mapX * (scaleX - anchor.scaleX);
+    canvasWrap.scrollTop = anchor.scrollTop + anchor.mapY * (scaleY - anchor.scaleY);
+  }, [map, zoom]);
+
+  const changeZoom = useCallback((nextZoom: number) => setZoom(Math.max(0.5, Math.min(6, nextZoom))), []);
+
+  const zoomAtPointer = useCallback(
+    (event: WheelEvent) => {
+      if (!map) return;
+      const canvas = canvasRef.current;
+      const canvasWrap = canvasWrapRef.current;
+      if (!canvas || !canvasWrap) return;
+
+      const canvasRect = canvas.getBoundingClientRect();
+      const scaleX = canvas.clientWidth / map.width;
+      const scaleY = canvas.clientHeight / map.height;
+      if (!scaleX || !scaleY) return;
+
+      const nextZoom = Math.max(0.5, Math.min(6, zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      if (nextZoom === zoom) return;
+
+      mapZoomAnchorRef.current = {
+        mapX: (event.clientX - canvasRect.left - canvas.clientLeft) / scaleX,
+        mapY: (event.clientY - canvasRect.top - canvas.clientTop) / scaleY,
+        scaleX,
+        scaleY,
+        scrollLeft: canvasWrap.scrollLeft,
+        scrollTop: canvasWrap.scrollTop,
+      };
+      changeZoom(nextZoom);
+    },
+    [changeZoom, map, zoom],
+  );
+
+  useEffect(() => {
+    const canvasWrap = canvasWrapRef.current;
+    if (!canvasWrap) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!map) return;
+      event.preventDefault();
+      zoomAtPointer(event);
+    };
+    canvasWrap.addEventListener("wheel", handleWheel, { passive: false });
+    return () => canvasWrap.removeEventListener("wheel", handleWheel);
+  }, [map, zoomAtPointer]);
 
   const selectMapMarker = (marker: EsfMapMarker | undefined) => {
     setSelectedMarkerId(marker?.id);
@@ -502,15 +566,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 {map.mapDataPath}
               </span>
             </div>
-            <div
-              ref={canvasWrapRef}
-              className="min-h-0 flex-1 overflow-auto p-3"
-              onWheel={(event) => {
-                if (!event.ctrlKey) return;
-                event.preventDefault();
-                changeZoom(zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15));
-              }}
-            >
+            <div ref={canvasWrapRef} className="min-h-0 flex-1 overflow-auto p-3">
               <canvas
                 ref={canvasRef}
                 onPointerDown={beginMapDrag}
