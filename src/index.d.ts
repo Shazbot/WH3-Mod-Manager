@@ -1073,6 +1073,7 @@ declare global {
     | "twui"
     | "techTrees"
     | "buildings"
+    | "ancillaries"
     | "map"
     | "nodeEditor"
     | "presets";

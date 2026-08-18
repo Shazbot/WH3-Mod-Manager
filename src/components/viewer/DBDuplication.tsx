@@ -65,14 +65,23 @@ const DBCloneOperationOverlay = ({ statusText, onCancel }: { statusText: string;
   </MemoizedFloatingOverlay>
 );
 
-export type DBDuplicationLaunchSource = "modsViewer" | "buildings";
+export type DBDuplicationLaunchSource = "modsViewer" | "buildings" | "ancillaries";
+
+/**
+ * Launch sources that keep a pending-row store of their own, so "Save to memory" has somewhere to
+ * hand the generated rows. The Mods Viewer has none and only offers "Save to pack".
+ */
+const SOURCES_WITH_PENDING_ROWS: DBDuplicationLaunchSource[] = ["buildings", "ancillaries"];
 
 export type DBDuplicationProps = {
   launchSource: DBDuplicationLaunchSource;
+  /** Receives the generated rows when the user picks "Save to memory". */
   onSaveToBuildings?: (packedFiles: PackedFile[]) => void;
 };
 
 const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationProps) => {
+  const canSaveToMemory = SOURCES_WITH_PENDING_ROWS.includes(launchSource);
+  const memoryTargetName = launchSource === "ancillaries" ? "Ancillaries" : "Buildings";
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   // important to reload the component
@@ -572,7 +581,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           return;
         }
         if (!onSaveToBuildings) {
-          setDuplicationError("The Buildings tab is not available to receive the generated rows.");
+          setDuplicationError(`The ${memoryTargetName} tab is not available to receive the generated rows.`);
           setIsErrorOpen(true);
           return;
         }
@@ -656,10 +665,10 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
                 With "Append Existing Pack" enabled we will append an existing pack file instead of creating a new one,
                 using the pack name from "(Optional) Name for new pack".
               </p>
-              {launchSource == "buildings" && (
+              {canSaveToMemory && (
                 <p>
-                  "Save to memory" adds every generated DB and localization row to the Buildings tab. The generated
-                  tables can be inspected and edited under New rows before you save them to a pack.
+                  "Save to memory" adds every generated DB and localization row to the {memoryTargetName} tab. The
+                  generated tables can be inspected and edited under New rows before you save them to a pack.
                 </p>
               )}
               <p>
@@ -733,7 +742,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
               <span>{"Save to pack"}</span>
             </div>
           </button>
-          {launchSource == "buildings" && (
+          {canSaveToMemory && (
             <button
               className={`bg-cyan-700 border-cyan-600 border-2 hover:bg-cyan-800 text-white font-medium text-sm px-4 rounded h-8 min-w-44 m-auto ${
                 ((!isSavingPossible() || isSaving) &&

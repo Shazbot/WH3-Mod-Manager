@@ -16,6 +16,8 @@ import type {
   BuildingsRegionViewResponse,
 } from "./buildingsData/types";
 import type { BuildingsEditState } from "./buildingsData/edits";
+import type { AncillariesCatalogResponse, AncillariesDetailResponse } from "./ancillariesData/types";
+import type { AncillariesEditState } from "./ancillariesData/edits";
 import type { EsfMapResponse } from "./esfMap/types";
 
 console.log("IN PRELOAD");
@@ -260,6 +262,13 @@ const api = {
     pendingEdits?: BuildingsEditState,
   ): Promise<BuildingsCaiRowsResponse> =>
     ipcRenderer.invoke("getBuildingsCaiRows", enabledMods, chainKey, pendingEdits),
+  getAncillariesCatalog: (enabledMods: Mod[]): Promise<AncillariesCatalogResponse> =>
+    ipcRenderer.invoke("getAncillariesCatalog", enabledMods),
+  getAncillariesDetail: (
+    enabledMods: Mod[],
+    key: string,
+    pendingEdits?: AncillariesEditState,
+  ): Promise<AncillariesDetailResponse> => ipcRenderer.invoke("getAncillariesDetail", enabledMods, key, pendingEdits),
   getEsfMap: (enabledMods: Mod[], campaignName?: string): Promise<EsfMapResponse> =>
     ipcRenderer.invoke("getEsfMap", enabledMods, campaignName),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) => ipcRenderer.send("searchInsidePacks", searchTerm, mods),

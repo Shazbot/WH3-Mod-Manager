@@ -1,7 +1,12 @@
 import type { AmendedSchemaField, DBVersion, PackedFile } from "../packFileTypes";
 import { LOC_TABLE, type BuildingsNewRow } from "./edits";
 
-export type BuildingsCloneRowDraft = Omit<BuildingsNewRow, "id" | "groupId">;
+/**
+ * `origin` is narrowed to the literal this builder always sets, rather than the wide
+ * `BuildingsRowOrigin` union, so the drafts are equally assignable to the Ancillaries tab's edit
+ * model - which has its own origins but shares `"clone"`.
+ */
+export type BuildingsCloneRowDraft = Omit<BuildingsNewRow, "id" | "groupId" | "origin"> & { origin: "clone" };
 
 export interface BuildingsCloneRows {
   rows: BuildingsCloneRowDraft[];

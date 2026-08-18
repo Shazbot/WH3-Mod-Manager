@@ -55,6 +55,43 @@ import type {
   BuildingsTableRows,
   BuiltBuildingsData,
 } from "./buildingsData/types";
+import {
+  ANCILLARY_TABLES,
+  buildAncillariesData,
+  categoryIconPath,
+  createAncillariesLocLookup,
+} from "./ancillariesData/data";
+import { validateNewRows as validateAncillariesNewRows } from "./ancillariesData/validate";
+import {
+  applyNewRowsToAncillariesData,
+  LOC_TABLE as ANCILLARIES_LOC_TABLE,
+  newRowsByTable as ancillariesNewRowsByTable,
+  type AncillariesEditState,
+} from "./ancillariesData/edits";
+import {
+  clearAncillariesMemoryCache,
+  isSameIdentity,
+  loadAncillariesModSegments,
+  loadVanillaAncillariesCache,
+  mergeAncillariesSources,
+  modSegmentKey,
+  readPackIdentity,
+  saveAncillariesModSegments,
+  saveVanillaAncillariesCache,
+  type AncillariesModSegment,
+  type AncillariesModSegments,
+  type AncillariesSource,
+  type AncillariesVanillaSignatureInputs,
+} from "./ancillariesData/cache";
+import type {
+  AncillariesCatalog,
+  AncillariesCatalogResponse,
+  AncillariesDetailResponse,
+  AncillariesTableRows,
+  AncillaryDetail,
+  AncillaryEffectRow,
+  BuiltAncillariesData,
+} from "./ancillariesData/types";
 import { clearEsfMapMemoryCache, loadEsfMapDiskCache, saveEsfMapDiskCache } from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
@@ -364,6 +401,20 @@ type CachedBuildingsData = {
   iconGeneration: number;
 };
 let cachedBuildingsData: CachedBuildingsData | undefined;
+type CachedAncillariesData = {
+  /** Covers the vanilla signature *and* every enabled mod's identity, so any change misses. */
+  signature: string;
+  data: BuiltAncillariesData;
+  /** Effective source rows retained so a pending table can rebuild the panel. */
+  tables: AncillariesTableRows;
+  /** Only localization keys consumed by `buildAncillariesData`, captured while the base is built. */
+  localizations: Record<string, string>;
+  originPackPathByAncillary: Record<string, string>;
+  dbPackPath: string;
+  icons: Record<string, AssetBytes>;
+  iconGeneration: number;
+};
+let cachedAncillariesData: CachedAncillariesData | undefined;
 let cachedEsfMapData: { signature: string; data: import("./esfMap/types").EsfMapPayload } | undefined;
 // Cache for vanilla pack file name lists, keyed by pack path.
 // Allows skipping readPack() on startup when the pack hasn't changed. Module scope rather than
@@ -3827,6 +3878,425 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     },
   );
 
+  // --- Ancillaries -----------------------------------------------------------
+  const ANCILLARY_TABLE_PREFIXES = ANCILLARY_TABLES.map((tableName) => `db\\${tableName}\\`);
+
+  /** Loc key prefixes the Ancillaries panel reads. Used to scan a mod's own loc entries. */
+  const ANCILLARY_LOC_PREFIXES = [
+    "ancillaries_onscreen_name_",
+    "ancillaries_explanation_text_",
+    "ancillaries_colour_text_",
+    "ancillaries_categories_onscreen_name_",
+    "ancillaries_subcategories_onscreen_name_",
+    "effects_description_",
+  ];
+
+  /**
+   * The rows and locs one pack contributes, read from that pack alone.
+   *
+   * `ownLocEntries` is a mod pack's complete loc table. Scanning it is what makes a *translation
+   * only* mod work: such a pack defines no ancillary rows, so a purely row-driven capture would
+   * record nothing from it and its override of a vanilla name would be lost. Vanilla has no
+   * equivalent - its loc lookup is the cache reader, which cannot be enumerated - but it does not
+   * need one, since its own rows define every key it can supply.
+   */
+  const readAncillariesSourceFromPacks = (
+    packs: Pack[],
+    getLoc: (key: string) => string | undefined,
+    ownLocEntries?: Record<string, string>,
+  ) => {
+    const packsTableData = getPacksTableData(packs, ANCILLARY_TABLE_PREFIXES, false) || [];
+    const tables: AncillariesTableRows = {};
+    for (const tableName of ANCILLARY_TABLES) {
+      const rows: Array<Record<string, string>> = [];
+      getTableRowData(packsTableData, tableName, (schemaFieldRow) => {
+        rows.push(schemaRowToRecord(schemaFieldRow));
+      });
+      tables[tableName] = rows;
+    }
+
+    // Capture only the keys this source's own rows can need. Recorded rather than retaining the loc
+    // tries, which cost far more than the handful of strings a mod actually defines.
+    const localizations: Record<string, string> = {};
+    const record = (key: string) => {
+      const value = getLoc(key);
+      if (value != undefined) localizations[key] = value;
+      return value;
+    };
+    for (const row of tables.ancillaries_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (!key) continue;
+      record(`ancillaries_onscreen_name_${key}`);
+      record(`ancillaries_explanation_text_${key}`);
+      record(`ancillaries_colour_text_${key}`);
+    }
+    for (const row of tables.ancillaries_categories_tables ?? []) {
+      const key = (row.category ?? "").trim();
+      if (key) record(`ancillaries_categories_onscreen_name_${key}`);
+    }
+    for (const row of tables.ancillaries_subcategories_tables ?? []) {
+      const key = (row.subcategory ?? "").trim();
+      if (key) record(`ancillaries_subcategories_onscreen_name_${key}`);
+    }
+    for (const row of tables.ancillary_to_effects_tables ?? []) {
+      const effect = (row.effect ?? "").trim();
+      if (effect) record(`effects_description_${effect}`);
+    }
+    for (const [key, value] of Object.entries(ownLocEntries ?? {})) {
+      if (ANCILLARY_LOC_PREFIXES.some((prefix) => key.startsWith(prefix))) localizations[key] = value;
+    }
+    return { tables, localizations } satisfies AncillariesSource;
+  };
+
+  /**
+   * The vanilla half: db.pack plus the localisation packs, keyed on their identities alone.
+   *
+   * No mod list goes into the signature, which is the whole point of the split - enabling or
+   * disabling a mod leaves this valid and only the mod segments below are revisited.
+   */
+  const buildAncillariesVanillaSource = async (dataFolder: string): Promise<AncillariesSource> => {
+    const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const identityPaths = [dbPackPath, ...localizationPackPaths];
+    const identities = await Promise.all(
+      identityPaths.map(async (packPath) => {
+        const [size, mtimeMs] = await readPackIdentity(packPath);
+        return [nodePath.resolve(packPath), size, mtimeMs] as const;
+      }),
+    );
+    const signatureInputs: AncillariesVanillaSignatureInputs = {
+      feature: 1,
+      game: appData.currentGame,
+      schema: getVisualsSchemaHash(appData.currentGame),
+      identities,
+    };
+    const signature = createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex");
+
+    const cached = await loadVanillaAncillariesCache(app.getPath("userData"), signature, signatureInputs);
+    if (cached) {
+      console.log("Ancillaries: reusing the vanilla cache", { signature });
+      return cached;
+    }
+
+    console.log("Ancillaries: rebuilding the vanilla half from the game's packs", { signature });
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, ANCILLARY_TABLE_PREFIXES, [dbPackPath], false);
+    if (!vanillaPacks) {
+      throw new Error("The game's ancillary tables could not be read, try again");
+    }
+    // Read separately from the tables: readVanillaPackFromCache refuses any request with readLocs,
+    // so combining the two would give up the cache for the whole build.
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+    const getLoc = createAncillariesLocLookup(vanillaLocLookups);
+    const source = readAncillariesSourceFromPacks(vanillaPacks, getLoc);
+
+    releaseParsedTables(vanillaPacks, ANCILLARY_TABLE_PREFIXES);
+    await saveVanillaAncillariesCache(app.getPath("userData"), signature, source, signatureInputs);
+    return source;
+  };
+
+  /**
+   * The mod half: one segment per enabled mod, each keyed on that pack's own size and mtime.
+   *
+   * Packs are read one at a time rather than in a single merged call, because a segment is only
+   * reusable if it holds exactly one pack's rows. That is the cost of not rebuilding all of them
+   * when one mod changes.
+   */
+  const buildAncillariesModSources = async (
+    dataFolder: string,
+    orderedEnabledMods: Mod[],
+  ): Promise<Array<{ packPath: string; source: AncillariesSource }>> => {
+    if (orderedEnabledMods.length === 0) return [];
+
+    const segments: AncillariesModSegments = { ...(await loadAncillariesModSegments(app.getPath("userData"))) };
+    const identities = new Map(
+      await Promise.all(orderedEnabledMods.map(async (mod) => [mod.path, await readPackIdentity(mod.path)] as const)),
+    );
+    const stale = orderedEnabledMods.filter(
+      (mod) => !isSameIdentity(segments[modSegmentKey(mod.path)]?.identity, identities.get(mod.path)),
+    );
+
+    if (stale.length > 0) {
+      console.log("Ancillaries: rebuilding mod cache segments", { count: stale.length, of: orderedEnabledMods.length });
+      await readMods(stale, false, true, false, true, ANCILLARY_TABLE_PREFIXES, undefined, false);
+      const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+      // Mod locs stay on the live path; the vanilla lookup is not consulted here so a segment never
+      // captures a string it did not itself define.
+      for (const mod of stale) {
+        const pack = packsByPath.get(mod.path);
+        if (!pack) continue;
+        const trie = getLocsTrie(pack);
+        const getLoc = createAncillariesLocLookup([trie]);
+        segments[modSegmentKey(mod.path)] = {
+          ...readAncillariesSourceFromPacks([pack], getLoc, trie?.getEntries()),
+          identity: identities.get(mod.path) ?? [-1, -1],
+          lastUsedMs: Date.now(),
+        };
+      }
+      releaseParsedTables(
+        stale.map((mod) => packsByPath.get(mod.path)).filter((pack): pack is Pack => !!pack),
+        ANCILLARY_TABLE_PREFIXES,
+      );
+    } else {
+      console.log("Ancillaries: every enabled mod's cache segment is current", { count: orderedEnabledMods.length });
+    }
+
+    // Refresh the LRU stamp on every segment this build used, reused or not, so the pruner drops
+    // the mods that have actually gone quiet.
+    const now = Date.now();
+    for (const mod of orderedEnabledMods) {
+      const segment = segments[modSegmentKey(mod.path)];
+      if (segment) segment.lastUsedMs = now;
+    }
+    const saved = await saveAncillariesModSegments(app.getPath("userData"), segments);
+
+    return orderedEnabledMods
+      .map((mod) => ({ packPath: mod.path, source: saved[modSegmentKey(mod.path)] }))
+      .filter((entry): entry is { packPath: string; source: AncillariesModSegment } => !!entry.source);
+  };
+
+  /**
+   * Loads every icon the data mentions and registers it for serving.
+   *
+   * Three sources, all addressed by exact path, so the global vanilla file index answers "which
+   * pack wins" without opening anything: the ancillary's own `ui_icon`, its category's icon, and
+   * one per effect.
+   */
+  const registerAncillaryIcons = async (data: BuiltAncillariesData, dataFolder: string, modPackPaths: string[]) => {
+    const wantedPaths = new Set<string>();
+    for (const ancillary of data.ancillaries) {
+      if (ancillary.iconPath) wantedPaths.add(normalizeAssetPath(ancillary.iconPath));
+    }
+    for (const category of data.categories) {
+      if (category.iconName) wantedPaths.add(normalizeAssetPath(categoryIconPath(category.iconName)));
+    }
+    for (const meta of Object.values(data.effectMeta)) {
+      if (meta.icon) wantedPaths.add(normalizeAssetPath(`ui\\campaign ui\\effect_bundles\\${meta.icon}`));
+    }
+    const paths = [...wantedPaths];
+    if (paths.length === 0) return { icons: {} as Record<string, AssetBytes>, iconGeneration: registerIconAssets({}) };
+
+    const vanillaPackPaths =
+      (await findVanillaPacksHoldingIcons(paths)) ??
+      [...appData.allVanillaPackNames].map((packName) => nodePath.join(dataFolder, packName));
+    // Mods come after vanilla so a mod that replaces an icon wins, matching game load order.
+    const icons = await loadIconsFromPacks(await getIconPacks([...vanillaPackPaths, ...modPackPaths]), paths);
+    return { icons, iconGeneration: registerIconAssets(icons) };
+  };
+
+  const buildAncillariesSessionData = async (enabledMods: Mod[]): Promise<CachedAncillariesData> => {
+    if (appData.currentGame !== "wh3") throw new Error("Ancillaries are available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+
+    const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
+    const vanilla = await buildAncillariesVanillaSource(dataFolder);
+    const modSources = await buildAncillariesModSources(dataFolder, orderedEnabledMods);
+
+    // Both halves are now current, so their identities are the whole signature. Recomputing it here
+    // rather than up front is what lets each half decide independently whether it had to rebuild.
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify({
+          game: appData.currentGame,
+          schema: getVisualsSchemaHash(appData.currentGame),
+          vanillaRows: Object.fromEntries(
+            ANCILLARY_TABLES.map((tableName) => [tableName, vanilla.tables[tableName]?.length ?? 0]),
+          ),
+          mods: modSources.map(({ packPath, source }) => [
+            nodePath.resolve(packPath),
+            source.tables.ancillaries_tables?.length ?? 0,
+            source.tables.ancillary_to_effects_tables?.length ?? 0,
+          ]),
+        }),
+      )
+      .digest("hex");
+    if (cachedAncillariesData?.signature === signature) {
+      console.log("Ancillaries: using the in-memory cache", { signature });
+      return cachedAncillariesData;
+    }
+
+    const merged = mergeAncillariesSources(vanilla, modSources);
+    const data = buildAncillariesData(
+      merged.tables,
+      (key) => merged.localizations[key],
+      merged.originPackPathByAncillary,
+    );
+    const icons = await registerAncillaryIcons(
+      data,
+      dataFolder,
+      orderedEnabledMods.map((mod) => mod.path),
+    );
+    cachedAncillariesData = {
+      signature,
+      data,
+      tables: merged.tables,
+      localizations: merged.localizations,
+      originPackPathByAncillary: merged.originPackPathByAncillary,
+      dbPackPath: nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3),
+      ...icons,
+    };
+    return cachedAncillariesData;
+  };
+
+  const ancillariesBuilds = createSerializedBuilds();
+  const ensureAncillariesData = async (enabledMods: Mod[]) =>
+    ancillariesBuilds.run(buildBuildingsBuildKey(enabledMods, appData.currentGame), () =>
+      buildAncillariesSessionData(enabledMods),
+    );
+
+  /**
+   * The schema each ancillaries table's rows have to be written with.
+   *
+   * Same choice `getBuildingsTableSchemas` makes: prefer the version the vanilla pack carries, fall
+   * back to the newest the schema knows. Writing rows against a different version than the game's
+   * own table uses makes the pack unreadable.
+   */
+  const getAncillariesTableSchemas = async (): Promise<Record<string, DBVersion>> => {
+    const defaultTableVersions = await getDefaultTableVersions();
+    const schemas: Record<string, DBVersion> = {};
+    for (const tableName of ANCILLARY_TABLES) {
+      const versions = DBNameToDBVersions[appData.currentGame][tableName];
+      if (!versions || versions.length === 0) continue;
+      const defaultVersion = defaultTableVersions?.[tableName];
+      schemas[tableName] = versions.find((version) => version.version === defaultVersion) || versions[0];
+    }
+    return schemas;
+  };
+
+  /** Fills in the icon URLs the renderer renders; the data itself holds only pack-relative paths. */
+  const ancillaryIconUrl = (built: CachedAncillariesData, packedFilePath: string | undefined) => {
+    if (!packedFilePath) return undefined;
+    const normalized = normalizeAssetPath(packedFilePath);
+    return built.icons[normalized] ? iconAssetUrl(built.iconGeneration, normalized) : undefined;
+  };
+
+  const toAncillariesCatalog = (
+    built: CachedAncillariesData,
+    data: BuiltAncillariesData,
+    tableSchemas: Record<string, DBVersion>,
+  ): AncillariesCatalog => ({
+    categories: data.categories.map((category) => ({
+      ...category,
+      iconUrl: ancillaryIconUrl(built, category.iconName ? categoryIconPath(category.iconName) : undefined),
+    })),
+    subcategories: data.subcategories,
+    ancillaries: data.ancillaries.map((ancillary) => ({
+      ...ancillary,
+      iconUrl: ancillaryIconUrl(built, ancillary.iconPath),
+    })),
+    effects: data.effects,
+    effectScopes: data.effectScopes,
+    types: data.typeKeys.map((key) => ({ key, localizedName: key })),
+    dbPackPath: built.dbPackPath,
+    tableSchemas,
+    moddersPrefix: appData.moddersPrefix,
+    nextNumericIds: data.nextNumericIds,
+  });
+
+  /**
+   * Rebuilds every structure from the effective rows. Keeping this on the same `buildAncillariesData`
+   * path used at initial load means a table cannot be consumed by the view yet forgotten by a
+   * separate incremental updater.
+   */
+  const applyPendingAncillariesRows = (built: CachedAncillariesData, pendingEdits?: AncillariesEditState) => {
+    if (!pendingEdits) return built.data;
+    const rowsByTable = ancillariesNewRowsByTable(pendingEdits);
+    if (Object.keys(rowsByTable).length === 0) return built.data;
+
+    const pendingLoc: Record<string, string> = {};
+    for (const row of rowsByTable[ANCILLARIES_LOC_TABLE] ?? []) {
+      const key = (row.values.key ?? "").trim();
+      if (key) pendingLoc[key] = row.values.text ?? "";
+    }
+    return applyNewRowsToAncillariesData(built.tables, pendingEdits, (tables) =>
+      buildAncillariesData(
+        tables,
+        (key) => (Object.prototype.hasOwnProperty.call(pendingLoc, key) ? pendingLoc[key] : built.localizations[key]),
+        built.originPackPathByAncillary,
+      ),
+    );
+  };
+
+  /** Marks the effect rows that came from pending edits, which are the only removable ones. */
+  const markPendingEffects = (
+    effects: AncillaryEffectRow[],
+    pendingEdits: AncillariesEditState | undefined,
+  ): AncillaryEffectRow[] => {
+    if (!pendingEdits) return effects;
+    const pendingByPair = new Map<string, string>();
+    for (const row of ancillariesNewRowsByTable(pendingEdits).ancillary_to_effects_tables ?? []) {
+      pendingByPair.set(`${row.values.ancillary ?? ""}|${row.values.effect ?? ""}`, row.id);
+    }
+    return effects.map((effect) => {
+      const pendingRowId = pendingByPair.get(`${effect.ancillary}|${effect.effectKey}`);
+      return pendingRowId ? { ...effect, isPending: true, pendingRowId } : effect;
+    });
+  };
+
+  const toAncillaryDetail = (
+    built: CachedAncillariesData,
+    data: BuiltAncillariesData,
+    key: string,
+    pendingEdits?: AncillariesEditState,
+  ): AncillaryDetail | undefined => {
+    const summary = data.ancillaries.find((ancillary) => ancillary.key === key);
+    if (!summary) return undefined;
+    const getLoc = (locKey: string) => built.localizations[locKey];
+    const category = data.categories.find((row) => row.key === summary.category);
+    const subcategory = data.subcategories.find((row) => row.key === summary.subcategory);
+    return {
+      ...summary,
+      iconUrl: ancillaryIconUrl(built, summary.iconPath),
+      explanation: getLoc(`ancillaries_explanation_text_${key}`),
+      colourText: getLoc(`ancillaries_colour_text_${key}`),
+      categoryName: category?.localizedName || summary.category,
+      subcategoryName: subcategory?.localizedName,
+      effects: markPendingEffects(data.effectsByAncillary[key] ?? [], pendingEdits).map((effect) => ({
+        ...effect,
+        iconUrl: ancillaryIconUrl(built, effect.icon ? `ui\\campaign ui\\effect_bundles\\${effect.icon}` : undefined),
+      })),
+      rowValues: data.rowValuesByKey[key] ?? {},
+      hasInfoRow: data.infoKeys.includes(key),
+    };
+  };
+
+  ipcMain.handle("getAncillariesCatalog", async (_event, enabledMods: Mod[]): Promise<AncillariesCatalogResponse> => {
+    try {
+      const built = await ensureAncillariesData(enabledMods);
+      return { success: true, catalog: toAncillariesCatalog(built, built.data, await getAncillariesTableSchemas()) };
+    } catch (error) {
+      console.log("getAncillariesCatalog failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle(
+    "getAncillariesDetail",
+    async (
+      _event,
+      enabledMods: Mod[],
+      key: string,
+      pendingEdits?: AncillariesEditState,
+    ): Promise<AncillariesDetailResponse> => {
+      try {
+        const built = await ensureAncillariesData(enabledMods);
+        const data = applyPendingAncillariesRows(built, pendingEdits);
+        // Validated against the base data, not `data`: every pending row exists in the latter by
+        // construction, so an override would look like a perfectly ordinary ancillary.
+        const rowIssues = pendingEdits ? validateAncillariesNewRows(built.data, pendingEdits) : undefined;
+        return {
+          success: true,
+          detail: toAncillaryDetail(built, data, key, pendingEdits),
+          catalog: toAncillariesCatalog(built, data, await getAncillariesTableSchemas()),
+          rowIssues,
+        };
+      } catch (error) {
+        console.log("getAncillariesDetail failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+
   const setCurrentGame = async (newGame: SupportedGames): Promise<boolean> => {
     let didSwitchGame = false;
     try {
@@ -3840,9 +4310,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // would otherwise serve icon URLs built with a generation clearIconAssets has just dropped.
       console.log("Buildings cache: clearing in-memory cache because the game/folders changed", { game: newGame });
       cachedBuildingsData = undefined;
+      // Same reasoning for Ancillaries: its icon URLs carry a generation clearIconAssets just
+      // dropped, and its vanilla half is keyed on the game being left.
+      cachedAncillariesData = undefined;
       cachedEsfMapData = undefined;
       clearEsfMapMemoryCache();
       clearBuildingsMemoryCache();
+      clearAncillariesMemoryCache();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);
       }
