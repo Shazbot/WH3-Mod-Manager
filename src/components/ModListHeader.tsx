@@ -1,5 +1,4 @@
 import React, { memo, useContext } from "react";
-import { Tooltip } from "flowbite-react";
 import { GoClock, GoGear, GoImage, GoListOrdered, GoTypography } from "react-icons/go";
 import { IconType } from "react-icons";
 import * as modRowSorting from "../utility/modRowSorting";
@@ -61,15 +60,20 @@ const ModListHeader = memo(
     const nameSortingLabel = (nameSortingField !== undefined && nameSortingLabels[nameSortingField]) || undefined;
 
     /**
-     * A compact column is an icon, so its tooltip is the only thing that says what it is: the name of the
-     * column, whatever the wide layout tells the user about it, and the shift that sorts both panes at
-     * once. It is the native title rather than a floating one - the two used to be drawn on top of each
-     * other, and this is the one that belongs on a control this small.
+     * One tooltip per column, and it is the native one.
+     *
+     * A compact column is an icon, so it has to name itself; a wide one is already labelled in the header
+     * and only adds what it does. The shift that sorts both panes at once is worth saying wherever there
+     * are two panes to sort. A column with nothing to add gets no tooltip rather than an empty one.
      */
-    const compactTitle = (columnName: string, ...details: (string | undefined)[]) =>
-      [columnName, ...details, localized.sortBothPanes || "Shift click: sort both lists."]
-        .filter((line) => line)
-        .join("\n");
+    const columnTitle = (columnName: string, ...details: (string | undefined)[]) => {
+      const lines = [
+        (isCompact && columnName) || undefined,
+        ...details,
+        (isCompact && (localized.sortBothPanes || "Shift click: sort both lists.")) || undefined,
+      ].filter((line) => line);
+      return lines.length > 0 ? lines.join("\n") : undefined;
+    };
 
     /** What right clicking a column that sorts by more than one thing steps through. */
     const sortCycleLines = (cycleLabels: (string | undefined)[]) => [
@@ -95,14 +99,6 @@ const ModListHeader = memo(
         </span>
       )) || <span className={`cursor-pointer ${wideClassName} ${isActiveSort ? "font-semibold" : ""}`}>{label}</span>;
 
-    const priorityDetails = (
-      <>
-        <div>{localized.priorityTooltipOne}</div>
-        <div>{localized.priorityTooltipTwo}</div>
-        <div className="text-red-600 font-bold">{localized.priorityTooltipThree}</div>
-      </>
-    );
-
     const orderHeader = (
       <div
         // Onboarding points at this cell, and the dual layout would otherwise render the id twice.
@@ -110,36 +106,15 @@ const ModListHeader = memo(
         className={`flex place-items-center w-full justify-center z-[11] rounded-tl-xl ${headerClass}`}
         onClick={(event) => setSortingType(SortingType.Ordered, event.shiftKey)}
         onContextMenu={onOrderRightClick}
-        title={
-          (isCompact &&
-            compactTitle(
-              localized.order,
-              localized.priorityTooltipOne,
-              localized.priorityTooltipTwo,
-              localized.priorityTooltipThree,
-            )) ||
-          undefined
-        }
+        title={columnTitle(
+          localized.order,
+          localized.priorityTooltipOne,
+          localized.priorityTooltipTwo,
+          localized.priorityTooltipThree,
+        )}
       >
         {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-        {(isCompact &&
-          columnLabel(
-            localized.order,
-            GoListOrdered,
-            modRowSorting.isOrderSort(sortingType),
-            "text-center w-full",
-          )) || (
-          <span className="tooltip-width-20">
-            <Tooltip placement="bottom" style="light" content={priorityDetails}>
-              {columnLabel(
-                localized.order,
-                GoListOrdered,
-                modRowSorting.isOrderSort(sortingType),
-                "text-center w-full",
-              )}
-            </Tooltip>
-          </span>
-        )}
+        {columnLabel(localized.order, GoListOrdered, modRowSorting.isOrderSort(sortingType), "text-center w-full")}
       </div>
     );
 
@@ -160,24 +135,10 @@ const ModListHeader = memo(
         // Right clicking swaps the date, left clicking reverses whichever one the column is on.
         onClick={(event) => setSortingType(timeSortingField ?? SortingType.LastUpdated, event.shiftKey)}
         onContextMenu={(event) => setSortingType(modRowSorting.getNextTimeSortingType(sortingType), event.shiftKey)}
-        title={(isCompact && compactTitle(timeColumnName, ...timeCycleLines)) || undefined}
+        title={columnTitle(timeColumnName, ...timeCycleLines)}
       >
         {timeSortingField !== undefined && modRowSorting.getSortingArrow(sortingType)}
-        {(isCompact && columnLabel(timeColumnName, GoClock, timeSortingField !== undefined)) || (
-          <Tooltip
-            placement="left"
-            style="light"
-            content={
-              <>
-                {timeCycleLines.map((line) => (
-                  <div key={line}>{line}</div>
-                ))}
-              </>
-            }
-          >
-            {columnLabel(timeColumnName, GoClock, timeSortingField !== undefined)}
-          </Tooltip>
-        )}
+        {columnLabel(timeColumnName, GoClock, timeSortingField !== undefined)}
         {/* The compact column is a clock either way, so the sort it is on has to be said in words. The
             wide layout already spells it out in the column label itself. */}
         {isCompact && modRowSorting.isSubbedTimeSort(sortingType) && (
@@ -192,7 +153,7 @@ const ModListHeader = memo(
       <div
         className={`flex place-items-center justify-center rounded-tr-xl ${isCompact ? "" : "pl-1 "}${headerClass}`}
         onClick={(event) => setSortingType(SortingType.IsCustomizable, event.shiftKey)}
-        title={(isCompact && compactTitle(localized.configurationColumn || "Configuration")) || undefined}
+        title={columnTitle(localized.configurationColumn || "Configuration")}
       >
         {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
         {(isCompact &&
@@ -228,7 +189,7 @@ const ModListHeader = memo(
             onContextMenu={(event) =>
               setSortingType(modRowSorting.getNextNameSortingType(sortingType, hasDataMods), event.shiftKey)
             }
-            title={compactTitle(
+            title={columnTitle(
               nameSortingLabel ?? localized.name,
               ...sortCycleLines(
                 modRowSorting
@@ -259,16 +220,13 @@ const ModListHeader = memo(
           onClick={(event) => setSortingType(SortingType.IsEnabled, event.shiftKey)}
           onContextMenu={onEnabledRightClick}
           id="enabledHeader"
+          title={columnTitle(localized.enabled, localized.enableOrDisableAll)}
         >
           {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className="tooltip-width-15">
-            <Tooltip placement="bottom" style="light" content={localized.enableOrDisableAll}>
-              <span
-                className={`text-center cursor-pointer w-full ${modRowSorting.isEnabledSort(sortingType) && "font-semibold"}`}
-              >
-                {localized.enabled}
-              </span>
-            </Tooltip>
+          <span
+            className={`text-center cursor-pointer w-full ${modRowSorting.isEnabledSort(sortingType) && "font-semibold"}`}
+          >
+            {localized.enabled}
           </span>
         </div>
         <div
@@ -283,19 +241,18 @@ const ModListHeader = memo(
           className={`flex grid-area-packName place-items-center pl-1 ${headerClass}`}
           onClick={(event) => setSortingType(SortingType.PackName, event.shiftKey)}
           onContextMenu={(event) => setSortingType(SortingType.IsDataPack, event.shiftKey)}
+          title={columnTitle(localized.pack, localized.sortByDataPacks)}
         >
           {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip placement="right" style="light" content={localized.sortByDataPacks}>
-            <span
-              className={`cursor-pointer ${
-                (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
-                "font-semibold"
-              }`}
-            >
-              {(modRowSorting.isDataPackSort(sortingType) && localized.dataPacks) || localized.pack}
-            </span>
-          </Tooltip>
+          <span
+            className={`cursor-pointer ${
+              (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
+              "font-semibold"
+            }`}
+          >
+            {(modRowSorting.isDataPackSort(sortingType) && localized.dataPacks) || localized.pack}
+          </span>
         </div>
         <div
           className={`flex grid-area-humanName place-items-center pl-1 ${headerClass}`}

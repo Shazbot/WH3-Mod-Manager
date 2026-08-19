@@ -54,6 +54,9 @@ const localization = {
   thumbnail: "Thumbnail",
   lastUpdated: "Last Updated",
   subscriptionTime: "Subscription Time",
+  priorityTooltipOne: "Lower is loaded first",
+  priorityTooltipTwo: "Right click to reset",
+  priorityTooltipThree: "Only change it when a mod asks you to",
 };
 
 /** The compact layout has one name column, which sorts by whichever of these was picked last. */
@@ -183,7 +186,14 @@ describe("dual mod list layout", () => {
 
     // One tooltip per column, the native one: the wording leads it, and nothing inside the cell draws a
     // second on top of it.
-    expect(orderHeader.title.split("\n")[0]).toBe(localization.order);
+    expect(orderHeader.title.split("\n")).toEqual([
+      localization.order,
+      localization.priorityTooltipOne,
+      localization.priorityTooltipTwo,
+      localization.priorityTooltipThree,
+      // The pane hint closes it: each pane sorts on its own unless shift is held.
+      expect.stringMatching(/shift/i),
+    ]);
     expect(orderHeader.querySelector("[title]")).toBeNull();
     expect(within(orderHeader).queryAllByText(localization.order)).toHaveLength(1);
 
@@ -199,6 +209,14 @@ describe("dual mod list layout", () => {
     await waitFor(() => expect(document.getElementById("sortHeader")).toBeInTheDocument());
     const singleOrderHeader = document.getElementById("sortHeader") as HTMLElement;
     expect(within(singleOrderHeader).getByText(localization.order)).not.toHaveClass("sr-only");
+
+    // Its tooltip is native too, and skips both the column name it already shows and the pane hint.
+    expect(singleOrderHeader.title.split("\n")).toEqual([
+      localization.priorityTooltipOne,
+      localization.priorityTooltipTwo,
+      localization.priorityTooltipThree,
+    ]);
+    expect(singleOrderHeader.querySelector("[title]")).toBeNull();
   });
 
   it("numbers the disabled list by default", async () => {
