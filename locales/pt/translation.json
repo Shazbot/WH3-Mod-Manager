@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "Chave",
   "ancillariesAncillaryKey": "Chave auxiliar",
   "ancillariesKeyRequired": "Dê uma chave ao lado.",
-  "ancillariesKeyTaken": "Essa chave auxiliar já existe."
+  "ancillariesKeyTaken": "Essa chave auxiliar já existe.",
+  "switchSortColumn": "Clique com o botão direito para mudar a classificação desta coluna",
+  "subbedTimeShort": "sub",
+  "sortBothPanes": "Clique com a tecla Shift: classifique as duas listas.",
+  "groupByCategory": "Agrupar por categoria",
+  "groupByCategoryRightClick": "Clique com o botão direito: recolha ou expanda cada categoria.",
+  "uncategorized": "Sem categoria",
+  "modsNotEnabledInCategory": "mods nesta categoria não estão habilitados",
+  "enableOrDisableAllInCategory": "Clique com o botão direito: habilite todos os mods da categoria ou desabilite todos quando estiverem todos habilitados."
 }

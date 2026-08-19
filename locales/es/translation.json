@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "Llave",
   "ancillariesAncillaryKey": "clave auxiliar",
   "ancillariesKeyRequired": "Dale una llave al equipo.",
-  "ancillariesKeyTaken": "Esa clave auxiliar ya existe."
+  "ancillariesKeyTaken": "Esa clave auxiliar ya existe.",
+  "switchSortColumn": "Haga clic derecho para cambiar por qué ordena esta columna",
+  "subbedTimeShort": "sub",
+  "sortBothPanes": "Clic Mayús: ordena ambas listas.",
+  "groupByCategory": "Agrupar por categoría",
+  "groupByCategoryRightClick": "Haga clic derecho: contraer o expandir cada categoría.",
+  "uncategorized": "Sin categoría",
+  "modsNotEnabledInCategory": "Los mods en esta categoría no están habilitados.",
+  "enableOrDisableAllInCategory": "Haga clic derecho: habilite todos los mods de la categoría o desactívelos todos una vez que estén habilitados."
 }

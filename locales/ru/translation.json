@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "Ключ",
   "ancillariesAncillaryKey": "Вспомогательный ключ",
   "ancillariesKeyRequired": "Дайте помощнику ключ.",
-  "ancillariesKeyTaken": "Этот вспомогательный ключ уже существует."
+  "ancillariesKeyTaken": "Этот вспомогательный ключ уже существует.",
+  "switchSortColumn": "Щелкните правой кнопкой мыши, чтобы переключить сортировку в этом столбце.",
+  "subbedTimeShort": "суб",
+  "sortBothPanes": "Щелчок с нажатой клавишей Shift: сортировка обоих списков.",
+  "groupByCategory": "Группировать по категориям",
+  "groupByCategoryRightClick": "Щелкните правой кнопкой мыши: сверните или разверните каждую категорию.",
+  "uncategorized": "Без категории",
+  "modsNotEnabledInCategory": "моды в этой категории не включены",
+  "enableOrDisableAllInCategory": "Щелкните правой кнопкой мыши: включите каждый мод в категории или отключите их все, как только они все будут включены."
 }

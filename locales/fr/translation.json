@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "Clé",
   "ancillariesAncillaryKey": "Clé auxiliaire",
   "ancillariesKeyRequired": "Donnez une clé à l'auxiliaire.",
-  "ancillariesKeyTaken": "Cette clé auxiliaire existe déjà."
+  "ancillariesKeyTaken": "Cette clé auxiliaire existe déjà.",
+  "switchSortColumn": "Faites un clic droit pour changer le tri de cette colonne",
+  "subbedTimeShort": "sous",
+  "sortBothPanes": "Maj-clic : trier les deux listes.",
+  "groupByCategory": "Regrouper par catégorie",
+  "groupByCategoryRightClick": "Clic droit : réduire ou développer chaque catégorie.",
+  "uncategorized": "Non classé",
+  "modsNotEnabledInCategory": "les mods de cette catégorie ne sont pas activés",
+  "enableOrDisableAllInCategory": "Clic droit : activez tous les mods de la catégorie, ou désactivez-les tous une fois qu'ils sont tous activés."
 }

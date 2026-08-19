@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "Klawisz",
   "ancillariesAncillaryKey": "Klucz pomocniczy",
   "ancillariesKeyRequired": "Daj klucz do urządzenia pomocniczego.",
-  "ancillariesKeyTaken": "Ten klucz pomocniczy już istnieje."
+  "ancillariesKeyTaken": "Ten klucz pomocniczy już istnieje.",
+  "switchSortColumn": "Kliknij prawym przyciskiem myszy, aby zmienić sposób sortowania tej kolumny",
+  "subbedTimeShort": "zastąpić",
+  "sortBothPanes": "Kliknięcie Shift: sortowanie obu list.",
+  "groupByCategory": "Grupuj według kategorii",
+  "groupByCategoryRightClick": "Kliknij prawym przyciskiem myszy: zwiń lub rozwiń każdą kategorię.",
+  "uncategorized": "Bez kategorii",
+  "modsNotEnabledInCategory": "mody w tej kategorii nie są włączone",
+  "enableOrDisableAllInCategory": "Kliknij prawym przyciskiem myszy: włącz każdy mod w kategorii lub wyłącz je wszystkie, gdy wszystkie zostaną włączone."
 }

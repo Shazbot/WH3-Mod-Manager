@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "열쇠",
   "ancillariesAncillaryKey": "보조 키",
   "ancillariesKeyRequired": "보조 장치에 키를 제공합니다.",
-  "ancillariesKeyTaken": "해당 보조 키가 이미 존재합니다."
+  "ancillariesKeyTaken": "해당 보조 키가 이미 존재합니다.",
+  "switchSortColumn": "이 열의 정렬 기준을 전환하려면 마우스 오른쪽 버튼을 클릭하세요.",
+  "subbedTimeShort": "보결",
+  "sortBothPanes": "Shift 클릭: 두 목록을 모두 정렬합니다.",
+  "groupByCategory": "카테고리별로 그룹화",
+  "groupByCategoryRightClick": "마우스 오른쪽 버튼 클릭: 모든 카테고리를 접거나 펼칩니다.",
+  "uncategorized": "분류되지 않음",
+  "modsNotEnabledInCategory": "이 카테고리의 모드는 활성화되어 있지 않습니다",
+  "enableOrDisableAllInCategory": "마우스 오른쪽 버튼 클릭: 카테고리의 모든 모드를 활성화하거나 모두 활성화되면 모두 비활성화합니다."
 }

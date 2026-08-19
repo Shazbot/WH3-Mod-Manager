@@ -1558,5 +1558,13 @@
   "ancillariesSectionKey": "钥匙",
   "ancillariesAncillaryKey": "辅助钥匙",
   "ancillariesKeyRequired": "给辅助设备一把钥匙。",
-  "ancillariesKeyTaken": "该辅助密钥已经存在。"
+  "ancillariesKeyTaken": "该辅助密钥已经存在。",
+  "switchSortColumn": "右键单击可切换此列的排序方式",
+  "subbedTimeShort": "子",
+  "sortBothPanes": "按住 Shift 键并单击：对两个列表进行排序。",
+  "groupByCategory": "按类别分组",
+  "groupByCategoryRightClick": "右键单击：折叠或展开每个类别。",
+  "uncategorized": "未分类",
+  "modsNotEnabledInCategory": "此类别中的模组未启用",
+  "enableOrDisableAllInCategory": "右键单击：启用类别中的每个模组，或在全部启用后将其全部禁用。"
 }

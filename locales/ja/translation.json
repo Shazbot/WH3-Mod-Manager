@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "鍵",
   "ancillariesAncillaryKey": "補助キー",
   "ancillariesKeyRequired": "付属品にキーを与えます。",
-  "ancillariesKeyTaken": "その補助キーはすでに存在します。"
+  "ancillariesKeyTaken": "その補助キーはすでに存在します。",
+  "switchSortColumn": "右クリックして、この列の並べ替え基準を切り替えます",
+  "subbedTimeShort": "サブ",
+  "sortBothPanes": "Shift クリック: 両方のリストを並べ替えます。",
+  "groupByCategory": "カテゴリ別にグループ化する",
+  "groupByCategoryRightClick": "右クリック: すべてのカテゴリを折りたたむか展開します。",
+  "uncategorized": "未分類",
+  "modsNotEnabledInCategory": "このカテゴリの MOD は有効になっていません",
+  "enableOrDisableAllInCategory": "右クリック: カテゴリ内のすべての MOD を有効にするか、すべて有効にした後ですべて無効にします。"
 }

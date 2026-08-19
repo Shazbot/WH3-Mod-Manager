@@ -1556,5 +1556,13 @@
   "ancillariesSectionKey": "Schlüssel",
   "ancillariesAncillaryKey": "Zusatzschlüssel",
   "ancillariesKeyRequired": "Geben Sie dem Gerät einen Schlüssel.",
-  "ancillariesKeyTaken": "Dieser Zusatzschlüssel ist bereits vorhanden."
+  "ancillariesKeyTaken": "Dieser Zusatzschlüssel ist bereits vorhanden.",
+  "switchSortColumn": "Klicken Sie mit der rechten Maustaste, um die Sortierung dieser Spalte zu ändern",
+  "subbedTimeShort": "sub",
+  "sortBothPanes": "Umschaltklick: Beide Listen sortieren.",
+  "groupByCategory": "Nach Kategorie gruppieren",
+  "groupByCategoryRightClick": "Rechtsklick: Jede Kategorie ein- oder ausblenden.",
+  "uncategorized": "Nicht kategorisiert",
+  "modsNotEnabledInCategory": "Mods in dieser Kategorie sind nicht aktiviert",
+  "enableOrDisableAllInCategory": "Rechtsklick: Alle Mods in der Kategorie aktivieren oder alle deaktivieren, sobald sie alle aktiviert sind."
 }
