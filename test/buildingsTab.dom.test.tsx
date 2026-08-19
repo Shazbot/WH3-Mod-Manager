@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import BuildingsTab from "../src/components/buildings/BuildingsTab";
@@ -45,10 +45,15 @@ const catalog: BuildingsCatalog = {
 
 const renderTab = (isFeaturesForModdersEnabled: boolean) => {
   appState.isFeaturesForModdersEnabled = isFeaturesForModdersEnabled;
+  let rebuildListener: ((event: unknown, isRebuilding: boolean) => void) | undefined;
   window.api = {
     getBuildingsCatalog: vi.fn().mockResolvedValue({ success: true, catalog }),
+    onBuildingsDataRebuild: (callback: (event: unknown, isRebuilding: boolean) => void) => {
+      rebuildListener = callback;
+      return () => undefined;
+    },
   } as never;
-  return render(<BuildingsTab />);
+  return { ...render(<BuildingsTab />), emitRebuild: (isRebuilding: boolean) => rebuildListener?.({}, isRebuilding) };
 };
 
 describe("BuildingsTab modder gate", () => {
@@ -63,5 +68,16 @@ describe("BuildingsTab modder gate", () => {
 
     expect(screen.queryByText("New rows")).not.toBeInTheDocument();
     expect(screen.queryByText("Save to pack")).not.toBeInTheDocument();
+  });
+
+  it("shows a popup while the main process rebuilds Buildings data", async () => {
+    const { emitRebuild } = renderTab(false);
+    await waitFor(() => expect(window.api!.getBuildingsCatalog).toHaveBeenCalled());
+
+    act(() => emitRebuild(true));
+    expect(screen.getByRole("status")).toHaveTextContent("Rebuilding Buildings data");
+
+    act(() => emitRebuild(false));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

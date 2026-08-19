@@ -1564,5 +1564,6 @@
   "groupByCategoryRightClick": "Kliknij prawym przyciskiem myszy: zwiń lub rozwiń każdą kategorię.",
   "uncategorized": "Bez kategorii",
   "modsNotEnabledInCategory": "mody w tej kategorii nie są włączone",
-  "enableOrDisableAllInCategory": "Kliknij prawym przyciskiem myszy: włącz każdy mod w kategorii lub wyłącz je wszystkie, gdy wszystkie zostaną włączone."
+  "enableOrDisableAllInCategory": "Kliknij prawym przyciskiem myszy: włącz każdy mod w kategorii lub wyłącz je wszystkie, gdy wszystkie zostaną włączone.",
+  "buildingsRebuildingData": "Odbudowa danych budynków. To może chwilę potrwać..."
 }

@@ -250,6 +250,12 @@ const api = {
     ipcRenderer.invoke("saveTechnologyChanges", payload),
   getBuildingsCatalog: (enabledMods: Mod[]): Promise<BuildingsCatalogResponse> =>
     ipcRenderer.invoke("getBuildingsCatalog", enabledMods),
+  onBuildingsDataRebuild: (callback: (event: Electron.IpcRendererEvent, isRebuilding: boolean) => void) => {
+    ipcRenderer.on("buildingsDataRebuild", callback);
+    return () => {
+      ipcRenderer.removeListener("buildingsDataRebuild", callback);
+    };
+  },
   getBuildingsRegionView: (
     enabledMods: Mod[],
     query: BuildingsRegionQuery,

@@ -3522,6 +3522,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return normalized.slice(normalized.lastIndexOf("\\") + 1).replace(IMAGE_EXTENSION, "");
   };
 
+  const sendBuildingsDataRebuild = (isRebuilding: boolean) => {
+    if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+    mainWindow.webContents.send("buildingsDataRebuild", isRebuilding);
+  };
+
   const buildBuildingsSessionData = async (enabledMods: Mod[]): Promise<CachedBuildingsData> => {
     if (appData.currentGame !== "wh3") throw new Error("Buildings are available only for Warhammer 3");
     const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
@@ -3612,104 +3617,109 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       signature,
     });
 
-    const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
-    const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
-    if (unservedPrefixes.length === 0) {
-      indexedDbPack.readTables = [...tablesToRead];
-      appendPacksData(indexedDbPack, undefined, false);
-    } else {
-      // At this point every reported prefix has files in db.pack; an absent table family is already
-      // a complete empty result, so these are genuine cache gaps or schema mismatches.
-      console.log("buildBuildingsSessionData: prefixes the vanilla db cache did not serve:", unservedPrefixes);
-      const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
-      if (readDbPacks.length === 0) throw new Error("The game's database pack could not be read for Buildings");
-    }
-    if (enabledMods.length > 0) {
-      await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
-    }
-    // Read separately from the tables: readVanillaPackFromCache refuses any request with readLocs,
-    // so combining the two would give up the cache for the whole build.
-    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+    sendBuildingsDataRebuild(true);
+    try {
+      const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
+      const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
+      if (unservedPrefixes.length === 0) {
+        indexedDbPack.readTables = [...tablesToRead];
+        appendPacksData(indexedDbPack, undefined, false);
+      } else {
+        // At this point every reported prefix has files in db.pack; an absent table family is already
+        // a complete empty result, so these are genuine cache gaps or schema mismatches.
+        console.log("buildBuildingsSessionData: prefixes the vanilla db cache did not serve:", unservedPrefixes);
+        const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
+        if (readDbPacks.length === 0) throw new Error("The game's database pack could not be read for Buildings");
+      }
+      if (enabledMods.length > 0) {
+        await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
+      }
+      // Read separately from the tables: readVanillaPackFromCache refuses any request with readLocs,
+      // so combining the two would give up the cache for the whole build.
+      const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
 
-    const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
-    const dbPack = packsByPath.get(dbPackPath);
-    if (!dbPack) throw new Error("Could not read db.pack for Buildings");
-    // Files present but no rows means the rows this build filled in were released underneath it.
-    // Caching that would serve a buildings-less catalog until the mod list changes.
-    const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
-    if (unparsedVanillaPrefixes.length > 0) {
-      throw new Error(
-        `The game's building tables were not available when Buildings was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
-      );
-    }
-    const orderedModPacks = orderedEnabledMods
-      .map((mod) => packsByPath.get(mod.path))
-      .filter((pack): pack is Pack => !!pack);
-    const tablePacks = [dbPack, ...orderedModPacks];
-    const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
-    const tables: BuildingsTableRows = {};
-    const cloneSourcePackPaths: NonNullable<BuiltBuildingsData["cloneSourcePackPaths"]> = {
-      levels: {},
-      cultureVariants: {},
-      sets: {},
-    };
-    for (const canonicalTableName of BUILDINGS_TABLES) {
-      const rows: Array<Record<string, string>> = [];
-      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
-        const row = schemaRowToRecord(schemaFieldRow);
-        rows.push(row);
+      const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+      const dbPack = packsByPath.get(dbPackPath);
+      if (!dbPack) throw new Error("Could not read db.pack for Buildings");
+      // Files present but no rows means the rows this build filled in were released underneath it.
+      // Caching that would serve a buildings-less catalog until the mod list changes.
+      const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
+      if (unparsedVanillaPrefixes.length > 0) {
+        throw new Error(
+          `The game's building tables were not available when Buildings was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
+        );
+      }
+      const orderedModPacks = orderedEnabledMods
+        .map((mod) => packsByPath.get(mod.path))
+        .filter((pack): pack is Pack => !!pack);
+      const tablePacks = [dbPack, ...orderedModPacks];
+      const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
+      const tables: BuildingsTableRows = {};
+      const cloneSourcePackPaths: NonNullable<BuiltBuildingsData["cloneSourcePackPaths"]> = {
+        levels: {},
+        cultureVariants: {},
+        sets: {},
+      };
+      for (const canonicalTableName of BUILDINGS_TABLES) {
+        const rows: Array<Record<string, string>> = [];
+        getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
+          const row = schemaRowToRecord(schemaFieldRow);
+          rows.push(row);
 
-        // `packsTableData` is vanilla first and then mods in load order. Assigning on every row
-        // leaves the source of the effective (last-wins) row, including mod-only and mod-overridden
-        // culture variants. The Buildings tab needs this path to hand DB Clone the actual source
-        // pack rather than always reopening vanilla db.pack.
-        if (canonicalTableName === "building_levels_tables") {
-          const levelKey = row.level_name?.trim();
-          if (levelKey) cloneSourcePackPaths.levels[levelKey] = packViewData.packPath;
-        } else if (canonicalTableName === "building_culture_variants_tables") {
-          const building = row.building?.trim() ?? "";
-          if (building) {
-            cloneSourcePackPaths.cultureVariants[
-              variantLocKey(
-                building,
-                row.culture?.trim() ?? "",
-                row.subculture?.trim() ?? "",
-                row.faction?.trim() ?? "",
-              )
-            ] = packViewData.packPath;
+          // `packsTableData` is vanilla first and then mods in load order. Assigning on every row
+          // leaves the source of the effective (last-wins) row, including mod-only and mod-overridden
+          // culture variants. The Buildings tab needs this path to hand DB Clone the actual source
+          // pack rather than always reopening vanilla db.pack.
+          if (canonicalTableName === "building_levels_tables") {
+            const levelKey = row.level_name?.trim();
+            if (levelKey) cloneSourcePackPaths.levels[levelKey] = packViewData.packPath;
+          } else if (canonicalTableName === "building_culture_variants_tables") {
+            const building = row.building?.trim() ?? "";
+            if (building) {
+              cloneSourcePackPaths.cultureVariants[
+                variantLocKey(
+                  building,
+                  row.culture?.trim() ?? "",
+                  row.subculture?.trim() ?? "",
+                  row.faction?.trim() ?? "",
+                )
+              ] = packViewData.packPath;
+            }
+          } else if (canonicalTableName === "building_sets_tables") {
+            const setKey = row.key?.trim();
+            if (setKey) cloneSourcePackPaths.sets[setKey] = packViewData.packPath;
           }
-        } else if (canonicalTableName === "building_sets_tables") {
-          const setKey = row.key?.trim();
-          if (setKey) cloneSourcePackPaths.sets[setKey] = packViewData.packPath;
-        }
+        });
+        tables[canonicalTableName] = rows;
+      }
+      const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods);
+      if (startposSlotTemplateRows.length > 0) {
+        tables.start_pos_region_slot_templates_tables.push(...startposSlotTemplateRows);
+      }
+
+      // Vanilla first so mod locs, which stay on the live path, still shadow it. Record every lookup
+      // the builder actually consumes; this compact snapshot is enough to rebuild after pending rows
+      // change without retaining the much larger localization tries.
+      const sourceLoc = createBuildingsLocLookup([
+        ...vanillaLocLookups,
+        ...orderedModPacks.map((pack) => getLocsTrie(pack)),
+      ]);
+      const localizations: Record<string, string> = {};
+      const data = buildBuildingsData(tables, (key) => {
+        const value = sourceLoc(key);
+        if (value != undefined) localizations[key] = value;
+        return value;
       });
-      tables[canonicalTableName] = rows;
-    }
-    const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods);
-    if (startposSlotTemplateRows.length > 0) {
-      tables.start_pos_region_slot_templates_tables.push(...startposSlotTemplateRows);
-    }
+      data.cloneSourcePackPaths = cloneSourcePackPaths;
 
-    // Vanilla first so mod locs, which stay on the live path, still shadow it. Record every lookup
-    // the builder actually consumes; this compact snapshot is enough to rebuild after pending rows
-    // change without retaining the much larger localization tries.
-    const sourceLoc = createBuildingsLocLookup([
-      ...vanillaLocLookups,
-      ...orderedModPacks.map((pack) => getLocsTrie(pack)),
-    ]);
-    const localizations: Record<string, string> = {};
-    const data = buildBuildingsData(tables, (key) => {
-      const value = sourceLoc(key);
-      if (value != undefined) localizations[key] = value;
-      return value;
-    });
-    data.cloneSourcePackPaths = cloneSourcePackPaths;
-
-    releaseParsedTables(tablePacks, tablesToRead);
-    const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
-    await saveBuildingsDiskCache(app.getPath("userData"), signature, data, tables, localizations, signatureInputs);
-    cachedBuildingsData = { signature, signatureInputs, data, tables, localizations, dbPackPath, ...icons };
-    return cachedBuildingsData;
+      releaseParsedTables(tablePacks, tablesToRead);
+      const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
+      await saveBuildingsDiskCache(app.getPath("userData"), signature, data, tables, localizations, signatureInputs);
+      cachedBuildingsData = { signature, signatureInputs, data, tables, localizations, dbPackPath, ...icons };
+      return cachedBuildingsData;
+    } finally {
+      sendBuildingsDataRebuild(false);
+    }
   };
 
   /** Loads the icon bytes for every variant icon the data mentions and registers them for serving. */

@@ -1564,5 +1564,6 @@
   "groupByCategoryRightClick": "Rechtsklick: Jede Kategorie ein- oder ausblenden.",
   "uncategorized": "Nicht kategorisiert",
   "modsNotEnabledInCategory": "Mods in dieser Kategorie sind nicht aktiviert",
-  "enableOrDisableAllInCategory": "Rechtsklick: Alle Mods in der Kategorie aktivieren oder alle deaktivieren, sobald sie alle aktiviert sind."
+  "enableOrDisableAllInCategory": "Rechtsklick: Alle Mods in der Kategorie aktivieren oder alle deaktivieren, sobald sie alle aktiviert sind.",
+  "buildingsRebuildingData": "Daten zum Wiederaufbau von Gebäuden. Das kann einen Moment dauern..."
 }

@@ -79,6 +79,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const [zoom, setZoom] = useState(1);
   const [error, setError] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [isRebuildingData, setIsRebuildingData] = useState(false);
 
   const onQueryChange = useCallback((patch: Partial<BuildingsRegionQuery>) => {
     setQuery((previous) => ({ ...previous, ...patch }));
@@ -324,6 +325,10 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   }, [isFeaturesForModdersEnabled]);
 
   useEffect(() => {
+    return window.api?.onBuildingsDataRebuild?.((_event, rebuilding) => setIsRebuildingData(rebuilding));
+  }, []);
+
+  useEffect(() => {
     if (currentGame !== "wh3") return;
     let isCurrent = true;
     setIsLoading(true);
@@ -429,6 +434,17 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
   return (
     <div className="flex h-[86vh] flex-col text-gray-200">
+      {isRebuildingData && (
+        <Modal show popup size="sm" position="center">
+          <Modal.Body>
+            <div className="flex flex-col items-center gap-3 py-4 text-center" role="status">
+              <div className="dots-loader" />
+              <p>{localized.buildingsRebuildingData || "Rebuilding Buildings data. This may take a moment..."}</p>
+            </div>
+          </Modal.Body>
+        </Modal>
+      )}
+
       {isFeaturesForModdersEnabled && (
         <div className="flex items-center gap-1 border-b border-gray-700 px-4">
           {(["board", "tables"] as const).map((tab) => (

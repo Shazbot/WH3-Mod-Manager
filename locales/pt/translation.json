@@ -1564,5 +1564,6 @@
   "groupByCategoryRightClick": "Clique com o botão direito: recolha ou expanda cada categoria.",
   "uncategorized": "Sem categoria",
   "modsNotEnabledInCategory": "mods nesta categoria não estão habilitados",
-  "enableOrDisableAllInCategory": "Clique com o botão direito: habilite todos os mods da categoria ou desabilite todos quando estiverem todos habilitados."
+  "enableOrDisableAllInCategory": "Clique com o botão direito: habilite todos os mods da categoria ou desabilite todos quando estiverem todos habilitados.",
+  "buildingsRebuildingData": "Dados de reconstrução de edifícios. Isso pode demorar um pouco..."
 }

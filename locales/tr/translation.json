@@ -1564,5 +1564,6 @@
   "groupByCategoryRightClick": "Sağ tıklayın: her kategoriyi daraltın veya genişletin.",
   "uncategorized": "Kategorize edilmemiş",
   "modsNotEnabledInCategory": "bu kategorideki modlar etkin değil",
-  "enableOrDisableAllInCategory": "Sağ tıklama: kategorideki her modu etkinleştirin veya etkinleştirildikten sonra hepsini devre dışı bırakın."
+  "enableOrDisableAllInCategory": "Sağ tıklama: kategorideki her modu etkinleştirin veya etkinleştirildikten sonra hepsini devre dışı bırakın.",
+  "buildingsRebuildingData": "Binaların yeniden inşası verileri. Bu biraz zaman alabilir..."
 }

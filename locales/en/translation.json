@@ -1401,6 +1401,7 @@
   "buildingsStatusSummary": "{{sets}} sets · {{chains}} chains · {{slots}} slot templates",
   "buildingsStatusPlaced": " · {{count}} placed in this region",
   "buildingsRefreshing": " · refreshing...",
+  "buildingsRebuildingData": "Rebuilding Buildings data. This may take a moment...",
   "buildingsReadTableFor": "Reading the table for",
   "buildingsDeepClone": "Deep clone",
   "buildingsDeepCloning": "Deep Cloning...",
