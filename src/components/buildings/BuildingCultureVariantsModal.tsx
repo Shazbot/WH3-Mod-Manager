@@ -445,7 +445,7 @@ const BuildingCultureVariantsModal = memo(
                 {localized.buildingsAddVariantRow || "Add a variant row"}
               </div>
               <div className="flex flex-wrap items-end gap-3">
-                <label className={labelClass}>
+                <label className={`${labelClass} min-w-[15rem]`}>
                   {localized.buildingsCulture || "Culture"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
@@ -462,7 +462,7 @@ const BuildingCultureVariantsModal = memo(
                     menuPlacement="auto"
                   />
                 </label>
-                <label className={labelClass}>
+                <label className={`${labelClass} min-w-[15rem]`}>
                   {localized.buildingsSubculture || "Subculture"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
@@ -478,7 +478,7 @@ const BuildingCultureVariantsModal = memo(
                     menuPlacement="auto"
                   />
                 </label>
-                <label className={labelClass}>
+                <label className={`${labelClass} min-w-[15rem]`}>
                   {localized.buildingsFaction || "Faction"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
