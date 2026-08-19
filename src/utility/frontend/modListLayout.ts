@@ -66,3 +66,65 @@ export const getModListGhostClass = (
   if (areThumbnailsEnabled) return "grid-column-7";
   return "grid-column-6";
 };
+
+/** The category a mod with none of its own is filed under, matching the categories tab's own fallback. */
+export const uncategorizedCategoryName = "Uncategorized";
+
+/** A mod row, tagged so it can share the list with the category headers. */
+export type ModListModRow = { kind: "mod" } & ModRowDatum;
+
+/** The heading that opens a category's run of rows in the grouped list. */
+export type ModListCategoryHeaderRow = {
+  kind: "categoryHeader";
+  category: string;
+  /** How many mods the category holds after filtering, whether or not they are currently rendered. */
+  modCount: number;
+  isCollapsed: boolean;
+};
+
+export type ModListRow = ModListModRow | ModListCategoryHeaderRow;
+
+/** Every category a mod belongs to, falling back to the uncategorized bucket. */
+export const getModCategories = (mod: Mod) =>
+  mod.categories && mod.categories.length > 0 ? mod.categories : [uncategorizedCategoryName];
+
+/** Uncategorized leads, since it is the bucket rather than a name the user chose; the rest sort by name. */
+const compareCategoryNames = (first: string, second: string) => {
+  if (first === second) return 0;
+  if (first === uncategorizedCategoryName) return -1;
+  if (second === uncategorizedCategoryName) return 1;
+  return first.localeCompare(second);
+};
+
+/**
+ * Interleaves category headings into a list of mod rows.
+ *
+ * A mod carries a list of categories rather than one, so it shows up under each of them - the same way
+ * the categories tab lists it. Rows keep the order they came in with inside their category, which is
+ * whatever the list is currently sorted by. A collapsed category renders as its heading alone, but its
+ * heading still counts every mod it holds.
+ */
+export const groupModRowsByCategory = (rows: ModListModRow[], collapsedCategories: Set<string>): ModListRow[] => {
+  const rowsByCategory = new Map<string, ModListModRow[]>();
+
+  for (const row of rows) {
+    for (const category of getModCategories(row.mod)) {
+      const categoryRows = rowsByCategory.get(category);
+      if (categoryRows) categoryRows.push(row);
+      else rowsByCategory.set(category, [row]);
+    }
+  }
+
+  return Array.from(rowsByCategory.entries())
+    .sort(([firstCategory], [secondCategory]) => compareCategoryNames(firstCategory, secondCategory))
+    .flatMap(([category, categoryRows]): ModListRow[] => {
+      const isCollapsed = collapsedCategories.has(category);
+      const header: ModListCategoryHeaderRow = {
+        kind: "categoryHeader",
+        category,
+        modCount: categoryRows.length,
+        isCollapsed,
+      };
+      return isCollapsed ? [header] : [header, ...categoryRows];
+    });
+};

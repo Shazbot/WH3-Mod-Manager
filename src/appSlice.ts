@@ -1054,6 +1054,7 @@ const appSlice = createSlice({
       state.modListDensity = fromConfigAppState.modListDensity ?? state.modListDensity;
       state.isShowingDisabledModsLoadOrder =
         fromConfigAppState.isShowingDisabledModsLoadOrder ?? state.isShowingDisabledModsLoadOrder;
+      state.isModListCategoryViewEnabled = !!fromConfigAppState.isModListCategoryViewEnabled;
       state.isPresetAuthorEnabled = !!fromConfigAppState.isPresetAuthorEnabled;
       state.arePresetThumbnailsEnabled = !!fromConfigAppState.arePresetThumbnailsEnabled;
       state.isCategoryAuthorEnabled = !!fromConfigAppState.isCategoryAuthorEnabled;
@@ -1358,6 +1359,9 @@ const appSlice = createSlice({
     },
     toggleIsShowingDisabledModsLoadOrder: (state: AppState) => {
       state.isShowingDisabledModsLoadOrder = !state.isShowingDisabledModsLoadOrder;
+    },
+    toggleIsModListCategoryViewEnabled: (state: AppState) => {
+      state.isModListCategoryViewEnabled = !state.isModListCategoryViewEnabled;
     },
     toggleIsPresetAuthorEnabled: (state: AppState) => {
       state.isPresetAuthorEnabled = !state.isPresetAuthorEnabled;
@@ -1737,6 +1741,7 @@ export const {
   toggleAreThumbnailsEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
+  toggleIsModListCategoryViewEnabled,
   setModListDensity,
   toggleIsPresetAuthorEnabled,
   toggleArePresetThumbnailsEnabled,

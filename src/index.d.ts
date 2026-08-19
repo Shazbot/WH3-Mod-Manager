@@ -191,6 +191,11 @@ declare global {
      * list. Pinned load orders show either way.
      */
     isShowingDisabledModsLoadOrder: boolean;
+    /**
+     * Group the dual layout's left list under category headers instead of showing one flat list. Only
+     * that list is grouped: the enabled pane's row order is the load order, which grouping would scramble.
+     */
+    isModListCategoryViewEnabled: boolean;
     /** Show the mod author under the mod name in the presets tab lists. */
     isPresetAuthorEnabled: boolean;
     /** Show a thumbnail column in the presets tab lists. */
@@ -308,6 +313,7 @@ declare global {
     | "isDualModListLayoutEnabled"
     | "modListDensity"
     | "isShowingDisabledModsLoadOrder"
+    | "isModListCategoryViewEnabled"
     | "isPresetAuthorEnabled"
     | "arePresetThumbnailsEnabled"
     | "isCategoryAuthorEnabled"

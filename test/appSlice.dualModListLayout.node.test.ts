@@ -4,6 +4,7 @@ import appReducer, {
   setFromConfig,
   setModListDensity,
   toggleIsDualModListLayoutEnabled,
+  toggleIsModListCategoryViewEnabled,
   toggleIsShowingDisabledModsLoadOrder,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
@@ -93,5 +94,32 @@ describe("mod list density option", () => {
   it("is written to the config, so it survives a restart", () => {
     resetConfigSavePayloadCache();
     expect(selectConfigSavePayload({ ...initialState, modListDensity: "roomy" }).config.modListDensity).toBe("roomy");
+  });
+});
+
+describe("mod list categories view option", () => {
+  it("is off by default, so the dual layout opens on one flat list", () => {
+    expect(initialState.isModListCategoryViewEnabled).toBe(false);
+  });
+
+  it("toggles", () => {
+    const on = appReducer(initialState, toggleIsModListCategoryViewEnabled());
+    expect(on.isModListCategoryViewEnabled).toBe(true);
+    expect(appReducer(on, toggleIsModListCategoryViewEnabled()).isModListCategoryViewEnabled).toBe(false);
+  });
+
+  it("is restored from the config, and stays off when the config predates it", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, isModListCategoryViewEnabled: true }));
+    expect(restored.isModListCategoryViewEnabled).toBe(true);
+
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.isModListCategoryViewEnabled;
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).isModListCategoryViewEnabled).toBe(false);
+  });
+
+  it("is written to the config, so it survives a restart", () => {
+    resetConfigSavePayloadCache();
+    const payload = selectConfigSavePayload({ ...initialState, isModListCategoryViewEnabled: true });
+    expect(payload.config.isModListCategoryViewEnabled).toBe(true);
   });
 });

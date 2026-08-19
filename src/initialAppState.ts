@@ -25,6 +25,7 @@ const initialState = {
   isDualModListLayoutEnabled: false,
   modListDensity: "comfortable",
   isShowingDisabledModsLoadOrder: true,
+  isModListCategoryViewEnabled: false,
   isPresetAuthorEnabled: false,
   arePresetThumbnailsEnabled: false,
   isCategoryAuthorEnabled: false,

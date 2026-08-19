@@ -21,6 +21,7 @@ import {
   resetModLoadOrderAll,
   setModBeingCustomized,
   removeAllPackDataOverwrites,
+  toggleIsModListCategoryViewEnabled,
 } from "../appSlice";
 import { getFilteredMods, getLoadOrderInsertionIndex, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
@@ -36,7 +37,14 @@ import hash from "object-hash";
 import { getModSourceId, getModSourceKind } from "../modSources";
 import { getModThumbnailSrc } from "../utility/frontend/modDisplay";
 import ModListPane, { ModListPaneHandle, ModRowCallbacks } from "./ModListPane";
-import { getModListGhostClass, getModListGridClass, ModRowDatum } from "../utility/frontend/modListLayout";
+import {
+  getModListGhostClass,
+  getModListGridClass,
+  groupModRowsByCategory,
+  ModListModRow,
+  ModListRow,
+} from "../utility/frontend/modListLayout";
+import { GoListUnordered } from "react-icons/go";
 
 const noHiddenModNames = new Set<string>();
 const REORDER_HIGHLIGHT_MS = 2400;
@@ -99,7 +107,7 @@ const buildModListView = (sourceMods: Mod[], options: ModListViewOptions): ModLi
   };
 };
 
-const emptyRowData: ModRowDatum[] = [];
+const emptyRowData: ModListModRow[] = [];
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 const domParser = new DOMParser();
@@ -131,6 +139,8 @@ const ModRows = memo((props: ModRowsProps) => {
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
+  const isModListCategoryViewEnabled = useAppSelector((state) => state.app.isModListCategoryViewEnabled);
+  const categoryColors = useAppSelector((state) => state.app.categoryColors);
   const modListDensity = useAppSelector((state) => state.app.modListDensity);
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
@@ -148,6 +158,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const [loadOrderModName, setLoadOrderModName] = useState<string>();
   const [activeLoadOrderPosition, setActiveLoadOrderPosition] = useState(0);
   const [recentlyReorderedModNames, setRecentlyReorderedModNames] = useState<Set<string>>(new Set());
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const loadOrderScrollSnapshotRef = useRef<LoadOrderScrollSnapshot>();
   const skipInitialPlaceholderScrollRef = useRef(false);
   const pendingLoadOrderAnchorFramesRef = useRef<number[]>([]);
@@ -158,6 +169,11 @@ const ModRows = memo((props: ModRowsProps) => {
   const isDualLayout = isDualModListLayoutEnabled && currentTab == "mods";
   /** Load order placement is available wherever an enabled-only list is on screen. */
   const canReorderLoadOrder = isCurrentTabEnabledMods || isDualLayout;
+  /**
+   * Only the left list groups: the enabled pane's row order is the load order the game will use, and the
+   * headings would both scramble it and list a mod once per category it belongs to.
+   */
+  const isCategoryView = isDualLayout && isModListCategoryViewEnabled;
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -648,8 +664,9 @@ const ModRows = memo((props: ModRowsProps) => {
   );
 
   const buildRowData = useCallback(
-    (mods: Mod[]): ModRowDatum[] =>
+    (mods: Mod[]): ModListModRow[] =>
       mods.map((mod) => ({
+        kind: "mod",
         mod,
         isAlwaysEnabled: alwaysEnabledModNames.has(mod.name),
         isEnabledInMergedMod: mergedModPaths.has(mod.path),
@@ -673,6 +690,36 @@ const ModRows = memo((props: ModRowsProps) => {
   const disabledRowData = useMemo(
     () => (disabledModsView ? buildRowData(loadOrderModName ? [] : disabledModsView.visibleMods) : emptyRowData),
     [buildRowData, disabledModsView, loadOrderModName],
+  );
+  /** What the left pane actually renders: the same rows, with category headings folded in when grouped. */
+  const disabledPaneRows = useMemo(
+    (): ModListRow[] =>
+      isCategoryView ? groupModRowsByCategory(disabledRowData, collapsedCategories) : disabledRowData,
+    [collapsedCategories, disabledRowData, isCategoryView],
+  );
+
+  const onCategoryToggled = useCallback((category: string) => {
+    setCollapsedCategories((previous) => {
+      const next = new Set(previous);
+      if (!next.delete(category)) next.add(category);
+      return next;
+    });
+  }, []);
+
+  /** Right clicking the toggle folds every category away, or opens them all back up. */
+  const onCategoryViewRightClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isCategoryView) return;
+
+      setCollapsedCategories((previous) =>
+        previous.size > 0
+          ? new Set()
+          : new Set(disabledPaneRows.filter((row) => row.kind === "categoryHeader").map((row) => row.category)),
+      );
+    },
+    [disabledPaneRows, isCategoryView],
   );
   /** Placement mode reorders against canonicalEnabledMods, so the pane has to be showing exactly that. */
   const enabledRowData = useMemo(
@@ -771,7 +818,27 @@ const ModRows = memo((props: ModRowsProps) => {
                 title={localized.enableOrDisableAll}
                 id="disabledModsPaneCaption"
               >
-                <span>{localized.allMods}</span>
+                <span className="flex items-center gap-2 min-w-0">
+                  <span>{localized.allMods}</span>
+                  <button
+                    type="button"
+                    id="categoryViewToggle"
+                    aria-pressed={isCategoryView}
+                    className={`inline-flex items-center rounded px-1 py-0.5 transition-opacity hover:opacity-100 ${
+                      isCategoryView ? "text-blue-400 opacity-100" : "opacity-60"
+                    }`}
+                    title={`${localized.groupByCategory || "Group by category"}${
+                      isCategoryView
+                        ? `\n${localized.groupByCategoryRightClick || "Right click: collapse or expand every category."}`
+                        : ""
+                    }`}
+                    onClick={() => dispatch(toggleIsModListCategoryViewEnabled())}
+                    onContextMenu={onCategoryViewRightClick}
+                  >
+                    <GoListUnordered size="1.1rem" aria-hidden />
+                    <span className="sr-only">{localized.groupByCategory || "Group by category"}</span>
+                  </button>
+                </span>
                 <span className="opacity-60">{disabledRowData.length}</span>
               </div>
               <div
@@ -781,7 +848,9 @@ const ModRows = memo((props: ModRowsProps) => {
               >
                 <ModListPane
                   {...sharedPaneProps}
-                  rowData={disabledRowData}
+                  rowData={disabledPaneRows}
+                  onCategoryToggled={onCategoryToggled}
+                  categoryColors={categoryColors}
                   scrollElement={leftPaneScroll}
                   listRef={leftListRef}
                   layout="compact"

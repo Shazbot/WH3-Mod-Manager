@@ -14,7 +14,8 @@ import { GridCoreProps } from "react-virtualized/dist/es/Grid";
 import ModRow from "./ModRow";
 import ModListHeader from "./ModListHeader";
 import { SortingType } from "../utility/modRowSorting";
-import { ModListLayout, ModRowDatum } from "../utility/frontend/modListLayout";
+import ModListCategoryHeader from "./ModListCategoryHeader";
+import { ModListLayout, ModListRow } from "../utility/frontend/modListLayout";
 
 /**
  * How tall a row is before CellMeasurer has measured it. The thumbnail drives the height when it is on;
@@ -46,7 +47,8 @@ export type ModListPaneHandle = {
 };
 
 type ModListPaneProps = {
-  rowData: ModRowDatum[];
+  /** The rows to render, category headings included when the list is grouped. */
+  rowData: ModListRow[];
   /** The element this list scrolls inside: the page container, or the pane's own scroller in dual layout. */
   scrollElement: HTMLElement | null;
   listRef: RefObject<List>;
@@ -74,6 +76,10 @@ type ModListPaneProps = {
   isLoadOrderPlacementMode: boolean;
   recentlyReorderedModNames: Set<string>;
   callbacks: ModRowCallbacks;
+  /** Collapses or expands one category. Absent on a list that is not grouped. */
+  onCategoryToggled?: (category: string) => void;
+  /** The colours the categories were given in the categories tab, so the headings match them. */
+  categoryColors?: Record<string, string>;
 };
 
 /**
@@ -110,6 +116,8 @@ const ModListPane = memo(
     isLoadOrderPlacementMode,
     recentlyReorderedModNames,
     callbacks,
+    onCategoryToggled,
+    categoryColors,
   }: ModListPaneProps) => {
     const isCompact = layout === "compact";
     const listWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -168,8 +176,13 @@ const ModListPane = memo(
     const estimatedRowSize = isCompact ? compactRowHeight : areThumbnailsEnabled ? 104 : 32;
 
     const rowHeight = useCallback(
-      ({ index }: { index: number }) => Math.max(minRowHeight, cache.rowHeight({ index })),
-      [cache, minRowHeight],
+      ({ index }: { index: number }) => {
+        const measured = cache.rowHeight({ index });
+        // The floor exists to keep a mod row from collapsing before it is measured; a category heading is
+        // a single line of text and would be padded out to a mod's height by it.
+        return rowData[index]?.kind === "categoryHeader" ? measured : Math.max(minRowHeight, measured);
+      },
+      [cache, minRowHeight, rowData],
     );
 
     const Row = ({
@@ -185,6 +198,26 @@ const ModListPane = memo(
     }) => {
       const row = rowData[index];
       if (!row) return <></>;
+
+      if (row.kind === "categoryHeader") {
+        return (
+          <CellMeasurer cache={cache} index={index} key={key} parent={parent}>
+            {({ registerChild }) => (
+              <ModListCategoryHeader
+                {...{
+                  style,
+                  category: row.category,
+                  modCount: row.modCount,
+                  isCollapsed: row.isCollapsed,
+                  color: categoryColors?.[row.category],
+                  onCategoryToggled,
+                  registerChild,
+                }}
+              />
+            )}
+          </CellMeasurer>
+        );
+      }
 
       return (
         <CellMeasurer cache={cache} index={index} key={key} parent={parent}>
