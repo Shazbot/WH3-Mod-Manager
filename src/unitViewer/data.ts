@@ -55,6 +55,7 @@ export const UNIT_VIEWER_TABLES = [
   "missile_weapons_tables",
   "projectiles_tables",
   "projectiles_explosions_tables",
+  "units_custom_battle_mounts_tables",
   "units_custom_battle_permissions_tables",
   "factions_tables",
   "unit_variants_tables",
@@ -403,6 +404,7 @@ export const buildUnitViewerData = (
   const explosions = indexRows(tables.projectiles_explosions_tables, "key");
   const factions = indexRows(tables.factions_tables, "key");
   const unitVariants = groupRows(tables.unit_variants_tables, "unit");
+  const customBattleMountsByMountedUnit = groupRows(tables.units_custom_battle_mounts_tables, "mounted_unit");
   const permissions = groupRows(tables.units_custom_battle_permissions_tables, "unit");
   const directAbilities = groupRows(tables.land_units_to_unit_abilites_junctions_tables, "land_unit");
   const attributesByGroup = groupRows(tables.unit_attributes_to_groups_junctions_tables, "attribute_group");
@@ -498,6 +500,18 @@ export const buildUnitViewerData = (
   const uiGroupKeyByUnit = new Map<string, string>();
   const collator = new Intl.Collator("en");
 
+  const mountNameByUnit = new Map<string, string>();
+  for (const [mountedUnit, mountRows] of customBattleMountsByMountedUnit) {
+    for (const row of mountRows) {
+      const baseUnit = asString(row.base_unit);
+      if (!baseUnit) continue;
+      const localizedMountName = getLoc(`units_custom_battle_mounts_mount_name_${baseUnit}${mountedUnit}`);
+      if (!localizedMountName) continue;
+      const mountName = resolveGameText(localizedMountName, getLoc);
+      if (mountName) mountNameByUnit.set(mountedUnit, mountName);
+    }
+  }
+
   for (const main of indexRows(tables.main_units_tables, "unit").values()) {
     const key = asString(main.unit);
     const landUnitKey = asString(main.land_unit);
@@ -582,6 +596,7 @@ export const buildUnitViewerData = (
       key,
       landUnitKey,
       name: resolveGameText(getLoc(`land_units_onscreen_name_${landUnitKey}`) || key, getLoc),
+      mountName: mountNameByUnit.get(key),
       caste: asString(main.caste),
       category: asString(land.category),
       numMen: asNumber(main.num_men),
@@ -701,6 +716,7 @@ export const buildUnitViewerData = (
         .map((unit) => ({
           key: unit.key,
           name: unit.name,
+          mountName: unit.mountName,
           category: unit.category,
           caste: unit.caste,
           subcultureKeys: Array.from(subcultureToUnits.entries())

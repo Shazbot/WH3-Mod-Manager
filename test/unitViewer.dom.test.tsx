@@ -264,6 +264,52 @@ describe("Unit Viewer UI", () => {
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
   });
 
+  it("shows a custom battle mount name in the unit list and beneath the unit key", async () => {
+    const variantBuilt = buildUnitViewerData(
+      {
+        ...tables,
+        units_custom_battle_mounts_tables: [{ base_unit: "unit_b", mounted_unit: "unit_a" }],
+      },
+      (key) =>
+        ({
+          land_units_onscreen_name_land_a: "Alpha",
+          land_units_onscreen_name_land_b: "Beta",
+          cultures_subcultures_name_culture: "Culture",
+          ui_unit_group_parents_onscreen_name_commander: "Lords",
+          ui_unit_group_parents_onscreen_name_heroes_agents: "Heroes",
+          units_custom_battle_mounts_mount_name_unit_bunit_a: "On Horseback",
+        })[key],
+    );
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups: variantBuilt.groups,
+      unitGroups: variantBuilt.unitGroups,
+      constants: variantBuilt.constants,
+      statIcons: {},
+    });
+    window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
+      success: true,
+      unit: variantBuilt.units.get("unit_a"),
+      icons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    const variantButton = screen.getByRole("button", { name: "Alpha (On Horseback)" });
+    expect(variantButton).toHaveTextContent("Alpha");
+    expect(variantButton).toHaveTextContent("(On Horseback)");
+
+    fireEvent.click(variantButton);
+    const card = await waitFor(() => {
+      const article = document.querySelector("article");
+      expect(article).toBeInTheDocument();
+      return article as HTMLElement;
+    });
+    expect(within(card).getByText("On Horseback")).toBeInTheDocument();
+  });
+
   it("browses unit cards grouped by roster category and adds them to the comparison", async () => {
     renderViewer();
     await screen.findByText("Culture");

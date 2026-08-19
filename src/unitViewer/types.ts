@@ -87,6 +87,8 @@ export interface UnitViewerUnitModel {
   key: string;
   landUnitKey: string;
   name: string;
+  /** Localized name of this unit's custom-battle mount variant, when it has one. */
+  mountName?: string;
   caste: string;
   category: string;
   numMen: number;
@@ -207,6 +209,8 @@ export interface UnitViewerCalculatedStats {
 export interface UnitViewerCatalogUnit {
   key: string;
   name: string;
+  /** Localized name of this unit's custom-battle mount variant, when it has one. */
+  mountName?: string;
   category: string;
   caste: string;
   subcultureKeys: string[];

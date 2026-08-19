@@ -516,6 +516,28 @@ describe("Unit Viewer catalog", () => {
     expect(built.constants.sizeScaling[0].singleEntityValue).toBe(0.5);
   });
 
+  it("labels custom battle mount variants from their composite localization key", () => {
+    const tables: UnitViewerTableRows = {
+      main_units_tables: [
+        { unit: "base_unit", land_unit: "land", num_men: "1" },
+        { unit: "mounted_unit", land_unit: "land", num_men: "1" },
+      ],
+      land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon" }],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      units_custom_battle_mounts_tables: [{ base_unit: "base_unit", mounted_unit: "mounted_unit" }],
+    };
+    const built = buildUnitViewerData(tables, (key) =>
+      key === "units_custom_battle_mounts_mount_name_base_unitmounted_unit" ? "On Horseback" : undefined,
+    );
+
+    expect(built.units.get("base_unit")?.mountName).toBeUndefined();
+    expect(built.units.get("mounted_unit")?.mountName).toBe("On Horseback");
+    expect(built.groups.flatMap((group) => group.units).find((unit) => unit.key === "mounted_unit")?.mountName).toBe(
+      "On Horseback",
+    );
+  });
+
   it("carries a unit's source pack into the catalog", () => {
     const built = buildUnitViewerData(
       {

@@ -2737,7 +2737,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 14,
+          feature: 15,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
