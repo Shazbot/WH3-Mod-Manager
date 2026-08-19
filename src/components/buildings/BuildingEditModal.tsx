@@ -49,10 +49,40 @@ const labelClass = "flex flex-col gap-1 text-xs text-gray-400";
 const toKeyOptions = (keys: string[]): SelectOption[] => keys.map((key) => ({ value: key, label: key }));
 
 const toOptions = (options: BuildingsOption[]): SelectOption[] =>
-  options.map((option) => ({
-    value: option.key,
-    label: option.localizedName === option.key ? option.key : `${option.localizedName} — ${option.key}`,
-  }));
+  options.map((option) => ({ value: option.key, label: option.localizedName }));
+
+/**
+ * One row of any picker in this modal: the localised name, and under it the key that gets written.
+ *
+ * Both matter - the name is what a modder recognises, the key is what lands in the pack - and
+ * neither reads well folded into one line, which ellipsises away the end of both. A menu row gets
+ * two lines and wraps; the closed control still has to fit on one.
+ *
+ * Typed loosely because react-select hands the option back as `unknown` through WindowedSelect.
+ */
+const formatKeyedOption = (data: unknown, meta: { context: string }) => {
+  const option = data as SelectOption;
+  // Keys with no localisation are their own label; showing them twice would be noise.
+  const name = option.label && option.label !== option.value ? option.label : undefined;
+  if (meta.context === "value") {
+    // The control shares its line with the name, so the key stays the smaller of the two.
+    const keyClass = name ? "font-mono text-[0.7rem] text-sky-300/80" : "font-mono text-[0.8rem] text-gray-100";
+    return (
+      <div className="flex min-w-0 items-baseline gap-2">
+        {name && <span className="truncate">{name}</span>}
+        <span className={`truncate ${keyClass}`}>{option.value}</span>
+      </div>
+    );
+  }
+  // A menu row owns its two lines, so both are set at reading size rather than squeezed.
+  const keyClass = name ? "font-mono text-[0.8rem] text-sky-300/80" : "font-mono text-[0.9rem] text-gray-100";
+  return (
+    <div className="flex flex-col gap-0.5 py-0.5">
+      {name && <span className="text-[0.9rem] leading-snug text-gray-100">{name}</span>}
+      <span className={`break-all leading-tight ${keyClass}`}>{option.value}</span>
+    </div>
+  );
+};
 
 /**
  * Adding recruitment, a garrison or CAI scoring to one building.
@@ -278,6 +308,7 @@ const BuildingEditModal = memo(
                     options={unitOptions}
                     value={unitOptions.find((option) => option.value === unitKey) ?? null}
                     onChange={(option) => setUnitKey((option as SelectOption | null)?.value ?? "")}
+                    formatOptionLabel={formatKeyedOption}
                   />
                 </label>
                 <div className="flex gap-3">
@@ -338,6 +369,7 @@ const BuildingEditModal = memo(
                         setUnitGroup("");
                       }
                     }}
+                    formatOptionLabel={formatKeyedOption}
                   />
                 </label>
                 <label className={labelClass}>
@@ -348,6 +380,7 @@ const BuildingEditModal = memo(
                     options={garrisonUnitGroupOptions}
                     value={garrisonUnitGroupOptions.find((option) => option.value === unitGroup) ?? null}
                     onChange={(option) => setUnitGroup((option as SelectOption | null)?.value ?? "")}
+                    formatOptionLabel={formatKeyedOption}
                   />
                 </label>
                 <button
@@ -448,15 +481,7 @@ const BuildingEditModal = memo(
                     }}
                     filterOption={createFilter({ ignoreAccents: false })}
                     placeholder={localized.buildingsSearchEffects || "Search effects..."}
-                    // @ts-expect-error react-select's option type is narrower than the runtime shape.
-                    formatOptionLabel={(option: EffectOption) => (
-                      <div className="flex items-baseline gap-2">
-                        <span className="truncate">{option.label}</span>
-                        {option.label !== option.value && (
-                          <span className="truncate text-[0.65rem] text-gray-400">({option.value})</span>
-                        )}
-                      </div>
-                    )}
+                    formatOptionLabel={formatKeyedOption}
                   />
                 </label>
                 {effectKey && (
@@ -476,6 +501,7 @@ const BuildingEditModal = memo(
                       options={scopeOptions}
                       value={scopeOptions.find((option) => option.value === effectScope) ?? null}
                       onChange={(option) => setEffectScope((option as SelectOption | null)?.value ?? "")}
+                      formatOptionLabel={formatKeyedOption}
                     />
                   </label>
                   <label className={`${labelClass} w-32`}>
@@ -516,6 +542,7 @@ const BuildingEditModal = memo(
                     value={chainOptions.find((option) => option.value === caiSource) ?? null}
                     onChange={(option) => setCaiSource((option as SelectOption | null)?.value ?? "")}
                     filterOption={createFilter({ ignoreAccents: false })}
+                    formatOptionLabel={formatKeyedOption}
                     placeholder={localized.buildingsSearchBuildingChains || "Search building chains..."}
                   />
                 </label>
