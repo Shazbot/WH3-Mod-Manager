@@ -68,21 +68,21 @@ const DBCloneOperationOverlay = ({ statusText, onCancel }: { statusText: string;
 export type DBDuplicationLaunchSource = "modsViewer" | "buildings" | "ancillaries";
 
 /**
- * Launch sources that keep a pending-row store of their own, so "Save to memory" has somewhere to
- * hand the generated rows. The Mods Viewer has none and only offers "Save to pack".
+ * Launch sources that keep a pending-row store of their own, so the generated rows can be added to
+ * that panel. The Mods Viewer has none and only offers "Save to pack".
  */
 const SOURCES_WITH_PENDING_ROWS: DBDuplicationLaunchSource[] = ["buildings", "ancillaries"];
 
 export type DBDuplicationProps = {
   launchSource: DBDuplicationLaunchSource;
-  /** Receives the generated rows when the user picks "Save to memory". */
+  /** Receives the generated rows when the user adds them to the target panel. */
   onSaveToBuildings?: (packedFiles: PackedFile[]) => void;
 };
 
 const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationProps) => {
   const canSaveToMemory = SOURCES_WITH_PENDING_ROWS.includes(launchSource);
   const memoryTargetName = launchSource === "ancillaries" ? "Ancillaries" : "Buildings";
-  const memoryActionLabel = launchSource === "buildings" ? "Add to buildings" : "Save to memory";
+  const memoryActionLabel = canSaveToMemory ? `Add to ${memoryTargetName} panel` : "Save to memory";
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   // important to reload the component
