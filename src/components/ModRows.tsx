@@ -891,13 +891,20 @@ const ModRows = memo((props: ModRowsProps) => {
               >
                 <span className="flex items-center gap-2 min-w-0">
                   <span>{localized.allMods}</span>
+                  {/*
+                   * A labelled pill rather than a bare icon: it is the one control that changes what the
+                   * list is, and an icon on its own in a caption reads as decoration.
+                   */}
                   <button
                     type="button"
                     id="categoryViewToggle"
                     aria-pressed={isCategoryView}
-                    className={`inline-flex items-center rounded px-1 py-0.5 transition-opacity hover:opacity-100 ${
-                      isCategoryView ? "text-blue-400 opacity-100" : "opacity-60"
-                    }`}
+                    className={
+                      "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs transition-colors " +
+                      (isCategoryView
+                        ? "border-blue-500 bg-blue-600/30 text-blue-200"
+                        : "border-slate-500 text-slate-300 hover:border-slate-300 hover:bg-slate-700/60")
+                    }
                     title={`${localized.groupByCategory || "Group by category"}${
                       isCategoryView
                         ? `\n${localized.groupByCategoryRightClick || "Right click: collapse or expand every category."}`
@@ -906,8 +913,8 @@ const ModRows = memo((props: ModRowsProps) => {
                     onClick={() => dispatch(toggleIsModListCategoryViewEnabled())}
                     onContextMenu={onCategoryViewRightClick}
                   >
-                    <GoListUnordered size="1.1rem" aria-hidden />
-                    <span className="sr-only">{localized.groupByCategory || "Group by category"}</span>
+                    <GoListUnordered size="0.95rem" aria-hidden />
+                    {localized.categories || "Categories"}
                   </button>
                 </span>
                 <span className="opacity-60">{disabledRowData.length}</span>

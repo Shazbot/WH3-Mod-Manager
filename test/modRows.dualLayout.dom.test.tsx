@@ -57,6 +57,8 @@ const localization = {
   priorityTooltipOne: "Lower is loaded first",
   priorityTooltipTwo: "Right click to reset",
   priorityTooltipThree: "Only change it when a mod asks you to",
+  categories: "Categories",
+  groupByCategory: "Group by category",
 };
 
 /** The compact layout has one name column, which sorts by whichever of these was picked last. */
@@ -393,13 +395,19 @@ describe("categories view in the dual layout", () => {
     const toggle = document.getElementById("categoryViewToggle") as HTMLButtonElement;
     expect(toggle).toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(within(right).queryByRole("button", { name: /group by category/i })).toBeNull();
+    // It says what it is rather than leaving the user to work an icon out.
+    expect(toggle).toHaveTextContent(localization.categories);
+    expect(toggle.title.split("\n")[0]).toBe(localization.groupByCategory);
+    expect(within(right).queryByRole("button", { name: /categories/i })).toBeNull();
 
     await act(async () => fireEvent.click(toggle));
 
     expect(testStore.getState().app.isModListCategoryViewEnabled).toBe(true);
     await waitFor(() => expect(within(left).queryByText("Graphics")).toBeInTheDocument());
     expect(toggle).toHaveAttribute("aria-pressed", "true");
+    // Switched on it is tinted, and it picks up the hint about collapsing every category.
+    expect(toggle.className).toContain("border-blue-500");
+    expect(toggle.title).toMatch(/right click/i);
     // Units holds two mods, one of them already enabled, so only one is left to list.
     expect(getLeftPaneLabels(left)).toEqual(["Graphics1/1", "gamma.pack", "Units1/2", "alpha.pack"]);
 
