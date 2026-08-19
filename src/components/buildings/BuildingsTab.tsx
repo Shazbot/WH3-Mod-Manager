@@ -89,7 +89,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     dispatch(openMapForRegion({ campaign: query.campaign, region: query.region }));
   }, [dispatch, query.campaign, query.region]);
 
-  // The tooltip is portalled out of the board so the board's own `overflow: auto` cannot clip it.
+  // The tooltip lives outside the board so its `overflow: auto` cannot clip it or contain its z-index.
   const [hoveredTile, setHoveredTile] = useState<BuildingsTile | undefined>();
   const { refs, floatingStyles } = useFloating({
     placement: "right-start",
@@ -433,7 +433,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const activeSubTab = isFeaturesForModdersEnabled ? subTab : "board";
 
   return (
-    <div className="flex h-[86vh] flex-col text-gray-200">
+    <div className="relative flex h-[86vh] flex-col text-gray-200">
       {isRebuildingData && (
         <Modal show popup size="sm" position="center">
           <Modal.Body>
@@ -505,17 +505,19 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
             onBandContextMenu={isFeaturesForModdersEnabled ? onBandContextMenu : undefined}
           />
         )}
-        {activeSubTab === "board" && hoveredTile && (
-          <div
-            ref={refs.setFloating}
-            style={{ ...floatingStyles, zIndex: 60 }}
-            className="pointer-events-none"
-            role="tooltip"
-          >
-            <BuildingTooltip tile={hoveredTile} />
-          </div>
-        )}
       </div>
+
+      {/* Keep the tooltip outside the board's z-0 stacking context so it can clear the filter dropdowns. */}
+      {activeSubTab === "board" && hoveredTile && (
+        <div
+          ref={refs.setFloating}
+          style={{ ...floatingStyles, zIndex: 60 }}
+          className="pointer-events-none"
+          role="tooltip"
+        >
+          <BuildingTooltip tile={hoveredTile} />
+        </div>
+      )}
 
       {(view || edits.order.length > 0) && (
         <div className="border-t border-gray-700 px-4 py-1 text-[0.7rem] text-gray-500">
