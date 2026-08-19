@@ -12,14 +12,14 @@ const field = (
   name: string,
   field_type: SCHEMA_FIELD_TYPE,
   default_value = "",
-  is_reference: string[] = [],
+  is_reference: string[] | null = [],
 ): DBField => ({
   name,
   field_type,
   is_key: name === "level_name",
   default_value,
   is_filename: false,
-  is_reference,
+  is_reference: is_reference as string[],
   description: "",
   ca_order: 0,
   is_bitwise: 0,
@@ -31,7 +31,7 @@ const LEVELS_SCHEMA: DBVersion = {
   fields: [
     field("level_name", "StringU8"),
     field("chain", "StringU8", "", ["building_chains_tables", "key"]),
-    field("create_cost", "I32", "0"),
+    field("create_cost", "I32", "0", null),
     field("visible_in_ui", "Boolean", "true"),
   ],
 };

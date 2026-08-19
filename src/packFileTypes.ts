@@ -171,7 +171,7 @@ export interface DBField {
   is_filename: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   filename_relative_path?: any;
-  is_reference: string[];
+  is_reference: string[] | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   lookup?: any;
   description: string;

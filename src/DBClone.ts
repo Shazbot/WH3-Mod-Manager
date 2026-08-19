@@ -350,8 +350,9 @@ const buildDBReferenceTreeInternal = async (
   if (!isStartingSearchIndirect) {
     const row = rows[deepCloneTarget.row];
     for (let i = 0; i < row.length; i++) {
-      if (!schema.fields[i].is_reference) continue;
-      const [tableName] = schema.fields[i].is_reference;
+      const reference = schema.fields[i].is_reference;
+      if (!reference) continue;
+      const [tableName] = reference;
       if (shouldIgnoreDBCloneTable(tableName)) continue;
 
       await getRef(tableName, existingPack);
@@ -704,8 +705,9 @@ const buildDBReferenceTreeInternal = async (
 
       // rows[deepCloneTarget.row].reduce((acc, currentField, currentFieldIndex) => {
       if (selectedNodesByName.length > 0) continue;
-      if (!schema.fields[currentFieldIndex].is_reference) continue;
-      const [tableName, tableColumnName] = schema.fields[currentFieldIndex].is_reference;
+      const reference = schema.fields[currentFieldIndex].is_reference;
+      if (!reference) continue;
+      const [tableName, tableColumnName] = reference;
       if (shouldIgnoreDBCloneTable(tableName)) continue;
 
       const packsToGet = [] as Pack[];

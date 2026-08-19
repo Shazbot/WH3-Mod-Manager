@@ -43,7 +43,7 @@ const measureTextWidth = (text: string, font: string): number => {
 };
 
 export const isNewRowsFullValueField = (field: Pick<DBField, "is_key" | "is_reference">): boolean =>
-  field.is_key || field.is_reference.length > 0;
+  field.is_key || (Array.isArray(field.is_reference) && field.is_reference.length > 0);
 
 /**
  * Width for a key/reference column that must keep every pending-row value on one line. Values are
