@@ -4,6 +4,9 @@ import {
   getNameSortingCycle,
   getNameSortingField,
   getNextNameSortingType,
+  getNextTimeSortingType,
+  getTimeSortingCycle,
+  getTimeSortingField,
   SortingType,
 } from "../src/utility/modRowSorting";
 
@@ -70,5 +73,26 @@ describe("stepping the compact name column", () => {
   it("steps from a reversed field to the next one, ascending", () => {
     expect(getNextNameSortingType(SortingType.HumanNameReverse, true)).toBe(SortingType.PackName);
     expect(getNextNameSortingType(SortingType.AuthorReverse, true)).toBe(SortingType.IsDataPack);
+  });
+});
+
+describe("the two dates the time column sorts by", () => {
+  it("reads a reversed sort as the date it reverses, and nothing for another column's", () => {
+    expect(getTimeSortingCycle()).toEqual([SortingType.LastUpdated, SortingType.SubbedTime]);
+    expect(getTimeSortingField(SortingType.LastUpdatedReverse)).toBe(SortingType.LastUpdated);
+    expect(getTimeSortingField(SortingType.SubbedTimeReverse)).toBe(SortingType.SubbedTime);
+    expect(getTimeSortingField(SortingType.HumanName)).toBeUndefined();
+  });
+
+  it("swaps between the two, whichever way round and whichever direction", () => {
+    expect(getNextTimeSortingType(SortingType.LastUpdated)).toBe(SortingType.SubbedTime);
+    expect(getNextTimeSortingType(SortingType.LastUpdatedReverse)).toBe(SortingType.SubbedTime);
+    expect(getNextTimeSortingType(SortingType.SubbedTime)).toBe(SortingType.LastUpdated);
+    expect(getNextTimeSortingType(SortingType.SubbedTimeReverse)).toBe(SortingType.LastUpdated);
+  });
+
+  it("lands on the subscribed date from another column's sort, which a left click cannot reach", () => {
+    expect(getNextTimeSortingType(SortingType.Ordered)).toBe(SortingType.SubbedTime);
+    expect(getNextTimeSortingType(SortingType.Author)).toBe(SortingType.SubbedTime);
   });
 });

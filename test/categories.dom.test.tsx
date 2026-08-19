@@ -147,6 +147,57 @@ describe("Categories", () => {
     expect(screen.getByText("Mod Two")).toBeInTheDocument();
   });
 
+  it("shows and sorts a mod by its decoded title, and by its pack name when it has none", async () => {
+    renderCategories([
+      createMod({
+        name: "encoded.pack",
+        path: "/mods/encoded.pack",
+        // Steam leaves entities in the titles; raw, this reads as "Bretonnia &amp; Co" and sorts on "&".
+        humanName: "Bretonnia &amp; Co",
+        categories: ["Alpha"],
+      }),
+      createMod({
+        name: "a_untitled.pack",
+        path: "/mods/a_untitled.pack",
+        humanName: "",
+        categories: ["Alpha"],
+      }),
+      createMod({
+        name: "zulu.pack",
+        path: "/mods/zulu.pack",
+        humanName: "Zulu",
+        categories: ["Alpha"],
+      }),
+    ]);
+
+    expect(await screen.findByText("Bretonnia & Co")).toBeInTheDocument();
+    // An untitled mod is listed by its pack name, without the extension.
+    expect(screen.getByText("a_untitled")).toBeInTheDocument();
+
+    const rowLabels = getRowOrder();
+    const indexOf = (label: string) => rowLabels.findIndex((row) => row.includes(label));
+    expect(indexOf("a_untitled")).toBeLessThan(indexOf("Bretonnia & Co"));
+    expect(indexOf("Bretonnia & Co")).toBeLessThan(indexOf("Zulu"));
+  });
+
+  it("filters on the decoded title rather than the entities behind it", async () => {
+    const user = userEvent.setup();
+    renderCategories([
+      createMod({
+        name: "encoded.pack",
+        path: "/mods/encoded.pack",
+        humanName: "Bretonnia &amp; Co",
+        categories: ["Alpha"],
+      }),
+      createMod({ name: "other.pack", path: "/mods/other.pack", humanName: "Zulu", categories: ["Alpha"] }),
+    ]);
+
+    await user.type(await screen.findByPlaceholderText(enTranslation.nameFilter), "bretonnia & co");
+
+    await waitFor(() => expect(screen.queryByText("Zulu")).not.toBeInTheDocument());
+    expect(screen.getByText("Bretonnia & Co")).toBeInTheDocument();
+  });
+
   it("selects visible children from a category row and toggles them with space", async () => {
     const user = userEvent.setup();
     const { store } = renderCategories();

@@ -1,3 +1,5 @@
+import { decodeModText } from "./utility/htmlEntities";
+
 const collator = new Intl.Collator("en");
 
 /** Works on anything with a name and an optional load order, so preset entries can use it too. */
@@ -116,16 +118,25 @@ export function getModsSortedBySize(mods: Mod[]) {
   });
 }
 
-export function getModsSortedByHumanName(mods: Mod[]) {
-  return [...mods].sort((firstMod, secondMod) => collator.compare(firstMod.humanName, secondMod.humanName));
+/**
+ * The title the list shows for a mod: decoded, and the pack name where the mod has no title at all,
+ * which is what the row puts on its first line in that case.
+ *
+ * Sorting the raw humanName instead files a title that opens with an entity under "&" rather than under
+ * the letter it is displayed as, and sends every untitled data mod to the top on an empty string.
+ */
+export function getModSortName(mod: Mod) {
+  const decodedHumanName = decodeModText(mod.humanName).trim();
+  return decodedHumanName !== "" ? decodedHumanName : mod.name;
 }
 
-export function getModsSortedByHumanNameAndName(mods: Mod[]) {
-  return [...mods].sort((firstMod, secondMod) => {
-    const firstModValue = (firstMod.humanName != "" && firstMod.humanName) || firstMod.name;
-    const secondModValue = (secondMod.humanName != "" && secondMod.humanName) || secondMod.name;
-    return collator.compare(firstModValue, secondModValue);
-  });
+export function getModsSortedByHumanName(mods: Mod[]) {
+  // Decoding inside the comparator would decode each title as many times as it is compared, so the
+  // keys are built once up front.
+  const sortNamesByMod = new Map(mods.map((mod) => [mod, getModSortName(mod)]));
+  return [...mods].sort((firstMod, secondMod) =>
+    collator.compare(sortNamesByMod.get(firstMod) ?? "", sortNamesByMod.get(secondMod) ?? ""),
+  );
 }
 
 export function getModsSortedByEnabled(mods: Mod[], orderedMods: Mod[], enabledFirst: boolean) {

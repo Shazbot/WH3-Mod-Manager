@@ -53,6 +53,7 @@ const localization = {
   dataPacks: "Data Packs",
   thumbnail: "Thumbnail",
   lastUpdated: "Last Updated",
+  subscriptionTime: "Subscription Time",
 };
 
 /** The compact layout has one name column, which sorts by whichever of these was picked last. */
@@ -686,6 +687,63 @@ describe("sorting the dual layout's panes", () => {
 
     await act(async () => fireEvent.click(getNameHeader(right)));
     expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.PackName);
+  });
+
+  it("swaps the date column between the two dates on right click, and marks the subscribed one", async () => {
+    const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+
+    // Both sorts are a clock icon, so only the marker tells them apart.
+    const getDateHeader = () =>
+      Array.from(right.querySelectorAll<HTMLElement>(".mod-row-header-pane")).find((header) =>
+        [localization.lastUpdated, localization.subscriptionTime].includes(
+          header.querySelector(".sr-only")?.textContent ?? "",
+        ),
+      ) as HTMLElement;
+    const getDateMarker = () => getDateHeader().querySelector("span[aria-hidden]")?.textContent;
+
+    await act(async () => fireEvent.click(getDateHeader()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.LastUpdated);
+    expect(getDateMarker()).toBeUndefined();
+
+    await act(async () => fireEvent.contextMenu(getDateHeader()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.SubbedTime);
+    expect(getDateMarker()).toBe("sub");
+
+    // Left clicking reverses the date it is on rather than swapping back, so the marker stays.
+    await act(async () => fireEvent.click(getDateHeader()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.SubbedTimeReverse);
+    expect(getDateMarker()).toBe("sub");
+
+    // Right clicking is what swaps back, and the marker goes with it.
+    await act(async () => fireEvent.contextMenu(getDateHeader()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.LastUpdated);
+    expect(getDateMarker()).toBeUndefined();
+  });
+
+  it("sorts by the title the row shows, entities decoded and untitled mods on their pack name", async () => {
+    const { testStore } = renderDualLayout([
+      { ...createMod("encoded", false), humanName: "&#90;ulu" },
+      { ...createMod("m_alpha", false), humanName: "Alpha" },
+      { ...createMod("m_untitled", false), humanName: "" },
+    ]);
+
+    const { left } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("Alpha")).toBeInTheDocument());
+    // The row shows the decoded title, so that is what the sort has to read.
+    expect(within(left).queryByText("Zulu")).toBeInTheDocument();
+
+    await act(async () => fireEvent.contextMenu(getNameHeader(left)));
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.HumanName);
+
+    // Encoded, "&#90;ulu" would lead on its "&"; untitled, "" would lead on nothing at all.
+    expect(Array.from(left.querySelectorAll<HTMLElement>(".row-div-paddings")).map((row) => row.id)).toEqual([
+      "m_alpha.pack",
+      "m_untitled.pack",
+      "encoded.pack",
+    ]);
   });
 
   it("does not let the shift click extend a text selection over the list", async () => {

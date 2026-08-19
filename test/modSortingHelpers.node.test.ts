@@ -4,6 +4,8 @@ import {
   getFilteredMods,
   getLoadOrderInsertionIndex,
   getModsSortedByEnabled,
+  getModsSortedByHumanName,
+  getModSortName,
   getSparseLoadOrderByModName,
   sortModsAsInEntries,
   sortByNameAndLoadOrder,
@@ -104,5 +106,48 @@ describe("getFilteredMods", () => {
       "enabled-first.pack",
       "enabled-second.pack",
     ]);
+  });
+});
+
+describe("sorting by the human name", () => {
+  const createTitledMod = (name: string, humanName: string) => createMod({ name, humanName });
+
+  const sortedNames = (mods: Mod[]) => getModsSortedByHumanName(mods).map((mod) => mod.name);
+
+  it("sorts by the title as it is displayed, not by the entities it is encoded with", () => {
+    // "&#90;ulu" reads as Zulu once decoded; raw it sorts under "&", ahead of every letter.
+    const mods = [
+      createTitledMod("encoded.pack", "&#90;ulu"),
+      createTitledMod("beta.pack", "Beta"),
+      createTitledMod("alpha.pack", "Alpha"),
+    ];
+
+    expect(sortedNames(mods)).toEqual(["alpha.pack", "beta.pack", "encoded.pack"]);
+  });
+
+  it("decodes a doubly encoded title, which is how Steam hands them over", () => {
+    const mods = [createTitledMod("second.pack", "Zulu"), createTitledMod("first.pack", "A &amp;amp; B")];
+
+    expect(sortedNames(mods)).toEqual(["first.pack", "second.pack"]);
+  });
+
+  it("falls back to the pack name for a mod with no title, which is what its row shows", () => {
+    // An untitled data mod used to sort to the very top of the list on its empty string.
+    const mods = [
+      createTitledMod("b_titled.pack", "Alpha"),
+      createTitledMod("a_untitled.pack", ""),
+      createTitledMod("c.pack", "Zulu"),
+    ];
+
+    expect(sortedNames(mods)).toEqual(["a_untitled.pack", "b_titled.pack", "c.pack"]);
+    expect(sortedNames([createTitledMod("z_untitled.pack", "   "), createTitledMod("a.pack", "Alpha")])).toEqual([
+      "a.pack",
+      "z_untitled.pack",
+    ]);
+  });
+
+  it("leaves what it cannot decode alone rather than mangling it", () => {
+    expect(getModSortName(createTitledMod("a.pack", "50% &notanentity; off"))).toBe("50% &notanentity; off");
+    expect(getModSortName(createTitledMod("a.pack", "Mod &#39;s name"))).toBe("Mod 's name");
   });
 });

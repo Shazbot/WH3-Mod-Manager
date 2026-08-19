@@ -28,8 +28,9 @@ import {
   toggleMod,
 } from "../appSlice";
 import { useLocalizations } from "../localizationContext";
-import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
+import { getModsSortedByHumanName } from "../modSortingHelpers";
 import { getDecodedModAuthor, getModThumbnailSrc } from "../utility/frontend/modDisplay";
+import { decodeModText } from "../utility/htmlEntities";
 import selectStyle from "../styles/selectStyle";
 import { getCategoryColorClasses } from "../utility/frontend/categoryColors";
 import EditCategoriesModal from "./EditCategoriesModal";
@@ -83,7 +84,12 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
 
 const isCategoryRow = (row: CategoriesGridRow | undefined | null): row is CategoryGridRow => row?.kind === "category";
 
-const normalizeModLabel = (mod: Mod) => (mod.humanName !== "" ? mod.humanName : mod.name.replace(".pack", ""));
+/**
+ * What the grid shows for a mod, and what its name filter matches against: the decoded title, or the
+ * pack name where the mod has no title. Steam leaves entities in the titles, so a raw one reads as
+ * "Bretonnia &amp; Co" on screen and sorts under "&".
+ */
+const normalizeModLabel = (mod: Mod) => decodeModText(mod.humanName).trim() || mod.name.replace(".pack", "");
 
 const buildCategoryRowId = (category: string) => `category:${category}`;
 const buildModRowId = (category: string, path: string) => `mod:${category}:${path}`;
@@ -386,7 +392,7 @@ const Categories = memo(() => {
   const groupedCategories = useMemo<CategoryGroup[]>(() => {
     const rowsByCategory = new Map<string, { category: string; mods: Mod[]; total: number; enabled: number }>();
 
-    for (const mod of getModsSortedByHumanNameAndName(mods) as Mod[]) {
+    for (const mod of getModsSortedByHumanName(mods) as Mod[]) {
       let modCategories = mod.categories ?? ["Uncategorized"];
       if (modCategories.length === 0) modCategories = ["Uncategorized"];
 

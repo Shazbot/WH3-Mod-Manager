@@ -1,17 +1,10 @@
 import { modThumbnailUrl } from "../../assetUrls";
+import { decodeModText } from "../htmlEntities";
 
-const domParser = new DOMParser();
-
-export const decodeHtml = (encoded: string) => {
-  // Parsing is the expensive part and these run per row and per keystroke while filtering, so skip
-  // the parse for the vast majority of names that hold no entity at all.
-  if (!encoded.includes("&")) return encoded;
-  const doc = domParser.parseFromString(encoded, "text/html");
-  return doc.documentElement.textContent ?? "";
-};
+export { decodeHtml } from "../htmlEntities";
 
 /** Steam hands us doubly encoded authors, so one decode pass isn't always enough. */
-export const getDecodedModAuthor = (mod: Mod) => decodeHtml(decodeHtml(mod.author ?? ""));
+export const getDecodedModAuthor = (mod: Mod) => decodeModText(mod.author);
 
 // Required lazily so this module still loads where the webpack asset loader isn't set up (tests).
 let defaultModThumbnailSrc: string | undefined;

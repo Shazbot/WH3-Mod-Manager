@@ -107,19 +107,39 @@ const ModListHeader = memo(
       </div>
     );
 
+    const timeSortingLabels: Partial<Record<SortingType, string>> = {
+      [SortingType.LastUpdated]: localized.lastUpdated,
+      [SortingType.SubbedTime]: localized.subscriptionTime,
+    };
+    const timeSortingField = modRowSorting.getTimeSortingField(sortingType);
+
     const lastUpdatedHeader = (
       <div
         className={`flex place-items-center ${isCompact ? "justify-center " : "pl-1 grid-area-autohide "}${headerClass}`}
-        onClick={(event) => setSortingType(SortingType.LastUpdated, event.shiftKey)}
-        onContextMenu={(event) => setSortingType(SortingType.SubbedTime, event.shiftKey)}
+        // Right clicking swaps the date, left clicking reverses whichever one the column is on.
+        onClick={(event) => setSortingType(timeSortingField ?? SortingType.LastUpdated, event.shiftKey)}
+        onContextMenu={(event) => setSortingType(modRowSorting.getNextTimeSortingType(sortingType), event.shiftKey)}
       >
-        {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
-          modRowSorting.getSortingArrow(sortingType)}
-        <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
+        {timeSortingField !== undefined && modRowSorting.getSortingArrow(sortingType)}
+        <Tooltip
+          placement="left"
+          style="light"
+          content={
+            <>
+              <div>{localized.switchSortColumn || "Right click to switch what this column sorts by"}</div>
+              <div>
+                {modRowSorting
+                  .getTimeSortingCycle()
+                  .map((sortingTypeInCycle) => timeSortingLabels[sortingTypeInCycle])
+                  .join(" \u2192 ")}
+              </div>
+            </>
+          }
+        >
           {columnLabel(
             (modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) || localized.lastUpdated,
             GoClock,
-            modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType),
+            timeSortingField !== undefined,
           )}
         </Tooltip>
         {/* The compact column is a clock either way, so the sort it is on has to be said in words. The
@@ -178,7 +198,7 @@ const ModListHeader = memo(
               style="light"
               content={
                 <>
-                  <div>{localized.switchNameSortColumn || "Right click to switch what this column sorts by"}</div>
+                  <div>{localized.switchSortColumn || "Right click to switch what this column sorts by"}</div>
                   <div>
                     {modRowSorting
                       .getNameSortingCycle(hasDataMods)

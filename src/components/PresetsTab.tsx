@@ -19,7 +19,7 @@ import selectStyle from "../styles/selectStyle";
 import localizationContext from "../localizationContext";
 import {
   getLoadOrderInsertionIndex,
-  getModsSortedByHumanNameAndName,
+  getModsSortedByHumanName,
   getSparseLoadOrderByModName,
   sortByNameAndLoadOrder,
 } from "../modSortingHelpers";
@@ -371,7 +371,7 @@ const PresetsTab = memo(() => {
 
   const notInPresetInstalledMods = useMemo(() => {
     const mods = installedMods.filter((mod) => !effectiveEnabledNames.has(mod.name));
-    return getModsSortedByHumanNameAndName(mods);
+    return getModsSortedByHumanName(mods);
   }, [effectiveEnabledNames, installedMods]);
 
   const visibleEnabledDraftMods = useMemo(() => {

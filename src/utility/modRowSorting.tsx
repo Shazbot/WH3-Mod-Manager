@@ -222,6 +222,24 @@ export function getNextNameSortingType(sortingType: SortingType, hasDataMods: bo
   return cycle[(currentIndex + 1) % cycle.length];
 }
 
+/** The two dates the time column can sort by, in the order right clicking swaps between them. */
+export const getTimeSortingCycle = () => [SortingType.LastUpdated, SortingType.SubbedTime];
+
+/** Which of the two a sorting type sorts by, or undefined when it belongs to another column. */
+export function getTimeSortingField(sortingType: SortingType) {
+  if (isLastUpdatedSort(sortingType)) return SortingType.LastUpdated;
+  if (isSubbedTimeSort(sortingType)) return SortingType.SubbedTime;
+  return undefined;
+}
+
+/**
+ * The date right clicking the time column swaps to. A sort that belongs to another column lands on the
+ * subscribed date: it is the one a left click cannot reach, so the gesture always changes something.
+ */
+export function getNextTimeSortingType(sortingType: SortingType) {
+  return isSubbedTimeSort(sortingType) ? SortingType.LastUpdated : SortingType.SubbedTime;
+}
+
 const sortTypeToReverseType: { [key in SortingType]?: SortingType } = {
   [SortingType.Ordered]: SortingType.OrderedReverse,
   [SortingType.IsEnabled]: SortingType.IsEnabledReverse,

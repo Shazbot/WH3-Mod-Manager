@@ -38,6 +38,7 @@ import { List } from "react-virtualized";
 import hash from "object-hash";
 import { getModSourceId, getModSourceKind } from "../modSources";
 import { getModThumbnailSrc } from "../utility/frontend/modDisplay";
+import { decodeModText } from "../utility/htmlEntities";
 import ModListPane, { ModListPaneHandle, ModRowCallbacks } from "./ModListPane";
 import {
   getModCategories,
@@ -115,12 +116,6 @@ const emptyRowData: ModListModRow[] = [];
 const emptyMods: Mod[] = [];
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
-const domParser = new DOMParser();
-
-const decodeHtml = (encoded: string) => {
-  const doc = domParser.parseFromString(encoded, "text/html");
-  return doc.documentElement.textContent ?? "";
-};
 
 type ModRowsProps = {
   scrollElement: RefObject<HTMLDivElement>;
@@ -699,8 +694,8 @@ const ModRows = memo((props: ModRowsProps) => {
         mod,
         isAlwaysEnabled: alwaysEnabledModNames.has(mod.name),
         isEnabledInMergedMod: mergedModPaths.has(mod.path),
-        decodedHumanName: decodeHtml(decodeHtml(mod.humanName) ?? ""),
-        decodedAuthor: decodeHtml(decodeHtml(mod.author) ?? ""),
+        decodedHumanName: decodeModText(mod.humanName),
+        decodedAuthor: decodeModText(mod.author),
         customFolderPath:
           getModSourceKind(mod) === "custom" ? customFolderPathBySourceId.get(getModSourceId(mod)) : undefined,
         hasDbCustomization: Boolean(customizableMods[mod.path]?.some((file) => file.startsWith("db\\"))),
