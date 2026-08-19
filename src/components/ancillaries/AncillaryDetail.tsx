@@ -357,7 +357,7 @@ const AncillaryDetail = memo(
     const colourText = locValue(ancillaryColourTextLocKey(detail.key), detail.colourText);
 
     return (
-      <div className="h-full overflow-y-auto p-4">
+      <div className={`h-full overflow-y-auto p-4 ${isEditingEnabled ? "" : "flex flex-col justify-center"}`}>
         {/* The frame is drawn in CSS rather than with the tooltip background image, so it stays
             crisp at any card height instead of stretching. */}
         <div
