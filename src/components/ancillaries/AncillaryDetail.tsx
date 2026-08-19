@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
-import WindowedSelect from "react-windowed-select";
+import WindowedSelect, { components, type MenuListProps } from "react-windowed-select";
 import { createFilter } from "react-select";
 import { IoAdd, IoCopy, IoLockClosed, IoTrash } from "react-icons/io5";
 import selectStyle from "../../styles/selectStyle";
@@ -24,9 +24,12 @@ const portalSelectStyle = {
   menu: (base: any) => ({ ...selectStyle.menu(base), zIndex: 70 }),
 };
 
+const EFFECT_OPTION_HEIGHT = 58;
+
 /**
- * react-windowed-select measures a row by the `height` in the option style, falling back to 35px.
- * An option taller than that overlaps the next one, so every taller row states its height here.
+ * The default windowed menu measures a row by the `height` in the option style, falling back to
+ * 35px. An option taller than that overlaps the next one, so every taller row states its height
+ * here. The effect picker uses the same fixed height in its custom menu list below.
  */
 const withOptionHeight = (height: number) => ({
   ...portalSelectStyle,
@@ -41,7 +44,7 @@ const withOptionHeight = (height: number) => ({
 /** One line next to a 20px icon. */
 const typeSelectStyle = withOptionHeight(44);
 /** Two lines - the description and the effect key - next to a 20px icon. */
-const effectSelectStyle = withOptionHeight(58);
+const effectSelectStyle = withOptionHeight(EFFECT_OPTION_HEIGHT);
 
 export type AncillaryDetailProps = {
   detail?: AncillaryDetailModel;
@@ -86,6 +89,125 @@ const OptionIcon = ({ iconUrl }: { iconUrl?: string }) =>
   ) : (
     <span className="h-5 w-5 shrink-0" />
   );
+
+type FixedSizeListHandle = {
+  scrollToItem: (index: number, align?: "auto" | "smart" | "center" | "end" | "start") => void;
+};
+
+type FixedSizeListProps = {
+  children: React.ComponentType<{
+    data: React.ReactNode[];
+    index: number;
+    style: React.CSSProperties;
+  }>;
+  height: number;
+  itemCount: number;
+  itemData: React.ReactNode[];
+  itemKey?: (index: number, data: React.ReactNode[]) => React.Key;
+  itemSize: number;
+  className?: string;
+  outerElementType?: React.ElementType;
+  outerRef?: React.Ref<HTMLDivElement>;
+  overscanCount?: number;
+  style?: React.CSSProperties;
+  width: number | string;
+  ref?: React.Ref<FixedSizeListHandle>;
+};
+
+// react-window has no bundled TypeScript declarations. Keep the small runtime surface used here
+// typed locally instead of leaking an untyped module through the rest of the component.
+const { FixedSizeList } = require("react-window") as { FixedSizeList: React.ComponentType<FixedSizeListProps> };
+
+const menuListOuterProps = React.createContext<React.HTMLAttributes<HTMLDivElement>>({});
+
+const FixedSizeMenuListOuter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ children, ...listProps }, ref) => {
+    const innerProps = React.useContext(menuListOuterProps);
+    return (
+      <div {...innerProps} {...listProps} ref={ref}>
+        {children}
+      </div>
+    );
+  },
+);
+
+const FixedMenuOption = ({
+  data,
+  index,
+  style,
+}: {
+  data: React.ReactNode[];
+  index: number;
+  style: React.CSSProperties;
+}) => <div style={style}>{data[index]}</div>;
+
+/**
+ * The effect picker has a known, fixed row height. The package's default windowed menu uses a
+ * VariableSizeList and calls getBoundingClientRect for every newly visible row, which makes a long
+ * effect list visibly hitch while scrolling. A FixedSizeList needs no layout reads on the scroll
+ * path and still keeps the menu's keyboard-focused option in view.
+ */
+const FixedEffectMenuList = (props: MenuListProps<unknown, boolean>) => {
+  const optionElements = useMemo(() => React.Children.toArray(props.children), [props.children]);
+  const listRef = React.useRef<FixedSizeListHandle>(null);
+  const focusedIndex = useMemo(
+    () =>
+      optionElements.findIndex(
+        (child) => React.isValidElement(child) && (child.props as { isFocused?: boolean }).isFocused,
+      ),
+    [optionElements],
+  );
+
+  useEffect(() => {
+    if (focusedIndex >= 0) listRef.current?.scrollToItem(focusedIndex, "smart");
+  }, [focusedIndex, optionElements]);
+
+  const hasOptions = optionElements.every(
+    (child) => React.isValidElement(child) && (child.props as { data?: unknown }).data !== undefined,
+  );
+  if (!hasOptions) return <components.MenuList {...props} />;
+
+  const menuListStyle = props.getStyles("menuList", props) as React.CSSProperties;
+  const paddingTop = Number.parseFloat(String(menuListStyle.paddingTop ?? 0)) || 0;
+  const paddingBottom = Number.parseFloat(String(menuListStyle.paddingBottom ?? 0)) || 0;
+  const contentHeight = optionElements.length * EFFECT_OPTION_HEIGHT + paddingTop + paddingBottom;
+  const height = Math.min(props.maxHeight, contentHeight);
+  const classNamePrefix = props.selectProps.classNamePrefix;
+
+  return (
+    <menuListOuterProps.Provider value={props.innerProps}>
+      <FixedSizeList
+        ref={listRef}
+        outerRef={props.innerRef}
+        outerElementType={FixedSizeMenuListOuter}
+        className={classNamePrefix ? `${classNamePrefix}__menu-list` : undefined}
+        height={height}
+        itemCount={optionElements.length}
+        itemData={optionElements}
+        itemKey={(index, data) => (React.isValidElement(data[index]) ? (data[index].key ?? index) : index)}
+        itemSize={EFFECT_OPTION_HEIGHT}
+        overscanCount={2}
+        style={menuListStyle}
+        width="100%"
+      >
+        {FixedMenuOption}
+      </FixedSizeList>
+    </menuListOuterProps.Provider>
+  );
+};
+
+const formatEffectOptionLabel = (option: unknown, meta: { context: string }) => {
+  const { value, label, iconUrl } = option as SelectOption;
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <OptionIcon iconUrl={iconUrl} />
+      <div className="min-w-0">
+        <div className="truncate">{label}</div>
+        {meta.context === "menu" && label !== value && <div className="truncate text-xs text-gray-400">{value}</div>}
+      </div>
+    </div>
+  );
+};
 
 /**
  * A select that draws each option's icon next to its name.
@@ -318,6 +440,16 @@ const AncillaryDetail = memo(
       );
     }, [catalog]);
 
+    const effectSelectOptions = useMemo<SelectOption[]>(
+      () =>
+        effectOptions.map((effect) => ({
+          value: effect.key,
+          label: effect.localizedName,
+          iconUrl: effect.iconUrl,
+        })),
+      [effectOptions],
+    );
+
     const selectedEffect = useMemo(
       () => catalog?.effects.find((effect) => effect.key === pendingEffectKey),
       [catalog, pendingEffectKey],
@@ -528,28 +660,11 @@ const AncillaryDetail = memo(
                   <div className="mb-1 text-xs text-gray-400">{localized.ancillariesAddEffect || "Add effect"}</div>
                   <WindowedSelect
                     filterOption={createFilter({ ignoreAccents: false })}
-                    options={effectOptions.map((effect) => ({
-                      value: effect.key,
-                      label: effect.localizedName,
-                      iconUrl: effect.iconUrl,
-                    }))}
+                    options={effectSelectOptions}
                     // Name and key both, because the description is what the player reads and the
                     // key is what goes in the row - and the default filter searches label and value
                     // alike, so either one finds the effect.
-                    formatOptionLabel={(option: unknown, meta: { context: string }) => {
-                      const { value, label, iconUrl } = option as SelectOption;
-                      return (
-                        <div className="flex min-w-0 items-center gap-2">
-                          <OptionIcon iconUrl={iconUrl} />
-                          <div className="min-w-0">
-                            <div className="truncate">{label}</div>
-                            {meta.context === "menu" && label !== value && (
-                              <div className="truncate text-xs text-gray-400">{value}</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }}
+                    formatOptionLabel={formatEffectOptionLabel}
                     value={
                       pendingEffectKey
                         ? {
@@ -561,6 +676,10 @@ const AncillaryDetail = memo(
                     }
                     // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(option: { value: string } | null) => setPendingEffectKey(option?.value)}
+                    // The wrapper replaces a custom MenuList once its own threshold is reached;
+                    // this picker supplies its own fixed-size virtual list instead.
+                    windowThreshold={effectSelectOptions.length + 1}
+                    components={{ MenuList: FixedEffectMenuList }}
                     styles={effectSelectStyle}
                     placeholder={localized.ancillariesSearchEffects || "Search effects…"}
                     isClearable
