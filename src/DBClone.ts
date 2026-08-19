@@ -34,6 +34,7 @@ import { getVanillaPackNamesForDBTable, isDBCloneTableIgnored, toDBTablePrefix }
 import { canUseVanillaDbCacheForPack, fillVanillaTablesFromCache } from "./vanillaDbCache/store";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import { describeDBCloneSaveError, writeDBClonePackAtomically } from "./utility/dbCloneSave";
+import { createSerializedBuilds } from "./utility/serializedBuilds";
 
 const shouldIgnoreDBCloneTable = (tableName: string) =>
   isDBCloneTableIgnored(tableName) || tablesToIgnore.includes(tableName);
@@ -53,6 +54,42 @@ const ensureDBCloneSchemaReady = async () => {
     getDBFieldsReferencedByForGame(game),
   ]);
 };
+
+/**
+ * A renderer can ask for the same tree more than once while its modal is mounting (React StrictMode
+ * does this in development). Tree construction fills shared pack data across several awaits, so
+ * identical requests must share one build and different requests must wait for it to finish.
+ */
+const dbReferenceTreeBuilds = createSerializedBuilds();
+
+const getDBReferenceTreeBuildKey = (
+  packPath: string,
+  currentDBTableSelection: DBTableSelection,
+  deepCloneTarget: { row: number; col: number },
+  existingRefs: DBCell[],
+  selectedNodesByName: IViewerTreeNodeWithData[],
+  existingTree?: IViewerTreeNodeWithData,
+) =>
+  JSON.stringify({
+    game: appData.currentGame,
+    packPath,
+    selection: {
+      packPath: currentDBTableSelection.packPath,
+      dbFolder: currentDBTableSelection.dbFolder ?? "",
+      dbName: currentDBTableSelection.dbName,
+      dbSubname: currentDBTableSelection.dbSubname,
+    },
+    target: deepCloneTarget,
+    existingRefs,
+    selectedNodesByName: selectedNodesByName.map((node) => ({
+      name: node.name,
+      tableName: node.tableName,
+      columnName: node.columnName,
+      value: node.value,
+      isIndirectRef: node.isIndirectRef,
+    })),
+    existingTree,
+  });
 
 /** True when the pack index proves the table absent, or every matching packed file already has rows. */
 const isPackTableResolved = (newPackPath: string, tableToRead: string) => {
@@ -155,7 +192,7 @@ const hasInvalidFileNameChar = (value: string) => {
   return false;
 };
 
-export const buildDBReferenceTree = async (
+const buildDBReferenceTreeInternal = async (
   packPath: string,
   currentDBTableSelection: DBTableSelection,
   deepCloneTarget: { row: number; col: number },
@@ -788,6 +825,34 @@ export const buildDBReferenceTree = async (
 
   return tree;
 };
+
+export const buildDBReferenceTree = (
+  packPath: string,
+  currentDBTableSelection: DBTableSelection,
+  deepCloneTarget: { row: number; col: number },
+  existingRefs: DBCell[],
+  selectedNodesByName: IViewerTreeNodeWithData[],
+  existingTree?: IViewerTreeNodeWithData,
+): Promise<IViewerTreeNodeWithData | undefined> =>
+  dbReferenceTreeBuilds.run(
+    getDBReferenceTreeBuildKey(
+      packPath,
+      currentDBTableSelection,
+      deepCloneTarget,
+      existingRefs,
+      selectedNodesByName,
+      existingTree,
+    ),
+    () =>
+      buildDBReferenceTreeInternal(
+        packPath,
+        currentDBTableSelection,
+        deepCloneTarget,
+        existingRefs,
+        selectedNodesByName,
+        existingTree,
+      ),
+  );
 
 export const buildDBIndirectReferences = async (
   packPath: string,

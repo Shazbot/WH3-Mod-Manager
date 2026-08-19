@@ -86,7 +86,6 @@ describe("DB Clone selection", () => {
       "building_instances_tables",
       "building_effects_junction_tables",
       "building_units_allowed_tables",
-      "building_upgrades_junction_tables",
       "building_level_armed_citizenry_junctions_tables",
       "cai_construction_system_synergies_tables",
       "cai_construction_system_building_values_tables",
