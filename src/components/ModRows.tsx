@@ -720,10 +720,23 @@ const ModRows = memo((props: ModRowsProps) => {
    * way through still gets a heading to switch it back off from. The filter applies here as well: what a
    * heading counts is what the search left on screen.
    */
+  const visibleCategoryMods = useMemo(() => getVisibleMods(mods, hiddenModNames), [hiddenModNames, mods]);
   const categoryMods = useMemo(
-    () => (isGroupedByCategory ? getVisibleMods(mods, hiddenModNames) : emptyMods),
-    [hiddenModNames, isGroupedByCategory, mods],
+    () => (isGroupedByCategory ? visibleCategoryMods : emptyMods),
+    [isGroupedByCategory, visibleCategoryMods],
   );
+  const categoryNames = useMemo(
+    () => new Set(visibleCategoryMods.flatMap((mod) => getModCategories(mod))),
+    [visibleCategoryMods],
+  );
+
+  const wasCategoryViewRef = useRef(false);
+  useLayoutEffect(() => {
+    if (isCategoryView && !wasCategoryViewRef.current) {
+      setCollapsedCategories(new Set(categoryNames));
+    }
+    wasCategoryViewRef.current = isCategoryView;
+  }, [categoryNames, isCategoryView]);
 
   /**
    * Whether a list holds a data mod at all. The compact name column steps through the sorts it stacks,
