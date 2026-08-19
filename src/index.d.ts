@@ -877,6 +877,7 @@ declare global {
 
   interface TechnologyNodeSetSummary {
     key: string;
+    nodeCount: number;
     campaignKey?: string;
     factionKey?: string;
     culture?: string;

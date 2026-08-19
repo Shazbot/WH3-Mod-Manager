@@ -162,6 +162,7 @@ const buildBlankTechnologyTree = (
 ): TechnologyTreePayload => ({
   set: {
     key: blankSetKey,
+    nodeCount: 0,
     localizedName: blankSetKey,
     campaignKey: templateTree?.set.campaignKey,
     factionKey: templateTree?.set.factionKey,

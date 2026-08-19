@@ -3093,6 +3093,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!key) return;
       setsByKey[key] = {
         key,
+        nodeCount: 0,
         campaignKey: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "campaign_key")),
         factionKey: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "faction_key")),
         culture: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "culture")),
@@ -3126,6 +3127,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         optionalUiGroup: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "optional_ui_group")),
       };
       nodeRowsByKey[nodeKey] = schemaRowToRecord(schemaFieldRow);
+    });
+    const nodeCountsBySet = Object.values(nodesByKey).reduce<Record<string, number>>((counts, node) => {
+      counts[node.setKey] = (counts[node.setKey] || 0) + 1;
+      return counts;
+    }, {});
+    Object.values(setsByKey).forEach((nodeSet) => {
+      nodeSet.nodeCount = nodeCountsBySet[nodeSet.key] || 0;
     });
     getTableRowData(packsTableData, "technology_node_links_tables", (schemaFieldRow) => {
       const parentKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "parent_key"));

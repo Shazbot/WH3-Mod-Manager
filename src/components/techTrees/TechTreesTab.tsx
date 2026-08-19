@@ -245,6 +245,7 @@ const TechTreesTab = memo(() => {
                 >
                   <div className="font-medium">{nodeSet.localizedName || nodeSet.key}</div>
                   {nodeSet.localizedName && <div className="text-xs opacity-70">{nodeSet.key}</div>}
+                  {nodeSet.nodeCount === 0 && <div className="text-xs text-yellow-400">No nodes</div>}
                   {(nodeSet.factionKey || nodeSet.subculture) && (
                     <div className="flex gap-1 mt-0.5 flex-wrap">
                       {nodeSet.factionKey && (
