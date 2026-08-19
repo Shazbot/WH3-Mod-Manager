@@ -118,6 +118,39 @@ describe("AncillaryDetail card", () => {
     renderDetail({ detail: { ...detail, hasInfoRow: false } });
     expect(screen.getByText(/No ancillary_info_tables row for this key/)).toBeTruthy();
   });
+
+  it("shows the ability tooltip when hovering an effect that unlocks an ability", () => {
+    const ability: AbilityTooltipData = {
+      key: "wh3_ability_fireball",
+      name: "Fireball",
+      description: "A very hot spell.",
+      sourceTypeName: "Spell",
+      loreGroupName: "Fire",
+      abilityTypeName: "Direct damage",
+      stats: {},
+      bonuses: [],
+      additionalUiEffects: [],
+    };
+    renderDetail({
+      isEditingEnabled: false,
+      detail: {
+        ...detail,
+        abilityTooltips: {
+          byEffect: { effect_melee: [ability] },
+          icons: {},
+        },
+      },
+    });
+
+    const effectLabel = screen.getByText("+12 melee attack");
+    fireEvent.mouseEnter(effectLabel.parentElement!.parentElement!);
+
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Fireball");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("A very hot spell.");
+
+    fireEvent.mouseLeave(effectLabel.parentElement!.parentElement!);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
 });
 
 describe("AncillaryDetail inline editing", () => {

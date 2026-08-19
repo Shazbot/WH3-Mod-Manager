@@ -66,6 +66,12 @@ export interface AncillaryEffectRow {
   pendingRowId?: string;
 }
 
+/** Ability tooltips unlocked by an ancillary effect, plus the asset URLs their cards need. */
+export interface AncillaryAbilityTooltips {
+  byEffect: Record<string, AbilityTooltipData[]>;
+  icons: Record<string, string>;
+}
+
 /** One entry in the left-hand browser. The detail panel fetches the rest on selection. */
 export interface AncillarySummary {
   key: string;
@@ -92,6 +98,8 @@ export interface AncillaryDetail extends AncillarySummary {
   categoryName: string;
   subcategoryName?: string;
   effects: AncillaryEffectRow[];
+  /** Present for effects that enable one or more unit abilities. */
+  abilityTooltips?: AncillaryAbilityTooltips;
   /** The whole `ancillaries_tables` row, so the inline editor can seed an override from it. */
   rowValues: Record<string, string>;
   /** True when an `ancillary_info_tables` row exists; `ancillaries.key` references it. */

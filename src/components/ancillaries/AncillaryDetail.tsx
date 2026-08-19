@@ -1,4 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
+import { createPortal } from "react-dom";
 import WindowedSelect, { components, type MenuListProps } from "react-windowed-select";
 import { createFilter } from "react-select";
 import { IoAdd, IoCopy, IoLockClosed, IoTrash } from "react-icons/io5";
@@ -15,7 +17,14 @@ import {
 import { ancillaryColourTextLocKey, ancillaryExplanationLocKey, ancillaryNameLocKey } from "../../ancillariesData/data";
 import AncillaryTypesModal from "./AncillaryTypesModal";
 import { useLocalizations } from "../../localizationContext";
-import type { AncillariesCatalog, AncillaryDetail as AncillaryDetailModel } from "../../ancillariesData/types";
+import AbilityTooltipCard from "../skillsViewer/AbilityTooltipCard";
+import type {
+  AncillariesCatalog,
+  AncillaryDetail as AncillaryDetailModel,
+  AncillaryEffectRow,
+} from "../../ancillariesData/types";
+
+const tooltipFrame = require("../../assets/skills/tooltip_frame.png");
 
 /** A menu that renders in a portal needs to sit above the rest of the app. */
 const portalSelectStyle = {
@@ -45,6 +54,68 @@ const withOptionHeight = (height: number) => ({
 const typeSelectStyle = withOptionHeight(44);
 /** Two lines - the description and the effect key - next to a 20px icon. */
 const effectSelectStyle = withOptionHeight(EFFECT_OPTION_HEIGHT);
+
+const AncillaryAbilityEffectTooltip = ({
+  effect,
+  abilities,
+  icons,
+  children,
+}: {
+  effect: AncillaryEffectRow;
+  abilities?: AbilityTooltipData[];
+  icons: Record<string, string>;
+  children: React.ReactNode;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const { refs, floatingStyles } = useFloating({
+    placement: "right-start",
+    middleware: [offset(12), flip(), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+
+  const hasAbilities = (abilities?.length ?? 0) > 0;
+  const onMouseEnter = useCallback(() => {
+    if (hasAbilities) setIsOpen(true);
+  }, [hasAbilities]);
+  const onMouseLeave = useCallback(() => setIsOpen(false), []);
+
+  return (
+    <>
+      <div ref={refs.setReference} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+        {children}
+      </div>
+      {isOpen &&
+        hasAbilities &&
+        createPortal(
+          <div
+            ref={refs.setFloating}
+            style={{ ...floatingStyles, zIndex: 60 }}
+            className="pointer-events-none"
+            role="tooltip"
+          >
+            <div
+              style={{ backgroundImage: `url('${tooltipFrame}')`, fontFamily: '"Libre Baskerville", serif' }}
+              className="skillTooltip max-h-[92vh] w-[470px] overflow-y-auto"
+            >
+              {abilities!.map((ability, index) => {
+                const compareAbility = abilities!.find((other) => other.overpowerOption === ability.key);
+                return (
+                  <AbilityTooltipCard
+                    key={`${ability.key}:${index}`}
+                    ability={ability}
+                    compareAbility={compareAbility}
+                    icons={icons}
+                    fallbackIconData={effect.iconUrl}
+                  />
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+};
 
 export type AncillaryDetailProps = {
   detail?: AncillaryDetailModel;
@@ -532,16 +603,25 @@ const AncillaryDetail = memo(
           {detail.effects.length > 0 && (
             <div className="space-y-1.5 border-t border-red-900/40 pt-2">
               {detail.effects.map((effect) => (
-                <div key={`${effect.effectKey}`} className="flex items-start gap-2.5 text-sm leading-snug">
-                  {effect.iconUrl ? (
-                    <img src={effect.iconUrl} alt="" className="mt-0.5 h-6 w-6 shrink-0 object-contain" />
-                  ) : (
-                    <span className="h-6 w-6 shrink-0" />
-                  )}
-                  <span className={effect.isPositiveValueGood === effect.value >= 0 ? "text-lime-200" : "text-red-200"}>
-                    {effect.localizedKey}
-                  </span>
-                </div>
+                <AncillaryAbilityEffectTooltip
+                  key={`${effect.effectKey}`}
+                  effect={effect}
+                  abilities={detail.abilityTooltips?.byEffect[effect.effectKey]}
+                  icons={detail.abilityTooltips?.icons ?? {}}
+                >
+                  <div className="flex items-start gap-2.5 text-sm leading-snug">
+                    {effect.iconUrl ? (
+                      <img src={effect.iconUrl} alt="" className="mt-0.5 h-6 w-6 shrink-0 object-contain" />
+                    ) : (
+                      <span className="h-6 w-6 shrink-0" />
+                    )}
+                    <span
+                      className={effect.isPositiveValueGood === effect.value >= 0 ? "text-lime-200" : "text-red-200"}
+                    >
+                      {effect.localizedKey}
+                    </span>
+                  </div>
+                </AncillaryAbilityEffectTooltip>
               ))}
             </div>
           )}
@@ -609,48 +689,55 @@ const AncillaryDetail = memo(
             <Section title={localized.ancillariesSectionEffects || "Effects"}>
               <div className="space-y-1">
                 {detail.effects.map((effect) => (
-                  <div key={effect.effectKey} className="flex items-center gap-2">
-                    <OptionIcon iconUrl={effect.iconUrl} />
-                    <span className="min-w-0 flex-1 truncate text-xs text-gray-300" title={effect.effectKey}>
-                      {effect.localizedKey}
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      value={effect.value}
-                      onChange={(event) =>
-                        setField(
-                          "ancillary_to_effects_tables",
-                          { ancillary: detail.key, effect: effect.effectKey },
-                          { ancillary: detail.key, effect: effect.effectKey, effect_scope: effect.scope },
-                          "value",
-                          event.target.value,
-                          "editEffect",
-                        )
-                      }
-                      className="w-24 shrink-0 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
-                    />
-                    {effect.isPending && effect.pendingRowId ? (
-                      <button
-                        type="button"
-                        title={localized.ancillariesRemovePendingEffect || "Remove this pending effect row"}
-                        onClick={() => dispatch({ type: "removeRow", id: effect.pendingRowId! })}
-                        className="shrink-0 rounded p-1 text-red-300 hover:bg-red-950"
-                      >
-                        <IoTrash size={13} />
-                      </button>
-                    ) : (
-                      <span
-                        title={
-                          localized.ancillariesEffectLocked ||
-                          "ancillary_to_effects_tables is keyed on (ancillary, effect); a pack can override a pair but never delete one."
-                        }
-                        className="shrink-0 p-1 text-gray-600"
-                      >
-                        <IoLockClosed size={13} />
+                  <AncillaryAbilityEffectTooltip
+                    key={effect.effectKey}
+                    effect={effect}
+                    abilities={detail.abilityTooltips?.byEffect[effect.effectKey]}
+                    icons={detail.abilityTooltips?.icons ?? {}}
+                  >
+                    <div className="flex items-center gap-2">
+                      <OptionIcon iconUrl={effect.iconUrl} />
+                      <span className="min-w-0 flex-1 truncate text-xs text-gray-300" title={effect.effectKey}>
+                        {effect.localizedKey}
                       </span>
-                    )}
-                  </div>
+                      <input
+                        type="number"
+                        step="any"
+                        value={effect.value}
+                        onChange={(event) =>
+                          setField(
+                            "ancillary_to_effects_tables",
+                            { ancillary: detail.key, effect: effect.effectKey },
+                            { ancillary: detail.key, effect: effect.effectKey, effect_scope: effect.scope },
+                            "value",
+                            event.target.value,
+                            "editEffect",
+                          )
+                        }
+                        className="w-24 shrink-0 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
+                      />
+                      {effect.isPending && effect.pendingRowId ? (
+                        <button
+                          type="button"
+                          title={localized.ancillariesRemovePendingEffect || "Remove this pending effect row"}
+                          onClick={() => dispatch({ type: "removeRow", id: effect.pendingRowId! })}
+                          className="shrink-0 rounded p-1 text-red-300 hover:bg-red-950"
+                        >
+                          <IoTrash size={13} />
+                        </button>
+                      ) : (
+                        <span
+                          title={
+                            localized.ancillariesEffectLocked ||
+                            "ancillary_to_effects_tables is keyed on (ancillary, effect); a pack can override a pair but never delete one."
+                          }
+                          className="shrink-0 p-1 text-gray-600"
+                        >
+                          <IoLockClosed size={13} />
+                        </span>
+                      )}
+                    </div>
+                  </AncillaryAbilityEffectTooltip>
                 ))}
                 {detail.effects.length === 0 && (
                   <div className="text-xs text-gray-500">{localized.ancillariesNoEffectsYet || "No effects yet."}</div>

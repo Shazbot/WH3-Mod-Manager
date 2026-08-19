@@ -103,6 +103,7 @@ import type {
   AncillariesCatalog,
   AncillariesCatalogResponse,
   AncillariesDetailResponse,
+  AncillaryAbilityTooltips,
   AncillariesTableRows,
   AncillaryDetail,
   AncillaryEffectRow,
@@ -4008,6 +4009,95 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return iconPackPaths.map((packPath) => byPath.get(packPath)).filter((pack): pack is Pack => !!pack);
   };
 
+  /**
+   * Builds the same ability cards the skill tree uses, but for the effects on one ancillary.
+   *
+   * Skill data is normally loaded lazily by the skill-tree tab/window. Ancillaries can be opened
+   * first, so make sure the shared skills core exists before asking it for the effect mappings. The
+   * result is kept narrow: only this ancillary's effect keys and the icon URLs those cards need
+   * cross the IPC boundary.
+   */
+  const getAncillaryAbilityTooltips = async (
+    effectKeys: string[],
+    enabledMods: Mod[],
+  ): Promise<AncillaryAbilityTooltips | undefined> => {
+    if (effectKeys.length === 0) return undefined;
+
+    const skillsSignature = buildSkillsDataSignature(enabledMods, appData.currentGame);
+    if (!appData.skillsData || appData.lastSkillsDataSignature !== skillsSignature) {
+      await getSkillsData(enabledMods);
+    }
+
+    const skillsData = appData.skillsData;
+    if (!skillsData || appData.lastSkillsDataSignature !== skillsSignature) return undefined;
+
+    const getLoc = (locId: string) => {
+      for (const locsInPack of Object.values(skillsData.locs)) {
+        const localized = locsInPack.get(locId);
+        if (localized) return localized;
+      }
+      return undefined;
+    };
+    const { abilityTooltipsByKey, reducedEffectToUnitAbilityEnables, iconPathsToLoad } =
+      buildAbilityTooltipDataForEffects({
+        effectKeys: [...new Set(effectKeys)],
+        effectToUnitAbilityEnables: skillsData.effectToUnitAbilityEnables,
+        unitAbilitiesByKey: skillsData.unitAbilitiesByKey,
+        unitSpecialAbilitiesByKey: skillsData.unitSpecialAbilitiesByKey,
+        bombardmentsByKey: skillsData.bombardmentsByKey,
+        projectilesByKey: skillsData.projectilesByKey,
+        explosionsByKey: skillsData.explosionsByKey,
+        vortexesByKey: skillsData.vortexesByKey,
+        abilityToPhaseIds: skillsData.abilityToPhaseIds,
+        phasesById: skillsData.phasesById,
+        phaseStatEffectsByPhaseId: skillsData.phaseStatEffectsByPhaseId,
+        uiUnitStatIconsByStat: skillsData.uiUnitStatIconsByStat,
+        kvDirectDamageMinUnary: skillsData.kvDirectDamageMinUnary,
+        kvDirectDamageLarge: skillsData.kvDirectDamageLarge,
+        abilityToAdditionalUiEffectKeys: skillsData.abilityToAdditionalUiEffectKeys,
+        additionalUiEffectsByKey: skillsData.additionalUiEffectsByKey,
+        abilityToAutoDeactivateFlags: skillsData.abilityToAutoDeactivateFlags,
+        abilityToGroupKeys: skillsData.abilityToGroupKeys,
+        specialAbilityGroupsByKey: skillsData.specialAbilityGroupsByKey,
+        getLoc,
+      });
+
+    const missingIconPaths = iconPathsToLoad.filter((iconPath) => !skillsData.icons[iconPath]);
+    if (missingIconPaths.length > 0) {
+      const vanillaIconPackPaths = (await findVanillaPacksHoldingIcons(missingIconPaths)) ?? [];
+      const iconPackPaths = [
+        ...skillsData.skillsDataPackPaths,
+        ...vanillaIconPackPaths.filter((packPath) => !skillsData.skillsDataPackPaths.includes(packPath)),
+      ];
+      const addedIconGeneration = await loadMissingIconsInto(
+        skillsData.icons,
+        await getIconPacks(iconPackPaths),
+        iconPathsToLoad,
+      );
+      if (addedIconGeneration) skillsData.iconGeneration = addedIconGeneration;
+    }
+
+    const icons: Record<string, string> = {};
+    for (const iconPath of iconPathsToLoad) {
+      if (skillsData.icons[iconPath]) icons[iconPath] = iconAssetUrl(skillsData.iconGeneration, iconPath);
+    }
+
+    const byEffect: Record<string, AbilityTooltipData[]> = {};
+    for (const effectKey of effectKeys) {
+      const seenAbilityKeys = new Set<string>();
+      const abilities = (reducedEffectToUnitAbilityEnables[effectKey] || [])
+        .map((mapping) => abilityTooltipsByKey[mapping.unitAbilityKey])
+        .filter((ability): ability is AbilityTooltipData => {
+          if (!ability || seenAbilityKeys.has(ability.key)) return false;
+          seenAbilityKeys.add(ability.key);
+          return true;
+        });
+      if (abilities.length > 0) byEffect[effectKey] = abilities;
+    }
+
+    return { byEffect, icons };
+  };
+
   const buildingsBuilds = createSerializedBuilds();
   const ensureBuildingsData = async (enabledMods: Mod[]) =>
     buildingsBuilds.run(buildBuildingsBuildKey(enabledMods, appData.currentGame), () =>
@@ -4653,9 +4743,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         // Validated against the base data, not `data`: every pending row exists in the latter by
         // construction, so an override would look like a perfectly ordinary ancillary.
         const rowIssues = pendingEdits ? validateAncillariesNewRows(built.data, pendingEdits) : undefined;
+        const detail = toAncillaryDetail(built, data, key, pendingEdits);
+        let abilityTooltips: AncillaryAbilityTooltips | undefined;
+        if (detail) {
+          try {
+            abilityTooltips = await getAncillaryAbilityTooltips(
+              detail.effects.map((effect) => effect.effectKey),
+              enabledMods,
+            );
+          } catch (error) {
+            // Ability data is an enhancement to the ancillary card. A missing or malformed skill
+            // table should not make the ancillary browser itself unavailable.
+            console.log("getAncillaryAbilityTooltips failed:", error);
+          }
+        }
         return {
           success: true,
-          detail: toAncillaryDetail(built, data, key, pendingEdits),
+          detail: detail && abilityTooltips ? { ...detail, abilityTooltips } : detail,
           catalog: toAncillariesCatalog(built, data, await getAncillariesTableSchemas()),
           rowIssues,
         };
