@@ -5,7 +5,7 @@ import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
 import { FaMapMarkedAlt, FaProjectDiagram } from "react-icons/fa";
 import { BsCollection, BsDiagram3, BsPersonVcard } from "react-icons/bs";
-import { GiCastle, GiCrossedSwords, GiSwapBag } from "react-icons/gi";
+import { GiCastle, GiClassicalKnowledge, GiCrossedSwords, GiSwapBag } from "react-icons/gi";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -163,7 +163,7 @@ const LeftSidebar = memo(() => {
           {isTechTreesTabVisible && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
-                <BsDiagram3 size="1.3rem" />
+                <GiClassicalKnowledge size="1.3rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.techTreesTab || "Tech Trees"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("techTrees") + 1}
