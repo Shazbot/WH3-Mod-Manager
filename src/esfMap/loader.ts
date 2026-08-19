@@ -6,6 +6,7 @@ import { getVanillaLocalisationPackPaths } from "../vanillaLocCache/packs";
 import { collectVanillaFilesUnderPrefix, type VanillaPackIndex } from "../vanillaPackIndex/format";
 import { getVanillaPackIndex } from "../vanillaPackIndex/store";
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { isIgnoredCampaignType } from "../campaigns";
@@ -31,6 +32,22 @@ interface EsfFileCandidate {
 interface EsfCampaignStartposCandidate extends EsfFileCandidate, StartposCampaignTableIdentity {
   buffer: Buffer;
 }
+
+type StartposRegionSlotTemplateRow = {
+  campaign: string;
+  region: string;
+  slot_template: string;
+  slot_type: string;
+};
+
+type FileIdentity = readonly [number, number];
+
+/** The derived rows are cheap to reuse, but must be invalidated when any source input changes. */
+const STARTPOS_REGION_SLOT_TEMPLATE_CACHE_VERSION = 1;
+let cachedStartposRegionSlotTemplates:
+  | { signature: string; rows: StartposRegionSlotTemplateRow[] }
+  | undefined;
+const pendingStartposRegionSlotTemplates = new Map<string, Promise<StartposRegionSlotTemplateRow[]>>();
 
 type EsfAssetKind = "map" | "startpos" | "lookup" | "pathfinding" | "background" | "background-text";
 
@@ -227,6 +244,60 @@ export const getVanillaStartposFilePaths = async (dataFolder: string): Promise<s
     .map((candidate) => candidate.filePath)
     .filter((filePath): filePath is string => !!filePath);
 
+const readFileIdentity = async (filePath: string): Promise<FileIdentity> => {
+  try {
+    const stat = await fs.promises.stat(filePath);
+    return [stat.size, stat.mtimeMs];
+  } catch {
+    return [-1, -1];
+  }
+};
+
+const getStartposRegionSlotTemplateSignature = async (
+  dataFolder: string,
+  vanillaCandidates: EsfFileCandidate[],
+  enabledMods: Mod[],
+): Promise<string> => {
+  const orderedMods = sortByNameAndLoadOrder(enabledMods);
+  const vanillaInputs = await Promise.all(
+    vanillaCandidates.map(async (candidate) => {
+      const filePath = candidate.filePath ?? candidate.fileName;
+      return {
+        fileName: candidate.fileName,
+        filePath: nodePath.resolve(filePath),
+        identity: await readFileIdentity(filePath),
+      };
+    }),
+  );
+  vanillaInputs.sort((first, second) => first.filePath.localeCompare(second.filePath));
+  const modInputs = await Promise.all(
+    orderedMods.map(async (mod, index) => ({
+      index,
+      name: mod.name,
+      loadOrder: mod.loadOrder ?? null,
+      path: nodePath.resolve(mod.path),
+      identity: await readFileIdentity(mod.path),
+    })),
+  );
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: STARTPOS_REGION_SLOT_TEMPLATE_CACHE_VERSION,
+        game: appData.currentGame,
+        dataFolder: nodePath.resolve(dataFolder),
+        vanilla: vanillaInputs,
+        mods: modInputs,
+      }),
+    )
+    .digest("hex");
+};
+
+/** Clears the process-local startpos-derived building input cache. */
+export const clearStartposRegionSlotTemplatesCache = () => {
+  cachedStartposRegionSlotTemplates = undefined;
+  pendingStartposRegionSlotTemplates.clear();
+};
+
 const collectModCandidates = async (
   mods: Mod[],
   matches: (fileName: string) => boolean,
@@ -285,14 +356,21 @@ const pickCandidateForMapFolder = (
  * open while it processes `filesToRead`, so grouping the map layers avoids reopening data_maps.pack
  * once for map_data, lookup, pathfinding, and each background layer.
  */
-const readPackedFileBuffers = async (candidates: EsfFileCandidate[]): Promise<Map<EsfFileCandidate, Buffer>> => {
+const readPackedFileBuffers = async (
+  candidates: EsfFileCandidate[],
+  allowMissing = false,
+): Promise<Map<EsfFileCandidate, Buffer>> => {
   const buffers = new Map<EsfFileCandidate, Buffer>();
   const candidatesByPack = new Map<string, EsfFileCandidate[]>();
 
   await Promise.all(
     candidates.map(async (candidate) => {
       if (candidate.filePath) {
-        buffers.set(candidate, await fs.promises.readFile(candidate.filePath));
+        try {
+          buffers.set(candidate, await fs.promises.readFile(candidate.filePath));
+        } catch (error) {
+          if (!allowMissing) throw error;
+        }
         return;
       }
       if (!candidate.packPath) throw new Error(`No source pack was recorded for ${candidate.fileName}.`);
@@ -304,24 +382,31 @@ const readPackedFileBuffers = async (candidates: EsfFileCandidate[]): Promise<Ma
 
   await Promise.all(
     [...candidatesByPack].map(async ([packPath, packCandidates]) => {
-      const retainedPack = appData.packsData.find((pack) => pack.path === packPath);
-      const pack: Pack = retainedPack
-        ? await readFromExistingPack(retainedPack, {
-            filesToRead: packCandidates.map((candidate) => candidate.fileName),
-            skipParsingTables: true,
-          })
-        : await readPack(packPath, {
-            filesToRead: packCandidates.map((candidate) => candidate.fileName),
-            skipParsingTables: true,
-          });
+      try {
+        const retainedPack = appData.packsData.find((pack) => pack.path === packPath);
+        const pack: Pack = retainedPack
+          ? await readFromExistingPack(retainedPack, {
+              filesToRead: packCandidates.map((candidate) => candidate.fileName),
+              skipParsingTables: true,
+            })
+          : await readPack(packPath, {
+              filesToRead: packCandidates.map((candidate) => candidate.fileName),
+              skipParsingTables: true,
+            });
 
-      for (const candidate of packCandidates) {
-        const normalized = normalizePackPath(candidate.fileName);
-        const packedFile = pack.packedFiles.find((file) => normalizePackPath(file.name) === normalized);
-        if (!packedFile?.buffer) {
-          throw new Error(`Could not read ${candidate.fileName} from ${candidate.packPath}.`);
+        for (const candidate of packCandidates) {
+          const normalized = normalizePackPath(candidate.fileName);
+          const packedFile = pack.packedFiles.find((file) => normalizePackPath(file.name) === normalized);
+          if (!packedFile?.buffer) {
+            if (!allowMissing) {
+              throw new Error(`Could not read ${candidate.fileName} from ${candidate.packPath}.`);
+            }
+            continue;
+          }
+          buffers.set(candidate, Buffer.from(packedFile.buffer));
         }
-        buffers.set(candidate, Buffer.from(packedFile.buffer));
+      } catch (error) {
+        if (!allowMissing) throw error;
       }
     }),
   );
@@ -329,27 +414,22 @@ const readPackedFileBuffers = async (candidates: EsfFileCandidate[]): Promise<Ma
   return buffers;
 };
 
-const readPackedFileBuffer = async (candidate: EsfFileCandidate): Promise<Buffer> => {
-  const buffer = (await readPackedFileBuffers([candidate])).get(candidate);
-  if (!buffer) throw new Error(`Could not read ${candidate.fileName}.`);
-  return buffer;
-};
-
 const readCampaignStartposCandidates = async (
   candidates: EsfFileCandidate[],
 ): Promise<EsfCampaignStartposCandidate[]> => {
+  const candidatesToRead = candidates.filter((candidate) => !isIgnoredStartposPath(candidate.fileName));
+  const buffers = await readPackedFileBuffers(candidatesToRead, true);
   const extracted = await Promise.all(
-    candidates
-      .filter((candidate) => !isIgnoredStartposPath(candidate.fileName))
-      .map(async (candidate): Promise<EsfCampaignStartposCandidate | undefined> => {
-        try {
-          const buffer = await readPackedFileBuffer(candidate);
-          const identity = extractCampaignTableIdentity(buffer, parseEsfDocument(buffer));
-          return identity ? { ...candidate, ...identity, buffer } : undefined;
-        } catch {
-          return undefined;
-        }
-      }),
+    candidatesToRead.map(async (candidate): Promise<EsfCampaignStartposCandidate | undefined> => {
+      try {
+        const buffer = buffers.get(candidate);
+        if (!buffer) return undefined;
+        const identity = extractCampaignTableIdentity(buffer, parseEsfDocument(buffer));
+        return identity ? { ...candidate, ...identity, buffer } : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
   );
   return extracted.filter(
     (candidate): candidate is EsfCampaignStartposCandidate =>
@@ -364,48 +444,63 @@ const readCampaignStartposCandidates = async (
  */
 export async function loadStartposRegionSlotTemplates(
   enabledMods: Mod[],
-): Promise<Array<{ campaign: string; region: string; slot_template: string; slot_type: string }>> {
+): Promise<StartposRegionSlotTemplateRow[]> {
   if (appData.currentGame !== "wh3") return [];
   const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
   if (!dataFolder) return [];
 
-  const [vanillaCandidates, modCandidates] = await Promise.all([
-    collectVanillaStartposCandidates(dataFolder),
-    collectModCandidates(
+  const vanillaCandidates = await collectVanillaStartposCandidates(dataFolder);
+  const signature = await getStartposRegionSlotTemplateSignature(dataFolder, vanillaCandidates, enabledMods);
+  if (cachedStartposRegionSlotTemplates?.signature === signature) return cachedStartposRegionSlotTemplates.rows;
+
+  const pending = pendingStartposRegionSlotTemplates.get(signature);
+  if (pending) return pending;
+
+  const build = (async () => {
+    const modCandidates = await collectModCandidates(
       enabledMods,
       (fileName) => isPackedFileNamed(fileName, "startpos.esf") && !isIgnoredStartposPath(fileName),
-    ),
-  ]);
-  const candidates = await readCampaignStartposCandidates([...vanillaCandidates, ...modCandidates]);
-  const campaignNames = [...new Set(candidates.map((candidate) => candidate.campaignName))].sort((first, second) =>
-    first.localeCompare(second),
-  );
-  const rows: Array<{ campaign: string; region: string; slot_template: string; slot_type: string }> = [];
+    );
+    const candidates = await readCampaignStartposCandidates([...vanillaCandidates, ...modCandidates]);
+    const campaignNames = [...new Set(candidates.map((candidate) => candidate.campaignName))].sort((first, second) =>
+      first.localeCompare(second),
+    );
+    const rows: StartposRegionSlotTemplateRow[] = [];
 
-  for (const campaignName of campaignNames) {
-    const candidate = pickStartposCandidateForCampaign(candidates, campaignName);
-    if (!candidate) continue;
-    try {
-      const opened = openEsfBuffer(candidate.buffer);
-      const document = parseEsfDocument(opened.buffer);
-      rows.push(
-        ...extractStartposRegionSlotTemplates(opened.buffer, document, candidate.campaignName).map((row) => ({
-          campaign: row.campaign,
-          region: row.region,
-          slot_template: row.slotTemplate,
-          slot_type: row.slotType,
-        })),
-      );
-    } catch (error) {
-      console.warn(
-        `Could not extract startpos slot templates from ${candidate.fileName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+    for (const campaignName of campaignNames) {
+      const candidate = pickStartposCandidateForCampaign(candidates, campaignName);
+      if (!candidate) continue;
+      try {
+        const opened = openEsfBuffer(candidate.buffer);
+        const document = parseEsfDocument(opened.buffer);
+        rows.push(
+          ...extractStartposRegionSlotTemplates(opened.buffer, document, candidate.campaignName).map((row) => ({
+            campaign: row.campaign,
+            region: row.region,
+            slot_template: row.slotTemplate,
+            slot_type: row.slotType,
+          })),
+        );
+      } catch (error) {
+        console.warn(
+          `Could not extract startpos slot templates from ${candidate.fileName}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    cachedStartposRegionSlotTemplates = { signature, rows };
+    return rows;
+  })();
+  pendingStartposRegionSlotTemplates.set(signature, build);
+  try {
+    return await build;
+  } finally {
+    if (pendingStartposRegionSlotTemplates.get(signature) === build) {
+      pendingStartposRegionSlotTemplates.delete(signature);
     }
   }
-
-  return rows;
 }
 
 const pickStartposCandidateForCampaign = (
