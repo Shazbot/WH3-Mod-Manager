@@ -35,16 +35,31 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
-import { buildBuildingsData, createBuildingsLocLookup, BUILDINGS_TABLES, variantLocKey } from "./buildingsData/data";
+import {
+  buildBuildingsData,
+  buildVariantNameLocKey,
+  createBuildingsLocLookup,
+  BUILDINGS_TABLES,
+  variantLocKey,
+} from "./buildingsData/data";
 import { resolveRegionBuildings } from "./buildingsData/derive";
 import { validateNewRows } from "./buildingsData/validate";
 import { applyNewRowsToBuildingsData, LOC_TABLE, newRowsByTable, type BuildingsEditState } from "./buildingsData/edits";
 import {
   clearBuildingsMemoryCache,
-  describeBuildingsCacheSignatureChanges,
-  loadBuildingsDiskCache,
-  saveBuildingsDiskCache,
-  type BuildingsCacheSignatureInputs,
+  describeBuildingsVanillaSignatureChanges,
+  buildingsModSegmentKey,
+  isSameBuildingsIdentity,
+  loadBuildingsModSegments,
+  loadVanillaBuildingsCache,
+  mergeBuildingsSources,
+  readBuildingsPackIdentity,
+  saveBuildingsModSegments,
+  saveVanillaBuildingsCache,
+  type BuildingsModSegment,
+  type BuildingsModSegments,
+  type BuildingsSource,
+  type BuildingsVanillaSignatureInputs,
 } from "./buildingsData/cache";
 import type {
   BuildingsCatalog,
@@ -392,11 +407,11 @@ const UNIT_VIEWER_ASSET_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 let cachedUnitViewerData: { signature: string; data: BuiltUnitViewerData; assetPackPaths: string[] } | undefined;
 type CachedBuildingsData = {
   signature: string;
-  signatureInputs?: BuildingsCacheSignatureInputs;
+  vanillaSignatureInputs?: BuildingsVanillaSignatureInputs;
   data: BuiltBuildingsData;
   /** Effective source rows retained so every non-start-pos pending table can rebuild the view. */
   tables: BuildingsTableRows;
-  /** Only localization keys consumed by `buildBuildingsData`, captured while the base is built. */
+  /** Localization snapshot merged from the cached vanilla and mod sources. */
   localizations: Record<string, string>;
   dbPackPath: string;
   /** Variant `icon` cell, normalised to a bare lowercase name -> the packed file that holds it. */
@@ -3530,20 +3545,273 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     mainWindow.webContents.send("buildingsDataRebuild", isRebuilding);
   };
 
-  const buildBuildingsSessionData = async (enabledMods: Mod[]): Promise<CachedBuildingsData> => {
-    if (appData.currentGame !== "wh3") throw new Error("Buildings are available only for Warhammer 3");
-    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
-    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
-
-    const tablesToRead = Array.from(
+  const buildingTablePrefixes = () =>
+    Array.from(
       new Set(
         BUILDINGS_TABLES.flatMap((tableName) =>
           resolveTable(tableName).map((resolvedTable) => `db\\${resolvedTable}\\`),
         ),
       ),
     );
+
+  /** Loc prefixes the Buildings panel reads, including replacement and effect text. */
+  const BUILDING_LOC_PREFIXES = [
+    "building_chains_encyclopedia_name_",
+    "building_chains_chain_tooltip_",
+    "building_culture_variants_name_",
+    "building_short_description_texts_short_description_",
+    "building_description_texts_description_",
+    "building_sets_onscreen_name_",
+    "land_units_onscreen_name_",
+    "campaigns_onscreen_name_",
+    "regions_onscreen_",
+    "cultures_name_",
+    "cultures_subcultures_name_",
+    "factions_screen_name_",
+    "settlement_types_name_",
+    "effects_description_",
+    "ui_text_replacements_localised_text_",
+  ];
+
+  /**
+   * Reads one or more source packs into the raw shape stored by the split cache.
+   *
+   * `getLoc` must only see the source being captured. Mod localisation entries are copied by
+   * prefix as well as by row-driven lookup so translation-only mods survive a cache round trip.
+   */
+  const readBuildingsSourceFromPacks = (
+    packs: Pack[],
+    getLoc: (key: string) => string | undefined,
+    ownLocEntries?: Record<string, string>,
+  ): BuildingsSource => {
+    const packsTableData = getPacksTableData(packs, buildingTablePrefixes(), false) || [];
+    const tables: BuildingsTableRows = {};
+    const cloneSourcePackPaths: NonNullable<BuiltBuildingsData["cloneSourcePackPaths"]> = {
+      levels: {},
+      cultureVariants: {},
+      sets: {},
+    };
+    for (const canonicalTableName of BUILDINGS_TABLES) {
+      const rows: Array<Record<string, string>> = [];
+      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
+        const row = schemaRowToRecord(schemaFieldRow);
+        rows.push(row);
+        if (canonicalTableName === "building_levels_tables") {
+          const levelKey = row.level_name?.trim();
+          if (levelKey) cloneSourcePackPaths.levels[levelKey] = packViewData.packPath;
+        } else if (canonicalTableName === "building_culture_variants_tables") {
+          const building = row.building?.trim() ?? "";
+          if (building) {
+            cloneSourcePackPaths.cultureVariants[
+              variantLocKey(
+                building,
+                row.culture?.trim() ?? "",
+                row.subculture?.trim() ?? "",
+                row.faction?.trim() ?? "",
+              )
+            ] = packViewData.packPath;
+          }
+        } else if (canonicalTableName === "building_sets_tables") {
+          const setKey = row.key?.trim();
+          if (setKey) cloneSourcePackPaths.sets[setKey] = packViewData.packPath;
+        }
+      });
+      tables[canonicalTableName] = rows;
+    }
+
+    const localizations: Record<string, string> = {};
+    const record = (key: string) => {
+      const value = getLoc(key);
+      if (value !== undefined) localizations[key] = value;
+      return value;
+    };
+    const recordWithReplacements = (key: string) => {
+      const text = record(key);
+      for (const match of text?.matchAll(/{{tr:(.*?)}}/gi) ?? []) {
+        const token = match[1];
+        if (!token) continue;
+        const replacement = record(`ui_text_replacements_localised_text_${token}`) ?? record(token);
+        const nested = replacement?.match(/^{{tr:(.*?)}}$/i)?.[1];
+        if (nested && record(`ui_text_replacements_localised_text_${nested}`) === undefined) record(nested);
+      }
+      return text;
+    };
+
+    for (const row of tables.building_chains_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (!key) continue;
+      recordWithReplacements(`building_chains_encyclopedia_name_${key}`);
+      recordWithReplacements(`building_chains_chain_tooltip_${key}`);
+    }
+    for (const row of tables.building_culture_variants_tables ?? []) {
+      const building = (row.building ?? "").trim();
+      if (!building) continue;
+      const culture = (row.culture ?? "").trim();
+      const subculture = (row.subculture ?? "").trim();
+      const faction = (row.faction ?? "").trim();
+      recordWithReplacements(buildVariantNameLocKey(building, culture, subculture, faction));
+      const shortDescription = (row.short_description ?? "").trim();
+      if (shortDescription) {
+        recordWithReplacements(`building_short_description_texts_short_description_${shortDescription}`);
+      }
+      const description = (row.description ?? "").trim();
+      if (description) recordWithReplacements(`building_description_texts_description_${description}`);
+    }
+    for (const row of tables.building_sets_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`building_sets_onscreen_name_${key}`);
+    }
+    for (const row of tables.main_units_tables ?? []) {
+      const unit = (row.unit ?? "").trim();
+      const landUnit = (row.land_unit ?? "").trim();
+      if (landUnit) recordWithReplacements(`land_units_onscreen_name_${landUnit}`);
+      if (unit) recordWithReplacements(`land_units_onscreen_name_${unit}`);
+    }
+    for (const row of tables.campaigns_tables ?? []) {
+      const key = (row.campaign_name ?? "").trim();
+      if (key) recordWithReplacements(`campaigns_onscreen_name_${key}`);
+    }
+    for (const row of tables.regions_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`regions_onscreen_${key}`);
+    }
+    for (const row of tables.cultures_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`cultures_name_${key}`);
+    }
+    for (const row of tables.cultures_subcultures_tables ?? []) {
+      const key = (row.subculture ?? "").trim();
+      if (key) recordWithReplacements(`cultures_subcultures_name_${key}`);
+    }
+    for (const row of tables.factions_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`factions_screen_name_${key}`);
+    }
+    for (const row of tables.settlement_types_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`settlement_types_name_${key}`);
+    }
+    for (const row of tables.effects_tables ?? []) {
+      const key = (row.effect ?? "").trim();
+      if (key) recordWithReplacements(`effects_description_${key}`);
+    }
+    // An effect can be referenced by a building junction even when the effects metadata table does
+    // not carry a row for it. `buildBuildingsData` still localises that used effect, so capture it
+    // from both sources.
+    for (const row of tables.building_effects_junction_tables ?? []) {
+      const key = (row.effect ?? "").trim();
+      if (key) recordWithReplacements(`effects_description_${key}`);
+    }
+    for (const [key, value] of Object.entries(ownLocEntries ?? {})) {
+      if (BUILDING_LOC_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+        // Use the same replacement walk for translation-only entries as for row-driven entries, so
+        // a mod's replacement can itself point at another loc entry in that mod.
+        recordWithReplacements(key);
+        localizations[key] = value;
+      }
+    }
+
+    return { tables, localizations, cloneSourcePackPaths };
+  };
+
+  const buildBuildingsVanillaSource = async (
+    dataFolder: string,
+    buildingFramePackPath: string,
+  ): Promise<{ source: BuildingsSource; signature: string; signatureInputs: BuildingsVanillaSignatureInputs }> => {
+    const tablePrefixes = buildingTablePrefixes();
     const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
     const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
+    const vanillaStartposPaths = await getVanillaStartposFilePaths(dataFolder);
+    const identityPaths = [
+      ...new Set([dbPackPath, buildingFramePackPath, ...localizationPackPaths, ...vanillaStartposPaths]),
+    ];
+    const identities = await Promise.all(
+      identityPaths.map(async (packPath) => {
+        const [size, mtimeMs] = await readBuildingsPackIdentity(packPath);
+        return [nodePath.resolve(packPath), size, mtimeMs] as const;
+      }),
+    );
+    const signatureInputs: BuildingsVanillaSignatureInputs = {
+      feature: 1,
+      game: appData.currentGame,
+      schema: getVisualsSchemaHash(appData.currentGame),
+      identities,
+    };
+    const signature = createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex");
+    const cached = await loadVanillaBuildingsCache(app.getPath("userData"), signature, signatureInputs);
+    if (cached) {
+      console.log("Buildings: reusing the vanilla cache", { signature });
+      return { source: cached, signature, signatureInputs };
+    }
+
+    console.log("Buildings: rebuilding the vanilla half from the game's packs", { signature });
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, tablePrefixes, [dbPackPath], false);
+    if (!vanillaPacks) throw new Error("The game's building tables could not be read, try again");
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+    const source = readBuildingsSourceFromPacks(vanillaPacks, createBuildingsLocLookup(vanillaLocLookups));
+    releaseParsedTables(vanillaPacks, tablePrefixes);
+    await saveVanillaBuildingsCache(app.getPath("userData"), signature, source, signatureInputs);
+    return { source, signature, signatureInputs };
+  };
+
+  const buildBuildingsModSources = async (
+    orderedEnabledMods: Mod[],
+  ): Promise<Array<{ packPath: string; source: BuildingsModSegment }>> => {
+    if (orderedEnabledMods.length === 0) return [];
+
+    const segments: BuildingsModSegments = { ...(await loadBuildingsModSegments(app.getPath("userData"))) };
+    const identities = new Map(
+      await Promise.all(
+        orderedEnabledMods.map(async (mod) => [mod.path, await readBuildingsPackIdentity(mod.path)] as const),
+      ),
+    );
+    const stale = orderedEnabledMods.filter(
+      (mod) => !isSameBuildingsIdentity(segments[buildingsModSegmentKey(mod.path)]?.identity, identities.get(mod.path)),
+    );
+
+    if (stale.length > 0) {
+      console.log("Buildings: rebuilding mod cache segments", { count: stale.length, of: orderedEnabledMods.length });
+      await readMods(stale, false, true, false, true, buildingTablePrefixes(), undefined, false);
+      const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+      for (const mod of stale) {
+        const pack = packsByPath.get(mod.path);
+        if (!pack) continue;
+        const trie = getLocsTrie(pack);
+        const source = readBuildingsSourceFromPacks([pack], createBuildingsLocLookup([trie]), trie?.getEntries());
+        segments[buildingsModSegmentKey(mod.path)] = {
+          ...source,
+          identity: identities.get(mod.path) ?? [-1, -1],
+          lastUsedMs: Date.now(),
+        };
+      }
+      releaseParsedTables(
+        stale.map((mod) => packsByPath.get(mod.path)).filter((pack): pack is Pack => !!pack),
+        buildingTablePrefixes(),
+      );
+    } else {
+      console.log("Buildings: every enabled mod's cache segment is current", { count: orderedEnabledMods.length });
+    }
+
+    const now = Date.now();
+    for (const mod of orderedEnabledMods) {
+      const segment = segments[buildingsModSegmentKey(mod.path)];
+      if (segment) segment.lastUsedMs = now;
+    }
+    const saved = await saveBuildingsModSegments(app.getPath("userData"), segments);
+    return orderedEnabledMods
+      .map((mod) => ({ packPath: mod.path, source: saved[buildingsModSegmentKey(mod.path)] }))
+      .filter(
+        (entry): entry is { packPath: string; source: BuildingsModSegment } =>
+          !!entry.source && isSameBuildingsIdentity(entry.source.identity, identities.get(entry.packPath)),
+      );
+  };
+
+  const buildBuildingsSessionData = async (enabledMods: Mod[]): Promise<CachedBuildingsData> => {
+    if (appData.currentGame !== "wh3") throw new Error("Buildings are available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
     const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
     const vanillaIconPackPaths = [...appData.allVanillaPackNames]
       .filter(
@@ -3555,32 +3823,34 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       )
       .map((packName) => nodePath.join(dataFolder, packName));
     const modIconPackPaths = orderedEnabledMods.map((mod) => mod.path);
-
     const buildingFramePackPath = nodePath.join(dataFolder, BUILDING_FRAME_PACK_NAME);
-    const identityPaths = [
-      dbPackPath,
-      buildingFramePackPath,
-      ...localizationPackPaths,
-      ...orderedEnabledMods.map((mod) => mod.path),
-    ];
-    const identities = await Promise.all(
-      identityPaths.map(async (packPath) => {
-        try {
-          const stat = await fs.promises.stat(packPath);
-          return [nodePath.resolve(packPath), stat.size, stat.mtimeMs] as const;
-        } catch {
-          return [nodePath.resolve(packPath), -1, -1] as const;
-        }
-      }),
-    );
-    const signatureInputs: BuildingsCacheSignatureInputs = {
-      feature: 3,
-      game: appData.currentGame,
-      schema: getVisualsSchemaHash(appData.currentGame),
-      mods: buildBuildingsModsSignature(enabledMods),
-      identities,
-    };
-    const signature = createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex");
+    const vanilla = await buildBuildingsVanillaSource(dataFolder, buildingFramePackPath);
+    const modSources = await buildBuildingsModSources(orderedEnabledMods);
+    const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods);
+    const merged = mergeBuildingsSources(vanilla.source, modSources);
+    // Startpos is selected as one effective ESF file per campaign, rather than being an additive
+    // DB table. Resolve that selection after the independently cached DB segments are merged. Keep
+    // any DB-shaped rows as the old path did; the derived table-key dedupe lets ESF rows override
+    // matching entries while preserving rows from campaigns with no ESF candidate.
+    if (startposSlotTemplateRows.length > 0) {
+      (merged.tables.start_pos_region_slot_templates_tables ||= []).push(...startposSlotTemplateRows);
+    }
+
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify({
+          feature: 1,
+          game: appData.currentGame,
+          vanilla: vanilla.signature,
+          mods: orderedEnabledMods.map((mod) => ({
+            path: nodePath.resolve(mod.path),
+            loadOrder: mod.loadOrder ?? null,
+            identity: modSources.find((entry) => entry.packPath === mod.path)?.source.identity ?? [-1, -1],
+          })),
+          startposSlotTemplateRows,
+        }),
+      )
+      .digest("hex");
     if (cachedBuildingsData?.signature === signature) {
       console.log("buildBuildingsSessionData: using in-memory Buildings cache", { signature });
       return cachedBuildingsData;
@@ -3589,136 +3859,45 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       console.log("buildBuildingsSessionData: in-memory Buildings cache miss: signature changed", {
         cachedSignature: cachedBuildingsData.signature,
         requestedSignature: signature,
-        changedInputs: describeBuildingsCacheSignatureChanges(cachedBuildingsData.signatureInputs, signatureInputs),
+        changedVanillaInputs: describeBuildingsVanillaSignatureChanges(
+          cachedBuildingsData.vanillaSignatureInputs,
+          vanilla.signatureInputs,
+        ),
       });
     } else {
       console.log("buildBuildingsSessionData: in-memory Buildings cache miss: no cached data", {
         requestedSignature: signature,
       });
     }
-    const diskData = await loadBuildingsDiskCache(app.getPath("userData"), signature, signatureInputs);
-    if (diskData) {
-      console.log("buildBuildingsSessionData: using disk Buildings cache", { signature });
-      const hadBuildingFrame = !!diskData.data.buildingFrame;
-      const icons = await registerBuildingIcons(diskData.data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
-      if (!hadBuildingFrame && diskData.data.buildingFrame) {
-        await saveBuildingsDiskCache(
-          app.getPath("userData"),
-          signature,
-          diskData.data,
-          diskData.tables,
-          diskData.localizations,
-          signatureInputs,
-        );
-      }
-      cachedBuildingsData = { signature, ...diskData, dbPackPath, ...icons };
-      return cachedBuildingsData;
-    }
-
-    console.log("buildBuildingsSessionData: rebuilding Buildings cache from vanilla and mod packs", {
-      reason: "no matching in-memory or disk cache entry",
-      signature,
-    });
 
     sendBuildingsDataRebuild(true);
     try {
-      const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
-      const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
-      if (unservedPrefixes.length === 0) {
-        indexedDbPack.readTables = [...tablesToRead];
-        appendPacksData(indexedDbPack, undefined, false);
-      } else {
-        // At this point every reported prefix has files in db.pack; an absent table family is already
-        // a complete empty result, so these are genuine cache gaps or schema mismatches.
-        console.log("buildBuildingsSessionData: prefixes the vanilla db cache did not serve:", unservedPrefixes);
-        const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
-        if (readDbPacks.length === 0) throw new Error("The game's database pack could not be read for Buildings");
-      }
-      if (enabledMods.length > 0) {
-        await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
-      }
-      // Read separately from the tables: readVanillaPackFromCache refuses any request with readLocs,
-      // so combining the two would give up the cache for the whole build.
-      const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+      const data = buildBuildingsData(merged.tables, (key) => merged.localizations[key]);
+      data.buildingFrame = merged.buildingFrame;
+      data.cloneSourcePackPaths = merged.cloneSourcePackPaths;
+      const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
 
-      const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
-      const dbPack = packsByPath.get(dbPackPath);
-      if (!dbPack) throw new Error("Could not read db.pack for Buildings");
-      // Files present but no rows means the rows this build filled in were released underneath it.
-      // Caching that would serve a buildings-less catalog until the mod list changes.
-      const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
-      if (unparsedVanillaPrefixes.length > 0) {
-        throw new Error(
-          `The game's building tables were not available when Buildings was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
+      // The frame is part of the vanilla source. It is discovered alongside the other assets on
+      // the first build, then written back without touching the mod file.
+      if (data.buildingFrame && vanilla.source.buildingFrame !== data.buildingFrame) {
+        vanilla.source.buildingFrame = data.buildingFrame;
+        await saveVanillaBuildingsCache(
+          app.getPath("userData"),
+          vanilla.signature,
+          vanilla.source,
+          vanilla.signatureInputs,
         );
       }
-      const orderedModPacks = orderedEnabledMods
-        .map((mod) => packsByPath.get(mod.path))
-        .filter((pack): pack is Pack => !!pack);
-      const tablePacks = [dbPack, ...orderedModPacks];
-      const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
-      const tables: BuildingsTableRows = {};
-      const cloneSourcePackPaths: NonNullable<BuiltBuildingsData["cloneSourcePackPaths"]> = {
-        levels: {},
-        cultureVariants: {},
-        sets: {},
+
+      cachedBuildingsData = {
+        signature,
+        vanillaSignatureInputs: vanilla.signatureInputs,
+        data,
+        tables: merged.tables,
+        localizations: merged.localizations,
+        dbPackPath,
+        ...icons,
       };
-      for (const canonicalTableName of BUILDINGS_TABLES) {
-        const rows: Array<Record<string, string>> = [];
-        getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
-          const row = schemaRowToRecord(schemaFieldRow);
-          rows.push(row);
-
-          // `packsTableData` is vanilla first and then mods in load order. Assigning on every row
-          // leaves the source of the effective (last-wins) row, including mod-only and mod-overridden
-          // culture variants. The Buildings tab needs this path to hand DB Clone the actual source
-          // pack rather than always reopening vanilla db.pack.
-          if (canonicalTableName === "building_levels_tables") {
-            const levelKey = row.level_name?.trim();
-            if (levelKey) cloneSourcePackPaths.levels[levelKey] = packViewData.packPath;
-          } else if (canonicalTableName === "building_culture_variants_tables") {
-            const building = row.building?.trim() ?? "";
-            if (building) {
-              cloneSourcePackPaths.cultureVariants[
-                variantLocKey(
-                  building,
-                  row.culture?.trim() ?? "",
-                  row.subculture?.trim() ?? "",
-                  row.faction?.trim() ?? "",
-                )
-              ] = packViewData.packPath;
-            }
-          } else if (canonicalTableName === "building_sets_tables") {
-            const setKey = row.key?.trim();
-            if (setKey) cloneSourcePackPaths.sets[setKey] = packViewData.packPath;
-          }
-        });
-        tables[canonicalTableName] = rows;
-      }
-      const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods);
-      if (startposSlotTemplateRows.length > 0) {
-        tables.start_pos_region_slot_templates_tables.push(...startposSlotTemplateRows);
-      }
-
-      // Vanilla first so mod locs, which stay on the live path, still shadow it. Record every lookup
-      // the builder actually consumes; this compact snapshot is enough to rebuild after pending rows
-      // change without retaining the much larger localization tries.
-      const sourceLoc = createBuildingsLocLookup([
-        ...vanillaLocLookups,
-        ...orderedModPacks.map((pack) => getLocsTrie(pack)),
-      ]);
-      const localizations: Record<string, string> = {};
-      const data = buildBuildingsData(tables, (key) => {
-        const value = sourceLoc(key);
-        if (value != undefined) localizations[key] = value;
-        return value;
-      });
-      data.cloneSourcePackPaths = cloneSourcePackPaths;
-
-      releaseParsedTables(tablePacks, tablesToRead);
-      const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
-      await saveBuildingsDiskCache(app.getPath("userData"), signature, data, tables, localizations, signatureInputs);
-      cachedBuildingsData = { signature, signatureInputs, data, tables, localizations, dbPackPath, ...icons };
       return cachedBuildingsData;
     } finally {
       sendBuildingsDataRebuild(false);
