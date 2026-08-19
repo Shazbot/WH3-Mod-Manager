@@ -4,8 +4,9 @@ import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
 import { vanillaPackNames } from "../../supportedGames";
 import { buildBuildingsFileName, buildPackedFilesFromNewRows } from "../../buildingsData/save";
-import { newRowsByTable, type BuildingsEditState } from "../../buildingsData/edits";
+import { LOC_TABLE, newRowsByTable, type BuildingsEditState } from "../../buildingsData/edits";
 import { getPackNameFromPath } from "../../utility/packFileHelpers";
+import type { PackRowsByTable } from "../../utility/packRowsForSave";
 import type { DBVersion } from "../../packFileTypes";
 
 export type BuildingsSaveModalProps = {
@@ -29,6 +30,7 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
   );
 
   const [target, setTarget] = useState<"existing" | "new">("new");
+  const [skipDuplicateRows, setSkipDuplicateRows] = useState(true);
   const [packPath, setPackPath] = useState(targetPacks[0]?.path ?? "");
   const [newPackName, setNewPackName] = useState(() => {
     // The modder's prefix, the way the written file name uses it, so a new pack sorts with the
@@ -80,24 +82,43 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
       }
 
       let existingFileNames: string[] = [];
+      let existingRowsByTable: PackRowsByTable | undefined;
       if (!isNew) {
-        // The target can be in the preset without ever having been opened in the renderer. Inspect
-        // the pack on disk instead of treating a missing packsData entry as an empty pack, and also
-        // include files another editor has staged but not written yet.
-        const diskFileNames = await window.api?.getPackFilesList(destination);
-        if (!diskFileNames) {
-          setResult({
-            kind: "error",
-            message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
-          });
-          return;
+        if (skipDuplicateRows) {
+          const packData = await window.api?.getPackRowsForSave(
+            destination,
+            Object.keys(rowsByTable).filter((table) => table !== LOC_TABLE),
+            Boolean(rowsByTable[LOC_TABLE]),
+          );
+          if (!packData) {
+            setResult({
+              kind: "error",
+              message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
+            });
+            return;
+          }
+          existingFileNames = packData.fileNames;
+          existingRowsByTable = packData.rowsByTable;
+        } else {
+          // The target can be in the preset without ever having been opened in the renderer. Inspect
+          // the pack on disk instead of treating a missing packsData entry as an empty pack, and also
+          // include files another editor has staged but not written yet.
+          const diskFileNames = await window.api?.getPackFilesList(destination);
+          if (!diskFileNames) {
+            setResult({
+              kind: "error",
+              message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
+            });
+            return;
+          }
+          existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
         }
-        existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
       }
       const { files, skippedTables } = buildPackedFilesFromNewRows({
         state,
         tableSchemas,
         fileName: buildBuildingsFileName(moddersPrefix, existingFileNames),
+        existingRowsByTable: skipDuplicateRows ? existingRowsByTable : undefined,
       });
       if (files.length === 0) {
         setResult({ kind: "error", message: localized.buildingsSaveNothing || "Nothing to save." });
@@ -178,20 +199,30 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
             {localized.buildingsSaveExistingPack || "Existing mod pack"}
           </label>
           {target === "existing" && (
-            <select
-              value={packPath}
-              onChange={(event) => setPackPath(event.target.value)}
-              className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
-            >
-              {targetPacks.length === 0 && (
-                <option value="">{localized.buildingsSaveNoModPacks || "No mod packs found"}</option>
-              )}
-              {targetPacks.map((mod) => (
-                <option key={mod.path} value={mod.path}>
-                  {mod.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                value={packPath}
+                onChange={(event) => setPackPath(event.target.value)}
+                className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1"
+              >
+                {targetPacks.length === 0 && (
+                  <option value="">{localized.buildingsSaveNoModPacks || "No mod packs found"}</option>
+                )}
+                {targetPacks.map((mod) => (
+                  <option key={mod.path} value={mod.path}>
+                    {mod.name}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={skipDuplicateRows}
+                  onChange={(event) => setSkipDuplicateRows(event.target.checked)}
+                />
+                {localized.buildingsSaveSkipDuplicates || "Don't save duplicate rows"}
+              </label>
+            </>
           )}
 
           <label className="flex items-center gap-2">

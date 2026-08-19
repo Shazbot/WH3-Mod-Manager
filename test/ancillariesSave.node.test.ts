@@ -209,6 +209,35 @@ describe("buildPackedFilesFromNewRows", () => {
     expect(roundTrip(files[0], ancillariesSchema)).toHaveLength(2);
   });
 
+  it("skips a row already present in the destination pack", () => {
+    const state = stateWith([
+      { table: "ancillaries_tables", values: { key: "anc_a", uniqueness_score: "5" } },
+      { table: "ancillaries_tables", values: { key: "anc_a", uniqueness_score: "6" } },
+      { table: "ancillaries_tables", values: { key: "anc_b" } },
+    ]);
+    const { files } = buildPackedFilesFromNewRows({
+      state,
+      tableSchemas: schemas,
+      fileName: "f",
+      existingRowsByTable: {
+        ancillaries_tables: [
+          {
+            key: "anc_a",
+            type: "",
+            category: "",
+            subcategory: "",
+            uniqueness_score: "5",
+            transferrable: "1",
+            legendary_item: "0",
+          },
+        ],
+      },
+    });
+
+    expect(roundTrip(files[0], ancillariesSchema).map((row) => row[0].resolvedKeyValue)).toEqual(["anc_a", "anc_b"]);
+    expect(roundTrip(files[0], ancillariesSchema).map((row) => row[4].resolvedKeyValue)).toEqual(["6", "0"]);
+  });
+
   it("drops a loc row that repeats both key and text", () => {
     const state = stateWith([
       { table: LOC_TABLE, values: { key: "ancillaries_onscreen_name_a", text: "A" } },

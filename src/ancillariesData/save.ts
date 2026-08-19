@@ -6,7 +6,8 @@
  * "only save the new rows" structural rather than a filter someone has to remember to apply.
  */
 import { LocVersion, type DBVersion, type PackedFile } from "../packFileTypes";
-import { buildRowFromValues } from "../utility/dbRowCells";
+import { buildRowFromValues, getSerializedRowValues } from "../utility/dbRowCells";
+import { filterRowsAlreadyInPack, type PackRowsByTable } from "../utility/packRowsForSave";
 import { LOC_TABLE, newRowsByTable, type AncillariesEditState } from "./edits";
 
 export interface AncillariesSaveFilesInput {
@@ -15,6 +16,8 @@ export interface AncillariesSaveFilesInput {
   tableSchemas: Record<string, DBVersion>;
   /** Base file name, without the `db\<table>\` prefix or the `.loc` suffix. */
   fileName: string;
+  /** Existing rows in the destination pack, when duplicate rows should be skipped. */
+  existingRowsByTable?: PackRowsByTable;
 }
 
 export interface AncillariesSaveFiles {
@@ -52,6 +55,7 @@ export const buildPackedFilesFromNewRows = ({
   state,
   tableSchemas,
   fileName,
+  existingRowsByTable,
 }: AncillariesSaveFilesInput): AncillariesSaveFiles => {
   const files: PackedFile[] = [];
   const skippedTables: string[] = [];
@@ -60,12 +64,21 @@ export const buildPackedFilesFromNewRows = ({
     if (rows.length === 0) continue;
 
     if (table === LOC_TABLE) {
+      const rowsToWrite = existingRowsByTable
+        ? filterRowsAlreadyInPack(
+            rows,
+            existingRowsByTable[table],
+            (row) => [row.values.key ?? "", row.values.text ?? ""],
+            (row) => [row.key ?? "", row.text ?? ""],
+          )
+        : rows;
+      if (rowsToWrite.length === 0) continue;
       files.push(
         emptyPackedFile(
           `text\\db\\${fileName}.loc`,
           LocVersion.version,
           LocVersion,
-          dedupeIdenticalRows(rows, (row) => [row.values.key ?? "", row.values.text ?? ""]).flatMap((row) =>
+          dedupeIdenticalRows(rowsToWrite, (row) => [row.values.key ?? "", row.values.text ?? ""]).flatMap((row) =>
             buildRowFromValues(LocVersion, {
               key: row.values.key ?? "",
               text: row.values.text ?? "",
@@ -82,6 +95,15 @@ export const buildPackedFilesFromNewRows = ({
       skippedTables.push(table);
       continue;
     }
+    const rowsToWrite = existingRowsByTable
+      ? filterRowsAlreadyInPack(
+          rows,
+          existingRowsByTable[table],
+          (row) => getSerializedRowValues(schema, row.values),
+          (row) => schema.fields.map((field) => row[field.name] ?? null),
+        )
+      : rows;
+    if (rowsToWrite.length === 0) continue;
     files.push(
       emptyPackedFile(
         `db\\${table}\\${fileName}`,
@@ -89,7 +111,7 @@ export const buildPackedFilesFromNewRows = ({
         schema,
         // Projected through the schema: only the columns the file carries decide whether two
         // pending rows are the same row.
-        dedupeIdenticalRows(rows, (row) => schema.fields.map((field) => row.values[field.name] ?? null)).flatMap(
+        dedupeIdenticalRows(rowsToWrite, (row) => schema.fields.map((field) => row.values[field.name] ?? null)).flatMap(
           (row) => buildRowFromValues(schema, row.values),
         ),
       ),

@@ -19,6 +19,7 @@ import type { BuildingsEditState } from "./buildingsData/edits";
 import type { AncillariesCatalogResponse, AncillariesDetailResponse } from "./ancillariesData/types";
 import type { AncillariesEditState } from "./ancillariesData/edits";
 import type { EsfMapResponse } from "./esfMap/types";
+import type { PackRowsForSave } from "./utility/packRowsForSave";
 
 console.log("IN PRELOAD");
 
@@ -362,6 +363,8 @@ const api = {
   getListOfPacksInSave: (saveName: string): Promise<string[]> => ipcRenderer.invoke("getListOfPacksInSave", saveName),
 
   getPackFilesList: (packPath: string): Promise<string[]> => ipcRenderer.invoke("getPackFilesList", packPath),
+  getPackRowsForSave: (packPath: string, tableNames: string[], includeLocs: boolean): Promise<PackRowsForSave> =>
+    ipcRenderer.invoke("getPackRowsForSave", packPath, tableNames, includeLocs),
   renamePackedFiles: (
     packPath: string,
     searchRegex: string,

@@ -11,6 +11,7 @@ import { planSaveAs } from "./utility/saveAsPlan";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
+import type { PackRowsForSave } from "./utility/packRowsForSave";
 import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
 import { selectPacksToCheck } from "./modCompat/compatScope";
 import {
@@ -186,6 +187,7 @@ import {
   mergeMods,
   readFromExistingPack,
   readPack,
+  resolveKeyValue,
   serializePackFileDataToBuffer,
   typeToBuffer,
   writeStartGamePack,
@@ -196,6 +198,7 @@ import {
   DBField,
   DBVersion,
   LocFields,
+  LocVersion,
   NewPackedFile,
   Pack,
   PackCollisions,
@@ -5708,6 +5711,63 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       throw error;
     }
   });
+  ipcMain.handle(
+    "getPackRowsForSave",
+    async (event, packPath: string, tableNames: string[], includeLocs: boolean): Promise<PackRowsForSave> => {
+      try {
+        const requestedTables = new Set(tableNames);
+        const tablesToRead = tableNames.map((tableName) => `db\\${tableName}\\`);
+        const pack = await readPack(packPath, { tablesToRead, readLocs: includeLocs });
+        const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+        const filesByName = new Map<string, PackedFile>();
+        for (const packedFile of pack.packedFiles) filesByName.set(packedFile.name.toLowerCase(), packedFile);
+        // An unsaved file replaces the disk file with the same path when the pack is written.
+        for (const packedFile of unsavedFiles) filesByName.set(packedFile.name.toLowerCase(), packedFile);
+        const rowsByTable: PackRowsForSave["rowsByTable"] = {};
+
+        const collectRows = (packedFile: PackedFile) => {
+          let tableName: string | undefined;
+          let tableSchema: DBVersion | undefined;
+          if (isLocPackedFilePath(packedFile.name)) {
+            if (!includeLocs) return;
+            tableName = LOC_TABLE;
+            tableSchema = LocVersion;
+          } else {
+            const parsed = parseLiveDBTablePath(packedFile.name);
+            if (!parsed || !requestedTables.has(parsed.dbName)) return;
+            tableName = parsed.dbName;
+            tableSchema = packedFile.tableSchema ?? getDBVersion(packedFile);
+          }
+          if (!tableName || !tableSchema || !packedFile.schemaFields) return;
+
+          for (const schemaRow of chunkSchemaIntoRows(packedFile.schemaFields, tableSchema)) {
+            if (schemaRow.length !== tableSchema.fields.length) continue;
+            const row: Record<string, string> = {};
+            let complete = true;
+            tableSchema.fields.forEach((field, index) => {
+              const schemaField = schemaRow[index];
+              if (!schemaField?.fields?.length) {
+                complete = false;
+                return;
+              }
+              row[field.name] = resolveKeyValue(field.field_type, schemaField.fields);
+            });
+            if (complete) (rowsByTable[tableName] ||= []).push(row);
+          }
+        };
+
+        for (const packedFile of filesByName.values()) collectRows(packedFile);
+
+        return {
+          fileNames: [...filesByName.values()].map((packedFile) => packedFile.name),
+          rowsByTable,
+        };
+      } catch (error) {
+        console.error("Failed to get pack rows for save:", error);
+        throw error;
+      }
+    },
+  );
   ipcMain.handle(
     "renamePackedFiles",
     async (

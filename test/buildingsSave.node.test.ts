@@ -188,6 +188,36 @@ describe("buildPackedFilesFromNewRows duplicates", () => {
 
     expect(roundTrip(files[0], schema)).toHaveLength(2);
   });
+
+  it("skips a row already present in the destination pack", () => {
+    const state = rowsWith([
+      { level_name: "a", level: "1" },
+      { level_name: "a", level: "2" },
+      { level_name: "b", level: "1" },
+    ]);
+    const { files } = buildPackedFilesFromNewRows({
+      state,
+      tableSchemas: { building_levels_tables: schema },
+      fileName: "f",
+      existingRowsByTable: {
+        building_levels_tables: [
+          {
+            level_name: "a",
+            optional_set: "",
+            optional_empty: "",
+            level: "1",
+            cost: "0",
+            weight: "0.000",
+            visible_in_ui: "1",
+            disabled: "0",
+          },
+        ],
+      },
+    });
+
+    expect(roundTrip(files[0], schema).map((row) => row[0].resolvedKeyValue)).toEqual(["a", "b"]);
+    expect(roundTrip(files[0], schema).map((row) => row[3].resolvedKeyValue)).toEqual(["2", "1"]);
+  });
 });
 
 describe("buildBuildingsFileName", () => {

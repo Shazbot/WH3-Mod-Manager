@@ -226,3 +226,25 @@ export const buildCellFromString = (
 /** The row a table's schema describes, every cell at its default. */
 export const buildRowFromValues = (schema: DBVersion, values: Record<string, string>): AmendedSchemaField[] =>
   schema.fields.map((field) => buildCellFromString(field, values[field.name]));
+
+/**
+ * Values in the form the pack reader resolves them to, for comparing a new row with a parsed row.
+ * This deliberately follows `resolveKeyValue`: optional-string absence is an empty string and
+ * floating-point values use the reader's three-decimal display precision.
+ */
+export const getSerializedRowValues = (schema: DBVersion, values: Record<string, string>): string[] =>
+  buildRowFromValues(schema, values).map((cell, index) => {
+    const fieldType = schema.fields[index].field_type;
+    const firstValue = cell.fields[0]?.val;
+    if (fieldType === "I16" || fieldType === "I32" || fieldType === "I64" || fieldType === "ColourRGB") {
+      return Number(firstValue ?? 0).toFixed(0);
+    }
+    if (fieldType === "F32" || fieldType === "F64") {
+      return Number(firstValue ?? 0).toFixed(3);
+    }
+    if (fieldType === "OptionalStringU8" || fieldType === "StringU8") {
+      if (firstValue) return String(cell.fields[2]?.val ?? cell.fields[1]?.val ?? firstValue);
+      return "";
+    }
+    return String(cell.fields[1]?.val ?? firstValue ?? "");
+  });
