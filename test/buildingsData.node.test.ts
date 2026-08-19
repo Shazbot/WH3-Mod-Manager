@@ -270,6 +270,37 @@ describe("ESF-derived startpos slot templates", () => {
   it("does not invent rows when no startpos data was supplied", () => {
     expect(buildBuildingsData({}, noLoc).regionSlotTemplates).toEqual({});
   });
+
+  it("does not expose the unsupported prologue campaign", () => {
+    const data = buildBuildingsData(
+      {
+        campaigns_tables: [{ campaign_name: "wh3_main_prologue" }, { campaign_name: "wh3_main_combi" }],
+        start_pos_region_slot_templates_tables: [
+          { campaign: "wh3_main_prologue", region: "prologue_region", slot_template: "slot", slot_type: "primary" },
+          { campaign: "wh3_main_combi", region: "main_region", slot_template: "slot", slot_type: "primary" },
+        ],
+        start_pos_regions_tables: [
+          { id: "1", campaign: "wh3_main_prologue", region: "prologue_region" },
+          { id: "2", campaign: "wh3_main_combi", region: "main_region" },
+        ],
+        start_pos_settlements_tables: [
+          { settlement_id: "prologue_settlement", region: "1" },
+          { settlement_id: "main_settlement", region: "2" },
+        ],
+        building_chain_availability_sets_tables: [{ building_chain: "chain", id: "set" }],
+        building_chain_availabilities_tables: [
+          { id: "1", set_id: "set", campaign: "wh3_main_prologue" },
+          { id: "2", set_id: "set", campaign: "wh3_main_combi" },
+        ],
+      },
+      noLoc,
+    );
+
+    expect(data.campaigns.map((campaign) => campaign.key)).toEqual(["wh3_main_combi"]);
+    expect(Object.keys(data.regionSlotTemplates)).toEqual(["wh3_main_combi|main_region"]);
+    expect(Object.keys(data.startPosSettlements)).toEqual(["wh3_main_combi|main_region"]);
+    expect(data.availabilitiesBySetId.set.map((availability) => availability.campaign)).toEqual(["wh3_main_combi"]);
+  });
 });
 
 describe("building set colours", () => {

@@ -10,6 +10,7 @@ import {
   resolveTextReplacements,
   stripLocImgTags,
 } from "../skills";
+import { isIgnoredCampaignType } from "../campaigns";
 import type {
   AvailabilityRow,
   BuildingChainRow,
@@ -421,7 +422,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
   for (const [index, row] of rowsOf("start_pos_region_slot_templates_tables").entries()) {
     const campaign = str(row, "campaign");
     const region = str(row, "region");
-    if (!campaign || !region) continue;
+    if (!campaign || !region || isIgnoredCampaignType(campaign)) continue;
     (regionSlotTemplates[`${campaign}|${region}`] ||= []).push({
       campaign,
       region,
@@ -451,7 +452,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
     const region = str(row, "region");
     const faction = str(row, "faction");
     const slotSet = str(row, "slot_set");
-    if (!campaign || !region || !faction || !slotSet) continue;
+    if (!campaign || !region || !faction || !slotSet || isIgnoredCampaignType(campaign)) continue;
     const key = `${campaign}|${region}|${faction}`;
     for (const item of slotItemsBySet[slotSet] ?? []) {
       (foreignRegionSlotTemplates[key] ||= []).push({
@@ -471,8 +472,9 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
   const startPosRegionById: Record<string, { campaign: string; region: string }> = {};
   for (const row of rowsOf("start_pos_regions_tables")) {
     const id = str(row, "id");
-    if (!id) continue;
-    startPosRegionById[id] = { campaign: str(row, "campaign"), region: str(row, "region") };
+    const campaign = str(row, "campaign");
+    if (!id || isIgnoredCampaignType(campaign)) continue;
+    startPosRegionById[id] = { campaign, region: str(row, "region") };
   }
   const startPosSettlements: Record<string, StartPosSettlement[]> = {};
   const settlementBuildingColumns = [
@@ -517,14 +519,16 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
   const availabilitiesBySetId: Record<string, AvailabilityRow[]> = {};
   for (const row of rowsOf("building_chain_availabilities_tables")) {
     const setId = str(row, "set_id");
+    const campaign = str(row, "campaign");
     if (!setId) continue;
+    if (isIgnoredCampaignType(campaign)) continue;
     (availabilitiesBySetId[setId] ||= []).push({
       id: str(row, "id"),
       setId,
       culture: str(row, "culture"),
       subCulture: str(row, "sub_culture"),
       faction: str(row, "faction"),
-      campaign: str(row, "campaign"),
+      campaign,
     });
   }
 
@@ -675,7 +679,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
   const campaignKeys = new Set<string>();
   for (const row of rowsOf("campaigns_tables")) {
     const key = str(row, "campaign_name");
-    if (key) campaignKeys.add(key);
+    if (key && !isIgnoredCampaignType(key)) campaignKeys.add(key);
   }
   // A campaign nothing references is no use here, and the reverse: a campaign only the start pos
   // mentions still has to be pickable.

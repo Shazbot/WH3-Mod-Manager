@@ -8,6 +8,7 @@ import { getVanillaPackIndex } from "../vanillaPackIndex/store";
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
+import { isIgnoredCampaignType } from "../campaigns";
 import {
   extractCampaignTableIdentity,
   extractStartposRegionSlotTemplates,
@@ -117,6 +118,12 @@ const formatCampaignLabel = (campaignKey: string): string =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const campaignNameFromStartposPath = (fileName: string): string | undefined =>
+  normalizePackPath(fileName).match(/(?:^|\\)campaigns\\([^\\]+)\\startpos\.esf$/)?.[1];
+
+const isIgnoredStartposPath = (fileName: string): boolean =>
+  isIgnoredCampaignType(campaignNameFromStartposPath(fileName));
+
 const getPackedFileNames = async (packPath: string): Promise<string[]> => {
   const retainedPack = appData.packsData.find((pack) => pack.path === packPath);
   if (retainedPack) return retainedPack.packedFiles.map((packedFile) => packedFile.name);
@@ -195,6 +202,7 @@ const collectVanillaStartposCandidates = async (dataFolder: string): Promise<Esf
   const candidates: EsfFileCandidate[] = [];
   for (const campaignEntry of campaignEntries) {
     if (!campaignEntry.isDirectory()) continue;
+    if (isIgnoredCampaignType(campaignEntry.name)) continue;
     const campaignFolder = nodePath.join(campaignsFolder, campaignEntry.name);
     let files: string[];
     try {
@@ -331,17 +339,22 @@ const readCampaignStartposCandidates = async (
   candidates: EsfFileCandidate[],
 ): Promise<EsfCampaignStartposCandidate[]> => {
   const extracted = await Promise.all(
-    candidates.map(async (candidate): Promise<EsfCampaignStartposCandidate | undefined> => {
-      try {
-        const buffer = await readPackedFileBuffer(candidate);
-        const identity = extractCampaignTableIdentity(buffer, parseEsfDocument(buffer));
-        return identity ? { ...candidate, ...identity, buffer } : undefined;
-      } catch {
-        return undefined;
-      }
-    }),
+    candidates
+      .filter((candidate) => !isIgnoredStartposPath(candidate.fileName))
+      .map(async (candidate): Promise<EsfCampaignStartposCandidate | undefined> => {
+        try {
+          const buffer = await readPackedFileBuffer(candidate);
+          const identity = extractCampaignTableIdentity(buffer, parseEsfDocument(buffer));
+          return identity ? { ...candidate, ...identity, buffer } : undefined;
+        } catch {
+          return undefined;
+        }
+      }),
   );
-  return extracted.filter((candidate): candidate is EsfCampaignStartposCandidate => candidate !== undefined);
+  return extracted.filter(
+    (candidate): candidate is EsfCampaignStartposCandidate =>
+      candidate !== undefined && !isIgnoredCampaignType(candidate.campaignName),
+  );
 };
 
 /**
@@ -358,7 +371,10 @@ export async function loadStartposRegionSlotTemplates(
 
   const [vanillaCandidates, modCandidates] = await Promise.all([
     collectVanillaStartposCandidates(dataFolder),
-    collectModCandidates(enabledMods, (fileName) => isPackedFileNamed(fileName, "startpos.esf")),
+    collectModCandidates(
+      enabledMods,
+      (fileName) => isPackedFileNamed(fileName, "startpos.esf") && !isIgnoredStartposPath(fileName),
+    ),
   ]);
   const candidates = await readCampaignStartposCandidates([...vanillaCandidates, ...modCandidates]);
   const campaignNames = [...new Set(candidates.map((candidate) => candidate.campaignName))].sort((first, second) =>
@@ -454,7 +470,10 @@ export async function loadEsfMapData(
     collectVanillaCampaignMapCandidates(vanillaIndex, vanillaPackPaths, englishLocalizationPackPaths),
     collectVanillaStartposCandidates(dataFolder),
     collectModCandidates(enabledMods, isCampaignMapAsset),
-    collectModCandidates(enabledMods, (fileName) => isPackedFileNamed(fileName, "startpos.esf")),
+    collectModCandidates(
+      enabledMods,
+      (fileName) => isPackedFileNamed(fileName, "startpos.esf") && !isIgnoredStartposPath(fileName),
+    ),
   ]);
   const vanillaMapCandidates = vanillaMapAssets.filter((candidate) =>
     isPackedFileNamed(candidate.fileName, "map_data.esf"),
