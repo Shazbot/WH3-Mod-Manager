@@ -53,6 +53,7 @@ const AncillariesTablesTab = memo(
 
     const schema = schemaForTable(selectedTable, tableSchemas);
     const issuesByRow = useMemo(() => groupIssuesByRow(rowIssues ?? []), [rowIssues]);
+    const tablesWithIssues = useMemo(() => new Set((rowIssues ?? []).map((issue) => issue.table)), [rowIssues]);
 
     const rowData = useMemo<GridRow[]>(() => {
       if (!schema) return [];
@@ -136,7 +137,7 @@ const AncillariesTablesTab = memo(
             className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-gray-100"
           >
             {tablesWithCounts.map(([table, count]) => (
-              <option key={table} value={table}>
+              <option key={table} value={table} className={tablesWithIssues.has(table) ? "text-yellow-400" : undefined}>
                 {table === LOC_TABLE ? localized.ancillariesLocalisationTable || "localisation" : table} ({count})
               </option>
             ))}

@@ -43,17 +43,19 @@ const rowSignature = (
 };
 
 /**
- * Removes clone rows that are already pending, including repeats within this clone result.
+ * Removes DB Clone rows that are already pending, including repeats within this clone result.
  *
  * Rows with the same key but different values are deliberately retained: those are overrides and
  * are meaningful to the modder. Only rows that would serialize as the same complete row are
  * duplicates.
  */
-export const filterDuplicateBuildingsCloneRows = (
-  rows: BuildingsCloneRowDraft[],
-  existingRows: BuildingsNewRow[],
+type DBCloneRowLike = Pick<BuildingsNewRow, "table" | "values">;
+
+export const filterDuplicateDBCloneRows = <TCloneRow extends DBCloneRowLike>(
+  rows: TCloneRow[],
+  existingRows: DBCloneRowLike[],
   tableSchemas: Record<string, DBVersion>,
-): BuildingsCloneRowDraft[] => {
+): TCloneRow[] => {
   const seen = new Set(existingRows.map((row) => rowSignature(row.table, row.values, tableSchemas)));
   return rows.filter((row) => {
     const signature = rowSignature(row.table, row.values, tableSchemas);
@@ -62,6 +64,13 @@ export const filterDuplicateBuildingsCloneRows = (
     return true;
   });
 };
+
+/** Buildings-specific alias retained for callers that want the feature's narrower row types. */
+export const filterDuplicateBuildingsCloneRows = (
+  rows: BuildingsCloneRowDraft[],
+  existingRows: BuildingsNewRow[],
+  tableSchemas: Record<string, DBVersion>,
+): BuildingsCloneRowDraft[] => filterDuplicateDBCloneRows(rows, existingRows, tableSchemas);
 
 const dbTableNameFromPath = (path: string) => /^db\\([^\\]+)\\/.exec(path)?.[1];
 

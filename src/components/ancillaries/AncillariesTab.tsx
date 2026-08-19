@@ -4,7 +4,7 @@ import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
 import { useDeferredWhileInactive } from "../useDeferredWhileInactive";
 import { useBuildingsDeepClone } from "../buildings/useBuildingsDeepClone";
-import { dbClonePackedFilesToBuildingsRows } from "../../buildingsData/dbCloneRows";
+import { dbClonePackedFilesToBuildingsRows, filterDuplicateDBCloneRows } from "../../buildingsData/dbCloneRows";
 import DBDuplication from "../viewer/DBDuplication";
 import AncillariesBrowser from "./AncillariesBrowser";
 import AncillaryDetail from "./AncillaryDetail";
@@ -181,13 +181,23 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
         setError(localized.ancillariesCloneNoRows || "DB Clone did not generate any rows.");
         return;
       }
-      dispatchEdit({ type: "addRows", rows: cloneOutput.rows });
+      const rows = filterDuplicateDBCloneRows(
+        cloneOutput.rows,
+        edits.order.map((id) => edits.rowsById[id]).filter((row): row is NonNullable<typeof row> => !!row),
+        { ...tableSchemas, ...cloneOutput.tableSchemas },
+      );
+      if (rows.length === 0) {
+        setError(undefined);
+        closeDeepClone();
+        return;
+      }
+      dispatchEdit({ type: "addRows", rows });
       setCloneTableSchemas((current) => ({ ...current, ...cloneOutput.tableSchemas }));
       setError(undefined);
       setSubTab("tables");
       closeDeepClone();
     },
-    [closeDeepClone, localized.ancillariesCloneNoRows],
+    [closeDeepClone, edits, localized.ancillariesCloneNoRows, tableSchemas],
   );
 
   /**

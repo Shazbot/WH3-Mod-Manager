@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { applyNewRowsToBuiltData } from "../src/buildingsData/applyEdits";
 import { buildBuildingsData } from "../src/buildingsData/data";
-import { dbClonePackedFilesToBuildingsRows, filterDuplicateBuildingsCloneRows } from "../src/buildingsData/dbCloneRows";
+import {
+  dbClonePackedFilesToBuildingsRows,
+  filterDuplicateBuildingsCloneRows,
+  filterDuplicateDBCloneRows,
+} from "../src/buildingsData/dbCloneRows";
 import { resolveRegionBuildings } from "../src/buildingsData/derive";
 import { buildingsEditReducer, emptyBuildingsEditState, LOC_TABLE } from "../src/buildingsData/edits";
 import type { BuildingsTableRows } from "../src/buildingsData/types";
@@ -39,6 +43,18 @@ describe("DB Clone rows for Buildings", () => {
     expect(filterDuplicateBuildingsCloneRows(generatedRows, existingRows, { example_tables: schema })).toEqual([
       generatedRows[1],
       generatedRows[2],
+    ]);
+  });
+
+  it("uses the same duplicate filter for ancillary-shaped pending rows", () => {
+    const existingRows = [{ table: "ancillaries_tables", values: { key: "anc_a", type: "type_a" } }];
+    const generatedRows = [
+      { table: "ancillaries_tables", values: { key: "anc_a", type: "type_a" }, origin: "clone" as const },
+      { table: "ancillaries_tables", values: { key: "anc_b", type: "type_a" }, origin: "clone" as const },
+    ];
+
+    expect(filterDuplicateDBCloneRows(generatedRows, existingRows, { ancillaries_tables: schema })).toEqual([
+      generatedRows[1],
     ]);
   });
 
