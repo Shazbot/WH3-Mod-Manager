@@ -6,6 +6,16 @@ import Select, { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
 import selectStyle from "@/src/styles/selectStyle";
 
+/**
+ * The modal body scrolls, so a menu opened low in the panel is clipped by it. Portalling to the body
+ * with fixed positioning lets the list overhang the panel instead.
+ */
+const portalSelectStyle = {
+  ...selectStyle,
+  menuPortal: (base: any) => ({ ...base, zIndex: 80 }),
+  menu: (base: any) => ({ ...selectStyle.menu(base), zIndex: 80 }),
+};
+
 interface AddNodeModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -298,7 +308,10 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                     value={selectedSkill}
                     // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(newValue: SkillOption | null) => handleSkillSelect(newValue)}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                     placeholder={localized.searchSkills || "Search skills..."}
                     isClearable
                     // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
@@ -384,7 +397,10 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                         value={selectedIcon}
                         // @ts-expect-error react-select value type does not match the windowed select wrapper.
                         onChange={(newValue: IconOption | null) => setSelectedIcon(newValue)}
-                        styles={selectStyle}
+                        styles={portalSelectStyle}
+                        menuPortalTarget={document.body}
+                        menuPosition="fixed"
+                        menuPlacement="auto"
                         placeholder={localized.selectIcon || "Select icon..."}
                         isClearable
                         filterOption={createFilter({ ignoreAccents: false })}
@@ -547,7 +563,10 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                     const newEffects = [...(newValue as EffectOption[])];
                     setLevelEffects((prev) => ({ ...prev, [activeLevel]: newEffects }));
                   }}
-                  styles={selectStyle}
+                  styles={portalSelectStyle}
+                  menuPortalTarget={document.body}
+                  menuPosition="fixed"
+                  menuPlacement="auto"
                   placeholder={localized.searchEffects || "Search effects..."}
                   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                   // @ts-ignore
