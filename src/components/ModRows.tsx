@@ -730,12 +730,16 @@ const ModRows = memo((props: ModRowsProps) => {
     [visibleCategoryMods],
   );
 
+  // Category expansion is local UI state, so reset it whenever the grouped view is entered, including
+  // when the view was restored enabled from configuration.
   const wasCategoryViewRef = useRef(false);
   useLayoutEffect(() => {
-    if (isCategoryView && !wasCategoryViewRef.current) {
+    if (!isCategoryView) {
+      wasCategoryViewRef.current = false;
+    } else if (!wasCategoryViewRef.current && categoryNames.size > 0) {
       setCollapsedCategories(new Set(categoryNames));
+      wasCategoryViewRef.current = true;
     }
-    wasCategoryViewRef.current = isCategoryView;
   }, [categoryNames, isCategoryView]);
 
   /**
