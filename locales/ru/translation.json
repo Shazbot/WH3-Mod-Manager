@@ -1565,5 +1565,7 @@
   "uncategorized": "Без категории",
   "modsNotEnabledInCategory": "моды в этой категории не включены",
   "enableOrDisableAllInCategory": "Щелкните правой кнопкой мыши: включите каждый мод в категории или отключите их все, как только они все будут включены.",
-  "buildingsRebuildingData": "Восстановление данных о зданиях. Это может занять некоторое время..."
+  "buildingsRebuildingData": "Восстановление данных о зданиях. Это может занять некоторое время...",
+  "ancillariesSaveSkipDuplicates": "Не сохранять повторяющиеся строки",
+  "buildingsSaveSkipDuplicates": "Не сохранять повторяющиеся строки"
 }

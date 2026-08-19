@@ -1565,5 +1565,7 @@
   "uncategorized": "분류되지 않음",
   "modsNotEnabledInCategory": "이 카테고리의 모드는 활성화되어 있지 않습니다",
   "enableOrDisableAllInCategory": "마우스 오른쪽 버튼 클릭: 카테고리의 모든 모드를 활성화하거나 모두 활성화되면 모두 비활성화합니다.",
-  "buildingsRebuildingData": "건물 데이터를 재구축합니다. 잠시 시간이 걸릴 수 있습니다..."
+  "buildingsRebuildingData": "건물 데이터를 재구축합니다. 잠시 시간이 걸릴 수 있습니다...",
+  "ancillariesSaveSkipDuplicates": "중복된 행을 저장하지 마세요",
+  "buildingsSaveSkipDuplicates": "중복된 행을 저장하지 마세요"
 }

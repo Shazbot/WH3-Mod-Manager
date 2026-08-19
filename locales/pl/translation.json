@@ -1565,5 +1565,7 @@
   "uncategorized": "Bez kategorii",
   "modsNotEnabledInCategory": "mody w tej kategorii nie są włączone",
   "enableOrDisableAllInCategory": "Kliknij prawym przyciskiem myszy: włącz każdy mod w kategorii lub wyłącz je wszystkie, gdy wszystkie zostaną włączone.",
-  "buildingsRebuildingData": "Odbudowa danych budynków. To może chwilę potrwać..."
+  "buildingsRebuildingData": "Odbudowa danych budynków. To może chwilę potrwać...",
+  "ancillariesSaveSkipDuplicates": "Nie zapisuj zduplikowanych wierszy",
+  "buildingsSaveSkipDuplicates": "Nie zapisuj zduplikowanych wierszy"
 }

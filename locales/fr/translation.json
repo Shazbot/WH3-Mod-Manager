@@ -1565,5 +1565,7 @@
   "uncategorized": "Non classé",
   "modsNotEnabledInCategory": "les mods de cette catégorie ne sont pas activés",
   "enableOrDisableAllInCategory": "Clic droit : activez tous les mods de la catégorie, ou désactivez-les tous une fois qu'ils sont tous activés.",
-  "buildingsRebuildingData": "Reconstruction des données des bâtiments. Cela peut prendre un moment..."
+  "buildingsRebuildingData": "Reconstruction des données des bâtiments. Cela peut prendre un moment...",
+  "ancillariesSaveSkipDuplicates": "Ne pas enregistrer les lignes en double",
+  "buildingsSaveSkipDuplicates": "Ne pas enregistrer les lignes en double"
 }

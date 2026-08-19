@@ -1567,5 +1567,7 @@
   "uncategorized": "未分类",
   "modsNotEnabledInCategory": "此类别中的模组未启用",
   "enableOrDisableAllInCategory": "右键单击：启用类别中的每个模组，或在全部启用后将其全部禁用。",
-  "buildingsRebuildingData": "重建建筑物数据。这可能需要一些时间..."
+  "buildingsRebuildingData": "重建建筑物数据。这可能需要一些时间...",
+  "ancillariesSaveSkipDuplicates": "不要保存重复的行",
+  "buildingsSaveSkipDuplicates": "不要保存重复的行"
 }

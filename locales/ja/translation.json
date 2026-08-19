@@ -1565,5 +1565,7 @@
   "uncategorized": "未分類",
   "modsNotEnabledInCategory": "このカテゴリの MOD は有効になっていません",
   "enableOrDisableAllInCategory": "右クリック: カテゴリ内のすべての MOD を有効にするか、すべて有効にした後ですべて無効にします。",
-  "buildingsRebuildingData": "建物データの再構築。これには少し時間がかかるかもしれません..."
+  "buildingsRebuildingData": "建物データの再構築。これには少し時間がかかるかもしれません...",
+  "ancillariesSaveSkipDuplicates": "重複した行を保存しない",
+  "buildingsSaveSkipDuplicates": "重複した行を保存しない"
 }
