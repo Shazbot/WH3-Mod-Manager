@@ -788,6 +788,86 @@ describe("sorting the dual layout's panes", () => {
     }
   });
 
+  it("sorts from the marker that names the sort, the same way the icon beside it does", async () => {
+    const { testStore } = renderDualLayout([
+      createMod("alpha", false),
+      { ...createMod("beta", true, 0), isInData: true },
+    ]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+
+    await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanName);
+
+    const nameMarker = () => getNameHeader(right).querySelector("span[aria-hidden]") as HTMLElement;
+    // It reads as part of the control rather than a caption sitting next to one.
+    expect(nameMarker()).toHaveClass("cursor-pointer");
+
+    await act(async () => fireEvent.click(nameMarker()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanNameReverse);
+
+    await act(async () => fireEvent.contextMenu(nameMarker()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.PackName);
+
+    // Shift still reaches both panes from the marker.
+    await act(async () => fireEvent.click(nameMarker(), { shiftKey: true }));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.PackNameReverse);
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.PackNameReverse);
+  });
+
+  it("sorts from the date column's sub marker too", async () => {
+    const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+
+    const dateHeader = () =>
+      Array.from(right.querySelectorAll<HTMLElement>(".mod-row-header-pane")).find((header) =>
+        [localization.lastUpdated, localization.subscriptionTime].includes(
+          header.querySelector(".sr-only")?.textContent ?? "",
+        ),
+      ) as HTMLElement;
+
+    await act(async () => fireEvent.contextMenu(dateHeader()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.SubbedTime);
+
+    const subMarker = () => dateHeader().querySelector("span[aria-hidden]") as HTMLElement;
+    expect(subMarker()).toHaveClass("cursor-pointer");
+
+    await act(async () => fireEvent.click(subMarker()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.SubbedTimeReverse);
+
+    await act(async () => fireEvent.contextMenu(subMarker()));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.LastUpdated);
+  });
+
+  it("leaves the mods with no author at the end of an author sort, in both directions", async () => {
+    const { testStore } = renderDualLayout([
+      { ...createMod("no_author", false), author: "" },
+      { ...createMod("zulu", false), author: "Zulu" },
+      { ...createMod("alpha", false), author: "Alpha" },
+    ]);
+
+    const { left } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    const renderedNames = () =>
+      Array.from(left.querySelectorAll<HTMLElement>(".row-div-paddings")).map((row) => row.id);
+
+    // Title, pack name, then author: three steps to reach the author sort.
+    for (let step = 0; step < 3; step += 1) {
+      await act(async () => fireEvent.contextMenu(getNameHeader(left)));
+    }
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.Author);
+    expect(renderedNames()).toEqual(["alpha.pack", "zulu.pack", "no_author.pack"]);
+
+    // Reversing puts Zulu above Alpha, and leaves the authorless mod where it was.
+    await act(async () => fireEvent.click(getNameHeader(left)));
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.AuthorReverse);
+    expect(renderedNames()).toEqual(["zulu.pack", "alpha.pack", "no_author.pack"]);
+  });
+
   it("does not let the shift click extend a text selection over the list", async () => {
     renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
 

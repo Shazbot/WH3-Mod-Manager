@@ -180,11 +180,8 @@ export function getSortedMods(
       break;
     case SortingType.Author:
     case SortingType.AuthorReverse:
-      mods = getModsSortedByAuthor(presetMods);
-
-      if (sortingType == SortingType.AuthorReverse) {
-        mods = mods.reverse();
-      }
+      // The direction goes in rather than being applied after, so the authorless mods stay at the end.
+      mods = getModsSortedByAuthor(presetMods, sortingType === SortingType.AuthorReverse);
       break;
     case SortingType.IsCustomizable:
       mods = getModsSortedByCustomizable(presetMods, customizableMods);

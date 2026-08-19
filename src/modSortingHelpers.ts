@@ -152,12 +152,29 @@ export function getModsSortedByEnabled(mods: Mod[], orderedMods: Mod[], enabledF
   });
 }
 
-export function getModsSortedByAuthor(mods: Mod[]) {
+/**
+ * Sorts by the author as the row shows it, and keeps the mods that name no author at the end.
+ *
+ * An empty author is not a name that happens to sort first, it is nothing to sort on, so those mods sit
+ * out of the way at the bottom whichever way round the list is. That is also why the direction is a flag
+ * rather than a reverse of the finished list: reversing would drag them back to the top.
+ */
+export function getModsSortedByAuthor(mods: Mod[], isReversed = false) {
+  const authorsByMod = new Map(mods.map((mod) => [mod, decodeModText(mod.author).trim()]));
+
   return [...mods].sort((firstMod, secondMod) => {
-    if (firstMod.author == secondMod.author) {
-      return compareModNames(firstMod.name, secondMod.name);
+    const firstAuthor = authorsByMod.get(firstMod) ?? "";
+    const secondAuthor = authorsByMod.get(secondMod) ?? "";
+
+    if (firstAuthor === "" || secondAuthor === "") {
+      if (firstAuthor === secondAuthor) return compareModNames(firstMod.name, secondMod.name);
+      return firstAuthor === "" ? 1 : -1;
     }
-    return collator.compare(firstMod.author, secondMod.author);
+
+    const comparison = collator.compare(firstAuthor, secondAuthor);
+    if (comparison !== 0) return isReversed ? -comparison : comparison;
+    // One author's mods keep the same order either way round, which reads better than flipping them too.
+    return compareModNames(firstMod.name, secondMod.name);
   });
 }
 

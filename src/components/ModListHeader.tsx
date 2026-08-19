@@ -142,7 +142,7 @@ const ModListHeader = memo(
         {/* The compact column is a clock either way, so the sort it is on has to be said in words. The
             wide layout already spells it out in the column label itself. */}
         {isCompact && modRowSorting.isSubbedTimeSort(sortingType) && (
-          <span className="ml-1 truncate text-xs text-blue-400" aria-hidden>
+          <span className="ml-1 truncate text-xs text-blue-400 cursor-pointer" aria-hidden>
             {localized.subbedTimeShort || "sub"}
           </span>
         )}
@@ -201,7 +201,9 @@ const ModListHeader = memo(
             {nameSortingField !== undefined && modRowSorting.getSortingArrow(sortingType)}
             {columnLabel(nameSortingLabel ?? localized.name, GoTypography, nameSortingField !== undefined)}
             {nameSortingLabel && (
-              <span className="ml-1 truncate text-xs text-blue-400" aria-hidden>
+              // Part of the control rather than a caption beside it: the cell around it is what sorts, so
+              // the marker takes the same cursor as the icon.
+              <span className="ml-1 truncate text-xs text-blue-400 cursor-pointer" aria-hidden>
                 {nameSortingLabel}
               </span>
             )}

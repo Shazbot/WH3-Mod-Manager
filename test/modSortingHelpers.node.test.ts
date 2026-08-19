@@ -4,6 +4,7 @@ import {
   getFilteredMods,
   getLoadOrderInsertionIndex,
   getModsSortedByEnabled,
+  getModsSortedByAuthor,
   getModsSortedByHumanName,
   getModSortName,
   getSparseLoadOrderByModName,
@@ -149,5 +150,58 @@ describe("sorting by the human name", () => {
   it("leaves what it cannot decode alone rather than mangling it", () => {
     expect(getModSortName(createTitledMod("a.pack", "50% &notanentity; off"))).toBe("50% &notanentity; off");
     expect(getModSortName(createTitledMod("a.pack", "Mod &#39;s name"))).toBe("Mod 's name");
+  });
+});
+
+describe("sorting by the author", () => {
+  const createAuthoredMod = (name: string, author: string) => createMod({ name, author });
+
+  const sortedNames = (mods: Mod[], isReversed = false) =>
+    getModsSortedByAuthor(mods, isReversed).map((mod) => mod.name);
+
+  it("puts the mods that name no author at the end", () => {
+    const mods = [
+      createAuthoredMod("none.pack", ""),
+      createAuthoredMod("zulu.pack", "Zulu"),
+      createAuthoredMod("alpha.pack", "Alpha"),
+    ];
+
+    expect(sortedNames(mods)).toEqual(["alpha.pack", "zulu.pack", "none.pack"]);
+  });
+
+  it("keeps them there when the sort is reversed, rather than dragging them to the top", () => {
+    const mods = [
+      createAuthoredMod("none.pack", ""),
+      createAuthoredMod("zulu.pack", "Zulu"),
+      createAuthoredMod("alpha.pack", "Alpha"),
+    ];
+
+    expect(sortedNames(mods, true)).toEqual(["zulu.pack", "alpha.pack", "none.pack"]);
+  });
+
+  it("treats an author of nothing but spaces as no author at all", () => {
+    const mods = [createAuthoredMod("blank.pack", "   "), createAuthoredMod("zulu.pack", "Zulu")];
+
+    expect(sortedNames(mods)).toEqual(["zulu.pack", "blank.pack"]);
+  });
+
+  it("sorts the authorless mods among themselves by pack name, either way round", () => {
+    const mods = [createAuthoredMod("b.pack", ""), createAuthoredMod("a.pack", "")];
+
+    expect(sortedNames(mods)).toEqual(["a.pack", "b.pack"]);
+    expect(sortedNames(mods, true)).toEqual(["a.pack", "b.pack"]);
+  });
+
+  it("sorts by the author as it is displayed, entities decoded", () => {
+    // Raw, "&#90;ed" sorts under "&" and would lead the list instead of closing it.
+    const mods = [createAuthoredMod("encoded.pack", "&#90;ed"), createAuthoredMod("alpha.pack", "Alpha")];
+
+    expect(sortedNames(mods)).toEqual(["alpha.pack", "encoded.pack"]);
+  });
+
+  it("falls back to the pack name for two mods by the same author", () => {
+    const mods = [createAuthoredMod("b.pack", "Zed"), createAuthoredMod("a.pack", "Zed")];
+
+    expect(sortedNames(mods)).toEqual(["a.pack", "b.pack"]);
   });
 });
