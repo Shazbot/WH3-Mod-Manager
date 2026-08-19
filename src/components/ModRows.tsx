@@ -730,6 +730,21 @@ const ModRows = memo((props: ModRowsProps) => {
     [hiddenModNames, isGroupedByCategory, mods],
   );
 
+  /**
+   * Whether a list holds a data mod at all. The compact name column steps through the sorts it stacks,
+   * and a data mods sort is only a step worth taking in a list that has some. The unfiltered set decides
+   * it, so the step does not come and go as the search narrows the rows.
+   */
+  const hasDataMods = useMemo(() => unfilteredMods.some((mod) => mod.isInData), [unfilteredMods]);
+  const disabledPaneHasDataMods = useMemo(
+    () => !!disabledModsView?.unfilteredVisibleMods.some((mod) => mod.isInData),
+    [disabledModsView],
+  );
+  const enabledPaneHasDataMods = useMemo(
+    () => !!enabledModsView?.unfilteredVisibleMods.some((mod) => mod.isInData),
+    [enabledModsView],
+  );
+
   /** What the left pane actually renders: the same rows, with category headings folded in when grouped. */
   const disabledPaneRows = useMemo(
     (): ModListRow[] =>
@@ -912,6 +927,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   rowData={disabledPaneRows}
                   sortingType={sortingType}
                   setSortingType={setSortingType}
+                  hasDataMods={disabledPaneHasDataMods}
                   onCategoryToggled={onCategoryToggled}
                   onCategoryRightClick={onCategoryRightClick}
                   categoryColors={categoryColors}
@@ -948,6 +964,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   rowData={enabledRowData}
                   sortingType={enabledPaneSortingType}
                   setSortingType={setEnabledPaneSortingType}
+                  hasDataMods={enabledPaneHasDataMods}
                   scrollElement={rightPaneScroll}
                   listRef={rightListRef}
                   paneHandleRef={rightPaneHandleRef}
@@ -970,6 +987,7 @@ const ModRows = memo((props: ModRowsProps) => {
             rowData={rowData}
             sortingType={sortingType}
             setSortingType={setSortingType}
+            hasDataMods={hasDataMods}
             scrollElement={pageScroll}
             listRef={singleListRef}
             paneHandleRef={singlePaneHandleRef}

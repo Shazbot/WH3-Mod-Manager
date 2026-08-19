@@ -193,6 +193,35 @@ export function getSortedMods(
   return mods;
 }
 
+/**
+ * The fields the compact layout stacks into its one name column, in the order right clicking steps
+ * through them. Data mods are only worth a step in a list that holds any.
+ */
+export const getNameSortingCycle = (hasDataMods: boolean) =>
+  hasDataMods
+    ? [SortingType.HumanName, SortingType.PackName, SortingType.Author, SortingType.IsDataPack]
+    : [SortingType.HumanName, SortingType.PackName, SortingType.Author];
+
+/** Which of those fields a sorting type sorts by, or undefined when it belongs to another column. */
+export function getNameSortingField(sortingType: SortingType) {
+  if (isHumanNameSort(sortingType)) return SortingType.HumanName;
+  if (isPackNameSort(sortingType)) return SortingType.PackName;
+  if (isAuthorSort(sortingType)) return SortingType.Author;
+  if (isDataPackSort(sortingType)) return SortingType.IsDataPack;
+  return undefined;
+}
+
+/**
+ * The field right clicking the column moves to. A sort that belongs to another column starts the cycle
+ * from the top, and so does a data pack sort in a list that no longer has any data mods.
+ */
+export function getNextNameSortingType(sortingType: SortingType, hasDataMods: boolean) {
+  const cycle = getNameSortingCycle(hasDataMods);
+  const currentField = getNameSortingField(sortingType);
+  const currentIndex = currentField === undefined ? -1 : cycle.indexOf(currentField);
+  return cycle[(currentIndex + 1) % cycle.length];
+}
+
 const sortTypeToReverseType: { [key in SortingType]?: SortingType } = {
   [SortingType.Ordered]: SortingType.OrderedReverse,
   [SortingType.IsEnabled]: SortingType.IsEnabledReverse,

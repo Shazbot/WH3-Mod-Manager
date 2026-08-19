@@ -48,9 +48,24 @@ const createMod = (name: string, isEnabled: boolean, loadOrder?: number): Mod =>
 const localization = {
   order: "Order",
   name: "Name",
+  pack: "Pack",
+  author: "Author",
+  dataPacks: "Data Packs",
   thumbnail: "Thumbnail",
   lastUpdated: "Last Updated",
 };
+
+/** The compact layout has one name column, which sorts by whichever of these was picked last. */
+const nameColumnLabels = [localization.name, localization.pack, localization.author, localization.dataPacks];
+
+/** That column, found by its wording rather than its position, which moves with the thumbnail column. */
+const getNameHeader = (pane: HTMLElement) =>
+  Array.from(pane.querySelectorAll<HTMLElement>(".mod-row-header-pane")).find((header) =>
+    nameColumnLabels.includes(header.querySelector(".sr-only")?.textContent ?? ""),
+  ) as HTMLElement;
+
+/** What the column says it is sorting by right now, next to its icon. */
+const getNameSortLabel = (pane: HTMLElement) => getNameHeader(pane).querySelector("span[aria-hidden]")?.textContent;
 
 const renderDualLayout = (mods: Mod[], extraState: Partial<AppState> = {}) => {
   const testStore = configureStore({
@@ -512,10 +527,6 @@ describe("sorting the dual layout's panes", () => {
     } as NonNullable<Window["api"]>;
   });
 
-  /** The name column of one pane; the compact header is an icon with the wording behind it. */
-  const getNameHeader = (pane: HTMLElement) =>
-    within(pane).getByText(localization.name).closest(".mod-row-header-pane") as HTMLElement;
-
   const getRenderedNames = (pane: HTMLElement) =>
     Array.from(pane.querySelectorAll<HTMLElement>(".row-div-paddings")).map((row) => row.id);
 
@@ -579,6 +590,102 @@ describe("sorting the dual layout's panes", () => {
 
     expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.HumanNameReverse);
     expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanNameReverse);
+  });
+
+  it("steps the name column through the fields it stacks when it is right clicked", async () => {
+    // One data mod, so the data mods sort is worth a step.
+    const { testStore } = renderDualLayout([
+      createMod("alpha", false),
+      { ...createMod("beta", true, 0), isInData: true },
+    ]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+    // Nothing is named while another column holds the sort.
+    expect(getNameSortLabel(right)).toBeUndefined();
+
+    const nameSortAfterRightClick = async () => {
+      await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+      return testStore.getState().app.enabledModsPaneSortingType;
+    };
+
+    expect(await nameSortAfterRightClick()).toBe(SortingType.HumanName);
+    expect(getNameSortLabel(right)).toBe(localization.name);
+
+    expect(await nameSortAfterRightClick()).toBe(SortingType.PackName);
+    expect(getNameSortLabel(right)).toBe(localization.pack);
+
+    expect(await nameSortAfterRightClick()).toBe(SortingType.Author);
+    expect(getNameSortLabel(right)).toBe(localization.author);
+
+    expect(await nameSortAfterRightClick()).toBe(SortingType.IsDataPack);
+    expect(getNameSortLabel(right)).toBe(localization.dataPacks);
+
+    // And round again.
+    expect(await nameSortAfterRightClick()).toBe(SortingType.HumanName);
+  });
+
+  it("skips the data mods sort in a list that has no data mods", async () => {
+    const { testStore } = renderDualLayout([
+      { ...createMod("alpha", false), isInData: false },
+      { ...createMod("beta", true, 0), isInData: false },
+    ]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+
+    for (const expectedSortingType of [SortingType.HumanName, SortingType.PackName, SortingType.Author]) {
+      await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+      expect(testStore.getState().app.enabledModsPaneSortingType).toBe(expectedSortingType);
+    }
+
+    // Author is the last step here, so the next one is back to the start.
+    await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanName);
+  });
+
+  it("decides the data mods step per pane, from the mods that pane holds", async () => {
+    // Only the disabled pane has a data mod, so only its column offers the step.
+    const { testStore } = renderDualLayout([
+      { ...createMod("alpha", false), isInData: true },
+      { ...createMod("beta", true, 0), isInData: false },
+    ]);
+
+    const { left, right } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    for (let step = 0; step < 3; step += 1) {
+      await act(async () => fireEvent.contextMenu(getNameHeader(left)));
+      await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+    }
+
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.Author);
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.Author);
+
+    await act(async () => fireEvent.contextMenu(getNameHeader(left)));
+    await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.IsDataPack);
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanName);
+  });
+
+  it("reverses the field the name column is on when it is left clicked", async () => {
+    const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+
+    // Right click onto the pack name, then left click to reverse that rather than jumping to the title.
+    await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+    await act(async () => fireEvent.contextMenu(getNameHeader(right)));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.PackName);
+
+    await act(async () => fireEvent.click(getNameHeader(right)));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.PackNameReverse);
+    expect(getNameSortLabel(right)).toBe(localization.pack);
+
+    await act(async () => fireEvent.click(getNameHeader(right)));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.PackName);
   });
 
   it("does not let the shift click extend a text selection over the list", async () => {

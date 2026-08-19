@@ -57,6 +57,8 @@ type ModListPaneProps = {
   layout: ModListLayout;
   showConfigColumn: boolean;
   isInsidePane: boolean;
+  /** Whether the list holds a data mod; the compact name column skips that sort when it does not. */
+  hasDataMods: boolean;
   density: ModListDensity;
   /** Whether this list lets the user pick a new load order position for a row. */
   canReorder: boolean;
@@ -102,6 +104,7 @@ const ModListPane = memo(
     layout,
     showConfigColumn,
     isInsidePane,
+    hasDataMods,
     density,
     canReorder,
     showPositionIndex,
@@ -285,6 +288,7 @@ const ModListPane = memo(
             layout,
             showConfigColumn,
             isInsidePane,
+            hasDataMods,
             areThumbnailsEnabled,
             isAuthorEnabled,
             sortingType,

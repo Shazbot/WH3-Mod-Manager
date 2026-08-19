@@ -1,0 +1,74 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  getNameSortingCycle,
+  getNameSortingField,
+  getNextNameSortingType,
+  SortingType,
+} from "../src/utility/modRowSorting";
+
+describe("the fields the compact name column stacks", () => {
+  it("offers the data mods sort only where there are data mods", () => {
+    expect(getNameSortingCycle(true)).toEqual([
+      SortingType.HumanName,
+      SortingType.PackName,
+      SortingType.Author,
+      SortingType.IsDataPack,
+    ]);
+    expect(getNameSortingCycle(false)).toEqual([SortingType.HumanName, SortingType.PackName, SortingType.Author]);
+  });
+
+  it("reads a reversed sort as the field it reverses", () => {
+    expect(getNameSortingField(SortingType.HumanNameReverse)).toBe(SortingType.HumanName);
+    expect(getNameSortingField(SortingType.PackNameReverse)).toBe(SortingType.PackName);
+    expect(getNameSortingField(SortingType.AuthorReverse)).toBe(SortingType.Author);
+    expect(getNameSortingField(SortingType.IsDataPackReverse)).toBe(SortingType.IsDataPack);
+  });
+
+  it("has no field for a sort that belongs to another column", () => {
+    expect(getNameSortingField(SortingType.Ordered)).toBeUndefined();
+    expect(getNameSortingField(SortingType.LastUpdated)).toBeUndefined();
+    expect(getNameSortingField(SortingType.IsCustomizable)).toBeUndefined();
+  });
+});
+
+describe("stepping the compact name column", () => {
+  const stepThrough = (from: SortingType, steps: number, hasDataMods: boolean) => {
+    const visited: SortingType[] = [];
+    let sortingType = from;
+    for (let step = 0; step < steps; step += 1) {
+      sortingType = getNextNameSortingType(sortingType, hasDataMods);
+      visited.push(sortingType);
+    }
+    return visited;
+  };
+
+  it("walks the whole cycle and comes back round", () => {
+    expect(stepThrough(SortingType.HumanName, 4, true)).toEqual([
+      SortingType.PackName,
+      SortingType.Author,
+      SortingType.IsDataPack,
+      SortingType.HumanName,
+    ]);
+  });
+
+  it("goes from the author straight back to the title where there are no data mods", () => {
+    expect(stepThrough(SortingType.Author, 1, false)).toEqual([SortingType.HumanName]);
+  });
+
+  it("starts the cycle over from a sort another column set", () => {
+    expect(getNextNameSortingType(SortingType.Ordered, true)).toBe(SortingType.HumanName);
+    expect(getNextNameSortingType(SortingType.LastUpdatedReverse, false)).toBe(SortingType.HumanName);
+  });
+
+  it("starts over from a data mods sort left behind by a list that had data mods", () => {
+    // The mods can change under a sort; the step it was on has to lead somewhere either way.
+    expect(getNextNameSortingType(SortingType.IsDataPack, false)).toBe(SortingType.HumanName);
+    expect(getNextNameSortingType(SortingType.IsDataPack, true)).toBe(SortingType.HumanName);
+  });
+
+  it("steps from a reversed field to the next one, ascending", () => {
+    expect(getNextNameSortingType(SortingType.HumanNameReverse, true)).toBe(SortingType.PackName);
+    expect(getNextNameSortingType(SortingType.AuthorReverse, true)).toBe(SortingType.IsDataPack);
+  });
+});

@@ -13,6 +13,8 @@ type ModListHeaderProps = {
   showConfigColumn: boolean;
   /** Sticky headers offset against the page padding unless the list scrolls inside its own pane. */
   isInsidePane: boolean;
+  /** Whether the list holds a data mod; the compact name column skips that sort when it does not. */
+  hasDataMods: boolean;
   areThumbnailsEnabled: boolean;
   isAuthorEnabled: boolean;
   sortingType: SortingType;
@@ -31,6 +33,7 @@ const ModListHeader = memo(
     layout,
     showConfigColumn,
     isInsidePane,
+    hasDataMods,
     areThumbnailsEnabled,
     isAuthorEnabled,
     sortingType,
@@ -41,6 +44,21 @@ const ModListHeader = memo(
     const localized: Record<string, string> = useContext(localizationContext);
     const isCompact = layout === "compact";
     const headerClass = "mod-row-header" + (isInsidePane ? " mod-row-header-pane" : "");
+
+    /*
+     * The compact layout stacks the title, the pack name and the author into one cell, so its one name
+     * column has to cover all three - and the data mods sort the wide layout hangs off the pack column.
+     * Right clicking steps through them, left clicking reverses whichever is current, and the active one
+     * is named next to the icon: the column is otherwise indistinguishable between the four.
+     */
+    const nameSortingLabels: Partial<Record<SortingType, string>> = {
+      [SortingType.HumanName]: localized.name,
+      [SortingType.PackName]: localized.pack,
+      [SortingType.Author]: localized.author,
+      [SortingType.IsDataPack]: localized.dataPacks,
+    };
+    const nameSortingField = modRowSorting.getNameSortingField(sortingType);
+    const nameSortingLabel = (nameSortingField !== undefined && nameSortingLabels[nameSortingField]) || undefined;
 
     /**
      * The panes are half the width the single list gets, so their columns are named with icons instead of
@@ -104,6 +122,13 @@ const ModListHeader = memo(
             modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType),
           )}
         </Tooltip>
+        {/* The compact column is a clock either way, so the sort it is on has to be said in words. The
+            wide layout already spells it out in the column label itself. */}
+        {isCompact && modRowSorting.isSubbedTimeSort(sortingType) && (
+          <span className="ml-1 truncate text-xs text-blue-400" aria-hidden>
+            {localized.subbedTimeShort || "sub"}
+          </span>
+        )}
       </div>
     );
 
@@ -141,23 +166,35 @@ const ModListHeader = memo(
             </div>
           )}
           <div
-            className={`flex place-items-center justify-center ${headerClass}`}
-            onClick={(event) => setSortingType(SortingType.HumanName, event.shiftKey)}
-            onContextMenu={(event) => setSortingType(SortingType.PackName, event.shiftKey)}
+            className={`flex place-items-center justify-center min-w-0 ${headerClass}`}
+            onClick={(event) => setSortingType(nameSortingField ?? SortingType.HumanName, event.shiftKey)}
+            onContextMenu={(event) =>
+              setSortingType(modRowSorting.getNextNameSortingType(sortingType, hasDataMods), event.shiftKey)
+            }
           >
-            {(modRowSorting.isHumanNameSort(sortingType) ||
-              modRowSorting.isPackNameSort(sortingType) ||
-              modRowSorting.isDataPackSort(sortingType)) &&
-              modRowSorting.getSortingArrow(sortingType)}
-            <Tooltip placement="bottom" style="light" content={localized.sortByDataPacks}>
-              {columnLabel(
-                localized.name,
-                GoTypography,
-                modRowSorting.isHumanNameSort(sortingType) ||
-                  modRowSorting.isPackNameSort(sortingType) ||
-                  modRowSorting.isDataPackSort(sortingType),
-              )}
+            {nameSortingField !== undefined && modRowSorting.getSortingArrow(sortingType)}
+            <Tooltip
+              placement="bottom"
+              style="light"
+              content={
+                <>
+                  <div>{localized.switchNameSortColumn || "Right click to switch what this column sorts by"}</div>
+                  <div>
+                    {modRowSorting
+                      .getNameSortingCycle(hasDataMods)
+                      .map((sortingTypeInCycle) => nameSortingLabels[sortingTypeInCycle])
+                      .join(" \u2192 ")}
+                  </div>
+                </>
+              }
+            >
+              {columnLabel(nameSortingLabel ?? localized.name, GoTypography, nameSortingField !== undefined)}
             </Tooltip>
+            {nameSortingLabel && (
+              <span className="ml-1 truncate text-xs text-blue-400" aria-hidden>
+                {nameSortingLabel}
+              </span>
+            )}
           </div>
           {lastUpdatedHeader}
           {showConfigColumn && configHeader}
