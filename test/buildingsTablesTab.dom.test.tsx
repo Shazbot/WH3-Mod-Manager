@@ -162,6 +162,9 @@ describe("BuildingsTablesTab", () => {
 
     expect(await screen.findByText("No chain named chain_a.")).toBeInTheDocument();
     expect(screen.getByText("1 issue across all tables")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("combobox")).getByRole("option", { name: "building_levels_tables (2)" }),
+    ).toHaveClass("text-yellow-400");
   });
 
   it("warns rather than silently dropping a table it has no schema for", async () => {
