@@ -22,6 +22,7 @@ import {
   setModBeingCustomized,
   removeAllPackDataOverwrites,
   toggleIsModListCategoryViewEnabled,
+  setAreModsEnabled,
 } from "../appSlice";
 import { getFilteredMods, getLoadOrderInsertionIndex, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
@@ -38,6 +39,7 @@ import { getModSourceId, getModSourceKind } from "../modSources";
 import { getModThumbnailSrc } from "../utility/frontend/modDisplay";
 import ModListPane, { ModListPaneHandle, ModRowCallbacks } from "./ModListPane";
 import {
+  getModCategories,
   getModListGhostClass,
   getModListGridClass,
   groupModRowsByCategory,
@@ -108,6 +110,7 @@ const buildModListView = (sourceMods: Mod[], options: ModListViewOptions): ModLi
 };
 
 const emptyRowData: ModListModRow[] = [];
+const emptyMods: Mod[] = [];
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 const domParser = new DOMParser();
@@ -174,6 +177,8 @@ const ModRows = memo((props: ModRowsProps) => {
    * headings would both scramble it and list a mod once per category it belongs to.
    */
   const isCategoryView = isDualLayout && isModListCategoryViewEnabled;
+  /** Placement mode empties the left pane, and headings over nothing would only be in the way. */
+  const isGroupedByCategory = isCategoryView && !loadOrderModName;
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -305,17 +310,13 @@ const ModRows = memo((props: ModRowsProps) => {
     return pageScroll ? [pageScroll] : [];
   }, [isDualLayout, leftPaneScroll, rightPaneScroll]);
 
-  const onModToggled = useCallback(
-    (mod: Mod): void => {
+  /** Enabling a mod re-renders the lists it moves between, which would otherwise scroll them to the top. */
+  const runPreservingScroll = useCallback(
+    (run: () => void) => {
       const scrollContainers = getScrollContainers();
       const lastScrollTops = scrollContainers.map((element) => element.scrollTop);
 
-      // if always enabled don't allow unchecking
-      if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList)) {
-        return;
-      }
-
-      dispatch(toggleMod(mod));
+      run();
 
       setTimeout(() => {
         scrollContainers.forEach((element, index) => {
@@ -324,7 +325,19 @@ const ModRows = memo((props: ModRowsProps) => {
         });
       }, 1);
     },
-    [alwaysEnabledModNamesList, dispatch, getScrollContainers],
+    [getScrollContainers],
+  );
+
+  const onModToggled = useCallback(
+    (mod: Mod): void => {
+      // if always enabled don't allow unchecking
+      if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList)) {
+        return;
+      }
+
+      runPreservingScroll(() => dispatch(toggleMod(mod)));
+    },
+    [alwaysEnabledModNamesList, dispatch, runPreservingScroll],
   );
 
   const setSortingType = useCallback(
@@ -691,11 +704,23 @@ const ModRows = memo((props: ModRowsProps) => {
     () => (disabledModsView ? buildRowData(loadOrderModName ? [] : disabledModsView.visibleMods) : emptyRowData),
     [buildRowData, disabledModsView, loadOrderModName],
   );
+  /**
+   * Every mod the headings count, the enabled ones included, so a category that has been enabled all the
+   * way through still gets a heading to switch it back off from. The filter applies here as well: what a
+   * heading counts is what the search left on screen.
+   */
+  const categoryMods = useMemo(
+    () => (isGroupedByCategory ? getVisibleMods(mods, hiddenModNames) : emptyMods),
+    [hiddenModNames, isGroupedByCategory, mods],
+  );
+
   /** What the left pane actually renders: the same rows, with category headings folded in when grouped. */
   const disabledPaneRows = useMemo(
     (): ModListRow[] =>
-      isCategoryView ? groupModRowsByCategory(disabledRowData, collapsedCategories) : disabledRowData,
-    [collapsedCategories, disabledRowData, isCategoryView],
+      isGroupedByCategory
+        ? groupModRowsByCategory(disabledRowData, { categoryMods, alwaysEnabledModNames, collapsedCategories })
+        : disabledRowData,
+    [alwaysEnabledModNames, categoryMods, collapsedCategories, disabledRowData, isGroupedByCategory],
   );
 
   const onCategoryToggled = useCallback((category: string) => {
@@ -705,6 +730,28 @@ const ModRows = memo((props: ModRowsProps) => {
       return next;
     });
   }, []);
+
+  /**
+   * Right clicking a heading enables every mod of that category, or switches them all off once there is
+   * nothing left to enable. Always enabled mods are left alone, the same way clicking their row is.
+   */
+  const onCategoryRightClick = useCallback(
+    (category: string) => {
+      const modsInCategory = categoryMods.filter((mod) => getModCategories(mod).includes(category));
+      if (modsInCategory.length === 0) return;
+
+      const isEveryModEnabled = modsInCategory.every((mod) => mod.isEnabled || alwaysEnabledModNames.has(mod.name));
+      const modsToSet = isEveryModEnabled
+        ? modsInCategory.filter((mod) => !alwaysEnabledModNames.has(mod.name))
+        : modsInCategory.filter((mod) => !mod.isEnabled);
+      if (modsToSet.length === 0) return;
+
+      runPreservingScroll(() =>
+        dispatch(setAreModsEnabled(modsToSet.map((mod) => ({ mod, isEnabled: !isEveryModEnabled })))),
+      );
+    },
+    [alwaysEnabledModNames, categoryMods, dispatch, runPreservingScroll],
+  );
 
   /** Right clicking the toggle folds every category away, or opens them all back up. */
   const onCategoryViewRightClick = useCallback(
@@ -850,6 +897,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   {...sharedPaneProps}
                   rowData={disabledPaneRows}
                   onCategoryToggled={onCategoryToggled}
+                  onCategoryRightClick={onCategoryRightClick}
                   categoryColors={categoryColors}
                   scrollElement={leftPaneScroll}
                   listRef={leftListRef}

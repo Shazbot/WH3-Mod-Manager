@@ -78,6 +78,8 @@ type ModListPaneProps = {
   callbacks: ModRowCallbacks;
   /** Collapses or expands one category. Absent on a list that is not grouped. */
   onCategoryToggled?: (category: string) => void;
+  /** Enables or disables every mod of one category. */
+  onCategoryRightClick?: (category: string) => void;
   /** The colours the categories were given in the categories tab, so the headings match them. */
   categoryColors?: Record<string, string>;
 };
@@ -117,6 +119,7 @@ const ModListPane = memo(
     recentlyReorderedModNames,
     callbacks,
     onCategoryToggled,
+    onCategoryRightClick,
     categoryColors,
   }: ModListPaneProps) => {
     const isCompact = layout === "compact";
@@ -208,9 +211,11 @@ const ModListPane = memo(
                   style,
                   category: row.category,
                   modCount: row.modCount,
+                  notEnabledCount: row.notEnabledCount,
                   isCollapsed: row.isCollapsed,
                   color: categoryColors?.[row.category],
                   onCategoryToggled,
+                  onCategoryRightClick,
                   registerChild,
                 }}
               />

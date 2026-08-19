@@ -77,8 +77,10 @@ export type ModListModRow = { kind: "mod" } & ModRowDatum;
 export type ModListCategoryHeaderRow = {
   kind: "categoryHeader";
   category: string;
-  /** How many mods the category holds after filtering, whether or not they are currently rendered. */
+  /** Every mod the category holds after filtering, the enabled ones included. */
   modCount: number;
+  /** How many of those are still switched off - the rows the heading opens. */
+  notEnabledCount: number;
   isCollapsed: boolean;
 };
 
@@ -96,17 +98,33 @@ const compareCategoryNames = (first: string, second: string) => {
   return first.localeCompare(second);
 };
 
+type CategoryGroupingOptions = {
+  /**
+   * Every mod the headings are drawn from, enabled ones included. It is wider than the rows on purpose:
+   * a category whose mods have all been enabled keeps its heading, which is what leaves somewhere to
+   * right click to switch them all back off.
+   */
+  categoryMods: Mod[];
+  /** Mods that count as enabled whatever their own flag says. */
+  alwaysEnabledModNames: Set<string>;
+  collapsedCategories: Set<string>;
+};
+
+type CategoryCounts = { modCount: number; notEnabledCount: number };
+
 /**
  * Interleaves category headings into a list of mod rows.
  *
  * A mod carries a list of categories rather than one, so it shows up under each of them - the same way
  * the categories tab lists it. Rows keep the order they came in with inside their category, which is
- * whatever the list is currently sorted by. A collapsed category renders as its heading alone, but its
- * heading still counts every mod it holds.
+ * whatever the list is currently sorted by. A collapsed category renders as its heading alone, and a
+ * heading counts every mod of its category either way.
  */
-export const groupModRowsByCategory = (rows: ModListModRow[], collapsedCategories: Set<string>): ModListRow[] => {
+export const groupModRowsByCategory = (
+  rows: ModListModRow[],
+  { categoryMods, alwaysEnabledModNames, collapsedCategories }: CategoryGroupingOptions,
+): ModListRow[] => {
   const rowsByCategory = new Map<string, ModListModRow[]>();
-
   for (const row of rows) {
     for (const category of getModCategories(row.mod)) {
       const categoryRows = rowsByCategory.get(category);
@@ -115,16 +133,35 @@ export const groupModRowsByCategory = (rows: ModListModRow[], collapsedCategorie
     }
   }
 
-  return Array.from(rowsByCategory.entries())
+  const countsByCategory = new Map<string, CategoryCounts>();
+  for (const mod of categoryMods) {
+    const isEnabled = mod.isEnabled || alwaysEnabledModNames.has(mod.name);
+    for (const category of getModCategories(mod)) {
+      const counts = countsByCategory.get(category) ?? { modCount: 0, notEnabledCount: 0 };
+      counts.modCount += 1;
+      if (!isEnabled) counts.notEnabledCount += 1;
+      countsByCategory.set(category, counts);
+    }
+  }
+
+  // The two lists are derived separately, so a row whose mod fell out of the wider one would otherwise
+  // take its whole category down with it.
+  for (const [category, categoryRows] of rowsByCategory) {
+    if (!countsByCategory.has(category))
+      countsByCategory.set(category, { modCount: categoryRows.length, notEnabledCount: categoryRows.length });
+  }
+
+  return Array.from(countsByCategory.entries())
     .sort(([firstCategory], [secondCategory]) => compareCategoryNames(firstCategory, secondCategory))
-    .flatMap(([category, categoryRows]): ModListRow[] => {
+    .flatMap(([category, counts]): ModListRow[] => {
       const isCollapsed = collapsedCategories.has(category);
       const header: ModListCategoryHeaderRow = {
         kind: "categoryHeader",
         category,
-        modCount: categoryRows.length,
+        modCount: counts.modCount,
+        notEnabledCount: counts.notEnabledCount,
         isCollapsed,
       };
-      return isCollapsed ? [header] : [header, ...categoryRows];
+      return isCollapsed ? [header] : [header, ...(rowsByCategory.get(category) ?? [])];
     });
 };

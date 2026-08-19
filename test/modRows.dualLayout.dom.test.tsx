@@ -337,6 +337,9 @@ describe("categories view in the dual layout", () => {
 
   const withCategories = (mod: Mod, categories: string[]): Mod => ({ ...mod, categories });
 
+  const getHeading = (left: HTMLElement, category: string) =>
+    within(left).getByText(category).closest("button") as HTMLButtonElement;
+
   it("groups the left pane only once the toggle is on, and keeps the toggle out of the enabled pane", async () => {
     const { testStore } = renderDualLayout([
       withCategories(createMod("alpha", false), ["Units"]),
@@ -358,7 +361,8 @@ describe("categories view in the dual layout", () => {
     expect(testStore.getState().app.isModListCategoryViewEnabled).toBe(true);
     await waitFor(() => expect(within(left).queryByText("Graphics")).toBeInTheDocument());
     expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(getLeftPaneLabels(left)).toEqual(["Graphics1", "gamma.pack", "Units1", "alpha.pack"]);
+    // Units holds two mods, one of them already enabled, so only one is left to list.
+    expect(getLeftPaneLabels(left)).toEqual(["Graphics1/1", "gamma.pack", "Units1/2", "alpha.pack"]);
 
     // The enabled pane's row order is the load order, so it stays a flat list.
     expect(within(right).queryByText("Units")).toBeNull();
@@ -374,13 +378,26 @@ describe("categories view in the dual layout", () => {
     await waitFor(() => expect(within(left).queryByText("Uncategorized")).toBeInTheDocument());
 
     expect(getLeftPaneLabels(left)).toEqual([
-      "Uncategorized1",
+      "Uncategorized1/1",
       "gamma.pack",
-      "Graphics1",
+      "Graphics1/1",
       "alpha.pack",
-      "Units1",
+      "Units1/1",
       "alpha.pack",
     ]);
+  });
+
+  it("keeps the heading of a category whose mods are all enabled, with nothing left to list", async () => {
+    renderDualLayout(
+      [withCategories(createMod("alpha", true, 0), ["Units"]), withCategories(createMod("gamma", false), ["Graphics"])],
+      { isModListCategoryViewEnabled: true },
+    );
+
+    const { left } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("Units")).toBeInTheDocument());
+
+    // Nothing to enable in Units, but the heading is what there is to right click to switch it back off.
+    expect(getLeftPaneLabels(left)).toEqual(["Graphics1/1", "gamma.pack", "Units0/1"]);
   });
 
   it("collapses a category when its heading is clicked, and still counts what it holds", async () => {
@@ -391,16 +408,66 @@ describe("categories view in the dual layout", () => {
 
     const { left } = getPanes();
     await waitFor(() => expect(within(left).queryByText("Units")).toBeInTheDocument());
-    expect(getLeftPaneLabels(left)).toEqual(["Units2", "alpha.pack", "beta.pack"]);
+    expect(getLeftPaneLabels(left)).toEqual(["Units2/2", "alpha.pack", "beta.pack"]);
 
-    const heading = within(left).getByText("Units").closest("button") as HTMLButtonElement;
+    const heading = getHeading(left, "Units");
     expect(heading).toHaveAttribute("aria-expanded", "true");
     await act(async () => fireEvent.click(heading));
 
     await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeNull());
     // The heading survives the collapse, and its count still covers the hidden rows.
-    expect(getLeftPaneLabels(left)).toEqual(["Units2"]);
-    expect(within(left).getByText("Units").closest("button")).toHaveAttribute("aria-expanded", "false");
+    expect(getLeftPaneLabels(left)).toEqual(["Units2/2"]);
+    expect(getHeading(left, "Units")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("enables every mod of a category when its heading is right clicked, and disables them once they all are", async () => {
+    const { testStore } = renderDualLayout(
+      [
+        withCategories(createMod("alpha", false), ["Units"]),
+        withCategories(createMod("beta", false), ["Units"]),
+        withCategories(createMod("gamma", false), ["Graphics"]),
+      ],
+      { isModListCategoryViewEnabled: true },
+    );
+
+    const { left, right } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("Units")).toBeInTheDocument());
+
+    await act(async () => fireEvent.contextMenu(getHeading(left, "Units")));
+
+    const isEnabled = (name: string) =>
+      testStore.getState().app.currentPreset.mods.find((mod) => mod.name === `${name}.pack`)?.isEnabled;
+    expect([isEnabled("alpha"), isEnabled("beta"), isEnabled("gamma")]).toEqual([true, true, false]);
+
+    await waitFor(() => expect(within(right).queryByText("alpha human name")).toBeInTheDocument());
+    // The category is left with a heading and no rows, which is what there is to right click again.
+    expect(getLeftPaneLabels(left)).toEqual(["Graphics1/1", "gamma.pack", "Units0/2"]);
+
+    await act(async () => fireEvent.contextMenu(getHeading(left, "Units")));
+
+    expect([isEnabled("alpha"), isEnabled("beta")]).toEqual([false, false]);
+    await waitFor(() =>
+      expect(getLeftPaneLabels(left)).toEqual(["Graphics1/1", "gamma.pack", "Units2/2", "alpha.pack", "beta.pack"]),
+    );
+  });
+
+  it("leaves an always enabled mod alone when a category is switched off", async () => {
+    const { testStore } = renderDualLayout(
+      [withCategories(createMod("alpha", true, 0), ["Units"]), withCategories(createMod("beta", true, 1), ["Units"])],
+      { isModListCategoryViewEnabled: true, alwaysEnabledModNames: ["alpha.pack"] },
+    );
+
+    const { left } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("Units")).toBeInTheDocument());
+    // An always enabled mod counts as enabled, so the category reads as fully enabled.
+    expect(getLeftPaneLabels(left)).toEqual(["Units0/2"]);
+
+    await act(async () => fireEvent.contextMenu(getHeading(left, "Units")));
+
+    const isEnabled = (name: string) =>
+      testStore.getState().app.currentPreset.mods.find((mod) => mod.name === `${name}.pack`)?.isEnabled;
+    expect(isEnabled("alpha")).toBe(true);
+    expect(isEnabled("beta")).toBe(false);
   });
 
   it("collapses and expands every category from the toggle's context menu", async () => {
@@ -414,10 +481,12 @@ describe("categories view in the dual layout", () => {
 
     const toggle = document.getElementById("categoryViewToggle") as HTMLButtonElement;
     await act(async () => fireEvent.contextMenu(toggle));
-    await waitFor(() => expect(getLeftPaneLabels(left)).toEqual(["Graphics1", "Units1"]));
+    await waitFor(() => expect(getLeftPaneLabels(left)).toEqual(["Graphics1/1", "Units1/1"]));
 
     await act(async () => fireEvent.contextMenu(toggle));
-    await waitFor(() => expect(getLeftPaneLabels(left)).toEqual(["Graphics1", "gamma.pack", "Units1", "alpha.pack"]));
+    await waitFor(() =>
+      expect(getLeftPaneLabels(left)).toEqual(["Graphics1/1", "gamma.pack", "Units1/1", "alpha.pack"]),
+    );
   });
 
   it("groups only the mods the search filter left behind", async () => {
@@ -430,6 +499,6 @@ describe("categories view in the dual layout", () => {
     await waitFor(() => expect(within(left).queryByText("Units")).toBeInTheDocument());
 
     // A category with nothing left to show drops out along with its rows.
-    expect(getLeftPaneLabels(left)).toEqual(["Units1", "alpha.pack"]);
+    expect(getLeftPaneLabels(left)).toEqual(["Units1/1", "alpha.pack"]);
   });
 });
