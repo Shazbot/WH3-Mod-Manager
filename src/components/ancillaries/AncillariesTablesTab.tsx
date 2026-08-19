@@ -4,6 +4,11 @@ import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-communi
 import { LOC_TABLE, type AncillariesEditAction, type AncillariesEditState } from "../../ancillariesData/edits";
 import { groupIssuesByRow, type AncillariesRowIssue } from "../../ancillariesData/validate";
 import { parseEditedCellValue } from "../../utility/dbRowCells";
+import {
+  getNewRowsFullValueColumnWidth,
+  isNewRowsFullValueField,
+  NEW_ROWS_COLUMN_MIN_WIDTH,
+} from "../../utility/newRowsColumnSizing";
 import { useLocalizations } from "../../localizationContext";
 import { LocVersion, type DBField, type DBVersion } from "../../packFileTypes";
 
@@ -72,29 +77,40 @@ const AncillariesTablesTab = memo(
     const columnDefs = useMemo<Array<ColDef<GridRow>>>(() => {
       if (!schema) return [];
       return [
-        ...schema.fields.map<ColDef<GridRow>>((field) => ({
-          field: field.name,
-          headerName: columnLabel(field),
-          headerTooltip: `${field.field_type}${field.description ? ` - ${field.description}` : ""}`,
-          editable: true,
-          minWidth: 120,
-          flex: 1,
-          // A setter rather than `onCellValueChanged`: it runs before the value is committed, so a
-          // value the field's type cannot hold is refused outright instead of written and then put
-          // back.
-          valueSetter: (params) => {
-            const nextValue = String(params.newValue ?? "");
-            if (nextValue === String(params.oldValue ?? "")) return false;
-            if (!parseEditedCellValue(field.field_type, nextValue)) return false;
-            params.data[field.name] = nextValue;
-            dispatch({ type: "setCell", id: params.data.__rowId, column: field.name, value: nextValue });
-            return true;
-          },
-          cellClassRules: {
-            "text-red-400": (params) =>
-              (issuesByRow[params.data?.__rowId ?? ""] ?? []).some((issue) => issue.column === field.name),
-          },
-        })),
+        ...schema.fields.map<ColDef<GridRow>>((field) => {
+          const isFullValueField = isNewRowsFullValueField(field);
+          const fullValueColumnWidth = isFullValueField
+            ? getNewRowsFullValueColumnWidth(field, rowData)
+            : NEW_ROWS_COLUMN_MIN_WIDTH;
+
+          return {
+            // Fixed content-sized columns keep identifiers readable; the other columns share whatever
+            // width remains in the grid.
+            minWidth: fullValueColumnWidth,
+            width: isFullValueField ? fullValueColumnWidth : undefined,
+            flex: isFullValueField ? undefined : 1,
+            field: field.name,
+            headerName: columnLabel(field),
+            headerTooltip: `${field.field_type}${field.description ? ` - ${field.description}` : ""}`,
+            editable: true,
+            cellClass: isFullValueField ? "new-rows-full-value" : undefined,
+            // A setter rather than `onCellValueChanged`: it runs before the value is committed, so a
+            // value the field's type cannot hold is refused outright instead of written and then put
+            // back.
+            valueSetter: (params) => {
+              const nextValue = String(params.newValue ?? "");
+              if (nextValue === String(params.oldValue ?? "")) return false;
+              if (!parseEditedCellValue(field.field_type, nextValue)) return false;
+              params.data[field.name] = nextValue;
+              dispatch({ type: "setCell", id: params.data.__rowId, column: field.name, value: nextValue });
+              return true;
+            },
+            cellClassRules: {
+              "text-red-400": (params) =>
+                (issuesByRow[params.data?.__rowId ?? ""] ?? []).some((issue) => issue.column === field.name),
+            },
+          };
+        }),
         {
           field: "__issues",
           headerName: localized.ancillariesIssuesColumn || "Issues",
@@ -104,7 +120,7 @@ const AncillariesTablesTab = memo(
           cellClass: "text-amber-400",
         },
       ];
-    }, [dispatch, issuesByRow, localized, schema]);
+    }, [dispatch, issuesByRow, localized, rowData, schema]);
 
     const addBlankRow = useCallback(() => {
       if (!schema || !selectedTable) return;

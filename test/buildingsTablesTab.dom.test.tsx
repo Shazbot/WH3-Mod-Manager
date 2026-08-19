@@ -8,13 +8,18 @@ import { buildingsEditReducer, emptyBuildingsEditState, type BuildingsEditState 
 import type { BuildingsRowIssue } from "../src/buildingsData/validate";
 import type { DBField, DBVersion, SCHEMA_FIELD_TYPE } from "../src/packFileTypes";
 
-const field = (name: string, field_type: SCHEMA_FIELD_TYPE, default_value = ""): DBField => ({
+const field = (
+  name: string,
+  field_type: SCHEMA_FIELD_TYPE,
+  default_value = "",
+  is_reference: string[] = [],
+): DBField => ({
   name,
   field_type,
   is_key: name === "level_name",
   default_value,
   is_filename: false,
-  is_reference: [],
+  is_reference,
   description: "",
   ca_order: 0,
   is_bitwise: 0,
@@ -25,7 +30,7 @@ const LEVELS_SCHEMA: DBVersion = {
   version: 8,
   fields: [
     field("level_name", "StringU8"),
-    field("chain", "StringU8"),
+    field("chain", "StringU8", "", ["building_chains_tables", "key"]),
     field("create_cost", "I32", "0"),
     field("visible_in_ui", "Boolean", "true"),
   ],
@@ -89,6 +94,19 @@ describe("BuildingsTablesTab", () => {
     expect(await screen.findByText("custom_a_2")).toBeInTheDocument();
     expect(screen.getByText("custom_a_3")).toBeInTheDocument();
     expect(screen.getByText("900")).toBeInTheDocument();
+  });
+
+  it("sizes key and reference columns to keep their values readable", async () => {
+    renderTab(stateWithTwoRows());
+
+    expect(await screen.findByText("custom_a_2")).toBeInTheDocument();
+    const keyCell = screen.getByText("custom_a_2").closest(".ag-cell") as HTMLElement;
+    const referenceCell = screen.getAllByText("chain_a")[0].closest(".ag-cell") as HTMLElement;
+    expect(keyCell).toHaveClass("new-rows-full-value");
+    expect(referenceCell).toHaveClass("new-rows-full-value");
+    expect(Number.parseFloat(keyCell.style.width)).toBeGreaterThan(120);
+    expect(Number.parseFloat(referenceCell.style.width)).toBeGreaterThan(120);
+    expect(screen.getByText("500").closest(".ag-cell")).not.toHaveClass("new-rows-full-value");
   });
 
   it("dispatches setCell for the edited row and column", async () => {

@@ -11,13 +11,18 @@ import {
 import type { AncillariesRowIssue } from "../src/ancillariesData/validate";
 import type { DBField, DBVersion, SCHEMA_FIELD_TYPE } from "../src/packFileTypes";
 
-const field = (name: string, field_type: SCHEMA_FIELD_TYPE, default_value = ""): DBField => ({
+const field = (
+  name: string,
+  field_type: SCHEMA_FIELD_TYPE,
+  default_value = "",
+  is_reference: string[] = [],
+): DBField => ({
   name,
   field_type,
   is_key: name === "key",
   default_value,
   is_filename: false,
-  is_reference: [],
+  is_reference,
   description: "",
   ca_order: 0,
   is_bitwise: 0,
@@ -26,7 +31,7 @@ const field = (name: string, field_type: SCHEMA_FIELD_TYPE, default_value = ""):
 
 const schema: DBVersion = {
   version: 1,
-  fields: [field("key", "StringU8"), field("type", "StringU8")],
+  fields: [field("key", "StringU8"), field("type", "StringU8", "", ["ancillary_types_tables", "key"])],
 };
 
 const stateWithRow = (): AncillariesEditState =>
@@ -61,5 +66,24 @@ describe("AncillariesTablesTab", () => {
     expect(within(screen.getByRole("combobox")).getByRole("option", { name: "ancillaries_tables (1)" })).toHaveClass(
       "text-yellow-400",
     );
+  });
+
+  it("sizes key and reference columns to keep their values readable", async () => {
+    render(
+      <AncillariesTablesTab
+        state={stateWithRow()}
+        dispatch={vi.fn()}
+        onClearAll={vi.fn()}
+        tableSchemas={{ ancillaries_tables: schema }}
+      />,
+    );
+
+    expect(await screen.findByText("anc_a")).toBeInTheDocument();
+    const keyCell = screen.getByText("anc_a").closest(".ag-cell") as HTMLElement;
+    const referenceCell = screen.getByText("type_a").closest(".ag-cell") as HTMLElement;
+    expect(keyCell).toHaveClass("new-rows-full-value");
+    expect(referenceCell).toHaveClass("new-rows-full-value");
+    expect(Number.parseFloat(keyCell.style.width)).toBeGreaterThanOrEqual(120);
+    expect(Number.parseFloat(referenceCell.style.width)).toBeGreaterThanOrEqual(120);
   });
 });
