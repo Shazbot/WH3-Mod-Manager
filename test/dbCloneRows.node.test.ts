@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { applyNewRowsToBuiltData } from "../src/buildingsData/applyEdits";
 import { buildBuildingsData } from "../src/buildingsData/data";
-import { dbClonePackedFilesToBuildingsRows } from "../src/buildingsData/dbCloneRows";
+import { dbClonePackedFilesToBuildingsRows, filterDuplicateBuildingsCloneRows } from "../src/buildingsData/dbCloneRows";
 import { resolveRegionBuildings } from "../src/buildingsData/derive";
 import { buildingsEditReducer, emptyBuildingsEditState, LOC_TABLE } from "../src/buildingsData/edits";
 import type { BuildingsTableRows } from "../src/buildingsData/types";
@@ -25,6 +25,23 @@ const cell = (name: string, value: string, type: SCHEMA_FIELD_TYPE = "StringU8")
 });
 
 describe("DB Clone rows for Buildings", () => {
+  it("skips exact rows already pending while retaining changed overrides", () => {
+    const existingRows = [
+      { table: "example_tables", values: { key: "clone_a", cost: "100" }, origin: "clone" as const },
+    ];
+    const generatedRows = [
+      { table: "example_tables", values: { key: "clone_a", cost: "100" }, origin: "clone" as const },
+      { table: "example_tables", values: { key: "clone_a", cost: "200" }, origin: "clone" as const },
+      { table: "example_tables", values: { key: "clone_b", cost: "300" }, origin: "clone" as const },
+      { table: "example_tables", values: { key: "clone_b", cost: "300" }, origin: "clone" as const },
+    ];
+
+    expect(filterDuplicateBuildingsCloneRows(generatedRows, existingRows, { example_tables: schema })).toEqual([
+      generatedRows[1],
+      generatedRows[2],
+    ]);
+  });
+
   it("converts generated DB and localization files into clone-origin pending rows", () => {
     const packedFiles: PackedFile[] = [
       {

@@ -19,7 +19,7 @@ import BuildingEditModal from "./BuildingEditModal";
 import BuildingCultureVariantsModal from "./BuildingCultureVariantsModal";
 import AddChainModal from "./AddChainModal";
 import { buildingsEditReducer, emptyBuildingsEditState } from "../../buildingsData/edits";
-import { dbClonePackedFilesToBuildingsRows } from "../../buildingsData/dbCloneRows";
+import { dbClonePackedFilesToBuildingsRows, filterDuplicateBuildingsCloneRows } from "../../buildingsData/dbCloneRows";
 import {
   addBuildingLevelRows,
   canAddBuildingBelow,
@@ -229,13 +229,23 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         setError(localized.buildingsCloneNoRows || "DB Clone did not generate any rows.");
         return;
       }
-      dispatchEdit({ type: "addRows", rows: cloneOutput.rows });
+      const rows = filterDuplicateBuildingsCloneRows(
+        cloneOutput.rows,
+        edits.order.map((id) => edits.rowsById[id]).filter((row): row is NonNullable<typeof row> => !!row),
+        { ...tableSchemas, ...cloneOutput.tableSchemas },
+      );
+      if (rows.length === 0) {
+        setError(undefined);
+        closeDeepClone();
+        return;
+      }
+      dispatchEdit({ type: "addRows", rows });
       setCloneTableSchemas((current) => ({ ...current, ...cloneOutput.tableSchemas }));
       setError(undefined);
       setSubTab("tables");
       closeDeepClone();
     },
-    [closeDeepClone, isFeaturesForModdersEnabled, localized.buildingsCloneNoRows],
+    [closeDeepClone, edits, isFeaturesForModdersEnabled, localized.buildingsCloneNoRows, tableSchemas],
   );
 
   const clearPendingEdits = useCallback(() => {

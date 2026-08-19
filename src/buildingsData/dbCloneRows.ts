@@ -1,4 +1,5 @@
 import type { AmendedSchemaField, DBVersion, PackedFile } from "../packFileTypes";
+import { buildRowFromValues } from "../utility/dbRowCells";
 import { LOC_TABLE, type BuildingsNewRow } from "./edits";
 
 /**
@@ -12,6 +13,55 @@ export interface BuildingsCloneRows {
   rows: BuildingsCloneRowDraft[];
   tableSchemas: Record<string, DBVersion>;
 }
+
+/**
+ * The values that will decide whether two pending rows serialize identically.
+ *
+ * A DB row is projected through its schema because the edit model can carry extra values that the
+ * table cannot write. Localization rows use the same projection as the Buildings save path.
+ * Unknown tables still get a stable, value-based signature so a dependency without a catalog
+ * schema can be filtered too.
+ */
+const rowSignature = (
+  table: string,
+  values: Record<string, string>,
+  tableSchemas: Record<string, DBVersion>,
+): string => {
+  if (table === LOC_TABLE) return JSON.stringify([table, values.key ?? "", values.text ?? ""]);
+
+  const schema = tableSchemas[table];
+  if (schema) {
+    return JSON.stringify([table, ...buildRowFromValues(schema, values).map((cell) => cell.resolvedKeyValue)]);
+  }
+
+  return JSON.stringify([
+    table,
+    ...Object.keys(values)
+      .sort()
+      .map((column) => [column, values[column]]),
+  ]);
+};
+
+/**
+ * Removes clone rows that are already pending, including repeats within this clone result.
+ *
+ * Rows with the same key but different values are deliberately retained: those are overrides and
+ * are meaningful to the modder. Only rows that would serialize as the same complete row are
+ * duplicates.
+ */
+export const filterDuplicateBuildingsCloneRows = (
+  rows: BuildingsCloneRowDraft[],
+  existingRows: BuildingsNewRow[],
+  tableSchemas: Record<string, DBVersion>,
+): BuildingsCloneRowDraft[] => {
+  const seen = new Set(existingRows.map((row) => rowSignature(row.table, row.values, tableSchemas)));
+  return rows.filter((row) => {
+    const signature = rowSignature(row.table, row.values, tableSchemas);
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+    return true;
+  });
+};
 
 const dbTableNameFromPath = (path: string) => /^db\\([^\\]+)\\/.exec(path)?.[1];
 
