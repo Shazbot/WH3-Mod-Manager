@@ -43,6 +43,15 @@ type EffectOption = SelectOption & { preferredScope?: string };
 type Tab = "recruitment" | "garrison" | "effects" | "cai";
 
 const WINDOW_THRESHOLD = 60;
+/**
+ * The modal body scrolls, so a menu opened low in a tab is clipped by it. Portalling to the body
+ * with fixed positioning lets the list overhang the panel the way it does elsewhere in the app.
+ */
+const portalSelectStyle = {
+  ...selectStyle,
+  menuPortal: (base: any) => ({ ...base, zIndex: 80 }),
+  menu: (base: any) => ({ ...selectStyle.menu(base), zIndex: 80 }),
+};
 const inputClass = "rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-gray-100";
 const labelClass = "flex flex-col gap-1 text-xs text-gray-400";
 
@@ -304,11 +313,14 @@ const BuildingEditModal = memo(
                   {localized.buildingsUnit || "Unit"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={unitOptions}
                     value={unitOptions.find((option) => option.value === unitKey) ?? null}
                     onChange={(option) => setUnitKey((option as SelectOption | null)?.value ?? "")}
                     formatOptionLabel={formatKeyedOption}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </label>
                 <div className="flex gap-3">
@@ -355,7 +367,7 @@ const BuildingEditModal = memo(
                   {localized.buildingsUnit || "Unit"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={unitOptions}
                     value={unitOptions.find((option) => option.value === garrisonUnitKey) ?? null}
                     onChange={(option) => {
@@ -370,17 +382,23 @@ const BuildingEditModal = memo(
                       }
                     }}
                     formatOptionLabel={formatKeyedOption}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </label>
                 <label className={labelClass}>
                   {localized.buildingsUnitGroup || "Unit group"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={garrisonUnitGroupOptions}
                     value={garrisonUnitGroupOptions.find((option) => option.value === unitGroup) ?? null}
                     onChange={(option) => setUnitGroup((option as SelectOption | null)?.value ?? "")}
                     formatOptionLabel={formatKeyedOption}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </label>
                 <button
@@ -471,7 +489,7 @@ const BuildingEditModal = memo(
                   {localized.buildingsEffect || "Effect"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={effectOptions}
                     value={effectOptions.find((option) => option.value === effectKey) ?? null}
                     onChange={(option) => {
@@ -482,6 +500,9 @@ const BuildingEditModal = memo(
                     filterOption={createFilter({ ignoreAccents: false })}
                     placeholder={localized.buildingsSearchEffects || "Search effects..."}
                     formatOptionLabel={formatKeyedOption}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </label>
                 {effectKey && (
@@ -497,11 +518,14 @@ const BuildingEditModal = memo(
                     {localized.buildingsScope || "Scope"}
                     <WindowedSelect
                       windowThreshold={WINDOW_THRESHOLD}
-                      styles={selectStyle}
+                      styles={portalSelectStyle}
                       options={scopeOptions}
                       value={scopeOptions.find((option) => option.value === effectScope) ?? null}
                       onChange={(option) => setEffectScope((option as SelectOption | null)?.value ?? "")}
                       formatOptionLabel={formatKeyedOption}
+                      menuPortalTarget={document.body}
+                      menuPosition="fixed"
+                      menuPlacement="auto"
                     />
                   </label>
                   <label className={`${labelClass} w-32`}>
@@ -537,12 +561,15 @@ const BuildingEditModal = memo(
                   {localized.buildingsCopyCaiFrom || "Copy CAI rows from chain"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={chainOptions}
                     value={chainOptions.find((option) => option.value === caiSource) ?? null}
                     onChange={(option) => setCaiSource((option as SelectOption | null)?.value ?? "")}
                     filterOption={createFilter({ ignoreAccents: false })}
                     formatOptionLabel={formatKeyedOption}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                     placeholder={localized.buildingsSearchBuildingChains || "Search building chains..."}
                   />
                 </label>

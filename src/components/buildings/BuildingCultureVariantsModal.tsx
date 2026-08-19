@@ -449,7 +449,7 @@ const BuildingCultureVariantsModal = memo(
                   {localized.buildingsCulture || "Culture"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={cultureOptions}
                     value={findOption(cultureOptions, newCulture)}
                     onChange={(option) => {
@@ -457,29 +457,38 @@ const BuildingCultureVariantsModal = memo(
                       setNewSubculture("");
                       setNewFaction("");
                     }}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </label>
                 <label className={labelClass}>
                   {localized.buildingsSubculture || "Subculture"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={subcultureOptions}
                     value={findOption(subcultureOptions, newSubculture)}
                     onChange={(option) => {
                       setNewSubculture((option as SelectOption | null)?.value ?? "");
                       setNewFaction("");
                     }}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </label>
                 <label className={labelClass}>
                   {localized.buildingsFaction || "Faction"}
                   <WindowedSelect
                     windowThreshold={WINDOW_THRESHOLD}
-                    styles={selectStyle}
+                    styles={portalSelectStyle}
                     options={factionOptions}
                     value={findOption(factionOptions, newFaction)}
                     onChange={(option) => setNewFaction((option as SelectOption | null)?.value ?? "")}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    menuPlacement="auto"
                   />
                 </label>
                 <label className={`${labelClass} min-w-[15rem]`}>
