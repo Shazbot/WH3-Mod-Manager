@@ -153,6 +153,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     hiddenMainWindowTabs: config.hiddenMainWindowTabs ?? [],
     moddersPrefix: config.moddersPrefix ?? "",
     modRowsSortingType: config.modRowsSortingType ?? SortingType.Ordered,
+    enabledModsPaneSortingType: config.enabledModsPaneSortingType ?? SortingType.Ordered,
     currentGame: config.currentGame ?? "wh3",
   };
 };

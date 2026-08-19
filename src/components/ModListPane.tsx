@@ -67,7 +67,8 @@ type ModListPaneProps = {
   areThumbnailsEnabled: boolean;
   isAuthorEnabled: boolean;
   sortingType: SortingType;
-  setSortingType: (sortingType: SortingType) => void;
+  /** The second argument is the shift-click that sorts both panes of the dual layout by one column. */
+  setSortingType: (sortingType: SortingType, isSortingBothPanes?: boolean) => void;
   onOrderRightClick: () => void;
   onEnabledRightClick: () => void;
   loadOrderIndexByModName: Map<string, number>;
@@ -270,6 +271,14 @@ const ModListPane = memo(
       <div
         className={`grid pt-1.5 ${(isCompact && `mod-list-compact mod-list-${density}`) || ""} ${gridClass}`}
         id={gridId}
+        /*
+         * Shift clicking a column header sorts both panes by it. Shift is also how the browser extends a
+         * text selection to whatever was clicked, which paints every row between the last caret position
+         * and the header blue - swallowing the mousedown is what keeps the shortcut from doing that.
+         */
+        onMouseDownCapture={(event) => {
+          if (event.shiftKey && (event.target as HTMLElement).closest(".mod-row-header")) event.preventDefault();
+        }}
       >
         <ModListHeader
           {...{

@@ -412,6 +412,8 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   position: sticky;
   top: -2.75rem;
   z-index: 11;
+  /* A header is a control, not text to select; dragging across one used to highlight its wording. */
+  user-select: none;
 }
 
 .mod-row-header:hover,

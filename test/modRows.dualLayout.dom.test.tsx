@@ -164,7 +164,8 @@ describe("dual mod list layout", () => {
     const orderHeader = leftHeaders[0];
     expect(within(orderHeader).getByText(localization.order)).toHaveClass("sr-only");
     const orderLabel = orderHeader.querySelector("[title]") as HTMLElement;
-    expect(orderLabel).toHaveAttribute("title", localization.order);
+    // The wording leads the title; the shift-click hint that follows is about sorting both panes.
+    expect(orderLabel.title.split("\n")[0]).toBe(localization.order);
 
     // Ordered is the active sort here, so its icon is tinted; font weight would do nothing to an SVG.
     expect(orderLabel).toHaveClass("text-blue-400");
@@ -500,5 +501,120 @@ describe("categories view in the dual layout", () => {
 
     // A category with nothing left to show drops out along with its rows.
     expect(getLeftPaneLabels(left)).toEqual(["Units1/1", "alpha.pack"]);
+  });
+});
+
+describe("sorting the dual layout's panes", () => {
+  beforeEach(() => {
+    window.api = {
+      ...window.api,
+      getCustomizableMods: vi.fn(),
+    } as NonNullable<Window["api"]>;
+  });
+
+  /** The name column of one pane; the compact header is an icon with the wording behind it. */
+  const getNameHeader = (pane: HTMLElement) =>
+    within(pane).getByText(localization.name).closest(".mod-row-header-pane") as HTMLElement;
+
+  const getRenderedNames = (pane: HTMLElement) =>
+    Array.from(pane.querySelectorAll<HTMLElement>(".row-div-paddings")).map((row) => row.id);
+
+  it("sorts one pane without touching the other", async () => {
+    // The human names invert the pack name order, so the two sorts are told apart by what is rendered.
+    const { testStore } = renderDualLayout([
+      { ...createMod("b_two", false), humanName: "a first" },
+      { ...createMod("a_one", false), humanName: "z last" },
+      createMod("m_beta", true, 0),
+      createMod("m_alpha", true, 1),
+    ]);
+
+    const { left, right } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("a first")).toBeInTheDocument());
+    // Both panes open on the order the load order gives them.
+    expect(getRenderedNames(left)).toEqual(["a_one.pack", "b_two.pack"]);
+    expect(getRenderedNames(right)).toEqual(["m_beta.pack", "m_alpha.pack"]);
+
+    await act(async () => fireEvent.click(getNameHeader(right)));
+
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanName);
+    // Only the enabled pane re-sorted; the disabled one is still on its own sorting type.
+    expect(getRenderedNames(right)).toEqual(["m_alpha.pack", "m_beta.pack"]);
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.Ordered);
+    expect(getRenderedNames(left)).toEqual(["a_one.pack", "b_two.pack"]);
+
+    await act(async () => fireEvent.click(getNameHeader(left)));
+
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.HumanName);
+    expect(getRenderedNames(left)).toEqual(["b_two.pack", "a_one.pack"]);
+    // And the enabled pane kept the sort it was given.
+    expect(getRenderedNames(right)).toEqual(["m_alpha.pack", "m_beta.pack"]);
+  });
+
+  it("reverses only the pane that was clicked a second time", async () => {
+    const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
+
+    const { left, right } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    await act(async () => fireEvent.click(getNameHeader(right)));
+    await act(async () => fireEvent.click(getNameHeader(right)));
+
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanNameReverse);
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.Ordered);
+  });
+
+  it("sorts both panes by the clicked column when shift is held", async () => {
+    const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
+
+    const { left, right } = getPanes();
+    await waitFor(() => expect(within(left).queryByText("alpha human name")).toBeInTheDocument());
+
+    await act(async () => fireEvent.click(getNameHeader(right), { shiftKey: true }));
+
+    // The pane that was not clicked takes the same sorting type rather than flipping its own direction.
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanName);
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.HumanName);
+
+    await act(async () => fireEvent.click(getNameHeader(left), { shiftKey: true }));
+
+    expect(testStore.getState().app.modRowsSortingType).toBe(SortingType.HumanNameReverse);
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanNameReverse);
+  });
+
+  it("does not let the shift click extend a text selection over the list", async () => {
+    renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+
+    // fireEvent returns false when the handler called preventDefault, which is what stops the selection.
+    expect(fireEvent.mouseDown(getNameHeader(right), { shiftKey: true })).toBe(false);
+    // An ordinary click is left alone.
+    expect(fireEvent.mouseDown(getNameHeader(right))).toBe(true);
+    // And a row is never swallowed, shift or not.
+    const betaRow = right.querySelector<HTMLElement>("[id='beta.pack']") as HTMLElement;
+    expect(fireEvent.mouseDown(betaRow, { shiftKey: true })).toBe(true);
+  });
+
+  it("keeps reordering available on the pane that is sorted by load order", async () => {
+    const { testStore } = renderDualLayout([createMod("alpha", false), createMod("beta", true, 0)]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+    expect(document.getElementById("load-order-icon-beta.pack")).toBeInTheDocument();
+
+    // Sorting the enabled pane by anything else makes a dropped position meaningless, so placement goes.
+    await act(async () => fireEvent.click(getNameHeader(right)));
+    expect(testStore.getState().app.enabledModsPaneSortingType).toBe(SortingType.HumanName);
+
+    const betaRow = right.querySelector<HTMLElement>("[id='beta.pack']") as HTMLElement;
+    fireEvent.mouseEnter(betaRow);
+    expect(document.getElementById("load-order-icon-beta.pack")).toHaveClass("hidden");
+
+    // The disabled pane's own sorting type has no say in it.
+    const { left } = getPanes();
+    await act(async () => fireEvent.click(getNameHeader(left)));
+    fireEvent.mouseEnter(betaRow);
+    expect(document.getElementById("load-order-icon-beta.pack")).toHaveClass("hidden");
   });
 });

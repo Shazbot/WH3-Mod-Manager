@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import appReducer, {
+  setEnabledModsPaneSortingType,
   setFromConfig,
   setModListDensity,
   toggleIsDualModListLayoutEnabled,
@@ -8,6 +9,7 @@ import appReducer, {
   toggleIsShowingDisabledModsLoadOrder,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
+import { SortingType } from "../src/utility/modRowSorting";
 import { selectConfigSavePayload, resetConfigSavePayloadCache } from "../src/config/configSavePayload";
 
 describe("dual mod list layout option", () => {
@@ -121,5 +123,38 @@ describe("mod list categories view option", () => {
     resetConfigSavePayloadCache();
     const payload = selectConfigSavePayload({ ...initialState, isModListCategoryViewEnabled: true });
     expect(payload.config.isModListCategoryViewEnabled).toBe(true);
+  });
+});
+
+describe("the enabled pane's own sorting type", () => {
+  it("starts on load order, like the list the other pane shares with the single layout", () => {
+    expect(initialState.enabledModsPaneSortingType).toBe(SortingType.Ordered);
+    expect(initialState.modRowsSortingType).toBe(SortingType.Ordered);
+  });
+
+  it("is set without touching the sorting type the other pane uses", () => {
+    const sorted = appReducer(initialState, setEnabledModsPaneSortingType(SortingType.HumanName));
+    expect(sorted.enabledModsPaneSortingType).toBe(SortingType.HumanName);
+    expect(sorted.modRowsSortingType).toBe(SortingType.Ordered);
+  });
+
+  it("is restored from the config, and falls back to load order when the config predates it", () => {
+    const restored = appReducer(
+      initialState,
+      setFromConfig({ ...initialState, enabledModsPaneSortingType: SortingType.Author }),
+    );
+    expect(restored.enabledModsPaneSortingType).toBe(SortingType.Author);
+
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.enabledModsPaneSortingType;
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).enabledModsPaneSortingType).toBe(
+      SortingType.Ordered,
+    );
+  });
+
+  it("is written to the config, so it survives a restart", () => {
+    resetConfigSavePayloadCache();
+    const payload = selectConfigSavePayload({ ...initialState, enabledModsPaneSortingType: SortingType.LastUpdated });
+    expect(payload.config.enabledModsPaneSortingType).toBe(SortingType.LastUpdated);
   });
 });

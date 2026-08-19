@@ -90,6 +90,7 @@ const initialState = {
   // if a enabled mod was removed it's possible it was updated, re-enabled it then
   removedModsData: [],
   modRowsSortingType: SortingType.Ordered,
+  enabledModsPaneSortingType: SortingType.Ordered,
   importedMods: [],
   pendingUsedModsImport: undefined,
   availableLanguages: ["en"],

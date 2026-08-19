@@ -253,6 +253,11 @@ declare global {
     dataModsToEnableByName: string[];
     removedModsData: RemovedModData[];
     modRowsSortingType: SortingType;
+    /**
+     * How the dual layout's enabled pane is sorted. The other pane keeps using modRowsSortingType, which
+     * is also what the single list and the Enabled Mods tab sort by, so the two panes sort separately.
+     */
+    enabledModsPaneSortingType: SortingType;
     availableLanguages: string[];
     currentLanguage?: SupportedLanguages;
     currentLocalization: Record<string, string>;
@@ -330,6 +335,7 @@ declare global {
     | "categories"
     | "categoryColors"
     | "modRowsSortingType"
+    | "enabledModsPaneSortingType"
     | "currentLanguage"
     | "currentGame"
     | "packDataOverwrites"

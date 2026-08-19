@@ -112,6 +112,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       categories: appState.categories,
       categoryColors: appState.categoryColors,
       modRowsSortingType: appState.modRowsSortingType,
+      enabledModsPaneSortingType: appState.enabledModsPaneSortingType,
       currentLanguage: appState.currentLanguage,
       currentGame: appState.currentGame,
       packDataOverwrites: appState.packDataOverwrites,

@@ -16,7 +16,8 @@ type ModListHeaderProps = {
   areThumbnailsEnabled: boolean;
   isAuthorEnabled: boolean;
   sortingType: SortingType;
-  setSortingType: (sortingType: SortingType) => void;
+  /** The second argument is the shift-click that sorts both panes of the dual layout by one column. */
+  setSortingType: (sortingType: SortingType, isSortingBothPanes?: boolean) => void;
   onOrderRightClick: () => void;
   onEnabledRightClick: () => void;
 };
@@ -53,7 +54,8 @@ const ModListHeader = memo(
           className={`inline-flex items-center cursor-pointer transition-opacity ${
             isActiveSort ? "text-blue-400 opacity-100" : "opacity-60 hover:opacity-100"
           }`}
-          title={label}
+          // Each pane sorts on its own, so the way to sort both by one column has to be said somewhere.
+          title={`${label}\n${localized.sortBothPanes || "Shift click: sort both lists."}`}
         >
           <Icon size="1.25rem" aria-hidden />
           <span className="sr-only">{label}</span>
@@ -65,7 +67,7 @@ const ModListHeader = memo(
         // Onboarding points at this cell, and the dual layout would otherwise render the id twice.
         id={isInsidePane ? undefined : "sortHeader"}
         className={`flex place-items-center w-full justify-center z-[11] rounded-tl-xl ${headerClass}`}
-        onClick={() => setSortingType(SortingType.Ordered)}
+        onClick={(event) => setSortingType(SortingType.Ordered, event.shiftKey)}
         onContextMenu={onOrderRightClick}
       >
         {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
@@ -90,8 +92,8 @@ const ModListHeader = memo(
     const lastUpdatedHeader = (
       <div
         className={`flex place-items-center ${isCompact ? "justify-center " : "pl-1 grid-area-autohide "}${headerClass}`}
-        onClick={() => setSortingType(SortingType.LastUpdated)}
-        onContextMenu={() => setSortingType(SortingType.SubbedTime)}
+        onClick={(event) => setSortingType(SortingType.LastUpdated, event.shiftKey)}
+        onContextMenu={(event) => setSortingType(SortingType.SubbedTime, event.shiftKey)}
       >
         {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
           modRowSorting.getSortingArrow(sortingType)}
@@ -108,7 +110,7 @@ const ModListHeader = memo(
     const configHeader = (
       <div
         className={`flex place-items-center justify-center rounded-tr-xl ${isCompact ? "" : "pl-1 "}${headerClass}`}
-        onClick={() => setSortingType(SortingType.IsCustomizable)}
+        onClick={(event) => setSortingType(SortingType.IsCustomizable, event.shiftKey)}
       >
         {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
         {(isCompact &&
@@ -140,8 +142,8 @@ const ModListHeader = memo(
           )}
           <div
             className={`flex place-items-center justify-center ${headerClass}`}
-            onClick={() => setSortingType(SortingType.HumanName)}
-            onContextMenu={() => setSortingType(SortingType.PackName)}
+            onClick={(event) => setSortingType(SortingType.HumanName, event.shiftKey)}
+            onContextMenu={(event) => setSortingType(SortingType.PackName, event.shiftKey)}
           >
             {(modRowSorting.isHumanNameSort(sortingType) ||
               modRowSorting.isPackNameSort(sortingType) ||
@@ -168,7 +170,7 @@ const ModListHeader = memo(
         {orderHeader}
         <div
           className={`flex place-items-center w-full justify-center z-10 ${headerClass}`}
-          onClick={() => setSortingType(SortingType.IsEnabled)}
+          onClick={(event) => setSortingType(SortingType.IsEnabled, event.shiftKey)}
           onContextMenu={onEnabledRightClick}
           id="enabledHeader"
         >
@@ -193,8 +195,8 @@ const ModListHeader = memo(
         </div>
         <div
           className={`flex grid-area-packName place-items-center pl-1 ${headerClass}`}
-          onClick={() => setSortingType(SortingType.PackName)}
-          onContextMenu={() => setSortingType(SortingType.IsDataPack)}
+          onClick={(event) => setSortingType(SortingType.PackName, event.shiftKey)}
+          onContextMenu={(event) => setSortingType(SortingType.IsDataPack, event.shiftKey)}
         >
           {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
@@ -211,7 +213,7 @@ const ModListHeader = memo(
         </div>
         <div
           className={`flex grid-area-humanName place-items-center pl-1 ${headerClass}`}
-          onClick={() => setSortingType(SortingType.HumanName)}
+          onClick={(event) => setSortingType(SortingType.HumanName, event.shiftKey)}
         >
           {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <span className={`cursor-pointer ${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>
@@ -222,7 +224,7 @@ const ModListHeader = memo(
           className={
             `flex grid-area-autohide place-items-center pl-1 ${headerClass} ` + (isAuthorEnabled ? "" : "hidden")
           }
-          onClick={() => setSortingType(SortingType.Author)}
+          onClick={(event) => setSortingType(SortingType.Author, event.shiftKey)}
         >
           {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <span className={`cursor-pointer ${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>

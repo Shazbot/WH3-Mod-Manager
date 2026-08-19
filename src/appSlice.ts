@@ -605,6 +605,9 @@ const appSlice = createSlice({
     setModRowsSortingType: (state: AppState, action: PayloadAction<SortingType>) => {
       state.modRowsSortingType = action.payload;
     },
+    setEnabledModsPaneSortingType: (state: AppState, action: PayloadAction<SortingType>) => {
+      state.enabledModsPaneSortingType = action.payload;
+    },
     addCategory: (state: AppState, action: PayloadAction<AddCategoryPayload>) =>
       addCategoryByPayload(state, action.payload),
     removeCategory: (state: AppState, action: PayloadAction<RemoveCategoryPayload>) =>
@@ -701,7 +704,9 @@ const appSlice = createSlice({
           : state.pendingUsedModsImport;
       applyUsedModsImportToState(state, modNames);
       if (action.payload === "previous") {
+        // The imported order is only visible in a list that is sorted by it, in either layout.
         state.modRowsSortingType = SortingType.Ordered;
+        state.enabledModsPaneSortingType = SortingType.Ordered;
       }
       state.pendingUsedModsImport = undefined;
     },
@@ -1070,6 +1075,8 @@ const appSlice = createSlice({
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
       state.nodeEditorFavorites = fromConfigAppState.nodeEditorFavorites || [];
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
+      state.enabledModsPaneSortingType =
+        fromConfigAppState.enabledModsPaneSortingType || state.enabledModsPaneSortingType;
       // state.currentLanguage = fromConfigAppState.currentLanguage || "en"; // handled elsewhere
       state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
       state.currentGame = fromConfigAppState.currentGame || "wh3";
@@ -1807,6 +1814,7 @@ export const {
   renameCategory,
   setCategoryColor,
   setModRowsSortingType,
+  setEnabledModsPaneSortingType,
   setAvailableLanguages,
   setPackDataOverwrites,
   removePackDataOverwrite,

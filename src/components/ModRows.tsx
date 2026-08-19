@@ -17,6 +17,7 @@ import {
   disableAllMods,
   resetModLoadOrder,
   setModRowsSortingType,
+  setEnabledModsPaneSortingType,
   setModLoadOrderRelativeTo,
   resetModLoadOrderAll,
   setModBeingCustomized,
@@ -63,15 +64,16 @@ type ModListView = {
   unfilteredVisibleMods: Mod[];
 };
 
-type ModListViewOptions = {
+type SharedModListViewOptions = {
   hiddenModNames: Set<string>;
   alwaysEnabledModNames: Set<string>;
-  sortingType: SortingType;
   customizableMods: Record<string, string[]>;
   filter: string;
   isAuthorEnabled: boolean;
   isDev: boolean;
 };
+
+type ModListViewOptions = SharedModListViewOptions & { sortingType: SortingType };
 
 /**
  * Sorting and filtering for one list of mods.
@@ -147,6 +149,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const modListDensity = useAppSelector((state) => state.app.modListDensity);
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
+  const enabledPaneSortingType = useAppSelector((state) => state.app.enabledModsPaneSortingType);
   const customizableMods = useAppSelector((state) => state.app.customizableMods);
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
@@ -200,6 +203,9 @@ const ModRows = memo((props: ModRowsProps) => {
     setPageScroll(props.scrollElement.current);
   }, [props.scrollElement]);
 
+  /** Placement mode only runs in a list that is sorted by load order, and that list is the enabled one. */
+  const reorderSortingType = isDualLayout ? enabledPaneSortingType : sortingType;
+
   /** Placement mode always runs in the list that holds the enabled mods. */
   const getReorderScrollElement = useCallback(
     () => (isDualLayout ? rightPaneScroll : pageScroll),
@@ -250,36 +256,30 @@ const ModRows = memo((props: ModRowsProps) => {
     [alwaysEnabledModNames, currentPresetMods],
   );
 
+  /** Everything the two panes derive their lists from alike; the sorting type is per pane. */
   const modListViewOptions = useMemo(
-    (): ModListViewOptions => ({
+    (): SharedModListViewOptions => ({
       hiddenModNames,
       alwaysEnabledModNames,
-      sortingType,
       customizableMods,
       // Placement mode shows the whole enabled list, so a live search filter is ignored while it runs.
       filter: loadOrderModName ? "" : filter,
       isAuthorEnabled,
       isDev,
     }),
-    [
-      alwaysEnabledModNames,
-      customizableMods,
-      filter,
-      hiddenModNames,
-      isAuthorEnabled,
-      isDev,
-      loadOrderModName,
-      sortingType,
-    ],
+    [alwaysEnabledModNames, customizableMods, filter, hiddenModNames, isAuthorEnabled, isDev, loadOrderModName],
   );
 
   const disabledModsView = useMemo(
-    () => (isDualLayout ? buildModListView(disabledMods, modListViewOptions) : undefined),
-    [disabledMods, isDualLayout, modListViewOptions],
+    () => (isDualLayout ? buildModListView(disabledMods, { ...modListViewOptions, sortingType }) : undefined),
+    [disabledMods, isDualLayout, modListViewOptions, sortingType],
   );
   const enabledModsView = useMemo(
-    () => (isDualLayout ? buildModListView(enabledMods, modListViewOptions) : undefined),
-    [enabledMods, isDualLayout, modListViewOptions],
+    () =>
+      isDualLayout
+        ? buildModListView(enabledMods, { ...modListViewOptions, sortingType: enabledPaneSortingType })
+        : undefined,
+    [enabledMods, enabledPaneSortingType, isDualLayout, modListViewOptions],
   );
 
   const unfilteredMods = useMemo(() => {
@@ -340,11 +340,27 @@ const ModRows = memo((props: ModRowsProps) => {
     [alwaysEnabledModNamesList, dispatch, runPreservingScroll],
   );
 
+  /**
+   * The two panes of the dual layout sort separately: the disabled one keeps the sorting type the single
+   * list uses, the enabled one has its own. Holding shift while picking a column sorts both by it, and
+   * the pane that was not clicked takes the same sorting type rather than flipping its own direction.
+   */
   const setSortingType = useCallback(
-    (newSortingType: SortingType) => {
-      dispatch(setModRowsSortingType(modRowSorting.getNewSortType(newSortingType, sortingType)));
+    (newSortingType: SortingType, isSortingBothPanes = false) => {
+      const nextSortingType = modRowSorting.getNewSortType(newSortingType, sortingType);
+      dispatch(setModRowsSortingType(nextSortingType));
+      if (isSortingBothPanes && isDualLayout) dispatch(setEnabledModsPaneSortingType(nextSortingType));
     },
-    [dispatch, sortingType],
+    [dispatch, isDualLayout, sortingType],
+  );
+
+  const setEnabledPaneSortingType = useCallback(
+    (newSortingType: SortingType, isSortingBothPanes = false) => {
+      const nextSortingType = modRowSorting.getNewSortType(newSortingType, enabledPaneSortingType);
+      dispatch(setEnabledModsPaneSortingType(nextSortingType));
+      if (isSortingBothPanes) dispatch(setModRowsSortingType(nextSortingType));
+    },
+    [dispatch, enabledPaneSortingType],
   );
 
   const onEnabledRightClick = useCallback(() => {
@@ -361,13 +377,13 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const onRowHoverStart = useCallback(
     (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
-      if (sortingType !== SortingType.Ordered || loadOrderModName) return;
+      if (reorderSortingType !== SortingType.Ordered || loadOrderModName) return;
 
       const element = e.currentTarget as HTMLDivElement;
       const loadOrderIcon = document.getElementById(`load-order-icon-${element.id}`);
       if (loadOrderIcon) loadOrderIcon.classList.remove("hidden");
     },
-    [loadOrderModName, sortingType],
+    [loadOrderModName, reorderSortingType],
   );
 
   const onRowHoverEnd = useCallback(
@@ -497,7 +513,7 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const onSetLoadOrderMode = useCallback(
     (mod: Mod) => {
-      if (!canReorderLoadOrder || sortingType !== SortingType.Ordered) return;
+      if (!canReorderLoadOrder || reorderSortingType !== SortingType.Ordered) return;
       if (loadOrderModName === mod.name) {
         setLoadOrderModName(undefined);
         return;
@@ -526,7 +542,7 @@ const ModRows = memo((props: ModRowsProps) => {
       setActiveLoadOrderPosition(Math.max(0, currentIndex));
       setLoadOrderModName(mod.name);
     },
-    [canonicalEnabledMods, canReorderLoadOrder, getReorderScrollElement, loadOrderModName, sortingType],
+    [canonicalEnabledMods, canReorderLoadOrder, getReorderScrollElement, loadOrderModName, reorderSortingType],
   );
 
   useLayoutEffect(() => {
@@ -623,12 +639,12 @@ const ModRows = memo((props: ModRowsProps) => {
     if (!loadOrderModName) return;
     if (
       !canReorderLoadOrder ||
-      sortingType !== SortingType.Ordered ||
+      reorderSortingType !== SortingType.Ordered ||
       !unfilteredVisibleMods.some((mod) => mod.name === loadOrderModName)
     ) {
       setLoadOrderModName(undefined);
     }
-  }, [canReorderLoadOrder, loadOrderModName, sortingType, unfilteredVisibleMods]);
+  }, [canReorderLoadOrder, loadOrderModName, reorderSortingType, unfilteredVisibleMods]);
 
   useEffect(() => {
     if (!loadOrderModName) return;
@@ -807,8 +823,6 @@ const ModRows = memo((props: ModRowsProps) => {
   const sharedPaneProps = {
     areThumbnailsEnabled,
     isAuthorEnabled,
-    sortingType,
-    setSortingType,
     onOrderRightClick,
     onEnabledRightClick,
     density: modListDensity,
@@ -896,6 +910,8 @@ const ModRows = memo((props: ModRowsProps) => {
                 <ModListPane
                   {...sharedPaneProps}
                   rowData={disabledPaneRows}
+                  sortingType={sortingType}
+                  setSortingType={setSortingType}
                   onCategoryToggled={onCategoryToggled}
                   onCategoryRightClick={onCategoryRightClick}
                   categoryColors={categoryColors}
@@ -930,6 +946,8 @@ const ModRows = memo((props: ModRowsProps) => {
                 <ModListPane
                   {...sharedPaneProps}
                   rowData={enabledRowData}
+                  sortingType={enabledPaneSortingType}
+                  setSortingType={setEnabledPaneSortingType}
                   scrollElement={rightPaneScroll}
                   listRef={rightListRef}
                   paneHandleRef={rightPaneHandleRef}
@@ -950,6 +968,8 @@ const ModRows = memo((props: ModRowsProps) => {
           <ModListPane
             {...sharedPaneProps}
             rowData={rowData}
+            sortingType={sortingType}
+            setSortingType={setSortingType}
             scrollElement={pageScroll}
             listRef={singleListRef}
             paneHandleRef={singlePaneHandleRef}
