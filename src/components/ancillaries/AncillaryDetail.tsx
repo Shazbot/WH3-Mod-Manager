@@ -494,7 +494,7 @@ const AncillaryDetail = memo(
             crisp at any card height instead of stretching. */}
         <div
           style={{ fontFamily: '"Libre Baskerville", serif' }}
-          className="space-y-2 rounded-md border-2 border-amber-900/70 bg-gradient-to-b from-gray-900 to-gray-950 p-4 text-sm text-gray-100 shadow-[inset_0_0_0_1px_rgba(217,164,80,0.35)]"
+          className="space-y-3 rounded-md border-2 border-amber-900/70 bg-gradient-to-b from-gray-900 to-gray-950 p-4 text-base text-gray-100 shadow-[inset_0_0_0_1px_rgba(217,164,80,0.35)]"
         >
           <div className="flex items-start gap-3">
             {detail.iconUrl ? (
@@ -503,12 +503,12 @@ const AncillaryDetail = memo(
               <span className="h-12 w-12 shrink-0 rounded border border-amber-900/60 bg-amber-700/30" />
             )}
             <div className="min-w-0 flex-1">
-              <div className="text-base font-semibold text-amber-100">{name}</div>
-              <div className="text-xs text-gray-300">
+              <div className="text-lg font-semibold leading-snug text-amber-100">{name}</div>
+              <div className="text-sm text-gray-300">
                 {detail.categoryName}
                 {detail.subcategoryName ? ` · ${detail.subcategoryName}` : ""}
               </div>
-              <div className="break-all text-[11px] text-gray-400">{detail.key}</div>
+              <div className="break-all font-mono text-xs text-gray-400">{detail.key}</div>
             </div>
             {isEditingEnabled && onClone && (
               <button
@@ -524,17 +524,19 @@ const AncillaryDetail = memo(
             )}
           </div>
 
-          {colourText && <p className="border-t border-red-900/40 pt-2 text-xs italic text-gray-300">{colourText}</p>}
-          {explanation && <p className="text-xs text-gray-200">{explanation}</p>}
+          {colourText && (
+            <p className="border-t border-red-900/40 pt-2 text-sm italic leading-relaxed text-gray-300">{colourText}</p>
+          )}
+          {explanation && <p className="text-sm leading-relaxed text-gray-200">{explanation}</p>}
 
           {detail.effects.length > 0 && (
-            <div className="space-y-1 border-t border-red-900/40 pt-2">
+            <div className="space-y-1.5 border-t border-red-900/40 pt-2">
               {detail.effects.map((effect) => (
-                <div key={`${effect.effectKey}`} className="flex items-center gap-2 text-xs">
+                <div key={`${effect.effectKey}`} className="flex items-start gap-2.5 text-sm leading-snug">
                   {effect.iconUrl ? (
-                    <img src={effect.iconUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
+                    <img src={effect.iconUrl} alt="" className="mt-0.5 h-6 w-6 shrink-0 object-contain" />
                   ) : (
-                    <span className="h-5 w-5 shrink-0" />
+                    <span className="h-6 w-6 shrink-0" />
                   )}
                   <span className={effect.isPositiveValueGood === effect.value >= 0 ? "text-lime-200" : "text-red-200"}>
                     {effect.localizedKey}
