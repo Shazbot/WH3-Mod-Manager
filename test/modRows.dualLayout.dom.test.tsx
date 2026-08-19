@@ -176,16 +176,20 @@ describe("dual mod list layout", () => {
     // Every compact header centres its icon rather than hugging the left edge.
     expect(leftHeaders.every((header) => header.classList.contains("justify-center"))).toBe(true);
 
-    // The wording is gone from view but still reaches screen readers and the hover title.
+    // The wording is gone from view but still reaches screen readers, and the tooltip carries it.
     const orderHeader = leftHeaders[0];
-    expect(within(orderHeader).getByText(localization.order)).toHaveClass("sr-only");
-    const orderLabel = orderHeader.querySelector("[title]") as HTMLElement;
-    // The wording leads the title; the shift-click hint that follows is about sorting both panes.
-    expect(orderLabel.title.split("\n")[0]).toBe(localization.order);
+    const orderLabel = orderHeader.querySelector(".sr-only") as HTMLElement;
+    expect(orderLabel).toHaveTextContent(localization.order);
+
+    // One tooltip per column, the native one: the wording leads it, and nothing inside the cell draws a
+    // second on top of it.
+    expect(orderHeader.title.split("\n")[0]).toBe(localization.order);
+    expect(orderHeader.querySelector("[title]")).toBeNull();
+    expect(within(orderHeader).queryAllByText(localization.order)).toHaveLength(1);
 
     // Ordered is the active sort here, so its icon is tinted; font weight would do nothing to an SVG.
-    expect(orderLabel).toHaveClass("text-blue-400");
-    const nameLabel = leftHeaders[2].querySelector("[title]") as HTMLElement;
+    expect(orderLabel.parentElement).toHaveClass("text-blue-400");
+    const nameLabel = (leftHeaders[2].querySelector(".sr-only") as HTMLElement).parentElement as HTMLElement;
     expect(nameLabel).toHaveClass("opacity-60");
     expect(nameLabel).not.toHaveClass("text-blue-400");
 
@@ -744,6 +748,26 @@ describe("sorting the dual layout's panes", () => {
       "m_untitled.pack",
       "encoded.pack",
     ]);
+  });
+
+  it("says what each column is, what right clicking it does and how to sort both panes, in one tooltip", async () => {
+    renderDualLayout([createMod("alpha", false), { ...createMod("beta", true, 0), isInData: true }]);
+
+    const { right } = getPanes();
+    await waitFor(() => expect(within(right).queryByText("beta human name")).toBeInTheDocument());
+
+    const nameTitleLines = getNameHeader(right).title.split("\n");
+    expect(nameTitleLines[0]).toBe(localization.name);
+    expect(nameTitleLines).toContain(
+      [localization.name, localization.pack, localization.author, localization.dataPacks].join(" \u2192 "),
+    );
+    expect(nameTitleLines[nameTitleLines.length - 1]).toMatch(/shift/i);
+
+    // Every compact column carries exactly one, and it is the cell that carries it.
+    for (const header of Array.from(right.querySelectorAll<HTMLElement>(".mod-row-header-pane"))) {
+      expect(header.title).not.toBe("");
+      expect(header.querySelector("[title]")).toBeNull();
+    }
   });
 
   it("does not let the shift click extend a text selection over the list", async () => {

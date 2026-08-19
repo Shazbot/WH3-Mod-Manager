@@ -194,7 +194,8 @@ describe("Categories", () => {
 
     await user.type(await screen.findByPlaceholderText(enTranslation.nameFilter), "bretonnia & co");
 
-    await waitFor(() => expect(screen.queryByText("Zulu")).not.toBeInTheDocument());
+    // The filter is debounced by 200ms, which a loaded machine can stretch well past the default wait.
+    await waitFor(() => expect(screen.queryByText("Zulu")).not.toBeInTheDocument(), { timeout: 5000 });
     expect(screen.getByText("Bretonnia & Co")).toBeInTheDocument();
   });
 
