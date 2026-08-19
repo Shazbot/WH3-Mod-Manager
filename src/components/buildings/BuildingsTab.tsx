@@ -689,6 +689,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           onSaved={() => {
             dispatchEdit({ type: "reset" });
             setReloadNonce((previous) => previous + 1);
+            setIsSaveOpen(false);
           }}
         />
       )}

@@ -28,7 +28,7 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
     [mods],
   );
 
-  const [target, setTarget] = useState<"existing" | "new">(targetPacks.length > 0 ? "existing" : "new");
+  const [target, setTarget] = useState<"existing" | "new">("new");
   const [packPath, setPackPath] = useState(targetPacks[0]?.path ?? "");
   const [newPackName, setNewPackName] = useState(() => {
     // The modder's prefix, the way the written file name uses it, so a new pack sorts with the
