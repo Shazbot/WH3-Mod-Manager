@@ -116,20 +116,29 @@ import type { EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
 import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
 import {
-  VISUALS_DATA_CACHE_VERSION,
+  clearVisualsMemoryCache,
   createEmptyVisualsDataCache,
   getCurrentVisualsTableContribution,
   getCurrentVisualsPackCacheEntry,
+  getCurrentVisualsModSegment,
+  getOrCreateVisualsModSegment,
   getOrCreateVisualsPackCacheEntry,
   getVisualsFilesFromNames,
+  loadVisualsModSegments,
+  loadVanillaVisualsCache,
   mergeVisualsLocContributions,
   mergeVisualsFileContributions,
   mergeVisualsTableContributions,
-  type VisualsDataDiskCache,
+  saveVisualsModSegments,
+  saveVanillaVisualsCache,
+  visualsModSegmentKey,
   type VisualsFileResult,
+  type VisualsModSegment,
+  type VisualsModSegments,
   type VisualsPackCacheEntry,
   type VisualsPackCacheIdentity,
   type VisualsTableContribution,
+  type VisualsVanillaSignatureInputs,
 } from "./visuals/cache";
 import {
   canUseVanillaDbCacheForPack,
@@ -384,6 +393,7 @@ setVanillaDbCacheBuildProgressReporter((progress) => {
 type VisualsSession = {
   sessionId: string;
   enabledModPaths: string[];
+  vanillaCacheSignature: string;
   dbPriorityPackPaths: string[];
   fileSearchPackPaths: string[];
   visualFiles?: VisualsFileResult[];
@@ -504,32 +514,6 @@ const getVanillaPackedFileNames = async (packPath: string): Promise<string[]> =>
 
 const visualsSessions = new Map<string, VisualsSession>();
 const visualsPackIndexes = new Map<string, { size: number; mtimeMs: number; pack: Pack }>();
-const VISUALS_DATA_CACHE_FILE = "visuals-data-cache.bin";
-let visualsDataCachePromise: Promise<VisualsDataDiskCache> | undefined;
-
-const loadVisualsDataCache = async (): Promise<VisualsDataDiskCache> => {
-  if (!visualsDataCachePromise) {
-    visualsDataCachePromise = (async () => {
-      const cacheFilePath = nodePath.join(app.getPath("userData"), VISUALS_DATA_CACHE_FILE);
-      const cache = await readJsonDiskCache<VisualsDataDiskCache>(cacheFilePath);
-      if (
-        !cache ||
-        cache.version !== VISUALS_DATA_CACHE_VERSION ||
-        !cache.entries ||
-        typeof cache.entries !== "object"
-      ) {
-        return createEmptyVisualsDataCache();
-      }
-      return cache;
-    })();
-  }
-  return visualsDataCachePromise;
-};
-
-const saveVisualsDataCache = async (cache: VisualsDataDiskCache): Promise<void> => {
-  const cacheFilePath = nodePath.join(app.getPath("userData"), VISUALS_DATA_CACHE_FILE);
-  await writeJsonDiskCache(cacheFilePath, cache);
-};
 
 const getVisualsPackIdentity = async (packPath: string): Promise<VisualsPackCacheIdentity | undefined> => {
   try {
@@ -538,6 +522,23 @@ const getVisualsPackIdentity = async (packPath: string): Promise<VisualsPackCach
   } catch {
     return undefined;
   }
+};
+
+const getVisualsVanillaSignature = async (
+  game: SupportedGames,
+  dbPackPath: string,
+): Promise<{ signature: string; signatureInputs: VisualsVanillaSignatureInputs }> => {
+  const identity = await getVisualsPackIdentity(dbPackPath);
+  const signatureInputs: VisualsVanillaSignatureInputs = {
+    feature: 1,
+    game,
+    schema: getVisualsSchemaHash(game),
+    identities: [[nodePath.resolve(dbPackPath), identity?.size ?? -1, identity?.mtimeMs ?? -1]],
+  };
+  return {
+    signature: createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex"),
+    signatureInputs,
+  };
 };
 
 const getVisualsSchemaHash = (game: SupportedGames): string | undefined => {
@@ -682,23 +683,41 @@ const getVisualsFilesForSession = async (session: VisualsSession): Promise<Visua
   if (session.visualFilesPromise) return session.visualFilesPromise;
 
   session.visualFilesPromise = (async () => {
-    const cache = await loadVisualsDataCache();
+    const vanillaCache =
+      (await loadVanillaVisualsCache(app.getPath("userData"), session.vanillaCacheSignature)) ??
+      createEmptyVisualsDataCache();
+    const modSegments: VisualsModSegments = { ...(await loadVisualsModSegments(app.getPath("userData"))) };
+    const modPathKeys = new Set(session.enabledModPaths.map(visualsModSegmentKey));
     const contributions: VisualsFileResult[][] = [];
-    let didChangeCache = false;
+    let didChangeVanillaCache = false;
+    let didChangeModSegments = false;
     for (const packPath of session.fileSearchPackPaths) {
       const identity = await getVisualsPackIdentity(packPath);
       if (!identity) continue;
-      let entry = getCurrentVisualsPackCacheEntry(cache, identity);
+      const isMod = modPathKeys.has(visualsModSegmentKey(packPath));
+      let entry = isMod
+        ? getCurrentVisualsModSegment(modSegments, identity)
+        : getCurrentVisualsPackCacheEntry(vanillaCache, identity);
       if (!entry?.files) {
         const pack = await getOrLoadPackFromAppData(packPath);
         if (!pack) continue;
-        entry = getOrCreateVisualsPackCacheEntry(cache, identity);
+        entry = isMod
+          ? getOrCreateVisualsModSegment(modSegments, identity)
+          : getOrCreateVisualsPackCacheEntry(vanillaCache, identity);
         entry.files = getVisualsFilesFromNames(pack.packedFiles.map((file) => file.name));
-        didChangeCache = true;
+        if (isMod) didChangeModSegments = true;
+        else didChangeVanillaCache = true;
+      }
+      if (isMod) {
+        (entry as VisualsModSegment).lastUsedMs = Date.now();
+        didChangeModSegments = true;
       }
       contributions.push(entry.files);
     }
-    if (didChangeCache) await saveVisualsDataCache(cache);
+    if (didChangeVanillaCache) {
+      await saveVanillaVisualsCache(app.getPath("userData"), session.vanillaCacheSignature, vanillaCache);
+    }
+    if (didChangeModSegments) await saveVisualsModSegments(app.getPath("userData"), modSegments);
     const files = mergeVisualsFileContributions(contributions);
     session.visualFiles = files;
     return files;
@@ -4667,6 +4686,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       clearEsfMapMemoryCache();
       clearBuildingsMemoryCache();
       clearAncillariesMemoryCache();
+      clearVisualsMemoryCache();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);
       }
@@ -6369,9 +6389,30 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const dbPackPath = nodePath.join(dataFolder, dbPackName);
       const dataPackPath = nodePath.join(dataFolder, "data.pack");
       const localPackPaths = getVanillaLocalisationPackPaths(dataFolder);
-      const visualsCache = await loadVisualsDataCache();
-      const schemaHash = getVisualsSchemaHash(appData.currentGame);
-      const contributionPaths = Array.from(new Set([dbPackPath, ...enabledModPaths, ...localPackPaths]));
+      const vanillaVariantsPackPaths = [...appData.allVanillaPackNames]
+        .filter((packName) => packName.toLowerCase().startsWith("variants"))
+        .map((packName) => nodePath.join(dataFolder, packName))
+        .filter((packPath) => fsExtra.existsSync(packPath))
+        .toSorted((first, second) => collator.compare(nodePath.basename(first), nodePath.basename(second)));
+      // Keep this in low->high priority order so later packs override earlier ones in search aggregation.
+      const fileSearchPackPaths = [
+        ...vanillaVariantsPackPaths,
+        ...(fsExtra.existsSync(dataPackPath) ? [dataPackPath] : []),
+        ...sortedEnabledMods.map((mod) => mod.path),
+      ];
+      const { signature: vanillaCacheSignature, signatureInputs: vanillaSignatureInputs } =
+        await getVisualsVanillaSignature(appData.currentGame, dbPackPath);
+      const visualsCache =
+        (await loadVanillaVisualsCache(app.getPath("userData"), vanillaCacheSignature, vanillaSignatureInputs)) ??
+        createEmptyVisualsDataCache();
+      const visualsModSegments: VisualsModSegments = {
+        ...(await loadVisualsModSegments(app.getPath("userData"))),
+      };
+      const schemaHash = vanillaSignatureInputs.schema;
+      const modPathKeys = new Set(enabledModPaths.map(visualsModSegmentKey));
+      const contributionPaths = Array.from(
+        new Set([dbPackPath, ...enabledModPaths, ...vanillaVariantsPackPaths, dataPackPath]),
+      );
       const identities = new Map<string, VisualsPackCacheIdentity>();
       await Promise.all(
         contributionPaths.map(async (packPath) => {
@@ -6381,7 +6422,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       );
       const getCachedContribution = (packPath: string) => {
         const identity = identities.get(packPath);
-        return identity ? getCurrentVisualsPackCacheEntry(visualsCache, identity) : undefined;
+        if (!identity) return undefined;
+        return modPathKeys.has(visualsModSegmentKey(packPath))
+          ? getCurrentVisualsModSegment(visualsModSegments, identity)
+          : getCurrentVisualsPackCacheEntry(visualsCache, identity);
       };
       const hasCurrentTables = (entry: VisualsPackCacheEntry | undefined) =>
         !!getCurrentVisualsTableContribution(entry, schemaHash);
@@ -6423,14 +6467,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
       }
 
-      let didChangeVisualsCache = false;
+      let didChangeVanillaCache = false;
+      let didChangeModSegments = false;
       const fillCachedContribution = (
         packPath: string,
         options: { tables?: boolean; locs?: boolean },
       ): VisualsPackCacheEntry | undefined => {
         const identity = identities.get(packPath);
         if (!identity) return undefined;
-        const entry = getOrCreateVisualsPackCacheEntry(visualsCache, identity);
+        const isMod = modPathKeys.has(visualsModSegmentKey(packPath));
+        const entry = isMod
+          ? getOrCreateVisualsModSegment(visualsModSegments, identity)
+          : getOrCreateVisualsPackCacheEntry(visualsCache, identity);
         const pack =
           freshlyReadPacks.get(packPath) || appData.packsData.find((candidate) => candidate.path === packPath);
         if (options.tables && schemaHash && entry.tables?.schemaHash !== schemaHash) {
@@ -6439,12 +6487,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             schemaHash,
             contribution: getVisualsTableContribution(pack),
           };
-          didChangeVisualsCache = true;
+          if (isMod) didChangeModSegments = true;
+          else didChangeVanillaCache = true;
         }
         if (options.locs && !entry.locs) {
           if (!pack) return undefined;
           entry.locs = getVisualsLocContribution(pack);
-          didChangeVisualsCache = true;
+          if (isMod) didChangeModSegments = true;
+          else didChangeVanillaCache = true;
         }
         return entry;
       };
@@ -6458,6 +6508,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       for (const packPath of enabledModPaths) {
         const contribution = fillCachedContribution(packPath, { tables: true, locs: true });
         if (contribution) contributionByPath.set(packPath, contribution);
+      }
+      // Refresh the LRU stamp for every enabled segment, including a segment reused without a read.
+      const now = Date.now();
+      for (const packPath of enabledModPaths) {
+        const identity = identities.get(packPath);
+        const segment = identity ? getCurrentVisualsModSegment(visualsModSegments, identity) : undefined;
+        if (segment) {
+          segment.lastUsedMs = now;
+          didChangeModSegments = true;
+        }
       }
       // The game's own locs come from the loc cache, so they are neither materialised into a map
       // here nor persisted per pack in the visuals cache. Its language choice is preserved: the
@@ -6528,17 +6588,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (keyDiff !== 0) return keyDiff;
         return collator.compare(first.faction || "", second.faction || "");
       });
-      const vanillaVariantsPackPaths = [...appData.allVanillaPackNames]
-        .filter((packName) => packName.toLowerCase().startsWith("variants"))
-        .map((packName) => nodePath.join(dataFolder, packName))
-        .filter((packPath) => fsExtra.existsSync(packPath))
-        .toSorted((first, second) => collator.compare(nodePath.basename(first), nodePath.basename(second)));
-      // Keep this in low->high priority order so later packs override earlier ones in search aggregation.
-      const fileSearchPackPaths = [
-        ...vanillaVariantsPackPaths,
-        ...(fsExtra.existsSync(dataPackPath) ? [dataPackPath] : []),
-        ...sortedEnabledMods.map((mod) => mod.path),
-      ];
       const cachedFileContributions: VisualsFileResult[][] = [];
       let areAllFileContributionsCached = true;
       for (const packPath of fileSearchPackPaths) {
@@ -6547,14 +6596,26 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           identity = await getVisualsPackIdentity(packPath);
           if (identity) identities.set(packPath, identity);
         }
-        const files = identity ? getCurrentVisualsPackCacheEntry(visualsCache, identity)?.files : undefined;
+        const files = identity
+          ? modPathKeys.has(visualsModSegmentKey(packPath))
+            ? getCurrentVisualsModSegment(visualsModSegments, identity)?.files
+            : getCurrentVisualsPackCacheEntry(visualsCache, identity)?.files
+          : undefined;
         if (!files) {
           areAllFileContributionsCached = false;
           break;
         }
         cachedFileContributions.push(files);
       }
-      if (didChangeVisualsCache) await saveVisualsDataCache(visualsCache);
+      if (didChangeVanillaCache) {
+        await saveVanillaVisualsCache(
+          app.getPath("userData"),
+          vanillaCacheSignature,
+          visualsCache,
+          vanillaSignatureInputs,
+        );
+      }
+      if (didChangeModSegments) await saveVisualsModSegments(app.getPath("userData"), visualsModSegments);
       const sessionId = `visuals_${hash({
         game: appData.currentGame,
         language: appData.currentLanguage || "en",
@@ -6563,6 +6624,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       visualsSessions.set(sessionId, {
         sessionId,
         enabledModPaths,
+        vanillaCacheSignature,
         dbPriorityPackPaths: [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)],
         fileSearchPackPaths,
         visualFiles: areAllFileContributionsCached ? mergeVisualsFileContributions(cachedFileContributions) : undefined,

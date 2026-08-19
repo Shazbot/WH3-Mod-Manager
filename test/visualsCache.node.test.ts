@@ -1,15 +1,43 @@
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  VISUALS_CACHE_DIR,
+  clearVisualsMemoryCache,
   createEmptyVisualsDataCache,
+  getCurrentVisualsModSegment,
   getCurrentVisualsTableContribution,
   getCurrentVisualsPackCacheEntry,
+  getOrCreateVisualsModSegment,
   getOrCreateVisualsPackCacheEntry,
   getVisualsFilesFromNames,
+  loadVisualsModSegments,
+  loadVanillaVisualsCache,
   mergeVisualsFileContributions,
   mergeVisualsLocContributions,
   mergeVisualsTableContributions,
+  pruneVisualsModSegments,
+  saveVisualsModSegments,
+  saveVanillaVisualsCache,
+  visualsModSegmentKey,
+  type VisualsModSegments,
   type VisualsTableContribution,
 } from "../src/visuals/cache";
+
+vi.mock("@mongodb-js/zstd", () => ({
+  compress: async (input: Buffer) => input,
+  decompress: async (input: Buffer) => input,
+}));
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  clearVisualsMemoryCache();
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => fs.promises.rm(directory, { recursive: true, force: true })),
+  );
+});
 
 const emptyContribution = (): VisualsTableContribution => ({
   variants: [],
@@ -18,6 +46,41 @@ const emptyContribution = (): VisualsTableContribution => ({
 });
 
 describe("Visuals data cache", () => {
+  it("stores vanilla and mod halves separately and round-trips both", async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-visuals-"));
+    temporaryDirectories.push(directory);
+    const vanilla = createEmptyVisualsDataCache();
+    const vanillaIdentity = { packPath: "/game/data/db.pack", size: 100, mtimeMs: 10 };
+    const vanillaEntry = getOrCreateVisualsPackCacheEntry(vanilla, vanillaIdentity);
+    vanillaEntry.files = [{ path: "models\\vanilla.wsmodel", ext: "wsmodel" }];
+    const signatureInputs = {
+      feature: 1,
+      game: "wh3",
+      schema: "schema-a",
+      identities: [["/game/data/db.pack", 100, 10]] as Array<readonly [string, number, number]>,
+    };
+    const modIdentity = { packPath: "/mods/example.pack", size: 200, mtimeMs: 20 };
+    const modSegments: VisualsModSegments = {};
+    const modSegment = getOrCreateVisualsModSegment(modSegments, modIdentity);
+    modSegment.lastUsedMs = 1;
+    modSegment.locs = [["unit_name", "Example"]];
+
+    await saveVanillaVisualsCache(directory, "sig-a", vanilla, signatureInputs);
+    const vanillaPath = path.join(directory, VISUALS_CACHE_DIR, "vanilla.bin");
+    const vanillaBefore = await fs.promises.readFile(vanillaPath);
+    await saveVisualsModSegments(directory, modSegments);
+    clearVisualsMemoryCache();
+
+    const restoredVanilla = await loadVanillaVisualsCache(directory, "sig-a", signatureInputs);
+    const restoredMods = await loadVisualsModSegments(directory);
+    expect(restoredVanilla?.entries[visualsModSegmentKey(vanillaIdentity.packPath)]?.files).toEqual(vanillaEntry.files);
+    expect(restoredMods[visualsModSegmentKey(modIdentity.packPath)]?.locs).toEqual([["unit_name", "Example"]]);
+
+    restoredMods[visualsModSegmentKey(modIdentity.packPath)].locs = [["unit_name", "Changed"]];
+    await saveVisualsModSegments(directory, restoredMods);
+    expect(await fs.promises.readFile(vanillaPath)).toEqual(vanillaBefore);
+  });
+
   it("reuses an unchanged pack and discards every section when its disk identity changes", () => {
     const cache = createEmptyVisualsDataCache();
     const originalIdentity = { packPath: "/mods/example.pack", size: 100, mtimeMs: 10 };
@@ -88,5 +151,32 @@ describe("Visuals data cache", () => {
         [["land_units_onscreen_name_shared_unit", "Mod Name"]],
       ]).get("land_units_onscreen_name_shared_unit"),
     ).toBe("Mod Name");
+  });
+
+  it("keeps mod entries independent and prunes the least recently used segments", () => {
+    const segments: VisualsModSegments = {};
+    const originalIdentity = { packPath: "/mods/example.pack", size: 100, mtimeMs: 10 };
+    const original = getOrCreateVisualsModSegment(segments, originalIdentity);
+    original.lastUsedMs = 1;
+    original.files = [{ path: "models\\one.wsmodel", ext: "wsmodel" }];
+
+    expect(getCurrentVisualsModSegment(segments, { ...originalIdentity })).toBe(original);
+    const replacement = getOrCreateVisualsModSegment(segments, { ...originalIdentity, mtimeMs: 11 });
+    expect(replacement).not.toBe(original);
+    expect(replacement.files).toBeUndefined();
+
+    for (let index = 0; index < 100; index += 1) {
+      const segment = getOrCreateVisualsModSegment(segments, {
+        packPath: `/mods/other-${index}.pack`,
+        size: index,
+        mtimeMs: index,
+      });
+      segment.lastUsedMs = index + 2;
+    }
+    const pruned = pruneVisualsModSegments(segments);
+
+    expect(Object.keys(pruned)).toHaveLength(100);
+    expect(pruned[visualsModSegmentKey(originalIdentity.packPath)]).toBeUndefined();
+    expect(pruned[visualsModSegmentKey("/mods/other-99.pack")]).toBeDefined();
   });
 });
