@@ -153,6 +153,10 @@ const applyPresetEntriesToMods = (mods: Mod[], entries: PresetModEntry[]) => {
 
 const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   const previousModsByName = new Map(state.currentPreset.mods.map((mod) => [mod.name, mod]));
+  const workshopSubscriptionTimesByName = new Map<string, number>();
+  for (const mod of mods) {
+    if (isWorkshopMod(mod) && mod.subbedTime != null) workshopSubscriptionTimesByName.set(mod.name, mod.subbedTime);
+  }
   state.allMods = mods;
   state.currentPreset.mods = resolveModsBySourcePriority(
     mods,
@@ -160,7 +164,12 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
     state.isFeaturesForModdersEnabled,
   ).map((mod) => {
     const previousMod = previousModsByName.get(mod.name);
-    if (!previousMod) return { ...mod };
+    if (!previousMod) {
+      return {
+        ...mod,
+        subbedTime: mod.subbedTime ?? workshopSubscriptionTimesByName.get(mod.name),
+      };
+    }
     return {
       ...mod,
       isEnabled: previousMod.isEnabled,
@@ -169,6 +178,8 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
       humanName: mod.humanName || previousMod.humanName,
       author: mod.author || previousMod.author,
       imgPath: mod.imgPath || previousMod.imgPath,
+      // Keep the subscription date when the visible row is a same-named Data copy of a Workshop mod.
+      subbedTime: mod.subbedTime ?? workshopSubscriptionTimesByName.get(mod.name),
     };
   });
 

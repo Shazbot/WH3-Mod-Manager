@@ -46,6 +46,24 @@ describe("app mod source reconciliation", () => {
     expect(state.allMods).toHaveLength(2);
   });
 
+  it("keeps a Workshop subscription time on the visible Data copy", () => {
+    const folderPaths = {
+      gamePath: "/game",
+      dataFolder: "/game/data",
+      contentFolder: "/workshop",
+      customModFolders: [],
+      modSourceOrder: ["data", "workshop"],
+    };
+    const dataMod = createMod("/game/data/example.pack", "data", "data", true);
+    const workshopMod = createMod("/workshop/123/example.pack", "workshop", "workshop", false);
+    workshopMod.subbedTime = 1_700_000_000_000;
+
+    const state = appReducer({ ...initialState, appFolderPaths: folderPaths }, setMods([dataMod, workshopMod]));
+
+    expect(state.currentPreset.mods[0].path).toBe(dataMod.path);
+    expect(state.currentPreset.mods[0].subbedTime).toBe(workshopMod.subbedTime);
+  });
+
   it("does not restore stale startup load order when folder settings are reconciled", () => {
     const folderPaths = {
       gamePath: "/game",

@@ -13,6 +13,7 @@ import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from 
 import { decodeHTML } from "entities";
 import { DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID } from "./modSources";
 import { registerModThumbnailPath } from "./modThumbnailAssets";
+import { parseWorkshopSubscriptionTimes } from "./workshopSubscriptions";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
@@ -421,33 +422,118 @@ const regKeyValuesAsPromise = (regKey: Registry.Registry): Promise<{ name: strin
   });
 };
 
+const getSteamInstallPath = async (): Promise<string | undefined> => {
+  if (process.platform === "win32") {
+    for (const key of ["\\SOFTWARE\\Wow6432Node\\Valve\\Steam", "\\SOFTWARE\\Valve\\Steam"]) {
+      try {
+        const items = await regKeyValuesAsPromise(
+          new Registry({
+            hive: Registry.HKLM,
+            key,
+          }),
+        );
+        const installPathObj = items.find((x) => x.name === "InstallPath");
+        if (installPathObj?.value) return installPathObj.value;
+      } catch {
+        // The other registry location may contain the Steam installation.
+      }
+    }
+    console.log("Unable to find InstallPath in Windows registry");
+    return;
+  }
+
+  const candidatePaths =
+    process.platform === "linux"
+      ? [
+          nodePath.join(os.homedir(), ".steam", "steam"),
+          nodePath.join(os.homedir(), ".local", "share", "Steam"),
+          nodePath.join(os.homedir(), ".steam", "root"),
+        ]
+      : process.platform === "darwin"
+        ? [nodePath.join(os.homedir(), "Library", "Application Support", "Steam")]
+        : [];
+
+  for (const steamPath of candidatePaths) {
+    try {
+      await dumbfs.promises.access(steamPath);
+      return steamPath;
+    } catch {
+      // Try the next conventional Steam location.
+    }
+  }
+
+  console.log("Unable to find Steam installation directory");
+};
+
+const getSteamUserIds = async (steamInstallPath: string): Promise<string[]> => {
+  const userIds: string[] = [];
+
+  // Prefer the account Steam marks as most recently used when more than one account is present locally.
+  try {
+    const loginUsersPath = nodePath.join(steamInstallPath, "config", "loginusers.vdf");
+    const loginUsers = VDF.parse(await dumbfs.promises.readFile(loginUsersPath, "utf8")) as {
+      users?: Record<string, unknown>;
+    };
+    const mostRecentUser = Object.entries(loginUsers.users ?? {}).find(([, user]) => {
+      if (user === null || typeof user !== "object") return false;
+      return String((user as Record<string, unknown>).MostRecent) === "1";
+    })?.[0];
+    if (mostRecentUser && /^\d+$/.test(mostRecentUser)) userIds.push(mostRecentUser);
+  } catch {
+    // loginusers.vdf is not required for reading the per-user subscription files.
+  }
+
+  try {
+    const userdataPath = nodePath.join(steamInstallPath, "userdata");
+    const entries = await dumbfs.promises.readdir(userdataPath, { withFileTypes: true });
+    userIds.push(
+      ...entries.filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name)).map((entry) => entry.name),
+    );
+  } catch {
+    // Steam may not have created userdata yet, or it may be installed somewhere else.
+  }
+
+  return [...new Set(userIds)];
+};
+
+const getWorkshopSubscriptionTimes = async (
+  game: SupportedGames,
+  log: (msg: string) => void,
+): Promise<Map<string, number>> => {
+  const steamInstallPath = await getSteamInstallPath();
+  if (!steamInstallPath) return new Map();
+
+  const subscriptionTimes = new Map<string, number>();
+  for (const userId of await getSteamUserIds(steamInstallPath)) {
+    const subscriptionsPath = nodePath.join(
+      steamInstallPath,
+      "userdata",
+      userId,
+      "ugc",
+      `${gameToSteamId[game]}_subscriptions.vdf`,
+    );
+
+    try {
+      const contents = await dumbfs.promises.readFile(subscriptionsPath, "utf8");
+      // The most-recently-used account is first, so do not let another local account override it.
+      for (const [workshopId, timestamp] of parseWorkshopSubscriptionTimes(contents)) {
+        if (!subscriptionTimes.has(workshopId)) subscriptionTimes.set(workshopId, timestamp);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        log(`Unable to read Steam Workshop subscriptions at ${subscriptionsPath}: ${error}`);
+      }
+    }
+  }
+
+  return subscriptionTimes;
+};
+
 // Find the steamapps folder, e.g. K:\SteamLibrary\steamapps\
 const getSteamAppsFolder = async (newGame?: SupportedGames) => {
   const game = newGame || appData.currentGame;
-  let installPath = "";
-  if (process.platform === "win32") {
-    const regKey = new Registry({
-      hive: Registry.HKLM,
-      key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
-    });
-
-    const items = await regKeyValuesAsPromise(regKey);
-    const installPathObj = items.find((x) => x.name === "InstallPath");
-    if (!installPathObj) {
-      console.log("Unable to find InstallPath in Windows registry");
-      return;
-    }
-    installPath = installPathObj.value;
-  } else if (process.platform === "linux") {
-    const steamPath = os.homedir() + "/.steam/steam";
-    try {
-      await dumbfs.promises.access(steamPath);
-    } catch {
-      console.log("Unable to find steam directory at " + steamPath);
-      return;
-    }
-    installPath = steamPath;
-  }
+  const installPath = await getSteamInstallPath();
+  if (!installPath) return;
 
   const libFoldersPath = nodePath.join(installPath, "steamapps", "libraryfolders.vdf");
   console.log(`Check lib vdf at ${libFoldersPath}`);
@@ -519,7 +605,11 @@ export const getFolderPaths = async (log: (msg: string) => void, newGame?: Suppo
   log(`Game path is at ${appData.gamesToGameFolderPaths[game].gamePath}`);
 };
 
-export async function getContentModInFolder(contentSubFolderName: string, log: (msg: string) => void): Promise<Mod> {
+export async function getContentModInFolder(
+  contentSubFolderName: string,
+  log: (msg: string) => void,
+  subscriptionTimes?: ReadonlyMap<string, number>,
+): Promise<Mod> {
   if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
   }
@@ -527,13 +617,17 @@ export async function getContentModInFolder(contentSubFolderName: string, log: (
   const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
   const contentSubfolder = nodePath.join(contentFolder, contentSubFolderName);
 
-  let subbedTime = -1;
+  let directoryBirthTime: number | undefined;
   try {
     const stats = await dumbfs.promises.stat(contentSubfolder);
-    subbedTime = stats.birthtimeMs;
+    directoryBirthTime = stats.birthtimeMs;
   } catch (err) {
     log(`ERROR: ${err}`);
   }
+
+  const steamSubscriptionTime =
+    subscriptionTimes?.get(contentSubFolderName) ??
+    (await getWorkshopSubscriptionTimes(appData.currentGame, log)).get(contentSubFolderName);
 
   const files = await dumbfs.readdirSync(contentSubfolder, {
     withFileTypes: true,
@@ -574,7 +668,7 @@ export async function getContentModInFolder(contentSubFolderName: string, log: (
     lastChangedLocal,
     isDeleted: false,
     isMovie: false,
-    subbedTime: (subbedTime != -1 && subbedTime) || lastChangedLocal,
+    subbedTime: steamSubscriptionTime ?? directoryBirthTime ?? lastChangedLocal,
     size,
     isSymbolicLink,
     tags: ["mod"],
@@ -688,6 +782,8 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
 
   if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) throw new Error("Game folder not found");
 
+  const workshopSubscriptionTimes = await getWorkshopSubscriptionTimes(appData.currentGame, log);
+
   const moddingDataMods = await getDataMods(
     appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
     log,
@@ -712,7 +808,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
       .filter((file) => file.isDirectory())
       .map(async (contentSubFolder) => {
         // log(`Reading folder ${contentFolder}\\${file.name}`);
-        return getContentModInFolder(contentSubFolder.name, log);
+        return getContentModInFolder(contentSubFolder.name, log, workshopSubscriptionTimes);
       });
 
     const settledMods = await Promise.allSettled(newMods);
