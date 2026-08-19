@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
+import { autoUpdate, offset, shift, useFloating } from "@floating-ui/react";
 import { createPortal } from "react-dom";
 import WindowedSelect, { components, type MenuListProps } from "react-windowed-select";
 import { createFilter } from "react-select";
@@ -69,19 +69,53 @@ const AncillaryAbilityEffectTooltip = ({
   const [isOpen, setIsOpen] = useState(false);
   const { refs, floatingStyles } = useFloating({
     placement: "right-start",
-    middleware: [offset(12), flip(), shift({ padding: 8 })],
+    // Anchor to the cursor below rather than the full-width row. The row reaches the panel edge,
+    // which made `flip()` place the tooltip on the opposite side of the cursor.
+    middleware: [offset(12), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
 
   const hasAbilities = (abilities?.length ?? 0) > 0;
-  const onMouseEnter = useCallback(() => {
-    if (hasAbilities) setIsOpen(true);
-  }, [hasAbilities]);
-  const onMouseLeave = useCallback(() => setIsOpen(false), []);
+  const setCursorReference = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const { clientX, clientY } = event;
+      refs.setPositionReference({
+        getBoundingClientRect: () => ({
+          x: clientX,
+          y: clientY,
+          top: clientY,
+          bottom: clientY,
+          left: clientX,
+          right: clientX,
+          width: 0,
+          height: 0,
+        }),
+      });
+    },
+    [refs],
+  );
+  const onMouseEnter = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!hasAbilities) return;
+      setCursorReference(event);
+      setIsOpen(true);
+    },
+    [hasAbilities, setCursorReference],
+  );
+  const onMouseMove = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (hasAbilities) setCursorReference(event);
+    },
+    [hasAbilities, setCursorReference],
+  );
+  const onMouseLeave = useCallback(() => {
+    setIsOpen(false);
+    refs.setPositionReference(null);
+  }, [refs]);
 
   return (
     <>
-      <div ref={refs.setReference} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+      <div ref={refs.setReference} onMouseEnter={onMouseEnter} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
         {children}
       </div>
       {isOpen &&
