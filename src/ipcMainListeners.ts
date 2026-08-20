@@ -195,6 +195,12 @@ import {
   WORKSHOP_MOD_SOURCE_ID,
 } from "./modSources";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import {
+  createModdingFolderPacks,
+  replaceEnabledModsWithGeneratedPacks,
+  WHMM_MODDING_FOLDER,
+  type ModdingFolderPackResult,
+} from "./moddingFolderPacks";
 import { serializeSharedModList } from "./sharedModList";
 import { parseUsedMods } from "./usedMods";
 import { readPackHeader } from "./packFileHandler";
@@ -236,6 +242,7 @@ import {
   gameToDBFieldsThatReference,
   gameToReferences,
   getSchemaFileName,
+  getSchemaForGame,
   initializeAllSchemaForGame,
 } from "./schema";
 import {
@@ -10769,6 +10776,45 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     } as Toast);
     await readTablesFromMods(mods, tablesToRead);
   };
+  const createGeneratedModdingPackMod = async (result: ModdingFolderPackResult): Promise<Mod> => {
+    const sourceMod = result.sourceMod;
+    let size = sourceMod?.size || 0;
+    let lastChangedLocal = sourceMod?.lastChangedLocal;
+    try {
+      const stats = await fs.promises.stat(result.packPath);
+      size = stats.size;
+      lastChangedLocal = stats.mtimeMs;
+    } catch (error) {
+      console.error(`Failed to stat generated modding pack ${result.packPath}:`, error);
+    }
+
+    return {
+      humanName: sourceMod?.humanName || "",
+      name: result.packName,
+      path: result.packPath,
+      imgPath: sourceMod?.imgPath || "",
+      workshopId: "",
+      isEnabled: true,
+      modDirectory: nodePath.dirname(result.packPath),
+      isInData: false,
+      isInModding: false,
+      lastChanged: sourceMod?.lastChanged,
+      lastChangedLocal,
+      loadOrder: sourceMod?.loadOrder,
+      author: sourceMod?.author || "",
+      isDeleted: false,
+      isMovie: sourceMod?.isMovie || false,
+      hasStartpos: sourceMod?.hasStartpos,
+      dependencyPacks: sourceMod?.dependencyPacks,
+      reqModIdToName: sourceMod?.reqModIdToName,
+      size,
+      mergedModsData: sourceMod?.mergedModsData,
+      isSymbolicLink: false,
+      tags: sourceMod?.tags || ["mod"],
+      sourceId: WHMM_MODDING_FOLDER,
+      sourceKind: "custom",
+    };
+  };
   ipcMain.handle(
     "executeDBDuplication",
     async (
@@ -10957,7 +11003,44 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const appDataPath = app.getPath("userData");
         const myModsPath = nodePath.join(gamePath, "my_mods.txt");
         const usedModsPath = nodePath.join(gamePath, "used_mods.txt");
-        const sortedMods = sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled));
+        let sortedMods = sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled));
+        const moddingFolderPacks = await createModdingFolderPacks(
+          nodePath.join(dataFolder, "modding"),
+          nodePath.join(gamePath, WHMM_MODDING_FOLDER),
+          sortedMods,
+          readPack,
+          writePack,
+          () => getSchemaForGame(appData.currentGame),
+        );
+        if (moddingFolderPacks.length > 0) {
+          const generatedModdingPacks = await Promise.all(
+            moddingFolderPacks.map((result) => createGeneratedModdingPackMod(result)),
+          );
+          for (const result of moddingFolderPacks) {
+            if (!result.sourceMod || result.sourceMod.path === result.packPath) continue;
+
+            const sourcePath = result.sourceMod.path;
+            const generatedPath = result.packPath;
+            const packDataOverwrites = startGameOptions.packDataOverwrites;
+            if (packDataOverwrites[sourcePath] && !packDataOverwrites[generatedPath]) {
+              packDataOverwrites[generatedPath] = packDataOverwrites[sourcePath];
+            }
+            delete packDataOverwrites[sourcePath];
+
+            const userFlowOptions = startGameOptions.userFlowOptions;
+            if (userFlowOptions[sourcePath] && !userFlowOptions[generatedPath]) {
+              userFlowOptions[generatedPath] = userFlowOptions[sourcePath];
+            }
+            delete userFlowOptions[sourcePath];
+          }
+          sortedMods = replaceEnabledModsWithGeneratedPacks(sortedMods, generatedModdingPacks);
+          console.log(
+            `Generated ${generatedModdingPacks.length} pack(s) from Data/modding in ${nodePath.join(
+              gamePath,
+              WHMM_MODDING_FOLDER,
+            )}`,
+          );
+        }
         const linuxBit = process.platform === "linux" ? "Z:" : "";
         const vanillaPacks = [];
         for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
