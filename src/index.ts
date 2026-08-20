@@ -91,6 +91,9 @@ if (!gotTheLock) {
   }
 
   let checkWH3RunningInterval: NodeJS.Timer;
+  // Reported once per run: the answer is the same every time the game starts, so repeating it on
+  // each launch would just be noise.
+  let hasReportedProcessPriorityRefusal = false;
   let isAppQuitting = false;
   let isQuittingAfterConfigFlush = false;
 
@@ -599,7 +602,18 @@ exec ${quoteForShell(process.execPath)}
               if (appData.isChangingGameProcessPriority && isGameRunning && !appData.isWH3Running) {
                 console.log("Setting process priority to high...");
                 try {
-                  await setGameProcessPriority(processName, processIds);
+                  const priority = await setGameProcessPriority(processName, processIds);
+                  if (!priority.changed && priority.error && !hasReportedProcessPriorityRefusal) {
+                    hasReportedProcessPriorityRefusal = true;
+                    const message = `Could not raise the game's process priority: ${priority.error}`;
+                    console.error(message);
+                    windows.mainWindow?.webContents.send("handleLog", message);
+                    windows.mainWindow?.webContents.send("addToast", {
+                      type: "warning",
+                      messages: [message],
+                      startTime: Date.now(),
+                    } as Toast);
+                  }
                 } catch (error) {
                   console.error("Failed to set game process priority:", error);
                 }

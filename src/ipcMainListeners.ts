@@ -325,6 +325,8 @@ const findExecutableOnPath = (command: string): string | undefined => {
     if (!directory) continue;
     const candidate = nodePath.join(directory, command);
     try {
+      // statSync follows symlinks, so a symlinked launcher still counts, but a directory does not.
+      if (!fs.statSync(candidate).isFile()) continue;
       fs.accessSync(candidate, fs.constants.X_OK);
       return candidate;
     } catch {

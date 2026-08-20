@@ -7,7 +7,8 @@ export const forkSteamWorker = (modulePath: string, args: string[], options: For
     console.error(`Steam worker failed to start (${modulePath}):`, error);
   });
   child.once("exit", (code, signal) => {
-    if (code !== 0) {
+    // A null code means the worker was killed by a signal, which is how deliberate teardown looks.
+    if (code !== 0 && code !== null) {
       console.error(`Steam worker exited unexpectedly (${modulePath})`, { code, signal });
     }
   });
