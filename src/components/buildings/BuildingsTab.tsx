@@ -321,7 +321,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
         if (rows.length === 0) return undefined;
         return {
           label,
-          run: () => dispatchEdit({ type: "addRows", rows }),
+          run: () => dispatchEdit({ type: "upsertRows", rows }),
         };
       };
 

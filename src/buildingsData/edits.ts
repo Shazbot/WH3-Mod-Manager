@@ -63,6 +63,11 @@ export type BuildingsEditAction =
        */
       numericIdCursors?: Record<string, number>;
     }
+  | {
+      type: "upsertRows";
+      rows: Array<Omit<BuildingsNewRow, "id" | "groupId">>;
+      groupId?: string;
+    }
   | { type: "setCell"; id: string; column: string; value: string }
   | { type: "removeRow"; id: string }
   | { type: "removeGroup"; groupId: string };
@@ -72,6 +77,13 @@ export const takeNumericId = (cursors: Record<string, number>, table: string): s
   const next = cursors[table] ?? 0;
   cursors[table] = next + 1;
   return `${next}`;
+};
+
+/** The pending-row identity used when an action should update rather than append a row. */
+const rowIdentity = (table: string, values: Record<string, string>): string | undefined => {
+  const keyColumns = BUILDINGS_TABLE_KEY_COLUMNS[table];
+  if (!keyColumns || keyColumns.length === 0) return undefined;
+  return `${table}|${keyColumns.map((column) => values[column] ?? "").join("|")}`;
 };
 
 export const buildingsEditReducer = (state: BuildingsEditState, action: BuildingsEditAction): BuildingsEditState => {
@@ -102,6 +114,38 @@ export const buildingsEditReducer = (state: BuildingsEditState, action: Building
         nextRowSeq,
         numericIdCursors: action.numericIdCursors ?? state.numericIdCursors,
       };
+    }
+
+    case "upsertRows": {
+      if (action.rows.length === 0) return state;
+      const rowsById = { ...state.rowsById };
+      const order = [...state.order];
+      const idsByKey = new Map<string, string>();
+      for (const id of order) {
+        const row = rowsById[id];
+        if (!row) continue;
+        const key = rowIdentity(row.table, row.values);
+        if (key) idsByKey.set(key, id);
+      }
+
+      const groupId = action.groupId ?? `group_${state.nextRowSeq}`;
+      let nextRowSeq = state.nextRowSeq;
+      for (const row of action.rows) {
+        const key = rowIdentity(row.table, row.values);
+        const existingId = key ? idsByKey.get(key) : undefined;
+        if (existingId) {
+          const existing = rowsById[existingId];
+          if (existing) rowsById[existingId] = { ...existing, values: { ...row.values } };
+          continue;
+        }
+
+        const id = `row_${nextRowSeq++}`;
+        rowsById[id] = { ...row, id, groupId, values: { ...row.values } };
+        order.push(id);
+        if (key) idsByKey.set(key, id);
+      }
+
+      return { ...state, rowsById, order, nextRowSeq };
     }
 
     case "setCell": {

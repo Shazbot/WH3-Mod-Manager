@@ -121,6 +121,34 @@ describe("buildingsEditReducer", () => {
       "second",
     ]);
   });
+
+  it("updates an existing keyed row when an action upserts it", () => {
+    let state = withRows(emptyBuildingsEditState(), [
+      { table: "building_levels_tables", origin: "moveBuilding", values: { level_name: "a_1", level: "1" } },
+    ]);
+    const rowId = state.order[0];
+    state = buildingsEditReducer(state, {
+      type: "upsertRows",
+      rows: [{ table: "building_levels_tables", origin: "moveBuilding", values: { level_name: "a_1", level: "2" } }],
+    });
+
+    expect(state.order).toEqual([rowId]);
+    expect(state.rowsById[rowId].values).toEqual({ level_name: "a_1", level: "2" });
+  });
+
+  it("adds each new key once when an upsert action contains several rows", () => {
+    const state = buildingsEditReducer(emptyBuildingsEditState(), {
+      type: "upsertRows",
+      rows: [
+        { table: "building_levels_tables", origin: "moveBuilding", values: { level_name: "a_1", level: "1" } },
+        { table: "building_levels_tables", origin: "moveBuilding", values: { level_name: "a_2", level: "2" } },
+        { table: "building_levels_tables", origin: "moveBuilding", values: { level_name: "a_1", level: "3" } },
+      ],
+    });
+
+    expect(state.order).toHaveLength(2);
+    expect(state.rowsById[state.order[0]].values.level).toBe("3");
+  });
 });
 
 describe("takeNumericId", () => {
