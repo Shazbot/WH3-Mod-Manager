@@ -9,7 +9,7 @@ export type BuildingContextMenuProps = {
   onPick: (target: BuildingsCloneTarget) => void;
   onClose: () => void;
   /** Editing entries, listed under the clone ones. */
-  editActions?: Array<{ label: string; run: () => void }>;
+  editActions?: Array<{ label: string; run: () => void; separatorBefore?: boolean }>;
 };
 
 /**
@@ -20,8 +20,11 @@ export type BuildingContextMenuProps = {
  */
 const BuildingContextMenu = memo(({ x, y, heading, items, onPick, onClose, editActions }: BuildingContextMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const separatorCount = editActions?.filter((action) => action.separatorBefore).length ?? 0;
   const menuHeight =
-    40 + items.length * 48 + (editActions && editActions.length > 0 ? editActions.length * 36 + 8 : 0);
+    40 +
+    items.length * 48 +
+    (editActions && editActions.length > 0 ? editActions.length * 36 + 8 + separatorCount * 9 : 0);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -65,18 +68,20 @@ const BuildingContextMenu = memo(({ x, y, heading, items, onPick, onClose, editA
       {editActions && editActions.length > 0 && (
         <div className="mt-1 border-t border-gray-700 pt-1">
           {editActions.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                action.run();
-                onClose();
-              }}
-              className="block w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-emerald-800/60"
-            >
-              {action.label}
-            </button>
+            <React.Fragment key={action.label}>
+              {action.separatorBefore && <div className="my-1 border-t border-gray-700" role="separator" />}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  action.run();
+                  onClose();
+                }}
+                className="block w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-emerald-800/60"
+              >
+                {action.label}
+              </button>
+            </React.Fragment>
           ))}
         </div>
       )}

@@ -314,35 +314,51 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   );
 
   const movementActionsForTile = useCallback(
-    (tile: BuildingsTile): Array<{ label: string; run: () => void }> => {
-      const actions: Array<{ label: string; run: () => void }> = [];
+    (tile: BuildingsTile): Array<{ label: string; run: () => void; separatorBefore?: boolean }> => {
+      const buildingActions: Array<{ label: string; run: () => void }> = [];
+      const chainActions: Array<{ label: string; run: () => void }> = [];
       const addMove = (label: string, rows: NewRowDraft[]) => {
-        if (rows.length === 0) return;
-        actions.push({
+        if (rows.length === 0) return undefined;
+        return {
           label,
           run: () => dispatchEdit({ type: "addRows", rows }),
-        });
+        };
       };
 
-      if (canMoveBuilding(tile, view, "lower")) {
-        addMove(localized.buildingsMoveBuildingLower || "Move this building lower", moveBuildingRows(tile, "lower"));
-      }
       if (canMoveBuilding(tile, view, "higher")) {
-        addMove(localized.buildingsMoveBuildingHigher || "Move this building higher", moveBuildingRows(tile, "higher"));
-      }
-      if (canMoveBuildingChain(tile, view, "lower")) {
-        addMove(
-          localized.buildingsMoveChainLower || "Move the whole chain lower",
-          moveBuildingChainRows(tile, view, "lower"),
+        const action = addMove(
+          localized.buildingsMoveBuildingHigher || "Move this building higher",
+          moveBuildingRows(tile, "higher"),
         );
+        if (action) buildingActions.push(action);
+      }
+      if (canMoveBuilding(tile, view, "lower")) {
+        const action = addMove(
+          localized.buildingsMoveBuildingLower || "Move this building lower",
+          moveBuildingRows(tile, "lower"),
+        );
+        if (action) buildingActions.push(action);
       }
       if (canMoveBuildingChain(tile, view, "higher")) {
-        addMove(
+        const action = addMove(
           localized.buildingsMoveChainHigher || "Move the whole chain higher",
           moveBuildingChainRows(tile, view, "higher"),
         );
+        if (action) chainActions.push(action);
       }
-      return actions;
+      if (canMoveBuildingChain(tile, view, "lower")) {
+        const action = addMove(
+          localized.buildingsMoveChainLower || "Move the whole chain lower",
+          moveBuildingChainRows(tile, view, "lower"),
+        );
+        if (action) chainActions.push(action);
+      }
+      return [
+        ...buildingActions,
+        ...(chainActions.length > 0
+          ? [{ ...chainActions[0], separatorBefore: buildingActions.length > 0 }, ...chainActions.slice(1)]
+          : []),
+      ];
     },
     [
       dispatchEdit,
@@ -476,6 +492,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   // Everything that writes rows is modder-only. When the option is off, the board remains a
   // read-only browser regardless of whichever sub-tab was selected before it was disabled.
   const activeSubTab = isFeaturesForModdersEnabled ? subTab : "board";
+  const contextMenuMovementActions = contextMenu?.tile ? movementActionsForTile(contextMenu.tile) : [];
 
   return (
     <div className="relative flex h-[86vh] flex-col text-gray-200">
@@ -622,8 +639,9 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                 ]
               : contextMenu.tile
                 ? [
-                    ...movementActionsForTile(contextMenu.tile),
+                    ...contextMenuMovementActions,
                     {
+                      separatorBefore: contextMenuMovementActions.length > 0,
                       label: localized.buildingsAddAbove || "Add a building above this",
                       run: () => setAddFrom({ tile: contextMenu.tile!, direction: "above" }),
                     },
