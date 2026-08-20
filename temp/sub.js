@@ -48,8 +48,10 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-var steamworks = require("./../steamworks");
+var steamworksNative = require("./../steamworks");
 var fs = require("fs");
+var nodePath = require("path");
+var os = require("os");
 var WORKSHOP_STATE_INSTALLED = 4;
 var WORKSHOP_STATE_NEEDS_UPDATE = 8;
 var WORKSHOP_STATE_DOWNLOADING = 16;
@@ -57,8 +59,17 @@ var WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
 var WORKSHOP_UPDATE_POLL_INTERVAL_MS = 1000;
 var WORKSHOP_UPDATE_RETRY_AFTER_MS = 30000;
 var WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS = 5 * 60000;
+var sublogPath = process.env.WHMM_SUBLOG_PATH || nodePath.join(os.tmpdir(), "wh3-mod-manager", "sublog.txt");
 var appendSublog = function (message) {
-    fs.appendFileSync("sublog.txt", "".concat(message, "\n"));
+    try {
+        fs.mkdirSync(nodePath.dirname(sublogPath), { recursive: true });
+        fs.appendFileSync(sublogPath, "".concat(message, "\n"));
+    }
+    catch (error) {
+        // Steam diagnostics must never hide the original initialization failure, especially when the
+        // application is installed below a read-only Linux directory.
+        console.error("Unable to write Steam worker diagnostics:", error);
+    }
 };
 var logSteamError = function (operation, error, ids) {
     var _a;
@@ -67,6 +78,16 @@ var logSteamError = function (operation, error, ids) {
     var errorMessage = error instanceof Error ? error.message : String(error);
     appendSublog("ERROR ".concat(operation).concat(suffix, ": ").concat(errorMessage));
 };
+var steamworks = __assign(__assign({}, steamworksNative), { init: function (appId) {
+        try {
+            return steamworksNative.init(appId);
+        }
+        catch (error) {
+            logSteamError("init", error);
+            console.error("Steam is unavailable. Start Steam before using Workshop features.", error);
+            process.exit(1);
+        }
+    } });
 var parseItemIds = function (rawIds) {
     return (rawIds !== null && rawIds !== void 0 ? rawIds : "")
         .split(/[;,]/)

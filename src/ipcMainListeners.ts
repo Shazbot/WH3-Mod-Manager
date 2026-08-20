@@ -151,7 +151,7 @@ import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progres
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
-import { exec, fork, spawn } from "child_process";
+import { execFile, spawn } from "child_process";
 import chokidar from "chokidar";
 import { format } from "date-fns";
 import electronLog from "electron-log/main";
@@ -278,6 +278,7 @@ import {
   type AssetBytes,
 } from "./assetProtocol";
 import { normalizeAssetPath } from "./assetUrls";
+import { forkSteamWorker as fork } from "./steamWorker";
 import { collectVanillaFilesUnderPrefix, findVanillaPackContaining } from "./vanillaPackIndex/format";
 import {
   selectPackPathsToSearch,
@@ -305,6 +306,7 @@ import getPackTableData from "./utility/frontend/packDataHandling";
 import { findLatestScriptLog } from "./utility/logPaths";
 import { decodePackedTextBuffer, getPackedFileMimeType, getPackedFileViewerKind } from "./utility/packFileViewing";
 import { collator } from "./utility/packFileSorting";
+import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie, { type KeyedLookup } from "./utility/trie";
 import hash from "object-hash";
@@ -5318,13 +5320,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
-      exec(`mkdir "${mergedDirPath}"`);
-      while (!fsExtra.existsSync(mergedDirPath)) {
-        await new Promise((resolve) => {
-          setTimeout(resolve, 100);
-        });
-      }
-      // await fsExtra.ensureDir(nodePath.join(gamePath, "/merged/"));
+      await fsExtra.ensureDir(mergedDirPath);
       const sanitizedGamePath = gamePath.replaceAll("\\", "/").replaceAll("//", "/");
       mergedWatcher = chokidar
         .watch([`${sanitizedGamePath}/merged/*.pack`], {
@@ -9745,13 +9741,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     try {
       switch (process.platform) {
         case "win32": {
-          exec(`taskkill /f /t /im ${name}`, (error) => {
+          execFile("taskkill", ["/f", "/t", "/im", name], (error) => {
             if (error) console.error("taskkill error:", error);
           });
           break;
         }
         case "linux": {
-          exec(`pkill -f ${name}`, (error) => {
+          execFile("pkill", ["-f", name], (error) => {
             if (error) console.error("pkill error:", error);
           });
           break;
@@ -10123,11 +10119,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
-  const openInSteam = (url: string) => {
-    exec(`start steam://openurl/${url}`);
+  const openInSteam = async (url: string) => {
+    try {
+      await shell.openExternal(`steam://openurl/${url}`);
+    } catch (error) {
+      console.error("Failed to open Steam URL:", error);
+      mainWindow?.webContents.send("handleLog", `Failed to open Steam URL: ${url}`);
+    }
   };
   ipcMain.on("openInSteam", (event, url: string) => {
-    openInSteam(url);
+    void openInSteam(url);
   });
   ipcMain.on("openPack", (event, path: string) => {
     shell.openPath(path);
@@ -10239,7 +10240,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
             fs.rmSync(uploadFolderPath, { recursive: true, force: true });
             if (openInSteamAfterUpdate) {
-              openInSteam(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`);
+              void openInSteam(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`);
             }
             break;
           case "error":
@@ -10292,11 +10293,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       await fs.mkdirSync(backupFolderPath, { recursive: true });
       await fs.copyFileSync(mod.path, backupFilePath);
       await addFakeUpdate(mod.path, uploadFilePath);
-      const command = `cd /d "${nodePath.dirname(mod.path)}" && del "${nodePath.basename(
-        mod.path,
-      )}" && move /y "whmm_backups\\${nodePath.basename(uploadFilePath)}" "${nodePath.basename(mod.path)}"`;
-      console.log(command);
-      exec(command);
+      await fsExtra.remove(mod.path);
+      await fsExtra.move(uploadFilePath, mod.path, { overwrite: true });
     } catch (e) {
       console.log(e);
     }
@@ -10684,56 +10682,34 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     );
     clipboard.writeText(scriptWithIDs);
   });
-  const appendToSearchInsidePacks = (mods: Mod[], modsIndex: number, packNamesAll: string[], searchTerm: string) => {
-    if (mods.length < modsIndex * 10) {
+  const appendToSearchInsidePacks = async (
+    mods: Mod[],
+    modsIndex: number,
+    packNamesAll: string[],
+    searchTerm: string,
+  ) => {
+    if (modsIndex * 10 >= mods.length) {
       console.log("setPackSearchResults", modsIndex);
-      mainWindow?.webContents.send("setPackSearchResults", Array.from(new Set([...packNamesAll])));
+      mainWindow?.webContents.send("setPackSearchResults", Array.from(new Set(packNamesAll)));
       return;
     }
+
     const slicedMods = mods.slice(modsIndex * 10, modsIndex * 10 + 10);
-    const modsArray = slicedMods.map((mod) => `'${mod.path.replaceAll("'", "''")}'`).join(",");
-    console.log("modsArray is", modsArray, "i is", modsIndex, searchTerm, "num mods is", slicedMods.length);
-    exec(
-      `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`exec error: ${error}`);
-          mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
-          return;
-        }
-        console.log("stdout:", stdout);
-        console.log("stderr:", stderr);
-        const packNames = stdout
-          .split("\n")
-          .map((line) => line.split(".pack:")[0])
-          .filter((packName) => packName != "");
-        console.log("packNames:", packNames);
-        // Then search again for unicode text.
-        exec(
-          `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
-          (error, stdout) => {
-            if (error) {
-              console.error(`exec error: ${error}`);
-              mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
-              return;
-            }
-            const packNamesUnicodeSearch = stdout
-              .split("\n")
-              .map((line) => line.split(".pack:")[0])
-              .filter((packName) => packName != "");
-            console.log("packNames unicode:", packNames, packNamesUnicodeSearch);
-            packNamesAll = packNamesAll.concat(packNames);
-            packNamesAll = packNamesAll.concat(packNamesUnicodeSearch);
-            appendToSearchInsidePacks(mods, modsIndex + 1, packNamesAll, searchTerm);
-          },
-        );
-      },
-    );
+    console.log("Searching pack batch", modsIndex, searchTerm, "num mods:", slicedMods.length);
+    for (const mod of slicedMods) {
+      try {
+        if (await packFileContains(mod.path, searchTerm)) packNamesAll.push(mod.path);
+      } catch (error) {
+        console.error(`Failed to search pack ${mod.path}:`, error);
+      }
+    }
+
+    await appendToSearchInsidePacks(mods, modsIndex + 1, packNamesAll, searchTerm);
   };
   ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
     const packNamesAll = [] as string[];
     console.log("search inside mods:", searchTerm, "num mods:", mods.length);
-    appendToSearchInsidePacks(mods, 0, packNamesAll, searchTerm);
+    await appendToSearchInsidePacks(mods, 0, packNamesAll, searchTerm);
   });
   const readTablesFromMods = async (mods: Mod[], tablesToRead: string[]) => {
     for (const mod of mods) {
@@ -11165,10 +11141,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             "/whmm_overwrites/",
           );
           if (!fsExtra.existsSync(overwritesDirPath)) {
-            exec(`mkdir "${overwritesDirPath}"`);
-            await new Promise((resolve) => {
-              setTimeout(resolve, 100);
-            });
+            await fsExtra.ensureDir(overwritesDirPath);
           }
           extraEnabledMods += `\nadd_working_directory "${linuxBit + overwritesDirPath}";`;
           for (const pack of enabledModsWithOverwrites) {
@@ -11438,19 +11411,28 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
         if (process.platform === "linux") {
           const steamCommand = findExecutableOnPath("steam");
+          const flatpakCommand = findExecutableOnPath("flatpak");
+          const snapCommand = findExecutableOnPath("snap");
           const protontricksCommand = findExecutableOnPath("protontricks-launch");
 
           if (steamCommand) {
             // Let Steam select the game's Proton/runtime configuration.
             launchCommand = steamCommand;
             launchArgs = ["-applaunch", steamId, ...gameArgs];
+          } else if (flatpakCommand) {
+            // Flatpak Steam does not necessarily expose a `steam` executable to native apps.
+            launchCommand = flatpakCommand;
+            launchArgs = ["run", "com.valvesoftware.Steam", "-applaunch", steamId, ...gameArgs];
+          } else if (snapCommand) {
+            launchCommand = snapCommand;
+            launchArgs = ["run", "steam", "-applaunch", steamId, ...gameArgs];
           } else if (protontricksCommand) {
             // Protontricks remains a fallback for systems where the Steam CLI is not on PATH.
             launchCommand = protontricksCommand;
             launchArgs = ["--cwd-app", "--appid", steamId, gameExecutablePath, ...gameArgs];
           } else {
             reportGameLaunchError(
-              "Unable to launch the game: neither Steam nor protontricks-launch was found on PATH.",
+              "Unable to launch the game: Steam, Flatpak/Snap Steam, and protontricks-launch were not found.",
             );
             return;
           }

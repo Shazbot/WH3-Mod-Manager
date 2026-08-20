@@ -1,5 +1,5 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
-import { exec, fork, spawn } from "child_process";
+import { exec, spawn } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
@@ -12,7 +12,7 @@ import windowStateKeeper from "electron-window-state";
 import * as nodePath from "path";
 import { isMainThread } from "worker_threads";
 import electronLog from "electron-log/main";
-import i18n from "./configs/i18next.config";
+import i18n, { getLocaleDirectory } from "./configs/i18next.config";
 import { globSync } from "glob";
 import { windows, registerIpcMainListeners } from "./ipcMainListeners";
 import * as https from "https";
@@ -20,6 +20,8 @@ import { Extract } from "unzipper";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
 import { flushAppConfigWrites } from "./appConfigFunctions";
 import { registerAssetSchemeAsPrivileged } from "./assetProtocol";
+import { findGameProcessIds, setGameProcessPriority } from "./utility/gameProcess";
+import { forkSteamWorker as fork } from "./steamWorker";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -46,10 +48,16 @@ if (!gotTheLock) {
   console.log("ARGVS:", process.argv);
   appData.startArgs = process.argv.slice(1);
 
-  exec("NET SESSION", function (err, so, se) {
-    appData.isAdmin = se.length === 0;
-    console.log("isAdmin:", appData.isAdmin);
-  });
+  if (process.platform === "win32") {
+    exec("NET SESSION", function (err, so, se) {
+      appData.isAdmin = se.length === 0;
+      console.log("isAdmin:", appData.isAdmin);
+    });
+  } else {
+    // Creating symbolic links does not require an elevated process on Unix-like systems.
+    appData.isAdmin = true;
+    console.log("isAdmin: true (Unix symbolic links do not require elevation)");
+  }
 
   if (process.argv.find((arg) => arg == "-nogpu")) {
     console.log("DISABLED HARDWARE ACCELERATION");
@@ -327,10 +335,10 @@ if (!gotTheLock) {
     ipcMain.handle("getUpdateData", async () => {
       // if (isDev) return;
 
-      // clean up the temp_update folder
+      const tempUpdateDir = nodePath.join(app.getPath("temp"), "wh3mm-update");
       try {
-        if (fs.existsSync("./temp_update")) {
-          fs.rmSync("./temp_update", { force: true, recursive: true });
+        if (fs.existsSync(tempUpdateDir)) {
+          fs.rmSync(tempUpdateDir, { force: true, recursive: true });
         }
       } catch (e) {
         console.log(e);
@@ -344,15 +352,31 @@ if (!gotTheLock) {
       await fetch(`https://api.github.com/repos/Shazbot/WH3-Mod-Manager/releases/latest`)
         .then((res) => res.json())
         .then((body) => {
-          body.assets.forEach((asset: { content_type: string; browser_download_url: string }) => {
-            windows.mainWindow?.webContents.send("handleLog", asset.content_type == "application/x-zip-compressed");
-            if (asset.content_type === "application/x-zip-compressed") {
-              modUpdatedExists = {
-                updateExists: true,
-                downloadURL: asset.browser_download_url,
-              } as ModUpdateExists;
-            }
-          });
+          const zipAssets = (body.assets as Array<{
+            name?: string;
+            content_type: string;
+            browser_download_url: string;
+          }>).filter(
+            (asset) =>
+              asset.content_type === "application/x-zip-compressed" ||
+              asset.content_type === "application/zip" ||
+              asset.name?.toLowerCase().endsWith(".zip"),
+          );
+          const platformAssetPattern =
+            process.platform === "win32"
+              ? /(?:^|[-_.])(?:windows?|win32|win64)(?:[-_.]|$)/i
+              : process.platform === "darwin"
+                ? /(?:^|[-_.])(?:darwin|mac|osx)(?:[-_.]|$)/i
+                : /(?:^|[-_.])linux(?:[-_.]|$)/i;
+          const platformAsset =
+            [...zipAssets].reverse().find((asset) => platformAssetPattern.test(asset.name || "")) ||
+            (zipAssets.length === 1 ? zipAssets[0] : undefined);
+          if (platformAsset) {
+            modUpdatedExists = {
+              updateExists: true,
+              downloadURL: platformAsset.browser_download_url,
+            } as ModUpdateExists;
+          }
 
           if (body.html_url) modUpdatedExists.releaseNotesURL = body.html_url;
         })
@@ -370,13 +394,20 @@ if (!gotTheLock) {
 
       try {
         const appPath = app.getAppPath();
-        const tempDir = nodePath.join(appPath, "../..", "temp_update");
+        if (process.platform === "linux" && process.env.APPIMAGE) {
+          return { success: false, error: "AppImage updates are not supported yet." };
+        }
+
+        if (process.platform !== "win32" && process.platform !== "linux" && process.platform !== "darwin") {
+          return { success: false, error: `Updates are not supported on ${process.platform}.` };
+        }
+
+        const tempDir = nodePath.join(app.getPath("temp"), `wh3mm-update-${process.pid}`);
         const zipPath = nodePath.join(tempDir, "update.zip");
 
-        // Create temp directory
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true });
-        }
+        // Create a clean, user-writable temporary directory.
+        if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.mkdirSync(tempDir, { recursive: true });
 
         // Download the update file
         const downloadFile = (url: string, dest: string, fileOut?: fs.WriteStream): Promise<void> => {
@@ -416,13 +447,24 @@ if (!gotTheLock) {
             .on("error", reject);
         });
 
-        // Create update script
-        const appDir = nodePath.dirname(nodePath.join(appPath, ".."));
-        const updateScript = nodePath.join(tempDir, "update.bat");
-        const appExeName = nodePath.basename(process.execPath);
+        // Release archives may contain either the application files directly or one top-level
+        // directory. Normalize both layouts before the helper script starts copying files.
+        const stagingEntries = fs.readdirSync(stagingDir, { withFileTypes: true });
+        const updateSourceDir =
+          stagingEntries.length === 1 && stagingEntries[0].isDirectory()
+            ? nodePath.join(stagingDir, stagingEntries[0].name)
+            : stagingDir;
 
+        // Create an external updater because the running application cannot replace itself.
+        const appDir = nodePath.dirname(nodePath.join(appPath, ".."));
         const processId = process.pid;
-        const scriptContent = `@echo off
+        let updateScript: string;
+        let scriptContent: string;
+
+        if (process.platform === "win32") {
+          updateScript = nodePath.join(tempDir, "update.bat");
+          const appExeName = nodePath.basename(process.execPath);
+          scriptContent = `@echo off
           echo Waiting for application to close...
           :wait_loop
           tasklist /FI "PID eq ${processId}" | find "${processId}" >nul
@@ -433,7 +475,7 @@ if (!gotTheLock) {
           :continue_update
           echo Application closed. Starting update...
           timeout /t 1 /nobreak >nul
-          xcopy /E /Y /I "${stagingDir}\\*" "${appDir}\\"
+          xcopy /E /Y /I "${nodePath.join(updateSourceDir, "*")}" "${appDir}\\"
           if errorlevel 1 (
               echo Update failed!
               pause
@@ -446,8 +488,22 @@ if (!gotTheLock) {
           rd /s /q "${tempDir}"
           del "%~f0"
           exit /b`;
+        } else {
+          const quoteForShell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+          updateScript = nodePath.join(tempDir, "update.sh");
+          scriptContent = `#!/bin/sh
+set -eu
+while kill -0 ${processId} 2>/dev/null; do
+  sleep 1
+done
+cp -a ${quoteForShell(nodePath.join(updateSourceDir, "."))} ${quoteForShell(appDir)}
+rm -rf ${quoteForShell(tempDir)}
+exec ${quoteForShell(process.execPath)}
+`;
+        }
 
         fs.writeFileSync(updateScript, scriptContent);
+        if (process.platform !== "win32") fs.chmodSync(updateScript, 0o755);
 
         // Show dialog and execute update
         const result = await dialog.showMessageBox(windows.mainWindow!, {
@@ -458,13 +514,21 @@ if (!gotTheLock) {
         });
 
         if (result.response === 0) {
-          // Launch update script and exit
-          const subprocess = spawn(`start cmd.exe /c update.bat`, [], {
-            cwd: tempDir,
-            shell: true,
-            detached: true,
-            windowsHide: true,
-          });
+          // Launch the updater and exit.
+          const subprocess =
+            process.platform === "win32"
+              ? spawn("cmd.exe", ["/c", updateScript], {
+                  cwd: tempDir,
+                  detached: true,
+                  windowsHide: true,
+                  stdio: "ignore",
+                })
+              : spawn(updateScript, [], {
+                  cwd: tempDir,
+                  detached: true,
+                  stdio: "ignore",
+                });
+          subprocess.once("error", (error) => console.error("Failed to start update helper:", error));
           subprocess.unref();
           terminateForExternalUpdate();
         } else {
@@ -499,7 +563,7 @@ if (!gotTheLock) {
       } as SkillsViewOptions);
 
       try {
-        const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";
+        const localesPath = getLocaleDirectory();
         const availableLocalizations = (await fs.readdirSync(localesPath, { withFileTypes: true }))
           .filter((dirent) => dirent.isDirectory())
           .map((dirent) => dirent.name);
@@ -511,37 +575,26 @@ if (!gotTheLock) {
       if (!checkWH3RunningInterval) {
         const isGameRuningCheck = async () => {
           try {
-            // if a game crashes you can end up with a tiny running process of the game, that's why we have a memory filter here
-            exec(
-              `tasklist /nh /fi "IMAGENAME eq ${gameToProcessName[appData.currentGame]}" /fi "MEMUSAGE gt 10000"`,
-              (_, stdout) => {
-                const isWH3Running = stdout.includes(gameToProcessName[appData.currentGame]);
-                if (appData.isWH3Running != isWH3Running) {
-                  if (appData.isChangingGameProcessPriority && isWH3Running && !appData.isWH3Running) {
-                    console.log("Setting process priority to high...");
-                    exec(
-                      `powershell.exe -Command "(Get-Process -Name '${gameToProcessName[appData.currentGame].replace(
-                        ".exe",
-                        "",
-                      )}').PriorityClass = 'High'"`,
+            const processName = gameToProcessName[appData.currentGame];
+            const processIds = await findGameProcessIds(processName);
+            const isGameRunning = processIds.length > 0;
 
-                      (error) => {
-                        if (error) {
-                          console.error(`exec error: ${error}`);
-                          return;
-                        }
-                      },
-                    );
-                  }
-                  appData.isWH3Running = isWH3Running;
-                  windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+            if (appData.isWH3Running !== isGameRunning) {
+              if (appData.isChangingGameProcessPriority && isGameRunning && !appData.isWH3Running) {
+                console.log("Setting process priority to high...");
+                try {
+                  await setGameProcessPriority(processName, processIds);
+                } catch (error) {
+                  console.error("Failed to set game process priority:", error);
                 }
-                if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
-              },
-            );
+              }
+              appData.isWH3Running = isGameRunning;
+              windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+            }
           } catch (e) {
-            console.log("psList coroutine error:", e);
+            console.log("Game process check failed:", e);
           }
+          if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
         };
         checkWH3RunningInterval = setTimeout(isGameRuningCheck, 500);
       }

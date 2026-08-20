@@ -14,6 +14,8 @@ if (platform === "win32" && arch === "x64") {
   } else if (arch === "arm64") {
     nativeBinding = require("./dist/osx/steamworksjs.darwin-arm64.node");
   }
+} else if (platform === "linux") {
+  throw new Error(`Unsupported Linux architecture: ${arch}. This build includes only the Linux x64 Steamworks addon.`);
 } else {
   throw new Error(`Unsupported OS: ${platform}, architecture: ${arch}`);
 }

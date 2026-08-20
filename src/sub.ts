@@ -1,6 +1,9 @@
-import * as steamworks from "./../steamworks";
+import * as steamworksNative from "./../steamworks";
+import type { Client as SteamworksClient } from "./../steamworks";
 import { workshop } from "../steamworks/client.d";
 import * as fs from "fs";
+import * as nodePath from "path";
+import * as os from "os";
 
 interface PlayerSteamIdStringInsteadOfBigInt {
   steamId64: string;
@@ -91,8 +94,18 @@ const WORKSHOP_UPDATE_POLL_INTERVAL_MS = 1000;
 const WORKSHOP_UPDATE_RETRY_AFTER_MS = 30_000;
 const WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS = 5 * 60_000;
 
+const sublogPath =
+  process.env.WHMM_SUBLOG_PATH || nodePath.join(os.tmpdir(), "wh3-mod-manager", "sublog.txt");
+
 const appendSublog = (message: string) => {
-  fs.appendFileSync("sublog.txt", `${message}\n`);
+  try {
+    fs.mkdirSync(nodePath.dirname(sublogPath), { recursive: true });
+    fs.appendFileSync(sublogPath, `${message}\n`);
+  } catch (error) {
+    // Steam diagnostics must never hide the original initialization failure, especially when the
+    // application is installed below a read-only Linux directory.
+    console.error("Unable to write Steam worker diagnostics:", error);
+  }
 };
 
 const logSteamError = (operation: string, error: unknown, ids?: bigint[]) => {
@@ -100,6 +113,19 @@ const logSteamError = (operation: string, error: unknown, ids?: bigint[]) => {
   const suffix = itemIds ? ` ids=${itemIds}` : "";
   const errorMessage = error instanceof Error ? error.message : String(error);
   appendSublog(`ERROR ${operation}${suffix}: ${errorMessage}`);
+};
+
+const steamworks = {
+  ...steamworksNative,
+  init: (appId: number): Omit<SteamworksClient, "init" | "runCallbacks"> => {
+    try {
+      return steamworksNative.init(appId);
+    } catch (error) {
+      logSteamError("init", error);
+      console.error("Steam is unavailable. Start Steam before using Workshop features.", error);
+      process.exit(1);
+    }
+  },
 };
 
 const parseItemIds = (rawIds: string | undefined) =>
@@ -167,7 +193,7 @@ if (process.argv[3] == "unsubscribe") {
 }
 
 const getAuthors = (
-  client: Omit<steamworks.Client, "init" | "runCallbacks">,
+  client: Omit<SteamworksClient, "init" | "runCallbacks">,
   ids: bigint[],
   cb: (authorsMap: Map<string, string>) => void,
 ) => {
@@ -213,7 +239,7 @@ if (process.argv[3] == "getAuthors") {
 }
 
 const getDependencies = (
-  client: Omit<steamworks.Client, "init" | "runCallbacks">,
+  client: Omit<SteamworksClient, "init" | "runCallbacks">,
   ids: bigint[],
   cb: (dependenciesMap: Map<string, string[]>) => void,
 ) => {
@@ -261,7 +287,7 @@ if (process.argv[3] == "getDependencies") {
 }
 
 const getItems = (
-  client: Omit<steamworks.Client, "init" | "runCallbacks">,
+  client: Omit<SteamworksClient, "init" | "runCallbacks">,
   ids: bigint[],
   cb: (data: WorkshopItemStringInsteadOfBigInt[]) => void,
 ) => {

@@ -1,13 +1,19 @@
 import i18next from "i18next";
 import i18nextBackend from "i18next-fs-backend";
 import isDev from "electron-is-dev";
+import { app } from "electron";
+import * as nodePath from "node:path";
+
+export const getLocaleDirectory = () =>
+  isDev ? nodePath.resolve(__dirname, "../../locales") : nodePath.join(__dirname, "locales");
+
+const localeDirectory = getLocaleDirectory();
+const missingLocaleDirectory = isDev ? localeDirectory : nodePath.join(app.getPath("userData"), "locales");
 
 const i18nextOptions = {
   backend: {
-    loadPath: isDev ? "./locales/{{lng}}/{{ns}}.json" : "./resources/app/.webpack/main/locales/{{lng}}/{{ns}}.json",
-    addPath: isDev
-      ? "./locales/{{lng}}/{{ns}}.missing.json"
-      : "./resources/app/.webpack/main/locales/{{lng}}/{{ns}}.missing.json",
+    loadPath: nodePath.join(localeDirectory, "{{lng}}", "{{ns}}.json"),
+    addPath: nodePath.join(missingLocaleDirectory, "{{lng}}", "{{ns}}.missing.json"),
     jsonIndent: 2,
   },
   interpolation: {

@@ -1,4 +1,3 @@
-import { fork } from "child_process";
 import { parse, getTime } from "date-fns";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
@@ -8,12 +7,13 @@ import fetch from "electron-fetch";
 import { zonedTimeToUtc } from "date-fns-tz";
 import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
-import * as os from "os";
 import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from "./supportedGames";
 import { decodeHTML } from "entities";
 import { DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID } from "./modSources";
 import { registerModThumbnailPath } from "./modThumbnailAssets";
 import { parseWorkshopSubscriptionTimes } from "./workshopSubscriptions";
+import { findSteamAppsFolder, findSteamInstallPath } from "./steamPaths";
+import { forkSteamWorker as fork } from "./steamWorker";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
@@ -442,25 +442,8 @@ const getSteamInstallPath = async (): Promise<string | undefined> => {
     return;
   }
 
-  const candidatePaths =
-    process.platform === "linux"
-      ? [
-          nodePath.join(os.homedir(), ".steam", "steam"),
-          nodePath.join(os.homedir(), ".local", "share", "Steam"),
-          nodePath.join(os.homedir(), ".steam", "root"),
-        ]
-      : process.platform === "darwin"
-        ? [nodePath.join(os.homedir(), "Library", "Application Support", "Steam")]
-        : [];
-
-  for (const steamPath of candidatePaths) {
-    try {
-      await dumbfs.promises.access(steamPath);
-      return steamPath;
-    } catch {
-      // Try the next conventional Steam location.
-    }
-  }
+  const steamPath = await findSteamInstallPath();
+  if (steamPath) return steamPath;
 
   console.log("Unable to find Steam installation directory");
 };
@@ -535,35 +518,13 @@ const getSteamAppsFolder = async (newGame?: SupportedGames) => {
   const installPath = await getSteamInstallPath();
   if (!installPath) return;
 
-  const libFoldersPath = nodePath.join(installPath, "steamapps", "libraryfolders.vdf");
-  console.log(`Check lib vdf at ${libFoldersPath}`);
-  try {
-    await dumbfs.promises.access(libFoldersPath);
-  } catch {
-    return;
-  }
-  console.log(`Found libraryfolders.vdf at ${libFoldersPath}`);
+  const steamAppsFolderPath = await findSteamAppsFolder(gameToSteamId[game], installPath);
+  if (!steamAppsFolderPath) return;
 
-  const data = await dumbfs.promises.readFile(libFoldersPath, "utf8");
-  const object = VDF.parse(data).libraryfolders;
-  const paths = [];
-  for (const property in object) {
-    paths.push(object[property].path);
-  }
-
-  for (const basepath of paths) {
-    const path = basepath.replaceAll("\\\\", "\\").replaceAll("//", "/");
-    const worshopFilePath = nodePath.join(path, "steamapps", `appmanifest_${gameToSteamId[game]}.acf`);
-    try {
-      await dumbfs.promises.readFile(worshopFilePath, "utf8"); // try to read the file to check for its existence
-      console.log(`Found appmanifest_${gameToSteamId[game]}.acf at ${worshopFilePath}`);
-
-      const steamAppsFolderPath = nodePath.join(path, "steamapps");
-      appData.gamesToSteamAppsFolderPaths[game] = steamAppsFolderPath;
-      return steamAppsFolderPath;
-      // eslint-disable-next-line no-empty
-    } catch (err) {}
-  }
+  const appManifestPath = nodePath.join(steamAppsFolderPath, `appmanifest_${gameToSteamId[game]}.acf`);
+  console.log(`Found ${appManifestPath}`);
+  appData.gamesToSteamAppsFolderPaths[game] = steamAppsFolderPath;
+  return steamAppsFolderPath;
 };
 
 export const getLastUpdated = async () => {

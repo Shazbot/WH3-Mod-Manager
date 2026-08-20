@@ -28,19 +28,22 @@ const persistConfigSnapshot = async (stringifiedData: string) => {
   const backupVersionConfigName = `config_backup_v${version}.json`;
   const isWritingVersionBackup = !hasWrittenVersionBackup;
 
-  try {
-    // write to the dir where the exe is due to bizarre file permission issues
-    const exeDirPath = nodePath.dirname(app.getPath("exe"));
-    const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
-    const exeDirConfigPath = nodePath.join(exeDirPath, configFileName);
-    await fs.promises.writeFile(exeDirTempConfigPath, stringifiedData);
-    if (isWritingVersionBackup) {
-      const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
-      await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
+  if (process.platform === "win32") {
+    try {
+      // Keep the legacy executable-directory copy for Windows installs that depend on it. Unix
+      // packages normally live below /opt or /usr and should write only to userData.
+      const exeDirPath = nodePath.dirname(app.getPath("exe"));
+      const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
+      const exeDirConfigPath = nodePath.join(exeDirPath, configFileName);
+      await fs.promises.writeFile(exeDirTempConfigPath, stringifiedData);
+      if (isWritingVersionBackup) {
+        const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
+        await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
+      }
+      await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
+    } catch (err) {
+      console.log(err);
     }
-    await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
-  } catch (err) {
-    console.log(err);
   }
 
   const userData = app.getPath("userData");
