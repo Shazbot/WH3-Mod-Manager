@@ -16,6 +16,7 @@ import {
 import {
   addBuildingChainRows,
   addBuildingLevelRows,
+  canAddBuildingAbove,
   addGarrisonRows,
   addRecruitableUnitRows,
   canAddBuildingBelow,
@@ -473,6 +474,40 @@ describe("canAddBuildingBelow", () => {
         ]),
       ).map((row) => row.levelKey),
     ).toEqual(["a_1", "a_0"]);
+  });
+});
+
+describe("canAddBuildingAbove", () => {
+  const tile = { chainKey: "chain_a", tierRow: 1 } as const;
+  const view = (tiles: Array<{ chainKey: string; tierRow: number }>) =>
+    ({ bands: [{ columns: [{ chainKey: "chain_a", tiles }] }] }) as Parameters<typeof canAddBuildingAbove>[1];
+
+  it("allows adding above the chain's highest row", () => {
+    expect(canAddBuildingAbove(tile, view([{ chainKey: "chain_a", tierRow: 1 }]))).toBe(true);
+  });
+
+  it("does not allow adding above when the chain already has a higher building", () => {
+    expect(
+      canAddBuildingAbove(
+        tile,
+        view([
+          { chainKey: "chain_a", tierRow: 1 },
+          { chainKey: "chain_a", tierRow: 2 },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores buildings below and buildings in another chain", () => {
+    expect(
+      canAddBuildingAbove(
+        tile,
+        view([
+          { chainKey: "chain_a", tierRow: 0 },
+          { chainKey: "chain_b", tierRow: 3 },
+        ]),
+      ),
+    ).toBe(true);
   });
 });
 

@@ -213,6 +213,21 @@ export const addBuildingLevelRows = (input: AddBuildingLevelInput, cursors: Reco
   return rows;
 };
 
+/** Whether the chain has an empty board row above this tile for a new building. */
+export const canAddBuildingAbove = (
+  tile: Pick<BuildingsTile, "chainKey" | "tierRow">,
+  view: Pick<BuildingsRegionView, "bands"> | undefined,
+): boolean => {
+  if (!view) return false;
+  return !view.bands.some((band) =>
+    band.columns.some(
+      (column) =>
+        column.chainKey === tile.chainKey &&
+        column.tiles.some((candidate) => candidate.chainKey === tile.chainKey && candidate.tierRow > tile.tierRow),
+    ),
+  );
+};
+
 /** Whether the chain has an empty board row below this tile for a new building. */
 export const canAddBuildingBelow = (
   tile: Pick<BuildingsTile, "chainKey" | "tierRow">,

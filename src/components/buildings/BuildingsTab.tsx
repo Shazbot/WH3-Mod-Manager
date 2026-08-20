@@ -22,6 +22,7 @@ import { buildingsEditReducer, emptyBuildingsEditState } from "../../buildingsDa
 import { dbClonePackedFilesToBuildingsRows, filterDuplicateBuildingsCloneRows } from "../../buildingsData/dbCloneRows";
 import {
   addBuildingLevelRows,
+  canAddBuildingAbove,
   canAddBuildingBelow,
   canMoveBuilding,
   canMoveBuildingChain,
@@ -493,6 +494,8 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   // read-only browser regardless of whichever sub-tab was selected before it was disabled.
   const activeSubTab = isFeaturesForModdersEnabled ? subTab : "board";
   const contextMenuMovementActions = contextMenu?.tile ? movementActionsForTile(contextMenu.tile) : [];
+  const contextMenuCanAddAbove = contextMenu?.tile ? canAddBuildingAbove(contextMenu.tile, view) : false;
+  const contextMenuCanAddBelow = contextMenu?.tile ? canAddBuildingBelow(contextMenu.tile, view) : false;
 
   return (
     <div className="relative flex h-[86vh] flex-col text-gray-200">
@@ -640,14 +643,19 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
               : contextMenu.tile
                 ? [
                     ...contextMenuMovementActions,
-                    {
-                      separatorBefore: contextMenuMovementActions.length > 0,
-                      label: localized.buildingsAddAbove || "Add a building above this",
-                      run: () => setAddFrom({ tile: contextMenu.tile!, direction: "above" }),
-                    },
-                    ...(canAddBuildingBelow(contextMenu.tile, view)
+                    ...(contextMenuCanAddAbove
                       ? [
                           {
+                            separatorBefore: contextMenuMovementActions.length > 0,
+                            label: localized.buildingsAddAbove || "Add a building above this",
+                            run: () => setAddFrom({ tile: contextMenu.tile!, direction: "above" }),
+                          },
+                        ]
+                      : []),
+                    ...(contextMenuCanAddBelow
+                      ? [
+                          {
+                            separatorBefore: contextMenuMovementActions.length > 0 && !contextMenuCanAddAbove,
                             label: localized.buildingsAddBelow || "Add a building below this",
                             run: () =>
                               setAddFrom({
@@ -659,6 +667,8 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                         ]
                       : []),
                     {
+                      separatorBefore:
+                        contextMenuMovementActions.length > 0 && !contextMenuCanAddAbove && !contextMenuCanAddBelow,
                       label: localized.buildingsEditBuilding || "Edit Building...",
                       run: () => setEditTile(contextMenu.tile),
                     },
