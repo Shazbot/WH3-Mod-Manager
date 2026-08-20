@@ -58,6 +58,22 @@ function Set-UpdateStatus([string] $message) {
   [System.Windows.Forms.Application]::DoEvents()
 }
 
+# Every wait goes through here. A window whose thread is not pumping messages is painted over as a
+# blank rectangle and marked "Not Responding" by the shell, so blocking calls - waiting for the app
+# to close, waiting for the copy - would turn the progress dialog into exactly the hang it exists to
+# rule out. Pass 0 to pump once without waiting.
+function Wait-UpdateWindow([int] $milliseconds) {
+  if ($null -eq $updateForm) {
+    if ($milliseconds -gt 0) { Start-Sleep -Milliseconds $milliseconds }
+    return
+  }
+  $pumpDeadline = [DateTime]::UtcNow.AddMilliseconds($milliseconds)
+  do {
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 25
+  } while ([DateTime]::UtcNow -lt $pumpDeadline)
+}
+
 # The application drops this marker when it gave up on the update. Without the check a helper that
 # outlived that hand-off would sit here until the user closed the application on their own terms and
 # then replace it behind their back, hours after they were told the update had failed.
@@ -111,7 +127,9 @@ try {
   exit 1
 }
 
-Wait-Process -Id ${processId} -ErrorAction SilentlyContinue
+while ($null -ne (Get-Process -Id ${processId} -ErrorAction SilentlyContinue)) {
+  Wait-UpdateWindow 250
+}
 Write-UpdateLog 'Application process closed.'
 Exit-IfUpdateCancelled
 Set-UpdateStatus 'Waiting for application processes to exit...'
@@ -125,7 +143,7 @@ do {
       }
   )
   if ($remainingAppProcesses.Count -eq 0) { break }
-  Start-Sleep -Milliseconds 250
+  Wait-UpdateWindow 250
 } while ([DateTime]::UtcNow -lt $processWaitDeadline)
 
 if ($remainingAppProcesses.Count -gt 0) {
@@ -139,8 +157,18 @@ Set-UpdateStatus 'Installing update...'
 $copySucceeded = $false
 try {
   $robocopyPath = Join-Path (Join-Path $env:SystemRoot 'System32') 'robocopy.exe'
-  & $robocopyPath $updateSourceDir $appDir /E /COPY:DAT /DCOPY:DAT /R:15 /W:1 /NFL /NDL /NJH /NJS /NP "/LOG+:$updateLogPath"
-  $copyExitCode = $LASTEXITCODE
+  # Start-Process joins these verbatim without quoting anything, so the paths are quoted by hand.
+  $robocopyArguments = @(
+    ('"{0}"' -f $updateSourceDir),
+    ('"{0}"' -f $appDir),
+    '/E', '/COPY:DAT', '/DCOPY:DAT', '/R:15', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
+    ('/LOG+:"{0}"' -f $updateLogPath)
+  )
+  $copyProcess = Start-Process -FilePath $robocopyPath -ArgumentList $robocopyArguments -WindowStyle Hidden -PassThru
+  while (-not $copyProcess.HasExited) {
+    Wait-UpdateWindow 100
+  }
+  $copyExitCode = $copyProcess.ExitCode
   if ($copyExitCode -ge 8) {
     throw "robocopy failed with exit code $copyExitCode"
   }
@@ -154,13 +182,19 @@ if ($copySucceeded) {
   Set-UpdateStatus 'Starting the updated WH3 Mod Manager...'
 } else {
   Set-UpdateStatus 'Update failed; restarting the previous version. See update.log for details.'
-  Start-Sleep -Seconds 5
+  Wait-UpdateWindow 5000
 }
 try {
   $applicationProcess = Start-Process -FilePath $appExecutablePath -WorkingDirectory $appDir -PassThru
   Write-UpdateLog "Application restart requested (process $($applicationProcess.Id))."
   try {
-    if ($applicationProcess.WaitForInputIdle(15000)) {
+    $applicationIsIdle = $false
+    $inputIdleDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (-not $applicationIsIdle -and [DateTime]::UtcNow -lt $inputIdleDeadline) {
+      $applicationIsIdle = $applicationProcess.WaitForInputIdle(250)
+      Wait-UpdateWindow 0
+    }
+    if ($applicationIsIdle) {
       $activated = (New-Object -ComObject WScript.Shell).AppActivate($applicationProcess.Id)
       Write-UpdateLog "Application window activation result: $activated."
     }
@@ -170,7 +204,7 @@ try {
 } catch {
   Write-UpdateLog "Application restart failed: $($_.Exception.Message)"
   Set-UpdateStatus 'Could not restart WH3 Mod Manager. See update.log for details.'
-  Start-Sleep -Seconds 5
+  Wait-UpdateWindow 5000
   if ($null -ne $updateForm) { $updateForm.Close() }
   exit 1
 }
