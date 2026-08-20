@@ -335,10 +335,14 @@ if (!gotTheLock) {
     ipcMain.handle("getUpdateData", async () => {
       // if (isDev) return;
 
-      const tempUpdateDir = nodePath.join(app.getPath("temp"), "wh3mm-update");
+      // Remove staging directories left behind by earlier update attempts. The helper script no
+      // longer deletes its own directory, so this is where they get cleaned up.
       try {
-        if (fs.existsSync(tempUpdateDir)) {
-          fs.rmSync(tempUpdateDir, { force: true, recursive: true });
+        const tempRoot = app.getPath("temp");
+        for (const entry of fs.readdirSync(tempRoot, { withFileTypes: true })) {
+          if (entry.isDirectory() && entry.name.startsWith("wh3mm-update")) {
+            fs.rmSync(nodePath.join(tempRoot, entry.name), { force: true, recursive: true });
+          }
         }
       } catch (e) {
         console.log(e);
@@ -402,6 +406,22 @@ if (!gotTheLock) {
           return { success: false, error: `Updates are not supported on ${process.platform}.` };
         }
 
+        // The helper script runs as this user, so check up front that it will be able to replace the
+        // installed files. Packaged Linux builds commonly live below a root-owned /opt or /usr, and
+        // discovering that only after the application has exited leaves it closed and not updated.
+        const appDir = nodePath.dirname(nodePath.join(appPath, ".."));
+        const writeProbePath = nodePath.join(appDir, `.wh3mm-write-probe-${process.pid}`);
+        try {
+          fs.writeFileSync(writeProbePath, "");
+        } catch {
+          return {
+            success: false,
+            error: `Cannot write to the installation directory ${appDir}, so the update cannot be applied. Reinstall somewhere writable or update through your package manager.`,
+          };
+        } finally {
+          fs.rmSync(writeProbePath, { force: true });
+        }
+
         const tempDir = nodePath.join(app.getPath("temp"), `wh3mm-update-${process.pid}`);
         const zipPath = nodePath.join(tempDir, "update.zip");
 
@@ -455,8 +475,9 @@ if (!gotTheLock) {
             ? nodePath.join(stagingDir, stagingEntries[0].name)
             : stagingDir;
 
-        // Create an external updater because the running application cannot replace itself.
-        const appDir = nodePath.dirname(nodePath.join(appPath, ".."));
+        // Create an external updater because the running application cannot replace itself. It has
+        // no console attached, so failures go to a log file rather than to a prompt nobody can see.
+        const updateLogPath = nodePath.join(app.getPath("userData"), "update.log");
         const processId = process.pid;
         let updateScript: string;
         let scriptContent: string;
@@ -477,27 +498,22 @@ if (!gotTheLock) {
           timeout /t 1 /nobreak >nul
           xcopy /E /Y /I "${nodePath.join(updateSourceDir, "*")}" "${appDir}\\"
           if errorlevel 1 (
-              echo Update failed!
-              pause
-              exit /b 1
+              echo [%DATE% %TIME%] Copying the update into "${appDir}" failed, starting the previous version.>>"${updateLogPath}"
           )
           echo Update complete! Starting application...
           start "" "${nodePath.join(appDir, appExeName)}"
-          echo Cleaning up...
-          timeout /t 2 /nobreak >nul
-          rd /s /q "${tempDir}"
-          del "%~f0"
           exit /b`;
         } else {
           const quoteForShell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
           updateScript = nodePath.join(tempDir, "update.sh");
           scriptContent = `#!/bin/sh
-set -eu
+set -u
 while kill -0 ${processId} 2>/dev/null; do
   sleep 1
 done
-cp -a ${quoteForShell(nodePath.join(updateSourceDir, "."))} ${quoteForShell(appDir)}
-rm -rf ${quoteForShell(tempDir)}
+if ! cp -a ${quoteForShell(nodePath.join(updateSourceDir, "."))} ${quoteForShell(appDir)}; then
+  echo "$(date): copying the update into "${quoteForShell(appDir)}" failed, starting the previous version." >> ${quoteForShell(updateLogPath)}
+fi
 exec ${quoteForShell(process.execPath)}
 `;
         }
@@ -518,13 +534,13 @@ exec ${quoteForShell(process.execPath)}
           const subprocess =
             process.platform === "win32"
               ? spawn("cmd.exe", ["/c", updateScript], {
-                  cwd: tempDir,
+                  cwd: app.getPath("temp"),
                   detached: true,
                   windowsHide: true,
                   stdio: "ignore",
                 })
               : spawn(updateScript, [], {
-                  cwd: tempDir,
+                  cwd: app.getPath("temp"),
                   detached: true,
                   stdio: "ignore",
                 });
