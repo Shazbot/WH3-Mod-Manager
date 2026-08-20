@@ -22,6 +22,7 @@ import { flushAppConfigWrites } from "./appConfigFunctions";
 import { registerAssetSchemeAsPrivileged } from "./assetProtocol";
 import { findGameProcessIds, setGameProcessPriority } from "./utility/gameProcess";
 import { forkSteamWorker as fork } from "./steamWorker";
+import { buildWindowsUpdateScript } from "./utility/updateScripts";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -107,7 +108,11 @@ if (!gotTheLock) {
     // Skip the normal Electron quit flow here. The update helper already took over
     // and a hard exit is more reliable than waiting on app shutdown hooks/handles.
     setTimeout(() => {
-      void flushAppConfigWrites().finally(() => process.exit(0));
+      const forcedExit = setTimeout(() => process.exit(0), 5_000);
+      void flushAppConfigWrites().finally(() => {
+        clearTimeout(forcedExit);
+        process.exit(0);
+      });
     }, 250);
   };
 
@@ -486,26 +491,15 @@ if (!gotTheLock) {
         let scriptContent: string;
 
         if (process.platform === "win32") {
-          updateScript = nodePath.join(tempDir, "update.bat");
+          updateScript = nodePath.join(tempDir, "update.ps1");
           const appExeName = nodePath.basename(process.execPath);
-          scriptContent = `@echo off
-          echo Waiting for application to close...
-          :wait_loop
-          tasklist /FI "PID eq ${processId}" | find "${processId}" >nul
-          if errorlevel 1 goto continue_update
-          timeout /t 1 /nobreak >nul
-          goto wait_loop
-
-          :continue_update
-          echo Application closed. Starting update...
-          timeout /t 1 /nobreak >nul
-          xcopy /E /Y /I "${nodePath.join(updateSourceDir, "*")}" "${appDir}\\"
-          if errorlevel 1 (
-              echo [%DATE% %TIME%] Copying the update into "${appDir}" failed, starting the previous version.>>"${updateLogPath}"
-          )
-          echo Update complete! Starting application...
-          start "" "${nodePath.join(appDir, appExeName)}"
-          exit /b`;
+          scriptContent = buildWindowsUpdateScript({
+            processId,
+            updateSourceDir,
+            appDir,
+            updateLogPath,
+            appExecutablePath: nodePath.join(appDir, appExeName),
+          });
         } else {
           const quoteForShell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
           updateScript = nodePath.join(tempDir, "update.sh");
@@ -533,16 +527,31 @@ exec ${quoteForShell(process.execPath)}
         });
 
         if (result.response === 0) {
-          // Invoke Unix helpers through the shell so a noexec temporary mount does not prevent the
-          // update. Do not close the application until the helper has actually spawned.
+          // Keep the Windows helper console-free. Invoke Unix helpers through the shell so a noexec
+          // temporary mount does not prevent the update. Do not close the application until the
+          // helper has actually spawned.
           const subprocess =
             process.platform === "win32"
-              ? spawn("cmd.exe", ["/c", updateScript], {
-                  cwd: app.getPath("temp"),
-                  detached: true,
-                  windowsHide: true,
-                  stdio: "ignore",
-                })
+              ? spawn(
+                  "powershell.exe",
+                  [
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-File",
+                    updateScript,
+                  ],
+                  {
+                    cwd: app.getPath("temp"),
+                    detached: true,
+                    windowsHide: true,
+                    stdio: "ignore",
+                  },
+                )
               : spawn("/bin/sh", [updateScript], {
                   cwd: app.getPath("temp"),
                   detached: true,
@@ -693,7 +702,7 @@ exec ${quoteForShell(process.execPath)}
   // for applications and their menu bar to stay active until the user quits
   // explicitly with Cmd + Q.
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
+    if (!isAppQuitting && process.platform !== "darwin") {
       app.quit();
     }
   });
