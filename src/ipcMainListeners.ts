@@ -306,6 +306,7 @@ import getPackTableData from "./utility/frontend/packDataHandling";
 import { findLatestScriptLog } from "./utility/logPaths";
 import { decodePackedTextBuffer, getPackedFileMimeType, getPackedFileViewerKind } from "./utility/packFileViewing";
 import { collator } from "./utility/packFileSorting";
+import { resolveGameLaunch } from "./utility/gameLaunch";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie, { type KeyedLookup } from "./utility/trie";
@@ -320,21 +321,6 @@ declare const SKILLS_PRELOAD_WEBPACK_ENTRY: string;
 declare const TECH_TREES_WEBPACK_ENTRY: string;
 declare const TECH_TREES_PRELOAD_WEBPACK_ENTRY: string;
 const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
-const findExecutableOnPath = (command: string): string | undefined => {
-  for (const directory of (process.env.PATH ?? "").split(nodePath.delimiter)) {
-    if (!directory) continue;
-    const candidate = nodePath.join(directory, command);
-    try {
-      // statSync follows symlinks, so a symlinked launcher still counts, but a directory does not.
-      if (!fs.statSync(candidate).isFile()) continue;
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return candidate;
-    } catch {
-      // Try the next PATH entry.
-    }
-  }
-  return undefined;
-};
 const appendScopedTechNodeHash = (nodeKey: string, campaignKey?: string, factionKey?: string) => {
   const scopeSource = `${campaignKey || ""}${factionKey || ""}`.trim();
   if (!scopeSource) return nodeKey;
@@ -11401,44 +11387,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           return;
         }
 
-        // Keep these as argv values. In particular, the semicolons are game arguments and must not
-        // be interpreted as shell command separators on Linux.
-        const gameArgs = [
-          ...(saveName ? ["game_startup_mode", "campaign_load", saveName, ";"] : []),
-          `${fileNameWithModList};`,
-        ];
-        const steamId = gameToSteamId[appData.currentGame];
-        let launchCommand = gameExecutablePath;
-        let launchArgs = gameArgs;
-
-        if (process.platform === "linux") {
-          const steamCommand = findExecutableOnPath("steam");
-          const flatpakCommand = findExecutableOnPath("flatpak");
-          const snapCommand = findExecutableOnPath("snap");
-          const protontricksCommand = findExecutableOnPath("protontricks-launch");
-
-          if (steamCommand) {
-            // Let Steam select the game's Proton/runtime configuration.
-            launchCommand = steamCommand;
-            launchArgs = ["-applaunch", steamId, ...gameArgs];
-          } else if (flatpakCommand) {
-            // Flatpak Steam does not necessarily expose a `steam` executable to native apps.
-            launchCommand = flatpakCommand;
-            launchArgs = ["run", "com.valvesoftware.Steam", "-applaunch", steamId, ...gameArgs];
-          } else if (snapCommand) {
-            launchCommand = snapCommand;
-            launchArgs = ["run", "steam", "-applaunch", steamId, ...gameArgs];
-          } else if (protontricksCommand) {
-            // Protontricks remains a fallback for systems where the Steam CLI is not on PATH.
-            launchCommand = protontricksCommand;
-            launchArgs = ["--cwd-app", "--appid", steamId, gameExecutablePath, ...gameArgs];
-          } else {
-            reportGameLaunchError(
-              "Unable to launch the game: Steam, Flatpak/Snap Steam, and protontricks-launch were not found.",
-            );
-            return;
-          }
+        const launch = resolveGameLaunch({
+          gameExecutablePath,
+          steamId: gameToSteamId[appData.currentGame],
+          modListFileName: fileNameWithModList,
+          saveName,
+        });
+        if (launch.kind === "error") {
+          reportGameLaunchError(launch.message);
+          return;
         }
+        const { command: launchCommand, args: launchArgs } = launch;
 
         const launchDescription = [launchCommand, ...launchArgs].map((arg) => JSON.stringify(arg)).join(" ");
         console.log("Launching game:", launchDescription);
