@@ -19,8 +19,10 @@ const writePack = async (contents: Buffer | string, name = "pack.pack") => {
   return packPath;
 };
 
-// Tiny windows keep the boundary tests fast; the production defaults are 4 MiB / 64 KiB.
-const tinyWindows = { chunkBytes: 64, overlapBytes: 16 };
+// Tiny windows keep the boundary tests fast; the production defaults are 4 MiB / 64 KiB. The
+// overlap has to exceed the longest match under test ("greatswords" is 22 bytes as UTF-16LE),
+// otherwise a match straddling a boundary falls into the gap between windows.
+const tinyWindows = { chunkBytes: 64, overlapBytes: 32 };
 
 afterEach(async () => {
   await Promise.all(
@@ -73,6 +75,27 @@ describe("packFileContains", () => {
     );
 
     await expect(packFileContains(packPath, "greatswords", tinyWindows)).resolves.toBe(true);
+  });
+
+  it("finds matches at every byte offset, odd offsets included", async () => {
+    // A pack puts text wherever its binary layout lands, so neither encoding can assume alignment.
+    const directory = await makeDirectory();
+    for (const [label, encode] of [
+      ["utf8", (t: string) => Buffer.from(t, "utf8")],
+      ["utf16le", (t: string) => Buffer.from(t, "utf16le")],
+    ] as const) {
+      for (let offset = 0; offset <= 96; offset++) {
+        const packPath = path.join(directory, `${label}-${offset}.pack`);
+        await fs.promises.writeFile(
+          packPath,
+          Buffer.concat([Buffer.alloc(offset, 0x20), encode("greatswords"), Buffer.alloc(64, 0x20)]),
+        );
+        await expect(
+          packFileContains(packPath, "greatswords", tinyWindows),
+          `${label} at offset ${offset}`,
+        ).resolves.toBe(true);
+      }
+    }
   });
 
   it("finds a multi-byte UTF-8 match split across a chunk boundary", async () => {
