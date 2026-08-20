@@ -5,12 +5,23 @@ import { buildWindowsUpdateBootstrapScript, buildWindowsUpdateScript } from "../
 
 describe("buildWindowsUpdateBootstrapScript", () => {
   it("launches PowerShell through a detached-cmd-compatible wrapper", () => {
-    const script = buildWindowsUpdateBootstrapScript("C:\\Temp Folder\\update%20.ps1");
+    const script = buildWindowsUpdateBootstrapScript("C:\\Temp Folder\\update.ps1");
 
     expect(script).toContain(
-      'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\\Temp Folder\\update%%20.ps1"',
+      'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0update.ps1"',
     );
     expect(script).toContain("exit /b %errorlevel%");
+  });
+
+  it("keeps the script directory out of the batch file so a non-ASCII temporary path cannot be mangled", () => {
+    const script = buildWindowsUpdateBootstrapScript("C:\\Users\\Ярослав\\AppData\\Local\\Temp\\wh3mm\\update.ps1");
+
+    expect(script).not.toContain("Ярослав");
+    expect(script).toContain('-File "%~dp0update.ps1"');
+  });
+
+  it("escapes percent signs in the script name", () => {
+    expect(buildWindowsUpdateBootstrapScript("C:\\Temp\\update%20.ps1")).toContain('-File "%~dp0update%%20.ps1"');
   });
 });
 
@@ -23,6 +34,7 @@ describe("buildWindowsUpdateScript", () => {
       updateLogPath: "C:\\Users\\Tester\\update.log",
       appExecutablePath: "C:\\Apps\\WH3MM\\WH3 Mod Manager.exe",
       readyPath: "C:\\Temp\\update-ready",
+      cancelPath: "C:\\Temp\\update-cancelled",
     });
 
     expect(script).toContain("Wait-Process -Id 43816 -ErrorAction SilentlyContinue");
@@ -44,6 +56,29 @@ describe("buildWindowsUpdateScript", () => {
     expect(script).toContain("AppActivate($applicationProcess.Id)");
   });
 
+  it("gives up instead of installing once the application has cancelled the update", () => {
+    const script = buildWindowsUpdateScript({
+      processId: 43816,
+      updateSourceDir: "C:\\Temp\\staging",
+      appDir: "C:\\Apps\\WH3MM",
+      updateLogPath: "C:\\Users\\Tester\\update.log",
+      appExecutablePath: "C:\\Apps\\WH3MM\\WH3 Mod Manager.exe",
+      readyPath: "C:\\Temp\\update-ready",
+      cancelPath: "C:\\Temp\\update-cancelled",
+    });
+
+    expect(script).toContain("$cancelPath = 'C:\\Temp\\update-cancelled'");
+    expect(script).toContain("if (-not (Test-Path -LiteralPath $cancelPath)) { return }");
+
+    // The check has to sit between waiting for the application and touching the installation.
+    const waitIndex = script.indexOf("Wait-Process -Id 43816");
+    const copyIndex = script.indexOf("$robocopyPath $updateSourceDir $appDir");
+    const cancelChecks = [...script.matchAll(/^Exit-IfUpdateCancelled$/gm)].map((match) => match.index!);
+    expect(cancelChecks).toHaveLength(2);
+    expect(cancelChecks[0]).toBeGreaterThan(waitIndex);
+    expect(cancelChecks[1]).toBeLessThan(copyIndex);
+  });
+
   it("escapes apostrophes in paths", () => {
     const script = buildWindowsUpdateScript({
       processId: 1,
@@ -52,6 +87,7 @@ describe("buildWindowsUpdateScript", () => {
       updateLogPath: "C:\\User's Files\\update.log",
       appExecutablePath: "C:\\User's Files\\WH3MM\\WH3MM.exe",
       readyPath: "C:\\User's Files\\update-ready",
+      cancelPath: "C:\\User's Files\\update-cancelled",
     });
 
     expect(script).toContain("'C:\\User''s Files\\staging'");
@@ -67,6 +103,7 @@ describe("buildWindowsUpdateScript", () => {
       updateLogPath: "C:\\Users\\Tester\\update.log",
       appExecutablePath: "C:\\Apps\\WH3MM\\WH3 Mod Manager.exe",
       readyPath: "C:\\Temp\\update-ready",
+      cancelPath: "C:\\Temp\\update-cancelled",
     });
 
     execFileSync(

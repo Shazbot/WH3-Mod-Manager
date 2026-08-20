@@ -1,3 +1,5 @@
+import { win32 as windowsPath } from "node:path";
+
 export interface WindowsUpdateScriptOptions {
   processId: number;
   updateSourceDir: string;
@@ -5,15 +7,21 @@ export interface WindowsUpdateScriptOptions {
   updateLogPath: string;
   appExecutablePath: string;
   readyPath: string;
+  cancelPath: string;
 }
 
 const quotePowerShellLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
-/** Launches PowerShell through cmd because directly detached PowerShell skips -File on some Windows systems. */
+/**
+ * Launches PowerShell through cmd because directly detached PowerShell skips -File on some Windows
+ * systems. The PowerShell script is addressed relative to this bootstrap, which lives next to it:
+ * cmd reads .cmd files in the OEM code page, so an absolute path would be mangled for anyone whose
+ * temporary directory contains non-ASCII characters.
+ */
 export const buildWindowsUpdateBootstrapScript = (powerShellScriptPath: string) => {
-  const escapedScriptPath = powerShellScriptPath.replaceAll("%", "%%");
+  const escapedScriptName = windowsPath.basename(powerShellScriptPath).replaceAll("%", "%%");
   return `@echo off\r
-powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "${escapedScriptPath}"\r
+powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0${escapedScriptName}"\r
 exit /b %errorlevel%\r
 `;
 };
@@ -26,12 +34,14 @@ export const buildWindowsUpdateScript = ({
   updateLogPath,
   appExecutablePath,
   readyPath,
+  cancelPath,
 }: WindowsUpdateScriptOptions) => `$ErrorActionPreference = 'Stop'
 $updateSourceDir = ${quotePowerShellLiteral(updateSourceDir)}
 $appDir = ${quotePowerShellLiteral(appDir)}
 $updateLogPath = ${quotePowerShellLiteral(updateLogPath)}
 $appExecutablePath = ${quotePowerShellLiteral(appExecutablePath)}
 $readyPath = ${quotePowerShellLiteral(readyPath)}
+$cancelPath = ${quotePowerShellLiteral(cancelPath)}
 $updateForm = $null
 $statusLabel = $null
 
@@ -46,6 +56,17 @@ function Set-UpdateStatus([string] $message) {
   $statusLabel.Text = $message
   $updateForm.Refresh()
   [System.Windows.Forms.Application]::DoEvents()
+}
+
+# The application drops this marker when it gave up on the update. Without the check a helper that
+# outlived that hand-off would sit here until the user closed the application on their own terms and
+# then replace it behind their back, hours after they were told the update had failed.
+function Exit-IfUpdateCancelled {
+  if (-not (Test-Path -LiteralPath $cancelPath)) { return }
+  Write-UpdateLog 'The application cancelled the update; leaving the installation untouched.'
+  Set-UpdateStatus 'Update cancelled.'
+  if ($null -ne $updateForm) { $updateForm.Close() }
+  exit 1
 }
 
 Write-UpdateLog "Updater started; waiting for process ${processId}."
@@ -92,6 +113,7 @@ try {
 
 Wait-Process -Id ${processId} -ErrorAction SilentlyContinue
 Write-UpdateLog 'Application process closed.'
+Exit-IfUpdateCancelled
 Set-UpdateStatus 'Waiting for application processes to exit...'
 $processWaitDeadline = [DateTime]::UtcNow.AddSeconds(30)
 do {
@@ -112,6 +134,7 @@ if ($remainingAppProcesses.Count -gt 0) {
   Write-UpdateLog 'All application processes closed.'
 }
 
+Exit-IfUpdateCancelled
 Set-UpdateStatus 'Installing update...'
 $copySucceeded = $false
 try {

@@ -1,5 +1,5 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
-import { exec, spawn } from "child_process";
+import { exec, spawn, spawnSync } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
@@ -487,6 +487,7 @@ if (!gotTheLock) {
         // no console attached, so failures go to a log file rather than to a prompt nobody can see.
         const updateLogPath = nodePath.join(app.getPath("userData"), "update.log");
         const updateReadyPath = nodePath.join(tempDir, "update-ready");
+        const updateCancelPath = nodePath.join(tempDir, "update-cancelled");
         const processId = process.pid;
         let updateScript: string;
         let windowsUpdateBootstrapScript: string | undefined;
@@ -503,6 +504,7 @@ if (!gotTheLock) {
             updateLogPath,
             appExecutablePath: nodePath.join(appDir, appExeName),
             readyPath: updateReadyPath,
+            cancelPath: updateCancelPath,
           });
         } else {
           const quoteForShell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -519,7 +521,9 @@ exec ${quoteForShell(process.execPath)}
 `;
         }
 
-        fs.writeFileSync(updateScript, scriptContent);
+        // Windows PowerShell reads a .ps1 without a byte order mark in the ANSI code page, which
+        // mangles every path baked into the script for anyone whose user name is not pure ASCII.
+        fs.writeFileSync(updateScript, process.platform === "win32" ? `\uFEFF${scriptContent}` : scriptContent);
         if (windowsUpdateBootstrapScript) {
           fs.writeFileSync(windowsUpdateBootstrapScript, buildWindowsUpdateBootstrapScript(updateScript));
         }
@@ -542,16 +546,12 @@ exec ${quoteForShell(process.execPath)}
             if (!windowsUpdateBootstrapScript) throw new Error("Windows update bootstrap script was not created.");
             const helperLogFd = fs.openSync(updateLogPath, "a");
             try {
-              subprocess = spawn(
-                "cmd.exe",
-                ["/d", "/c", windowsUpdateBootstrapScript],
-                {
-                  cwd: app.getPath("temp"),
-                  detached: true,
-                  windowsHide: true,
-                  stdio: ["ignore", helperLogFd, helperLogFd],
-                },
-              );
+              subprocess = spawn("cmd.exe", ["/d", "/c", windowsUpdateBootstrapScript], {
+                cwd: app.getPath("temp"),
+                detached: true,
+                windowsHide: true,
+                stdio: ["ignore", helperLogFd, helperLogFd],
+              });
             } finally {
               fs.closeSync(helperLogFd);
             }
@@ -584,6 +584,21 @@ exec ${quoteForShell(process.execPath)}
               };
               const readyPoll = setInterval(checkReady, 50);
               const readyTimeout = setTimeout(() => {
+                // Killing only cmd.exe would orphan the PowerShell helper it launched, which is
+                // still waiting for this process to exit - it would apply the update whenever the
+                // user next closes the app, long after being told the update failed. Take the whole
+                // tree down, and leave a marker for a helper that somehow survives it anyway.
+                try {
+                  fs.writeFileSync(updateCancelPath, new Date().toISOString());
+                } catch (error) {
+                  console.error("Could not write the update cancellation marker:", error);
+                }
+                if (subprocess.pid !== undefined) {
+                  const kill = spawnSync("taskkill", ["/pid", String(subprocess.pid), "/t", "/f"], {
+                    windowsHide: true,
+                  });
+                  if (kill.error) console.error("Could not terminate the update helper:", kill.error);
+                }
                 subprocess.kill();
                 finish(new Error(`Update helper did not become ready. See ${updateLogPath} for details.`));
               }, 10_000);
