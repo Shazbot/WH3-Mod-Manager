@@ -533,7 +533,8 @@ exec ${quoteForShell(process.execPath)}
         });
 
         if (result.response === 0) {
-          // Launch the updater and exit.
+          // Invoke Unix helpers through the shell so a noexec temporary mount does not prevent the
+          // update. Do not close the application until the helper has actually spawned.
           const subprocess =
             process.platform === "win32"
               ? spawn("cmd.exe", ["/c", updateScript], {
@@ -542,12 +543,15 @@ exec ${quoteForShell(process.execPath)}
                   windowsHide: true,
                   stdio: "ignore",
                 })
-              : spawn(updateScript, [], {
+              : spawn("/bin/sh", [updateScript], {
                   cwd: app.getPath("temp"),
                   detached: true,
                   stdio: "ignore",
                 });
-          subprocess.once("error", (error) => console.error("Failed to start update helper:", error));
+          await new Promise<void>((resolve, reject) => {
+            subprocess.once("spawn", resolve);
+            subprocess.once("error", reject);
+          });
           subprocess.unref();
           terminateForExternalUpdate();
         } else {

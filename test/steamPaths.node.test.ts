@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  findSteamAppLocation,
   findSteamAppsFolder,
   findSteamAppsFolderSync,
   findSteamInstallPathSync,
@@ -57,5 +58,25 @@ describe("Steam Linux path discovery", () => {
     expect(getCompatDataPrefixSync("1142710", path.join(secondaryLibrary, "steamapps"))).toBe(
       path.join(secondaryLibrary, "steamapps", "compatdata", "1142710", "pfx"),
     );
+  });
+
+  it("continues past an existing Steam root that does not contain the game", async () => {
+    const homeDirectory = await makeHomeDirectory();
+    const staleNativeRoot = path.join(homeDirectory, ".steam", "steam");
+    const flatpakRoot = path.join(homeDirectory, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam");
+    await fs.promises.mkdir(path.join(staleNativeRoot, "steamapps"), { recursive: true });
+    await fs.promises.mkdir(path.join(flatpakRoot, "steamapps"), { recursive: true });
+    await fs.promises.writeFile(path.join(flatpakRoot, "steamapps", "appmanifest_1142710.acf"), "manifest");
+
+    expect(findSteamAppsFolderSync("1142710", undefined, "linux", homeDirectory)).toBe(
+      path.join(flatpakRoot, "steamapps"),
+    );
+    await expect(findSteamAppsFolder("1142710", undefined, "linux", homeDirectory)).resolves.toBe(
+      path.join(flatpakRoot, "steamapps"),
+    );
+    await expect(findSteamAppLocation("1142710", undefined, "linux", homeDirectory)).resolves.toEqual({
+      steamInstallPath: flatpakRoot,
+      steamAppsFolder: path.join(flatpakRoot, "steamapps"),
+    });
   });
 });

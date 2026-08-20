@@ -4,7 +4,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { gameToAppDataFolderName, gameToSteamId } from "./supportedGames";
 import appData from "./appData";
-import { findSteamAppsFolderSync, findSteamInstallPathSync, getCompatDataPrefixSync } from "./steamPaths";
+import { findSteamAppsFolderSync, getCompatDataPrefixSync } from "./steamPaths";
 
 let savesWatcher: chokidar.FSWatcher | undefined;
 
@@ -16,10 +16,9 @@ export const getSavesFolderPath = () => {
   if (process.platform === "linux") {
     const homeDir = app.getPath("home");
     const steamId = gameToSteamId[appData.currentGame];
-    const steamInstallPath = findSteamInstallPathSync(process.platform, homeDir);
     const steamAppsFolder =
       appData.gamesToSteamAppsFolderPaths[appData.currentGame] ||
-      findSteamAppsFolderSync(steamId, steamInstallPath);
+      findSteamAppsFolderSync(steamId, undefined, process.platform, homeDir);
     if (steamAppsFolder) appData.gamesToSteamAppsFolderPaths[appData.currentGame] = steamAppsFolder;
 
     const compatDataPrefix = getCompatDataPrefixSync(steamId, steamAppsFolder);

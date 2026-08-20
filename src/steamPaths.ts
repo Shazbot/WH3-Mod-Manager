@@ -100,34 +100,67 @@ const getSteamLibraryRoots = async (steamInstallPath: string): Promise<string[]>
 const appManifestPath = (libraryRoot: string, appId: string) =>
   nodePath.join(libraryRoot, "steamapps", `appmanifest_${appId}.acf`);
 
-export const findSteamAppsFolderSync = (
-  appId: string,
-  steamInstallPath = findSteamInstallPathSync(),
-): string | undefined => {
-  if (!steamInstallPath) return undefined;
-  const libraryRoot = getSteamLibraryRootsSync(steamInstallPath).find((candidate) =>
-    fs.existsSync(appManifestPath(candidate, appId)),
-  );
-  return libraryRoot ? nodePath.join(libraryRoot, "steamapps") : undefined;
+export type SteamAppLocation = {
+  steamInstallPath: string;
+  steamAppsFolder: string;
 };
 
-export const findSteamAppsFolder = async (
+const getInstallPathsToSearch = (
+  steamInstallPath: string | undefined,
+  platform: NodeJS.Platform,
+  homeDirectory: string,
+) => (steamInstallPath ? [steamInstallPath] : getSteamInstallCandidates(platform, homeDirectory));
+
+export const findSteamAppLocationSync = (
   appId: string,
   steamInstallPath?: string,
-): Promise<string | undefined> => {
-  const resolvedSteamInstallPath = steamInstallPath ?? (await findSteamInstallPath());
-  if (!resolvedSteamInstallPath) return undefined;
-  for (const libraryRoot of await getSteamLibraryRoots(resolvedSteamInstallPath)) {
-    try {
-      if (await fs.promises.stat(appManifestPath(libraryRoot, appId))) {
-        return nodePath.join(libraryRoot, "steamapps");
-      }
-    } catch {
-      // Try the next Steam library.
+  platform = process.platform,
+  homeDirectory = os.homedir(),
+): SteamAppLocation | undefined => {
+  for (const installPath of getInstallPathsToSearch(steamInstallPath, platform, homeDirectory)) {
+    const libraryRoot = getSteamLibraryRootsSync(installPath).find((candidate) =>
+      fs.existsSync(appManifestPath(candidate, appId)),
+    );
+    if (libraryRoot) {
+      return { steamInstallPath: installPath, steamAppsFolder: nodePath.join(libraryRoot, "steamapps") };
     }
   }
   return undefined;
 };
+
+export const findSteamAppLocation = async (
+  appId: string,
+  steamInstallPath?: string,
+  platform = process.platform,
+  homeDirectory = os.homedir(),
+): Promise<SteamAppLocation | undefined> => {
+  for (const installPath of getInstallPathsToSearch(steamInstallPath, platform, homeDirectory)) {
+    for (const libraryRoot of await getSteamLibraryRoots(installPath)) {
+      try {
+        await fs.promises.stat(appManifestPath(libraryRoot, appId));
+        return { steamInstallPath: installPath, steamAppsFolder: nodePath.join(libraryRoot, "steamapps") };
+      } catch {
+        // Try the next library, then the next Steam installation.
+      }
+    }
+  }
+  return undefined;
+};
+
+export const findSteamAppsFolderSync = (
+  appId: string,
+  steamInstallPath?: string,
+  platform = process.platform,
+  homeDirectory = os.homedir(),
+): string | undefined => findSteamAppLocationSync(appId, steamInstallPath, platform, homeDirectory)?.steamAppsFolder;
+
+export const findSteamAppsFolder = async (
+  appId: string,
+  steamInstallPath?: string,
+  platform = process.platform,
+  homeDirectory = os.homedir(),
+): Promise<string | undefined> =>
+  (await findSteamAppLocation(appId, steamInstallPath, platform, homeDirectory))?.steamAppsFolder;
 
 export const getCompatDataPrefixSync = (appId: string, steamAppsFolder?: string): string | undefined => {
   const resolvedSteamAppsFolder = steamAppsFolder ?? findSteamAppsFolderSync(appId);

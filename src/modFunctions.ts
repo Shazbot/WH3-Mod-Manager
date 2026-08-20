@@ -12,7 +12,7 @@ import { decodeHTML } from "entities";
 import { DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID } from "./modSources";
 import { registerModThumbnailPath } from "./modThumbnailAssets";
 import { parseWorkshopSubscriptionTimes } from "./workshopSubscriptions";
-import { findSteamAppsFolder, findSteamInstallPath } from "./steamPaths";
+import { findSteamAppLocation, findSteamAppsFolder, findSteamInstallPath } from "./steamPaths";
 import { forkSteamWorker as fork } from "./steamWorker";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
@@ -483,7 +483,8 @@ const getWorkshopSubscriptionTimes = async (
   game: SupportedGames,
   log: (msg: string) => void,
 ): Promise<Map<string, number>> => {
-  const steamInstallPath = await getSteamInstallPath();
+  const appLocation = process.platform === "win32" ? undefined : await findSteamAppLocation(gameToSteamId[game]);
+  const steamInstallPath = appLocation?.steamInstallPath ?? (await getSteamInstallPath());
   if (!steamInstallPath) return new Map();
 
   const subscriptionTimes = new Map<string, number>();
@@ -515,8 +516,10 @@ const getWorkshopSubscriptionTimes = async (
 // Find the steamapps folder, e.g. K:\SteamLibrary\steamapps\
 const getSteamAppsFolder = async (newGame?: SupportedGames) => {
   const game = newGame || appData.currentGame;
-  const installPath = await getSteamInstallPath();
-  if (!installPath) return;
+  // Windows obtains its install root from the registry. Unix discovery must inspect every
+  // conventional installation because native, Flatpak, and Snap Steam can coexist.
+  const installPath = process.platform === "win32" ? await getSteamInstallPath() : undefined;
+  if (process.platform === "win32" && !installPath) return;
 
   const steamAppsFolderPath = await findSteamAppsFolder(gameToSteamId[game], installPath);
   if (!steamAppsFolderPath) return;

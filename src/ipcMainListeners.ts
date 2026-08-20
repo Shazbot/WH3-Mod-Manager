@@ -151,7 +151,7 @@ import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progres
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
-import { execFile, spawn } from "child_process";
+import { execFile } from "child_process";
 import chokidar from "chokidar";
 import { format } from "date-fns";
 import electronLog from "electron-log/main";
@@ -306,7 +306,7 @@ import getPackTableData from "./utility/frontend/packDataHandling";
 import { findLatestScriptLog } from "./utility/logPaths";
 import { decodePackedTextBuffer, getPackedFileMimeType, getPackedFileViewerKind } from "./utility/packFileViewing";
 import { collator } from "./utility/packFileSorting";
-import { resolveGameLaunch } from "./utility/gameLaunch";
+import { launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie, { type KeyedLookup } from "./utility/trie";
@@ -11387,20 +11387,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           return;
         }
 
-        const launch = resolveGameLaunch({
+        const launchPlan = resolveGameLaunchPlan({
           gameExecutablePath,
           steamId: gameToSteamId[appData.currentGame],
           modListFileName: fileNameWithModList,
           saveName,
         });
-        if (launch.kind === "error") {
-          reportGameLaunchError(launch.message);
+        if (launchPlan.kind === "error") {
+          reportGameLaunchError(launchPlan.message);
           return;
         }
-        const { command: launchCommand, args: launchArgs } = launch;
-
-        const launchDescription = [launchCommand, ...launchArgs].map((arg) => JSON.stringify(arg)).join(" ");
-        console.log("Launching game:", launchDescription);
         // Create steam_appid.txt for Attila
         if (appData.currentGame === "attila" || appData.currentGame === "rome2" || appData.currentGame == "shogun2") {
           const steamAppIdPath = nodePath.join(
@@ -11415,25 +11411,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
         mainWindow?.webContents.send("handleLog", "starting game:");
-        mainWindow?.webContents.send("handleLog", launchDescription);
+        for (const candidate of launchPlan.candidates) {
+          const description = [candidate.command, ...candidate.args].map((arg) => JSON.stringify(arg)).join(" ");
+          console.log("Game launch candidate:", description);
+          mainWindow?.webContents.send("handleLog", description);
+        }
 
-        const launchStarted = await new Promise<boolean>((resolve) => {
-          const child = spawn(launchCommand, launchArgs, {
-            cwd: gamePath,
-            detached: true,
-            stdio: "ignore",
-            windowsHide: process.platform === "win32",
-          });
-          child.once("spawn", () => {
-            child.unref();
-            resolve(true);
-          });
-          child.once("error", (error) => {
-            reportGameLaunchError(`Failed to launch the game with ${launchCommand}.`, error);
-            resolve(false);
-          });
-        });
-        if (!launchStarted) return;
+        const launchResult = await launchGame(launchPlan.candidates, gamePath);
+        if (!launchResult.started) {
+          reportGameLaunchError(launchResult.message);
+          return;
+        }
         appData.compatData = {
           packTableCollisions: [],
           packFileCollisions: [],

@@ -110,4 +110,25 @@ describe("packFileContains", () => {
 
     await expect(packFileContains(packPath, "greatswords", { chunkBytes: 64 * 1024 })).resolves.toBe(true);
   });
+
+  it("does not treat an internal window boundary as the start of the file", async () => {
+    // With these windows, byte 32 becomes the start of the second overlapping window.
+    const packPath = await writePack("x".repeat(32) + "greatswords" + "y".repeat(80));
+
+    await expect(packFileContains(packPath, "^greatswords", tinyWindows)).resolves.toBe(false);
+    await expect(packFileContains(packPath, "^greatswords|greatswords", tinyWindows)).resolves.toBe(true);
+  });
+
+  it("does not treat an internal chunk boundary as the end of the file", async () => {
+    const packPath = await writePack("x".repeat(53) + "greatswords" + "y".repeat(80));
+
+    await expect(packFileContains(packPath, "greatswords$", tinyWindows)).resolves.toBe(false);
+  });
+
+  it("still honors anchors at the actual file boundaries", async () => {
+    const packPath = await writePack("greatswords" + "x".repeat(96) + "halberdiers");
+
+    await expect(packFileContains(packPath, "^greatswords", tinyWindows)).resolves.toBe(true);
+    await expect(packFileContains(packPath, "halberdiers$", tinyWindows)).resolves.toBe(true);
+  });
 });

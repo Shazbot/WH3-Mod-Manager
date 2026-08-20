@@ -20,6 +20,32 @@ const makeSearchPattern = (searchTerm: string): RegExp => {
   }
 };
 
+/**
+ * A streamed window is not the whole file, so its start/end must not satisfy ^ or $. Replacing only
+ * unescaped anchors outside character classes preserves alternatives such as ^header|ordinaryText.
+ */
+const constrainWholeFileAnchors = (pattern: RegExp, allowStart: boolean, allowEnd: boolean): RegExp => {
+  if (allowStart && allowEnd) return pattern;
+
+  let source = "";
+  let inCharacterClass = false;
+  for (let index = 0; index < pattern.source.length; index++) {
+    const character = pattern.source[index];
+    if (character === "\\") {
+      source += character;
+      if (index + 1 < pattern.source.length) source += pattern.source[++index];
+      continue;
+    }
+    if (character === "[") inCharacterClass = true;
+    if (character === "]" && inCharacterClass) inCharacterClass = false;
+
+    const disabledStart = character === "^" && !inCharacterClass && !allowStart;
+    const disabledEnd = character === "$" && !inCharacterClass && !allowEnd;
+    source += disabledStart || disabledEnd ? "(?!)" : character;
+  }
+  return new RegExp(source, pattern.flags);
+};
+
 // Pack text appears as either UTF-8 or UTF-16LE, and a pack places its text at whatever offset the
 // binary layout happens to produce. Decoding UTF-16LE from one alignment would miss every string
 // starting on the other, so both are checked. keepFromWindow holds the window on an even offset so
@@ -57,17 +83,29 @@ export const packFileContains = async (
   const pattern = makeSearchPattern(searchTerm);
   const stream = fs.createReadStream(filePath, { highWaterMark: chunkBytes });
   let tail: Buffer = Buffer.alloc(0);
+  let pendingChunk: Buffer | undefined;
+  let isFirstWindow = true;
+
+  const searchChunk = (chunk: Buffer, isLastWindow: boolean) => {
+    const window = tail.length === 0 ? chunk : Buffer.concat([tail, chunk]);
+    const windowPattern = constrainWholeFileAnchors(pattern, isFirstWindow, isLastWindow);
+    const found = windowContains(window, windowPattern);
+    tail = window.subarray(window.length - keepFromWindow(window.length, overlapBytes));
+    isFirstWindow = false;
+    return found;
+  };
 
   try {
     for await (const chunk of stream) {
-      const window = tail.length === 0 ? (chunk as Buffer) : Buffer.concat([tail, chunk as Buffer]);
-      if (windowContains(window, pattern)) return true;
-      tail = window.subarray(window.length - keepFromWindow(window.length, overlapBytes));
+      // Keep one chunk pending so `$` is enabled only for the actual final window.
+      if (pendingChunk && searchChunk(pendingChunk, false)) return true;
+      pendingChunk = chunk as Buffer;
     }
+    if (pendingChunk && searchChunk(pendingChunk, true)) return true;
   } finally {
     stream.destroy();
   }
 
-  // An empty file yields no chunks, so match the whole-file behaviour for a pattern matching "".
-  return tail.length === 0 && pattern.test("");
+  // An empty file yields no chunks, so match the whole-file behaviour against the empty string.
+  return pendingChunk === undefined && pattern.test("");
 };

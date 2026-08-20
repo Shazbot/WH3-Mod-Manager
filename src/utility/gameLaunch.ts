@@ -1,3 +1,4 @@
+import { execFileSync, spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as nodePath from "path";
 
@@ -30,14 +31,36 @@ export type GameLaunchRequest = {
   platform?: NodeJS.Platform;
   /** Injectable so the launcher choice can be exercised without touching the real PATH. */
   findExecutable?: (command: string) => string | undefined;
+  /** Injectable probe for package-manager front ends such as Flatpak and Snap. */
+  isLauncherAvailable?: (launcher: LinuxLauncher, executable: string) => boolean;
 };
 
 export type GameLaunchResolution =
-  | { kind: "launch"; command: string; args: string[] }
-  | { kind: "error"; message: string };
+  { kind: "launch"; command: string; args: string[] } | { kind: "error"; message: string };
+
+export type LinuxLauncher = "steam" | "flatpak" | "snap" | "protontricks-launch";
+export type GameLauncher = "direct" | LinuxLauncher;
+export type GameLaunchCommand = { launcher: GameLauncher; command: string; args: string[] };
+export type GameLaunchPlan = { kind: "launch"; candidates: GameLaunchCommand[] } | { kind: "error"; message: string };
 
 export const NO_LINUX_LAUNCHER_MESSAGE =
-  "Unable to launch the game: Steam, Flatpak/Snap Steam, and protontricks-launch were not found.";
+  "Unable to launch the game: no usable native, Flatpak, Snap, or Protontricks Steam launcher was found.";
+
+/** Confirms that a package-manager executable actually has Steam installed beneath it. */
+export const isLinuxLauncherAvailable = (launcher: LinuxLauncher, executable: string): boolean => {
+  if (launcher === "steam" || launcher === "protontricks-launch") return true;
+
+  try {
+    if (launcher === "flatpak") {
+      execFileSync(executable, ["info", "com.valvesoftware.Steam"], { stdio: "ignore", timeout: 3000 });
+    } else {
+      execFileSync(executable, ["list", "steam"], { stdio: "ignore", timeout: 3000 });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * The arguments the game itself takes. These stay separate argv values: the semicolons are game
@@ -53,50 +76,129 @@ const buildGameArgs = (modListFileName: string, saveName?: string) => [
  * that needs Steam's Proton configuration, so it is started through whichever Steam front end this
  * system actually has rather than executed directly.
  */
-export const resolveGameLaunch = ({
+export const resolveGameLaunchPlan = ({
   gameExecutablePath,
   steamId,
   modListFileName,
   saveName,
   platform = process.platform,
   findExecutable = findExecutableOnPath,
-}: GameLaunchRequest): GameLaunchResolution => {
+  isLauncherAvailable = isLinuxLauncherAvailable,
+}: GameLaunchRequest): GameLaunchPlan => {
   const gameArgs = buildGameArgs(modListFileName, saveName);
 
   if (platform !== "linux") {
-    return { kind: "launch", command: gameExecutablePath, args: gameArgs };
+    return {
+      kind: "launch",
+      candidates: [{ launcher: "direct", command: gameExecutablePath, args: gameArgs }],
+    };
   }
 
-  // Let Steam select the game's Proton/runtime configuration.
+  const candidates: GameLaunchCommand[] = [];
+
   const steamCommand = findExecutable("steam");
-  if (steamCommand) {
-    return { kind: "launch", command: steamCommand, args: ["-applaunch", steamId, ...gameArgs] };
+  if (steamCommand && isLauncherAvailable("steam", steamCommand)) {
+    candidates.push({ launcher: "steam", command: steamCommand, args: ["-applaunch", steamId, ...gameArgs] });
   }
 
   // Flatpak Steam does not necessarily expose a `steam` executable to native applications.
   const flatpakCommand = findExecutable("flatpak");
-  if (flatpakCommand) {
-    return {
-      kind: "launch",
+  if (flatpakCommand && isLauncherAvailable("flatpak", flatpakCommand)) {
+    candidates.push({
+      launcher: "flatpak",
       command: flatpakCommand,
       args: ["run", "com.valvesoftware.Steam", "-applaunch", steamId, ...gameArgs],
-    };
+    });
   }
 
   const snapCommand = findExecutable("snap");
-  if (snapCommand) {
-    return { kind: "launch", command: snapCommand, args: ["run", "steam", "-applaunch", steamId, ...gameArgs] };
+  if (snapCommand && isLauncherAvailable("snap", snapCommand)) {
+    candidates.push({
+      launcher: "snap",
+      command: snapCommand,
+      args: ["run", "steam", "-applaunch", steamId, ...gameArgs],
+    });
   }
 
   // Protontricks remains a fallback for systems where no Steam CLI is on PATH.
   const protontricksCommand = findExecutable("protontricks-launch");
-  if (protontricksCommand) {
-    return {
-      kind: "launch",
+  if (protontricksCommand && isLauncherAvailable("protontricks-launch", protontricksCommand)) {
+    candidates.push({
+      launcher: "protontricks-launch",
       command: protontricksCommand,
       args: ["--cwd-app", "--appid", steamId, gameExecutablePath, ...gameArgs],
-    };
+    });
   }
 
-  return { kind: "error", message: NO_LINUX_LAUNCHER_MESSAGE };
+  return candidates.length > 0 ? { kind: "launch", candidates } : { kind: "error", message: NO_LINUX_LAUNCHER_MESSAGE };
+};
+
+/** Backward-compatible single-choice view used by callers that only need to inspect the argv. */
+export const resolveGameLaunch = (request: GameLaunchRequest): GameLaunchResolution => {
+  const plan = resolveGameLaunchPlan(request);
+  if (plan.kind === "error") return plan;
+  const [{ command, args }] = plan.candidates;
+  return { kind: "launch", command, args };
+};
+
+type LaunchProcessOptions = {
+  earlyExitMs?: number;
+  spawnProcess?: typeof spawn;
+};
+
+export type GameLaunchResult = { started: true; launch: GameLaunchCommand } | { started: false; message: string };
+
+const attemptGameLaunch = (
+  launch: GameLaunchCommand,
+  cwd: string,
+  earlyExitMs: number,
+  spawnProcess: typeof spawn,
+): Promise<{ started: boolean; error?: string }> =>
+  new Promise((resolve) => {
+    let child: ChildProcess;
+    let timer: NodeJS.Timeout | undefined;
+    let settled = false;
+    const finish = (started: boolean, error?: string) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (started) child.unref();
+      resolve({ started, error });
+    };
+
+    try {
+      child = spawnProcess(launch.command, launch.args, {
+        cwd,
+        detached: true,
+        stdio: "ignore",
+        windowsHide: process.platform === "win32",
+      });
+    } catch (error) {
+      finish(false, error instanceof Error ? error.message : String(error));
+      return;
+    }
+
+    child.once("error", (error) => finish(false, error.message));
+    child.once("exit", (code, signal) => {
+      if (code === 0) finish(true);
+      else finish(false, `exited with code ${code ?? "null"}${signal ? ` (${signal})` : ""}`);
+    });
+    child.once("spawn", () => {
+      timer = setTimeout(() => finish(true), earlyExitMs);
+    });
+  });
+
+/** Tries launchers in priority order, falling through when one rejects the request immediately. */
+export const launchGame = async (
+  candidates: GameLaunchCommand[],
+  cwd: string,
+  { earlyExitMs = 1500, spawnProcess = spawn }: LaunchProcessOptions = {},
+): Promise<GameLaunchResult> => {
+  const failures: string[] = [];
+  for (const candidate of candidates) {
+    const result = await attemptGameLaunch(candidate, cwd, earlyExitMs, spawnProcess);
+    if (result.started) return { started: true, launch: candidate };
+    failures.push(`${candidate.launcher}: ${result.error || "failed to start"}`);
+  }
+  return { started: false, message: `Unable to launch the game. ${failures.join("; ")}` };
 };

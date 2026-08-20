@@ -4,7 +4,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findExecutableOnPath, NO_LINUX_LAUNCHER_MESSAGE, resolveGameLaunch } from "../src/utility/gameLaunch";
+import {
+  findExecutableOnPath,
+  launchGame,
+  NO_LINUX_LAUNCHER_MESSAGE,
+  resolveGameLaunch,
+  resolveGameLaunchPlan,
+  type LinuxLauncher,
+} from "../src/utility/gameLaunch";
 
 const isWindows = process.platform === "win32";
 const temporaryDirectories: string[] = [];
@@ -31,7 +38,7 @@ const withInstalled = (...installed: string[]) => {
   return (command: string) => (installed.includes(command) ? `/usr/bin/${command}` : undefined);
 };
 
-const resolveOnLinux = (installed: string[], saveName?: string) =>
+const resolveOnLinux = (installed: string[], saveName?: string, available = installed) =>
   resolveGameLaunch({
     gameExecutablePath: GAME_EXE,
     steamId: STEAM_ID,
@@ -39,6 +46,7 @@ const resolveOnLinux = (installed: string[], saveName?: string) =>
     saveName,
     platform: "linux",
     findExecutable: withInstalled(...installed),
+    isLauncherAvailable: (launcher: LinuxLauncher) => available.includes(launcher),
   });
 
 describe("resolveGameLaunch", () => {
@@ -72,6 +80,14 @@ describe("resolveGameLaunch", () => {
 
   it("falls back to Snap Steam when neither native nor Flatpak Steam is present", () => {
     expect(resolveOnLinux(["snap", "protontricks-launch"])).toEqual({
+      kind: "launch",
+      command: "/usr/bin/snap",
+      args: ["run", "steam", "-applaunch", STEAM_ID, "used_mods.txt;"],
+    });
+  });
+
+  it("skips Flatpak when the package manager exists but Steam is not installed in it", () => {
+    expect(resolveOnLinux(["flatpak", "snap", "protontricks-launch"], undefined, ["snap"])).toEqual({
       kind: "launch",
       command: "/usr/bin/snap",
       args: ["run", "steam", "-applaunch", STEAM_ID, "used_mods.txt;"],
@@ -114,6 +130,54 @@ describe("resolveGameLaunch", () => {
 
     expect(launch.kind === "launch" && launch.args.at(-1)).toBe("used_mods.txt;");
     expect(withFallback.kind === "launch" && withFallback.args.at(-1)).toBe("my_mods.txt;");
+  });
+});
+
+describe("launchGame", () => {
+  it("falls through after a launcher exits early with a failure", async () => {
+    const directory = makeDirectory();
+    const markerPath = path.join(directory, "fallback-ran");
+    const candidates = [
+      {
+        launcher: "steam" as const,
+        command: process.execPath,
+        args: ["-e", "process.exit(7)"],
+      },
+      {
+        launcher: "snap" as const,
+        command: process.execPath,
+        args: ["-e", `require("fs").writeFileSync(${JSON.stringify(markerPath)}, "yes")`],
+      },
+    ];
+
+    const result = await launchGame(candidates, directory, { earlyExitMs: 100 });
+
+    expect(result).toMatchObject({ started: true, launch: { launcher: "snap" } });
+    expect(fs.readFileSync(markerPath, "utf8")).toBe("yes");
+  });
+
+  it("reports every early launcher failure", async () => {
+    const plan = resolveGameLaunchPlan({
+      gameExecutablePath: GAME_EXE,
+      steamId: STEAM_ID,
+      modListFileName: "used_mods.txt",
+      platform: "linux",
+      findExecutable: withInstalled("steam", "protontricks-launch"),
+      isLauncherAvailable: () => true,
+    });
+    expect(plan.kind).toBe("launch");
+    if (plan.kind !== "launch") return;
+    const candidates = plan.candidates.map((candidate, index) => ({
+      ...candidate,
+      command: process.execPath,
+      args: ["-e", `process.exit(${index + 2})`],
+    }));
+
+    const result = await launchGame(candidates, makeDirectory(), { earlyExitMs: 100 });
+
+    expect(result.started).toBe(false);
+    expect(result.started || result.message).toContain("steam: exited with code 2");
+    expect(result.started || result.message).toContain("protontricks-launch: exited with code 3");
   });
 });
 
