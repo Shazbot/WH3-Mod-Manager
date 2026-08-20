@@ -278,7 +278,7 @@ import {
   type AssetBytes,
 } from "./assetProtocol";
 import { normalizeAssetPath } from "./assetUrls";
-import { forkSteamWorker as fork } from "./steamWorker";
+import { forkSteamWorker as fork, terminateSteamWorker } from "./steamWorker";
 import { collectVanillaFilesUnderPrefix, findVanillaPackContaining } from "./vanillaPackIndex/format";
 import {
   selectPackPathsToSearch,
@@ -10483,7 +10483,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           error: "Force update cancelled by the user.",
         })),
       } satisfies WorkshopUpdateCheckMessage);
-      repairChild?.kill();
+      if (repairChild) terminateSteamWorker(repairChild);
       log(`[Workshop repair] force update cancelled; resubscribing ${repairMods.length} mod(s)`);
       return repairMods;
     };
