@@ -151,7 +151,7 @@ import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progres
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
-import { exec, fork } from "child_process";
+import { exec, fork, spawn } from "child_process";
 import chokidar from "chokidar";
 import { format } from "date-fns";
 import electronLog from "electron-log/main";
@@ -318,6 +318,19 @@ declare const SKILLS_PRELOAD_WEBPACK_ENTRY: string;
 declare const TECH_TREES_WEBPACK_ENTRY: string;
 declare const TECH_TREES_PRELOAD_WEBPACK_ENTRY: string;
 const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
+const findExecutableOnPath = (command: string): string | undefined => {
+  for (const directory of (process.env.PATH ?? "").split(nodePath.delimiter)) {
+    if (!directory) continue;
+    const candidate = nodePath.join(directory, command);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // Try the next PATH entry.
+    }
+  }
+  return undefined;
+};
 const appendScopedTechNodeHash = (nodeKey: string, campaignKey?: string, factionKey?: string) => {
   const scopeSource = `${campaignKey || ""}${factionKey || ""}`.trim();
   if (!scopeSource) return nodeKey;
@@ -10986,6 +10999,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       for (const pack of appData.packsData) {
         console.log(pack.name, pack.readTables);
       }
+      const reportGameLaunchError = (message: string, error?: unknown) => {
+        console.error(message, error);
+        mainWindow?.webContents.send("handleLog", message);
+        mainWindow?.webContents.send("addToast", {
+          type: "warning",
+          messages: [message],
+          startTime: Date.now(),
+        } as Toast);
+      };
       try {
         // getSkillsData(mods.filter((mod) => mod.isEnabled));
         // return;
@@ -11398,27 +11420,44 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           fileNameWithModList = "my_mods.txt";
           await fs.writeFileSync(myModsPath, text);
         }
-        let batData = `start /d "${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}" ${
-          gameToProcessName[appData.currentGame]
-        }`;
+        const gameExecutablePath = nodePath.join(gamePath, gameToProcessName[appData.currentGame]);
+        if (!fs.existsSync(gameExecutablePath)) {
+          reportGameLaunchError(`Game executable not found: ${gameExecutablePath}`);
+          return;
+        }
+
+        // Keep these as argv values. In particular, the semicolons are game arguments and must not
+        // be interpreted as shell command separators on Linux.
+        const gameArgs = [
+          ...(saveName ? ["game_startup_mode", "campaign_load", saveName, ";"] : []),
+          `${fileNameWithModList};`,
+        ];
+        const steamId = gameToSteamId[appData.currentGame];
+        let launchCommand = gameExecutablePath;
+        let launchArgs = gameArgs;
+
         if (process.platform === "linux") {
-          if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) {
-            // should throw an error here?
-            console.error("Game path is undefined for current game");
+          const steamCommand = findExecutableOnPath("steam");
+          const protontricksCommand = findExecutableOnPath("protontricks-launch");
+
+          if (steamCommand) {
+            // Let Steam select the game's Proton/runtime configuration.
+            launchCommand = steamCommand;
+            launchArgs = ["-applaunch", steamId, ...gameArgs];
+          } else if (protontricksCommand) {
+            // Protontricks remains a fallback for systems where the Steam CLI is not on PATH.
+            launchCommand = protontricksCommand;
+            launchArgs = ["--cwd-app", "--appid", steamId, gameExecutablePath, ...gameArgs];
+          } else {
+            reportGameLaunchError(
+              "Unable to launch the game: neither Steam nor protontricks-launch was found on PATH.",
+            );
             return;
           }
-          const gamePath = join(
-            appData.gamesToGameFolderPaths[appData.currentGame].gamePath!,
-            gameToProcessName[appData.currentGame],
-          );
-          batData = `protontricks-launch --cwd-app --appid ${gameToSteamId[appData.currentGame]} "${gamePath}"`;
         }
-        console.log("batData so far:", batData);
-        if (saveName) {
-          batData += ` game_startup_mode campaign_load "${saveName}" ;`;
-        }
-        // file with the list of mods for the game to use, used_mods.txt or my_mods.txt
-        batData += ` ${fileNameWithModList};`;
+
+        const launchDescription = [launchCommand, ...launchArgs].map((arg) => JSON.stringify(arg)).join(" ");
+        console.log("Launching game:", launchDescription);
         // Create steam_appid.txt for Attila
         if (appData.currentGame === "attila" || appData.currentGame === "rome2" || appData.currentGame == "shogun2") {
           const steamAppIdPath = nodePath.join(
@@ -11433,10 +11472,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
         mainWindow?.webContents.send("handleLog", "starting game:");
-        mainWindow?.webContents.send("handleLog", batData);
-        exec(batData, (error) => {
-          console.error(error);
+        mainWindow?.webContents.send("handleLog", launchDescription);
+
+        const launchStarted = await new Promise<boolean>((resolve) => {
+          const child = spawn(launchCommand, launchArgs, {
+            cwd: gamePath,
+            detached: true,
+            stdio: "ignore",
+            windowsHide: process.platform === "win32",
+          });
+          child.once("spawn", () => {
+            child.unref();
+            resolve(true);
+          });
+          child.once("error", (error) => {
+            reportGameLaunchError(`Failed to launch the game with ${launchCommand}.`, error);
+            resolve(false);
+          });
         });
+        if (!launchStarted) return;
         appData.compatData = {
           packTableCollisions: [],
           packFileCollisions: [],
