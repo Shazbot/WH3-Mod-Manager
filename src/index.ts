@@ -22,7 +22,7 @@ import { flushAppConfigWrites } from "./appConfigFunctions";
 import { registerAssetSchemeAsPrivileged } from "./assetProtocol";
 import { findGameProcessIds, setGameProcessPriority } from "./utility/gameProcess";
 import { forkSteamWorker as fork } from "./steamWorker";
-import { buildWindowsUpdateScript } from "./utility/updateScripts";
+import { buildWindowsUpdateBootstrapScript, buildWindowsUpdateScript } from "./utility/updateScripts";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -486,12 +486,15 @@ if (!gotTheLock) {
         // Create an external updater because the running application cannot replace itself. It has
         // no console attached, so failures go to a log file rather than to a prompt nobody can see.
         const updateLogPath = nodePath.join(app.getPath("userData"), "update.log");
+        const updateReadyPath = nodePath.join(tempDir, "update-ready");
         const processId = process.pid;
         let updateScript: string;
+        let windowsUpdateBootstrapScript: string | undefined;
         let scriptContent: string;
 
         if (process.platform === "win32") {
           updateScript = nodePath.join(tempDir, "update.ps1");
+          windowsUpdateBootstrapScript = nodePath.join(tempDir, "update.cmd");
           const appExeName = nodePath.basename(process.execPath);
           scriptContent = buildWindowsUpdateScript({
             processId,
@@ -499,6 +502,7 @@ if (!gotTheLock) {
             appDir,
             updateLogPath,
             appExecutablePath: nodePath.join(appDir, appExeName),
+            readyPath: updateReadyPath,
           });
         } else {
           const quoteForShell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -516,6 +520,9 @@ exec ${quoteForShell(process.execPath)}
         }
 
         fs.writeFileSync(updateScript, scriptContent);
+        if (windowsUpdateBootstrapScript) {
+          fs.writeFileSync(windowsUpdateBootstrapScript, buildWindowsUpdateBootstrapScript(updateScript));
+        }
         if (process.platform !== "win32") fs.chmodSync(updateScript, 0o755);
 
         // Show dialog and execute update
@@ -530,37 +537,66 @@ exec ${quoteForShell(process.execPath)}
           // Keep the Windows helper console-free. Invoke Unix helpers through the shell so a noexec
           // temporary mount does not prevent the update. Do not close the application until the
           // helper has actually spawned.
-          const subprocess =
-            process.platform === "win32"
-              ? spawn(
-                  "powershell.exe",
-                  [
-                    "-NoLogo",
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-File",
-                    updateScript,
-                  ],
-                  {
-                    cwd: app.getPath("temp"),
-                    detached: true,
-                    windowsHide: true,
-                    stdio: "ignore",
-                  },
-                )
-              : spawn("/bin/sh", [updateScript], {
+          let subprocess: ReturnType<typeof spawn>;
+          if (process.platform === "win32") {
+            if (!windowsUpdateBootstrapScript) throw new Error("Windows update bootstrap script was not created.");
+            const helperLogFd = fs.openSync(updateLogPath, "a");
+            try {
+              subprocess = spawn(
+                "cmd.exe",
+                ["/d", "/c", windowsUpdateBootstrapScript],
+                {
                   cwd: app.getPath("temp"),
                   detached: true,
-                  stdio: "ignore",
-                });
-          await new Promise<void>((resolve, reject) => {
-            subprocess.once("spawn", resolve);
-            subprocess.once("error", reject);
-          });
+                  windowsHide: true,
+                  stdio: ["ignore", helperLogFd, helperLogFd],
+                },
+              );
+            } finally {
+              fs.closeSync(helperLogFd);
+            }
+          } else {
+            subprocess = spawn("/bin/sh", [updateScript], {
+              cwd: app.getPath("temp"),
+              detached: true,
+              stdio: "ignore",
+            });
+          }
+
+          if (process.platform === "win32") {
+            await new Promise<void>((resolve, reject) => {
+              let isSettled = false;
+              const finish = (error?: Error) => {
+                if (isSettled) return;
+                isSettled = true;
+                clearInterval(readyPoll);
+                clearTimeout(readyTimeout);
+                subprocess.removeListener("error", onError);
+                subprocess.removeListener("exit", onExit);
+                if (error) reject(error);
+                else resolve();
+              };
+              const onError = (error: Error) => finish(error);
+              const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
+                finish(new Error(`Update helper exited before becoming ready (code=${code}, signal=${signal}).`));
+              const checkReady = () => {
+                if (fs.existsSync(updateReadyPath)) finish();
+              };
+              const readyPoll = setInterval(checkReady, 50);
+              const readyTimeout = setTimeout(() => {
+                subprocess.kill();
+                finish(new Error(`Update helper did not become ready. See ${updateLogPath} for details.`));
+              }, 10_000);
+              subprocess.once("error", onError);
+              subprocess.once("exit", onExit);
+              checkReady();
+            });
+          } else {
+            await new Promise<void>((resolve, reject) => {
+              subprocess.once("spawn", resolve);
+              subprocess.once("error", reject);
+            });
+          }
           subprocess.unref();
           terminateForExternalUpdate();
         } else {
