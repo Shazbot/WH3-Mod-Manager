@@ -506,6 +506,7 @@ if (!gotTheLock) {
             appExecutablePath: nodePath.join(appDir, appExeName),
             readyPath: updateReadyPath,
             cancelPath: updateCancelPath,
+            tempDirPath: tempDir,
           });
         } else {
           const quoteForShell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -749,15 +750,25 @@ exec ${quoteForShell(process.execPath)}
 
     createWindow();
 
-    // An applied update leaves its staging area behind - the helper is running from inside it and
-    // cannot delete it. Sweep it now that the helper is done, off the startup path since the release
-    // archive and its extracted copy add up to hundreds of megabytes.
-    void removeStaleUpdateTempDirs(app.getPath("temp"), process.pid).then(({ removed, failed }) => {
-      if (removed.length > 0) console.log(`[update] Removed ${removed.length} leftover update folder(s).`);
-      for (const { path, error } of failed) {
-        console.log(`[update] Left ${path} in place for a later run:`, error.message);
-      }
-    });
+    // Applied updates clean up after themselves, so this is for the ones that did not get that far:
+    // cancelled updates, failed copies, and folders left by versions that shipped before the helper
+    // deleted its own. Off the startup path because a leftover holds hundreds of megabytes.
+    const sweepStaleUpdateTempDirs = (retriesLeft: number) => {
+      void removeStaleUpdateTempDirs(app.getPath("temp"), process.pid).then(({ removed, failed }) => {
+        if (removed.length > 0) console.log(`[update] Removed ${removed.length} leftover update folder(s).`);
+        if (failed.length === 0) return;
+        if (retriesLeft > 0) {
+          // Most likely the helper from the update this launch came out of: it holds the scripts it
+          // is running until it exits. Give it time rather than leaving the folder for a whole run.
+          setTimeout(() => sweepStaleUpdateTempDirs(retriesLeft - 1), 60_000);
+          return;
+        }
+        for (const { path, error } of failed) {
+          console.log(`[update] Left ${path} in place for a later run:`, error.message);
+        }
+      });
+    };
+    sweepStaleUpdateTempDirs(1);
   });
 
   // Quit when all windows are closed, except on macOS. There, it's common

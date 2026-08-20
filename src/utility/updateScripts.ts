@@ -8,6 +8,7 @@ export interface WindowsUpdateScriptOptions {
   appExecutablePath: string;
   readyPath: string;
   cancelPath: string;
+  tempDirPath: string;
 }
 
 const quotePowerShellLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -17,12 +18,16 @@ const quotePowerShellLiteral = (value: string) => `'${value.replaceAll("'", "''"
  * systems. The PowerShell script is addressed relative to this bootstrap, which lives next to it:
  * cmd reads .cmd files in the OEM code page, so an absolute path would be mangled for anyone whose
  * temporary directory contains non-ASCII characters.
+ *
+ * Exiting on the same line matters: cmd keeps this file open and reads it line by line, so once the
+ * script has deleted the directory both files live in, reading a further line fails and reports "The
+ * system cannot find the path specified." over a successful update. Ending the line the helper
+ * returns on means there is never a next line to read, and cmd exits with PowerShell's exit code.
  */
 export const buildWindowsUpdateBootstrapScript = (powerShellScriptPath: string) => {
   const escapedScriptName = windowsPath.basename(powerShellScriptPath).replaceAll("%", "%%");
   return `@echo off\r
-powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0${escapedScriptName}"\r
-exit /b %errorlevel%\r
+powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0${escapedScriptName}" & exit\r
 `;
 };
 
@@ -35,6 +40,7 @@ export const buildWindowsUpdateScript = ({
   appExecutablePath,
   readyPath,
   cancelPath,
+  tempDirPath,
 }: WindowsUpdateScriptOptions) => `$ErrorActionPreference = 'Stop'
 $updateSourceDir = ${quotePowerShellLiteral(updateSourceDir)}
 $appDir = ${quotePowerShellLiteral(appDir)}
@@ -42,6 +48,7 @@ $updateLogPath = ${quotePowerShellLiteral(updateLogPath)}
 $appExecutablePath = ${quotePowerShellLiteral(appExecutablePath)}
 $readyPath = ${quotePowerShellLiteral(readyPath)}
 $cancelPath = ${quotePowerShellLiteral(cancelPath)}
+$updateTempDir = ${quotePowerShellLiteral(tempDirPath)}
 $updateForm = $null
 $statusLabel = $null
 
@@ -180,6 +187,11 @@ try {
 
 if ($copySucceeded) {
   Set-UpdateStatus 'Starting the updated WH3 Mod Manager...'
+  # The archive and its extracted copy are hundreds of megabytes and have served their purpose. This
+  # deletes the scripts still executing out of this directory as well, which Windows allows: cmd and
+  # PowerShell both cope, and leaving it to the restarted application would be a race against the
+  # helper still holding these files.
+  Remove-Item -LiteralPath $updateTempDir -Recurse -Force -ErrorAction SilentlyContinue
 } else {
   Set-UpdateStatus 'Update failed; restarting the previous version. See update.log for details.'
   Wait-UpdateWindow 5000
