@@ -3,6 +3,7 @@ import { Modal } from "../../flowbite";
 import { useLocalizations } from "../../localizationContext";
 import type { AddBuildingLevelInput, BuildingLevelShift } from "../../buildingsData/editActions";
 import type { BuildingsRegionQuery, BuildingsTile } from "../../buildingsData/types";
+import { suggestBuildingLevelKey } from "./buildingKey";
 
 export type AddBuildingModalProps = {
   /** The source building, which also fixes the new level's chain and band. */
@@ -23,7 +24,7 @@ const AddBuildingModal = memo(
     const localized = useLocalizations();
     const isBelow = direction === "below";
     const newLevel = isBelow ? from.level : from.level + 1;
-    const suggestedKey = `${keyPrefix}_${from.chainKey.replace(/^wh[0-9_a-z]*?_/, "")}_${newLevel + 1}`;
+    const suggestedKey = suggestBuildingLevelKey(keyPrefix, from.chainKey, newLevel);
     const [levelKey, setLevelKey] = useState(suggestedKey.toLowerCase());
     const [title, setTitle] = useState("");
     const [shortDescription, setShortDescription] = useState("");
