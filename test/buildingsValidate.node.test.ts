@@ -193,6 +193,22 @@ describe("validateNewRows", () => {
     );
     expect(validateNewRows(base(), state)).toEqual([]);
   });
+
+  it("reports nothing for a movement override of an existing level", () => {
+    const state = stateWith([
+      {
+        table: "building_levels_tables",
+        origin: "moveBuilding",
+        values: {
+          level_name: "a_1",
+          chain: "chain_a",
+          level: "0",
+          primary_slot_building_building_level_requirement: "2",
+        },
+      },
+    ]);
+    expect(validateNewRows(base(), state)).toEqual([]);
+  });
 });
 
 describe("groupIssuesByRow", () => {

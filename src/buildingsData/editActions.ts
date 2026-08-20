@@ -251,6 +251,121 @@ export const levelsToShiftForBuildingBelow = (
   return [...byLevelKey.values()].sort((first, second) => second.level - first.level);
 };
 
+export type BuildingMoveDirection = "lower" | "higher";
+
+const PRIMARY_SLOT_LEVEL_REQUIREMENT = "primary_slot_building_building_level_requirement";
+const MIN_PRIMARY_SLOT_LEVEL_REQUIREMENT = 0;
+const MAX_PRIMARY_SLOT_LEVEL_REQUIREMENT = 5;
+
+const moveDelta = (direction: BuildingMoveDirection) => (direction === "higher" ? 1 : -1);
+
+/** The board row a building would occupy after moving one row in either direction. */
+const movedTierRow = (tierRow: number, direction: BuildingMoveDirection) => tierRow + moveDelta(direction);
+
+/**
+ * The DB requirement is one-based for secondary buildings while the board row is zero-based. A
+ * requirement of zero is the default for a building that has no explicit primary-tier requirement;
+ * once it is deliberately moved, use the normal one-based value for its target row.
+ */
+const requirementForTierRow = (tierRow: number) => tierRow + 1;
+
+const isValidMovedTierRow = (tierRow: number) => {
+  const requirement = requirementForTierRow(tierRow);
+  return (
+    tierRow >= 0 &&
+    MIN_PRIMARY_SLOT_LEVEL_REQUIREMENT <= requirement &&
+    requirement <= MAX_PRIMARY_SLOT_LEVEL_REQUIREMENT
+  );
+};
+
+/** Distinct levels in one chain, because a chain may be bound to more than one building set. */
+const chainTilesInView = (chainKey: string, view: Pick<BuildingsRegionView, "bands"> | undefined): BuildingsTile[] => {
+  if (!view) return [];
+  const byLevelKey = new Map<string, BuildingsTile>();
+  for (const band of view.bands) {
+    for (const column of band.columns) {
+      if (column.chainKey !== chainKey) continue;
+      for (const tile of column.tiles) {
+        if (tile.chainKey === chainKey && !byLevelKey.has(tile.levelKey)) byLevelKey.set(tile.levelKey, tile);
+      }
+    }
+  }
+  return [...byLevelKey.values()].sort(
+    (first, second) => first.level - second.level || first.levelKey.localeCompare(second.levelKey),
+  );
+};
+
+const movedLevelRowValues = (tile: BuildingsTile, targetTierRow: number): Record<string, string> | undefined => {
+  if (!tile.levelRowValues) return undefined;
+  return {
+    ...tile.levelRowValues,
+    level_name: tile.levelKey,
+    chain: tile.chainKey,
+    [PRIMARY_SLOT_LEVEL_REQUIREMENT]: `${requirementForTierRow(targetTierRow)}`,
+  };
+};
+
+/** Whether a single secondary building can move into the adjacent board row. */
+export const canMoveBuilding = (
+  tile: Pick<BuildingsTile, "levelKey" | "chainKey" | "tierRow" | "isSettlementOrPort">,
+  view: Pick<BuildingsRegionView, "bands"> | undefined,
+  direction: BuildingMoveDirection,
+): boolean => {
+  if (tile.isSettlementOrPort || !view) return false;
+  const targetTierRow = movedTierRow(tile.tierRow, direction);
+  if (!isValidMovedTierRow(targetTierRow)) return false;
+  return !chainTilesInView(tile.chainKey, view).some(
+    (candidate) => candidate.levelKey !== tile.levelKey && candidate.tierRow === targetTierRow,
+  );
+};
+
+/** A pending override for moving one building one board row. */
+export const moveBuildingRows = (tile: BuildingsTile, direction: BuildingMoveDirection): NewRowDraft[] => {
+  if (tile.isSettlementOrPort) return [];
+  const targetTierRow = movedTierRow(tile.tierRow, direction);
+  if (!isValidMovedTierRow(targetTierRow)) return [];
+  const values = movedLevelRowValues(tile, targetTierRow);
+  if (!values) return [];
+  return [
+    {
+      table: "building_levels_tables",
+      origin: "moveBuilding",
+      values,
+    },
+  ];
+};
+
+/** Whether every visible level in a chain can move one board row in the requested direction. */
+export const canMoveBuildingChain = (
+  tile: Pick<BuildingsTile, "chainKey" | "isSettlementOrPort">,
+  view: Pick<BuildingsRegionView, "bands"> | undefined,
+  direction: BuildingMoveDirection,
+): boolean => {
+  if (tile.isSettlementOrPort) return false;
+  const chainTiles = chainTilesInView(tile.chainKey, view);
+  return (
+    chainTiles.length > 0 &&
+    chainTiles.every(
+      (candidate) => !candidate.isSettlementOrPort && isValidMovedTierRow(movedTierRow(candidate.tierRow, direction)),
+    )
+  );
+};
+
+/** Pending overrides for moving every visible level in a chain one board row. */
+export const moveBuildingChainRows = (
+  tile: Pick<BuildingsTile, "chainKey" | "isSettlementOrPort">,
+  view: Pick<BuildingsRegionView, "bands"> | undefined,
+  direction: BuildingMoveDirection,
+): NewRowDraft[] => {
+  const chainTiles = chainTilesInView(tile.chainKey, view);
+  if (!canMoveBuildingChain(tile, view, direction) || chainTiles.some((candidate) => !candidate.levelRowValues))
+    return [];
+  return chainTiles.flatMap((candidate) => {
+    const values = movedLevelRowValues(candidate, movedTierRow(candidate.tierRow, direction));
+    return values ? [{ table: "building_levels_tables", origin: "moveBuilding" as const, values }] : [];
+  });
+};
+
 export interface AddBuildingChainInput {
   chainKey: string;
   superChain: string;

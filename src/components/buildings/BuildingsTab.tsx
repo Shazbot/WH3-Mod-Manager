@@ -23,9 +23,13 @@ import { dbClonePackedFilesToBuildingsRows, filterDuplicateBuildingsCloneRows } 
 import {
   addBuildingLevelRows,
   canAddBuildingBelow,
+  canMoveBuilding,
+  canMoveBuildingChain,
   disableBuildingRows,
   excludeFromSetRows,
   levelsToShiftForBuildingBelow,
+  moveBuildingChainRows,
+  moveBuildingRows,
   type AddBuildingLevelInput,
   type BuildingLevelShift,
   type NewRowDraft,
@@ -309,6 +313,47 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     [closeContextMenu, deepClone, isFeaturesForModdersEnabled],
   );
 
+  const movementActionsForTile = useCallback(
+    (tile: BuildingsTile): Array<{ label: string; run: () => void }> => {
+      const actions: Array<{ label: string; run: () => void }> = [];
+      const addMove = (label: string, rows: NewRowDraft[]) => {
+        if (rows.length === 0) return;
+        actions.push({
+          label,
+          run: () => dispatchEdit({ type: "addRows", rows }),
+        });
+      };
+
+      if (canMoveBuilding(tile, view, "lower")) {
+        addMove(localized.buildingsMoveBuildingLower || "Move this building lower", moveBuildingRows(tile, "lower"));
+      }
+      if (canMoveBuilding(tile, view, "higher")) {
+        addMove(localized.buildingsMoveBuildingHigher || "Move this building higher", moveBuildingRows(tile, "higher"));
+      }
+      if (canMoveBuildingChain(tile, view, "lower")) {
+        addMove(
+          localized.buildingsMoveChainLower || "Move the whole chain lower",
+          moveBuildingChainRows(tile, view, "lower"),
+        );
+      }
+      if (canMoveBuildingChain(tile, view, "higher")) {
+        addMove(
+          localized.buildingsMoveChainHigher || "Move the whole chain higher",
+          moveBuildingChainRows(tile, view, "higher"),
+        );
+      }
+      return actions;
+    },
+    [
+      dispatchEdit,
+      localized.buildingsMoveBuildingHigher,
+      localized.buildingsMoveBuildingLower,
+      localized.buildingsMoveChainHigher,
+      localized.buildingsMoveChainLower,
+      view,
+    ],
+  );
+
   // Editing dialogs and the context menu must not remain usable after the option is switched off.
   // Pending rows stay in memory so enabling the option again does not silently discard the user's
   // work, but they cannot be changed or saved while the option is disabled. The deep-clone hook
@@ -577,6 +622,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
                 ]
               : contextMenu.tile
                 ? [
+                    ...movementActionsForTile(contextMenu.tile),
                     {
                       label: localized.buildingsAddAbove || "Add a building above this",
                       run: () => setAddFrom({ tile: contextMenu.tile!, direction: "above" }),

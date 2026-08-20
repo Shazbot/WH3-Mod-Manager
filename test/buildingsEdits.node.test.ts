@@ -19,12 +19,16 @@ import {
   addGarrisonRows,
   addRecruitableUnitRows,
   canAddBuildingBelow,
+  canMoveBuilding,
+  canMoveBuildingChain,
   cloneCaiRows,
   disableBuildingRows,
   excludeFromSetRows,
   levelsToShiftForBuildingBelow,
+  moveBuildingChainRows,
+  moveBuildingRows,
 } from "../src/buildingsData/editActions";
-import type { BuildingsTableRows } from "../src/buildingsData/types";
+import type { BuildingsTableRows, BuildingsTile } from "../src/buildingsData/types";
 
 const noLoc = () => undefined;
 const CAMPAIGN = "camp";
@@ -441,6 +445,80 @@ describe("canAddBuildingBelow", () => {
         ]),
       ).map((row) => row.levelKey),
     ).toEqual(["a_1", "a_0"]);
+  });
+});
+
+describe("building movement actions", () => {
+  const tile = (levelKey: string, tierRow: number, requirement = tierRow + 1): BuildingsTile =>
+    ({
+      levelKey,
+      chainKey: "chain_a",
+      level: 0,
+      tierRow,
+      isSettlementOrPort: false,
+      levelRowValues: {
+        level_name: levelKey,
+        chain: "chain_a",
+        level: "0",
+        primary_slot_building_building_level_requirement: `${requirement}`,
+      },
+    }) as BuildingsTile;
+  const view = (tiles: BuildingsTile[]) =>
+    ({ bands: [{ columns: [{ chainKey: "chain_a", tiles }] }] }) as Parameters<typeof canMoveBuilding>[1];
+
+  it("moves one building to the adjacent empty row and preserves its other columns", () => {
+    const rows = moveBuildingRows(tile("a_1", 2), "lower");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].values).toMatchObject({
+      level_name: "a_1",
+      chain: "chain_a",
+      level: "0",
+      primary_slot_building_building_level_requirement: "2",
+    });
+  });
+
+  it("does not offer a single-building move into an occupied row", () => {
+    const selected = tile("a_2", 2);
+    const other = tile("a_1", 1);
+    expect(canMoveBuilding(selected, view([selected, other]), "lower")).toBe(false);
+    expect(canMoveBuilding(selected, view([selected, other]), "higher")).toBe(true);
+  });
+
+  it("honours the bottom and five-requirement upper bounds", () => {
+    const bottom = tile("a_1", 0, 0);
+    const top = tile("a_5", 4, 5);
+    expect(canMoveBuilding(bottom, view([bottom]), "lower")).toBe(false);
+    expect(canMoveBuilding(top, view([top]), "higher")).toBe(false);
+    expect(moveBuildingRows(top, "higher")).toEqual([]);
+  });
+
+  it("moves every distinct level in a chain while ignoring duplicate set bindings", () => {
+    const first = tile("a_1", 1);
+    const second = tile("a_2", 3, 4);
+    const duplicateFirst = tile("a_1", 1);
+    const chainView = view([first, second, duplicateFirst]);
+
+    expect(canMoveBuildingChain(first, chainView, "higher")).toBe(true);
+    expect(moveBuildingChainRows(first, chainView, "higher").map((row) => row.values)).toEqual([
+      {
+        level_name: "a_1",
+        chain: "chain_a",
+        level: "0",
+        primary_slot_building_building_level_requirement: "3",
+      },
+      {
+        level_name: "a_2",
+        chain: "chain_a",
+        level: "0",
+        primary_slot_building_building_level_requirement: "5",
+      },
+    ]);
+  });
+
+  it("does not move primary or port chains with the secondary-tier requirement column", () => {
+    const primary = { ...tile("settlement_1", 1), isSettlementOrPort: true };
+    expect(canMoveBuilding(primary, view([primary]), "higher")).toBe(false);
+    expect(moveBuildingRows(primary, "higher")).toEqual([]);
   });
 });
 

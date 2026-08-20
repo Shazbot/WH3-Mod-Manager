@@ -53,7 +53,7 @@ export interface BuildingLevelRow {
   commodity?: string;
   resourceRequirement?: string;
   religionRequirement?: string;
-  /** The complete source row, retained when an edit needs to override only its level. */
+  /** The complete source row, retained when an edit needs to override its level or board tier. */
   rawValues?: Record<string, string>;
 }
 
@@ -337,7 +337,7 @@ export interface BuildingsTile {
   tierRow: number;
   /** Display tier as a roman numeral; primary/port DB levels are already one-based. */
   romanNumeral: string;
-  /** Complete `building_levels_tables` row, used when inserting a level below this one. */
+  /** Complete `building_levels_tables` row, used when inserting a level or moving its board tier. */
   levelRowValues?: Record<string, string>;
   createTime: number;
   createCost: number;

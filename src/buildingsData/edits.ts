@@ -12,7 +12,14 @@ import type { BuildingsTableRows, BuiltBuildingsData } from "./types";
 export const LOC_TABLE = "__loc__";
 
 export type BuildingsRowOrigin =
-  "addBuilding" | "shiftBuildingLevel" | "addChain" | "disableBuilding" | "excludeFromSet" | "clone" | "manual";
+  | "addBuilding"
+  | "shiftBuildingLevel"
+  | "moveBuilding"
+  | "addChain"
+  | "disableBuilding"
+  | "excludeFromSet"
+  | "clone"
+  | "manual";
 
 export interface BuildingsNewRow {
   /** Stable across both sub-tabs, so a grid edit and a board edit address the same row. */
