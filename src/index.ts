@@ -23,6 +23,7 @@ import { registerAssetSchemeAsPrivileged } from "./assetProtocol";
 import { findGameProcessIds, setGameProcessPriority } from "./utility/gameProcess";
 import { forkSteamWorker as fork } from "./steamWorker";
 import { buildWindowsUpdateBootstrapScript, buildWindowsUpdateScript } from "./utility/updateScripts";
+import { buildUpdateTempDirPath, removeStaleUpdateTempDirs } from "./utility/updateTempDirs";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -430,7 +431,7 @@ if (!gotTheLock) {
           fs.rmSync(writeProbePath, { force: true });
         }
 
-        const tempDir = nodePath.join(app.getPath("temp"), `wh3mm-update-${process.pid}`);
+        const tempDir = buildUpdateTempDirPath(app.getPath("temp"), process.pid);
         const zipPath = nodePath.join(tempDir, "update.zip");
 
         // Create a clean, user-writable temporary directory.
@@ -747,6 +748,16 @@ exec ${quoteForShell(process.execPath)}
     }
 
     createWindow();
+
+    // An applied update leaves its staging area behind - the helper is running from inside it and
+    // cannot delete it. Sweep it now that the helper is done, off the startup path since the release
+    // archive and its extracted copy add up to hundreds of megabytes.
+    void removeStaleUpdateTempDirs(app.getPath("temp"), process.pid).then(({ removed, failed }) => {
+      if (removed.length > 0) console.log(`[update] Removed ${removed.length} leftover update folder(s).`);
+      for (const { path, error } of failed) {
+        console.log(`[update] Left ${path} in place for a later run:`, error.message);
+      }
+    });
   });
 
   // Quit when all windows are closed, except on macOS. There, it's common
