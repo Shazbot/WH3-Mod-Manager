@@ -55,7 +55,7 @@ describe("Steam Linux path discovery", () => {
       path.join(secondaryLibrary, "steamapps"),
     );
     expect(getCompatDataPrefixSync("1142710", path.join(secondaryLibrary, "steamapps"))).toBe(
-      path.join(secondaryLibrary, "compatdata", "1142710", "pfx"),
+      path.join(secondaryLibrary, "steamapps", "compatdata", "1142710", "pfx"),
     );
   });
 });

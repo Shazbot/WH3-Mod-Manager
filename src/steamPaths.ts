@@ -132,5 +132,5 @@ export const findSteamAppsFolder = async (
 export const getCompatDataPrefixSync = (appId: string, steamAppsFolder?: string): string | undefined => {
   const resolvedSteamAppsFolder = steamAppsFolder ?? findSteamAppsFolderSync(appId);
   if (!resolvedSteamAppsFolder) return undefined;
-  return nodePath.join(nodePath.dirname(resolvedSteamAppsFolder), "compatdata", appId, "pfx");
+  return nodePath.join(resolvedSteamAppsFolder, "compatdata", appId, "pfx");
 };
