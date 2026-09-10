@@ -149,6 +149,51 @@ describe("node graph execution", () => {
     );
   });
 
+  it("deduplicates source files when merging table selections from multiple branches", async () => {
+    const sharedSourceFile = { name: "shared.pack", path: "shared.pack", loaded: true };
+    const branchData = (tableName: string) => ({
+      type: "TableSelection",
+      tables: [{ name: tableName }],
+      sourceFiles: [sharedSourceFile],
+      tableCount: 1,
+    });
+    const branchOutputs = {
+      first: branchData("first_table"),
+      second: branchData("second_table"),
+    };
+
+    nodeExecutorMocks.executeNodeAction.mockImplementation(async ({ nodeId }: { nodeId: string }) => ({
+      success: true,
+      data: branchOutputs[nodeId as keyof typeof branchOutputs] ?? { type: "TableSelection" },
+    }));
+
+    const combineNode = {
+      ...createNode("combine"),
+      type: "combinesametables",
+      data: { ...createNode("combine").data, type: "combinesametables" },
+    };
+    const result = await executeNodeGraph({
+      nodes: [createNode("first"), createNode("second"), combineNode],
+      connections: [
+        { id: "first-combine", sourceId: "first", targetId: "combine" },
+        { id: "second-combine", sourceId: "second", targetId: "combine" },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(nodeExecutorMocks.executeNodeAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeId: "combine",
+        inputData: {
+          type: "TableSelection",
+          tables: [{ name: "first_table" }, { name: "second_table" }],
+          sourceFiles: [sharedSourceFile],
+          tableCount: 2,
+        },
+      }),
+    );
+  });
+
   describe("conditional branch gating", () => {
     /** true-branch -> trueSave, false-branch -> falseChild -> falseSave, plus a shared tail. */
     const buildBranchGraph = () => {

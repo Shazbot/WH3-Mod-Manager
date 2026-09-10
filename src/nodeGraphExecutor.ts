@@ -261,7 +261,7 @@ const mergeTableSelectionInputs = (
   executionResults: Map<string, NodeExecutionResult>,
   nodeMap: Map<string, SerializedNode>,
 ) => {
-  const mergedSourceFiles: any[] = [];
+  const mergedSourceFilesByPath = new Map<string, any>();
   const allTables: any[] = [];
   for (const connection of targetIncomingConnections) {
     const sourceData = extractConnectionData(connection, executionResults, nodeMap);
@@ -270,7 +270,11 @@ const mergeTableSelectionInputs = (
       allTables.push(...sourceData.tables);
     }
     if (sourceData.sourceFiles) {
-      mergedSourceFiles.push(...sourceData.sourceFiles);
+      for (const sourceFile of sourceData.sourceFiles) {
+        if (!mergedSourceFilesByPath.has(sourceFile.path)) {
+          mergedSourceFilesByPath.set(sourceFile.path, sourceFile);
+        }
+      }
     }
   }
   if (allTables.length === 0) {
@@ -279,7 +283,7 @@ const mergeTableSelectionInputs = (
   return {
     type: "TableSelection",
     tables: allTables,
-    sourceFiles: mergedSourceFiles,
+    sourceFiles: [...mergedSourceFilesByPath.values()],
     tableCount: allTables.length,
   };
 };
