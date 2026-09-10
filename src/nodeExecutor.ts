@@ -56,6 +56,7 @@ import {
 } from "./schema";
 import { getFilterValueCandidates, normalizeFilterMatchMode } from "./nodeGraph/types";
 import type { FilterRow } from "./nodeGraph/types";
+import { buildDefaultCellValue } from "./utility/dbRowCells";
 import { TextFileEditRule, applyTextFileEdits, matchesTextFileTarget } from "./nodeGraph/textFileEdits";
 import type { TextFileFormatter } from "./nodeGraph/textFileFormatting";
 import { PackFileOperationRule, planPackCopy, planPackFileOperations } from "./nodeGraph/packFileOperations";
@@ -173,6 +174,94 @@ const getRowsForPackedFile = (
   const rows = chunkSchemaIntoRows(packedFile.schemaFields, packedFile.tableSchema) as AmendedSchemaField[][];
   executionContext.rowsByPackedFile.set(packedFile as PackedFile, rows);
   return rows;
+};
+
+type JoinTableLike = {
+  table: Pick<PackedFile, "tableSchema">;
+};
+
+/**
+ * Cross joins can combine different schema versions of the same table. Use the most complete
+ * schema as the preferred order, then add any fields only present in another version or in an
+ * already-amended row. The latter keeps this working for IndexedTable values, which do not retain
+ * every table that contributed rows.
+ */
+const getJoinSchemaFields = (tables: JoinTableLike[], rows: AmendedSchemaField[][] = []): DBField[] => {
+  const schemas = tables.map((table) => table.table.tableSchema?.fields ?? []).filter((fields) => fields.length > 0);
+  const preferredSchema = schemas.reduce<DBField[]>(
+    (preferred, fields) => (fields.length > preferred.length ? fields : preferred),
+    [],
+  );
+  const schemaFields: DBField[] = [];
+  const seenNames = new Set<string>();
+
+  const addField = (field: DBField) => {
+    if (!field.name || seenNames.has(field.name)) return;
+    seenNames.add(field.name);
+    schemaFields.push({ ...field });
+  };
+
+  for (const field of preferredSchema) addField(field);
+  for (const schema of schemas) {
+    for (const field of schema) addField(field);
+  }
+  for (const row of rows) {
+    for (const cell of row) {
+      if (!cell.name || seenNames.has(cell.name)) continue;
+      addField({
+        name: cell.name,
+        field_type: cell.type as SCHEMA_FIELD_TYPE,
+        is_key: cell.isKey || false,
+        default_value: "",
+        is_filename: false,
+        is_reference: [],
+        description: "Joined column",
+        ca_order: -1,
+        is_bitwise: 0,
+        enum_values: {},
+      });
+    }
+  }
+
+  return schemaFields;
+};
+
+const cloneJoinCell = (cell: AmendedSchemaField, name: string): AmendedSchemaField => ({
+  ...cell,
+  name,
+  fields: cell.fields.map((field) => ({ ...field })),
+});
+
+const createDefaultJoinCell = (field: DBField): AmendedSchemaField =>
+  buildDefaultCellValue(field.name, field.field_type, field.default_value ?? "", field.is_key);
+
+/**
+ * Give every row in a cross join the same cells, in the same order. Rows from an older schema are
+ * aligned by their field names and receive cells initialized from the schema defaults for columns
+ * that were added later. The positional fallback is for rows that have not gone through
+ * amendSchemaField yet.
+ */
+const normalizeRowsForJoinSchema = (
+  rows: AmendedSchemaField[][],
+  rowSchemaFields: DBField[],
+  joinSchemaFields: DBField[],
+): AmendedSchemaField[][] => {
+  if (joinSchemaFields.length === 0) return rows;
+
+  const defaultRowTemplate = joinSchemaFields.map((field) => createDefaultJoinCell(field));
+
+  return rows.map((row) => {
+    const cellsByName = new Map<string, AmendedSchemaField>();
+    row.forEach((cell, index) => {
+      const name = cell.name || rowSchemaFields[index]?.name;
+      if (name && !cellsByName.has(name)) cellsByName.set(name, cell);
+    });
+
+    return joinSchemaFields.map((field, index) => {
+      const cell = cellsByName.get(field.name);
+      return cell ? cloneJoinCell(cell, field.name) : cloneJoinCell(defaultRowTemplate[index], field.name);
+    });
+  });
 };
 
 const getMergeIdentityColumnNames = (
@@ -3735,6 +3824,7 @@ async function executeLookupNode(
 
   // Handle both IndexedTable and TableSelection for the second input
   let indexedData: any;
+  let crossJoinRightSchemaFields: DBField[] | undefined;
 
   if (rightInputData.type === "IndexedTable") {
     // Already indexed, use as-is
@@ -3742,7 +3832,8 @@ async function executeLookupNode(
   } else if (rightInputData.type === "TableSelection") {
     if (joinType === "cross") {
       const allRightRows: AmendedSchemaField[][] = [];
-      let rightTable = rightInputData.tables[0];
+      let rightTable: DBTablesNodeTable | undefined;
+      crossJoinRightSchemaFields = getJoinSchemaFields(rightInputData.tables);
 
       for (const table of rightInputData.tables) {
         if (!table.table.schemaFields || !table.table.tableSchema) {
@@ -3754,7 +3845,11 @@ async function executeLookupNode(
         if (!rightTable) {
           rightTable = table;
         }
-        allRightRows.push(...rows);
+        allRightRows.push(
+          ...(crossJoinRightSchemaFields.length > 0
+            ? normalizeRowsForJoinSchema(rows, table.table.tableSchema.fields, crossJoinRightSchemaFields)
+            : rows),
+        );
       }
 
       if (!rightTable) {
@@ -3860,6 +3955,7 @@ async function executeLookupNode(
   }
 
   const allSourceRows: AmendedSchemaField[][] = [];
+  const crossSourceRowsByTable: Array<{ rows: AmendedSchemaField[][]; schemaFields: DBField[] }> = [];
   const sourceRowsWithLookupIndex: Array<{ row: AmendedSchemaField[]; lookupColumnIndex: number }> = [];
   const sourceTable = sourceData.tables[0]; // Keep first for metadata
 
@@ -3872,6 +3968,7 @@ async function executeLookupNode(
     const rows = getRowsForPackedFile(table.table, executionContext);
     if (joinType === "cross") {
       allSourceRows.push(...rows);
+      crossSourceRowsByTable.push({ rows, schemaFields: table.table.tableSchema.fields });
       continue;
     }
 
@@ -3901,22 +3998,41 @@ async function executeLookupNode(
     // Cross join: Cartesian product of all source rows with all right table rows
     hotPathLog(executionContext, `Lookup Node ${nodeId}: Performing cross join (Cartesian product)`);
 
+    const sourceSchemaFields = getJoinSchemaFields(sourceData.tables);
+    const normalizedSourceRows: AmendedSchemaField[][] = [];
+    for (const { rows, schemaFields: rowSchemaFields } of crossSourceRowsByTable) {
+      normalizedSourceRows.push(
+        ...(sourceSchemaFields.length > 0
+          ? normalizeRowsForJoinSchema(rows, rowSchemaFields, sourceSchemaFields)
+          : rows),
+      );
+    }
+
     // Extract all rows from the indexed data
     const allRightRows: AmendedSchemaField[][] = [];
     for (const rows of indexedData.indexMap.values()) {
       allRightRows.push(...rows);
     }
 
+    const rightSchemaFields =
+      crossJoinRightSchemaFields ?? getJoinSchemaFields([indexedData.sourceTable], allRightRows);
+    const rightRowSchemaFields = indexedData.sourceTable.table.tableSchema?.fields ?? rightSchemaFields;
+    const normalizedRightRows = crossJoinRightSchemaFields
+      ? allRightRows
+      : rightSchemaFields.length > 0
+        ? normalizeRowsForJoinSchema(allRightRows, rightRowSchemaFields, rightSchemaFields)
+        : allRightRows;
+
     hotPathLog(
       executionContext,
-      `Lookup Node ${nodeId}: Cross joining ${sourceRows.length} source rows with ${allRightRows.length} right rows`,
+      `Lookup Node ${nodeId}: Cross joining ${normalizedSourceRows.length} source rows with ${normalizedRightRows.length} right rows`,
     );
 
     const crossJoinedRows: AmendedSchemaField[][] = [];
 
     // Create Cartesian product
-    for (const sourceRow of sourceRows) {
-      for (const rightRow of allRightRows) {
+    for (const sourceRow of normalizedSourceRows) {
+      for (const rightRow of normalizedRightRows) {
         const prefixedSourceRow = sourceRow.map((cell) => ({
           ...cell,
           name: `${sourceTableName}_${cell.name}`,
@@ -3931,24 +4047,20 @@ async function executeLookupNode(
 
     hotPathLog(executionContext, `Lookup Node ${nodeId}: Created ${crossJoinedRows.length} cross-joined rows`);
 
-    // Build schema from the first joined row
-    const schemaFields: DBField[] = [];
-    if (crossJoinedRows.length > 0) {
-      for (const cell of crossJoinedRows[0]) {
-        schemaFields.push({
-          name: cell.name,
-          field_type: cell.type as SCHEMA_FIELD_TYPE,
-          is_key: cell.isKey || false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: `Joined column from cross join`,
-          ca_order: -1,
-          is_bitwise: 0,
-          enum_values: {},
-        });
-      }
-    }
+    const schemaFields: DBField[] = [
+      ...sourceSchemaFields.map((field) => ({
+        ...field,
+        name: `${sourceTableName}_${field.name}`,
+        description: `Source column from cross join`,
+        ca_order: -1,
+      })),
+      ...rightSchemaFields.map((field) => ({
+        ...field,
+        name: `${lookupTableName}_${field.name}`,
+        description: `Indexed column from cross join`,
+        ca_order: -1,
+      })),
+    ];
 
     const schemaVersion = sourceTable.table.tableSchema?.version ?? 1;
     const tableVersion = sourceTable.table.version;

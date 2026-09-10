@@ -18,11 +18,11 @@ const createSchemaField = (name: string, value: string | number) => ({
   isKey: false,
 });
 
-const createDbField = (name: string, value: string | number) => ({
+const createDbField = (name: string, value: string | number, defaultValue = "") => ({
   name,
   field_type: typeof value === "number" ? "I32" : "StringU8",
   is_key: false,
-  default_value: "",
+  default_value: defaultValue,
   is_filename: false,
   is_reference: [],
   description: "",
@@ -31,7 +31,12 @@ const createDbField = (name: string, value: string | number) => ({
   enum_values: {},
 });
 
-const createTableSelection = (tableName: string, columns: string[], rows: Array<Array<string | number>>) => {
+const createTableSelection = (
+  tableName: string,
+  columns: string[],
+  rows: Array<Array<string | number>>,
+  defaults: Record<string, string> = {},
+) => {
   const schemaFields = rows.flatMap((row) => row.map((value, index) => createSchemaField(columns[index], value)));
 
   return {
@@ -47,7 +52,9 @@ const createTableSelection = (tableName: string, columns: string[], rows: Array<
           schemaFields,
           tableSchema: {
             version: 1,
-            fields: columns.map((columnName, index) => createDbField(columnName, rows[0]?.[index] ?? "")),
+            fields: columns.map((columnName, index) =>
+              createDbField(columnName, rows[0]?.[index] ?? "", defaults[columnName] ?? ""),
+            ),
           },
         },
       },
@@ -56,6 +63,12 @@ const createTableSelection = (tableName: string, columns: string[], rows: Array<
     tableCount: 1,
   };
 };
+
+const combineTableSelections = (...selections: ReturnType<typeof createTableSelection>[]) => ({
+  ...selections[0],
+  tables: selections.flatMap((selection) => selection.tables),
+  tableCount: selections.reduce((count, selection) => count + selection.tableCount, 0),
+});
 
 describe("lookup node", () => {
   it("cross joins table selections without requiring index columns", async () => {
@@ -93,6 +106,56 @@ describe("lookup node", () => {
       "campaign_public_order_populace_effects_tables_populace_happiness",
     ]);
     expect(result.data?.tables[0].table.schemaFields).toHaveLength(8);
+  });
+
+  it("keeps row boundaries when either side includes an older schema", async () => {
+    const source = combineTableSelections(
+      createTableSelection("source_tables", ["key", "source_value"], [["old", "old source"]]),
+      createTableSelection("source_tables", ["key", "source_value", "new_column"], [["new", "new source", 99]], {
+        new_column: "42",
+      }),
+    );
+    const indexed = combineTableSelections(
+      createTableSelection("indexed_tables", ["right_key"], [["old right"]]),
+      createTableSelection("indexed_tables", ["right_key", "right_value"], [["new right", 88]], { right_value: "7" }),
+    );
+
+    const result = await executeNodeAction({
+      nodeId: "lookup_stale_schema",
+      nodeType: "lookup",
+      textValue: "",
+      config: {
+        joinType: "cross",
+        lookupColumn: "",
+        indexColumns: [],
+        indexJoinColumn: "",
+      },
+      inputData: [source, indexed],
+      executionContext: createFlowExecutionContext(),
+    });
+
+    expect(result.success).toBe(true);
+    const outputTable = result.data?.tables[0].table;
+    const outputColumns = outputTable.tableSchema.fields.map((field: { name: string }) => field.name);
+    const outputRows = Array.from({ length: outputTable.schemaFields.length / outputColumns.length }, (_, index) =>
+      outputTable.schemaFields
+        .slice(index * outputColumns.length, (index + 1) * outputColumns.length)
+        .map((field: { resolvedKeyValue: string }) => field.resolvedKeyValue),
+    );
+
+    expect(outputColumns).toEqual([
+      "source_tables_key",
+      "source_tables_source_value",
+      "source_tables_new_column",
+      "indexed_tables_right_key",
+      "indexed_tables_right_value",
+    ]);
+    expect(outputRows).toEqual([
+      ["old", "old source", "42", "old right", "7"],
+      ["old", "old source", "42", "new right", "88"],
+      ["new", "new source", "99", "old right", "7"],
+      ["new", "new source", "99", "new right", "88"],
+    ]);
   });
 
   it("pads unmatched left-join rows with empty indexed cells", async () => {
