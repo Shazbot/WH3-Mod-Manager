@@ -1704,6 +1704,8 @@
   "viewerOk": "OK",
   "viewerFile": "File",
   "viewerNewPack": "New Pack",
+  "viewerOpenRecent": "Open Recent",
+  "viewerNoRecentPacks": "No recent packs",
   "viewerAddNewFlow": "Add New Flow",
   "viewerOpenDbPack": "open db.pack",
   "viewerSavePack": "Save Pack",

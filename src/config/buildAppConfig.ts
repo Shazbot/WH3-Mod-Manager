@@ -1,4 +1,6 @@
 import appData from "../appData";
+import { vanillaPackNames } from "../supportedGames";
+import { sanitizeRecentPackPaths } from "../utility/recentPackPaths";
 import { emptyGameConfig } from "./migrateAppConfig";
 
 /**
@@ -16,6 +18,7 @@ export function buildAppConfig(payload: ConfigSavePayload): AppConfig {
     loadOrderRules,
     disabledModLoadOrderRules,
     loadOrderRuleDisabledPacks,
+    recentPackPaths: payloadRecentPackPaths,
     ...options
   } = config;
 
@@ -43,6 +46,12 @@ export function buildAppConfig(payload: ConfigSavePayload): AppConfig {
 
   return {
     ...options,
+    // The main process can receive a viewer-open event just before a debounced renderer payload.
+    // Keep that newer history entry when folding the payload into the disk config.
+    recentPackPaths: sanitizeRecentPackPaths(
+      [...(appData.recentPackPaths ?? []), ...(payloadRecentPackPaths ?? [])],
+      [...vanillaPackNames, ...(appData.allVanillaPackNames ?? [])],
+    ),
     games,
     gameFolderPaths: appData.gamesToGameFolderPaths,
   };

@@ -250,6 +250,8 @@ declare global {
     packsData: Record<string, PackViewData>;
     unsavedPacksData: Record<string, PackedFile[]>;
     deletedPackFilePaths: Record<string, string[]>;
+    /** Physical packs most recently opened in the mod viewer, newest first. */
+    recentPackPaths: string[];
     packCollisions: PackCollisions;
     packCollisionsCheckProgress: PackCollisionsCheckProgressData;
     dataFromConfig?: ConfigForRenderer;
@@ -398,6 +400,7 @@ declare global {
     | "hiddenMainWindowTabs"
     | "isVisualsSortByCultureEnabled"
     | "isVisualsHideDuplicatesEnabled"
+    | "recentPackPaths"
   >;
 
   /** Everything stored for one game. Per-mod data lives in modUserData, one copy, not once per preset. */

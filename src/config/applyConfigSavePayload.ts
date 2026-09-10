@@ -1,6 +1,8 @@
 import appData from "../appData";
 import { getEnabledMods } from "../modsHelpers";
 import { refreshMainLoadOrderRules } from "../mainLoadOrderRules";
+import { sanitizeRecentPackPaths } from "../utility/recentPackPaths";
+import { vanillaPackNames } from "../supportedGames";
 
 /**
  * Applies the parts of a save payload that main keeps in memory.
@@ -21,6 +23,10 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
   appData.isChangingGameProcessPriority = config.isChangingGameProcessPriority;
   appData.isShowingSkillNodeSetNames = config.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
   appData.hideRepeatedKeyPrefixes = config.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
+  appData.recentPackPaths = sanitizeRecentPackPaths(
+    [...(appData.recentPackPaths ?? []), ...(config.recentPackPaths ?? [])],
+    [...vanillaPackNames, ...(appData.allVanillaPackNames ?? [])],
+  );
   appData.skillTreesDisplayMode = config.skillTreesDisplayMode;
   appData.technologyTreesDisplayMode = config.technologyTreesDisplayMode;
 

@@ -143,6 +143,7 @@ describe("migrateAppConfig", () => {
     expect(config.isVisualsSortByCultureEnabled).toBe(true);
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
     expect(config.hideRepeatedKeyPrefixes).toBe(true);
+    expect(config.recentPackPaths).toEqual([]);
     expect(config.games.rome2).toEqual({
       currentPreset: { name: "", mods: [], version: 2 },
       presets: [],
@@ -154,6 +155,16 @@ describe("migrateAppConfig", () => {
     });
     expect(config.gameFolderPaths.rome2.modSourceOrder).toEqual(["data", "workshop"]);
     expect(config.alwaysEnabledModNames).toEqual([]);
+  });
+
+  it("filters vanilla and duplicate recent viewer packs while migrating", () => {
+    const config = migrateAppConfig({
+      configVersion: CONFIG_VERSION,
+      currentGame: "wh3",
+      recentPackPaths: ["/mods/db.pack", "C:\\Mods\\Example.pack", "c:/mods/example.pack"],
+    });
+
+    expect(config.recentPackPaths).toEqual(["C:\\Mods\\Example.pack"]);
   });
 
   it("preserves the Visuals culture sort option", () => {

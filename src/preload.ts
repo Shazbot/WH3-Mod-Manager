@@ -767,6 +767,8 @@ const api = {
     ipcRenderer.on("setIsFeaturesForModdersEnabled", callback),
   setModdersPrefix: (callback: (event: any, moddersPrefix: string) => void) =>
     ipcRenderer.on("setModdersPrefix", callback),
+  setRecentPackPaths: (callback: (event: Electron.IpcRendererEvent, packPaths: string[]) => void) =>
+    ipcRenderer.on("setRecentPackPaths", callback),
 };
 
 export type api = typeof api;

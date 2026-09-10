@@ -14,7 +14,7 @@ import PackTablesTableView, {
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
 import localizationContext from "../../localizationContext";
-import { gameToPackWithDBTablesName } from "../../supportedGames";
+import { gameToPackWithDBTablesName, vanillaPackNames } from "../../supportedGames";
 import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
 import {
@@ -44,6 +44,7 @@ import { getDefaultSaveAsPackName, getPackFileInventory, getPreferredTreeTab, ha
 import GlobalSearchPanel from "./GlobalSearchPanel";
 import LoadOrderRulesView from "./LoadOrderRulesView";
 import { isLoadOrderRulesPackedFilePath } from "@/src/utility/loadOrderRulesFile";
+import { getVisibleRecentPackCount, MAX_RECENT_PACKS, sanitizeRecentPackPaths } from "@/src/utility/recentPackPaths";
 import { useKeepMountedOnceActive } from "../useKeepMountedOnceActive";
 import type { GlobalSearchDbResult, GlobalSearchLocResult, GlobalSearchResult } from "@/src/globalSearch/types";
 
@@ -85,6 +86,10 @@ type CopyTableNameRequest = {
 const EMPTY_TABS: ViewerTab[] = [];
 const EMPTY_PACK_TARGETS: ViewerPackTarget[] = [];
 const MAX_TABLE_HISTORY_ENTRIES = 100;
+const DEFAULT_RECENT_PACK_ROW_HEIGHT = 36;
+const RECENT_PACK_MENU_BOTTOM_MARGIN = 8;
+/** Two 1 px borders plus Tailwind's py-1 (4 px on each side). */
+const RECENT_PACK_MENU_VERTICAL_CHROME = 10;
 /** Below this the modder File button cannot show its label inside the sidebar's width. */
 const TOOLBAR_ICON_ONLY_SIDEBAR_WIDTH = 300;
 
@@ -195,6 +200,7 @@ const ModsViewer = memo(() => {
   const packsDataByPath = useAppSelector((state) => state.app.packsData);
   const unsavedPacksDataByPath = useAppSelector((state) => state.app.unsavedPacksData);
   const deletedPackFilePathsByPath = useAppSelector((state) => state.app.deletedPackFilePaths);
+  const recentPackPaths = useAppSelector((state) => state.app.recentPackPaths);
   const dbPackName = gameToPackWithDBTablesName[currentGame] || "db.pack";
   const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
   const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
@@ -210,6 +216,8 @@ const ModsViewer = memo(() => {
   const [newPackName, setNewPackName] = React.useState("");
   const [isNewPackProcessing, setIsNewPackProcessing] = React.useState(false);
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const [isRecentPacksOpen, setIsRecentPacksOpen] = useState(false);
+  const [visibleRecentPackCount, setVisibleRecentPackCount] = useState(MAX_RECENT_PACKS);
   const [packCloseConfirmPath, setPackCloseConfirmPath] = useState<string | null>(null);
   const [copyOverwriteRequest, setCopyOverwriteRequest] = useState<CopyOverwriteRequest | null>(null);
   const [importConflictRequest, setImportConflictRequest] = useState<PackImportConflictRequest | null>(null);
@@ -270,6 +278,10 @@ const ModsViewer = memo(() => {
     () => (currentPackData ? getPackFileInventory(currentPackData, unsavedFiles) : undefined),
     [currentPackData, unsavedFiles],
   );
+  const availableRecentPackPaths = useMemo(
+    () => sanitizeRecentPackPaths(recentPackPaths, vanillaPackNames),
+    [recentPackPaths],
+  );
 
   const preferredTreeTabCacheRef = useRef<
     Record<
@@ -327,6 +339,8 @@ const ModsViewer = memo(() => {
   const sidebarResizableRef = useRef<Resizable>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
   const fileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const recentPackMenuRef = useRef<HTMLDivElement>(null);
+  const recentPackFirstButtonRef = useRef<HTMLButtonElement>(null);
   const [isSidebarNarrow, setIsSidebarNarrow] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   // Hidden rather than unmounted once it has been opened, so closing and reopening keeps the query,
@@ -450,6 +464,29 @@ const ModsViewer = memo(() => {
       document.removeEventListener("keydown", closeFileMenuOnEscape);
     };
   }, [isFileMenuOpen]);
+
+  useEffect(() => {
+    if (!isFileMenuOpen) setIsRecentPacksOpen(false);
+  }, [isFileMenuOpen]);
+
+  useLayoutEffect(() => {
+    if (!isRecentPacksOpen || availableRecentPackPaths.length === 0) return;
+
+    const updateVisibleRecentPackCount = () => {
+      const menuTop = recentPackMenuRef.current?.getBoundingClientRect().top ?? 0;
+      const rowHeight =
+        recentPackFirstButtonRef.current?.getBoundingClientRect().height || DEFAULT_RECENT_PACK_ROW_HEIGHT;
+      const availableHeight = Math.max(
+        0,
+        window.innerHeight - menuTop - RECENT_PACK_MENU_BOTTOM_MARGIN - RECENT_PACK_MENU_VERTICAL_CHROME,
+      );
+      setVisibleRecentPackCount(getVisibleRecentPackCount(availableHeight, rowHeight));
+    };
+
+    updateVisibleRecentPackCount();
+    window.addEventListener("resize", updateVisibleRecentPackCount);
+    return () => window.removeEventListener("resize", updateVisibleRecentPackCount);
+  }, [availableRecentPackPaths.length, isRecentPacksOpen]);
 
   useEffect(() => {
     if (!isFeaturesForModdersEnabled) setIsFileMenuOpen(false);
@@ -1779,6 +1816,12 @@ const ModsViewer = memo(() => {
     window.api?.requestOpenModInViewer(dbPackName);
   };
 
+  const handleOpenRecentPack = useCallback((packPath: string) => {
+    setIsRecentPacksOpen(false);
+    setIsFileMenuOpen(false);
+    window.api?.requestOpenModInViewer(packPath);
+  }, []);
+
   const handleNewPackConfirm = useCallback(async () => {
     if (!newPackName.trim()) {
       showDialog(localized.viewerMissingPackName || "Please enter a pack name", {
@@ -2315,7 +2358,7 @@ const ModsViewer = memo(() => {
                         id="mods-viewer-file-menu"
                         role="menu"
                         aria-label={localized.viewerFile || "File"}
-                        className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] overflow-hidden rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
+                        className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
                       >
                         <button
                           type="button"
@@ -2325,6 +2368,50 @@ const ModsViewer = memo(() => {
                         >
                           {localized.viewerNewPack || "New Pack"}
                         </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            aria-haspopup="menu"
+                            aria-expanded={isRecentPacksOpen}
+                            onClick={() => setIsRecentPacksOpen((isOpen) => !isOpen)}
+                            className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+                          >
+                            <span className="flex items-center justify-between gap-4">
+                              <span>{localized.viewerOpenRecent || "Open Recent"}</span>
+                              <span aria-hidden="true">▶</span>
+                            </span>
+                          </button>
+                          {isRecentPacksOpen && (
+                            <div
+                              ref={recentPackMenuRef}
+                              role="menu"
+                              aria-label={localized.viewerOpenRecent || "Open Recent"}
+                              className="absolute left-full top-0 z-50 ml-1 min-w-[16rem] max-w-[28rem] overflow-hidden rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
+                            >
+                              {availableRecentPackPaths.length > 0 ? (
+                                availableRecentPackPaths.slice(0, visibleRecentPackCount).map((packPath, index) => (
+                                  <button
+                                    key={packPath}
+                                    ref={index === 0 ? recentPackFirstButtonRef : undefined}
+                                    type="button"
+                                    role="menuitem"
+                                    data-testid={`recent-pack-${index}`}
+                                    onClick={() => handleOpenRecentPack(packPath)}
+                                    title={packPath}
+                                    className="block w-full truncate px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+                                  >
+                                    {getPackFileName(packPath)}
+                                  </button>
+                                ))
+                              ) : (
+                                <div role="menuitem" aria-disabled="true" className="px-3 py-2 text-sm text-gray-500">
+                                  {localized.viewerNoRecentPacks || "No recent packs"}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <button
                           type="button"
                           role="menuitem"

@@ -172,6 +172,8 @@ interface AppData {
   packsData: Pack[];
   unsavedPacksData: Record<string, PackedFile[]>;
   deletedPackFilePaths: Record<string, string[]>;
+  /** Physical packs most recently opened in the mod viewer, newest first. */
+  recentPackPaths: string[];
   compatData: PackCollisions;
   vanillaPacks: Pack[];
   allVanillaPackNames: Set<string>;
@@ -247,6 +249,7 @@ const appData = {
   packsData: [],
   unsavedPacksData: {},
   deletedPackFilePaths: {},
+  recentPackPaths: [],
   compatData: {
     packTableCollisions: [],
     packFileCollisions: [],

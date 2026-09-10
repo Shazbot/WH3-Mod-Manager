@@ -26,7 +26,7 @@ import {
 import initialState from "./initialAppState";
 import equal from "fast-deep-equal";
 import { format } from "date-fns";
-import { SupportedGames } from "./supportedGames";
+import { SupportedGames, vanillaPackNames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
 import { getUsedModImport } from "./usedMods";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
@@ -35,6 +35,7 @@ import { sharedModMatchesInstalledMod } from "./sharedModList";
 import { isHideableMainWindowTab } from "./utility/frontend/mainWindowTabs";
 import { DEFAULT_DB_TABLE_ROOT } from "./utility/packFileHelpers";
 import { uncategorizedCategoryName } from "./utility/categoryNames";
+import { sanitizeRecentPackPaths } from "./utility/recentPackPaths";
 
 const packFilePathKey = (path: string) => path.replaceAll("/", "\\").toLowerCase();
 
@@ -1137,6 +1138,9 @@ const appSlice = createSlice({
       if (deletedFilePaths.length === 0) delete state.deletedPackFilePaths[packPath];
       else state.deletedPackFilePaths[packPath] = deletedFilePaths;
     },
+    setRecentPackPaths: (state: AppState, action: PayloadAction<string[]>) => {
+      state.recentPackPaths = sanitizeRecentPackPaths(action.payload, vanillaPackNames);
+    },
     setPacksDataRead: (state: AppState, action: PayloadAction<string[]>) => {
       const packPaths = action.payload;
 
@@ -1234,6 +1238,7 @@ const appSlice = createSlice({
         fromConfigAppState.isVisualsSortByCultureEnabled ?? state.isVisualsSortByCultureEnabled;
       state.isVisualsHideDuplicatesEnabled =
         fromConfigAppState.isVisualsHideDuplicatesEnabled ?? state.isVisualsHideDuplicatesEnabled;
+      state.recentPackPaths = sanitizeRecentPackPaths(fromConfigAppState.recentPackPaths, vanillaPackNames);
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -2032,6 +2037,7 @@ export const {
   removePackData,
   setUnsavedPacksData,
   setDeletedPackFilePaths,
+  setRecentPackPaths,
   setPacksDataRead,
   setPackCollisions,
   setPackCollisionsCheckProgress,

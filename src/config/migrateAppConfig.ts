@@ -1,8 +1,9 @@
-import { supportedGames, SupportedGames } from "../supportedGames";
+import { supportedGames, SupportedGames, vanillaPackNames } from "../supportedGames";
 import type { GameFolderPaths } from "../appData";
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { toPresetEntries, toSnapshotEntries } from "./presetEntries";
 import { SortingType } from "../utility/modRowSorting";
+import { sanitizeRecentPackPaths } from "../utility/recentPackPaths";
 
 /**
  * The config file used to store a full Mod record for every mod in every preset, which made it grow
@@ -165,6 +166,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     enabledModsPaneSortingType: config.enabledModsPaneSortingType ?? SortingType.Ordered,
     currentGame: config.currentGame ?? "wh3",
     hideRepeatedKeyPrefixes: config.hideRepeatedKeyPrefixes ?? true,
+    recentPackPaths: sanitizeRecentPackPaths(config.recentPackPaths, vanillaPackNames),
   };
 };
 

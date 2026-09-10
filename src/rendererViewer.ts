@@ -14,6 +14,7 @@ import {
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
   setPacksData,
+  setRecentPackPaths,
   setReferencesHash,
   setStartArgs,
   setDeletedPackFilePaths,
@@ -49,6 +50,10 @@ window.api?.setModdersPrefix((event, moddersPrefix) => {
 
 window.api?.setCurrentGameNaive((event, game) => {
   store.dispatch(setCurrentGameNaive(game));
+});
+
+window.api?.setRecentPackPaths((event, packPaths) => {
+  store.dispatch(setRecentPackPaths(packPaths));
 });
 
 window.api?.openModInViewer((event, modPath: string) => {

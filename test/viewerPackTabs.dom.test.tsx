@@ -3,7 +3,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import appReducer, { requestOpenPackTab, selectDBTable, selectFlowFile, setUnsavedPacksData } from "../src/appSlice";
 import initialState from "../src/initialAppState";
@@ -135,6 +135,12 @@ const pack = (packPath: string, packName: string): PackViewData => ({
   packPath,
   tables: ["db\\units_tables\\data__"],
   packedFiles: {},
+});
+
+const defaultInnerHeight = window.innerHeight;
+
+afterEach(() => {
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: defaultInnerHeight });
 });
 
 describe("multiple pack viewer tabs", () => {
@@ -676,6 +682,77 @@ describe("multiple pack viewer tabs", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "db.pack", exact: true })).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "File", exact: true }));
     expect(screen.getByRole("menuitem", { name: "open db.pack", exact: true })).toBeDisabled();
+  });
+
+  it("shows up to twenty recent non-vanilla packs and opens the selected pack", async () => {
+    const user = userEvent.setup();
+    const requestOpenModInViewer = vi.fn();
+    const recentPackPaths = Array.from({ length: 20 }, (_, index) => `/mods/pack-${index}.pack`);
+    window.api = {
+      requestOpenModInViewer,
+      setViewerActivePack: vi.fn(),
+    } as unknown as NonNullable<Window["api"]>;
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          recentPackPaths: [...recentPackPaths, "/game/data/db.pack"],
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <LocalizationContext.Provider value={{ filter: "Filter" }}>
+          <ModsViewer />
+        </LocalizationContext.Provider>
+      </Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "File", exact: true }));
+    await user.click(screen.getByRole("menuitem", { name: "Open Recent", exact: true }));
+
+    expect(screen.getAllByTestId(/^recent-pack-/)).toHaveLength(20);
+    expect(screen.queryByText("db.pack", { exact: true })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("menuitem", { name: "pack-19.pack", exact: true }));
+    expect(requestOpenModInViewer).toHaveBeenCalledWith("/mods/pack-19.pack");
+    expect(screen.queryByRole("menu", { name: "Open Recent" })).not.toBeInTheDocument();
+  });
+
+  it("reserves the recent menu border and padding when limiting rows to the viewer height", async () => {
+    const user = userEvent.setup();
+    // Twenty 36 px rows would fit in the remaining 720 px after the bottom margin, but the menu's
+    // borders and vertical padding also need 10 px, so only nineteen rows actually fit.
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 728 });
+    window.api = { setViewerActivePack: vi.fn() } as unknown as NonNullable<Window["api"]>;
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          recentPackPaths: Array.from({ length: 20 }, (_, index) => `/mods/pack-${index}.pack`),
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <LocalizationContext.Provider value={{ filter: "Filter" }}>
+          <ModsViewer />
+        </LocalizationContext.Provider>
+      </Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "File", exact: true }));
+    await user.click(screen.getByRole("menuitem", { name: "Open Recent", exact: true }));
+
+    expect(screen.getAllByTestId(/^recent-pack-/)).toHaveLength(19);
   });
 
   it("asks before overwriting an existing destination file during copy", async () => {

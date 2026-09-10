@@ -308,6 +308,7 @@ import {
 } from "./vanillaPackIndex/select";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
+import { addRecentPackPath, recentPackPathsEqual, sanitizeRecentPackPaths } from "./utility/recentPackPaths";
 import {
   gameToGameName,
   gameToPackWithDBTablesName,
@@ -315,6 +316,7 @@ import {
   gameToSteamId,
   gameToSupportedGameOptions,
   gameToVanillaPacksData,
+  vanillaPackNames,
   supportedGameOptions,
   supportedGameOptionToStartGameOption,
   supportsCompression,
@@ -5642,6 +5644,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.currentGame = appState.currentGame;
       initializeAllSchemaForGame(appData.currentGame);
       appData.gameToConfig = appState.games;
+      appData.recentPackPaths = sanitizeRecentPackPaths(appState.recentPackPaths, [
+        ...vanillaPackNames,
+        ...appData.allVanillaPackNames,
+      ]);
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
       appData.moddersPrefix = appState.moddersPrefix || "";
@@ -10869,6 +10875,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       windows.techTreesWindow = undefined;
     });
   };
+  const updateRecentPackPaths = (packPath: string) => {
+    const knownVanillaPackNames = [...vanillaPackNames, ...appData.allVanillaPackNames];
+    const nextRecentPackPaths = addRecentPackPath(appData.recentPackPaths, packPath, knownVanillaPackNames);
+    if (recentPackPathsEqual(appData.recentPackPaths, nextRecentPackPaths)) return;
+
+    appData.recentPackPaths = nextRecentPackPaths;
+    mainWindow?.webContents.send("setRecentPackPaths", nextRecentPackPaths);
+    windows.viewerWindow?.webContents.send("setRecentPackPaths", nextRecentPackPaths);
+  };
   const openModInViewerWindow = (modPath: string) => {
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
       const baseVanillaPackName = vanillaPackData.name;
@@ -10879,6 +10894,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
       }
     }
+    updateRecentPackPaths(modPath);
     console.log("ON requestOpenModInViewer", modPath);
     if (!appData.openViewerPackPaths.includes(modPath)) {
       appData.openViewerPackPaths.push(modPath);
@@ -11294,6 +11310,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     windows.viewerWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
     windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
     windows.viewerWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
+    windows.viewerWindow?.webContents.send("setRecentPackPaths", appData.recentPackPaths);
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();

@@ -46,6 +46,7 @@ const initialState = {
   packsData: {},
   unsavedPacksData: {},
   deletedPackFilePaths: {},
+  recentPackPaths: [],
   packCollisions: {
     packTableCollisions: [],
     packFileCollisions: [],

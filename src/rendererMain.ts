@@ -50,6 +50,7 @@ import {
   setPackSearchResults,
   setPacksData,
   setPacksDataRead,
+  setRecentPackPaths,
   setSaves,
   setSkillsData,
   setSkillsViewOptions,
@@ -103,6 +104,10 @@ window.api?.addToast((event, toast) => {
 
 window.api?.setStartArgs((event, startArgs) => {
   store.dispatch(setStartArgs(startArgs));
+});
+
+window.api?.setRecentPackPaths((event, packPaths) => {
+  store.dispatch(setRecentPackPaths(packPaths));
 });
 
 window.api?.packsInSave((event, packNames: string[]) => {
