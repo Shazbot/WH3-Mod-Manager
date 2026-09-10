@@ -27,6 +27,7 @@ type EsfMapTabProps = {
 
 const MAP_AREA_OPACITY = 0.36;
 const FACTION_FLAG_SIZE = 20;
+const CHARACTER_DRAG_THRESHOLD = 3;
 /** Deep enough to walk back a mis-click run, shallow enough that the snapshots stay cheap. */
 const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
@@ -94,6 +95,8 @@ const associatedUnitForSubculture = (option: UnitViewerLordOption, subculture: s
   return option.associatedUnit;
 };
 
+const formatSubtypeOption = (option: UnitViewerLordOption) => `${option.subtype} — ${option.name}`;
+
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useLocalizations();
@@ -132,7 +135,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     scrollTop: number;
   }>();
   const suppressMapClickRef = useRef(false);
-  const characterDragRef = useRef<{ pointerId: number; faction: string; characterId: number }>();
+  const characterDragRef = useRef<{
+    pointerId: number;
+    faction: string;
+    characterId: number;
+    startX: number;
+    startY: number;
+    hasMoved: boolean;
+  }>();
   /** The map as the startpos has it. Ownership edits are overlaid onto it below, never into it. */
   const [baseMap, setBaseMap] = useState<EsfMapPayload>();
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
@@ -1011,10 +1021,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (showCharacters && extendedState) {
       const character = characterAtCanvasPoint(event);
       if (character) {
+        suppressMapClickRef.current = false;
         characterDragRef.current = {
           pointerId: event.pointerId,
           faction: character.faction,
           characterId: character.character.id,
+          startX: event.clientX,
+          startY: event.clientY,
+          hasMoved: false,
         };
         setSelectedCharacterKey({ faction: character.faction, id: character.character.id });
         setCharacterDragPreview({
@@ -1047,8 +1061,16 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const moveMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const characterDrag = characterDragRef.current;
     if (characterDrag && characterDrag.pointerId === event.pointerId) {
-      const point = event.type === "pointercancel" ? undefined : mapCoordinatesAtClientPoint(event);
-      if (point) setCharacterDragPreview({ faction: characterDrag.faction, id: characterDrag.characterId, ...point });
+      if (
+        Math.abs(event.clientX - characterDrag.startX) > CHARACTER_DRAG_THRESHOLD ||
+        Math.abs(event.clientY - characterDrag.startY) > CHARACTER_DRAG_THRESHOLD
+      ) {
+        characterDrag.hasMoved = true;
+      }
+      if (characterDrag.hasMoved && event.type !== "pointercancel") {
+        const point = mapCoordinatesAtClientPoint(event);
+        if (point) setCharacterDragPreview({ faction: characterDrag.faction, id: characterDrag.characterId, ...point });
+      }
       event.preventDefault();
       return;
     }
@@ -1070,7 +1092,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       // A cancelled pointer stream has no committed destination. The preview may have received a
       // final move event, but pointercancel means the gesture was interrupted (touch scrolling,
       // window loss, etc.) and must not turn that transient position into an edit.
-      const point = event.type === "pointercancel" ? undefined : mapCoordinatesAtClientPoint(event);
+      const hasMoved =
+        characterDrag.hasMoved ||
+        Math.abs(event.clientX - characterDrag.startX) > CHARACTER_DRAG_THRESHOLD ||
+        Math.abs(event.clientY - characterDrag.startY) > CHARACTER_DRAG_THRESHOLD;
+      const point = event.type === "pointercancel" || !hasMoved ? undefined : mapCoordinatesAtClientPoint(event);
+      if (hasMoved) suppressMapClickRef.current = true;
       characterDragRef.current = undefined;
       const currentCharacter = findCharacterForUi(extendedCharacters, characterDrag.faction, characterDrag.characterId);
       if (point && currentCharacter && (currentCharacter.x !== point.x || currentCharacter.y !== point.y))
@@ -1632,7 +1659,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                           )
                           .map((option) => (
                             <option key={option.subtype} value={option.subtype}>
-                              {option.name}
+                              {formatSubtypeOption(option)}
                             </option>
                           ))}
                       </select>
@@ -1901,7 +1928,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       )
                       .map((option) => (
                         <option key={option.subtype} value={option.subtype}>
-                          {option.name}
+                          {formatSubtypeOption(option)}
                         </option>
                       ))}
                   </select>
