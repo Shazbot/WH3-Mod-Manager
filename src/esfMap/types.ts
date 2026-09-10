@@ -31,6 +31,8 @@ export interface EsfMapFaction {
   flagUrl?: string;
   /** From `factions_tables`; applied to a region's marker when ownership is edited. */
   subculture?: string;
+  /** Culture owning this faction, used by extended map building and unit roster filters. */
+  culture?: string;
   /** Zero for a faction the roster offers but the startpos gives no land. */
   regionCount: number;
 }

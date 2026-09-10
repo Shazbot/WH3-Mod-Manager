@@ -3,14 +3,23 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import { addToast, clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
 import { useLocalizations } from "../localizationContext";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
-import {
-  applyOwnershipEdits,
-  formatRegionOwnershipJson,
-  ownershipEditsFromImport,
-  parseRegionOwnership,
-} from "../esfMap/ownership";
+import { applyOwnershipEdits, formatRegionOwnershipJson, ownershipEditsFromImport } from "../esfMap/ownership";
 import type { OwnershipEdits } from "../esfMap/ownership";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
+import {
+  applyExtendedMapEdit,
+  buildExtendedMapDelta,
+  cloneExtendedMap,
+  createExtendedMapEditState,
+  parseMapFile,
+  resolveExtendedUnitOptions,
+  type ExtendedMapCharacter,
+  type ExtendedMapDocument,
+  type ExtendedMapEditAction,
+  type ExtendedMapEditState,
+} from "../esfMap/extended";
+import type { BuildingsRegionView } from "../buildingsData/types";
+import type { UnitViewerCatalogUnit, UnitViewerLordOption } from "../unitViewer/types";
 
 type EsfMapTabProps = {
   isActive?: boolean;
@@ -67,6 +76,24 @@ const factionColour = (key: string) => {
 const interpolateMapText = (template: string, values: Record<string, string | number>) =>
   Object.entries(values).reduce((text, [key, value]) => text.split(`{{${key}}}`).join(String(value)), template);
 
+const findCharacterForUi = (
+  characters: Array<{ faction: string; character: ExtendedMapCharacter }>,
+  faction: string,
+  id: number,
+) =>
+  characters.find((entry) => entry.faction.toLowerCase() === faction.toLowerCase() && entry.character.id === id)
+    ?.character;
+
+const associatedUnitForSubculture = (option: UnitViewerLordOption, subculture: string | undefined) => {
+  if (subculture) {
+    const override = Object.entries(option.associatedUnitBySubculture ?? {}).find(
+      ([key]) => key.toLowerCase() === subculture.toLowerCase(),
+    );
+    if (override) return override[1];
+  }
+  return option.associatedUnit;
+};
+
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useLocalizations();
@@ -105,6 +132,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     scrollTop: number;
   }>();
   const suppressMapClickRef = useRef(false);
+  const characterDragRef = useRef<{ pointerId: number; faction: string; characterId: number }>();
   /** The map as the startpos has it. Ownership edits are overlaid onto it below, never into it. */
   const [baseMap, setBaseMap] = useState<EsfMapPayload>();
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
@@ -124,6 +152,21 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [ownershipEdits, setOwnershipEdits] = useState<OwnershipEdits>({});
   const [editHistory, setEditHistory] = useState<OwnershipEdits[]>([]);
   const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
+  /** Extended map data is kept separate from ESF ownership so legacy map.json remains unchanged. */
+  const [extendedState, setExtendedState] = useState<ExtendedMapEditState>();
+  const [extendedHistory, setExtendedHistory] = useState<ExtendedMapDocument[]>([]);
+  const [showCharacters, setShowCharacters] = useState(false);
+  const [selectedCharacterKey, setSelectedCharacterKey] = useState<{ faction: string; id: number }>();
+  const [characterDragPreview, setCharacterDragPreview] = useState<{
+    faction: string;
+    id: number;
+    x: number;
+    y: number;
+  }>();
+  const [buildingsView, setBuildingsView] = useState<BuildingsRegionView>();
+  const [unitCatalog, setUnitCatalog] = useState<UnitViewerCatalogUnit[]>([]);
+  const [lordOptions, setLordOptions] = useState<UnitViewerLordOption[]>([]);
+  const [extendedLoading, setExtendedLoading] = useState(false);
 
   const mapText = (key: string, fallback: string) => localized[key] || fallback;
   const mapMessage = (key: string, fallback: string, values: Record<string, string | number>) =>
@@ -145,6 +188,29 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const editedRegionCount = Object.keys(ownershipEdits).length;
   const isEditingFactions = mapView === "factions" && isEditingOwnership;
   const brushFactionKey = factionKey(brushFaction);
+  const extendedCharacters = useMemo(
+    () =>
+      extendedState?.document.faction_to_chars.flatMap((group) =>
+        group.chars.map((character) => ({ faction: group.faction, character })),
+      ) ?? [],
+    [extendedState],
+  );
+  const selectedCharacter = useMemo(
+    () =>
+      selectedCharacterKey
+        ? extendedCharacters.find(
+            ({ faction, character }) =>
+              faction.toLowerCase() === selectedCharacterKey.faction.toLowerCase() &&
+              character.id === selectedCharacterKey.id,
+          )
+        : undefined,
+    [extendedCharacters, selectedCharacterKey],
+  );
+  const extendedDelta = useMemo(
+    () => (extendedState ? buildExtendedMapDelta(extendedState.baseline, extendedState.document) : undefined),
+    [extendedState],
+  );
+  const isExtendedFormat = !!extendedState;
 
   useEffect(() => {
     if (currentGame !== "wh3") return;
@@ -194,6 +260,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const selectedMarker = useMemo(
     () => map?.markers.find((marker) => marker.id === selectedMarkerId),
     [map, selectedMarkerId],
+  );
+  const selectedExtendedRegion = useMemo(
+    () =>
+      selectedMarker && extendedState
+        ? extendedState.document.regions.find(
+            (region) => region.region.toLowerCase() === selectedMarker.key.toLowerCase(),
+          )
+        : undefined,
+    [extendedState, selectedMarker],
   );
   const selectedMarkerFactionKey = factionKey(selectedMarker?.ownerFaction);
   const selectedMarkerClimateKey = selectedMarker
@@ -295,7 +370,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setOwnershipEdits({});
     setEditHistory([]);
     setBrushFaction(undefined);
-  }, [campaignKey]);
+    setExtendedState(undefined);
+    setExtendedHistory([]);
+    setSelectedCharacterKey(undefined);
+    setCharacterDragPreview(undefined);
+    setBuildingsView(undefined);
+  }, [campaignKey, currentGame]);
 
   const pushEditHistory = useCallback(
     () => setEditHistory((history) => [...history, ownershipEdits].slice(-OWNERSHIP_HISTORY_LIMIT)),
@@ -329,34 +409,86 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setOwnershipEdits({});
   };
 
+  const showOwnershipToast = useCallback(
+    (type: ToastType, messages: string[]) => dispatch(addToast({ type, messages, startTime: Date.now() })),
+    [dispatch],
+  );
+
+  const updateExtendedDocuments = useCallback(
+    (actions: ExtendedMapEditAction[]) => {
+      if (!extendedState || actions.length === 0) return false;
+      try {
+        const nextState = actions.reduce((current, action) => applyExtendedMapEdit(current, action), extendedState);
+        if (JSON.stringify(nextState.document) === JSON.stringify(extendedState.document)) return true;
+        setExtendedHistory((history) =>
+          [...history, cloneExtendedMap(extendedState.document)].slice(-OWNERSHIP_HISTORY_LIMIT),
+        );
+        setExtendedState(nextState);
+        return true;
+      } catch (reason) {
+        showOwnershipToast("warning", [reason instanceof Error ? reason.message : String(reason)]);
+        return false;
+      }
+    },
+    [extendedState, showOwnershipToast],
+  );
+
+  const updateExtendedDocument = useCallback(
+    (action: ExtendedMapEditAction) => updateExtendedDocuments([action]),
+    [updateExtendedDocuments],
+  );
+
+  const undoExtendedEdit = useCallback(() => {
+    if (!extendedState || extendedHistory.length === 0) return;
+    const document = extendedHistory[extendedHistory.length - 1];
+    setExtendedState((current) => (current ? { ...current, document: cloneExtendedMap(document) } : current));
+    setExtendedHistory((history) => history.slice(0, -1));
+  }, [extendedHistory, extendedState]);
+
+  const revertExtendedEdits = () => {
+    if (!extendedState || !extendedDelta || extendedDelta.actions.length === 0) return;
+    setExtendedHistory((history) =>
+      [...history, cloneExtendedMap(extendedState.document)].slice(-OWNERSHIP_HISTORY_LIMIT),
+    );
+    setExtendedState((current) => (current ? { ...current, document: cloneExtendedMap(current.baseline) } : current));
+  };
+
   useEffect(() => {
-    if (!isActive || !isEditingFactions) return;
+    if (!isActive || (!isEditingFactions && !extendedState)) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.shiftKey || event.altKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z")
         return;
       const target = event.target as HTMLElement | null;
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
       event.preventDefault();
-      undoOwnershipEdit();
+      if (extendedState && extendedHistory.length > 0) undoExtendedEdit();
+      else undoOwnershipEdit();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isActive, isEditingFactions, undoOwnershipEdit]);
-
-  const showOwnershipToast = (type: ToastType, messages: string[]) =>
-    dispatch(addToast({ type, messages, startTime: Date.now() }));
+  }, [extendedHistory.length, extendedState, isActive, isEditingFactions, undoExtendedEdit, undoOwnershipEdit]);
 
   const exportOwnership = async () => {
     if (!map || isTransferringOwnership) return;
     setIsTransferringOwnership(true);
     try {
-      const result = await window.api?.exportRegionOwnership(formatRegionOwnershipJson(map), "map.json");
+      const result = await window.api?.exportRegionOwnership(
+        formatRegionOwnershipJson(map),
+        "map.json",
+        extendedDelta && extendedDelta.actions.length > 0
+          ? `${JSON.stringify(extendedDelta, undefined, 2)}\n`
+          : undefined,
+      );
       if (!result || result.canceled) return;
       if (result.success) {
         showOwnershipToast("success", [
-          mapMessage("mapOwnershipExported", "Region ownership written to {{path}}", {
-            path: result.savedPath ?? "",
-          }),
+          mapMessage(
+            "mapOwnershipExported",
+            extendedDelta && extendedDelta.actions.length > 0
+              ? "Region ownership written to {{path}}; extended changes written to {{changesPath}}"
+              : "Region ownership written to {{path}}",
+            { path: result.savedPath ?? "", changesPath: result.changesPath ?? "" },
+          ),
         ]);
       } else {
         showOwnershipToast("warning", [
@@ -387,24 +519,40 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         importFailed(result.error ?? mapText("mapOwnershipImportUnknownError", "Unknown error"));
         return;
       }
-      const parsed = parseRegionOwnership(result.text);
-      if ("error" in parsed) {
-        importFailed(parsed.error);
+      const detected = parseMapFile(result.text);
+      if ("error" in detected) {
+        importFailed(detected.error);
         return;
       }
-
-      const { edits, unknownRegions, unknownFactions } = ownershipEditsFromImport(
-        baseMap,
-        parsed.ownership,
-        baseMap.factions,
-      );
+      const ownership =
+        detected.format === "legacy"
+          ? detected.ownership
+          : Object.fromEntries(detected.document.regions.map((region) => [region.region, region.faction]));
+      const { edits, unknownRegions, unknownFactions } = ownershipEditsFromImport(baseMap, ownership, baseMap.factions);
       pushEditHistory();
       setOwnershipEdits(edits);
+      if (detected.format === "extended") {
+        setExtendedState(createExtendedMapEditState(detected.document));
+        setExtendedHistory([]);
+        setSelectedCharacterKey(undefined);
+        setShowCharacters(true);
+      } else {
+        setExtendedState(undefined);
+        setExtendedHistory([]);
+        setSelectedCharacterKey(undefined);
+        setShowCharacters(false);
+      }
 
       const messages = [
-        mapMessage("mapOwnershipImported", "Imported ownership for {{count}} region(s).", {
-          count: Object.keys(edits).length,
-        }),
+        mapMessage(
+          "mapOwnershipImported",
+          detected.format === "extended"
+            ? "Imported extended map data and ownership for {{count}} region(s)."
+            : "Imported ownership for {{count}} region(s).",
+          {
+            count: Object.keys(edits).length,
+          },
+        ),
       ];
       if (unknownRegions.length > 0) {
         messages.push(
@@ -427,6 +575,80 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       setIsTransferringOwnership(false);
     }
   };
+
+  useEffect(() => {
+    if (!isExtendedFormat || !window.api) {
+      setUnitCatalog([]);
+      setLordOptions([]);
+      return;
+    }
+    let current = true;
+    setUnitCatalog([]);
+    setLordOptions([]);
+    setExtendedLoading(true);
+    window.api
+      .getUnitViewerCatalog(enabledModsRef.current)
+      .then((response) => {
+        if (!current) return;
+        if (!response.success) {
+          showOwnershipToast("warning", [response.error ?? "Could not load the unit roster."]);
+          setUnitCatalog([]);
+          setLordOptions([]);
+          return;
+        }
+        const byKey = new Map<string, UnitViewerCatalogUnit>();
+        for (const group of response.groups ?? []) for (const unit of group.units) byKey.set(unit.key, unit);
+        setUnitCatalog([...byKey.values()]);
+        setLordOptions(response.lordOptions ?? []);
+      })
+      .catch((reason) => {
+        if (current) {
+          setUnitCatalog([]);
+          setLordOptions([]);
+          showOwnershipToast("warning", [reason instanceof Error ? reason.message : String(reason)]);
+        }
+      })
+      .finally(() => {
+        if (current) setExtendedLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [enabledModsSignature, isExtendedFormat, showOwnershipToast]);
+
+  useEffect(() => {
+    if (!isExtendedFormat || !selectedMarker || !window.api) {
+      setBuildingsView(undefined);
+      return;
+    }
+    let current = true;
+    setBuildingsView(undefined);
+    const owner = selectedMarker.ownerFaction ?? undefined;
+    const ownerFaction = owner ? factionsByKey.get(owner.toLowerCase()) : undefined;
+    window.api
+      .getBuildingsRegionView(enabledModsRef.current, {
+        campaign: map?.campaignKey ?? mapCampaignName,
+        region: selectedMarker.key,
+        faction: owner,
+        culture: ownerFaction?.culture,
+        subculture: ownerFaction?.subculture ?? selectedMarker.subculture ?? undefined,
+        includeLevelsWithoutVariant: true,
+        includeRuinLevels: true,
+        includeUnbandedLevels: true,
+      })
+      .then((response) => {
+        if (!current) return;
+        if (response.success) {
+          setBuildingsView(response.view);
+        } else setBuildingsView(undefined);
+      })
+      .catch(() => {
+        if (current) setBuildingsView(undefined);
+      });
+    return () => {
+      current = false;
+    };
+  }, [enabledModsSignature, factionsByKey, isExtendedFormat, map?.campaignKey, mapCampaignName, selectedMarker]);
 
   useEffect(() => {
     if (!map) return;
@@ -599,6 +821,45 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         context.arc(selected.gx, y, 5, 0, Math.PI * 2);
         context.stroke();
       }
+
+      if (showCharacters && extendedState) {
+        for (const { faction, character } of extendedCharacters) {
+          const preview =
+            characterDragPreview?.faction.toLowerCase() === faction.toLowerCase() &&
+            characterDragPreview.id === character.id
+              ? characterDragPreview
+              : character;
+          if (
+            preview.x === 65535 ||
+            preview.y === 65535 ||
+            preview.x < 0 ||
+            preview.y < 0 ||
+            preview.x >= map.width ||
+            preview.y >= map.height
+          )
+            continue;
+          const characterY = displayYFromCell(map.height, preview.y, map.displayFlipY);
+          context.save();
+          context.fillStyle = factionColour(faction.toLowerCase());
+          context.strokeStyle = "rgba(0, 0, 0, 0.95)";
+          context.lineWidth = 1;
+          context.beginPath();
+          context.arc(preview.x, characterY, 4, 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+          if (
+            selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
+            selectedCharacterKey.id === character.id
+          ) {
+            context.strokeStyle = "#facc15";
+            context.lineWidth = 2;
+            context.beginPath();
+            context.arc(preview.x, characterY, 7, 0, Math.PI * 2);
+            context.stroke();
+          }
+          context.restore();
+        }
+      }
     };
 
     const backgroundSrc = map.backgroundImage?.src;
@@ -653,12 +914,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     brushFactionKey,
     climateByKey,
     climateSelectionKey,
+    characterDragPreview,
+    extendedCharacters,
+    extendedState,
     factionsByKey,
     isEditingOwnership,
     map,
     mapView,
     selectedMarkerId,
     selectedSettlementType,
+    selectedCharacterKey,
+    showCharacters,
     zoom,
   ]);
 
@@ -722,6 +988,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
   const selectMapMarker = (marker: EsfMapMarker | undefined, center = false) => {
     setClimateSelectionKey(undefined);
+    setSelectedCharacterKey(undefined);
+    setCharacterDragPreview(undefined);
     setSelectedMarkerId(marker?.id);
     if (marker && map) {
       dispatch(selectMapRegion({ campaign: map.campaignKey, region: marker.key }));
@@ -740,6 +1008,26 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
   const beginMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0) return;
+    if (showCharacters && extendedState) {
+      const character = characterAtCanvasPoint(event);
+      if (character) {
+        characterDragRef.current = {
+          pointerId: event.pointerId,
+          faction: character.faction,
+          characterId: character.character.id,
+        };
+        setSelectedCharacterKey({ faction: character.faction, id: character.character.id });
+        setCharacterDragPreview({
+          faction: character.faction,
+          id: character.character.id,
+          x: character.character.x,
+          y: character.character.y,
+        });
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        return;
+      }
+    }
     const canvasWrap = canvasWrapRef.current;
     if (!canvasWrap) return;
 
@@ -757,6 +1045,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   };
 
   const moveMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const characterDrag = characterDragRef.current;
+    if (characterDrag && characterDrag.pointerId === event.pointerId) {
+      const point = event.type === "pointercancel" ? undefined : mapCoordinatesAtClientPoint(event);
+      if (point) setCharacterDragPreview({ faction: characterDrag.faction, id: characterDrag.characterId, ...point });
+      event.preventDefault();
+      return;
+    }
     const drag = mapDragRef.current;
     const canvasWrap = canvasWrapRef.current;
     if (!drag || drag.pointerId !== event.pointerId || !canvasWrap) return;
@@ -770,6 +1065,27 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   };
 
   const endMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const characterDrag = characterDragRef.current;
+    if (characterDrag && characterDrag.pointerId === event.pointerId) {
+      // A cancelled pointer stream has no committed destination. The preview may have received a
+      // final move event, but pointercancel means the gesture was interrupted (touch scrolling,
+      // window loss, etc.) and must not turn that transient position into an edit.
+      const point = event.type === "pointercancel" ? undefined : mapCoordinatesAtClientPoint(event);
+      characterDragRef.current = undefined;
+      const currentCharacter = findCharacterForUi(extendedCharacters, characterDrag.faction, characterDrag.characterId);
+      if (point && currentCharacter && (currentCharacter.x !== point.x || currentCharacter.y !== point.y))
+        updateExtendedDocument({
+          type: "update_character",
+          faction: characterDrag.faction,
+          characterId: characterDrag.characterId,
+          changes: point,
+        });
+      setCharacterDragPreview(undefined);
+      if (event.currentTarget.hasPointerCapture(event.pointerId))
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
     const drag = mapDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
@@ -816,10 +1132,50 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     return areaMarker;
   };
 
+  const mapCoordinatesAtClientPoint = (event: { clientX: number; clientY: number }) => {
+    if (!map || !canvasRef.current) return undefined;
+    const rect = canvasRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return undefined;
+    const displayX = Math.max(0, Math.min(map.width - 1, ((event.clientX - rect.left) / rect.width) * map.width));
+    const displayY = Math.max(0, Math.min(map.height - 1, ((event.clientY - rect.top) / rect.height) * map.height));
+    const y = map.displayFlipY ? map.height - 1 - displayY : displayY;
+    return { x: Math.round(displayX), y: Math.round(y) };
+  };
+
+  const characterAtCanvasPoint = (event: { clientX: number; clientY: number }) => {
+    const point = mapCoordinatesAtClientPoint(event);
+    if (!map || !point) return undefined;
+    let closest: { faction: string; character: ExtendedMapCharacter } | undefined;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (const candidate of extendedCharacters) {
+      if (candidate.character.x === 65535 || candidate.character.y === 65535) continue;
+      if (
+        candidate.character.x < 0 ||
+        candidate.character.y < 0 ||
+        candidate.character.x >= map.width ||
+        candidate.character.y >= map.height
+      )
+        continue;
+      const distance = (candidate.character.x - point.x) ** 2 + (candidate.character.y - point.y) ** 2;
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closest = candidate;
+      }
+    }
+    return closestDistance <= 400 ? closest : undefined;
+  };
+
   const handleMapClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (suppressMapClickRef.current) {
       suppressMapClickRef.current = false;
       return;
+    }
+    if (showCharacters && extendedState) {
+      const character = characterAtCanvasPoint(event);
+      if (character) {
+        setSelectedCharacterKey({ faction: character.faction, id: character.character.id });
+        return;
+      }
     }
     const marker = markerAtCanvasPoint(event);
     if (marker && isEditingFactions && brushFaction) paintRegion(marker.key, brushFaction);
@@ -871,6 +1227,45 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             </button>
           ))}
         </div>
+        <label
+          className="flex items-center gap-1 text-xs text-gray-400"
+          title={mapText("mapCharactersHint", "Show and edit characters and armies")}
+        >
+          <input
+            type="checkbox"
+            checked={showCharacters}
+            disabled={!extendedState}
+            onChange={(event) => setShowCharacters(event.target.checked)}
+            className="accent-blue-600"
+          />
+          {mapText("mapCharacters", "Characters")}
+        </label>
+        {extendedState && (
+          <div className="flex items-center gap-2">
+            <span className="rounded border border-emerald-700 bg-emerald-950/50 px-2 py-1 text-xs text-emerald-300">
+              {mapText("mapExtendedFormat", "Extended map")}
+            </span>
+            <button
+              type="button"
+              onClick={undoExtendedEdit}
+              disabled={extendedHistory.length === 0}
+              className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40"
+            >
+              {mapText("mapUndo", "Undo")}
+            </button>
+            <button
+              type="button"
+              onClick={revertExtendedEdits}
+              disabled={!extendedDelta || extendedDelta.actions.length === 0}
+              className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40"
+            >
+              {mapText("mapRevertExtendedEdits", "Revert extended")}
+            </button>
+            {!!extendedDelta?.actions.length && (
+              <span className="text-xs text-amber-300">{extendedDelta.actions.length} changed</span>
+            )}
+          </div>
+        )}
         {map && campaignOptions.length > 0 && (
           <select
             value={mapCampaignName}
@@ -993,6 +1388,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         {isLoading && (
           <span className="text-xs text-blue-300">{mapText("mapReadingEsfData", "Reading ESF data…")}</span>
         )}
+        {extendedLoading && extendedState && (
+          <span className="text-xs text-blue-300">{mapText("mapReadingExtendedData", "Reading unit roster…")}</span>
+        )}
       </div>
 
       {error && <div className="px-4 py-2 text-sm text-red-400">{error}</div>}
@@ -1083,6 +1481,433 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 )}
               </div>
             )}
+            {extendedState && selectedExtendedRegion?.buildings && (
+              <div className="border-b border-gray-800 px-3 py-2 text-sm">
+                <div className="mb-1 font-medium text-gray-200">{mapText("mapBuildings", "Settlement buildings")}</div>
+                {selectedExtendedRegion.buildings.map((slot, slotIndex) => {
+                  const allTiles =
+                    buildingsView?.bands.flatMap((band) => band.columns.flatMap((column) => column.tiles)) ?? [];
+                  const currentTile = allTiles.find((tile) => tile.levelKey === slot.building);
+                  const edgeKeys = new Set<string>();
+                  if (slot.building) {
+                    for (const edge of buildingsView?.edges ?? []) {
+                      if (edge.fromLevelKey === slot.building) edgeKeys.add(edge.toLevelKey);
+                      if (edge.toLevelKey === slot.building) edgeKeys.add(edge.fromLevelKey);
+                    }
+                  }
+                  const tiles = allTiles.filter(
+                    (tile) =>
+                      (!tile.slotTypes ||
+                        tile.slotTypes.length === 0 ||
+                        tile.slotTypes.some((slotType) => slotType.toLowerCase() === slot.type.toLowerCase())) &&
+                      (!tile.slotTemplates ||
+                        tile.slotTemplates.length === 0 ||
+                        tile.slotTemplates.some(
+                          (slotTemplate) => slotTemplate.toLowerCase() === slot.template.toLowerCase(),
+                        )) &&
+                      (!slot.building || tile.levelKey === slot.building || edgeKeys.has(tile.levelKey)),
+                  );
+                  const options = new Map<string, string>();
+                  options.set("", mapText("mapEmptyBuilding", "(empty)"));
+                  if (slot.building && !options.has(slot.building)) options.set(slot.building, slot.building);
+                  for (const tile of tiles) options.set(tile.levelKey, tile.title || tile.levelKey);
+                  return (
+                    <label
+                      key={`${slot.template}-${slot.type}-${slotIndex}`}
+                      className="mb-1 flex items-center gap-1 text-xs text-gray-400"
+                    >
+                      <span className="w-16 shrink-0 truncate" title={`${slot.type} · ${slot.template}`}>
+                        {slot.type}
+                      </span>
+                      <select
+                        value={slot.building}
+                        disabled={!buildingsView}
+                        onChange={(event) => {
+                          const building = event.target.value;
+                          updateExtendedDocument({
+                            type: "set_building",
+                            region: selectedExtendedRegion.region,
+                            slotIndex,
+                            building: { ...slot, building },
+                          });
+                        }}
+                        className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-950 px-1 py-1 text-xs text-gray-200 disabled:opacity-50"
+                        aria-label={`${mapText("mapBuildingSlot", "Building slot")} ${slotIndex + 1}`}
+                      >
+                        {[...options.entries()].map(([key, label]) => (
+                          <option key={key} value={key}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                      {currentTile && <span className="text-[0.65rem] text-gray-500">{currentTile.romanNumeral}</span>}
+                    </label>
+                  );
+                })}
+                {!buildingsView && (
+                  <div className="mt-1 text-xs text-gray-500">
+                    {mapText("mapLoadingBuildings", "Loading building choices…")}
+                  </div>
+                )}
+              </div>
+            )}
+            {extendedState && selectedCharacter && (
+              <div className="border-b border-gray-800 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1 truncate font-medium text-yellow-200">
+                    {selectedCharacter.character.subtype}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCharacterKey(undefined)}
+                    className="rounded border border-gray-700 px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-800"
+                    aria-label={mapText("mapCloseCharacter", "Close character")}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="mt-1 text-xs text-gray-400">
+                  {selectedCharacter.faction} · ID {selectedCharacter.character.id}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <label className="flex items-center gap-1">
+                    {mapText("mapRank", "Rank")}
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={selectedCharacter.character.rank}
+                      onChange={(event) =>
+                        updateExtendedDocument({
+                          type: "update_character",
+                          faction: selectedCharacter.faction,
+                          characterId: selectedCharacter.character.id,
+                          changes: { rank: Number(event.target.value) },
+                        })
+                      }
+                      className="w-16 rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-gray-200"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1">
+                    {mapText("mapSubtype", "Subtype")}
+                    {selectedCharacter.character.units?.[0] ? (
+                      <select
+                        value={selectedCharacter.character.subtype}
+                        onChange={(event) => {
+                          const option = lordOptions.find((candidate) => candidate.subtype === event.target.value);
+                          if (!option) return;
+                          const faction = factionsByKey.get(selectedCharacter.faction.toLowerCase());
+                          updateExtendedDocuments([
+                            {
+                              type: "update_character",
+                              faction: selectedCharacter.faction,
+                              characterId: selectedCharacter.character.id,
+                              changes: { subtype: option.subtype },
+                            },
+                            {
+                              type: "update_unit",
+                              faction: selectedCharacter.faction,
+                              characterId: selectedCharacter.character.id,
+                              unitId: selectedCharacter.character.units![0].id,
+                              changes: { unit_key: associatedUnitForSubculture(option, faction?.subculture) },
+                            },
+                          ]);
+                        }}
+                        className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-gray-200"
+                      >
+                        {!lordOptions.some((option) => option.subtype === selectedCharacter.character.subtype) && (
+                          <option value={selectedCharacter.character.subtype}>
+                            {selectedCharacter.character.subtype}
+                          </option>
+                        )}
+                        {lordOptions
+                          .filter(
+                            (option) =>
+                              !factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture ||
+                              option.subcultureKeys.some(
+                                (key) =>
+                                  key.toLowerCase() ===
+                                  factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture?.toLowerCase(),
+                              ),
+                          )
+                          .map((option) => (
+                            <option key={option.subtype} value={option.subtype}>
+                              {option.name}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <span className="min-w-0 flex-1 truncate font-mono text-gray-300">
+                        {selectedCharacter.character.subtype}
+                      </span>
+                    )}
+                  </label>
+                </div>
+                <div className="mt-1 text-xs text-gray-400">
+                  {mapText("mapCoordinates", "Coordinates")}: {selectedCharacter.character.x},{" "}
+                  {selectedCharacter.character.y}
+                  {selectedCharacter.character.x === 65535 || selectedCharacter.character.y === 65535
+                    ? ` · ${mapText("mapOffMap", "off map")}`
+                    : ""}
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
+                  {(["x", "y"] as const).map((coordinate) => (
+                    <label key={coordinate} className="flex items-center gap-1">
+                      {coordinate.toUpperCase()}
+                      <input
+                        type="number"
+                        min={0}
+                        max={65535}
+                        value={selectedCharacter.character[coordinate]}
+                        onChange={(event) =>
+                          updateExtendedDocument({
+                            type: "update_character",
+                            faction: selectedCharacter.faction,
+                            characterId: selectedCharacter.character.id,
+                            changes: { [coordinate]: Number(event.target.value) },
+                          })
+                        }
+                        className="w-20 rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-gray-200"
+                        aria-label={`${mapText("mapCoordinate", "Coordinate")} ${coordinate.toUpperCase()}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateExtendedDocument({
+                        type: "update_character",
+                        faction: selectedCharacter.faction,
+                        characterId: selectedCharacter.character.id,
+                        changes: { x: 65535, y: 65535 },
+                      })
+                    }
+                    className="rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+                  >
+                    {mapText("mapMoveOffMap", "Move off map")}
+                  </button>
+                </div>
+                {selectedCharacter.character.units && (
+                  <div className="mt-3">
+                    <div className="mb-1 text-xs font-medium text-gray-300">
+                      {mapMessage("mapArmySummary", "Army ({{count}}/20)", {
+                        count: selectedCharacter.character.units.length,
+                      })}
+                    </div>
+                    {selectedCharacter.character.units.map((unit, index) => {
+                      const mapFaction = factionsByKey.get(selectedCharacter.faction.toLowerCase());
+                      const factionSubculture = mapFaction?.subculture?.toLowerCase();
+                      const unitOptions = resolveExtendedUnitOptions(unitCatalog, mapFaction?.subculture, index === 0);
+                      const leaderUnitKeys =
+                        index === 0
+                          ? new Set(
+                              lordOptions
+                                .filter(
+                                  (option) =>
+                                    !factionSubculture ||
+                                    option.subcultureKeys.some((key) => key.toLowerCase() === factionSubculture),
+                                )
+                                .map((option) => associatedUnitForSubculture(option, mapFaction?.subculture)),
+                            )
+                          : undefined;
+                      const selectableUnitOptions = leaderUnitKeys
+                        ? unitOptions.filter((option) => leaderUnitKeys.has(option.key))
+                        : unitOptions;
+                      return (
+                        <div key={unit.id} className="mb-1 rounded border border-gray-800 bg-gray-950/60 p-1.5">
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={unit.unit_key}
+                              onChange={(event) => {
+                                const nextKey = event.target.value;
+                                const faction = factionsByKey.get(selectedCharacter.faction.toLowerCase());
+                                const factionSubculture = faction?.subculture?.toLowerCase();
+                                const leaderOption =
+                                  index === 0
+                                    ? lordOptions.find(
+                                        (option) =>
+                                          associatedUnitForSubculture(option, faction?.subculture) === nextKey &&
+                                          (!factionSubculture ||
+                                            option.subcultureKeys.some(
+                                              (key) => key.toLowerCase() === factionSubculture,
+                                            )),
+                                      )
+                                    : undefined;
+                                updateExtendedDocuments([
+                                  ...(leaderOption
+                                    ? [
+                                        {
+                                          type: "update_character" as const,
+                                          faction: selectedCharacter.faction,
+                                          characterId: selectedCharacter.character.id,
+                                          changes: { subtype: leaderOption.subtype },
+                                        },
+                                      ]
+                                    : []),
+                                  {
+                                    type: "update_unit",
+                                    faction: selectedCharacter.faction,
+                                    characterId: selectedCharacter.character.id,
+                                    unitId: unit.id,
+                                    changes: { unit_key: nextKey },
+                                  },
+                                ]);
+                              }}
+                              className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-900 px-1 py-0.5 text-xs text-gray-200"
+                              aria-label={mapText("mapUnit", "Unit")}
+                            >
+                              {!selectableUnitOptions.some((option) => option.key === unit.unit_key) && (
+                                <option value={unit.unit_key}>{unit.unit_key}</option>
+                              )}
+                              {selectableUnitOptions.map((option) => (
+                                <option key={option.key} value={option.key}>
+                                  {option.name}
+                                </option>
+                              ))}
+                            </select>
+                            {index > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateExtendedDocument({
+                                    type: "remove_unit",
+                                    faction: selectedCharacter.faction,
+                                    characterId: selectedCharacter.character.id,
+                                    unitId: unit.id,
+                                  })
+                                }
+                                className="rounded px-1 text-red-300 hover:bg-red-950"
+                                aria-label={mapText("mapRemoveUnit", "Remove unit")}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-1 grid grid-cols-2 gap-1 text-[0.7rem] text-gray-400">
+                            <label className="flex items-center gap-1">
+                              XP
+                              <input
+                                type="number"
+                                min={0}
+                                max={9}
+                                value={unit.xp}
+                                onChange={(event) =>
+                                  updateExtendedDocument({
+                                    type: "update_unit",
+                                    faction: selectedCharacter.faction,
+                                    characterId: selectedCharacter.character.id,
+                                    unitId: unit.id,
+                                    changes: { xp: Number(event.target.value) },
+                                  })
+                                }
+                                className="w-12 rounded border border-gray-700 bg-gray-900 px-1 py-0.5 text-gray-200"
+                              />
+                            </label>
+                            <label className="flex items-center gap-1">
+                              {mapText("mapHealth", "Health")}
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                value={unit.health}
+                                onChange={(event) =>
+                                  updateExtendedDocument({
+                                    type: "update_unit",
+                                    faction: selectedCharacter.faction,
+                                    characterId: selectedCharacter.character.id,
+                                    unitId: unit.id,
+                                    changes: { health: Number(event.target.value) },
+                                  })
+                                }
+                                className="w-14 rounded border border-gray-700 bg-gray-900 px-1 py-0.5 text-gray-200"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {selectedCharacter.character.units.length > 0 && selectedCharacter.character.units.length < 20 && (
+                      <select
+                        value=""
+                        onChange={(event) => {
+                          if (!event.target.value) return;
+                          updateExtendedDocument({
+                            type: "add_unit",
+                            faction: selectedCharacter.faction,
+                            characterId: selectedCharacter.character.id,
+                            unit: { unit_key: event.target.value },
+                          });
+                          event.currentTarget.value = "";
+                        }}
+                        className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-1.5 py-1 text-xs text-gray-300"
+                        aria-label={mapText("mapAddUnit", "Add unit")}
+                      >
+                        <option value="">{mapText("mapAddUnit", "Add unit…")}</option>
+                        {resolveExtendedUnitOptions(
+                          unitCatalog,
+                          factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture,
+                        ).map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+                {selectedCharacter.character.units !== undefined && selectedCharacter.character.units.length === 0 && (
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const option = lordOptions.find((candidate) => candidate.subtype === event.target.value);
+                      if (!option) return;
+                      updateExtendedDocuments([
+                        {
+                          type: "update_character",
+                          faction: selectedCharacter.faction,
+                          characterId: selectedCharacter.character.id,
+                          changes: { subtype: option.subtype },
+                        },
+                        {
+                          type: "add_unit",
+                          faction: selectedCharacter.faction,
+                          characterId: selectedCharacter.character.id,
+                          unit: {
+                            unit_key: associatedUnitForSubculture(
+                              option,
+                              factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture,
+                            ),
+                          },
+                        },
+                      ]);
+                      event.currentTarget.value = "";
+                    }}
+                    className="mt-2 w-full rounded border border-gray-700 bg-gray-950 px-1.5 py-1 text-xs text-gray-300"
+                    aria-label={mapText("mapAddLeader", "Add army leader")}
+                  >
+                    <option value="">{mapText("mapAddLeader", "Add army leader…")}</option>
+                    {lordOptions
+                      .filter(
+                        (option) =>
+                          !factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture ||
+                          option.subcultureKeys.some(
+                            (key) =>
+                              key.toLowerCase() ===
+                              factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture?.toLowerCase(),
+                          ),
+                      )
+                      .map((option) => (
+                        <option key={option.subtype} value={option.subtype}>
+                          {option.name}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+            )}
             <div className="border-b border-gray-800 p-2">
               <input
                 value={filter}
@@ -1098,6 +1923,56 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               />
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-2">
+              {extendedState && showCharacters && (
+                <div className="mb-3 border-b border-gray-800 pb-2">
+                  <div className="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                    {mapText("mapCharacters", "Characters")}
+                  </div>
+                  {extendedCharacters
+                    .filter(
+                      ({ faction, character }) =>
+                        !filter.trim() ||
+                        `${faction} ${character.subtype} ${character.id}`
+                          .toLowerCase()
+                          .includes(filter.trim().toLowerCase()),
+                    )
+                    .map(({ faction, character }) => {
+                      const selected =
+                        selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
+                        selectedCharacterKey.id === character.id;
+                      const inBounds =
+                        !!map &&
+                        character.x !== 65535 &&
+                        character.y !== 65535 &&
+                        character.x >= 0 &&
+                        character.y >= 0 &&
+                        character.x < map.width &&
+                        character.y < map.height;
+                      return (
+                        <button
+                          key={`${faction}:${character.id}`}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCharacterKey({ faction, id: character.id });
+                            if (inBounds && map)
+                              centerMapOnPoint(
+                                character.x,
+                                displayYFromCell(map.height, character.y, map.displayFlipY),
+                              );
+                          }}
+                          className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${selected ? "border-yellow-500 bg-yellow-950/40 text-gray-100" : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"}`}
+                        >
+                          <span className="block truncate">{character.subtype}</span>
+                          <span className="block truncate text-[0.7rem] text-gray-500">
+                            {faction} · ID {character.id}
+                            {character.units ? ` · ${character.units.length}/20` : " · hero"}
+                            {!inBounds ? ` · ${mapText("mapOffMap", "off map")}` : ""}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
               {mapView === "regions" ? (
                 filteredMarkers.map((marker) => (
                   <button

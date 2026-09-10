@@ -432,6 +432,50 @@ describe("Unit Viewer catalog", () => {
     expect(built.units.get("unit_d")?.name).toBe("Delta");
   });
 
+  it("derives culture-specific lord subtype and associated-unit choices", () => {
+    const tables: UnitViewerTableRows = {
+      main_units_tables: [
+        { unit: "lord_unit", land_unit: "lord_land", num_men: "1", caste: "lord" },
+        { unit: "lord_unit_override", land_unit: "lord_land_override", num_men: "1", caste: "lord" },
+      ],
+      land_units_tables: [
+        { key: "lord_land", man_entity: "entity", primary_melee_weapon: "weapon" },
+        { key: "lord_land_override", man_entity: "entity", primary_melee_weapon: "weapon" },
+      ],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      factions_tables: [
+        { key: "faction_a", subculture: "subculture_a" },
+        { key: "faction_b", subculture: "subculture_b" },
+      ],
+      units_custom_battle_permissions_tables: [
+        { unit: "lord_unit", faction: "faction_a" },
+        { unit: "lord_unit_override", faction: "faction_b" },
+      ],
+      agent_subtypes_tables: [{ key: "lord_subtype", associated_unit_override: "lord_unit" }],
+      agent_subtype_subculture_overrides_tables: [
+        {
+          subtype: "lord_subtype",
+          subculture: "subculture_b",
+          associated_unit_override: "lord_unit_override",
+        },
+      ],
+    };
+    const built = buildUnitViewerData(tables, (key) =>
+      key === "agent_subtypes_onscreen_name_override_lord_subtype" ? "Localized Lord" : undefined,
+    );
+
+    expect(built.lordOptions).toEqual([
+      {
+        subtype: "lord_subtype",
+        name: "Localized Lord",
+        associatedUnit: "lord_unit",
+        subcultureKeys: ["subculture_b", "subculture_a"],
+        associatedUnitBySubculture: { subculture_b: "lord_unit_override" },
+      },
+    ]);
+  });
+
   it("buckets units into the game's roster groups and falls back to the extended roster", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [

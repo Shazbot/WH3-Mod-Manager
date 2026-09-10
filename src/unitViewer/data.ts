@@ -10,6 +10,7 @@ import type {
   UnitViewerProjectile,
   UnitViewerUnitModel,
   UnitViewerUnitSize,
+  UnitViewerLordOption,
 } from "./types";
 import { resolveTextReplacements } from "../skills";
 
@@ -58,6 +59,8 @@ export const UNIT_VIEWER_TABLES = [
   "units_custom_battle_mounts_tables",
   "units_custom_battle_permissions_tables",
   "factions_tables",
+  "agent_subtypes_tables",
+  "agent_subtype_subculture_overrides_tables",
   "unit_variants_tables",
   "land_units_to_unit_abilites_junctions_tables",
   "unit_attributes_to_groups_junctions_tables",
@@ -384,6 +387,7 @@ export interface BuiltUnitViewerData {
   constants: UnitViewerConstants;
   iconPathsByUnit: Map<string, string[]>;
   statIcons: Record<string, string>;
+  lordOptions: UnitViewerLordOption[];
 }
 
 export const buildUnitViewerData = (
@@ -403,6 +407,8 @@ export const buildUnitViewerData = (
   const projectiles = indexRows(tables.projectiles_tables, "key");
   const explosions = indexRows(tables.projectiles_explosions_tables, "key");
   const factions = indexRows(tables.factions_tables, "key");
+  const agentSubtypes = indexRows(tables.agent_subtypes_tables, "key");
+  const agentSubtypeOverrides = groupRows(tables.agent_subtype_subculture_overrides_tables, "subtype");
   const unitVariants = groupRows(tables.unit_variants_tables, "unit");
   const customBattleMountsByMountedUnit = groupRows(tables.units_custom_battle_mounts_tables, "mounted_unit");
   const permissions = groupRows(tables.units_custom_battle_permissions_tables, "unit");
@@ -739,5 +745,43 @@ export const buildUnitViewerData = (
       return collator.compare(first.name, second.name);
     });
 
-  return { groups, unitGroups, units, constants, iconPathsByUnit, statIcons: {} };
+  const lordOptions: UnitViewerLordOption[] = [];
+  for (const [subtype, row] of agentSubtypes) {
+    const baseAssociatedUnit = asString(row.associated_unit_override);
+    const overrideRows = agentSubtypeOverrides.get(subtype) || [];
+    const associatedUnitBySubculture: Record<string, string> = {};
+    for (const override of overrideRows) {
+      const subculture = asString(override.subculture);
+      const associatedUnit = asString(override.associated_unit_override);
+      if (subculture && associatedUnit && units.get(associatedUnit)?.caste.toLowerCase() === "lord") {
+        associatedUnitBySubculture[subculture] = associatedUnit;
+      }
+    }
+    const associatedUnits = [baseAssociatedUnit, ...Object.values(associatedUnitBySubculture)].filter(Boolean);
+    const associatedUnit = associatedUnits.find((unitKey) => units.get(unitKey)?.caste.toLowerCase() === "lord");
+    if (!associatedUnit) continue;
+    const subcultureKeys = [
+      ...Object.keys(associatedUnitBySubculture),
+      ...Array.from(subcultureToUnits.entries())
+        .filter(([, unitKeys]) => associatedUnits.some((unitKey) => unitKeys.has(unitKey)))
+        .map(([subculture]) => subculture),
+    ];
+    lordOptions.push({
+      subtype,
+      name: resolveGameText(
+        getLoc(`agent_subtypes_onscreen_name_override_${subtype}`) ||
+          getLoc(`agent_subtypes_onscreen_name_${subtype}`) ||
+          subtype,
+        getLoc,
+      ),
+      associatedUnit,
+      subcultureKeys: [...new Set(subcultureKeys)],
+      ...(Object.keys(associatedUnitBySubculture).length > 0 ? { associatedUnitBySubculture } : {}),
+    });
+  }
+  lordOptions.sort(
+    (first, second) => collator.compare(first.name, second.name) || collator.compare(first.subtype, second.subtype),
+  );
+
+  return { groups, unitGroups, units, constants, iconPathsByUnit, statIcons: {}, lordOptions };
 };

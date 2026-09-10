@@ -190,6 +190,7 @@ describe("resolveRegionBuildings: chains from slot templates", () => {
     const view = resolveRegionBuildings(build(), query());
     const column = view.bands.flatMap((band) => band.columns).find((entry) => entry.chainKey === "chain_a");
     expect(column?.sources).toEqual(["slot_template:tmpl_main"]);
+    expect(column?.tiles[0].slotTemplates).toEqual(["tmpl_main"]);
   });
 
   it("adds only the selected faction's foreign slot-set templates", () => {

@@ -226,6 +226,16 @@ export interface UnitViewerCatalogGroup {
   units: UnitViewerCatalogUnit[];
 }
 
+/** An agent subtype and the campaign unit the game associates with it as a general. */
+export interface UnitViewerLordOption {
+  subtype: string;
+  name: string;
+  associatedUnit: string;
+  subcultureKeys: string[];
+  /** Overrides from agent_subtype_subculture_overrides, keyed by their subculture. */
+  associatedUnitBySubculture?: Record<string, string>;
+}
+
 /** A roster bucket from ui_unit_group_parents (Lords, Missile Infantry, Extended Roster, …). */
 export interface UnitViewerUiGroup {
   key: string;
@@ -237,6 +247,7 @@ export interface UnitViewerCatalogResponse {
   success: boolean;
   sessionId?: string;
   groups?: UnitViewerCatalogGroup[];
+  lordOptions?: UnitViewerLordOption[];
   unitGroups?: UnitViewerUiGroup[];
   constants?: UnitViewerConstants;
   /** Asset protocol URLs, keyed by the icon's path inside the pack. */

@@ -48,6 +48,7 @@ export const addFactionDataToEsfMap = (
       ...(flagPath ? { flagPath } : {}),
       ...(flagUrl ? { flagUrl } : {}),
       ...(faction?.subculture ? { subculture: faction.subculture } : {}),
+      ...(faction?.culture ? { culture: faction.culture } : {}),
       regionCount,
     };
   };

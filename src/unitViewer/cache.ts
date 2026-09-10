@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as nodePath from "path";
 import type { BuiltUnitViewerData } from "./data";
 
-const UNIT_VIEWER_CACHE_VERSION = 15;
+const UNIT_VIEWER_CACHE_VERSION = 16;
 const UNIT_VIEWER_CACHE_FILE = "unit-viewer-data-cache.bin";
 
 type UnitViewerDiskPayload = {
@@ -16,6 +16,7 @@ type UnitViewerDiskPayload = {
     constants: BuiltUnitViewerData["constants"];
     iconPathsByUnit: Array<[string, string[]]>;
     statIcons: Record<string, string>;
+    lordOptions: BuiltUnitViewerData["lordOptions"];
   };
 };
 
@@ -28,6 +29,7 @@ const deserialize = (payload: UnitViewerDiskPayload): BuiltUnitViewerData => ({
   constants: payload.data.constants,
   iconPathsByUnit: new Map(payload.data.iconPathsByUnit),
   statIcons: payload.data.statIcons,
+  lordOptions: payload.data.lordOptions || [],
 });
 
 export const loadUnitViewerDiskCache = async (
@@ -64,6 +66,7 @@ export const saveUnitViewerDiskCache = async (
       constants: data.constants,
       iconPathsByUnit: Array.from(data.iconPathsByUnit.entries()),
       statIcons: data.statIcons,
+      lordOptions: data.lordOptions,
     },
   };
   try {

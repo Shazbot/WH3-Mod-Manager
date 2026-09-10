@@ -447,6 +447,10 @@ export interface BuildingsTile {
   isSettlementOrPort: boolean;
   isDuplicatedAcrossSets: boolean;
   isForeignSlot: boolean;
+  /** Slot types that expose this chain in the current board. Used by the extended map editor. */
+  slotTypes?: string[];
+  /** Slot templates that expose this chain in the current board. Used to keep resource slots exact. */
+  slotTemplates?: string[];
 }
 
 export interface BuildingsChainColumn {

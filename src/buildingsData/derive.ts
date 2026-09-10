@@ -738,6 +738,14 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
           isSettlementOrPort: isSettlementOrPortChain,
           isDuplicatedAcrossSets: targetSets.length > 1,
           isForeignSlot: foreignSlotChains.has(chainKey) || (chain?.isForeignSlotChain ?? false),
+          slotTypes: slotTypes ? [...slotTypes].sort() : [],
+          slotTemplates: [
+            ...new Set(
+              (sourcesByChain.get(chainKey) ?? [])
+                .filter((source) => source.startsWith("slot_template:"))
+                .map((source) => source.slice("slot_template:".length).split(" via ")[0]),
+            ),
+          ].sort(),
         };
         const chainBuckets = bandBuckets.get(setKey) ?? new Map<string, BuildingsTile[]>();
         const tiles = chainBuckets.get(chainKey) ?? [];

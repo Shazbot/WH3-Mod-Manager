@@ -3030,7 +3030,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 15,
+          feature: 16,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -3183,6 +3183,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         success: true,
         sessionId,
         groups: built.data.groups,
+        lordOptions: built.data.lordOptions,
         unitGroups: built.data.unitGroups,
         constants: built.data.constants,
         statIcons,
@@ -12802,8 +12803,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       event,
       json: string,
       suggestedName: string,
-    ): Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }> => {
+      changesJson?: string,
+    ): Promise<{ success: boolean; savedPath?: string; changesPath?: string; canceled?: boolean; error?: string }> => {
       const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+      let savedPath: string | undefined;
+      let changesPath: string | undefined;
       try {
         const defaultDirectory =
           appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath || app.getPath("documents");
@@ -12813,12 +12817,22 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
         if (result.canceled || !result.filePath) return { success: false, canceled: true };
 
-        const savedPath = result.filePath.toLowerCase().endsWith(".json") ? result.filePath : `${result.filePath}.json`;
+        savedPath = result.filePath.toLowerCase().endsWith(".json") ? result.filePath : `${result.filePath}.json`;
         await fs.promises.writeFile(savedPath, json, "utf8");
-        return { success: true, savedPath };
+        if (changesJson?.trim()) {
+          const parsedName = nodePath.parse(savedPath);
+          changesPath = nodePath.join(parsedName.dir, `${parsedName.name}_changes.json`);
+          await fs.promises.writeFile(changesPath, changesJson, "utf8");
+        }
+        return { success: true, savedPath, changesPath };
       } catch (error) {
         console.error("Error exporting region ownership:", error);
-        return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+        return {
+          success: false,
+          savedPath,
+          changesPath,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
       } finally {
         if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
       }
