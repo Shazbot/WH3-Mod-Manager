@@ -2374,7 +2374,8 @@ const ModsViewer = memo(() => {
                             role="menuitem"
                             aria-haspopup="menu"
                             aria-expanded={isRecentPacksOpen}
-                            onClick={() => setIsRecentPacksOpen((isOpen) => !isOpen)}
+                            onMouseEnter={() => setIsRecentPacksOpen(true)}
+                            onClick={() => setIsRecentPacksOpen(true)}
                             className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
                           >
                             <span className="flex items-center justify-between gap-4">

@@ -684,7 +684,7 @@ describe("multiple pack viewer tabs", () => {
     expect(screen.getByRole("menuitem", { name: "open db.pack", exact: true })).toBeDisabled();
   });
 
-  it("shows up to twenty recent non-vanilla packs and opens the selected pack", async () => {
+  it("opens recent packs on hover, shows up to twenty non-vanilla packs, and opens the selected pack", async () => {
     const user = userEvent.setup();
     const requestOpenModInViewer = vi.fn();
     const recentPackPaths = Array.from({ length: 20 }, (_, index) => `/mods/pack-${index}.pack`);
@@ -713,7 +713,9 @@ describe("multiple pack viewer tabs", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "File", exact: true }));
-    await user.click(screen.getByRole("menuitem", { name: "Open Recent", exact: true }));
+    const openRecent = screen.getByRole("menuitem", { name: "Open Recent", exact: true });
+    expect(screen.queryByRole("menu", { name: "Open Recent" })).not.toBeInTheDocument();
+    await user.hover(openRecent);
 
     expect(screen.getAllByTestId(/^recent-pack-/)).toHaveLength(20);
     expect(screen.queryByText("db.pack", { exact: true })).not.toBeInTheDocument();
