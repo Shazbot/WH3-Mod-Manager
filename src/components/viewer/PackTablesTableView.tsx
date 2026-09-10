@@ -1,4 +1,5 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, memo, useState } from "react";
+import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, memo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import type {
@@ -68,6 +69,7 @@ const HIDDEN_COLUMN_TOOLTIP_LIMIT = 30;
 /** Below this the middle button counts as a click, which leaves auto-scroll running after the release. */
 const MIDDLE_AUTO_SCROLL_DRAG_THRESHOLD_PX = 8;
 const SELECTION_AUTO_SCROLL_MAX_STEP_PX = 24;
+const CONTEXT_MENU_VIEWPORT_PADDING_PX = 8;
 // Cells render at `.ag-cell { font-size: 1.1rem }` from index.css, which is 17.6px. Measuring them
 // at anything smaller makes every column narrower than its contents, which shows up as ellipsised
 // values in whichever column holds the longest text - usually a key column.
@@ -1299,6 +1301,54 @@ const AgGridWrapper = memo(
       | undefined
     >(undefined);
     const menuRef = useRef<HTMLDivElement | null>(null);
+    const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | undefined>();
+
+    const updateMenuPosition = useCallback(() => {
+      if (!menuState || !menuRef.current) return;
+
+      const { width, height } = menuRef.current.getBoundingClientRect();
+      const maxLeft = Math.max(
+        CONTEXT_MENU_VIEWPORT_PADDING_PX,
+        window.innerWidth - width - CONTEXT_MENU_VIEWPORT_PADDING_PX,
+      );
+      const maxTop = Math.max(
+        CONTEXT_MENU_VIEWPORT_PADDING_PX,
+        window.innerHeight - height - CONTEXT_MENU_VIEWPORT_PADDING_PX,
+      );
+      const preferredLeft =
+        menuState.clientX + width > window.innerWidth - CONTEXT_MENU_VIEWPORT_PADDING_PX
+          ? menuState.clientX - width
+          : menuState.clientX;
+      const preferredTop =
+        menuState.clientY + height > window.innerHeight - CONTEXT_MENU_VIEWPORT_PADDING_PX
+          ? menuState.clientY - height
+          : menuState.clientY;
+      const nextPosition = {
+        left: Math.min(Math.max(preferredLeft, CONTEXT_MENU_VIEWPORT_PADDING_PX), maxLeft),
+        top: Math.min(Math.max(preferredTop, CONTEXT_MENU_VIEWPORT_PADDING_PX), maxTop),
+      };
+
+      setMenuPosition((current) =>
+        current?.left === nextPosition.left && current.top === nextPosition.top ? current : nextPosition,
+      );
+    }, [menuState]);
+
+    useLayoutEffect(() => {
+      if (!menuState) {
+        setMenuPosition(undefined);
+        return;
+      }
+
+      updateMenuPosition();
+      const frame = window.requestAnimationFrame(updateMenuPosition);
+      const onResize = () => updateMenuPosition();
+      window.addEventListener("resize", onResize);
+
+      return () => {
+        window.cancelAnimationFrame(frame);
+        window.removeEventListener("resize", onResize);
+      };
+    }, [menuState, updateMenuPosition]);
 
     useEffect(() => {
       if (!menuState) return;
@@ -1521,6 +1571,7 @@ const AgGridWrapper = memo(
 
         const displayedRowIndex = ev.node?.rowIndex;
         if (typeof displayedRowIndex !== "number" || displayedRowIndex < 0) {
+          setMenuPosition(undefined);
           setMenuState(undefined);
           return;
         }
@@ -1549,6 +1600,7 @@ const AgGridWrapper = memo(
           !onCopyRowsInto &&
           !reference
         ) {
+          setMenuPosition(undefined);
           setMenuState(undefined);
           return;
         }
@@ -1563,6 +1615,7 @@ const AgGridWrapper = memo(
               .trimEnd()
           : undefined;
         const mouse = ev.event as MouseEvent | undefined;
+        setMenuPosition(undefined);
         setMenuState({
           clientX: mouse?.clientX ?? 0,
           clientY: mouse?.clientY ?? 0,
@@ -1760,6 +1813,95 @@ const AgGridWrapper = memo(
       [currentSchema.fields.length, onDeleteRows, rowData.length],
     );
 
+    const contextMenu = menuState ? (
+      <div
+        ref={menuRef}
+        style={{
+          position: "fixed",
+          left: menuPosition?.left ?? menuState.clientX,
+          top: menuPosition?.top ?? menuState.clientY,
+          zIndex: 9999,
+          minWidth: 200,
+          visibility: menuPosition ? "visible" : "hidden",
+        }}
+        className="rounded-md border border-gray-600 bg-gray-800 text-gray-100 shadow-lg overflow-visible"
+        onMouseDownCapture={(e) => e.stopPropagation()}
+      >
+        {onAddRow && (
+          <button
+            type="button"
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
+            onClick={() => {
+              setMenuState(undefined);
+              void onAddRow();
+            }}
+          >
+            {localized.viewerAddNewRow || "Add new row"}
+          </button>
+        )}
+        {onDeleteRows && menuState.copyRows.length > 0 && (
+          <button
+            type="button"
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
+            onClick={async () => {
+              const rowsToDelete = menuState.copyRows;
+              setMenuState(undefined);
+              if (await onDeleteRows(rowsToDelete)) {
+                setSelectionRanges([]);
+              }
+            }}
+          >
+            {menuState.copyRows.length === 1
+              ? localized.viewerDeleteRow || "Delete row"
+              : localized.viewerDeleteRows || "Delete rows"}
+          </button>
+        )}
+        {menuState.reference && onGoToReference && (
+          <button
+            type="button"
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
+            onClick={() => {
+              const reference = menuState.reference;
+              if (!reference) return;
+              setMenuState(undefined);
+              onGoToReference(reference);
+            }}
+          >
+            {localized.viewerGoToReference || "Go to reference"}
+          </button>
+        )}
+        {menuState.label && (
+          <button
+            type="button"
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
+            onClick={() => {
+              onContextMenuCallback(menuState.row, menuState.col);
+              setMenuState(undefined);
+            }}
+          >
+            {menuState.label}
+          </button>
+        )}
+        {onCopyRowsInto && (
+          <CopyIntoSubmenu
+            sourcePackPath={sourcePackPath}
+            otherOpenPacks={otherOpenPacks}
+            showDialog={showDialog}
+            label={
+              menuState.copyRows.length === 1
+                ? localized.viewerCopyRowInto || "Copy row into"
+                : localized.viewerCopyRowsInto || "Copy rows into"
+            }
+            onSelectTarget={(targetPackPath, openAfterCopy) => {
+              const selectedRows = menuState.copyRows;
+              setMenuState(undefined);
+              void onCopyRowsInto(selectedRows, targetPackPath, openAfterCopy);
+            }}
+          />
+        )}
+      </div>
+    ) : null;
+
     return (
       <div
         ref={gridRootRef}
@@ -1827,93 +1969,7 @@ const AgGridWrapper = memo(
           </div>
         )}
 
-        {menuState && (
-          <div
-            ref={menuRef}
-            style={{
-              position: "fixed",
-              left: menuState.clientX,
-              top: menuState.clientY,
-              zIndex: 9999,
-              minWidth: 200,
-            }}
-            className="rounded-md border border-gray-600 bg-gray-800 text-gray-100 shadow-lg overflow-visible"
-            onMouseDownCapture={(e) => e.stopPropagation()}
-          >
-            {onAddRow && (
-              <button
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
-                onClick={() => {
-                  setMenuState(undefined);
-                  void onAddRow();
-                }}
-              >
-                {localized.viewerAddNewRow || "Add new row"}
-              </button>
-            )}
-            {onDeleteRows && menuState.copyRows.length > 0 && (
-              <button
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
-                onClick={async () => {
-                  const rowsToDelete = menuState.copyRows;
-                  setMenuState(undefined);
-                  if (await onDeleteRows(rowsToDelete)) {
-                    setSelectionRanges([]);
-                  }
-                }}
-              >
-                {menuState.copyRows.length === 1
-                  ? localized.viewerDeleteRow || "Delete row"
-                  : localized.viewerDeleteRows || "Delete rows"}
-              </button>
-            )}
-            {menuState.reference && onGoToReference && (
-              <button
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
-                onClick={() => {
-                  const reference = menuState.reference;
-                  if (!reference) return;
-                  setMenuState(undefined);
-                  onGoToReference(reference);
-                }}
-              >
-                {localized.viewerGoToReference || "Go to reference"}
-              </button>
-            )}
-            {menuState.label && (
-              <button
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
-                onClick={() => {
-                  onContextMenuCallback(menuState.row, menuState.col);
-                  setMenuState(undefined);
-                }}
-              >
-                {menuState.label}
-              </button>
-            )}
-            {onCopyRowsInto && (
-              <CopyIntoSubmenu
-                sourcePackPath={sourcePackPath}
-                otherOpenPacks={otherOpenPacks}
-                showDialog={showDialog}
-                label={
-                  menuState.copyRows.length === 1
-                    ? localized.viewerCopyRowInto || "Copy row into"
-                    : localized.viewerCopyRowsInto || "Copy rows into"
-                }
-                onSelectTarget={(targetPackPath, openAfterCopy) => {
-                  const selectedRows = menuState.copyRows;
-                  setMenuState(undefined);
-                  void onCopyRowsInto(selectedRows, targetPackPath, openAfterCopy);
-                }}
-              />
-            )}
-          </div>
-        )}
+        {contextMenu && createPortal(contextMenu, document.body)}
       </div>
     );
   },

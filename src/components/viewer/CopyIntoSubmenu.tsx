@@ -1,6 +1,7 @@
 import React, { useContext, useState } from "react";
 import type { ShowViewerDialog } from "./viewerDialogs";
 import localizationContext from "../../localizationContext";
+import ContextMenuSubmenu from "./ContextMenuSubmenu";
 
 export type CopyIntoSubmenuProps = {
   sourcePackPath: string;
@@ -30,7 +31,6 @@ const CopyIntoSubmenu = ({
 }: CopyIntoSubmenuProps) => {
   const localized: Record<string, string> = useContext(localizationContext);
   const displayLabel = label || localized.viewerCopyInto || "Copy into";
-  const [isSubmenuOpen, setIsSubmenuOpen] = useState(false);
   const [isPackPickerOpen, setIsPackPickerOpen] = useState(false);
   const [isLoadingPackCatalog, setIsLoadingPackCatalog] = useState(false);
   const [packCatalog, setPackCatalog] = useState<ViewerPackCatalogEntry[]>([]);
@@ -71,128 +71,109 @@ const CopyIntoSubmenu = ({
 
   const selectTarget = (targetPackPath: string) => {
     if (packPathKey(targetPackPath) === packPathKey(sourcePackPath)) return;
-    setIsSubmenuOpen(false);
     setIsPackPickerOpen(false);
     void onSelectTarget(targetPackPath, openCopiedPackAfterCopy);
   };
 
   return (
-    <div className="relative" onMouseEnter={() => setIsSubmenuOpen(true)} onFocus={() => setIsSubmenuOpen(true)}>
+    <ContextMenuSubmenu label={displayLabel}>
       <button
         type="button"
-        onClick={() => setIsSubmenuOpen((isOpen) => !isOpen)}
-        className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm flex items-center justify-between gap-4"
-        aria-haspopup="menu"
-        aria-expanded={isSubmenuOpen}
+        onClick={() => void handleLoadPackCatalog()}
+        disabled={isLoadingPackCatalog}
+        className="w-full text-left px-3 py-2 hover:bg-gray-700 text-white text-sm disabled:opacity-50"
       >
-        <span>{displayLabel}</span>
-        <span aria-hidden="true">▶</span>
+        {isLoadingPackCatalog
+          ? localized.viewerLoadingPacks || "Loading Packs..."
+          : localized.viewerSelectPack || "Select Pack..."}
       </button>
 
-      {isSubmenuOpen && (
-        <div
-          role="menu"
-          className="absolute left-full top-0 ml-1 z-50 min-w-[250px] max-w-[340px] bg-gray-800 border border-gray-600 rounded shadow-lg p-1"
-        >
-          <button
-            type="button"
-            onClick={() => void handleLoadPackCatalog()}
-            disabled={isLoadingPackCatalog}
-            className="w-full text-left px-3 py-2 hover:bg-gray-700 text-white text-sm disabled:opacity-50"
-          >
-            {isLoadingPackCatalog
-              ? localized.viewerLoadingPacks || "Loading Packs..."
-              : localized.viewerSelectPack || "Select Pack..."}
-          </button>
-
-          {isPackPickerOpen && (
-            <div className="px-2 pb-2">
-              {isLoadingPackCatalog ? (
-                <div className="text-xs text-gray-400 px-1 pt-1">
-                  {localized.viewerLoadingAllMods || "Loading all mods..."}
-                </div>
-              ) : selectablePackCatalog.length > 0 ? (
-                <div className="space-y-2">
-                  <label className="block text-xs text-gray-300">
-                    <span className="mb-1 block">{localized.viewerEnabledMods || "Enabled mods"}</span>
-                    <select
-                      aria-label={localized.viewerEnabledMods || "Enabled mods"}
-                      defaultValue=""
-                      onChange={(event) => selectTarget(event.target.value)}
-                      className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white"
-                    >
-                      <option value="" disabled>
-                        {enabledPackCatalog.length > 0
-                          ? localized.viewerChooseEnabledMod || "Choose an enabled mod..."
-                          : localized.viewerNoOtherEnabledMods || "No other enabled mods"}
-                      </option>
-                      {enabledPackCatalog.map((pack) => (
-                        <option key={pack.path} value={pack.path} title={pack.path}>
-                          {pack.humanName?.trim() || pack.name}
-                          {pack.humanName?.trim() && pack.name ? ` (${pack.name})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-xs text-gray-300">
-                    <span className="mb-1 block">{localized.allMods || "All mods"}</span>
-                    <select
-                      aria-label={localized.allMods || "All mods"}
-                      defaultValue=""
-                      onChange={(event) => selectTarget(event.target.value)}
-                      className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white"
-                    >
-                      <option value="" disabled>
-                        {localized.viewerChoosePack || "Choose a pack..."}
-                      </option>
-                      {selectablePackCatalog.map((pack) => (
-                        <option key={pack.path} value={pack.path} title={pack.path}>
-                          {pack.humanName?.trim() || pack.name}
-                          {pack.humanName?.trim() && pack.name ? ` (${pack.name})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ) : (
-                <div className="text-xs text-gray-400 px-1 pt-1">
-                  {localized.viewerNoOtherMods || "No other mods found."}
-                </div>
-              )}
+      {isPackPickerOpen && (
+        <div className="px-2 pb-2">
+          {isLoadingPackCatalog ? (
+            <div className="text-xs text-gray-400 px-1 pt-1">
+              {localized.viewerLoadingAllMods || "Loading all mods..."}
             </div>
-          )}
-
-          <div className="my-1 border-t border-gray-700" />
-          {selectableOpenPacks.length > 0 ? (
-            selectableOpenPacks.map((pack) => (
-              <button
-                key={pack.packPath}
-                type="button"
-                onClick={() => selectTarget(pack.packPath)}
-                className="w-full text-left px-3 py-2 hover:bg-gray-700 text-white text-sm truncate"
-                title={pack.label}
-              >
-                {pack.label}
-              </button>
-            ))
+          ) : selectablePackCatalog.length > 0 ? (
+            <div className="space-y-2">
+              <label className="block text-xs text-gray-300">
+                <span className="mb-1 block">{localized.viewerEnabledMods || "Enabled mods"}</span>
+                <select
+                  aria-label={localized.viewerEnabledMods || "Enabled mods"}
+                  defaultValue=""
+                  onChange={(event) => selectTarget(event.target.value)}
+                  className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white"
+                >
+                  <option value="" disabled>
+                    {enabledPackCatalog.length > 0
+                      ? localized.viewerChooseEnabledMod || "Choose an enabled mod..."
+                      : localized.viewerNoOtherEnabledMods || "No other enabled mods"}
+                  </option>
+                  {enabledPackCatalog.map((pack) => (
+                    <option key={pack.path} value={pack.path} title={pack.path}>
+                      {pack.humanName?.trim() || pack.name}
+                      {pack.humanName?.trim() && pack.name ? ` (${pack.name})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs text-gray-300">
+                <span className="mb-1 block">{localized.allMods || "All mods"}</span>
+                <select
+                  aria-label={localized.allMods || "All mods"}
+                  defaultValue=""
+                  onChange={(event) => selectTarget(event.target.value)}
+                  className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white"
+                >
+                  <option value="" disabled>
+                    {localized.viewerChoosePack || "Choose a pack..."}
+                  </option>
+                  {selectablePackCatalog.map((pack) => (
+                    <option key={pack.path} value={pack.path} title={pack.path}>
+                      {pack.humanName?.trim() || pack.name}
+                      {pack.humanName?.trim() && pack.name ? ` (${pack.name})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           ) : (
-            <div className="px-3 py-2 text-xs text-gray-500">
-              {localized.viewerNoOtherOpenPacks || "No other packs are open."}
+            <div className="text-xs text-gray-400 px-1 pt-1">
+              {localized.viewerNoOtherMods || "No other mods found."}
             </div>
           )}
-
-          <label className="mt-1 flex items-start gap-2 border-t border-gray-700 px-3 py-2 text-xs text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={openCopiedPackAfterCopy}
-              onChange={(event) => setOpenCopiedPackAfterCopy(event.target.checked)}
-              className="mt-0.5"
-            />
-            <span>{localized.viewerOpenCopiedPackAfterCopy || "Open pack and copied file after copying"}</span>
-          </label>
         </div>
       )}
-    </div>
+
+      <div className="my-1 border-t border-gray-700" />
+      {selectableOpenPacks.length > 0 ? (
+        selectableOpenPacks.map((pack) => (
+          <button
+            key={pack.packPath}
+            type="button"
+            onClick={() => selectTarget(pack.packPath)}
+            className="w-full text-left px-3 py-2 hover:bg-gray-700 text-white text-sm truncate"
+            title={pack.label}
+          >
+            {pack.label}
+          </button>
+        ))
+      ) : (
+        <div className="px-3 py-2 text-xs text-gray-500">
+          {localized.viewerNoOtherOpenPacks || "No other packs are open."}
+        </div>
+      )}
+
+      <label className="mt-1 flex items-start gap-2 border-t border-gray-700 px-3 py-2 text-xs text-gray-300 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={openCopiedPackAfterCopy}
+          onChange={(event) => setOpenCopiedPackAfterCopy(event.target.checked)}
+          className="mt-0.5"
+        />
+        <span>{localized.viewerOpenCopiedPackAfterCopy || "Open pack and copied file after copying"}</span>
+      </label>
+    </ContextMenuSubmenu>
   );
 };
 
