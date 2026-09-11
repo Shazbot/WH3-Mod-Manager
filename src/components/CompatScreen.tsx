@@ -30,6 +30,8 @@ import { LuPaintbrush2 } from "react-icons/lu";
 import {
   collapsePackFileCollisions,
   collapsePackTableCollisions,
+  collapseScriptListenerCollisions,
+  collapseUniqueIdsCollisions,
   higherPriorityDatabaseFile,
   higherPriorityPack,
 } from "../modCompat/compatViewModels";
@@ -278,15 +280,11 @@ const CompatScreen = memo(() => {
     }
   }
 
-  const numUniqueIdsCollisions = Object.values(groupedUniqueIdsCollisions).reduce(
-    (acc, curr) =>
-      acc +
-      Object.values(curr).reduce(
-        (acc2, curr2) => acc2 + Object.values(curr2).reduce((acc3, curr3) => acc3 + Object.values(curr3).length, 0),
-        0,
-      ),
-    0,
-  );
+  const numUniqueIdsCollisions = collapseUniqueIdsCollisions(
+    Object.values(groupedUniqueIdsCollisions).flatMap((tableGroups) =>
+      Object.values(tableGroups).flatMap((packGroups) => Object.values(packGroups).flat()),
+    ),
+  ).length;
 
   const groupedScriptListenerCollisions: Record<PackName, ScriptListenerCollision[]> = {};
   for (const [packName, scriptListenerCollisions] of Object.entries(packCollisions.scriptListenerCollisions)) {
@@ -323,10 +321,9 @@ const CompatScreen = memo(() => {
     }
   }
 
-  const numScriptListenerCollisions = Object.values(groupedScriptListenerCollisions).reduce(
-    (acc, curr) => acc + curr.length,
-    0,
-  );
+  const numScriptListenerCollisions = collapseScriptListenerCollisions(
+    Object.values(groupedScriptListenerCollisions).flat(),
+  ).length;
 
   const groupedPackFileAnalysisErrors: Record<PackName, Record<string, FileAnalysisError[]>> = {};
   for (const [packName, packFileAnalysisErrors] of Object.entries(packCollisions.packFileAnalysisErrors)) {

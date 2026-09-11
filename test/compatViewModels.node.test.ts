@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   collapsePackFileCollisions,
   collapsePackTableCollisions,
+  collapseScriptListenerCollisions,
+  collapseUniqueIdsCollisions,
   higherPriorityDatabaseFile,
   higherPriorityPack,
 } from "../src/modCompat/compatViewModels";
@@ -41,6 +43,45 @@ describe("compatibility display view models", () => {
         { ...base, value: "spearmen" },
       ]),
     ).toHaveLength(2);
+  });
+
+  it("counts a cross-pack duplicate key once when it is stored under both packs", () => {
+    const first = {
+      tableName: "main_units_tables",
+      fieldName: "key",
+      firstPackName: "a.pack",
+      secondPackName: "b.pack",
+      value: { value: "empire_swordsmen", packFileName: "a", packName: "a.pack", tableRow: ["a"] },
+      valueTwo: { value: "empire_swordsmen", packFileName: "b", packName: "b.pack", tableRow: ["b"] },
+    };
+    const mirror = {
+      ...first,
+      firstPackName: "b.pack",
+      secondPackName: "a.pack",
+      value: first.valueTwo,
+      valueTwo: first.value,
+    };
+
+    expect(collapseUniqueIdsCollisions([first, mirror])).toHaveLength(1);
+  });
+
+  it("counts a cross-pack duplicate listener once when it is stored under both packs", () => {
+    const first = {
+      packFileName: "script.lua",
+      firstPackName: "a.pack",
+      secondPackName: "b.pack",
+      value: { value: "OnBattle", packFileName: "script.lua", packName: "a.pack", position: 10 },
+      valueTwo: { value: "OnBattle", packFileName: "script.lua", packName: "b.pack", position: 20 },
+    };
+    const mirror = {
+      ...first,
+      firstPackName: "b.pack",
+      secondPackName: "a.pack",
+      value: first.valueTwo,
+      valueTwo: first.value,
+    };
+
+    expect(collapseScriptListenerCollisions([first, mirror])).toHaveLength(1);
   });
 
   it("uses visible load order to identify the file winner", () => {

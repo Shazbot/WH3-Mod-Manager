@@ -1,5 +1,10 @@
 import { compareModNames } from "../modSortingHelpers";
-import type { PackFileCollision, PackTableCollision } from "../packFileTypes";
+import type {
+  PackFileCollision,
+  PackTableCollision,
+  ScriptListenerCollision,
+  UniqueIdsCollision,
+} from "../packFileTypes";
 
 /**
  * The compatibility scanner emits a record in both directions for a pair of packs. The UI should
@@ -7,6 +12,17 @@ import type { PackFileCollision, PackTableCollision } from "../packFileTypes";
  */
 const collisionPairKey = (first: string, second: string) =>
   JSON.stringify([first, second].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)));
+
+const collapseByKey = <T>(collisions: readonly T[], getKey: (collision: T) => string): T[] => {
+  const unique = new Map<string, T>();
+
+  for (const collision of collisions) {
+    const key = getKey(collision);
+    if (!unique.has(key)) unique.set(key, collision);
+  }
+
+  return [...unique.values()];
+};
 
 export const collapsePackFileCollisions = (collisions: readonly PackFileCollision[]): PackFileCollision[] => {
   const unique = new Map<string, PackFileCollision>();
@@ -39,6 +55,33 @@ export const collapsePackTableCollisions = (collisions: readonly PackTableCollis
 
   return [...unique.values()];
 };
+
+const uniqueIdSideKey = (value: UniqueIdsCollision["value"]) =>
+  JSON.stringify([value.packName, value.packFileName, value.value, value.tableRow]);
+
+/** Unique IDs are stored under both packs for a cross-pack result. */
+export const collapseUniqueIdsCollisions = (collisions: readonly UniqueIdsCollision[]): UniqueIdsCollision[] =>
+  collapseByKey(collisions, (collision) =>
+    JSON.stringify([
+      collision.tableName,
+      collision.fieldName,
+      [uniqueIdSideKey(collision.value), uniqueIdSideKey(collision.valueTwo)].sort(),
+    ]),
+  );
+
+const scriptListenerSideKey = (value: ScriptListenerCollision["value"]) =>
+  JSON.stringify([value.packName, value.packFileName, value.value, value.position]);
+
+/** Script listener results are also stored under both packs for a cross-pack result. */
+export const collapseScriptListenerCollisions = (
+  collisions: readonly ScriptListenerCollision[],
+): ScriptListenerCollision[] =>
+  collapseByKey(collisions, (collision) =>
+    JSON.stringify([
+      collision.packFileName,
+      [scriptListenerSideKey(collision.value), scriptListenerSideKey(collision.valueTwo)].sort(),
+    ]),
+  );
 
 /** Lower index is the higher-priority mod in the visible load-order list. */
 export const higherPriorityPack = (
