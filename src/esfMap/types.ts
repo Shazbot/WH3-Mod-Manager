@@ -69,6 +69,14 @@ export interface EsfMapCharacterCoordinateGrid {
   displayFlipY: boolean;
 }
 
+/** Character-placeable cells decoded from the campaign map's pathfinding.ppd grid. */
+export interface EsfMapCharacterPathfinding {
+  width: number;
+  height: number;
+  /** Base64-encoded bitset, one bit per source-grid cell. */
+  usableCells: string;
+}
+
 /** Bounds of the campaign's world-coordinate system used by REGION_KEYS settlement points. */
 export interface EsfMapCoordinateBounds {
   minX: number;
@@ -93,6 +101,7 @@ export interface EsfMapPayload {
   gridSource: EsfMapGridSource;
   displayFlipY: boolean;
   characterCoordinateGrid: EsfMapCharacterCoordinateGrid;
+  characterPathfinding: EsfMapCharacterPathfinding | null;
   width: number;
   height: number;
   areas: EsfMapArea[];

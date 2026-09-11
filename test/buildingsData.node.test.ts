@@ -134,6 +134,26 @@ describe("buildBuildingsData", () => {
     expect(data.levelKeysByChain.chain_a).toEqual(["a_1", "a_2", "a_3"]);
   });
 
+  it("falls back to generic and legacy building name localization keys", () => {
+    const localized = {
+      building_culture_variants_name_a_1: "Generic name",
+      building_levels_onscreen_name_a_2: "Legacy name",
+    };
+    const localizedData = buildBuildingsData(
+      {
+        ...tables,
+        building_culture_variants_tables: [
+          { building: "a_1", culture: "culture_a", subculture: "", faction: "faction_a" },
+          { building: "a_2", culture: "culture_a", subculture: "", faction: "faction_a" },
+        ],
+      },
+      (key) => localized[key as keyof typeof localized],
+    );
+
+    expect(localizedData.variantLoc["a_1|culture_a||faction_a"]?.name).toBe("Generic name");
+    expect(localizedData.variantLoc["a_2|culture_a||faction_a"]?.name).toBe("Legacy name");
+  });
+
   it("groups chains under their superchain", () => {
     expect(data.superChains.super_a.sort()).toEqual(["chain_a", "chain_b"]);
   });

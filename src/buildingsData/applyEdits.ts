@@ -11,7 +11,7 @@
  * board - which is honest, since the board only draws what these structures describe.
  */
 import { formatEffectLocalization } from "../skills";
-import { readSetColour, variantLocKey, variantSpecificity } from "./data";
+import { buildingNameLocKeys, readSetColour, variantLocKey, variantSpecificity } from "./data";
 import { LOC_TABLE, newRowsByTable, type BuildingsEditState } from "./edits";
 import type { BuildingUnitRow, BuildingVariantRow, BuiltBuildingsData } from "./types";
 
@@ -269,8 +269,9 @@ export const applyNewRowsToBuiltData = (base: BuiltBuildingsData, state: Buildin
       ...data.variantsByLevel,
       [building]: [...(data.variantsByLevel[building] ?? []), variant],
     };
-    const locKey = `building_culture_variants_name_${building}${culture}${subculture}${faction}`;
-    const name = locText[locKey];
+    const name = buildingNameLocKeys(building, culture, subculture, faction)
+      .map((key) => locText[key])
+      .find(Boolean);
     if (name) {
       data.variantLoc = {
         ...data.variantLoc,

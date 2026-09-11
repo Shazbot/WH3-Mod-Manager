@@ -6,7 +6,7 @@ import {
   extractRegionPolygons,
   extractStartposRegions,
   openEsfBuffer,
-  parsePathfindingRegionKeys,
+  parsePathfindingCharacterGrid,
   parseEsfDocument,
   type MapPoint,
   type RegionAreasGrid,
@@ -15,7 +15,14 @@ import {
   type TgaLookupGrid,
   type TheatreBounds,
 } from "../../tools/esf/src";
-import type { EsfMapArea, EsfMapBasePayload, EsfMapCharacterCoordinateGrid, EsfMapColour, EsfMapMarker } from "./types";
+import type {
+  EsfMapArea,
+  EsfMapBasePayload,
+  EsfMapCharacterCoordinateGrid,
+  EsfMapCharacterPathfinding,
+  EsfMapColour,
+  EsfMapMarker,
+} from "./types";
 import { projectLogicalCoordinateToMap } from "./coordinates";
 
 interface PolygonGridInput {
@@ -42,6 +49,36 @@ const UNASSIGNED_AREA_ID = 0xffff;
 
 function clampGridCoordinate(value: number, limit: number): number {
   return Math.max(0, Math.min(limit - 1, Math.round(value)));
+}
+
+function parseCharacterPathfinding(
+  buffer: Buffer | undefined,
+  coordinateGrid: EsfMapCharacterCoordinateGrid,
+): { parsed: ReturnType<typeof parsePathfindingCharacterGrid>; map: EsfMapCharacterPathfinding } | undefined {
+  if (!buffer) return undefined;
+  try {
+    const parsed = parsePathfindingCharacterGrid(buffer);
+    // PPD and REGION_DATA normally use the same grid. The renderer also supports differing sizes,
+    // but warn because it usually indicates a map asset from a different map variant was selected.
+    if (parsed.width !== coordinateGrid.width || parsed.height !== coordinateGrid.height) {
+      console.warn(
+        `Pathfinding grid ${parsed.width}x${parsed.height} differs from character grid ${coordinateGrid.width}x${coordinateGrid.height}.`,
+      );
+    }
+    return {
+      parsed,
+      map: {
+        width: parsed.width,
+        height: parsed.height,
+        usableCells: Buffer.from(parsed.usableCells).toString("base64"),
+      },
+    };
+  } catch (error) {
+    console.warn(
+      `Could not decode character pathfinding data: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return undefined;
+  }
 }
 
 function buildMarkerPartitionGrid(
@@ -365,6 +402,7 @@ export function buildEsfMapData(
     height: regionCoordinateGrid.height,
     displayFlipY: true,
   };
+  const parsedPathfinding = parseCharacterPathfinding(pathfindingBuffer, characterCoordinateGrid);
   const pointData = lookupBuffer ? extractMapPointsWithTheatreBounds(mapOpened.buffer, mapDocument) : undefined;
 
   if (lookupBuffer) {
@@ -385,9 +423,7 @@ export function buildEsfMapData(
     if (theatreMarkers.length > 0) {
       baseMarkers = theatreMarkers;
     } else {
-      const regionKeysByAreaId = pathfindingBuffer
-        ? parsePathfindingRegionKeys(pathfindingBuffer).regionKeys
-        : undefined;
+      const regionKeysByAreaId = parsedPathfinding?.parsed.regionKeys;
       baseMarkers = buildLookupAreaPoints(lookupGrid, sourcePolygons.componentIds, regionKeysByAreaId, ownershipByKey);
     }
 
@@ -458,6 +494,7 @@ export function buildEsfMapData(
     gridSource,
     displayFlipY,
     characterCoordinateGrid,
+    characterPathfinding: parsedPathfinding?.map ?? null,
     width: renderGrid.width,
     height: renderGrid.height,
     areas: polygons.areas.map((area) => mapArea(area, baseMarkers, lookupMarkerByAreaId)),

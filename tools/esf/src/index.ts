@@ -18,6 +18,7 @@ export type { RegionPolygonArea, RegionPolygonsResult } from "./extract/regionPo
 export { extractLookupGridFromTga } from "./extract/tgaLookup";
 export type { TgaLookupGrid } from "./extract/tgaLookup";
 export { parsePathfindingRegionKeys } from "./extract/pathfindingRegions";
-export type { PathfindingRegionList } from "./extract/pathfindingRegions";
+export { parsePathfindingCharacterGrid } from "./extract/pathfindingRegions";
+export type { PathfindingCharacterGrid, PathfindingRegionList } from "./extract/pathfindingRegions";
 export { extractCampaignTableIdentity, extractCampaignTableRow } from "./extract/campaignTable";
 export type { StartposCampaignTableIdentity, StartposCampaignTableRow } from "./extract/campaignTable";

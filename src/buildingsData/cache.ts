@@ -15,7 +15,7 @@ import * as nodePath from "path";
 import type { BuildingsCloneSourcePackPaths, BuildingsTableRows } from "./types";
 
 /** Bump whenever the extraction rules or cached shape change. */
-const BUILDINGS_CACHE_VERSION = 4;
+const BUILDINGS_CACHE_VERSION = 5;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const BUILDINGS_CACHE_DIR = "buildings";
 const VANILLA_CACHE_FILE = "vanilla.bin";

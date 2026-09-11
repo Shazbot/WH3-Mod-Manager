@@ -8,6 +8,7 @@ import { applyOwnershipEdits, formatRegionOwnershipJson, ownershipEditsFromImpor
 import type { OwnershipEdits } from "../esfMap/ownership";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
 import { mapPointToCharacterCoordinate, projectCharacterCoordinateToMap } from "../esfMap/coordinates";
+import { drawUnusableCharacterAreas, snapCharacterPointToUsable } from "../esfMap/pathfinding";
 import {
   applyExtendedMapEdit,
   buildExtendedMapDelta,
@@ -545,7 +546,26 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     (actions: ExtendedMapEditAction[]) => {
       if (!extendedState || actions.length === 0) return false;
       try {
-        const nextState = actions.reduce((current, action) => applyExtendedMapEdit(current, action), extendedState);
+        const correctedActions = actions.map((action) => {
+          if (action.type !== "update_character" || !map || (!("x" in action.changes) && !("y" in action.changes)))
+            return action;
+          const group = extendedState.document.faction_to_chars.find(
+            (candidate) => candidate.faction.toLowerCase() === action.faction.toLowerCase(),
+          );
+          const character = group?.chars.find((candidate) => candidate.id === action.characterId);
+          if (!character) return action;
+          const candidatePoint = {
+            x: action.changes.x ?? character.x,
+            y: action.changes.y ?? character.y,
+          };
+          const correctedPoint = snapCharacterPointToUsable(map, candidatePoint);
+          if (correctedPoint.x === candidatePoint.x && correctedPoint.y === candidatePoint.y) return action;
+          return { ...action, changes: { ...action.changes, ...correctedPoint } };
+        });
+        const nextState = correctedActions.reduce(
+          (current, action) => applyExtendedMapEdit(current, action),
+          extendedState,
+        );
         if (JSON.stringify(nextState.document) === JSON.stringify(extendedState.document)) return true;
         setExtendedHistory((history) =>
           [...history, cloneExtendedMap(extendedState.document)].slice(-OWNERSHIP_HISTORY_LIMIT),
@@ -557,7 +577,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         return false;
       }
     },
-    [extendedState, showOwnershipToast],
+    [extendedState, map, showOwnershipToast],
   );
 
   const updateExtendedDocument = useCallback(
@@ -967,6 +987,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         }
       }
 
+      if (characterMapOverlayActive) drawUnusableCharacterAreas(context, map);
+
       for (const marker of map.markers) {
         const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
         const markerFaction = marker.ownerFaction
@@ -1061,6 +1083,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     brushFactionKey,
     climateByKey,
     climateSelectionKey,
+    characterMapOverlayActive,
     characterThumbnailSources,
     factionsByKey,
     isEditingOwnership,
@@ -1272,15 +1295,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         Math.abs(event.clientY - characterDrag.startY) > CHARACTER_DRAG_THRESHOLD;
       const mapPoint = event.type === "pointercancel" || !hasMoved ? undefined : mapCoordinatesAtClientPoint(event);
       const point = map && mapPoint ? mapPointToCharacterCoordinate(map, mapPoint) : undefined;
+      const usablePoint = map && point ? snapCharacterPointToUsable(map, point) : point;
       if (hasMoved) suppressMapClickRef.current = true;
       characterDragRef.current = undefined;
       const currentCharacter = findCharacterForUi(extendedCharacters, characterDrag.faction, characterDrag.characterId);
-      if (point && currentCharacter && (currentCharacter.x !== point.x || currentCharacter.y !== point.y))
+      if (
+        usablePoint &&
+        currentCharacter &&
+        (currentCharacter.x !== usablePoint.x || currentCharacter.y !== usablePoint.y)
+      )
         updateExtendedDocument({
           type: "update_character",
           faction: characterDrag.faction,
           characterId: characterDrag.characterId,
-          changes: point,
+          changes: usablePoint,
         });
       setCharacterDragPreview(undefined);
       if (event.currentTarget.hasPointerCapture(event.pointerId))
@@ -1747,13 +1775,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   const allTiles =
                     buildingsView?.bands.flatMap((band) => band.columns.flatMap((column) => column.tiles)) ?? [];
                   const currentTile = allTiles.find((tile) => tile.levelKey === slot.building);
-                  const edgeKeys = new Set<string>();
-                  if (slot.building) {
-                    for (const edge of buildingsView?.edges ?? []) {
-                      if (edge.fromLevelKey === slot.building) edgeKeys.add(edge.toLevelKey);
-                      if (edge.toLevelKey === slot.building) edgeKeys.add(edge.fromLevelKey);
-                    }
-                  }
+                  const currentChainKey = currentTile?.chainKey;
                   const tiles = allTiles.filter(
                     (tile) =>
                       (!tile.slotTypes ||
@@ -1764,12 +1786,16 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         tile.slotTemplates.some(
                           (slotTemplate) => slotTemplate.toLowerCase() === slot.template.toLowerCase(),
                         )) &&
-                      (!slot.building || tile.levelKey === slot.building || edgeKeys.has(tile.levelKey)),
+                      (!slot.building || tile.levelKey === slot.building || tile.chainKey === currentChainKey),
                   );
                   const options = new Map<string, string>();
                   options.set("", mapText("mapEmptyBuilding", "(empty)"));
                   if (slot.building && !options.has(slot.building)) options.set(slot.building, slot.building);
-                  for (const tile of tiles) options.set(tile.levelKey, tile.title || tile.levelKey);
+                  for (const tile of tiles) {
+                    const title = tile.title || tile.levelKey;
+                    const level = tile.romanNumeral || tile.level;
+                    options.set(tile.levelKey, `${title} (${level})`);
+                  }
                   return (
                     <label
                       key={`${slot.template}-${slot.type}-${slotIndex}`}
@@ -1825,7 +1851,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               </div>
             )}
             {extendedState && selectedCharacter && (
-              <div className="border-b border-gray-800 px-3 py-2 text-sm">
+              <div className="min-h-0 overflow-y-auto border-b border-gray-800 px-3 py-2 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1 truncate font-medium text-yellow-200">
                     {selectedCharacter.character.subtype}

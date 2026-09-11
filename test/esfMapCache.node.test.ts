@@ -40,6 +40,7 @@ describe("ESF map disk cache", () => {
       gridSource: "lookup",
       displayFlipY: false,
       characterCoordinateGrid: { width: 2, height: 2, displayFlipY: true },
+      characterPathfinding: null,
       width: 2,
       height: 2,
       areas: [
