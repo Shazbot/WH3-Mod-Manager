@@ -264,6 +264,21 @@ describe("Unit Viewer UI", () => {
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
   });
 
+  it("hides missile weapon sections when a unit has no missile weapons", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    const card = await waitFor(() => {
+      const article = document.querySelector("article");
+      expect(article).toBeInTheDocument();
+      return article as HTMLElement;
+    });
+    expect(within(card).queryByRole("heading", { name: "Missile Weapon" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("heading", { name: "Secondary Missile" })).not.toBeInTheDocument();
+  });
+
   it("shows a custom battle mount name in the unit list and beneath the unit key", async () => {
     const variantBuilt = buildUnitViewerData(
       {
