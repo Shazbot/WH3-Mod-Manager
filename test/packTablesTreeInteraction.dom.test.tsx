@@ -4,9 +4,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { describe, expect, it, vi } from "vitest";
 
-import appReducer from "../src/appSlice";
+import appReducer, { setDeletedPackFilePaths, setUnsavedPacksData } from "../src/appSlice";
 import PackTablesTreeView from "../src/components/viewer/PackTablesTreeView";
 import initialState from "../src/initialAppState";
+import type { PackedFile } from "../src/packFileTypes";
 
 describe("pack table tree interactions", () => {
   const renderPackTree = (
@@ -101,6 +102,148 @@ describe("pack table tree interactions", () => {
     expect(tableLabel.closest("[role='treeitem']")).toHaveAttribute("aria-selected", "true");
   });
 
+  it("marks the node that opened the context menu", () => {
+    renderPackTree(["scripts\\hello.lua"], "files");
+
+    const folderLabel = screen.getByText("scripts");
+    fireEvent.click(folderLabel);
+    const fileLabel = screen.getByText("hello.lua");
+
+    fireEvent.contextMenu(fileLabel);
+
+    expect(fileLabel.closest("[role='treeitem']")).toHaveClass("bg-blue-700/60");
+    expect(folderLabel.parentElement).not.toHaveClass("bg-blue-700/60");
+
+    fireEvent.contextMenu(folderLabel);
+
+    expect(folderLabel.parentElement).toHaveClass("bg-blue-700/60");
+    expect(fileLabel.closest("[role='treeitem']")).not.toHaveClass("bg-blue-700/60");
+  });
+
+  it("keeps collapsed DB groups collapsed after deleting a file", async () => {
+    const packPath = "K:\\mods\\menu.pack";
+    const deletePackedFiles = vi.fn().mockResolvedValue({
+      success: true,
+      removedPaths: ["db\\first_tables\\data__"],
+    });
+    window.api = { deletePackedFiles } as unknown as NonNullable<Window["api"]>;
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          packsData: {
+            [packPath]: {
+              packName: "menu.pack",
+              packPath,
+              tables: ["db\\first_tables\\first", "db\\second_tables\\second"],
+              packedFiles: {},
+            },
+          },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <PackTablesTreeView
+          packPath={packPath}
+          preferredTab="db"
+          tableFilter=""
+          showDialog={vi.fn()}
+          onOpenDBTable={vi.fn()}
+          onOpenFlowFile={vi.fn()}
+          onOpenPackedFile={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    const secondGroupLabel = screen.getByText("second_tables");
+    const secondGroupNode = secondGroupLabel.closest("[role='treeitem']");
+    expect(secondGroupNode).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(secondGroupLabel);
+    expect(secondGroupNode).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.contextMenu(screen.getByText("first"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete file", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete", exact: true }));
+
+    await waitFor(() => expect(deletePackedFiles).toHaveBeenCalledWith(packPath, ["db\\first_tables\\first"]));
+    store.dispatch(
+      setDeletedPackFilePaths({
+        packPath,
+        deletedFilePaths: ["db\\first_tables\\first"],
+      }),
+    );
+
+    await waitFor(() => expect(screen.queryByText("first_tables")).not.toBeInTheDocument());
+    expect(screen.getByText("second_tables").closest("[role='treeitem']")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps an expanded file folder open after importing another file", async () => {
+    const packPath = "K:\\mods\\menu.pack";
+    const selectImportFiles = vi.fn().mockResolvedValue(["C:\\imports\\added.lua"]);
+    const planPackImportFromDisk = vi.fn().mockResolvedValue({
+      items: [{ diskPath: "C:\\imports\\added.lua", packedPath: "scripts\\added.lua" }],
+      errors: [],
+    });
+    const applyPackImportFromDisk = vi.fn().mockResolvedValue({ success: true, importedCount: 1, errors: [] });
+    window.api = {
+      selectImportFiles,
+      planPackImportFromDisk,
+      applyPackImportFromDisk,
+    } as unknown as NonNullable<Window["api"]>;
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          packsData: {
+            [packPath]: {
+              packName: "menu.pack",
+              packPath,
+              tables: ["scripts\\hello.lua", "other\\base.lua"],
+              packedFiles: {},
+            },
+          },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <PackTablesTreeView
+          packPath={packPath}
+          preferredTab="files"
+          tableFilter=""
+          showDialog={vi.fn()}
+          onOpenDBTable={vi.fn()}
+          onOpenFlowFile={vi.fn()}
+          onOpenPackedFile={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    const scriptsLabel = screen.getByText("scripts");
+    fireEvent.click(scriptsLabel);
+    expect(scriptsLabel.closest("[role='treeitem']")).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.contextMenu(scriptsLabel);
+    fireEvent.click(screen.getByRole("button", { name: "Import", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /Import Files/ }));
+
+    await waitFor(() => expect(applyPackImportFromDisk).toHaveBeenCalled());
+    store.dispatch(
+      setUnsavedPacksData({
+        packPath,
+        unsavedFileData: [{ name: "scripts\\added.lua" } as PackedFile],
+      }),
+    );
+
+    await waitFor(() => expect(screen.getByText("added.lua")).toBeInTheDocument());
+    expect(screen.getByText("scripts").closest("[role='treeitem']")).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("hides the empty DB tab and offers both creation actions in Files", () => {
     const tree = renderPackTree(["variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition"], "db");
 
@@ -170,7 +313,9 @@ describe("pack table tree interactions", () => {
     fireEvent.change(screen.getByPlaceholderText("Enter flow name..."), { target: { value: "broken.json" } });
     fireEvent.click(screen.getByRole("button", { name: "Create", exact: true }));
 
-    await waitFor(() => expect(showDialog).toHaveBeenCalledWith(expect.stringContaining("disk full"), expect.anything()));
+    await waitFor(() =>
+      expect(showDialog).toHaveBeenCalledWith(expect.stringContaining("disk full"), expect.anything()),
+    );
   });
 
   it("offers active packs and a selectable mod catalog when copying a table", async () => {

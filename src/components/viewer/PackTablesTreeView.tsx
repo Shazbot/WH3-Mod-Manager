@@ -51,7 +51,7 @@ type PackTablesTreeViewProps = {
   onOpenPackedFile: (selection: { filePath: string; packPath: string }, options?: { forceNewTab?: boolean }) => void;
 };
 
-type TreeData = { name: string; children?: TreeData[] };
+type TreeData = { id?: string | number; name: string; children?: TreeData[] };
 type TableOption = { value: string; label: string };
 type TreeTab = "db" | "files";
 type ContextMenuTreeTab = TreeTab | "empty";
@@ -88,16 +88,28 @@ const HelpBadge: React.FC<{ text: string }> = ({ text }) => (
   </span>
 );
 
+/**
+ * `flattenTree` assigns numeric ids from the node's position in the tree unless a node supplies one.
+ * Position-based ids make a data refresh after a file operation point at different nodes, so use the
+ * packed path as the node identity instead. This lets the tree retain its expansion state when a
+ * sibling is added or removed. Group and leaf prefixes also keep a DB group from colliding with a
+ * loc-file group whose displayed path happens to be the same.
+ */
+const getStableTreeNodeId = (treeTab: TreeTab, path: string, nodeKind: "group" | "leaf" | "path") =>
+  `${treeTab}:${nodeKind}:${encodeURIComponent(path.replaceAll("/", "\\"))}`;
+
 const buildPathTree = (filePaths: string[]): TreeData => {
-  const root: TreeData = { name: "", children: [] };
+  const root: TreeData = { id: 0, name: "", children: [] };
 
   for (const filePath of filePaths) {
     const segments = filePath.split(/[\\/]/).filter(Boolean);
     let currentNode = root;
+    let currentPath = "";
     for (const segment of segments) {
+      currentPath = currentPath ? `${currentPath}\\${segment}` : segment;
       let nextNode = currentNode.children?.find((child) => child.name === segment);
       if (!nextNode) {
-        nextNode = { name: segment, children: [] };
+        nextNode = { id: getStableTreeNodeId("files", currentPath, "path"), name: segment, children: [] };
         currentNode.children?.push(nextNode);
       }
       currentNode = nextNode;
@@ -315,16 +327,21 @@ const PackTablesTreeView = React.memo(
         return flattenTree({ name: "", children: [] });
       }
 
-      const root: TreeData = { name: "", children: [] };
+      const root: TreeData = { id: 0, name: "", children: [] };
       const dbEntriesByName = groupDBTablePaths(packFileNames);
 
       for (const groupName of [...dbEntriesByName.keys()].toSorted((first, second) => first.localeCompare(second))) {
         const subnames = dbEntriesByName.get(groupName);
         root.children?.push({
+          id: getStableTreeNodeId("db", groupName, "group"),
           name: groupName,
           children: [...(subnames || [])]
             .toSorted((first, second) => first.localeCompare(second))
-            .map((dbSubname) => ({ name: dbSubname, children: [] })),
+            .map((dbSubname) => ({
+              id: getStableTreeNodeId("db", `${groupName}\\${dbSubname}`, "leaf"),
+              name: dbSubname,
+              children: [],
+            })),
         });
       }
 
@@ -758,6 +775,38 @@ const PackTablesTreeView = React.memo(
     };
 
     const packPathKey = (value: string) => value.replaceAll("/", "\\").toLowerCase();
+
+    const getTreeNodePath = (
+      element: INode,
+      treeTab: TreeTab,
+      isBranch: boolean,
+      nodeById: Map<INode["id"], INode>,
+    ) => {
+      const nodePath = getNodeFullPath(element, nodeById);
+      if (treeTab === "files") return nodePath;
+      if (isBranch) {
+        const { dbFolder, dbName } = parseDBGroupName(nodePath);
+        return `${dbFolder}\\${dbName}`;
+      }
+
+      const selection = getDBSelectionForElement(element);
+      return selection ? getDBPackedFilePath(selection) : undefined;
+    };
+
+    const isContextMenuTarget = (
+      element: INode,
+      treeTab: TreeTab,
+      isBranch: boolean,
+      nodeById: Map<INode["id"], INode>,
+    ) => {
+      const target = contextMenu?.target;
+      if (!target || contextMenu?.treeTab !== treeTab) return false;
+      if ((target.kind === "folder") !== isBranch) return false;
+
+      const targetPath = target.kind === "folder" ? target.folderPath : target.filePath;
+      const nodePath = getTreeNodePath(element, treeTab, isBranch, nodeById);
+      return nodePath != undefined && packPathKey(nodePath) === packPathKey(targetPath);
+    };
 
     const handleContextMenu = (e: React.MouseEvent, treeTab: ContextMenuTreeTab, target?: TreeContextTarget) => {
       e.preventDefault();
@@ -1200,9 +1249,11 @@ const PackTablesTreeView = React.memo(
 
       setActiveTreeTab("files");
 
-      const existingName = [...(packData.tables ?? []), ...Object.keys(packData.packedFiles ?? {}), ...unsavedFiles.map((file) => file.name)].find(
-        (fileName) => isLoadOrderRulesPackedFilePath(fileName),
-      );
+      const existingName = [
+        ...(packData.tables ?? []),
+        ...Object.keys(packData.packedFiles ?? {}),
+        ...unsavedFiles.map((file) => file.name),
+      ].find((fileName) => isLoadOrderRulesPackedFilePath(fileName));
       if (existingName) {
         props.onOpenPackedFile({ filePath: existingName, packPath: packData.packPath });
         return;
@@ -1294,10 +1345,7 @@ const PackTablesTreeView = React.memo(
             packPath: packData.packPath,
             // Keep earlier staged edits visible. The IPC handler also merges this file into its
             // authoritative staging list, but this local update can win the render race.
-            unsavedFileData: [
-              ...unsavedFiles.filter((file) => file.name !== nextPackedFile.name),
-              nextPackedFile,
-            ],
+            unsavedFileData: [...unsavedFiles.filter((file) => file.name !== nextPackedFile.name), nextPackedFile],
           }),
         );
         props.onOpenDBTable({
@@ -1330,7 +1378,7 @@ const PackTablesTreeView = React.memo(
       defaultExpandedIds?: Array<string | number>,
     ) => (
       <TreeView
-        key={`${treeTab}|${packPath}|${data.length}`}
+        key={`${treeTab}|${packPath}`}
         data={data}
         aria-label={
           treeTab === "db"
@@ -1403,6 +1451,8 @@ const PackTablesTreeView = React.memo(
             if (isSelected) scheduleOpenForElement(element, treeTab);
           };
 
+          const isContextTarget = isContextMenuTarget(element, treeTab, isBranch, nodeById);
+
           return (
             <div
               {...getNodeProps({
@@ -1453,7 +1503,7 @@ const PackTablesTreeView = React.memo(
               }}
               className={
                 "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
-                (isSelected ? "bg-gray-700/60 " : "") +
+                (isContextTarget ? "bg-blue-700/60 " : isSelected ? "bg-gray-700/60 " : "") +
                 "hover:underline " +
                 (isTreeNodeFiltered(element, treeTab) ? "hidden" : "")
               }
