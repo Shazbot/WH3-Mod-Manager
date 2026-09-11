@@ -4,7 +4,11 @@ import { Provider } from "react-redux";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer, { setIsFeaturesForModdersEnabled, setWorkshopUpdateCheckMessage } from "../src/appSlice";
+import appReducer, {
+  setIsFeaturesForModdersEnabled,
+  setIsModEnabled,
+  setWorkshopUpdateCheckMessage,
+} from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import localizationContext from "../src/localizationContext";
 import LeftSidebar from "../src/components/LeftSidebar";
@@ -72,6 +76,8 @@ const localizedStrings = {
   workshopModsMayBeOutdated: "Workshop mods may be outdated",
   missingReqMods: "Missing required mods",
   missing: "missing",
+  packsWithOutdatedFiles: "Packs with outdated files",
+  outdatedPacks: "Outdated packs!",
 };
 
 const createMod = (overrides: Partial<Mod> = {}): Mod => ({
@@ -286,6 +292,32 @@ describe("tree display DOM behavior", () => {
     });
 
     expect(screen.queryByText("Multiple startpos mods enabled!")).not.toBeInTheDocument();
+  });
+
+  it("clears an outdated-pack warning when that pack is disabled", () => {
+    const outdatedMod = createMod({ name: "outdated.pack", path: "/mods/outdated.pack" });
+    const otherMod = createMod({ name: "other.pack", path: "/mods/other.pack", workshopId: "2" });
+
+    const { store } = renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [outdatedMod, otherMod] },
+      allMods: [outdatedMod, otherMod],
+      outdatedPackFiles: {
+        [outdatedMod.name]: ["6.1: Changed in patch"],
+        [otherMod.name]: ["6.2: Changed in patch"],
+      },
+    });
+
+    expect(screen.getByText("Outdated packs!")).toBeInTheDocument();
+    expect(screen.getByText("outdated.pack:")).toBeInTheDocument();
+    expect(screen.getByText("other.pack:")).toBeInTheDocument();
+
+    act(() => {
+      store.dispatch(setIsModEnabled({ mod: outdatedMod, isEnabled: false }));
+    });
+
+    expect(screen.getByText("Outdated packs!")).toBeInTheDocument();
+    expect(screen.queryByText("outdated.pack:")).not.toBeInTheDocument();
+    expect(screen.getByText("other.pack:")).toBeInTheDocument();
   });
 
   it("renders sidebar warning tooltips outside the scrolling sidebar", () => {

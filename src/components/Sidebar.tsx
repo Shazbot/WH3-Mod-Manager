@@ -446,6 +446,9 @@ const Sidebar = memo(() => {
   }, [isWH3Running, isWaitingForRelaunch, isWaitingForContinueRelaunch, onContinueGameClicked, playGameClicked]);
 
   const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
+  const outdatedPackFilesForEnabledMods = Object.fromEntries(
+    Object.entries(outdatedPackFiles).filter(([packName]) => enabledMods.some((mod) => mod.name === packName)),
+  );
   const conflictingStartposMods = getConflictingStartposMods(enabledMods);
 
   const possiblyOutdatedWorkshopMods = enabledMods
@@ -874,7 +877,7 @@ const Sidebar = memo(() => {
             </div>
           )}
 
-          {currentGame == "wh3" && Object.keys(outdatedPackFiles).length > 0 && (
+          {currentGame == "wh3" && Object.keys(outdatedPackFilesForEnabledMods).length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div className="make-tooltip-w-full">
                 <SidebarTooltip
@@ -882,7 +885,7 @@ const Sidebar = memo(() => {
                   content={
                     <>
                       <p>{localized.packsWithOutdatedFiles}</p>
-                      {Object.entries(outdatedPackFiles).map(([packName, overwrittenFileNames]) => (
+                      {Object.entries(outdatedPackFilesForEnabledMods).map(([packName, overwrittenFileNames]) => (
                         <div key={packName}>
                           <span className="">{`${packName}:`}</span>
                           {overwrittenFileNames.map((packedFileName) => (
