@@ -24,6 +24,7 @@ describe("PackFileRenameModal", () => {
     await waitFor(() => expect(screen.getByTestId("rename-preview")).toHaveTextContent("ui\\renamed.txt"), {
       timeout: 1000,
     });
+    expect(screen.getByRole("radio", { name: "Replace whole file name" })).toBeChecked();
     expect(screen.getByTestId("rename-preview")).not.toHaveTextContent("ui\\data.txt → ui\\renamed.txt");
     expect(screen.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
   });
@@ -46,6 +47,7 @@ describe("PackFileRenameModal", () => {
     await waitFor(() => expect(screen.getByTestId("rename-preview")).toHaveTextContent("ui\\mod.txt"), {
       timeout: 1000,
     });
+    expect(screen.getByRole("radio", { name: "Partial matching" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
   });
 

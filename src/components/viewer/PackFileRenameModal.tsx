@@ -18,6 +18,8 @@ type PackFileRenameModalProps = {
   onApply: (entries: PackFileRenameEntry[]) => void | Promise<void>;
 };
 
+type RenameStrategy = "whole" | "partial";
+
 const emptyPlan: PackFileRenamePlan = {
   entries: [],
   unchangedCount: 0,
@@ -35,6 +37,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
 }) => {
   const localized: Record<string, string> = useContext(localizationContext);
   const [newFileName, setNewFileName] = useState("");
+  const [renameStrategy, setRenameStrategy] = useState<RenameStrategy>("whole");
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
   const [useRegex, setUseRegex] = useState(false);
@@ -50,6 +53,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
   useEffect(() => {
     if (!show) return;
     setNewFileName("");
+    setRenameStrategy("whole");
     setFind("");
     setReplace("");
     setUseRegex(false);
@@ -62,8 +66,10 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
     if (!show) return;
     setPreviewPlan(emptyPlan);
     const timeout = window.setTimeout(() => {
-      const useWholeName = mode === "rename" && !!newFileName;
-      if (!useWholeName && !find) {
+      const useWholeName = mode === "rename" && renameStrategy === "whole";
+      const activeFind = useWholeName ? "" : find;
+      const activeReplace = useWholeName ? newFileName : replace;
+      if (!activeReplace && !activeFind) {
         setPreviewPlan(emptyPlan);
         return;
       }
@@ -71,8 +77,8 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
         planPackFileRename(
           {
             paths,
-            find,
-            replace: useWholeName ? newFileName : replace,
+            find: activeFind,
+            replace: activeReplace,
             useRegex: useWholeName ? false : useRegex,
             scope,
             replaceWholeName: useWholeName,
@@ -82,7 +88,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
       );
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [existingPaths, find, mode, newFileName, paths, replace, scope, show, useRegex]);
+  }, [existingPaths, find, mode, newFileName, paths, renameStrategy, replace, scope, show, useRegex]);
 
   const canApply =
     !isApplying &&
@@ -112,30 +118,122 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
       <Modal.Body>
         <div data-testid="pack-file-rename-modal" className="text-sm text-gray-200">
           <p className="mb-4">
-            {(
-              localized.viewerSelectedFilesPattern ||
-              "{{count}} file(s) selected. Enter a pattern to preview the result."
+            {(mode === "rename"
+              ? localized.viewerSelectedFilesRename ||
+                "{{count}} file(s) selected. Choose a rename method below to preview the result."
+              : localized.viewerSelectedFilesPattern ||
+                "{{count}} file(s) selected. Enter a pattern to preview the result."
             ).replace("{{count}}", String(paths.length))}
           </p>
 
           {mode === "rename" && (
-            <label className="mb-5 block">
-              <span className="mb-1 block text-gray-300">{localized.viewerNewFileName || "New file name"}</span>
-              <input
-                aria-label={localized.viewerNewFileName || "New file name"}
-                value={newFileName}
-                onChange={(event) => setNewFileName(event.target.value)}
-                className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
-                autoFocus
-              />
-            </label>
+            <fieldset className="space-y-3">
+              <legend className="mb-2 font-medium text-white">{localized.viewerRenameMethod || "Rename method"}</legend>
+
+              <div
+                className={`rounded border p-4 ${
+                  renameStrategy === "whole" ? "border-blue-500 bg-blue-950/30" : "border-gray-700 bg-gray-800/40"
+                }`}
+              >
+                <label className="flex cursor-pointer items-center gap-2 font-medium text-white">
+                  <input
+                    type="radio"
+                    name="rename-strategy"
+                    value="whole"
+                    checked={renameStrategy === "whole"}
+                    onChange={() => setRenameStrategy("whole")}
+                    className="h-4 w-4"
+                  />
+                  {localized.viewerRenameWholeName || "Replace whole file name"}
+                </label>
+                <p className="ml-6 mt-1 text-xs text-gray-400">
+                  {localized.viewerRenameWholeNameHelp || "Set the complete file name exactly."}
+                </p>
+                <label className="mt-3 block">
+                  <span className="mb-1 block text-gray-300">{localized.viewerNewFileName || "New file name"}</span>
+                  <input
+                    aria-label={localized.viewerNewFileName || "New file name"}
+                    value={newFileName}
+                    onFocus={() => setRenameStrategy("whole")}
+                    onChange={(event) => {
+                      setRenameStrategy("whole");
+                      setNewFileName(event.target.value);
+                    }}
+                    className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                    autoFocus
+                  />
+                </label>
+              </div>
+
+              <div
+                className={`rounded border p-4 ${
+                  renameStrategy === "partial" ? "border-blue-500 bg-blue-950/30" : "border-gray-700 bg-gray-800/40"
+                }`}
+              >
+                <label className="flex cursor-pointer items-center gap-2 font-medium text-white">
+                  <input
+                    type="radio"
+                    name="rename-strategy"
+                    value="partial"
+                    checked={renameStrategy === "partial"}
+                    onChange={() => setRenameStrategy("partial")}
+                    className="h-4 w-4"
+                  />
+                  {localized.viewerPartialMatching || "Partial matching"}
+                </label>
+                <p className="ml-6 mt-1 text-xs text-gray-400">
+                  {localized.viewerPartialMatchingHelp || "Find text and replace only the matching part."}
+                </p>
+
+                <div className="mt-3">
+                  <label className="mb-3 flex cursor-pointer items-center gap-2 text-white">
+                    <input
+                      type="checkbox"
+                      checked={useRegex}
+                      onFocus={() => setRenameStrategy("partial")}
+                      onChange={(event) => {
+                        setRenameStrategy("partial");
+                        setUseRegex(event.target.checked);
+                      }}
+                      className="h-4 w-4"
+                    />
+                    {localized.viewerUseRegularExpression || "Use regular expression"}
+                  </label>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-gray-300">{localized.viewerFind || "Find"}</span>
+                      <input
+                        aria-label={localized.viewerFind || "Find"}
+                        value={find}
+                        onFocus={() => setRenameStrategy("partial")}
+                        onChange={(event) => {
+                          setRenameStrategy("partial");
+                          setFind(event.target.value);
+                        }}
+                        className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-gray-300">{localized.viewerReplaceWith || "Replace with"}</span>
+                      <input
+                        aria-label={localized.viewerReplaceWith || "Replace with"}
+                        value={replace}
+                        onFocus={() => setRenameStrategy("partial")}
+                        onChange={(event) => {
+                          setRenameStrategy("partial");
+                          setReplace(event.target.value);
+                        }}
+                        className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </fieldset>
           )}
 
-          <div className={mode === "rename" ? "border-t border-gray-700 pt-4" : ""}>
-            {mode === "rename" && (
-              <div className="mb-3 font-medium text-white">{localized.viewerPartialMatching || "Partial matching"}</div>
-            )}
-
+          {mode === "move" && (
             <label className="mb-3 flex items-center gap-2 text-white">
               <input
                 type="checkbox"
@@ -145,7 +243,9 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
               />
               {localized.viewerUseRegularExpression || "Use regular expression"}
             </label>
+          )}
 
+          {mode === "move" && (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-gray-300">{localized.viewerFind || "Find"}</span>
@@ -154,7 +254,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                   value={find}
                   onChange={(event) => setFind(event.target.value)}
                   className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
-                  autoFocus={mode === "move"}
+                  autoFocus
                 />
               </label>
               <label className="block">
@@ -167,7 +267,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                 />
               </label>
             </div>
-          </div>
+          )}
 
           {mode === "move" && (
             <label className="mt-4 flex items-center gap-2 text-white">
