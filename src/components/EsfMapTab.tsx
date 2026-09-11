@@ -13,6 +13,7 @@ import {
 } from "../esfMap/ownership";
 import type { OwnershipEdits } from "../esfMap/ownership";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
+import { computeRegionGeometricCenters } from "../esfMap/geometry";
 import { nextFactionRegionMarker } from "../esfMap/navigation";
 import { mapPointToCharacterCoordinate, projectCharacterCoordinateToMap } from "../esfMap/coordinates";
 import {
@@ -423,6 +424,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const mapScaleX = map && map.width > 0 ? mapDisplayWidthPx / map.width : 1;
   const mapScaleY = map && map.height > 0 ? mapDisplayHeightPx / map.height : 1;
 
+  const regionGeometricCenters = useMemo(() => (map ? computeRegionGeometricCenters(map.areas) : new Map()), [map]);
+
   useEffect(() => {
     if (!isEditingFactions) return;
     setSelectedCharacterKey(undefined);
@@ -440,12 +443,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
             const width = FACTION_FLAG_SIZE * mapScaleX;
             const height = FACTION_FLAG_SIZE * mapScaleY;
-            const y = displayYFromCell(map.height, marker.gy, map.displayFlipY) * mapScaleY;
+            const regionCenter = regionGeometricCenters.get(marker.key.trim().toLowerCase());
+            const x = regionCenter?.x ?? marker.gx;
+            const y =
+              (regionCenter
+                ? displayYFromVertex(map.height, regionCenter.y, map.displayFlipY)
+                : displayYFromCell(map.height, marker.gy, map.displayFlipY)) * mapScaleY;
             return [
               {
                 key: `${marker.id}:${flagUrl}`,
                 src: flagUrl,
-                left: marker.gx * mapScaleX - width / 2,
+                left: x * mapScaleX - width / 2,
                 top: y - height / 2,
                 width,
                 height,
@@ -453,7 +461,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             ];
           })
         : [],
-    [factionsByKey, map, mapScaleX, mapScaleY, mapView],
+    [factionsByKey, map, mapScaleX, mapScaleY, mapView, regionGeometricCenters],
   );
   const characterThumbnailPathByKey = useMemo(() => {
     const cardPathByUnitKey = new Map(
