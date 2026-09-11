@@ -4,6 +4,7 @@ import {
   applyExtendedMapEdit,
   buildExtendedMapDelta,
   createExtendedMapEditState,
+  fillExtendedBuildingSlots,
   formatExtendedMapJson,
   parseMapFile,
   resolveExtendedBuildingOptions,
@@ -206,6 +207,48 @@ describe("extended map files", () => {
       }),
     ).toThrow("unit key");
     expect(state.document).toEqual(document);
+  });
+
+  it("fills virtual slots from normal templates and records appended edits", () => {
+    const templates = [
+      { campaign: "campaign", region: "region_a", slotTemplate: "primary", slotType: "primary", id: "0" },
+      { campaign: "campaign", region: "region_a", slotTemplate: "secondary", slotType: "secondary", id: "1" },
+      {
+        campaign: "campaign",
+        region: "region_a",
+        slotTemplate: "foreign",
+        slotType: "foreign",
+        id: "2",
+        isForeignSlot: true,
+      },
+    ];
+    const slots = fillExtendedBuildingSlots(document.regions[0].buildings!, templates, 2);
+    expect(slots).toEqual([
+      ...document.regions[0].buildings!,
+      { building: "", type: "secondary", template: "secondary" },
+    ]);
+
+    let state = createExtendedMapEditState(document);
+    state = applyExtendedMapEdit(state, {
+      type: "add_building_slot",
+      region: "region_a",
+      slotIndex: 1,
+      building: slots[1],
+    });
+    state = applyExtendedMapEdit(state, {
+      type: "set_building",
+      region: "region_a",
+      slotIndex: 1,
+      building: { ...slots[1], building: "building_b" },
+    });
+    expect(buildExtendedMapDelta(state.baseline, state.document).actions).toEqual([
+      {
+        type: "add_building_slot",
+        region: "region_a",
+        slotIndex: 1,
+        building: { building: "building_b", type: "secondary", template: "secondary" },
+      },
+    ]);
   });
 
   it("filters leader and retinue choices by caste and subculture", () => {

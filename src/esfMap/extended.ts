@@ -246,6 +246,31 @@ export const parseExtendedMap = parseExtendedMapFile;
 export const cloneExtendedMap = (document: ExtendedMapDocument): ExtendedMapDocument =>
   JSON.parse(JSON.stringify(document)) as ExtendedMapDocument;
 
+/**
+ * Adds virtual empty slots up to the settlement's active-slot count. The returned slots are only a
+ * render/edit surface; callers append them to the document through `add_building_slot` when one is
+ * actually changed, so merely opening a settlement never creates a delta.
+ */
+export const fillExtendedBuildingSlots = (
+  buildings: ExtendedMapBuildingSlot[],
+  slotTemplates: RegionSlot[],
+  maxSlotCount?: number,
+): ExtendedMapBuildingSlot[] => {
+  const slots = [...buildings];
+  if (typeof maxSlotCount !== "number" || !Number.isSafeInteger(maxSlotCount) || maxSlotCount <= slots.length)
+    return slots;
+
+  const normalSlotTemplates = slotTemplates.filter(
+    (slot) => !slot.isForeignSlot && slot.slotType.toLowerCase() !== "foreign",
+  );
+  for (let slotIndex = slots.length; slotIndex < maxSlotCount; slotIndex += 1) {
+    const template = normalSlotTemplates[slotIndex];
+    if (!template) break;
+    slots.push({ building: "", type: template.slotType, template: template.slotTemplate });
+  }
+  return slots;
+};
+
 export const formatExtendedMapJson = (document: ExtendedMapDocument): string =>
   `${JSON.stringify(document, undefined, 2)}\n`;
 
@@ -272,6 +297,7 @@ export const createExtendedMapEditState = (baseline: ExtendedMapDocument): Exten
 
 export type ExtendedMapEditAction =
   | { type: "set_building"; region: string; slotIndex: number; building: ExtendedMapBuildingSlot }
+  | { type: "add_building_slot"; region: string; slotIndex: number; building: ExtendedMapBuildingSlot }
   | {
       type: "update_character";
       faction: string;
@@ -350,6 +376,20 @@ export const applyExtendedMapEdit = (
       template: action.building.template,
       ...(action.building.resource_key ? { resource_key: action.building.resource_key } : {}),
     };
+  } else if (action.type === "add_building_slot") {
+    validateBuildingSlot(action.building);
+    if (typeof action.region !== "string" || !action.region.trim()) throw new Error("Region key is required.");
+    if (!Number.isSafeInteger(action.slotIndex) || action.slotIndex < 0)
+      throw new Error("Building slot index must be a non-negative integer.");
+    const region = document.regions.find((candidate) => candidate.region.toLowerCase() === action.region.toLowerCase());
+    if (!region || !region.buildings) throw new Error("Building slots were not found.");
+    if (action.slotIndex !== region.buildings.length) throw new Error("New building slots must be appended in order.");
+    region.buildings.push({
+      building: action.building.building,
+      type: action.building.type,
+      template: action.building.template,
+      ...(action.building.resource_key ? { resource_key: action.building.resource_key } : {}),
+    });
   } else if (action.type === "update_character") {
     validateCharacterChange(action);
     const character = findCharacter(document, action.faction, action.characterId);
@@ -428,6 +468,12 @@ export type ExtendedMapDeltaAction =
       after: ExtendedMapBuildingSlot;
     }
   | {
+      type: "add_building_slot";
+      region: string;
+      slotIndex: number;
+      building: ExtendedMapBuildingSlot;
+    }
+  | {
       type: "update_character";
       faction: string;
       characterId: number;
@@ -459,6 +505,8 @@ export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: Extend
       const newSlot = afterRegion.buildings[slotIndex];
       if (oldSlot && newSlot && !equal(oldSlot, newSlot))
         actions.push({ type: "set_building", region: afterRegion.region, slotIndex, before: oldSlot, after: newSlot });
+      else if (!oldSlot && newSlot)
+        actions.push({ type: "add_building_slot", region: afterRegion.region, slotIndex, building: newSlot });
     }
   }
 
@@ -529,10 +577,11 @@ export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: Extend
   }
   const typeOrder: Record<ExtendedMapDeltaAction["type"], number> = {
     set_building: 0,
-    update_character: 1,
-    add_unit: 2,
-    remove_unit: 3,
-    update_unit: 4,
+    add_building_slot: 1,
+    update_character: 2,
+    add_unit: 3,
+    remove_unit: 4,
+    update_unit: 5,
   };
   actions.sort((first, second) => {
     const firstKey =

@@ -1,16 +1,19 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { addToast, clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
+import { unitAssetUrl } from "../assetUrls";
 import { useLocalizations } from "../localizationContext";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
 import { applyOwnershipEdits, formatRegionOwnershipJson, ownershipEditsFromImport } from "../esfMap/ownership";
 import type { OwnershipEdits } from "../esfMap/ownership";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
+import { mapPointToCharacterCoordinate, projectCharacterCoordinateToMap } from "../esfMap/coordinates";
 import {
   applyExtendedMapEdit,
   buildExtendedMapDelta,
   cloneExtendedMap,
   createExtendedMapEditState,
+  fillExtendedBuildingSlots,
   parseMapFile,
   resolveExtendedUnitOptions,
   type ExtendedMapCharacter,
@@ -28,12 +31,26 @@ type EsfMapTabProps = {
 const MAP_AREA_OPACITY = 0.36;
 const FACTION_FLAG_SIZE = 20;
 const CHARACTER_DRAG_THRESHOLD = 3;
+const CHARACTER_MARKER_RADIUS = 10;
+const CHARACTER_THUMBNAIL_SIZE = 64;
+const CHARACTER_OVERLAY_SCALE = 2;
+const CHARACTER_OVERLAY_MAX_PIXELS = 8_000_000;
+// Keep the map-attached raster until its 64px source would actually be upscaled. This avoids
+// switching to the scroll-synchronised viewport layer at the zoom where map scrolling begins.
+const CHARACTER_VIEWPORT_ZOOM = CHARACTER_THUMBNAIL_SIZE / (CHARACTER_MARKER_RADIUS * 2);
+const CHARACTER_MAP_BUCKET_SIZE = 256;
 /** Deep enough to walk back a mis-click run, shallow enough that the snapshots stay cheap. */
 const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
 const LISTED_FACTION_LIMIT = 200;
 
 type MapView = "regions" | "factions" | "climate";
+
+type CharacterMapEntry = {
+  faction: string;
+  character: ExtendedMapCharacter;
+  point: { x: number; y: number };
+};
 
 const displayYFromVertex = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - y : y);
 const displayYFromCell = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - 1 - y : y);
@@ -97,6 +114,87 @@ const associatedUnitForSubculture = (option: UnitViewerLordOption, subculture: s
 
 const formatSubtypeOption = (option: UnitViewerLordOption) => `${option.subtype} — ${option.name}`;
 
+const characterUiKey = (faction: string, id: number) => `${faction.toLowerCase()}:${id}`;
+
+/**
+ * Creates the small image actually drawn on the map once per unique unit card. Keeping this raster
+ * separate from the full card lets pointer moves redraw hundreds of markers without clipping and
+ * resampling each source image again.
+ */
+const createCharacterThumbnail = (image: HTMLImageElement): HTMLCanvasElement | undefined => {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) return undefined;
+
+  const thumbnail = document.createElement("canvas");
+  thumbnail.width = CHARACTER_THUMBNAIL_SIZE;
+  thumbnail.height = CHARACTER_THUMBNAIL_SIZE;
+  const context = thumbnail.getContext("2d");
+  if (!context) return undefined;
+
+  context.save();
+  context.beginPath();
+  context.arc(CHARACTER_THUMBNAIL_SIZE / 2, CHARACTER_THUMBNAIL_SIZE / 2, CHARACTER_THUMBNAIL_SIZE / 2, 0, Math.PI * 2);
+  context.clip();
+  context.fillStyle = "rgba(15, 23, 42, 0.95)";
+  context.fillRect(0, 0, CHARACTER_THUMBNAIL_SIZE, CHARACTER_THUMBNAIL_SIZE);
+  context.imageSmoothingEnabled = true;
+
+  // The Unit Viewer uses cover for cards. Do the same here, cropping the portrait to a square so it
+  // remains recognisable inside the map marker instead of stretching the card into a circle.
+  const sourceSide = Math.min(sourceWidth, sourceHeight);
+  const sourceX = (sourceWidth - sourceSide) / 2;
+  const sourceY = (sourceHeight - sourceSide) / 2;
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceSide,
+    sourceSide,
+    0,
+    0,
+    CHARACTER_THUMBNAIL_SIZE,
+    CHARACTER_THUMBNAIL_SIZE,
+  );
+  context.restore();
+  return thumbnail;
+};
+
+const drawCharacterThumbnailImage = (
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number,
+) => {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) return;
+
+  context.save();
+  context.beginPath();
+  context.ellipse(centerX, centerY, width / 2, height / 2, 0, 0, Math.PI * 2);
+  context.clip();
+  context.fillStyle = "rgba(15, 23, 42, 0.95)";
+  context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+  const sourceSide = Math.min(sourceWidth, sourceHeight);
+  const sourceX = (sourceWidth - sourceSide) / 2;
+  const sourceY = (sourceHeight - sourceSide) / 2;
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceSide,
+    sourceSide,
+    centerX - width / 2,
+    centerY - height / 2,
+    width,
+    height,
+  );
+  context.restore();
+};
+
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useLocalizations();
@@ -116,9 +214,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const enabledModsRef = useRef(enabledMods);
   enabledModsRef.current = enabledMods;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const characterMapCanvasRef = useRef<HTMLCanvasElement>(null);
+  const characterViewportCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const mapListItemRefs = useRef(new Map<string, HTMLButtonElement>());
   const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
+  const mapImageLoadsRef = useRef(new Map<string, Promise<HTMLImageElement | undefined>>());
+  const characterThumbnailSourcesRef = useRef(new Set<string>());
+  const characterThumbnailCanvasesRef = useRef(new Map<string, HTMLCanvasElement>());
+  const characterViewportDrawRef = useRef<(() => void) | undefined>();
+  const characterViewportScheduleRef = useRef<(() => void) | undefined>();
+  const characterViewportLastDrawScrollRef = useRef<{ left: number; top: number }>();
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -176,6 +282,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [buildingsView, setBuildingsView] = useState<BuildingsRegionView>();
   const [unitCatalog, setUnitCatalog] = useState<UnitViewerCatalogUnit[]>([]);
   const [lordOptions, setLordOptions] = useState<UnitViewerLordOption[]>([]);
+  const [unitViewerSessionId, setUnitViewerSessionId] = useState<string>();
+  const [resolvedCharacterThumbnailPaths, setResolvedCharacterThumbnailPaths] = useState<string[]>([]);
+  const [characterThumbnailRevision, setCharacterThumbnailRevision] = useState(0);
   const [extendedLoading, setExtendedLoading] = useState(false);
 
   const mapText = (key: string, fallback: string) => localized[key] || fallback;
@@ -221,6 +330,82 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [extendedState],
   );
   const isExtendedFormat = !!extendedState;
+  const characterMapOverlayActive =
+    isActive && !!map && showCharacters && !!extendedState && zoom <= CHARACTER_VIEWPORT_ZOOM;
+  const characterViewportOverlayActive =
+    isActive && !!map && showCharacters && !!extendedState && zoom > CHARACTER_VIEWPORT_ZOOM;
+  const mapDisplayWidth = map ? `${Math.max(320, Math.round(map.width * zoom))}px` : undefined;
+  const mapDisplayHeight = map ? `${Math.max(240, Math.round(map.height * zoom))}px` : undefined;
+  const characterThumbnailPathByKey = useMemo(() => {
+    const cardPathByUnitKey = new Map(
+      unitCatalog
+        .filter((unit) => !!unit.unitCardPath)
+        .map((unit) => [unit.key.toLowerCase(), unit.unitCardPath!] as const),
+    );
+    const lordOptionBySubtype = new Map(lordOptions.map((option) => [option.subtype.toLowerCase(), option] as const));
+    const result = new Map<string, string>();
+    if (!map) return result;
+    for (const { faction, character } of extendedCharacters) {
+      if (!projectCharacterCoordinateToMap(map, character.x, character.y)) continue;
+      const mapFaction = factionsByKey.get(faction.toLowerCase());
+      const lordOption = lordOptionBySubtype.get(character.subtype.toLowerCase());
+      const candidateUnitKeys = [
+        character.units?.[0]?.unit_key,
+        lordOption ? associatedUnitForSubculture(lordOption, mapFaction?.subculture) : undefined,
+        character.subtype,
+      ];
+      const cardPath = candidateUnitKeys
+        .filter((key): key is string => !!key)
+        .map((key) => cardPathByUnitKey.get(key.toLowerCase()))
+        .find((path): path is string => !!path);
+      if (cardPath) result.set(characterUiKey(faction, character.id), cardPath);
+    }
+    return result;
+  }, [extendedCharacters, factionsByKey, lordOptions, map, unitCatalog]);
+  const characterThumbnailPaths = useMemo(
+    () => (showCharacters ? Array.from(new Set(characterThumbnailPathByKey.values())) : []),
+    [characterThumbnailPathByKey, showCharacters],
+  );
+  const resolvedCharacterThumbnailPathSet = useMemo(
+    () => new Set(resolvedCharacterThumbnailPaths),
+    [resolvedCharacterThumbnailPaths],
+  );
+  const characterThumbnailUrls = useMemo(() => {
+    if (!showCharacters || !unitViewerSessionId) return new Map<string, string>();
+    return new Map(
+      Array.from(characterThumbnailPathByKey.entries())
+        .filter(([, path]) => resolvedCharacterThumbnailPathSet.has(path))
+        .map(([key, path]) => [key, unitAssetUrl(unitViewerSessionId, path)] as const),
+    );
+  }, [characterThumbnailPathByKey, resolvedCharacterThumbnailPathSet, showCharacters, unitViewerSessionId]);
+  const characterThumbnailSources = useMemo(
+    () => Array.from(new Set(characterThumbnailUrls.values())),
+    [characterThumbnailUrls],
+  );
+  const characterMapIndex = useMemo<{
+    entries: CharacterMapEntry[];
+    byKey: Map<string, CharacterMapEntry>;
+    buckets: Map<string, CharacterMapEntry[]>;
+  }>(() => {
+    const entries: CharacterMapEntry[] = [];
+    const byKey = new Map<string, CharacterMapEntry>();
+    const buckets = new Map<string, CharacterMapEntry[]>();
+    if (!map) return { entries, byKey, buckets };
+
+    for (const { faction, character } of extendedCharacters) {
+      const point = projectCharacterCoordinateToMap(map, character.x, character.y);
+      if (!point) continue;
+      const entry = { faction, character, point };
+      const key = characterUiKey(faction, character.id);
+      entries.push(entry);
+      byKey.set(key, entry);
+      const bucketKey = `${Math.floor(point.x / CHARACTER_MAP_BUCKET_SIZE)}:${Math.floor(point.y / CHARACTER_MAP_BUCKET_SIZE)}`;
+      const bucket = buckets.get(bucketKey);
+      if (bucket) bucket.push(entry);
+      else buckets.set(bucketKey, [entry]);
+    }
+    return { entries, byKey, buckets };
+  }, [extendedCharacters, map]);
 
   useEffect(() => {
     if (currentGame !== "wh3") return;
@@ -279,6 +464,22 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           )
         : undefined,
     [extendedState, selectedMarker],
+  );
+  const selectedPrimaryBuilding = useMemo(
+    () =>
+      selectedExtendedRegion?.buildings?.find((slot) => slot.type.toLowerCase() === "primary")?.building || undefined,
+    [selectedExtendedRegion],
+  );
+  const selectedExtendedBuildingSlots = useMemo(
+    () =>
+      selectedExtendedRegion?.buildings
+        ? fillExtendedBuildingSlots(
+            selectedExtendedRegion.buildings,
+            buildingsView?.slotTemplates ?? [],
+            buildingsView?.maxSlotCount,
+          )
+        : undefined,
+    [buildingsView, selectedExtendedRegion],
   );
   const selectedMarkerFactionKey = factionKey(selectedMarker?.ownerFaction);
   const selectedMarkerClimateKey = selectedMarker
@@ -590,11 +791,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!isExtendedFormat || !window.api) {
       setUnitCatalog([]);
       setLordOptions([]);
+      setUnitViewerSessionId(undefined);
+      setResolvedCharacterThumbnailPaths([]);
       return;
     }
     let current = true;
     setUnitCatalog([]);
     setLordOptions([]);
+    setUnitViewerSessionId(undefined);
+    setResolvedCharacterThumbnailPaths([]);
     setExtendedLoading(true);
     window.api
       .getUnitViewerCatalog(enabledModsRef.current)
@@ -608,6 +813,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         }
         const byKey = new Map<string, UnitViewerCatalogUnit>();
         for (const group of response.groups ?? []) for (const unit of group.units) byKey.set(unit.key, unit);
+        setUnitViewerSessionId(response.sessionId);
         setUnitCatalog([...byKey.values()]);
         setLordOptions(response.lordOptions ?? []);
       })
@@ -615,6 +821,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         if (current) {
           setUnitCatalog([]);
           setLordOptions([]);
+          setUnitViewerSessionId(undefined);
+          setResolvedCharacterThumbnailPaths([]);
           showOwnershipToast("warning", [reason instanceof Error ? reason.message : String(reason)]);
         }
       })
@@ -625,6 +833,44 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       current = false;
     };
   }, [enabledModsSignature, isExtendedFormat, showOwnershipToast]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (!showCharacters || !unitViewerSessionId || characterThumbnailPaths.length === 0 || !window.api) {
+      setResolvedCharacterThumbnailPaths((paths) => (paths.length === 0 ? paths : []));
+      return;
+    }
+    const requestedSessionId = unitViewerSessionId;
+    const requestedPaths = characterThumbnailPaths;
+    let current = true;
+    setResolvedCharacterThumbnailPaths([]);
+    window.api
+      .prewarmUnitViewerAssets(requestedSessionId, requestedPaths)
+      .then((response) => {
+        if (!current || unitViewerSessionId !== requestedSessionId || !response?.success) return;
+        const requested = new Set(requestedPaths);
+        setResolvedCharacterThumbnailPaths(
+          Array.from(new Set((response.resolved ?? []).filter((path) => requested.has(path)))),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [characterThumbnailPaths, isActive, showCharacters, unitViewerSessionId]);
+
+  // Unit cards can be much larger than the map marker. Drop their decoded and circularized copies
+  // when the map no longer references them, while leaving the background/flag cache untouched.
+  useEffect(() => {
+    const activeSources = new Set(characterThumbnailSources);
+    for (const source of characterThumbnailSourcesRef.current) {
+      if (activeSources.has(source)) continue;
+      mapImagesRef.current.delete(source);
+      characterThumbnailCanvasesRef.current.delete(source);
+      characterThumbnailSourcesRef.current.delete(source);
+    }
+    for (const source of activeSources) characterThumbnailSourcesRef.current.add(source);
+  }, [characterThumbnailSources]);
 
   useEffect(() => {
     if (!isExtendedFormat || !selectedMarker || !window.api) {
@@ -645,6 +891,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         includeLevelsWithoutVariant: true,
         includeRuinLevels: true,
         includeUnbandedLevels: true,
+        primaryBuilding: selectedPrimaryBuilding,
       })
       .then((response) => {
         if (!current) return;
@@ -658,7 +905,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     return () => {
       current = false;
     };
-  }, [enabledModsSignature, factionsByKey, isExtendedFormat, map?.campaignKey, mapCampaignName, selectedMarker]);
+  }, [
+    enabledModsSignature,
+    factionsByKey,
+    isExtendedFormat,
+    map?.campaignKey,
+    mapCampaignName,
+    selectedMarker,
+    selectedPrimaryBuilding,
+  ]);
 
   useEffect(() => {
     if (!map) return;
@@ -692,15 +947,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   }, [brushFactionKey, filter, isEditingFactions, map, mapView, selectedMarkerFactionKey, selectedMarkerId]);
 
   useEffect(() => {
+    if (!isActive) return;
     const canvas = canvasRef.current;
     if (!canvas || !map) return;
+
+    if (canvas.width !== map.width) canvas.width = map.width;
+    if (canvas.height !== map.height) canvas.height = map.height;
     const context = canvas.getContext("2d");
     if (!context) return;
-
-    canvas.width = map.width;
-    canvas.height = map.height;
-    canvas.style.width = `${Math.max(320, Math.round(map.width * zoom))}px`;
-    canvas.style.height = `${Math.max(240, Math.round(map.height * zoom))}px`;
 
     const selected =
       selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
@@ -831,45 +1085,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         context.arc(selected.gx, y, 5, 0, Math.PI * 2);
         context.stroke();
       }
-
-      if (showCharacters && extendedState) {
-        for (const { faction, character } of extendedCharacters) {
-          const preview =
-            characterDragPreview?.faction.toLowerCase() === faction.toLowerCase() &&
-            characterDragPreview.id === character.id
-              ? characterDragPreview
-              : character;
-          if (
-            preview.x === 65535 ||
-            preview.y === 65535 ||
-            preview.x < 0 ||
-            preview.y < 0 ||
-            preview.x >= map.width ||
-            preview.y >= map.height
-          )
-            continue;
-          const characterY = displayYFromCell(map.height, preview.y, map.displayFlipY);
-          context.save();
-          context.fillStyle = factionColour(faction.toLowerCase());
-          context.strokeStyle = "rgba(0, 0, 0, 0.95)";
-          context.lineWidth = 1;
-          context.beginPath();
-          context.arc(preview.x, characterY, 4, 0, Math.PI * 2);
-          context.fill();
-          context.stroke();
-          if (
-            selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
-            selectedCharacterKey.id === character.id
-          ) {
-            context.strokeStyle = "#facc15";
-            context.lineWidth = 2;
-            context.beginPath();
-            context.arc(preview.x, characterY, 7, 0, Math.PI * 2);
-            context.stroke();
-          }
-          context.restore();
-        }
-      }
     };
 
     const backgroundSrc = map.backgroundImage?.src;
@@ -883,7 +1098,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             .filter((src): src is string => !!src)
         : [];
     const imageSources = Array.from(
-      new Set([backgroundSrc, backgroundTextSrc, ...flagSources].filter(Boolean)),
+      new Set([backgroundSrc, backgroundTextSrc, ...flagSources, ...characterThumbnailSources].filter(Boolean)),
     ) as string[];
     const cachedImages = new Map(
       imageSources
@@ -895,13 +1110,37 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         .map((src) => [src, cachedImages.get(src)] as const)
         .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
     );
+    const loadImageOnce = (source: string) => {
+      const pending = mapImageLoadsRef.current.get(source);
+      if (pending) return pending;
+      const load = loadMapImage(source).finally(() => mapImageLoadsRef.current.delete(source));
+      mapImageLoadsRef.current.set(source, load);
+      return load;
+    };
+    const cacheThumbnailImages = (images: Map<string, HTMLImageElement>) => {
+      let changed = false;
+      for (const source of characterThumbnailSources) {
+        const image = images.get(source);
+        if (!image) continue;
+        let thumbnail = characterThumbnailCanvasesRef.current.get(source);
+        if (!thumbnail) {
+          thumbnail = createCharacterThumbnail(image);
+          if (thumbnail) {
+            characterThumbnailCanvasesRef.current.set(source, thumbnail);
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    };
+    cacheThumbnailImages(cachedImages);
     drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), flagImages);
 
     const missingSources = imageSources.filter((src) => !cachedImages.has(src));
     if (missingSources.length === 0) return;
 
     let cancelled = false;
-    void Promise.all(missingSources.map((src) => loadMapImage(src))).then((images) => {
+    void Promise.all(missingSources.map((src) => loadImageOnce(src))).then((images) => {
       if (cancelled) return;
       for (const [index, image] of images.entries()) {
         const src = missingSources[index];
@@ -915,6 +1154,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           .map((src) => [src, cachedImages.get(src)] as const)
           .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
       );
+      if (cacheThumbnailImages(cachedImages)) setCharacterThumbnailRevision((revision) => revision + 1);
       drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), loadedFlagImages);
     });
     return () => {
@@ -924,19 +1164,293 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     brushFactionKey,
     climateByKey,
     climateSelectionKey,
-    characterDragPreview,
-    extendedCharacters,
-    extendedState,
+    characterThumbnailSources,
     factionsByKey,
     isEditingOwnership,
+    isActive,
     map,
     mapView,
     selectedMarkerId,
     selectedSettlementType,
+  ]);
+
+  useEffect(() => {
+    const canvas = characterMapCanvasRef.current;
+    if (!canvas) return;
+
+    if (!characterMapOverlayActive || !map) return;
+
+    const mapPixels = map.width * map.height;
+    const renderScale = Math.max(
+      1,
+      Math.min(CHARACTER_OVERLAY_SCALE, Math.sqrt(CHARACTER_OVERLAY_MAX_PIXELS / mapPixels)),
+    );
+    const backingWidth = Math.max(1, Math.round(map.width * renderScale));
+    const backingHeight = Math.max(1, Math.round(map.height * renderScale));
+    if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+      canvas.width = backingWidth;
+      canvas.height = backingHeight;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+    context.clearRect(0, 0, map.width, map.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    for (const { faction, character, point: characterPoint } of characterMapIndex.entries) {
+      const thumbnailSource = characterThumbnailUrls.get(characterUiKey(faction, character.id));
+      const thumbnailCanvas = thumbnailSource ? characterThumbnailCanvasesRef.current.get(thumbnailSource) : undefined;
+
+      context.save();
+      context.fillStyle = factionColour(faction.toLowerCase());
+      context.strokeStyle = "rgba(0, 0, 0, 0.95)";
+      context.lineWidth = 0.75;
+      context.beginPath();
+      context.arc(characterPoint.x, characterPoint.y, CHARACTER_MARKER_RADIUS, 0, Math.PI * 2);
+      context.fill();
+      if (thumbnailCanvas) {
+        context.drawImage(
+          thumbnailCanvas,
+          characterPoint.x - CHARACTER_MARKER_RADIUS,
+          characterPoint.y - CHARACTER_MARKER_RADIUS,
+          CHARACTER_MARKER_RADIUS * 2,
+          CHARACTER_MARKER_RADIUS * 2,
+        );
+      }
+      context.stroke();
+      if (
+        selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
+        selectedCharacterKey.id === character.id
+      ) {
+        context.strokeStyle = "#facc15";
+        context.lineWidth = 1;
+        context.beginPath();
+        context.arc(characterPoint.x, characterPoint.y, CHARACTER_MARKER_RADIUS + 3, 0, Math.PI * 2);
+        context.stroke();
+      }
+      context.restore();
+    }
+  }, [
+    characterThumbnailRevision,
+    characterThumbnailUrls,
+    characterMapIndex,
+    extendedState,
+    isActive,
+    map,
     selectedCharacterKey,
     showCharacters,
+    characterMapOverlayActive,
+  ]);
+
+  // At higher zoom the character layer follows the viewport so it can sample the original card at
+  // the size it is displayed. Overview zooms use the map-attached cache below and never repaint on pan.
+  useEffect(() => {
+    const canvas = characterViewportCanvasRef.current;
+    const mapCanvas = canvasRef.current;
+    const canvasWrap = canvasWrapRef.current;
+    if (!canvas || !mapCanvas || !canvasWrap) return;
+
+    if (!characterViewportOverlayActive || !map) {
+      canvas.style.display = "none";
+      canvas.style.transform = "";
+      characterViewportLastDrawScrollRef.current = undefined;
+      characterViewportDrawRef.current = undefined;
+      return;
+    }
+
+    canvas.style.display = "block";
+    const drawCharacters = () => {
+      // Use the containing pane for the viewport geometry. The canvas gets a temporary translate
+      // while a scroll is in flight, and getBoundingClientRect() on the canvas would include that
+      // translate and make the map offset chase its own fallback.
+      canvas.style.transform = "";
+      const overlayRect = canvas.parentElement?.getBoundingClientRect() ?? canvas.getBoundingClientRect();
+      const mapRect = mapCanvas.getBoundingClientRect();
+      const viewportWidth = Math.max(1, Math.round(overlayRect.width));
+      const viewportHeight = Math.max(1, Math.round(overlayRect.height));
+      if (!viewportWidth || !viewportHeight || !mapRect.width || !mapRect.height) return;
+
+      const viewportPixels = viewportWidth * viewportHeight;
+      const renderScale = Math.max(
+        1,
+        Math.min(CHARACTER_OVERLAY_SCALE, Math.sqrt(CHARACTER_OVERLAY_MAX_PIXELS / viewportPixels)),
+      );
+      const backingWidth = Math.max(1, Math.round(viewportWidth * renderScale));
+      const backingHeight = Math.max(1, Math.round(viewportHeight * renderScale));
+      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+        canvas.width = backingWidth;
+        canvas.height = backingHeight;
+      }
+
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+      context.clearRect(0, 0, viewportWidth, viewportHeight);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+
+      const mapScaleX = mapRect.width / map.width;
+      const mapScaleY = mapRect.height / map.height;
+      if (!mapScaleX || !mapScaleY) return;
+      const mapOffsetX = mapRect.left - overlayRect.left;
+      const mapOffsetY = mapRect.top - overlayRect.top;
+      const minMapX = Math.max(0, Math.floor(-mapOffsetX / mapScaleX - CHARACTER_MARKER_RADIUS));
+      const maxMapX = Math.min(
+        map.width - 1,
+        Math.ceil((viewportWidth - mapOffsetX) / mapScaleX + CHARACTER_MARKER_RADIUS),
+      );
+      const minMapY = Math.max(0, Math.floor(-mapOffsetY / mapScaleY - CHARACTER_MARKER_RADIUS));
+      const maxMapY = Math.min(
+        map.height - 1,
+        Math.ceil((viewportHeight - mapOffsetY) / mapScaleY + CHARACTER_MARKER_RADIUS),
+      );
+      const visibleEntries: CharacterMapEntry[] = [];
+      const visibleKeys = new Set<string>();
+      for (
+        let bucketX = Math.floor(minMapX / CHARACTER_MAP_BUCKET_SIZE);
+        bucketX <= Math.floor(maxMapX / CHARACTER_MAP_BUCKET_SIZE);
+        bucketX += 1
+      ) {
+        for (
+          let bucketY = Math.floor(minMapY / CHARACTER_MAP_BUCKET_SIZE);
+          bucketY <= Math.floor(maxMapY / CHARACTER_MAP_BUCKET_SIZE);
+          bucketY += 1
+        ) {
+          for (const entry of characterMapIndex.buckets.get(`${bucketX}:${bucketY}`) ?? []) {
+            const key = characterUiKey(entry.faction, entry.character.id);
+            if (visibleKeys.has(key)) continue;
+            visibleKeys.add(key);
+            visibleEntries.push(entry);
+          }
+        }
+      }
+      if (characterDragPreview) {
+        const previewKey = characterUiKey(characterDragPreview.faction, characterDragPreview.id);
+        const previewEntry = characterMapIndex.byKey.get(previewKey);
+        if (previewEntry && !visibleKeys.has(previewKey)) visibleEntries.push(previewEntry);
+      }
+
+      for (const { faction, character, point } of visibleEntries) {
+        const preview =
+          characterDragPreview?.faction.toLowerCase() === faction.toLowerCase() &&
+          characterDragPreview.id === character.id
+            ? characterDragPreview
+            : character;
+        const characterPoint =
+          preview === character ? point : projectCharacterCoordinateToMap(map, preview.x, preview.y);
+        if (!characterPoint) continue;
+
+        const centerX = mapOffsetX + characterPoint.x * mapScaleX;
+        const centerY = mapOffsetY + characterPoint.y * mapScaleY;
+        const radiusX = CHARACTER_MARKER_RADIUS * mapScaleX;
+        const radiusY = CHARACTER_MARKER_RADIUS * mapScaleY;
+        if (
+          centerX + radiusX < 0 ||
+          centerY + radiusY < 0 ||
+          centerX - radiusX > viewportWidth ||
+          centerY - radiusY > viewportHeight
+        )
+          continue;
+
+        const thumbnailSource = characterThumbnailUrls.get(characterUiKey(faction, character.id));
+        const thumbnailCanvas = thumbnailSource
+          ? characterThumbnailCanvasesRef.current.get(thumbnailSource)
+          : undefined;
+        const thumbnailImage = thumbnailSource ? mapImagesRef.current.get(thumbnailSource) : undefined;
+        const thumbnailWidth = radiusX * 2;
+        const thumbnailHeight = radiusY * 2;
+
+        context.save();
+        context.fillStyle = factionColour(faction.toLowerCase());
+        context.strokeStyle = "rgba(0, 0, 0, 0.95)";
+        context.lineWidth = 0.75;
+        context.beginPath();
+        context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+        context.fill();
+        if (thumbnailImage && Math.max(thumbnailWidth, thumbnailHeight) > CHARACTER_THUMBNAIL_SIZE) {
+          drawCharacterThumbnailImage(context, thumbnailImage, centerX, centerY, thumbnailWidth, thumbnailHeight);
+        } else if (thumbnailCanvas) {
+          context.drawImage(thumbnailCanvas, centerX - radiusX, centerY - radiusY, thumbnailWidth, thumbnailHeight);
+        } else if (thumbnailImage) {
+          drawCharacterThumbnailImage(context, thumbnailImage, centerX, centerY, thumbnailWidth, thumbnailHeight);
+        }
+        context.stroke();
+        if (
+          selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
+          selectedCharacterKey.id === character.id
+        ) {
+          context.strokeStyle = "#facc15";
+          context.lineWidth = 1;
+          context.beginPath();
+          context.ellipse(centerX, centerY, radiusX + 3, radiusY + 3, 0, 0, Math.PI * 2);
+          context.stroke();
+        }
+        context.restore();
+      }
+      characterViewportLastDrawScrollRef.current = {
+        left: canvasWrap.scrollLeft,
+        top: canvasWrap.scrollTop,
+      };
+    };
+
+    characterViewportDrawRef.current = drawCharacters;
+    drawCharacters();
+    return () => {
+      if (characterViewportDrawRef.current === drawCharacters) characterViewportDrawRef.current = undefined;
+    };
+  }, [
+    characterDragPreview,
+    characterThumbnailRevision,
+    characterThumbnailUrls,
+    characterMapIndex,
+    extendedState,
+    isActive,
+    map,
+    selectedCharacterKey,
+    showCharacters,
+    characterViewportOverlayActive,
     zoom,
   ]);
+
+  useEffect(() => {
+    if (!characterViewportOverlayActive) return;
+    const canvasWrap = canvasWrapRef.current;
+    if (!canvasWrap) return;
+
+    let animationFrame: number | undefined;
+    const scheduleCharacterRedraw = () => {
+      // Moving the existing viewport raster immediately keeps it attached to the map even before
+      // the coalesced redraw runs. This is only a CSS transform, so panning does not pay for a full
+      // canvas repaint on every pointer event.
+      const lastDrawScroll = characterViewportLastDrawScrollRef.current;
+      if (lastDrawScroll) {
+        const deltaX = lastDrawScroll.left - canvasWrap.scrollLeft;
+        const deltaY = lastDrawScroll.top - canvasWrap.scrollTop;
+        characterViewportCanvasRef.current?.style.setProperty(
+          "transform",
+          deltaX || deltaY ? `translate(${deltaX}px, ${deltaY}px)` : "",
+        );
+      }
+      if (animationFrame !== undefined) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = undefined;
+        characterViewportDrawRef.current?.();
+      });
+    };
+    characterViewportScheduleRef.current = scheduleCharacterRedraw;
+    canvasWrap.addEventListener("scroll", scheduleCharacterRedraw, { passive: true });
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(scheduleCharacterRedraw);
+    resizeObserver?.observe(canvasWrap);
+    return () => {
+      canvasWrap.removeEventListener("scroll", scheduleCharacterRedraw);
+      resizeObserver?.disconnect();
+      if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
+      if (characterViewportScheduleRef.current === scheduleCharacterRedraw)
+        characterViewportScheduleRef.current = undefined;
+    };
+  }, [characterViewportOverlayActive]);
 
   useEffect(() => {
     const anchor = mapZoomAnchorRef.current;
@@ -1068,7 +1582,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         characterDrag.hasMoved = true;
       }
       if (characterDrag.hasMoved && event.type !== "pointercancel") {
-        const point = mapCoordinatesAtClientPoint(event);
+        const mapPoint = mapCoordinatesAtClientPoint(event);
+        const point = map && mapPoint ? mapPointToCharacterCoordinate(map, mapPoint) : undefined;
         if (point) setCharacterDragPreview({ faction: characterDrag.faction, id: characterDrag.characterId, ...point });
       }
       event.preventDefault();
@@ -1083,6 +1598,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) suppressMapClickRef.current = true;
     canvasWrap.scrollLeft = drag.startScrollLeft - deltaX;
     canvasWrap.scrollTop = drag.startScrollTop - deltaY;
+    characterViewportScheduleRef.current?.();
     event.preventDefault();
   };
 
@@ -1096,7 +1612,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         characterDrag.hasMoved ||
         Math.abs(event.clientX - characterDrag.startX) > CHARACTER_DRAG_THRESHOLD ||
         Math.abs(event.clientY - characterDrag.startY) > CHARACTER_DRAG_THRESHOLD;
-      const point = event.type === "pointercancel" || !hasMoved ? undefined : mapCoordinatesAtClientPoint(event);
+      const mapPoint = event.type === "pointercancel" || !hasMoved ? undefined : mapCoordinatesAtClientPoint(event);
+      const point = map && mapPoint ? mapPointToCharacterCoordinate(map, mapPoint) : undefined;
       if (hasMoved) suppressMapClickRef.current = true;
       characterDragRef.current = undefined;
       const currentCharacter = findCharacterForUi(extendedCharacters, characterDrag.faction, characterDrag.characterId);
@@ -1165,8 +1682,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!rect.width || !rect.height) return undefined;
     const displayX = Math.max(0, Math.min(map.width - 1, ((event.clientX - rect.left) / rect.width) * map.width));
     const displayY = Math.max(0, Math.min(map.height - 1, ((event.clientY - rect.top) / rect.height) * map.height));
-    const y = map.displayFlipY ? map.height - 1 - displayY : displayY;
-    return { x: Math.round(displayX), y: Math.round(y) };
+    return { x: Math.round(displayX), y: Math.round(displayY) };
   };
 
   const characterAtCanvasPoint = (event: { clientX: number; clientY: number }) => {
@@ -1175,15 +1691,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     let closest: { faction: string; character: ExtendedMapCharacter } | undefined;
     let closestDistance = Number.POSITIVE_INFINITY;
     for (const candidate of extendedCharacters) {
-      if (candidate.character.x === 65535 || candidate.character.y === 65535) continue;
-      if (
-        candidate.character.x < 0 ||
-        candidate.character.y < 0 ||
-        candidate.character.x >= map.width ||
-        candidate.character.y >= map.height
-      )
-        continue;
-      const distance = (candidate.character.x - point.x) ** 2 + (candidate.character.y - point.y) ** 2;
+      const characterPoint = projectCharacterCoordinateToMap(map, candidate.character.x, candidate.character.y);
+      if (!characterPoint) continue;
+      const distance = (characterPoint.x - point.x) ** 2 + (characterPoint.y - point.y) ** 2;
       if (distance < closestDistance) {
         closestDistance = distance;
         closest = candidate;
@@ -1452,16 +1962,44 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 {map.mapDataPath}
               </span>
             </div>
-            <div ref={canvasWrapRef} className="min-h-0 flex-1 overflow-auto p-3">
+            <div className="relative min-h-0 flex-1">
+              <div
+                ref={canvasWrapRef}
+                className="h-full overflow-auto p-3"
+                onScroll={() => characterViewportScheduleRef.current?.()}
+              >
+                <div
+                  className="relative inline-block align-top"
+                  style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
+                >
+                  <canvas
+                    ref={canvasRef}
+                    onPointerDown={beginMapDrag}
+                    onPointerMove={moveMapDrag}
+                    onPointerUp={endMapDrag}
+                    onPointerCancel={endMapDrag}
+                    onClick={handleMapClick}
+                    onContextMenu={handleMapContextMenu}
+                    style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
+                    className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
+                  />
+                  <canvas
+                    ref={characterMapCanvasRef}
+                    aria-hidden="true"
+                    style={{
+                      width: mapDisplayWidth,
+                      height: mapDisplayHeight,
+                      display: characterMapOverlayActive ? "block" : "none",
+                    }}
+                    className="pointer-events-none absolute left-0 top-0 z-10 block"
+                  />
+                </div>
+              </div>
               <canvas
-                ref={canvasRef}
-                onPointerDown={beginMapDrag}
-                onPointerMove={moveMapDrag}
-                onPointerUp={endMapDrag}
-                onPointerCancel={endMapDrag}
-                onClick={handleMapClick}
-                onContextMenu={handleMapContextMenu}
-                className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
+                ref={characterViewportCanvasRef}
+                aria-hidden="true"
+                style={{ display: characterViewportOverlayActive ? "block" : "none" }}
+                className="pointer-events-none absolute inset-0 z-10 block"
               />
             </div>
           </div>
@@ -1508,10 +2046,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 )}
               </div>
             )}
-            {extendedState && selectedExtendedRegion?.buildings && (
+            {extendedState && selectedExtendedBuildingSlots && (
               <div className="border-b border-gray-800 px-3 py-2 text-sm">
-                <div className="mb-1 font-medium text-gray-200">{mapText("mapBuildings", "Settlement buildings")}</div>
-                {selectedExtendedRegion.buildings.map((slot, slotIndex) => {
+                <div className="mb-1 flex items-center gap-2 font-medium text-gray-200">
+                  <span>{mapText("mapBuildings", "Settlement buildings")}</span>
+                  {buildingsView?.maxSlotCount !== undefined && (
+                    <span className="text-xs font-normal text-gray-500">{buildingsView.maxSlotCount} slots</span>
+                  )}
+                </div>
+                {selectedExtendedBuildingSlots.map((slot, slotIndex) => {
                   const allTiles =
                     buildingsView?.bands.flatMap((band) => band.columns.flatMap((column) => column.tiles)) ?? [];
                   const currentTile = allTiles.find((tile) => tile.levelKey === slot.building);
@@ -1551,12 +2094,26 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         disabled={!buildingsView}
                         onChange={(event) => {
                           const building = event.target.value;
-                          updateExtendedDocument({
+                          const region = selectedExtendedRegion;
+                          if (!region?.buildings) return;
+                          const actions: ExtendedMapEditAction[] = [];
+                          for (let index = region.buildings.length; index <= slotIndex; index += 1) {
+                            const slotToAdd = selectedExtendedBuildingSlots[index];
+                            if (!slotToAdd) return;
+                            actions.push({
+                              type: "add_building_slot",
+                              region: region.region,
+                              slotIndex: index,
+                              building: slotToAdd,
+                            });
+                          }
+                          actions.push({
                             type: "set_building",
-                            region: selectedExtendedRegion.region,
+                            region: region.region,
                             slotIndex,
                             building: { ...slot, building },
                           });
+                          updateExtendedDocuments(actions);
                         }}
                         className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-950 px-1 py-1 text-xs text-gray-200 disabled:opacity-50"
                         aria-label={`${mapText("mapBuildingSlot", "Building slot")} ${slotIndex + 1}`}
@@ -1967,25 +2524,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       const selected =
                         selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
                         selectedCharacterKey.id === character.id;
-                      const inBounds =
-                        !!map &&
-                        character.x !== 65535 &&
-                        character.y !== 65535 &&
-                        character.x >= 0 &&
-                        character.y >= 0 &&
-                        character.x < map.width &&
-                        character.y < map.height;
+                      const characterPoint = map
+                        ? projectCharacterCoordinateToMap(map, character.x, character.y)
+                        : undefined;
+                      const inBounds = !!characterPoint;
                       return (
                         <button
                           key={`${faction}:${character.id}`}
                           type="button"
                           onClick={() => {
                             setSelectedCharacterKey({ faction, id: character.id });
-                            if (inBounds && map)
-                              centerMapOnPoint(
-                                character.x,
-                                displayYFromCell(map.height, character.y, map.displayFlipY),
-                              );
+                            if (characterPoint) centerMapOnPoint(characterPoint.x, characterPoint.y);
                           }}
                           className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${selected ? "border-yellow-500 bg-yellow-950/40 text-gray-100" : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"}`}
                         >

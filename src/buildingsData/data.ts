@@ -20,6 +20,7 @@ import type {
   BuildingSetRow,
   BuildingUnitRow,
   BuildingVariantRow,
+  CampaignBuildingChainSlotUnlock,
   BuildingsLocTrie,
   BuildingsEffectOption,
   BuildingsFactionOption,
@@ -88,6 +89,7 @@ export const BUILDINGS_TABLES = [
   "building_chain_availability_set_ids_tables",
   "building_chain_availability_sets_tables",
   "building_chain_availabilities_tables",
+  "campaign_building_chain_slot_unlocks_tables",
   "building_upgrades_junction_tables",
   "building_downgrade_junctions_tables",
   "building_effects_junction_tables",
@@ -148,6 +150,7 @@ export const BUILDINGS_TABLE_KEY_COLUMNS: Record<string, string[]> = {
   building_chain_availability_set_ids_tables: ["id"],
   building_chain_availability_sets_tables: ["building_chain", "id"],
   building_chain_availabilities_tables: ["id"],
+  campaign_building_chain_slot_unlocks_tables: ["building_chain", "level"],
   building_upgrades_junction_tables: ["from", "to"],
   building_downgrade_junctions_tables: ["from"],
   building_effects_junction_tables: ["building", "effect"],
@@ -618,6 +621,27 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
     (settlementTypeBindings[chain] ||= []).push({ chain, settlementType, exclude: bool(row, "exclude") });
   }
 
+  // The primary settlement chain controls how many of the region's slots are active at each
+  // primary level. Keep this separate from the start-pos slot templates: the latter describes the
+  // available slot shapes, while this table describes how many of those shapes the settlement has
+  // unlocked at its current level.
+  const campaignBuildingChainSlotUnlocksByChain: Record<string, CampaignBuildingChainSlotUnlock[]> = {};
+  for (const row of rowsOf("campaign_building_chain_slot_unlocks_tables")) {
+    const buildingChain = str(row, "building_chain");
+    const level = Number(row.level);
+    const activeSlotCount = Number(row.active_slot_count);
+    if (!buildingChain || !Number.isSafeInteger(level) || !Number.isSafeInteger(activeSlotCount) || activeSlotCount < 0)
+      continue;
+    (campaignBuildingChainSlotUnlocksByChain[buildingChain] ||= []).push({
+      buildingChain,
+      level,
+      activeSlotCount,
+    });
+  }
+  for (const rows of Object.values(campaignBuildingChainSlotUnlocksByChain)) {
+    rows.sort((first, second) => first.level - second.level);
+  }
+
   // --- settlement climates --------------------------------------------------
   // The map table identifies a settlement, while start_pos_settlements joins that settlement to a
   // campaign region. Keep the table's effective rows here; the map decorator performs that second
@@ -934,6 +958,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
     availabilitySetsByChain,
     availabilitiesBySetId,
     settlementTypeBindings,
+    campaignBuildingChainSlotUnlocksByChain,
     upgrades,
     effectsByLevel,
     garrisonUnitsByGroup,

@@ -541,6 +541,19 @@ export const resolveForeignSlotTypes = (data: BuiltBuildingsData): BuildingsFore
     });
 
 /**
+ * Returns the total active settlement slots for the imported primary building. The table is keyed
+ * by the primary chain and its numeric level, so a secondary building must never influence this
+ * value even if it happens to be the one currently selected in the editor.
+ */
+export const resolveMaxBuildingSlotCount = (data: BuiltBuildingsData, primaryBuilding?: string): number | undefined => {
+  if (!primaryBuilding) return undefined;
+  const level = data.levelsByKey[primaryBuilding];
+  if (!level) return undefined;
+  return data.campaignBuildingChainSlotUnlocksByChain?.[level.chain]?.find((row) => row.level === level.level)
+    ?.activeSlotCount;
+};
+
+/**
  * The cultures this query would leave with an empty board.
  *
  * Horde boards only. Most of the game's cultures have no horde at all - 17 of vanilla's 27 draw
@@ -822,6 +835,7 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
     }
   }
 
+  const maxSlotCount = resolveMaxBuildingSlotCount(data, query.primaryBuilding);
   return {
     query,
     bands,
@@ -831,5 +845,6 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
     disabledLevels,
     existingBuildings,
     slotTemplates,
+    ...(maxSlotCount === undefined ? {} : { maxSlotCount }),
   };
 };

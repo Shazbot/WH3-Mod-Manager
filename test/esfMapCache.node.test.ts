@@ -39,6 +39,7 @@ describe("ESF map disk cache", () => {
       startposWasCompressed: true,
       gridSource: "lookup",
       displayFlipY: false,
+      characterCoordinateGrid: { width: 2, height: 2, displayFlipY: true },
       width: 2,
       height: 2,
       areas: [

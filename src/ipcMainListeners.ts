@@ -4022,7 +4022,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }),
     );
     const signatureInputs: BuildingsVanillaSignatureInputs = {
-      feature: 3,
+      feature: 4,
       game: appData.currentGame,
       schema: getVisualsSchemaHash(appData.currentGame),
       identities,
@@ -4129,7 +4129,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 3,
+          feature: 4,
           game: appData.currentGame,
           vanilla: vanilla.signature,
           mods: orderedEnabledMods.map((mod) => ({

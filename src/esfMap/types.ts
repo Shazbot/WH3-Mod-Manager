@@ -62,6 +62,21 @@ export interface EsfMapImage {
   src: string;
 }
 
+/** Dimensions and orientation of the REGION_DATA grid used by imported character coordinates. */
+export interface EsfMapCharacterCoordinateGrid {
+  width: number;
+  height: number;
+  displayFlipY: boolean;
+}
+
+/** Bounds of the campaign's world-coordinate system used by REGION_KEYS settlement points. */
+export interface EsfMapCoordinateBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 export interface EsfMapPayload {
   campaignKey: string;
   availableCampaigns: EsfMapCampaignOption[];
@@ -77,6 +92,7 @@ export interface EsfMapPayload {
   startposWasCompressed: boolean;
   gridSource: EsfMapGridSource;
   displayFlipY: boolean;
+  characterCoordinateGrid: EsfMapCharacterCoordinateGrid;
   width: number;
   height: number;
   areas: EsfMapArea[];

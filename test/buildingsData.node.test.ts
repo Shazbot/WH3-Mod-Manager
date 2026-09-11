@@ -207,6 +207,23 @@ describe("buildBuildingsData", () => {
     expect(data.startPosSettlements["camp|region_x"][0].settlementType).toBe("town");
   });
 
+  it("indexes campaign slot unlocks by primary chain and level", () => {
+    const withUnlocks = buildBuildingsData(
+      {
+        ...tables,
+        campaign_building_chain_slot_unlocks_tables: [
+          { building_chain: "chain_a", level: "2", active_slot_count: "8" },
+          { building_chain: "chain_a", level: "1", active_slot_count: "5" },
+        ],
+      },
+      noLoc,
+    );
+    expect(withUnlocks.campaignBuildingChainSlotUnlocksByChain.chain_a).toEqual([
+      { buildingChain: "chain_a", level: 1, activeSlotCount: 5 },
+      { buildingChain: "chain_a", level: 2, activeSlotCount: 8 },
+    ]);
+  });
+
   it("retains faction grouping and display metadata", () => {
     expect(data.factions).toEqual([
       expect.objectContaining({

@@ -4,6 +4,7 @@ import { buildBuildingsData } from "../src/buildingsData/data";
 import {
   expandChainSet,
   NO_SET_KEY,
+  resolveMaxBuildingSlotCount,
   resolveCulturesWithoutChains,
   resolveForeignSlotTypes,
   resolveRegionBuildings,
@@ -191,6 +192,15 @@ describe("resolveRegionBuildings: chains from slot templates", () => {
     const column = view.bands.flatMap((band) => band.columns).find((entry) => entry.chainKey === "chain_a");
     expect(column?.sources).toEqual(["slot_template:tmpl_main"]);
     expect(column?.tiles[0].slotTemplates).toEqual(["tmpl_main"]);
+  });
+
+  it("resolves the settlement slot maximum from the imported primary building", () => {
+    const data = build({
+      campaign_building_chain_slot_unlocks_tables: [{ building_chain: "chain_a", level: "1", active_slot_count: "7" }],
+    });
+    expect(resolveMaxBuildingSlotCount(data, "a_2")).toBe(7);
+    expect(resolveRegionBuildings(data, query({ primaryBuilding: "a_2" })).maxSlotCount).toBe(7);
+    expect(resolveMaxBuildingSlotCount(data, "b_1")).toBeUndefined();
   });
 
   it("adds only the selected faction's foreign slot-set templates", () => {

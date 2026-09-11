@@ -15,7 +15,8 @@ import {
   type TgaLookupGrid,
   type TheatreBounds,
 } from "../../tools/esf/src";
-import type { EsfMapArea, EsfMapBasePayload, EsfMapColour, EsfMapMarker } from "./types";
+import type { EsfMapArea, EsfMapBasePayload, EsfMapCharacterCoordinateGrid, EsfMapColour, EsfMapMarker } from "./types";
+import { projectLogicalCoordinateToMap } from "./coordinates";
 
 interface PolygonGridInput {
   width: number;
@@ -197,10 +198,19 @@ function buildLookupMarkersFromTheatrePoints(
 
   return points
     .map((point) => {
-      const normalizedX = (point.x - theatreBounds.minX) / spanX;
-      const normalizedY = (point.y - theatreBounds.minY) / spanY;
-      const gx = clampGridCoordinate(normalizedX * (grid.width - 1), grid.width);
-      const gy = clampGridCoordinate((1 - normalizedY) * (grid.height - 1), grid.height);
+      const projected = projectLogicalCoordinateToMap(
+        {
+          width: grid.width,
+          height: grid.height,
+          logicalCoordinateBounds: theatreBounds,
+        },
+        point.x,
+        point.y,
+        true,
+      );
+      if (!projected) return undefined;
+      const gx = projected.x;
+      const gy = projected.y;
       const index = gy * grid.width + gx;
       return {
         id: point.id,
@@ -212,6 +222,7 @@ function buildLookupMarkersFromTheatrePoints(
         ownership: ownershipByKey.get(point.key.toLowerCase()),
       };
     })
+    .filter((marker): marker is NonNullable<typeof marker> => !!marker)
     .sort((first, second) => first.id - second.id);
 }
 
@@ -345,14 +356,23 @@ export function buildEsfMapData(
   let gridSource: "lookup" | "region-areas";
   let displayFlipY: boolean;
   let lookupMarkerByAreaId: Map<number, BaseMarker> | undefined;
+  // Imported characters use REGION_DATA's grid coordinate system even when the rendered map uses
+  // a higher-resolution lookup texture. Keep that source frame so their positions can be scaled
+  // into the rendered map and flipped in the same direction as the region-area fallback.
+  const regionCoordinateGrid = extractRegionAreasGrid(mapOpened.buffer);
+  const characterCoordinateGrid: EsfMapCharacterCoordinateGrid = {
+    width: regionCoordinateGrid.width,
+    height: regionCoordinateGrid.height,
+    displayFlipY: true,
+  };
+  const pointData = lookupBuffer ? extractMapPointsWithTheatreBounds(mapOpened.buffer, mapDocument) : undefined;
 
   if (lookupBuffer) {
     const lookupGrid: TgaLookupGrid = extractLookupGridFromTga(lookupBuffer);
     const sourcePolygons = extractRegionPolygons(lookupGrid, { minLoopArea: 1 });
-    const pointData = extractMapPointsWithTheatreBounds(mapOpened.buffer, mapDocument);
 
     const theatreMarkers =
-      pointData.points.length > 0 && pointData.theatreBounds
+      pointData && pointData.points.length > 0 && pointData.theatreBounds
         ? buildLookupMarkersFromTheatrePoints(
             pointData.points,
             pointData.theatreBounds,
@@ -381,7 +401,7 @@ export function buildEsfMapData(
       if (!lookupMarkerByAreaId.has(areaId)) lookupMarkerByAreaId.set(areaId, marker);
     }
   } else {
-    const regionGrid: RegionAreasGrid = extractRegionAreasGrid(mapOpened.buffer);
+    const regionGrid: RegionAreasGrid = regionCoordinateGrid;
     const centers = extractRegionCenters(mapOpened.buffer, mapDocument);
     if (centers.length === 0) {
       throw new Error("The campaign map has no REGION_DATA region centres.");
@@ -437,6 +457,7 @@ export function buildEsfMapData(
     startposWasCompressed: ownershipData.wasCompressed,
     gridSource,
     displayFlipY,
+    characterCoordinateGrid,
     width: renderGrid.width,
     height: renderGrid.height,
     areas: polygons.areas.map((area) => mapArea(area, baseMarkers, lookupMarkerByAreaId)),
