@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { planPackFileRename } from "../src/utility/packFileRenamePlan";
+import { planPackFileMove, planPackFileRename } from "../src/utility/packFileRenamePlan";
 
 const existing = { pack: [], unsaved: [] };
 
 describe("pack file rename planning", () => {
+  it("moves selected files into a parent folder while keeping their names", () => {
+    expect(
+      planPackFileMove(["scripts\\hello.lua", "scripts\\nested\\goodbye.lua"], "overrides\\scripts", {
+        pack: ["scripts\\hello.lua", "scripts\\nested\\goodbye.lua"],
+        unsaved: [],
+      }),
+    ).toMatchObject({
+      entries: [
+        { originalPath: "scripts\\hello.lua", newPath: "overrides\\scripts\\hello.lua" },
+        { originalPath: "scripts\\nested\\goodbye.lua", newPath: "overrides\\scripts\\goodbye.lua" },
+      ],
+      errors: [],
+      conflicts: [],
+    });
+  });
+
+  it("reports destination conflicts for a parent-folder move", () => {
+    const plan = planPackFileMove(["scripts\\hello.lua"], "overrides", {
+      pack: ["scripts\\hello.lua", "overrides\\hello.lua"],
+      unsaved: [],
+    });
+
+    expect(plan.conflicts).toContainEqual({ newPath: "overrides\\hello.lua", with: "pack" });
+  });
+
   it("supports literal replacement and {x} in both find and replace", () => {
     expect(
       planPackFileRename(

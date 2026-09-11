@@ -120,6 +120,15 @@ describe("pack table tree interactions", () => {
     expect(fileLabel.closest("[role='treeitem']")).not.toHaveClass("bg-blue-700/60");
   });
 
+  it("expands a single-child folder chain from one click", () => {
+    renderPackTree(["scripts\\nested\\hello.lua"], "files");
+
+    fireEvent.click(screen.getByText("scripts"));
+
+    expect(screen.getByText("nested")).toBeInTheDocument();
+    expect(screen.getByText("hello.lua")).toBeInTheDocument();
+  });
+
   it("keeps collapsed DB groups collapsed after deleting a file", async () => {
     const packPath = "K:\\mods\\menu.pack";
     const deletePackedFiles = vi.fn().mockResolvedValue({

@@ -3,7 +3,12 @@ import { Modal } from "../../flowbite";
 import { setUnsavedPacksData } from "../../appSlice";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
-import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
+import TreeView, {
+  INode,
+  ITreeViewOnExpandProps,
+  ITreeViewOnSelectProps,
+  flattenTree,
+} from "react-accessible-treeview";
 import Select, { SingleValue } from "react-select";
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
@@ -15,7 +20,7 @@ import {
   parseDBGroupName,
   parseDBTablePath,
 } from "../../utility/packFileHelpers";
-import { getAutoExpandedDBGroupIds, getLoneTableToOpen } from "../../utility/dbTreeExpansion";
+import { getAutoExpandedDBGroupIds, getLoneTableToOpen, getSingleChildBranchIds } from "../../utility/dbTreeExpansion";
 import { gameToPackWithDBTablesName, vanillaPackNames } from "../../supportedGames";
 import selectStyle from "../../styles/selectStyle";
 import { dataFromBackend } from "./packDataStore";
@@ -54,6 +59,7 @@ type PackTablesTreeViewProps = {
 type TreeData = { id?: string | number; name: string; children?: TreeData[] };
 type TableOption = { value: string; label: string };
 type TreeTab = "db" | "files";
+type ExpandedIdsByTreeTab = Partial<Record<TreeTab, Array<INode["id"]>>>;
 type ContextMenuTreeTab = TreeTab | "empty";
 type TreeContextTarget =
   | { kind: "db"; packPath: string; filePath: string; selection: DBTableSelection }
@@ -251,6 +257,7 @@ const PackTablesTreeView = React.memo(
     const autoOpenedDbNodeIdRef = React.useRef<INode["id"] | null>(null);
     const [dbSelectedNodeIds, setDbSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const [fileSelectedNodeIds, setFileSelectedNodeIds] = React.useState<Array<string | number>>([]);
+    const [expandedIdsByPack, setExpandedIdsByPack] = React.useState<Record<string, ExpandedIdsByTreeTab>>({});
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
     const clearLabelSelectionModeTimeoutRef = React.useRef<number | null>(null);
     const contextMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -632,8 +639,8 @@ const PackTablesTreeView = React.memo(
      * Expanding a table group that holds a single table is only ever a step towards opening that
      * table, so save the second click and open it.
      *
-     * Only on the way open - collapsing a group must not open anything - and only for a child that
-     * is a table itself, since a lone sub-group has nothing to open.
+     * Only on the way open - collapsing a group must not open anything - and only when the
+     * single-child path ultimately resolves to a table.
      */
     const openLoneChildOnExpand = (
       element: INode,
@@ -647,6 +654,41 @@ const PackTablesTreeView = React.memo(
       if (!loneTable) return;
       // Select the table, not the group that was clicked: the table is what ends up open.
       scheduleOpenForElement(loneTable, treeTab, { alsoSelect: true });
+    };
+
+    /**
+     * Keep the tree's own expansion state until an expansion happens, then take control so a
+     * single-child path can be opened in one click. The tree state already contains the branch the
+     * user expanded; add only the unambiguous branch children below it.
+     */
+    const handleTreeExpand = (
+      treeTab: TreeTab,
+      expansionProps: ITreeViewOnExpandProps,
+      nodeById: Map<INode["id"], INode>,
+    ) => {
+      const nextExpandedIds = new Set(expansionProps.treeState.expandedIds);
+      if (expansionProps.isExpanded) {
+        for (const branchId of getSingleChildBranchIds(expansionProps.element, nodeById)) {
+          nextExpandedIds.add(branchId);
+        }
+      }
+
+      const nextIds = [...nextExpandedIds];
+      setExpandedIdsByPack((currentByPack) => {
+        const currentPack = currentByPack[packPath];
+        const currentIds = currentPack?.[treeTab];
+        if (currentIds?.length === nextIds.length && currentIds.every((id, index) => id === nextIds[index])) {
+          return currentByPack;
+        }
+
+        return {
+          ...currentByPack,
+          [packPath]: {
+            ...currentPack,
+            [treeTab]: nextIds,
+          },
+        };
+      });
     };
 
     /**
@@ -1378,7 +1420,7 @@ const PackTablesTreeView = React.memo(
       defaultExpandedIds?: Array<string | number>,
     ) => (
       <TreeView
-        key={`${treeTab}|${packPath}`}
+        key={`${treeTab}|${packPath}|${JSON.stringify(data.map((node) => node.id))}`}
         data={data}
         aria-label={
           treeTab === "db"
@@ -1386,6 +1428,8 @@ const PackTablesTreeView = React.memo(
             : localized.viewerPackedFilesTree || "Packed files tree"
         }
         defaultExpandedIds={defaultExpandedIds}
+        expandedIds={expandedIdsByPack[packPath]?.[treeTab]?.filter((id) => nodeById.has(id))}
+        onExpand={(expansionProps) => handleTreeExpand(treeTab, expansionProps, nodeById)}
         multiSelect={true}
         clickAction="EXCLUSIVE_SELECT"
         selectedIds={selectedIds}

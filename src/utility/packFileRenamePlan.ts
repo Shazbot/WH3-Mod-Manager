@@ -65,6 +65,34 @@ const addConflict = (
   conflicts.push({ newPath, with: withKind });
 };
 
+const addPlanConflicts = (result: PackFileRenamePlan, existing: ExistingPackFilePaths) => {
+  const sourceKeys = new Set(result.entries.map((entry) => normalizePackFilePathKey(entry.originalPath)));
+  const packKeys = new Set(existing.pack.map(normalizePackFilePathKey));
+  const unsavedKeys = new Set(existing.unsaved.map(normalizePackFilePathKey));
+  const conflicts = new Set<string>();
+
+  for (const entry of result.entries) {
+    const destinationKey = normalizePackFilePathKey(entry.newPath);
+    if (packKeys.has(destinationKey) && !sourceKeys.has(destinationKey)) {
+      addConflict(result.conflicts, conflicts, entry.newPath, "pack");
+    }
+    if (unsavedKeys.has(destinationKey) && !sourceKeys.has(destinationKey)) {
+      addConflict(result.conflicts, conflicts, entry.newPath, "unsaved");
+    }
+  }
+
+  const destinations = new Map<string, string>();
+  for (const entry of result.entries) {
+    const destinationKey = normalizePackFilePathKey(entry.newPath);
+    const previousSource = destinations.get(destinationKey);
+    if (previousSource && normalizePackFilePathKey(previousSource) !== normalizePackFilePathKey(entry.originalPath)) {
+      addConflict(result.conflicts, conflicts, entry.newPath, "selection");
+    } else {
+      destinations.set(destinationKey, entry.originalPath);
+    }
+  }
+};
+
 export const planPackFileRename = (
   options: PackFileRenameOptions,
   existing: ExistingPackFilePaths,
@@ -138,31 +166,65 @@ export const planPackFileRename = (
     result.entries.push({ originalPath, newPath });
   }
 
-  const sourceKeys = new Set(result.entries.map((entry) => normalizePackFilePathKey(entry.originalPath)));
-  const packKeys = new Set(existing.pack.map(normalizePackFilePathKey));
-  const unsavedKeys = new Set(existing.unsaved.map(normalizePackFilePathKey));
-  const conflicts = new Set<string>();
+  addPlanConflicts(result, existing);
 
-  for (const entry of result.entries) {
-    const destinationKey = normalizePackFilePathKey(entry.newPath);
-    if (packKeys.has(destinationKey) && !sourceKeys.has(destinationKey)) {
-      addConflict(result.conflicts, conflicts, entry.newPath, "pack");
-    }
-    if (unsavedKeys.has(destinationKey) && !sourceKeys.has(destinationKey)) {
-      addConflict(result.conflicts, conflicts, entry.newPath, "unsaved");
-    }
+  return result;
+};
+
+/**
+ * Plans a move that changes only the selected files' parent folder and keeps each file name intact.
+ * The destination is a pack-relative folder; an empty destination means the pack root.
+ */
+export const planPackFileMove = (
+  paths: string[],
+  destinationFolder: string,
+  existing: ExistingPackFilePaths,
+): PackFileRenamePlan => {
+  const result: PackFileRenamePlan = {
+    entries: [],
+    unchangedCount: 0,
+    errors: [],
+    conflicts: [],
+  };
+  const normalizedDestination = normalizePackFilePath(destinationFolder);
+
+  if (hasParentSegment(normalizedDestination)) {
+    result.errors.push({
+      path: destinationFolder,
+      message: "The destination folder may not contain '..'",
+    });
+    return result;
   }
 
-  const destinations = new Map<string, string>();
-  for (const entry of result.entries) {
-    const destinationKey = normalizePackFilePathKey(entry.newPath);
-    const previousSource = destinations.get(destinationKey);
-    if (previousSource && normalizePackFilePathKey(previousSource) !== normalizePackFilePathKey(entry.originalPath)) {
-      addConflict(result.conflicts, conflicts, entry.newPath, "selection");
-    } else {
-      destinations.set(destinationKey, entry.originalPath);
+  for (const originalPath of paths) {
+    const { normalized, name } = getPathParts(originalPath);
+    if (!normalized) {
+      result.errors.push({ path: originalPath, message: "The source path is empty" });
+      continue;
     }
+    if (!name) {
+      result.errors.push({ path: originalPath, message: "The source file name is empty" });
+      continue;
+    }
+
+    const newPath = normalizePackFilePath(normalizedDestination ? `${normalizedDestination}\\${name}` : name);
+    if (!newPath) {
+      result.errors.push({ path: originalPath, message: "The resulting path is empty" });
+      continue;
+    }
+    if (hasParentSegment(newPath)) {
+      result.errors.push({ path: originalPath, message: "The resulting path may not contain '..'" });
+      continue;
+    }
+
+    if (newPath === normalized) {
+      result.unchangedCount += 1;
+      continue;
+    }
+    result.entries.push({ originalPath, newPath });
   }
+
+  addPlanConflicts(result, existing);
 
   return result;
 };

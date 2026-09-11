@@ -5,6 +5,7 @@ import {
   MAX_AUTO_EXPANDED_DB_TABLES,
   getAutoExpandedDBGroupIds,
   getLoneTableToOpen,
+  getSingleChildBranchIds,
 } from "../src/utility/dbTreeExpansion";
 
 const treeWith = (groupCount: number) =>
@@ -69,6 +70,17 @@ describe("getLoneTableToOpen", () => {
     expect(getLoneTableToOpen(groupNamed("kv_morale_tables"), nodeById)?.name).toBe("data__");
   });
 
+  it("follows a single-child path to the final table", () => {
+    const data = flattenTree({
+      name: "",
+      children: [{ name: "parent", children: [{ name: "child", children: [{ name: "data__" }] }] }],
+    });
+    const nodeById = new Map(data.map((node) => [node.id, node]));
+    const parent = data.find((node) => node.name === "parent")!;
+
+    expect(getLoneTableToOpen(parent, nodeById)?.name).toBe("data__");
+  });
+
   it("returns nothing when the group holds more than one table", () => {
     const { nodeById, groupNamed } = treeFrom([
       { name: "main_units_tables", children: [{ name: "data__" }, { name: "mod_units" }] },
@@ -92,5 +104,42 @@ describe("getLoneTableToOpen", () => {
     child.children = ["some-descendant"];
 
     expect(getLoneTableToOpen(groupNamed("unusedtables"), nodeById)).toBeUndefined();
+  });
+});
+
+describe("getSingleChildBranchIds", () => {
+  it("returns every unambiguous branch below a clicked parent", () => {
+    const data = flattenTree({
+      name: "",
+      children: [
+        {
+          name: "parent",
+          children: [{ name: "child", children: [{ name: "grandchild", children: [{ name: "file.txt" }] }] }],
+        },
+      ],
+    });
+    const nodeById = new Map(data.map((node) => [node.id, node]));
+    const parent = data.find((node) => node.name === "parent")!;
+
+    expect(getSingleChildBranchIds(parent, nodeById).map((id) => nodeById.get(id)?.name)).toEqual([
+      "child",
+      "grandchild",
+    ]);
+  });
+
+  it("stops before a branch with multiple children", () => {
+    const data = flattenTree({
+      name: "",
+      children: [
+        {
+          name: "parent",
+          children: [{ name: "child", children: [{ name: "one" }, { name: "two" }] }],
+        },
+      ],
+    });
+    const nodeById = new Map(data.map((node) => [node.id, node]));
+    const parent = data.find((node) => node.name === "parent")!;
+
+    expect(getSingleChildBranchIds(parent, nodeById)).toEqual([]);
   });
 });
