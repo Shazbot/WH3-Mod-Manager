@@ -186,6 +186,37 @@ describe("Categories", () => {
     expect(indexOf("Bretonnia & Co")).toBeLessThan(indexOf("Zulu"));
   });
 
+  it("colors mod names by their source", async () => {
+    renderCategories([
+      createMod({
+        name: "data.pack",
+        path: "/mods/data.pack",
+        humanName: "Data Mod",
+        categories: ["Alpha"],
+        isInData: true,
+      }),
+      createMod({
+        name: "link.pack",
+        path: "/mods/link.pack",
+        humanName: "Data Symlink",
+        categories: ["Alpha"],
+        isInData: true,
+        isSymbolicLink: true,
+      }),
+      createMod({
+        name: "modding.pack",
+        path: "/mods/modding.pack",
+        humanName: "Modding Folder Mod",
+        categories: ["Alpha"],
+        isInModding: true,
+      }),
+    ]);
+
+    expect(await screen.findByText("Data Mod")).toHaveClass("text-orange-500");
+    expect(screen.getByText("Data Symlink")).toHaveClass("text-blue-400");
+    expect(screen.getByText("Modding Folder Mod")).toHaveClass("text-amber-400");
+  });
+
   it("filters on the decoded title rather than the entities behind it", async () => {
     const user = userEvent.setup();
     renderCategories([

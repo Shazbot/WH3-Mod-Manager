@@ -16,6 +16,7 @@ import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Tooltip } from "flowbite-react";
 import { ActionMeta, SingleValue } from "react-select";
+import classNames from "classnames";
 
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
@@ -907,12 +908,20 @@ const Categories = memo(() => {
           const row = params.data;
           if (!row || isCategoryRow(row)) return null;
 
-          const mod = isAuthorShown ? modByPath.get(row.path) : undefined;
+          const mod = modByPath.get(row.path);
           const author = mod ? getDecodedModAuthor(mod) : "";
 
           return (
             <div className="flex h-full flex-col justify-center leading-tight">
-              <span className="truncate">{row.humanName}</span>
+              <span
+                className={classNames("truncate", {
+                  ["text-orange-500"]: mod?.isInData && !mod.isSymbolicLink,
+                  ["text-blue-400"]: mod?.isSymbolicLink,
+                  ["text-amber-400"]: mod?.isInModding,
+                })}
+              >
+                {row.humanName}
+              </span>
               {author !== "" && <span className="truncate text-xs text-gray-400">{author}</span>}
             </div>
           );
