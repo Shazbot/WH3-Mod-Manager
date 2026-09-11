@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyExtendedMapEdit,
+  buildExtendedMapExport,
   buildExtendedMapDelta,
   createExtendedMapEditState,
   fillExtendedBuildingSlots,
+  formatExtendedMapExportJson,
   formatExtendedMapJson,
   groupExtendedUnitOptionsByCaste,
-  mergeExtendedMapOwnership,
   parseMapFile,
   resolveExtendedBuildingOptions,
   resolveExtendedUnitOptions,
@@ -67,20 +68,6 @@ describe("extended map files", () => {
       format: "extended",
       document: { regions: [{ region: "abandoned", faction: null, buildings: null }], faction_to_chars: [] },
     });
-  });
-
-  it("merges current ownership into one complete extended export document", () => {
-    const merged = mergeExtendedMapOwnership(document, {
-      REGION_A: "faction_b",
-      region_b: null,
-    });
-
-    expect(merged).toEqual({
-      ...document,
-      regions: [{ ...document.regions[0], faction: "faction_b" }],
-    });
-    expect(document.regions[0].faction).toBe("faction_a");
-    expect(merged.faction_to_chars).toEqual(document.faction_to_chars);
   });
 
   it("rejects invalid ranges, obsolete unit shapes, and duplicate ids", () => {
@@ -189,6 +176,45 @@ describe("extended map files", () => {
         changes: { xp: { before: 0, after: 4 }, health: { before: 100, after: 63 } },
       },
     ]);
+  });
+
+  it("exports complete ownership with only extended-map delta actions", () => {
+    let state = createExtendedMapEditState(document);
+    state = applyExtendedMapEdit(state, {
+      type: "set_building",
+      region: "region_a",
+      slotIndex: 0,
+      building: { building: "building_b", type: "primary", template: "primary" },
+    });
+    state = applyExtendedMapEdit(state, {
+      type: "update_character",
+      faction: "faction_a",
+      characterId: 4,
+      changes: { rank: 3 },
+    });
+
+    const exported = buildExtendedMapExport(
+      { region_a: "faction_b", region_b: null },
+      buildExtendedMapDelta(state.baseline, state.document),
+    );
+
+    expect(exported.regions).toEqual([
+      { region: "region_a", faction: "faction_b" },
+      { region: "region_b", faction: null },
+    ]);
+    expect(exported.actions).toEqual([
+      { type: "update_character", faction: "faction_a", characterId: 4, changes: { rank: { before: 2, after: 3 } } },
+      {
+        type: "set_building",
+        region: "region_a",
+        slotIndex: 0,
+        before: document.regions[0].buildings![0],
+        after: { building: "building_b", type: "primary", template: "primary" },
+      },
+    ]);
+    expect(exported).not.toHaveProperty("faction_to_chars");
+    expect(exported.regions[0]).not.toHaveProperty("buildings");
+    expect(JSON.parse(formatExtendedMapExportJson(exported))).toEqual(exported);
   });
 
   it("allocates unit ids above the imported maximum and drops reverted changes", () => {

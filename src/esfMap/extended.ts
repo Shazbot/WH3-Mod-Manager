@@ -247,26 +247,6 @@ export const cloneExtendedMap = (document: ExtendedMapDocument): ExtendedMapDocu
   JSON.parse(JSON.stringify(document)) as ExtendedMapDocument;
 
 /**
- * Applies the map tab's current ownership to an extended document without dropping its buildings
- * or character data. Ownership edits are maintained separately while the map is open, so they need
- * to be folded back into the extended document at export time.
- */
-export const mergeExtendedMapOwnership = (
-  document: ExtendedMapDocument,
-  ownership: Record<string, string | null>,
-): ExtendedMapDocument => {
-  const next = cloneExtendedMap(document);
-  const ownershipByRegion = new Map(
-    Object.entries(ownership).map(([region, faction]) => [region.trim().toLowerCase(), faction] as const),
-  );
-  for (const region of next.regions) {
-    const key = region.region.trim().toLowerCase();
-    if (ownershipByRegion.has(key)) region.faction = ownershipByRegion.get(key) ?? null;
-  }
-  return next;
-};
-
-/**
  * Adds virtual empty slots up to the settlement's active-slot count. The returned slots are only a
  * render/edit surface; callers append them to the document through `add_building_slot` when one is
  * actually changed, so merely opening a settlement never creates a delta.
@@ -486,6 +466,16 @@ export interface ExtendedMapDelta {
   actions: ExtendedMapDeltaAction[];
 }
 
+export interface ExtendedMapExportRegion {
+  region: string;
+  faction: string | null;
+}
+
+/** One-file export: complete region ownership plus baseline-relative extended-map actions. */
+export interface ExtendedMapExport extends ExtendedMapDelta {
+  regions: ExtendedMapExportRegion[];
+}
+
 export type ExtendedMapDeltaAction =
   | {
       type: "set_building";
@@ -520,7 +510,7 @@ export type ExtendedMapDeltaAction =
 
 const equal = (first: unknown, second: unknown) => JSON.stringify(first) === JSON.stringify(second);
 
-/** Builds a deterministic sidecar delta. Reverted edits naturally disappear because this compares baselines. */
+/** Builds a deterministic delta. Reverted edits naturally disappear because this compares baselines. */
 export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: ExtendedMapDocument): ExtendedMapDelta => {
   const actions: ExtendedMapDeltaAction[] = [];
   const beforeRegions = new Map(before.regions.map((region) => [region.region.toLowerCase(), region]));
@@ -643,6 +633,18 @@ export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: Extend
   });
   return { version: 1, actions };
 };
+
+export const buildExtendedMapExport = (
+  ownership: Record<string, string | null>,
+  delta: ExtendedMapDelta,
+): ExtendedMapExport => ({
+  regions: Object.entries(ownership).map(([region, faction]) => ({ region, faction })),
+  version: delta.version,
+  actions: delta.actions,
+});
+
+export const formatExtendedMapExportJson = (document: ExtendedMapExport): string =>
+  `${JSON.stringify(document, undefined, 2)}\n`;
 
 export interface ExtendedBuildingOption {
   building: string;

@@ -23,13 +23,13 @@ import {
 } from "../esfMap/pathfinding";
 import {
   applyExtendedMapEdit,
+  buildExtendedMapExport,
   buildExtendedMapDelta,
   cloneExtendedMap,
   createExtendedMapEditState,
   fillExtendedBuildingSlots,
-  formatExtendedMapJson,
+  formatExtendedMapExportJson,
   groupExtendedUnitOptionsByCaste,
-  mergeExtendedMapOwnership,
   parseMapFile,
   resolveExtendedUnitOptions,
   type ExtendedMapCharacter,
@@ -937,19 +937,18 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!map || isTransferringOwnership) return;
     setIsTransferringOwnership(true);
     try {
-      const extendedDocument = extendedState
-        ? mergeExtendedMapOwnership(extendedState.document, regionOwnership(map))
-        : undefined;
+      const extendedExport =
+        extendedState && extendedDelta ? buildExtendedMapExport(regionOwnership(map), extendedDelta) : undefined;
       const result = await window.api?.exportRegionOwnership(
-        extendedDocument ? formatExtendedMapJson(extendedDocument) : formatRegionOwnershipJson(map),
-        extendedDocument ? "map_out3.json" : "map.json",
+        extendedExport ? formatExtendedMapExportJson(extendedExport) : formatRegionOwnershipJson(map),
+        extendedExport ? "map_out3.json" : "map.json",
       );
       if (!result || result.canceled) return;
       if (result.success) {
         showOwnershipToast("success", [
           mapMessage(
-            extendedDocument ? "mapExtendedExported" : "mapOwnershipExported",
-            extendedDocument ? "Extended map written to {{path}}" : "Region ownership written to {{path}}",
+            extendedExport ? "mapExtendedExported" : "mapOwnershipExported",
+            extendedExport ? "Extended map changes written to {{path}}" : "Region ownership written to {{path}}",
             { path: result.savedPath ?? "" },
           ),
         ]);
@@ -2089,8 +2088,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 {map.mapDataPath}
               </span>
             </div>
-            <div className="relative min-h-0 flex-1">
-              <div ref={canvasWrapRef} className="relative h-full overflow-auto p-3">
+            <div className="relative min-h-0 flex-1 overflow-hidden" style={{ position: "relative" }}>
+              <div ref={canvasWrapRef} className="h-full overflow-auto p-3">
                 <div
                   className="relative inline-block align-top"
                   style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
@@ -2197,52 +2196,52 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     ))}
                   </div>
                 </div>
-                {isEditingOwnership && (
-                  <>
-                    <div
-                      className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
-                      role="status"
-                    >
-                      {brushFactionDetails?.flagUrl && (
-                        <img src={brushFactionDetails.flagUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
-                      )}
-                      <span>
-                        {brushFaction
-                          ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
-                              faction: brushFactionDetails?.label ?? brushFaction,
-                            })
-                          : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
-                      </span>
-                    </div>
-                    <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)] rounded border border-gray-600/80 bg-gray-950/90 px-3 py-2 text-xs text-gray-300 shadow-lg backdrop-blur-sm">
-                      <div className="mb-1 font-medium text-gray-100">
-                        {mapText("mapOwnershipMouseActions", "Mouse actions")}
-                      </div>
-                      <div className="flex flex-col gap-1 text-[0.7rem]">
-                        <span className="flex items-center gap-1 whitespace-nowrap">
-                          <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
-                            Ctrl + left click
-                          </kbd>
-                          {mapText("mapOwnershipSelectFaction", "Select faction")}
-                        </span>
-                        <span className="flex items-center gap-1 whitespace-nowrap">
-                          <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
-                            Left click
-                          </kbd>
-                          {mapText("mapOwnershipAssignFaction", "Give region")}
-                        </span>
-                        <span className="flex items-center gap-1 whitespace-nowrap">
-                          <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
-                            Right click
-                          </kbd>
-                          {mapText("mapOwnershipClearRegion", "Clear ownership")}
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
+            {isEditingOwnership && (
+              <div className="pointer-events-none absolute inset-0 z-20" style={{ position: "absolute" }}>
+                <div
+                  className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
+                  role="status"
+                >
+                  {brushFactionDetails?.flagUrl && (
+                    <img src={brushFactionDetails.flagUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
+                  )}
+                  <span>
+                    {brushFaction
+                      ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
+                          faction: brushFactionDetails?.label ?? brushFaction,
+                        })
+                      : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
+                  </span>
+                </div>
+                <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)] rounded border border-gray-600/80 bg-gray-950/90 px-3 py-2 text-xs text-gray-300 shadow-lg backdrop-blur-sm">
+                  <div className="mb-1 font-medium text-gray-100">
+                    {mapText("mapOwnershipMouseActions", "Mouse actions")}
+                  </div>
+                  <div className="flex flex-col gap-1 text-[0.7rem]">
+                    <span className="flex items-center gap-1 whitespace-nowrap">
+                      <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                        Ctrl + left click
+                      </kbd>
+                      {mapText("mapOwnershipSelectFaction", "Select faction")}
+                    </span>
+                    <span className="flex items-center gap-1 whitespace-nowrap">
+                      <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                        Left click
+                      </kbd>
+                      {mapText("mapOwnershipAssignFaction", "Give region")}
+                    </span>
+                    <span className="flex items-center gap-1 whitespace-nowrap">
+                      <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                        Right click
+                      </kbd>
+                      {mapText("mapOwnershipClearRegion", "Clear ownership")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex min-h-0 flex-col overflow-hidden rounded border border-gray-700 bg-gray-900">
