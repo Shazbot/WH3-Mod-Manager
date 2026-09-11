@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { addToast, clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
 import { unitAssetUrl } from "../assetUrls";
@@ -214,6 +214,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const enabledModsRef = useRef(enabledMods);
   enabledModsRef.current = enabledMods;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mapSurfaceRef = useRef<HTMLDivElement>(null);
   const characterMapCanvasRef = useRef<HTMLCanvasElement>(null);
   const characterViewportCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -334,8 +335,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     isActive && !!map && showCharacters && !!extendedState && zoom <= CHARACTER_VIEWPORT_ZOOM;
   const characterViewportOverlayActive =
     isActive && !!map && showCharacters && !!extendedState && zoom > CHARACTER_VIEWPORT_ZOOM;
-  const mapDisplayWidth = map ? `${Math.max(320, Math.round(map.width * zoom))}px` : undefined;
-  const mapDisplayHeight = map ? `${Math.max(240, Math.round(map.height * zoom))}px` : undefined;
+  const mapDisplayWidthPx = map ? Math.max(320, Math.round(map.width * zoom)) : 0;
+  const mapDisplayHeightPx = map ? Math.max(240, Math.round(map.height * zoom)) : 0;
+  const mapDisplayWidth = map ? `${mapDisplayWidthPx}px` : undefined;
+  const mapDisplayHeight = map ? `${mapDisplayHeightPx}px` : undefined;
+  const mapScaleX = map && map.width > 0 ? mapDisplayWidthPx / map.width : 1;
+  const mapScaleY = map && map.height > 0 ? mapDisplayHeightPx / map.height : 1;
   const characterThumbnailPathByKey = useMemo(() => {
     const cardPathByUnitKey = new Map(
       unitCatalog
@@ -531,16 +536,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
   const centerMapOnPoint = useCallback(
     (mapX: number, mapY: number) => {
-      const canvas = canvasRef.current;
+      const surface = mapSurfaceRef.current;
       const canvasWrap = canvasWrapRef.current;
-      if (!canvas || !canvasWrap || !map) return;
+      if (!surface || !canvasWrap || !map) return;
 
-      const scaleX = canvas.clientWidth / map.width;
-      const scaleY = canvas.clientHeight / map.height;
+      const surfaceRect = surface.getBoundingClientRect();
+      const canvasWrapRect = canvasWrap.getBoundingClientRect();
+      const scaleX = surfaceRect.width / map.width;
+      const scaleY = surfaceRect.height / map.height;
       if (!scaleX || !scaleY) return;
 
-      const targetLeft = canvas.offsetLeft + mapX * scaleX - canvasWrap.clientWidth / 2;
-      const targetTop = canvas.offsetTop + mapY * scaleY - canvasWrap.clientHeight / 2;
+      const targetLeft =
+        canvasWrap.scrollLeft + surfaceRect.left - canvasWrapRect.left + mapX * scaleX - canvasWrap.clientWidth / 2;
+      const targetTop =
+        canvasWrap.scrollTop + surfaceRect.top - canvasWrapRect.top + mapY * scaleY - canvasWrap.clientHeight / 2;
       const maxScrollLeft = Math.max(0, canvasWrap.scrollWidth - canvasWrap.clientWidth);
       const maxScrollTop = Math.max(0, canvasWrap.scrollHeight - canvasWrap.clientHeight);
       canvasWrap.scrollLeft = Math.max(0, Math.min(maxScrollLeft, targetLeft));
@@ -1247,9 +1256,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   // the size it is displayed. Overview zooms use the map-attached cache below and never repaint on pan.
   useEffect(() => {
     const canvas = characterViewportCanvasRef.current;
-    const mapCanvas = canvasRef.current;
+    const mapSurface = mapSurfaceRef.current;
     const canvasWrap = canvasWrapRef.current;
-    if (!canvas || !mapCanvas || !canvasWrap) return;
+    if (!canvas || !mapSurface || !canvasWrap) return;
 
     if (!characterViewportOverlayActive || !map) {
       canvas.style.display = "none";
@@ -1266,7 +1275,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       // translate and make the map offset chase its own fallback.
       canvas.style.transform = "";
       const overlayRect = canvas.parentElement?.getBoundingClientRect() ?? canvas.getBoundingClientRect();
-      const mapRect = mapCanvas.getBoundingClientRect();
+      const mapRect = mapSurface.getBoundingClientRect();
       const viewportWidth = Math.max(1, Math.round(overlayRect.width));
       const viewportHeight = Math.max(1, Math.round(overlayRect.height));
       if (!viewportWidth || !viewportHeight || !mapRect.width || !mapRect.height) return;
@@ -1452,15 +1461,16 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     };
   }, [characterViewportOverlayActive]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const anchor = mapZoomAnchorRef.current;
-    const canvas = canvasRef.current;
+    const surface = mapSurfaceRef.current;
     const canvasWrap = canvasWrapRef.current;
-    if (!anchor || !canvas || !canvasWrap || !map) return;
+    if (!anchor || !surface || !canvasWrap || !map) return;
 
     mapZoomAnchorRef.current = undefined;
-    const scaleX = canvas.clientWidth / map.width;
-    const scaleY = canvas.clientHeight / map.height;
+    const surfaceRect = surface.getBoundingClientRect();
+    const scaleX = surfaceRect.width / map.width;
+    const scaleY = surfaceRect.height / map.height;
     if (!scaleX || !scaleY) return;
 
     canvasWrap.scrollLeft = anchor.scrollLeft + anchor.mapX * (scaleX - anchor.scaleX);
@@ -1472,21 +1482,21 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const zoomAtPointer = useCallback(
     (event: WheelEvent) => {
       if (!map) return;
-      const canvas = canvasRef.current;
+      const surface = mapSurfaceRef.current;
       const canvasWrap = canvasWrapRef.current;
-      if (!canvas || !canvasWrap) return;
+      if (!surface || !canvasWrap) return;
 
-      const canvasRect = canvas.getBoundingClientRect();
-      const scaleX = canvas.clientWidth / map.width;
-      const scaleY = canvas.clientHeight / map.height;
+      const surfaceRect = surface.getBoundingClientRect();
+      const scaleX = surfaceRect.width / map.width;
+      const scaleY = surfaceRect.height / map.height;
       if (!scaleX || !scaleY) return;
 
       const nextZoom = Math.max(0.5, Math.min(6, zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
       if (nextZoom === zoom) return;
 
       mapZoomAnchorRef.current = {
-        mapX: (event.clientX - canvasRect.left - canvas.clientLeft) / scaleX,
-        mapY: (event.clientY - canvasRect.top - canvas.clientTop) / scaleY,
+        mapX: (event.clientX - surfaceRect.left) / scaleX,
+        mapY: (event.clientY - surfaceRect.top) / scaleY,
         scaleX,
         scaleY,
         scrollLeft: canvasWrap.scrollLeft,
@@ -1643,10 +1653,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const markerAtCanvasPoint = (event: React.MouseEvent<HTMLCanvasElement>): EsfMapMarker | undefined => {
     if (!map) return undefined;
     const canvas = canvasRef.current;
-    if (!canvas) return undefined;
+    const surface = mapSurfaceRef.current;
+    if (!canvas || !surface) return undefined;
     const context = canvas.getContext("2d");
     if (!context) return undefined;
-    const rect = canvas.getBoundingClientRect();
+    const rect = surface.getBoundingClientRect();
     const x = Math.max(0, Math.min(map.width - 1, ((event.clientX - rect.left) / rect.width) * map.width));
     const rawY = Math.max(0, Math.min(map.height - 1, ((event.clientY - rect.top) / rect.height) * map.height));
     const y = map.displayFlipY ? map.height - rawY : rawY;
@@ -1677,8 +1688,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   };
 
   const mapCoordinatesAtClientPoint = (event: { clientX: number; clientY: number }) => {
-    if (!map || !canvasRef.current) return undefined;
-    const rect = canvasRef.current.getBoundingClientRect();
+    if (!map || !mapSurfaceRef.current) return undefined;
+    const rect = mapSurfaceRef.current.getBoundingClientRect();
     if (!rect.width || !rect.height) return undefined;
     const displayX = Math.max(0, Math.min(map.width - 1, ((event.clientX - rect.left) / rect.width) * map.width));
     const displayY = Math.max(0, Math.min(map.height - 1, ((event.clientY - rect.top) / rect.height) * map.height));
@@ -1972,27 +1983,42 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   className="relative inline-block align-top"
                   style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
                 >
-                  <canvas
-                    ref={canvasRef}
-                    onPointerDown={beginMapDrag}
-                    onPointerMove={moveMapDrag}
-                    onPointerUp={endMapDrag}
-                    onPointerCancel={endMapDrag}
-                    onClick={handleMapClick}
-                    onContextMenu={handleMapContextMenu}
-                    style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
-                    className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
-                  />
-                  <canvas
-                    ref={characterMapCanvasRef}
-                    aria-hidden="true"
+                  <div
+                    ref={mapSurfaceRef}
+                    className="relative"
                     style={{
-                      width: mapDisplayWidth,
-                      height: mapDisplayHeight,
-                      display: characterMapOverlayActive ? "block" : "none",
+                      width: map ? `${map.width}px` : undefined,
+                      height: map ? `${map.height}px` : undefined,
+                      transform: `scale(${mapScaleX}, ${mapScaleY})`,
+                      transformOrigin: "top left",
+                      willChange: "transform",
                     }}
-                    className="pointer-events-none absolute left-0 top-0 z-10 block"
-                  />
+                  >
+                    <canvas
+                      ref={canvasRef}
+                      onPointerDown={beginMapDrag}
+                      onPointerMove={moveMapDrag}
+                      onPointerUp={endMapDrag}
+                      onPointerCancel={endMapDrag}
+                      onClick={handleMapClick}
+                      onContextMenu={handleMapContextMenu}
+                      style={{
+                        width: map ? `${map.width}px` : undefined,
+                        height: map ? `${map.height}px` : undefined,
+                      }}
+                      className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
+                    />
+                    <canvas
+                      ref={characterMapCanvasRef}
+                      aria-hidden="true"
+                      style={{
+                        width: map ? `${map.width}px` : undefined,
+                        height: map ? `${map.height}px` : undefined,
+                        display: characterMapOverlayActive ? "block" : "none",
+                      }}
+                      className="pointer-events-none absolute left-0 top-0 z-10 block"
+                    />
+                  </div>
                 </div>
               </div>
               <canvas
