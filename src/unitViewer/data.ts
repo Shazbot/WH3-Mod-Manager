@@ -296,6 +296,22 @@ const getCasteSortOrder = (caste: string) => {
   return 2;
 };
 
+const getUiGroupKey = (
+  caste: string,
+  parentGroupKey: string,
+  uiUnitGroupParents: Map<string, Record<string, string>>,
+) => {
+  // A few vanilla lord rows (notably Drycha) point at the heroes parent despite their caste. Keep
+  // the leader section consistent with the badge, but preserve other custom battle groupings.
+  if (
+    caste.trim().toLowerCase() === "lord" &&
+    parentGroupKey === "heroes_agents" &&
+    uiUnitGroupParents.has("commander")
+  )
+    return "commander";
+  return uiUnitGroupParents.has(parentGroupKey) ? parentGroupKey : EXTENDED_ROSTER_GROUP_KEY;
+};
+
 const toEntity = (row: Record<string, string> | undefined): UnitViewerEntity | undefined => {
   if (!row) return undefined;
   return {
@@ -785,7 +801,7 @@ export const buildUnitViewerData = (
     );
 
     const parentGroupKey = asString(uiUnitGroupings.get(asString(main.ui_unit_group_land))?.parent_group);
-    uiGroupKeyByUnit.set(key, uiUnitGroupParents.has(parentGroupKey) ? parentGroupKey : EXTENDED_ROSTER_GROUP_KEY);
+    uiGroupKeyByUnit.set(key, getUiGroupKey(model.caste, parentGroupKey, uiUnitGroupParents));
 
     const subcultures = new Set<string>();
     for (const permission of permissions.get(key) || []) {
