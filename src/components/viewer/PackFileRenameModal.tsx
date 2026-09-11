@@ -12,12 +12,14 @@ import {
 } from "../../utility/packFileRenamePlan";
 import type { ExistingPackFilePaths } from "../../utility/packImportPlan";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../../utility/packFilePathUtils";
+import { getParentPackFolder } from "../../utility/packFolderPaths";
 
 type PackFileRenameModalProps = {
   show: boolean;
   mode: "rename" | "move";
   paths: string[];
   existingPaths: ExistingPackFilePaths;
+  extraFolders?: string[];
   onClose: () => void;
   onApply: (entries: PackFileRenameEntry[]) => void | Promise<void>;
 };
@@ -47,14 +49,8 @@ const getFolderNodeId = (folderPath: string) => {
     : MOVE_FOLDER_ROOT_ID;
 };
 
-const getParentFolder = (filePath: string) => {
-  const normalizedPath = normalizePackFilePath(filePath);
-  const separatorIndex = normalizedPath.lastIndexOf("\\");
-  return separatorIndex < 0 ? "" : normalizedPath.slice(0, separatorIndex);
-};
-
 const getCommonParentFolder = (paths: string[]) => {
-  const parentSegments = paths.map(getParentFolder).map((folderPath) => folderPath.split("\\"));
+  const parentSegments = paths.map(getParentPackFolder).map((folderPath) => folderPath.split("\\"));
   if (parentSegments.length === 0) return "";
 
   const firstSegments = parentSegments[0];
@@ -98,7 +94,7 @@ const buildFolderTree = (filePaths: string[], extraFolders: string[], rootName: 
     }
   };
 
-  for (const filePath of filePaths) addFolder(getParentFolder(filePath));
+  for (const filePath of filePaths) addFolder(getParentPackFolder(filePath));
   for (const folderPath of extraFolders) addFolder(folderPath);
 
   const sortChildren = (node: FolderTreeData) => {
@@ -114,6 +110,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
   mode,
   paths,
   existingPaths,
+  extraFolders = [],
   onClose,
   onApply,
 }) => {
@@ -169,8 +166,15 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
     [existingPaths],
   );
   const folderTreeData = useMemo(
-    () => flattenTree(buildFolderTree(currentPackPaths, createdFolders, localized.viewerPackRoot || "Pack root")),
-    [createdFolders, currentPackPaths, localized.viewerPackRoot],
+    () =>
+      flattenTree(
+        buildFolderTree(
+          currentPackPaths,
+          [...extraFolders, ...createdFolders],
+          localized.viewerPackRoot || "Pack root",
+        ),
+      ),
+    [createdFolders, currentPackPaths, extraFolders, localized.viewerPackRoot],
   );
   const folderPathKeys = useMemo(
     () =>

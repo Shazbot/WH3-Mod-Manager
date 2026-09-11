@@ -1,6 +1,7 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { describe, expect, it, vi } from "vitest";
 
@@ -130,6 +131,7 @@ describe("pack table tree interactions", () => {
   });
 
   it("keeps collapsed DB groups collapsed after deleting a file", async () => {
+    const user = userEvent.setup();
     const packPath = "K:\\mods\\menu.pack";
     const deletePackedFiles = vi.fn().mockResolvedValue({
       success: true,
@@ -175,7 +177,7 @@ describe("pack table tree interactions", () => {
 
     fireEvent.contextMenu(screen.getByText("first"));
     fireEvent.click(screen.getByRole("button", { name: "Delete file", exact: true }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete", exact: true }));
+    await user.keyboard("{Enter}");
 
     await waitFor(() => expect(deletePackedFiles).toHaveBeenCalledWith(packPath, ["db\\first_tables\\first"]));
     store.dispatch(
@@ -292,6 +294,35 @@ describe("pack table tree interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add", exact: true }));
     expect(screen.getByRole("button", { name: "Add New Table", exact: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add New Flow", exact: true })).toBeInTheDocument();
+  });
+
+  it("adds a new folder below the right-clicked folder", () => {
+    renderPackTree(["scripts\\hello.lua"], "files");
+
+    fireEvent.contextMenu(screen.getByText("scripts"));
+    fireEvent.click(screen.getByRole("button", { name: "Add", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Add New Folder", exact: true }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Folder name" }), {
+      target: { value: "generated" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create", exact: true }));
+
+    expect(screen.getByText("generated")).toBeInTheDocument();
+    expect(screen.getByText("generated").closest("[role='treeitem']")).toHaveAttribute("aria-level", "2");
+  });
+
+  it("adds a new folder at the pack root when the tree background is right-clicked", () => {
+    const tree = renderPackTree([], "files");
+
+    fireEvent.contextMenu(tree);
+    fireEvent.click(screen.getByRole("button", { name: "Add", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Add New Folder", exact: true }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Folder name" }), {
+      target: { value: "generated" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create", exact: true }));
+
+    expect(screen.getByText("generated").closest("[role='treeitem']")).toHaveAttribute("aria-level", "1");
   });
 
   it("opens a newly created flow and reports a failed flow save", async () => {

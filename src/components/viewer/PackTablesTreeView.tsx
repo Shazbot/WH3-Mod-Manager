@@ -33,6 +33,7 @@ import ContextMenuSubmenu from "./ContextMenuSubmenu";
 import PackFileRenameModal from "./PackFileRenameModal";
 import type { ExistingPackFilePaths } from "../../utility/packImportPlan";
 import type { PackFileRenameEntry } from "../../utility/packFileRenamePlan";
+import { getPackFolderPaths, getParentPackFolder } from "../../utility/packFolderPaths";
 import { clearPackDataStoreForPack } from "./packDataStore";
 import { clearPreparedTableForPackedFile } from "./tablePrepCache";
 import localizationContext from "../../localizationContext";
@@ -56,11 +57,13 @@ type PackTablesTreeViewProps = {
   onOpenPackedFile: (selection: { filePath: string; packPath: string }, options?: { forceNewTab?: boolean }) => void;
 };
 
-type TreeData = { id?: string | number; name: string; children?: TreeData[] };
+type TreeData = { id?: string | number; name: string; children?: TreeData[]; isBranch?: boolean };
 type TableOption = { value: string; label: string };
 type TreeTab = "db" | "files";
 type ExpandedIdsByTreeTab = Partial<Record<TreeTab, Array<INode["id"]>>>;
 type ContextMenuTreeTab = TreeTab | "empty";
+const PACK_TREE_INDENT_PX = 20;
+const PACK_TREE_MARKER_SIZE_CLASS = "w-4 h-4";
 type TreeContextTarget =
   | { kind: "db"; packPath: string; filePath: string; selection: DBTableSelection }
   | { kind: "file"; packPath: string; filePath: string }
@@ -104,23 +107,27 @@ const HelpBadge: React.FC<{ text: string }> = ({ text }) => (
 const getStableTreeNodeId = (treeTab: TreeTab, path: string, nodeKind: "group" | "leaf" | "path") =>
   `${treeTab}:${nodeKind}:${encodeURIComponent(path.replaceAll("/", "\\"))}`;
 
-const buildPathTree = (filePaths: string[]): TreeData => {
+const buildPathTree = (filePaths: string[], extraFolders: string[] = []): TreeData => {
   const root: TreeData = { id: 0, name: "", children: [] };
 
-  for (const filePath of filePaths) {
-    const segments = filePath.split(/[\\/]/).filter(Boolean);
+  const addPath = (path: string, isFolder: boolean) => {
+    const segments = path.split(/[\\/]/).filter(Boolean);
     let currentNode = root;
     let currentPath = "";
-    for (const segment of segments) {
+    segments.forEach((segment, index) => {
       currentPath = currentPath ? `${currentPath}\\${segment}` : segment;
       let nextNode = currentNode.children?.find((child) => child.name === segment);
       if (!nextNode) {
         nextNode = { id: getStableTreeNodeId("files", currentPath, "path"), name: segment, children: [] };
         currentNode.children?.push(nextNode);
       }
+      if (isFolder && index === segments.length - 1) nextNode.isBranch = true;
       currentNode = nextNode;
-    }
-  }
+    });
+  };
+
+  for (const filePath of filePaths) addPath(filePath, false);
+  for (const folderPath of extraFolders) addPath(folderPath, true);
 
   const sortChildren = (node: TreeData) => {
     node.children?.sort((first, second) => first.name.localeCompare(second.name));
@@ -195,7 +202,7 @@ const getDescendantLeafIds = (element: INode, nodeById: Map<INode["id"], INode>)
     if (!currentNode) break;
 
     if (!currentNode.children || currentNode.children.length === 0) {
-      if (currentNode.id !== 0) {
+      if (currentNode.id !== 0 && !currentNode.isBranch) {
         result.push(currentNode.id as string | number);
       }
       continue;
@@ -257,14 +264,19 @@ const PackTablesTreeView = React.memo(
     const autoOpenedDbNodeIdRef = React.useRef<INode["id"] | null>(null);
     const [dbSelectedNodeIds, setDbSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const [fileSelectedNodeIds, setFileSelectedNodeIds] = React.useState<Array<string | number>>([]);
+    const [createdFoldersByPack, setCreatedFoldersByPack] = React.useState<Record<string, string[]>>({});
     const [expandedIdsByPack, setExpandedIdsByPack] = React.useState<Record<string, ExpandedIdsByTreeTab>>({});
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
     const clearLabelSelectionModeTimeoutRef = React.useRef<number | null>(null);
     const contextMenuRef = React.useRef<HTMLDivElement | null>(null);
+    const deleteConfirmButtonRef = React.useRef<HTMLButtonElement | null>(null);
     const [isExportingSelection, setIsExportingSelection] = React.useState(false);
     const [isExportingWholePack, setIsExportingWholePack] = React.useState(false);
     const [isImporting, setIsImporting] = React.useState(false);
     const [deleteConfirm, setDeleteConfirm] = React.useState<string[] | null>(null);
+    const [newFolderRequest, setNewFolderRequest] = React.useState<{ parentFolder: string } | null>(null);
+    const [newFolderName, setNewFolderName] = React.useState("");
+    const [newFolderError, setNewFolderError] = React.useState("");
     const [renameRequest, setRenameRequest] = React.useState<{
       mode: "rename" | "move";
       paths: string[];
@@ -367,8 +379,13 @@ const PackTablesTreeView = React.memo(
         }
       }
 
-      return flattenTree(buildPathTree(Array.from(fileNames).toSorted((first, second) => first.localeCompare(second))));
-    }, [packData, packFileNames]);
+      return flattenTree(
+        buildPathTree(
+          Array.from(fileNames).toSorted((first, second) => first.localeCompare(second)),
+          createdFoldersByPack[packPath] ?? [],
+        ),
+      );
+    }, [createdFoldersByPack, packData, packFileNames, packPath]);
 
     const dbNodeById = useMemo(() => buildNodeById(dbData), [dbData]);
     const dbDefaultExpandedIds = useMemo(() => getAutoExpandedDBGroupIds(dbData), [dbData]);
@@ -456,7 +473,7 @@ const PackTablesTreeView = React.memo(
     };
 
     const getPackedFilePathForElement = (element: INode) => {
-      if (element.children && element.children.length > 0) return;
+      if ((element.children && element.children.length > 0) || element.isBranch) return;
       return getNodeFullPath(element, fileNodeById);
     };
 
@@ -525,6 +542,7 @@ const PackTablesTreeView = React.memo(
               return candidateKey.startsWith(`${key}\\`);
             })
           : [];
+        if (isClickedFolder && descendants.length === 0) continue;
         for (const expandedPath of descendants.length > 0 ? descendants : [path]) {
           const expandedKey = expandedPath.replaceAll("/", "\\").toLowerCase();
           if (!expandedPaths.has(expandedKey)) expandedPaths.set(expandedKey, expandedPath);
@@ -805,7 +823,7 @@ const PackTablesTreeView = React.memo(
         "h-4",
       );
       return (
-        <span className="w-4 h-4">
+        <span className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0`}>
           <IoMdArrowDropright size={"100%"} className={classes} />
         </span>
       );
@@ -817,6 +835,16 @@ const PackTablesTreeView = React.memo(
     };
 
     const packPathKey = (value: string) => value.replaceAll("/", "\\").toLowerCase();
+    const filePackFileNames = useMemo(
+      () => packFileNames.filter((filePath) => !isDBPackedFileName(filePath)),
+      [packFileNames],
+    );
+    const folderPathKeys = useMemo(
+      () =>
+        new Set([...getPackFolderPaths(filePackFileNames), ...(createdFoldersByPack[packPath] ?? [])].map(packPathKey)),
+      [createdFoldersByPack, filePackFileNames, packPath],
+    );
+    const filePathKeys = useMemo(() => new Set(filePackFileNames.map(packPathKey)), [filePackFileNames]);
 
     const getTreeNodePath = (
       element: INode,
@@ -931,6 +959,20 @@ const PackTablesTreeView = React.memo(
       }
     };
 
+    useEffect(() => {
+      if (!deleteConfirm) return;
+
+      const handleDeleteConfirmKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        event.stopPropagation();
+        deleteConfirmButtonRef.current?.click();
+      };
+
+      document.addEventListener("keydown", handleDeleteConfirmKeyDown, true);
+      return () => document.removeEventListener("keydown", handleDeleteConfirmKeyDown, true);
+    }, [deleteConfirm]);
+
     const handleRenameRequest = (mode: "rename" | "move") => {
       if (selectedExportPaths.length === 0 || isVanillaPackOpen) return;
       setContextMenu(null);
@@ -994,6 +1036,77 @@ const PackTablesTreeView = React.memo(
       setContextMenu(null);
       setActiveTreeTab("files");
       setIsNewFlowDialogOpen(true);
+    };
+
+    const handleAddNewFolder = () => {
+      const target = contextMenu?.target;
+      const parentFolder =
+        contextMenu?.treeTab === "files"
+          ? target?.kind === "folder"
+            ? target.folderPath
+            : target?.kind === "file"
+              ? getParentPackFolder(target.filePath)
+              : ""
+          : "";
+      setContextMenu(null);
+      setActiveTreeTab("files");
+      setNewFolderRequest({ parentFolder });
+      setNewFolderName("");
+      setNewFolderError("");
+    };
+
+    const handleCreateNewFolder = () => {
+      if (!newFolderRequest) return;
+
+      const trimmedName = newFolderName.trim();
+      if (!trimmedName) {
+        setNewFolderError(localized.viewerEnterFolderName || "Enter a folder name.");
+        return;
+      }
+      if (/[\\/]/.test(trimmedName) || trimmedName === "." || trimmedName === "..") {
+        setNewFolderError(localized.viewerInvalidFolderName || "Enter a folder name without path separators.");
+        return;
+      }
+
+      const parentFolder = newFolderRequest.parentFolder.replaceAll("/", "\\").replace(/^\\+|\\+$/g, "");
+      const newPath = parentFolder ? `${parentFolder}\\${trimmedName}` : trimmedName;
+      const newPathKey = packPathKey(newPath);
+      if (folderPathKeys.has(newPathKey)) {
+        setNewFolderError(localized.viewerFolderAlreadyExists || "That folder already exists.");
+        return;
+      }
+      if (filePathKeys.has(newPathKey)) {
+        setNewFolderError(localized.viewerFolderConflictsWithFile || "A file already exists at that path.");
+        return;
+      }
+
+      setCreatedFoldersByPack((currentByPack) => ({
+        ...currentByPack,
+        [packPath]: [...(currentByPack[packPath] ?? []), newPath],
+      }));
+
+      const parentSegments = parentFolder.split("\\").filter(Boolean);
+      const parentExpansionIds: Array<string | number> = [];
+      let currentParentPath = "";
+      for (const segment of parentSegments) {
+        currentParentPath = currentParentPath ? `${currentParentPath}\\${segment}` : segment;
+        parentExpansionIds.push(getStableTreeNodeId("files", currentParentPath, "path"));
+      }
+      setExpandedIdsByPack((currentByPack) => {
+        const currentPack = currentByPack[packPath];
+        const currentFileIds = currentPack?.files ?? [];
+        return {
+          ...currentByPack,
+          [packPath]: {
+            ...currentPack,
+            files: [...new Set([...currentFileIds, ...parentExpansionIds])],
+          },
+        };
+      });
+      setFileSelectedNodeIds([getStableTreeNodeId("files", newPath, "path")]);
+      setNewFolderRequest(null);
+      setNewFolderName("");
+      setNewFolderError("");
     };
 
     const closeNewTableDialog = () => {
@@ -1496,6 +1609,7 @@ const PackTablesTreeView = React.memo(
           };
 
           const isContextTarget = isContextMenuTarget(element, treeTab, isBranch, nodeById);
+          const nodePath = getNodeFullPath(element, nodeById).replaceAll("\\", "/");
 
           return (
             <div
@@ -1542,17 +1656,27 @@ const PackTablesTreeView = React.memo(
                 handleContextMenu(e, treeTab, filePath ? { kind: "file", packPath, filePath } : undefined);
               }}
               style={{
-                marginLeft: 20 * (level - 1),
+                marginLeft: PACK_TREE_INDENT_PX * (level - 1),
                 opacity: isDisabled ? 0.5 : 1,
               }}
               className={
                 "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
+                (isBranch ? "font-medium text-gray-200 " : "text-gray-300 ") +
                 (isContextTarget ? "bg-blue-700/60 " : isSelected ? "bg-gray-700/60 " : "") +
                 "hover:underline " +
                 (isTreeNodeFiltered(element, treeTab) ? "hidden" : "")
               }
             >
-              {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
+              {isBranch ? (
+                <ArrowIcon className="" isOpen={isExpanded} />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0 flex items-center justify-center`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-500/80" />
+                </span>
+              )}
               <span
                 onClick={handleLabelClick}
                 onDoubleClick={(e) => {
@@ -1560,6 +1684,7 @@ const PackTablesTreeView = React.memo(
                   handleOpenInNewTab(element, treeTab);
                 }}
                 className="relative select-none"
+                title={nodePath}
               >
                 {element.name}
               </span>
@@ -1586,6 +1711,9 @@ const PackTablesTreeView = React.memo(
       (contextMenu.treeTab === "empty" ||
         (contextMenu.treeTab === "db" && hasDBTables) ||
         (contextMenu.treeTab === "files" && hasFiles && !hasDBTables)),
+    );
+    const showAddNewFolderInContext = Boolean(
+      contextMenu && !isVanillaPackOpen && (contextMenu.treeTab === "files" || contextMenu.treeTab === "empty"),
     );
     const showImportInContext = Boolean(contextMenu && !isVanillaPackOpen);
     const showPackFileActionsInContext = Boolean(contextMenu && !isVanillaPackOpen && selectedExportPaths.length > 0);
@@ -1625,7 +1753,7 @@ const PackTablesTreeView = React.memo(
     const showCopyIntoInContext = Boolean(
       contextMenu?.target && contextMenu.target.kind !== "folder" && props.onCopyInto,
     );
-    const showAddInContext = showAddNewFlowInContext || showAddNewTableInContext;
+    const showAddInContext = showAddNewFlowInContext || showAddNewTableInContext || showAddNewFolderInContext;
 
     return (
       <div
@@ -1733,6 +1861,15 @@ const PackTablesTreeView = React.memo(
                     className="w-full text-left px-3 py-2 hover:bg-gray-700 text-white text-sm"
                   >
                     {localized.viewerAddNewLoadOrderRules || "Add New Load Order Rules"}
+                  </button>
+                )}
+                {showAddNewFolderInContext && (
+                  <button
+                    type="button"
+                    onClick={handleAddNewFolder}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-700 text-white text-sm"
+                  >
+                    {localized.viewerAddNewFolder || "Add New Folder"}
                   </button>
                 )}
               </ContextMenuSubmenu>
@@ -1851,6 +1988,8 @@ const PackTablesTreeView = React.memo(
             <button
               type="button"
               onClick={() => void handleDeleteConfirm()}
+              ref={deleteConfirmButtonRef}
+              autoFocus
               className="rounded bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700"
             >
               {localized.delete || "Delete"}
@@ -1863,9 +2002,74 @@ const PackTablesTreeView = React.memo(
           mode={renameRequest?.mode ?? "rename"}
           paths={renameRequest?.paths ?? []}
           existingPaths={existingPackFilePaths}
+          extraFolders={createdFoldersByPack[packPath] ?? []}
           onClose={() => setRenameRequest(null)}
           onApply={handleRenameApply}
         />
+
+        <Modal
+          onClose={() => {
+            setNewFolderRequest(null);
+            setNewFolderName("");
+            setNewFolderError("");
+          }}
+          show={!!newFolderRequest}
+          size="md"
+          position="center"
+        >
+          <Modal.Header>{localized.viewerCreateNewFolder || "Create New Folder"}</Modal.Header>
+          <Modal.Body>
+            <form
+              data-testid="new-folder-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleCreateNewFolder();
+              }}
+            >
+              <p className="mb-4 break-all text-sm text-gray-300">
+                {(localized.viewerNewFolderUnder || "Create a folder under {{path}}.").replace(
+                  "{{path}}",
+                  newFolderRequest?.parentFolder || localized.viewerPackRoot || "Pack root",
+                )}
+              </p>
+              <label className="block">
+                <span className="mb-1 block text-sm text-gray-300">{localized.viewerFolderName || "Folder name"}</span>
+                <input
+                  aria-label={localized.viewerFolderName || "Folder name"}
+                  value={newFolderName}
+                  onChange={(event) => {
+                    setNewFolderName(event.target.value);
+                    setNewFolderError("");
+                  }}
+                  className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                  autoFocus
+                />
+              </label>
+              {newFolderError && <p className="mt-2 text-xs text-red-300">{newFolderError}</p>}
+            </form>
+          </Modal.Body>
+          <Modal.Footer>
+            <button
+              type="button"
+              onClick={() => {
+                setNewFolderRequest(null);
+                setNewFolderName("");
+                setNewFolderError("");
+              }}
+              className="rounded bg-gray-600 px-4 py-2 font-medium text-white hover:bg-gray-500"
+            >
+              {localized.cancel || "Cancel"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCreateNewFolder}
+              disabled={!newFolderName.trim()}
+              className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {localized.viewerCreate || "Create"}
+            </button>
+          </Modal.Footer>
+        </Modal>
 
         {/* New Flow Dialog */}
         {isNewFlowDialogOpen && (
