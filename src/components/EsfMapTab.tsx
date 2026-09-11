@@ -32,13 +32,10 @@ const MAP_AREA_OPACITY = 0.36;
 const FACTION_FLAG_SIZE = 20;
 const CHARACTER_DRAG_THRESHOLD = 3;
 const CHARACTER_MARKER_RADIUS = 10;
+const CHARACTER_MAX_SCREEN_RADIUS = 24;
 const CHARACTER_THUMBNAIL_SIZE = 64;
 const CHARACTER_OVERLAY_SCALE = 2;
 const CHARACTER_OVERLAY_MAX_PIXELS = 8_000_000;
-// Keep the map-attached raster until its 64px source would actually be upscaled. This avoids
-// switching to the scroll-synchronised viewport layer at the zoom where map scrolling begins.
-const CHARACTER_VIEWPORT_ZOOM = CHARACTER_THUMBNAIL_SIZE / (CHARACTER_MARKER_RADIUS * 2);
-const CHARACTER_MAP_BUCKET_SIZE = 256;
 /** Deep enough to walk back a mis-click run, shallow enough that the snapshots stay cheap. */
 const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
@@ -160,41 +157,6 @@ const createCharacterThumbnail = (image: HTMLImageElement): HTMLCanvasElement | 
   return thumbnail;
 };
 
-const drawCharacterThumbnailImage = (
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  centerX: number,
-  centerY: number,
-  width: number,
-  height: number,
-) => {
-  const sourceWidth = image.naturalWidth || image.width;
-  const sourceHeight = image.naturalHeight || image.height;
-  if (!sourceWidth || !sourceHeight) return;
-
-  context.save();
-  context.beginPath();
-  context.ellipse(centerX, centerY, width / 2, height / 2, 0, 0, Math.PI * 2);
-  context.clip();
-  context.fillStyle = "rgba(15, 23, 42, 0.95)";
-  context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
-  const sourceSide = Math.min(sourceWidth, sourceHeight);
-  const sourceX = (sourceWidth - sourceSide) / 2;
-  const sourceY = (sourceHeight - sourceSide) / 2;
-  context.drawImage(
-    image,
-    sourceX,
-    sourceY,
-    sourceSide,
-    sourceSide,
-    centerX - width / 2,
-    centerY - height / 2,
-    width,
-    height,
-  );
-  context.restore();
-};
-
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useLocalizations();
@@ -216,16 +178,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSurfaceRef = useRef<HTMLDivElement>(null);
   const characterMapCanvasRef = useRef<HTMLCanvasElement>(null);
-  const characterViewportCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const mapListItemRefs = useRef(new Map<string, HTMLButtonElement>());
   const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
   const mapImageLoadsRef = useRef(new Map<string, Promise<HTMLImageElement | undefined>>());
   const characterThumbnailSourcesRef = useRef(new Set<string>());
   const characterThumbnailCanvasesRef = useRef(new Map<string, HTMLCanvasElement>());
-  const characterViewportDrawRef = useRef<(() => void) | undefined>();
-  const characterViewportScheduleRef = useRef<(() => void) | undefined>();
-  const characterViewportLastDrawScrollRef = useRef<{ left: number; top: number }>();
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -331,10 +289,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [extendedState],
   );
   const isExtendedFormat = !!extendedState;
-  const characterMapOverlayActive =
-    isActive && !!map && showCharacters && !!extendedState && zoom <= CHARACTER_VIEWPORT_ZOOM;
-  const characterViewportOverlayActive =
-    isActive && !!map && showCharacters && !!extendedState && zoom > CHARACTER_VIEWPORT_ZOOM;
+  const characterMapOverlayActive = isActive && !!map && showCharacters && !!extendedState;
   const mapDisplayWidthPx = map ? Math.max(320, Math.round(map.width * zoom)) : 0;
   const mapDisplayHeightPx = map ? Math.max(240, Math.round(map.height * zoom)) : 0;
   const mapDisplayWidth = map ? `${mapDisplayWidthPx}px` : undefined;
@@ -389,27 +344,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   );
   const characterMapIndex = useMemo<{
     entries: CharacterMapEntry[];
-    byKey: Map<string, CharacterMapEntry>;
-    buckets: Map<string, CharacterMapEntry[]>;
   }>(() => {
     const entries: CharacterMapEntry[] = [];
-    const byKey = new Map<string, CharacterMapEntry>();
-    const buckets = new Map<string, CharacterMapEntry[]>();
-    if (!map) return { entries, byKey, buckets };
+    if (!map) return { entries };
 
     for (const { faction, character } of extendedCharacters) {
       const point = projectCharacterCoordinateToMap(map, character.x, character.y);
       if (!point) continue;
       const entry = { faction, character, point };
-      const key = characterUiKey(faction, character.id);
       entries.push(entry);
-      byKey.set(key, entry);
-      const bucketKey = `${Math.floor(point.x / CHARACTER_MAP_BUCKET_SIZE)}:${Math.floor(point.y / CHARACTER_MAP_BUCKET_SIZE)}`;
-      const bucket = buckets.get(bucketKey);
-      if (bucket) bucket.push(entry);
-      else buckets.set(bucketKey, [entry]);
     }
-    return { entries, byKey, buckets };
+    return { entries };
   }, [extendedCharacters, map]);
 
   useEffect(() => {
@@ -1189,6 +1134,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
     if (!characterMapOverlayActive || !map) return;
 
+    const mapSurface = mapSurfaceRef.current;
+    const mapRect = mapSurface?.getBoundingClientRect();
+    const mapScaleX = mapRect?.width ? mapRect.width / map.width : 1;
+    const mapScaleY = mapRect?.height ? mapRect.height / map.height : 1;
+    const markerRadiusX = Math.min(CHARACTER_MARKER_RADIUS, CHARACTER_MAX_SCREEN_RADIUS / mapScaleX);
+    const markerRadiusY = Math.min(CHARACTER_MARKER_RADIUS, CHARACTER_MAX_SCREEN_RADIUS / mapScaleY);
+
     const mapPixels = map.width * map.height;
     const renderScale = Math.max(
       1,
@@ -1208,6 +1160,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
     for (const { faction, character, point: characterPoint } of characterMapIndex.entries) {
+      const isPreview =
+        characterDragPreview?.faction.toLowerCase() === faction.toLowerCase() &&
+        characterDragPreview.id === character.id;
+      const drawPoint = isPreview
+        ? projectCharacterCoordinateToMap(map, characterDragPreview.x, characterDragPreview.y)
+        : characterPoint;
+      if (!drawPoint) continue;
       const thumbnailSource = characterThumbnailUrls.get(characterUiKey(faction, character.id));
       const thumbnailCanvas = thumbnailSource ? characterThumbnailCanvasesRef.current.get(thumbnailSource) : undefined;
 
@@ -1216,15 +1175,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       context.strokeStyle = "rgba(0, 0, 0, 0.95)";
       context.lineWidth = 0.75;
       context.beginPath();
-      context.arc(characterPoint.x, characterPoint.y, CHARACTER_MARKER_RADIUS, 0, Math.PI * 2);
+      context.ellipse(drawPoint.x, drawPoint.y, markerRadiusX, markerRadiusY, 0, 0, Math.PI * 2);
       context.fill();
       if (thumbnailCanvas) {
         context.drawImage(
           thumbnailCanvas,
-          characterPoint.x - CHARACTER_MARKER_RADIUS,
-          characterPoint.y - CHARACTER_MARKER_RADIUS,
-          CHARACTER_MARKER_RADIUS * 2,
-          CHARACTER_MARKER_RADIUS * 2,
+          drawPoint.x - markerRadiusX,
+          drawPoint.y - markerRadiusY,
+          markerRadiusX * 2,
+          markerRadiusY * 2,
         );
       }
       context.stroke();
@@ -1235,7 +1194,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         context.strokeStyle = "#facc15";
         context.lineWidth = 1;
         context.beginPath();
-        context.arc(characterPoint.x, characterPoint.y, CHARACTER_MARKER_RADIUS + 3, 0, Math.PI * 2);
+        context.ellipse(
+          drawPoint.x,
+          drawPoint.y,
+          markerRadiusX + 3 / mapScaleX,
+          markerRadiusY + 3 / mapScaleY,
+          0,
+          0,
+          Math.PI * 2,
+        );
         context.stroke();
       }
       context.restore();
@@ -1244,222 +1211,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     characterThumbnailRevision,
     characterThumbnailUrls,
     characterMapIndex,
+    characterDragPreview,
     extendedState,
     isActive,
     map,
     selectedCharacterKey,
     showCharacters,
     characterMapOverlayActive,
-  ]);
-
-  // At higher zoom the character layer follows the viewport so it can sample the original card at
-  // the size it is displayed. Overview zooms use the map-attached cache below and never repaint on pan.
-  useEffect(() => {
-    const canvas = characterViewportCanvasRef.current;
-    const mapSurface = mapSurfaceRef.current;
-    const canvasWrap = canvasWrapRef.current;
-    if (!canvas || !mapSurface || !canvasWrap) return;
-
-    if (!characterViewportOverlayActive || !map) {
-      canvas.style.display = "none";
-      canvas.style.transform = "";
-      characterViewportLastDrawScrollRef.current = undefined;
-      characterViewportDrawRef.current = undefined;
-      return;
-    }
-
-    canvas.style.display = "block";
-    const drawCharacters = () => {
-      // Use the containing pane for the viewport geometry. The canvas gets a temporary translate
-      // while a scroll is in flight, and getBoundingClientRect() on the canvas would include that
-      // translate and make the map offset chase its own fallback.
-      canvas.style.transform = "";
-      const overlayRect = canvas.parentElement?.getBoundingClientRect() ?? canvas.getBoundingClientRect();
-      const mapRect = mapSurface.getBoundingClientRect();
-      const viewportWidth = Math.max(1, Math.round(overlayRect.width));
-      const viewportHeight = Math.max(1, Math.round(overlayRect.height));
-      if (!viewportWidth || !viewportHeight || !mapRect.width || !mapRect.height) return;
-
-      const viewportPixels = viewportWidth * viewportHeight;
-      const renderScale = Math.max(
-        1,
-        Math.min(CHARACTER_OVERLAY_SCALE, Math.sqrt(CHARACTER_OVERLAY_MAX_PIXELS / viewportPixels)),
-      );
-      const backingWidth = Math.max(1, Math.round(viewportWidth * renderScale));
-      const backingHeight = Math.max(1, Math.round(viewportHeight * renderScale));
-      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
-        canvas.width = backingWidth;
-        canvas.height = backingHeight;
-      }
-
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
-      context.clearRect(0, 0, viewportWidth, viewportHeight);
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-
-      const mapScaleX = mapRect.width / map.width;
-      const mapScaleY = mapRect.height / map.height;
-      if (!mapScaleX || !mapScaleY) return;
-      const mapOffsetX = mapRect.left - overlayRect.left;
-      const mapOffsetY = mapRect.top - overlayRect.top;
-      const minMapX = Math.max(0, Math.floor(-mapOffsetX / mapScaleX - CHARACTER_MARKER_RADIUS));
-      const maxMapX = Math.min(
-        map.width - 1,
-        Math.ceil((viewportWidth - mapOffsetX) / mapScaleX + CHARACTER_MARKER_RADIUS),
-      );
-      const minMapY = Math.max(0, Math.floor(-mapOffsetY / mapScaleY - CHARACTER_MARKER_RADIUS));
-      const maxMapY = Math.min(
-        map.height - 1,
-        Math.ceil((viewportHeight - mapOffsetY) / mapScaleY + CHARACTER_MARKER_RADIUS),
-      );
-      const visibleEntries: CharacterMapEntry[] = [];
-      const visibleKeys = new Set<string>();
-      for (
-        let bucketX = Math.floor(minMapX / CHARACTER_MAP_BUCKET_SIZE);
-        bucketX <= Math.floor(maxMapX / CHARACTER_MAP_BUCKET_SIZE);
-        bucketX += 1
-      ) {
-        for (
-          let bucketY = Math.floor(minMapY / CHARACTER_MAP_BUCKET_SIZE);
-          bucketY <= Math.floor(maxMapY / CHARACTER_MAP_BUCKET_SIZE);
-          bucketY += 1
-        ) {
-          for (const entry of characterMapIndex.buckets.get(`${bucketX}:${bucketY}`) ?? []) {
-            const key = characterUiKey(entry.faction, entry.character.id);
-            if (visibleKeys.has(key)) continue;
-            visibleKeys.add(key);
-            visibleEntries.push(entry);
-          }
-        }
-      }
-      if (characterDragPreview) {
-        const previewKey = characterUiKey(characterDragPreview.faction, characterDragPreview.id);
-        const previewEntry = characterMapIndex.byKey.get(previewKey);
-        if (previewEntry && !visibleKeys.has(previewKey)) visibleEntries.push(previewEntry);
-      }
-
-      for (const { faction, character, point } of visibleEntries) {
-        const preview =
-          characterDragPreview?.faction.toLowerCase() === faction.toLowerCase() &&
-          characterDragPreview.id === character.id
-            ? characterDragPreview
-            : character;
-        const characterPoint =
-          preview === character ? point : projectCharacterCoordinateToMap(map, preview.x, preview.y);
-        if (!characterPoint) continue;
-
-        const centerX = mapOffsetX + characterPoint.x * mapScaleX;
-        const centerY = mapOffsetY + characterPoint.y * mapScaleY;
-        const radiusX = CHARACTER_MARKER_RADIUS * mapScaleX;
-        const radiusY = CHARACTER_MARKER_RADIUS * mapScaleY;
-        if (
-          centerX + radiusX < 0 ||
-          centerY + radiusY < 0 ||
-          centerX - radiusX > viewportWidth ||
-          centerY - radiusY > viewportHeight
-        )
-          continue;
-
-        const thumbnailSource = characterThumbnailUrls.get(characterUiKey(faction, character.id));
-        const thumbnailCanvas = thumbnailSource
-          ? characterThumbnailCanvasesRef.current.get(thumbnailSource)
-          : undefined;
-        const thumbnailImage = thumbnailSource ? mapImagesRef.current.get(thumbnailSource) : undefined;
-        const thumbnailWidth = radiusX * 2;
-        const thumbnailHeight = radiusY * 2;
-
-        context.save();
-        context.fillStyle = factionColour(faction.toLowerCase());
-        context.strokeStyle = "rgba(0, 0, 0, 0.95)";
-        context.lineWidth = 0.75;
-        context.beginPath();
-        context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-        context.fill();
-        if (thumbnailImage && Math.max(thumbnailWidth, thumbnailHeight) > CHARACTER_THUMBNAIL_SIZE) {
-          drawCharacterThumbnailImage(context, thumbnailImage, centerX, centerY, thumbnailWidth, thumbnailHeight);
-        } else if (thumbnailCanvas) {
-          context.drawImage(thumbnailCanvas, centerX - radiusX, centerY - radiusY, thumbnailWidth, thumbnailHeight);
-        } else if (thumbnailImage) {
-          drawCharacterThumbnailImage(context, thumbnailImage, centerX, centerY, thumbnailWidth, thumbnailHeight);
-        }
-        context.stroke();
-        if (
-          selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
-          selectedCharacterKey.id === character.id
-        ) {
-          context.strokeStyle = "#facc15";
-          context.lineWidth = 1;
-          context.beginPath();
-          context.ellipse(centerX, centerY, radiusX + 3, radiusY + 3, 0, 0, Math.PI * 2);
-          context.stroke();
-        }
-        context.restore();
-      }
-      characterViewportLastDrawScrollRef.current = {
-        left: canvasWrap.scrollLeft,
-        top: canvasWrap.scrollTop,
-      };
-    };
-
-    characterViewportDrawRef.current = drawCharacters;
-    drawCharacters();
-    return () => {
-      if (characterViewportDrawRef.current === drawCharacters) characterViewportDrawRef.current = undefined;
-    };
-  }, [
-    characterDragPreview,
-    characterThumbnailRevision,
-    characterThumbnailUrls,
-    characterMapIndex,
-    extendedState,
-    isActive,
-    map,
-    selectedCharacterKey,
-    showCharacters,
-    characterViewportOverlayActive,
     zoom,
   ]);
-
-  useEffect(() => {
-    if (!characterViewportOverlayActive) return;
-    const canvasWrap = canvasWrapRef.current;
-    if (!canvasWrap) return;
-
-    let animationFrame: number | undefined;
-    const scheduleCharacterRedraw = () => {
-      // Moving the existing viewport raster immediately keeps it attached to the map even before
-      // the coalesced redraw runs. This is only a CSS transform, so panning does not pay for a full
-      // canvas repaint on every pointer event.
-      const lastDrawScroll = characterViewportLastDrawScrollRef.current;
-      if (lastDrawScroll) {
-        const deltaX = lastDrawScroll.left - canvasWrap.scrollLeft;
-        const deltaY = lastDrawScroll.top - canvasWrap.scrollTop;
-        characterViewportCanvasRef.current?.style.setProperty(
-          "transform",
-          deltaX || deltaY ? `translate(${deltaX}px, ${deltaY}px)` : "",
-        );
-      }
-      if (animationFrame !== undefined) return;
-      animationFrame = window.requestAnimationFrame(() => {
-        animationFrame = undefined;
-        characterViewportDrawRef.current?.();
-      });
-    };
-    characterViewportScheduleRef.current = scheduleCharacterRedraw;
-    canvasWrap.addEventListener("scroll", scheduleCharacterRedraw, { passive: true });
-    const resizeObserver =
-      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(scheduleCharacterRedraw);
-    resizeObserver?.observe(canvasWrap);
-    return () => {
-      canvasWrap.removeEventListener("scroll", scheduleCharacterRedraw);
-      resizeObserver?.disconnect();
-      if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
-      if (characterViewportScheduleRef.current === scheduleCharacterRedraw)
-        characterViewportScheduleRef.current = undefined;
-    };
-  }, [characterViewportOverlayActive]);
 
   useLayoutEffect(() => {
     const anchor = mapZoomAnchorRef.current;
@@ -1608,7 +1368,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) suppressMapClickRef.current = true;
     canvasWrap.scrollLeft = drag.startScrollLeft - deltaX;
     canvasWrap.scrollTop = drag.startScrollTop - deltaY;
-    characterViewportScheduleRef.current?.();
     event.preventDefault();
   };
 
@@ -1974,11 +1733,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               </span>
             </div>
             <div className="relative min-h-0 flex-1">
-              <div
-                ref={canvasWrapRef}
-                className="h-full overflow-auto p-3"
-                onScroll={() => characterViewportScheduleRef.current?.()}
-              >
+              <div ref={canvasWrapRef} className="h-full overflow-auto p-3">
                 <div
                   className="relative inline-block align-top"
                   style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
@@ -2021,12 +1776,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   </div>
                 </div>
               </div>
-              <canvas
-                ref={characterViewportCanvasRef}
-                aria-hidden="true"
-                style={{ display: characterViewportOverlayActive ? "block" : "none" }}
-                className="pointer-events-none absolute inset-0 z-10 block"
-              />
             </div>
           </div>
 
