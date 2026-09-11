@@ -40,23 +40,25 @@ const bitsetIndexes = (bitset: Uint8Array, count: number) =>
   Array.from({ length: count }, (_, index) => (bitset[index >> 3] >> (index & 7)) & 1);
 
 describe("campaign pathfinding character placement", () => {
-  it("decodes only navigable army terrain from the PPD cell grid", () => {
+  it("decodes navigable character terrain, including sea and rivers, from the PPD cell grid", () => {
     const parsed = parsePathfindingCharacterGrid(
-      pathfindingFixture(3, 2, [
+      pathfindingFixture(4, 2, [
         { type: 0, navigable: true },
         { type: 2, navigable: true },
         { type: 1, navigable: true },
+        { type: 1 },
         { type: 6 },
         { type: 6, navigable: true },
         { type: 3, navigable: true },
+        { type: 0 },
       ]),
     );
 
-    expect(parsed).toMatchObject({ version: 2, regionKeys: ["region_a"], width: 3, height: 2 });
-    expect(bitsetIndexes(parsed.usableCells, 6)).toEqual([1, 0, 1, 0, 1, 1]);
-    expect(bitsetIndexes(parsed.seaCells, 6)).toEqual([0, 0, 1, 0, 0, 0]);
-    expect(bitsetIndexes(parsed.riverCells, 6)).toEqual([0, 0, 0, 1, 1, 0]);
-    expect(bitsetIndexes(parsed.beachCells, 6)).toEqual([0, 0, 0, 0, 0, 1]);
+    expect(parsed).toMatchObject({ version: 2, regionKeys: ["region_a"], width: 4, height: 2 });
+    expect(bitsetIndexes(parsed.usableCells, 8)).toEqual([1, 0, 1, 0, 0, 1, 1, 0]);
+    expect(bitsetIndexes(parsed.seaCells, 8)).toEqual([0, 0, 1, 1, 0, 0, 0, 0]);
+    expect(bitsetIndexes(parsed.riverCells, 8)).toEqual([0, 0, 0, 0, 1, 1, 0, 0]);
+    expect(bitsetIndexes(parsed.beachCells, 8)).toEqual([0, 0, 0, 0, 0, 0, 1, 0]);
   });
 
   it("snaps an in-map character point to the nearest usable cell", () => {
