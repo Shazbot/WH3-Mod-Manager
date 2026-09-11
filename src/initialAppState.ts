@@ -22,7 +22,9 @@ const initialState = {
   isClosedOnPlay: false,
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,
-  isDualModListLayoutEnabled: false,
+  // A missing config means this is the manager's first run. Start with the two-pane mod list;
+  // an existing config is applied afterward and keeps its saved value (including legacy false).
+  isDualModListLayoutEnabled: true,
   modListDensity: "comfortable",
   isShowingDisabledModsLoadOrder: true,
   isModListCategoryViewEnabled: false,

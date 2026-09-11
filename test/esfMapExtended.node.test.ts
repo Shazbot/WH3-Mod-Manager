@@ -188,6 +188,29 @@ describe("extended map files", () => {
     expect(buildExtendedMapDelta(state.baseline, state.document)).toEqual({ version: 1, actions: [] });
   });
 
+  it("removes characters and emits the complete character in the delta", () => {
+    let state = createExtendedMapEditState(document);
+    state = applyExtendedMapEdit(state, {
+      type: "remove_character",
+      faction: "faction_a",
+      characterId: 4,
+    });
+
+    expect(state.document.faction_to_chars[0].chars).toEqual([]);
+    expect(buildExtendedMapDelta(state.baseline, state.document)).toEqual({
+      version: 1,
+      actions: [
+        {
+          type: "remove_character",
+          faction: "faction_a",
+          characterId: 4,
+          index: 0,
+          character: document.faction_to_chars[0].chars[0],
+        },
+      ],
+    });
+  });
+
   it("rejects malformed edit payloads without changing the state", () => {
     const state = createExtendedMapEditState(document);
     expect(() =>

@@ -304,6 +304,7 @@ export type ExtendedMapEditAction =
       characterId: number;
       changes: Partial<Pick<ExtendedMapCharacter, "x" | "y" | "rank" | "subtype">>;
     }
+  | { type: "remove_character"; faction: string; characterId: number }
   | { type: "add_unit"; faction: string; characterId: number; unit?: Partial<ExtendedMapUnit>; index?: number }
   | { type: "remove_unit"; faction: string; characterId: number; unitId: number }
   | {
@@ -395,6 +396,12 @@ export const applyExtendedMapEdit = (
     const character = findCharacter(document, action.faction, action.characterId);
     if (!character) throw new Error("Character was not found.");
     Object.assign(character, action.changes);
+  } else if (action.type === "remove_character") {
+    const group = findGroup(document, action.faction);
+    if (!group) throw new Error("Character was not found.");
+    const characterIndex = group.chars.findIndex((character) => character.id === action.characterId);
+    if (characterIndex < 0) throw new Error("Character was not found.");
+    group.chars.splice(characterIndex, 1);
   } else {
     const character = findCharacter(document, action.faction, action.characterId);
     if (!character) throw new Error("Character was not found.");
@@ -479,6 +486,7 @@ export type ExtendedMapDeltaAction =
       characterId: number;
       changes: Partial<Record<"x" | "y" | "rank" | "subtype", { before: number | string; after: number | string }>>;
     }
+  | { type: "remove_character"; faction: string; characterId: number; index: number; character: ExtendedMapCharacter }
   | { type: "add_unit"; faction: string; characterId: number; index: number; unit: ExtendedMapUnit }
   | { type: "remove_unit"; faction: string; characterId: number; index: number; unit: ExtendedMapUnit }
   | {
@@ -514,9 +522,20 @@ export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: Extend
   for (const afterGroup of after.faction_to_chars) {
     const beforeGroup = beforeGroups.get(afterGroup.faction.toLowerCase());
     if (!beforeGroup) continue;
-    const beforeChars = new Map(beforeGroup.chars.map((character) => [character.id, character]));
+    const beforeChars = new Map(beforeGroup.chars.map((character, index) => [character.id, { character, index }]));
+    const afterCharacterIds = new Set(afterGroup.chars.map((character) => character.id));
+    for (const [id, beforeEntry] of beforeChars) {
+      if (!afterCharacterIds.has(id))
+        actions.push({
+          type: "remove_character",
+          faction: afterGroup.faction,
+          characterId: id,
+          index: beforeEntry.index,
+          character: beforeEntry.character,
+        });
+    }
     for (const afterCharacter of afterGroup.chars) {
-      const beforeCharacter = beforeChars.get(afterCharacter.id);
+      const beforeCharacter = beforeChars.get(afterCharacter.id)?.character;
       if (!beforeCharacter) continue;
       const characterChanges: NonNullable<Extract<ExtendedMapDeltaAction, { type: "update_character" }>["changes"]> =
         {};
@@ -579,9 +598,10 @@ export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: Extend
     set_building: 0,
     add_building_slot: 1,
     update_character: 2,
-    add_unit: 3,
-    remove_unit: 4,
-    update_unit: 5,
+    remove_character: 3,
+    add_unit: 4,
+    remove_unit: 5,
+    update_unit: 6,
   };
   actions.sort((first, second) => {
     const firstKey =

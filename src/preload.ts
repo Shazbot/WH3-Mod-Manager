@@ -405,6 +405,8 @@ const api = {
       humanName?: string;
       isEnabled: boolean;
       isInData: boolean;
+      /** Lower values are the sources chosen first for same-named mods. */
+      priority?: number;
     }>;
     error?: string;
   }> => ipcRenderer.invoke("getViewerPackCatalog"),

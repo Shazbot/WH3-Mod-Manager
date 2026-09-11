@@ -1523,19 +1523,27 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             </button>
           ))}
         </div>
-        <label
-          className="flex items-center gap-1 text-xs text-gray-400"
-          title={mapText("mapCharactersHint", "Show and edit characters and armies")}
-        >
-          <input
-            type="checkbox"
-            checked={showCharacters}
-            disabled={!extendedState}
-            onChange={(event) => setShowCharacters(event.target.checked)}
-            className="accent-blue-600"
-          />
-          {mapText("mapCharacters", "Characters")}
-        </label>
+        {extendedState && (
+          <label
+            className="flex items-center gap-1 text-xs text-gray-400"
+            title={mapText("mapCharactersHint", "Show and edit characters and armies")}
+          >
+            <input
+              type="checkbox"
+              checked={showCharacters}
+              onChange={(event) => {
+                const shouldShowCharacters = event.target.checked;
+                setShowCharacters(shouldShowCharacters);
+                if (!shouldShowCharacters) {
+                  setSelectedCharacterKey(undefined);
+                  setCharacterDragPreview(undefined);
+                }
+              }}
+              className="accent-blue-600"
+            />
+            {mapText("mapCharacters", "Characters")}
+          </label>
+        )}
         {extendedState && (
           <div className="flex items-center gap-2">
             <span className="rounded border border-emerald-700 bg-emerald-950/50 px-2 py-1 text-xs text-emerald-300">
@@ -1590,7 +1598,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             ))}
           </select>
         )}
-        {map && map.settlementTypes.length > 0 && (
+        {map && mapView === "regions" && map.settlementTypes.length > 0 && (
           <select
             value={selectedSettlementType}
             onChange={(event) => setSelectedSettlementType(event.target.value)}
@@ -1610,7 +1618,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             <button
               type="button"
               aria-pressed={isEditingOwnership}
-              onClick={() => setIsEditingOwnership((isEditing) => !isEditing)}
+              onClick={() => {
+                if (!isEditingOwnership) {
+                  setSelectedCharacterKey(undefined);
+                  setCharacterDragPreview(undefined);
+                }
+                setIsEditingOwnership((isEditing) => !isEditing);
+              }}
               title={mapText(
                 "mapEditOwnershipHint",
                 "Left click gives a region to the selected faction, right click empties it.",
@@ -1975,6 +1989,21 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   <div className="min-w-0 flex-1 truncate font-medium text-yellow-200">
                     {selectedCharacter.character.subtype}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const removed = updateExtendedDocument({
+                        type: "remove_character",
+                        faction: selectedCharacter.faction,
+                        characterId: selectedCharacter.character.id,
+                      });
+                      if (removed) setSelectedCharacterKey(undefined);
+                    }}
+                    className="rounded border border-red-900 px-1.5 py-0.5 text-xs text-red-300 hover:bg-red-950"
+                    aria-label={mapText("mapDeleteCharacter", "Delete character")}
+                  >
+                    {mapText("mapDeleteCharacter", "Delete character")}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSelectedCharacterKey(undefined)}

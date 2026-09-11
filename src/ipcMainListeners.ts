@@ -206,6 +206,7 @@ import {
 } from "./modFunctions";
 import {
   DATA_MOD_SOURCE_ID,
+  getModSourceId,
   getWorkshopModSyncItems,
   insertCustomSourceAfterData,
   isWorkshopMod,
@@ -7777,6 +7778,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // renderer toggles a mod. Use the live enabled list for this field instead, otherwise the
       // viewer's enabled-mods picker is empty even while the manager has enabled mods.
       const enabledModPaths = new Set(appData.enabledMods.map((mod) => nodePath.resolve(mod.path).toLowerCase()));
+      const folderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const sourceOrder = normalizeModSourceOrder(folderPaths, appData.isFeaturesForModdersEnabled);
+      const sourcePriorityById = new Map(sourceOrder.map((sourceId, index) => [sourceId, index]));
       const seenPaths = new Set<string>();
       const packs = mods
         .filter((mod) => !mod.isDeleted && !!mod.path)
@@ -7792,6 +7796,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           humanName: mod.humanName,
           isEnabled: enabledModPaths.has(nodePath.resolve(mod.path).toLowerCase()),
           isInData: !!mod.isInData,
+          // This is the same ordering used by resolveModsBySourcePriority: source order first,
+          // then data/modding folders before the ordinary data folder. Lower is higher priority.
+          priority:
+            (sourcePriorityById.get(getModSourceId(mod)) ?? sourceOrder.length) * 2 +
+            (getModSourceId(mod) === DATA_MOD_SOURCE_ID && mod.isInModding ? 0 : 1),
         }))
         .toSorted((first, second) => {
           const firstLabel = first.humanName?.trim() || first.name;

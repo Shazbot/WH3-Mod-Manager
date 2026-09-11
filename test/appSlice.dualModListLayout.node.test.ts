@@ -13,14 +13,14 @@ import { SortingType } from "../src/utility/modRowSorting";
 import { selectConfigSavePayload, resetConfigSavePayloadCache } from "../src/config/configSavePayload";
 
 describe("dual mod list layout option", () => {
-  it("is off by default, so the All Mods tab keeps its single list", () => {
-    expect(initialState.isDualModListLayoutEnabled).toBe(false);
+  it("is on by default for a first run, so the All Mods tab opens with two panes", () => {
+    expect(initialState.isDualModListLayoutEnabled).toBe(true);
   });
 
   it("toggles", () => {
-    const on = appReducer(initialState, toggleIsDualModListLayoutEnabled());
-    expect(on.isDualModListLayoutEnabled).toBe(true);
-    expect(appReducer(on, toggleIsDualModListLayoutEnabled()).isDualModListLayoutEnabled).toBe(false);
+    const off = appReducer(initialState, toggleIsDualModListLayoutEnabled());
+    expect(off.isDualModListLayoutEnabled).toBe(false);
+    expect(appReducer(off, toggleIsDualModListLayoutEnabled()).isDualModListLayoutEnabled).toBe(true);
   });
 
   it("is restored from the config, and stays off when the config predates it", () => {

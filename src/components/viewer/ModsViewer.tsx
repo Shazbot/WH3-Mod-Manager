@@ -43,6 +43,7 @@ import { clearPreparedTableForPack } from "./tablePrepCache";
 import { getDefaultSaveAsPackName, getPackFileInventory, getPreferredTreeTab, hasLoadedDBTable } from "./viewerHelpers";
 import GlobalSearchPanel from "./GlobalSearchPanel";
 import LoadOrderRulesView from "./LoadOrderRulesView";
+import OpenPackDialog from "./OpenPackDialog";
 import { isLoadOrderRulesPackedFilePath } from "@/src/utility/loadOrderRulesFile";
 import { getVisibleRecentPackCount, MAX_RECENT_PACKS, sanitizeRecentPackPaths } from "@/src/utility/recentPackPaths";
 import { useKeepMountedOnceActive } from "../useKeepMountedOnceActive";
@@ -216,6 +217,7 @@ const ModsViewer = memo(() => {
   const [newPackName, setNewPackName] = React.useState("");
   const [isNewPackProcessing, setIsNewPackProcessing] = React.useState(false);
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const [isOpenPackDialogOpen, setIsOpenPackDialogOpen] = useState(false);
   const [isRecentPacksOpen, setIsRecentPacksOpen] = useState(false);
   const [visibleRecentPackCount, setVisibleRecentPackCount] = useState(MAX_RECENT_PACKS);
   const [packCloseConfirmPath, setPackCloseConfirmPath] = useState<string | null>(null);
@@ -1800,6 +1802,16 @@ const ModsViewer = memo(() => {
     setIsNewPackModalOpen(true);
   };
 
+  const handleOpenPackDialog = () => {
+    setIsFileMenuOpen(false);
+    setIsRecentPacksOpen(false);
+    setIsOpenPackDialogOpen(true);
+  };
+
+  const handleOpenPack = useCallback((packPath: string) => {
+    window.api?.requestOpenModInViewer(packPath);
+  }, []);
+
   const handleAddNewFlow = () => {
     setIsFileMenuOpen(false);
     treeViewRefs.current[activePackPath ?? ""]?.openNewFlowDialog();
@@ -2001,6 +2013,14 @@ const ModsViewer = memo(() => {
           </Modal.Body>
         </Modal>
       )}
+
+      {/* Open Pack Modal */}
+      <OpenPackDialog
+        show={isOpenPackDialogOpen}
+        currentPackPath={activePackPath}
+        onClose={() => setIsOpenPackDialogOpen(false)}
+        onOpenPack={handleOpenPack}
+      />
 
       {/* Save As Modal */}
       <Modal onClose={() => setIsSaveAsModalOpen(false)} show={isSaveAsModalOpen} size="md" position="center">
@@ -2368,7 +2388,22 @@ const ModsViewer = memo(() => {
                         >
                           {localized.viewerNewPack || "New Pack"}
                         </button>
-                        <div className="relative">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={handleOpenPackDialog}
+                          className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+                        >
+                          {localized.viewerOpenPack || "Open Pack"}
+                        </button>
+                        <div
+                          className="relative"
+                          onMouseLeave={(event) => {
+                            const relatedTarget = event.relatedTarget;
+                            if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
+                            setIsRecentPacksOpen(false);
+                          }}
+                        >
                           <button
                             type="button"
                             role="menuitem"
@@ -2388,7 +2423,7 @@ const ModsViewer = memo(() => {
                               ref={recentPackMenuRef}
                               role="menu"
                               aria-label={localized.viewerOpenRecent || "Open Recent"}
-                              className="absolute left-full top-0 z-50 ml-1 min-w-[16rem] max-w-[28rem] overflow-hidden rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
+                              className="absolute left-full top-0 z-50 min-w-[16rem] max-w-[28rem] overflow-hidden rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
                             >
                               {availableRecentPackPaths.length > 0 ? (
                                 availableRecentPackPaths.slice(0, visibleRecentPackCount).map((packPath, index) => (

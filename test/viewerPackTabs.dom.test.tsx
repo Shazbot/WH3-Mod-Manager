@@ -634,6 +634,7 @@ describe("multiple pack viewer tabs", () => {
     await user.click(fileButton);
     expect(fileButton).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("menuitem", { name: "New Pack", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open Pack", exact: true })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Add New Flow", exact: true })).toBeInTheDocument();
 
     await user.click(screen.getByRole("menuitem", { name: "Add New Flow", exact: true }));
@@ -720,7 +721,11 @@ describe("multiple pack viewer tabs", () => {
     expect(screen.getAllByTestId(/^recent-pack-/)).toHaveLength(20);
     expect(screen.queryByText("db.pack", { exact: true })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("menuitem", { name: "pack-19.pack", exact: true }));
+    await user.hover(screen.getByRole("menuitem", { name: "New Pack", exact: true }));
+    expect(screen.queryByRole("menu", { name: "Open Recent" })).not.toBeInTheDocument();
+
+    await user.hover(openRecent);
+    fireEvent.click(screen.getByRole("menuitem", { name: "pack-19.pack", exact: true }));
     expect(requestOpenModInViewer).toHaveBeenCalledWith("/mods/pack-19.pack");
     expect(screen.queryByRole("menu", { name: "Open Recent" })).not.toBeInTheDocument();
   });
