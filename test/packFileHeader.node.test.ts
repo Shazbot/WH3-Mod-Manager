@@ -5,10 +5,15 @@ import { describe, expect, it } from "vitest";
 
 import { packedFileIndexHasStartpos, readPackHeader, scanPackedFileIndex } from "../src/packFileHandler";
 
-const makeIndexEntry = (name: string, hasCompressionFlag: boolean) => {
-  const metadata = Buffer.alloc(hasCompressionFlag ? 5 : 4);
+const makeIndexEntry = (name: string, hasCompressionFlag: boolean, hasFileNameHash = false) => {
+  const metadata = Buffer.alloc(4 + (hasFileNameHash ? 4 : 0) + (hasCompressionFlag ? 1 : 0));
   metadata.writeInt32LE(123, 0);
-  if (hasCompressionFlag) metadata.writeInt8(0, 4);
+  let position = 4;
+  if (hasFileNameHash) {
+    metadata.writeUInt32LE(0x6a53eb17, position);
+    position += 4;
+  }
+  if (hasCompressionFlag) metadata.writeInt8(0, position);
   return Buffer.concat([metadata, Buffer.from(name, "utf8"), Buffer.from([0])]);
 };
 
@@ -59,6 +64,33 @@ describe("pack header file index metadata", () => {
     expect(packedFileIndexHasStartpos(index, 1, false)).toBe(true);
   });
 
+  it.each([0x40, 0x41])("reads PFH5 hashed indexes with byte mask %#", async (byteMask) => {
+    const packedFileIndex = makeIndexEntry("campaigns\\main_warhammer\\startpos.esf", true, true);
+    const header = Buffer.alloc(28);
+    header.write("PFH5", 0, "ascii");
+    header.writeInt32LE(byteMask, 4);
+    header.writeInt32LE(0, 8);
+    header.writeInt32LE(0, 12);
+    header.writeInt32LE(1, 16);
+    header.writeInt32LE(packedFileIndex.length, 20);
+
+    const testDirectory = await mkdtemp(path.join(tmpdir(), "whmm-hashed-pack-header-"));
+    const packPath = path.join(testDirectory, "hashed.pack");
+    try {
+      await writeFile(packPath, Buffer.concat([header, packedFileIndex]));
+
+      await expect(readPackHeader(packPath, true)).resolves.toEqual({
+        path: packPath,
+        isMovie: false,
+        hasStartpos: true,
+        hasLoadOrderRules: false,
+        dependencyPacks: [],
+      });
+    } finally {
+      await rm(testDirectory, { recursive: true });
+    }
+  });
+
   it("does not match similarly named files or malformed indexes", () => {
     const index = makeIndexEntry("campaigns\\main_warhammer\\not_startpos.esf", true);
 
@@ -104,5 +136,15 @@ describe("scanPackedFileIndex", () => {
   it("reports neither for a pack holding nothing special", () => {
     const index = Buffer.concat([makeIndexEntry("db\\units_tables\\data__", true)]);
     expect(scanPackedFileIndex(index, 1, true)).toEqual({ hasStartpos: false, hasLoadOrderRules: false });
+  });
+
+  it("skips the filename hash before scanning a hashed PFH5 entry", () => {
+    const index = makeIndexEntry("whmm\\load_order.whmm", true, true);
+
+    expect(scanPackedFileIndex(index, 1, true, true)).toEqual({
+      hasStartpos: false,
+      hasLoadOrderRules: true,
+      loadOrderRulesFileName: "whmm\\load_order.whmm",
+    });
   });
 });

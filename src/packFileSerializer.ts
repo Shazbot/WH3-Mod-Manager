@@ -29,6 +29,7 @@ import { compareModNames } from "./modSortingHelpers";
 import { getDBName, getDBPackedFilePath, parseDBTablePath, resolveParsedDBVersion } from "./utility/packFileHelpers";
 import { groupPackedFilesIntoReadRuns } from "./utility/packedFileReadRuns";
 import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
+import { hasPackedFileNameHash, readPackedFileIndexEntry } from "./utility/packFileIndex";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
 import { resolveRadioChoiceId } from "./nodeGraph/types";
 import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
@@ -3158,26 +3159,13 @@ export const readPack = async (
     // console.time("1000files");
     let bufPos = 0;
     // console.log("pack_file_count is " + pack_file_count);
+    const hasCompressionFlag = supportsCompression[appData.currentGame];
+    const hasFileNameHash = hasPackedFileNameHash(byteMask);
     for (let i = 0; i < pack_file_count; i++) {
-      let name = "";
-      const file_size = headerBuffer.readInt32LE(bufPos);
-      bufPos += 4;
-      let is_compressed = false;
-      if (appData.currentGame != "attila") {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        is_compressed = headerBuffer.readInt8(bufPos) == 1;
-        bufPos += 1;
-      }
-      // const file_size = (stream.read(4) as Buffer).readInt32LE();
-      // const is_compressed = (stream.read(1) as Buffer).readInt8();
-      const nameStartPos = bufPos;
-      for (let i = nameStartPos; i < headerBuffer.length; i++) {
-        if (headerBuffer[i] === 0) {
-          name = headerBuffer.toString("utf8", nameStartPos, i);
-          bufPos = i + 1;
-          break;
-        }
-      }
+      const entry = readPackedFileIndexEntry(headerBuffer, bufPos, hasCompressionFlag, hasFileNameHash);
+      if (!entry) throw new Error(`Could not parse packed-file index entry ${i} in ${modPath}`);
+      const { name, file_size, is_compressed } = entry;
+      bufPos = entry.nextPosition;
       // if (i === 1000) {
       // console.log(console.timeEnd("1000files"));
       // }

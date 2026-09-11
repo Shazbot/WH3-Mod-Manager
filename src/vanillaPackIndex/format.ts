@@ -27,7 +27,7 @@ import {
 /** "WVPI". Guards against handing the decoder some other cache file. */
 const MAGIC = 0x57565049;
 /** Bumped whenever the layout below changes, which makes every existing file stale rather than wrong. */
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 2;
 const HEADER_BYTES = 32;
 
 /** Pack ids are stored as Uint16, so the manifest cannot name more packs than this. */
@@ -68,9 +68,8 @@ export interface VanillaPackFileNames {
  * written either way finds the same file.
  *
  * Lowercasing is lossless for the packs this indexes: across a current Warhammer III install every
- * one of the 680,000 names is already lowercase. The only exceptions are the three packs whose header
- * sets mask bit 0x40 (boot, shaders, shaders_bl), whose index layout `readPack` misreads into
- * mojibake - which it does identically whether or not this index is involved, so the two agree.
+ * one of the 680,000 names is already lowercase, including the hashed PFH5 indexes used by boot and
+ * shader packs.
  */
 export const normalizeVanillaPackPath = (packFilePath: string): string =>
   packFilePath.replace(/\//g, "\\").toLowerCase();

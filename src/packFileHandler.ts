@@ -1,5 +1,6 @@
 import BinaryFile from "binary-file";
 import { isLoadOrderRulesPackedFilePath } from "./utility/loadOrderRulesFile";
+import { hasPackedFileNameHash, readPackedFileIndexEntry } from "./utility/packFileIndex";
 
 const isStartposPackedFile = (packedFileName: string) => {
   const normalizedName = packedFileName.replaceAll("/", "\\").toLowerCase();
@@ -30,19 +31,16 @@ export const scanPackedFileIndex = (
   packedFileIndex: Buffer,
   packFileCount: number,
   hasCompressionFlag: boolean,
+  hasFileNameHash = false,
 ): PackedFileIndexScan => {
   const scan: PackedFileIndexScan = { hasStartpos: false, hasLoadOrderRules: false };
   let position = 0;
 
   for (let index = 0; index < packFileCount; index++) {
-    const metadataSize = 4 + (hasCompressionFlag ? 1 : 0);
-    if (position + metadataSize > packedFileIndex.length) return scan;
-    position += metadataSize;
+    const entry = readPackedFileIndexEntry(packedFileIndex, position, hasCompressionFlag, hasFileNameHash);
+    if (!entry) return scan;
 
-    const nameEnd = packedFileIndex.indexOf(0, position);
-    if (nameEnd === -1) return scan;
-
-    const name = packedFileIndex.toString("utf8", position, nameEnd);
+    const { name } = entry;
     if (!scan.hasStartpos && isStartposPackedFile(name)) scan.hasStartpos = true;
     if (!scan.hasLoadOrderRules && isLoadOrderRulesPackedFilePath(name)) {
       scan.hasLoadOrderRules = true;
@@ -50,7 +48,7 @@ export const scanPackedFileIndex = (
     }
     if (scan.hasStartpos && scan.hasLoadOrderRules) return scan;
 
-    position = nameEnd + 1;
+    position = entry.nextPosition;
   }
 
   return scan;
@@ -60,7 +58,8 @@ export const packedFileIndexHasStartpos = (
   packedFileIndex: Buffer,
   packFileCount: number,
   hasCompressionFlag: boolean,
-) => scanPackedFileIndex(packedFileIndex, packFileCount, hasCompressionFlag).hasStartpos;
+  hasFileNameHash = false,
+) => scanPackedFileIndex(packedFileIndex, packFileCount, hasCompressionFlag, hasFileNameHash).hasStartpos;
 
 export const readPackHeader = async (path: string, hasCompressionFlag = true): Promise<PackHeaderData> => {
   let file: BinaryFile | undefined;
@@ -104,7 +103,12 @@ export const readPackHeader = async (path: string, hasCompressionFlag = true): P
 
     if (packed_file_index_size > 0 && pack_file_count > 0) {
       const packedFileIndex = await file.read(packed_file_index_size);
-      const scan = scanPackedFileIndex(packedFileIndex, pack_file_count, hasCompressionFlag);
+      const scan = scanPackedFileIndex(
+        packedFileIndex,
+        pack_file_count,
+        hasCompressionFlag,
+        hasPackedFileNameHash(byteMask),
+      );
       hasStartpos = scan.hasStartpos;
       hasLoadOrderRules = scan.hasLoadOrderRules;
       loadOrderRulesFileName = scan.loadOrderRulesFileName;
