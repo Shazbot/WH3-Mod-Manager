@@ -152,6 +152,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
   const mapImageLoadsRef = useRef(new Map<string, Promise<HTMLImageElement | undefined>>());
   const characterThumbnailSourcesRef = useRef(new Set<string>());
+  const characterThumbnailPathsRef = useRef<string[]>([]);
+  const characterThumbnailSessionRef = useRef<string>();
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -293,6 +295,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     () => (showCharacters ? Array.from(new Set(characterThumbnailPathByKey.values())) : []),
     [characterThumbnailPathByKey, showCharacters],
   );
+  // Character coordinates are part of the extended document, but do not change which card assets
+  // are needed. Keep the prewarm effect keyed to the actual path set so moving one character does
+  // not briefly remove every other character's thumbnail.
+  const characterThumbnailPathsKey = useMemo(
+    () => JSON.stringify([...characterThumbnailPaths].sort()),
+    [characterThumbnailPaths],
+  );
+  characterThumbnailPathsRef.current = characterThumbnailPaths;
   const resolvedCharacterThumbnailPathSet = useMemo(
     () => new Set(resolvedCharacterThumbnailPaths),
     [resolvedCharacterThumbnailPaths],
@@ -775,29 +785,37 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   }, [enabledModsSignature, isExtendedFormat, showOwnershipToast]);
 
   useEffect(() => {
+    const requestedPaths = characterThumbnailPathsRef.current;
     if (!isActive) return;
-    if (!showCharacters || !unitViewerSessionId || characterThumbnailPaths.length === 0 || !window.api) {
+    if (!showCharacters || !unitViewerSessionId || requestedPaths.length === 0 || !window.api) {
       setResolvedCharacterThumbnailPaths((paths) => (paths.length === 0 ? paths : []));
       return;
     }
     const requestedSessionId = unitViewerSessionId;
-    const requestedPaths = characterThumbnailPaths;
+    const previousSessionId = characterThumbnailSessionRef.current;
+    characterThumbnailSessionRef.current = requestedSessionId;
     let current = true;
-    setResolvedCharacterThumbnailPaths([]);
+    const requested = new Set(requestedPaths);
+    setResolvedCharacterThumbnailPaths((paths) => {
+      if (previousSessionId !== requestedSessionId) return paths.length === 0 ? paths : [];
+      const retained = paths.filter((path) => requested.has(path));
+      return retained.length === paths.length ? paths : retained;
+    });
     window.api
-      .prewarmUnitViewerAssets(requestedSessionId, requestedPaths)
+      .prewarmUnitViewerAssets(requestedSessionId, [...requestedPaths])
       .then((response) => {
         if (!current || unitViewerSessionId !== requestedSessionId || !response?.success) return;
-        const requested = new Set(requestedPaths);
-        setResolvedCharacterThumbnailPaths(
-          Array.from(new Set((response.resolved ?? []).filter((path) => requested.has(path)))),
+        setResolvedCharacterThumbnailPaths((paths) =>
+          Array.from(new Set([...paths.filter((path) => requested.has(path)), ...(response.resolved ?? [])])).filter(
+            (path) => requested.has(path),
+          ),
         );
       })
       .catch(() => undefined);
     return () => {
       current = false;
     };
-  }, [characterThumbnailPaths, isActive, showCharacters, unitViewerSessionId]);
+  }, [characterThumbnailPathsKey, isActive, showCharacters, unitViewerSessionId]);
 
   // Drop decoded character-card copies when the map no longer references them, while leaving the
   // background/flag cache untouched.
