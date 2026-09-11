@@ -1290,6 +1290,8 @@
   "mapPaintingAs": "Painting as {{faction}}",
   "mapImportOwnership": "Import…",
   "mapExportOwnership": "Export…",
+  "mapUndoImport": "Undo import",
+  "mapUndoImportHint": "Undo extended map import",
   "mapOwnershipExported": "Region ownership written to {{path}}",
   "mapOwnershipExportFailed": "Could not write the region ownership file: {{error}}",
   "mapOwnershipImported": "Imported ownership for {{count}} region(s).",

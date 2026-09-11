@@ -149,6 +149,16 @@ type OwnershipEditEntry = {
   after: string | null;
 };
 
+type ExtendedMapImportUndo = {
+  ownershipBaseline: OwnershipEdits;
+  ownershipEdits: OwnershipEdits;
+  editHistory: OwnershipEdits[];
+  extendedState?: ExtendedMapEditState;
+  extendedHistory: ExtendedMapDocument[];
+  showCharacters: boolean;
+  selectedCharacterKey?: { faction: string; id: number };
+};
+
 const extendedEditActionKey = (action: ExtendedMapDeltaAction, index: number) => {
   const target = "region" in action ? action.region : `${action.faction}:${action.characterId}`;
   const detail =
@@ -342,12 +352,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [isEditingOwnership, setIsEditingOwnership] = useState(false);
   /** The faction a left click paints, held as its canonical key. Independent of the region selection. */
   const [brushFaction, setBrushFaction] = useState<string>();
+  /** Ownership imported with an extended map is the clean baseline for subsequent ownership edits. */
+  const [ownershipBaseline, setOwnershipBaseline] = useState<OwnershipEdits>({});
   const [ownershipEdits, setOwnershipEdits] = useState<OwnershipEdits>({});
   const [editHistory, setEditHistory] = useState<OwnershipEdits[]>([]);
   const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
   /** Extended map data is kept separate from ESF ownership so legacy map.json remains unchanged. */
   const [extendedState, setExtendedState] = useState<ExtendedMapEditState>();
   const [extendedHistory, setExtendedHistory] = useState<ExtendedMapDocument[]>([]);
+  const [extendedImportUndo, setExtendedImportUndo] = useState<ExtendedMapImportUndo>();
   const [showCharacters, setShowCharacters] = useState(false);
   const [selectedCharacterKey, setSelectedCharacterKey] = useState<{ faction: string; id: number }>();
   const [characterDragPreview, setCharacterDragPreview] = useState<{
@@ -372,14 +385,26 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     () => new Map((baseMap?.factions ?? []).map((faction) => [faction.key.toLowerCase(), faction])),
     [baseMap],
   );
+  const mapWithoutPendingOwnershipEdits = useMemo(
+    () => (baseMap ? applyOwnershipEdits(baseMap, ownershipBaseline, factionsByKey) : undefined),
+    [baseMap, factionsByKey, ownershipBaseline],
+  );
   // Everything below reads the edited map, so the canvas, the sidebar and the counts all agree.
   const map = useMemo(
-    () => (baseMap ? applyOwnershipEdits(baseMap, ownershipEdits, factionsByKey) : undefined),
-    [baseMap, factionsByKey, ownershipEdits],
+    () =>
+      mapWithoutPendingOwnershipEdits
+        ? applyOwnershipEdits(mapWithoutPendingOwnershipEdits, ownershipEdits, factionsByKey)
+        : undefined,
+    [factionsByKey, mapWithoutPendingOwnershipEdits, ownershipEdits],
   );
   const baseOwnerByRegion = useMemo(
-    () => new Map((baseMap?.markers ?? []).map((marker) => [marker.key, marker.ownerFaction ?? null] as const)),
-    [baseMap],
+    () =>
+      new Map(
+        (mapWithoutPendingOwnershipEdits?.markers ?? []).map(
+          (marker) => [marker.key, marker.ownerFaction ?? null] as const,
+        ),
+      ),
+    [mapWithoutPendingOwnershipEdits],
   );
   const editedRegionCount = Object.keys(ownershipEdits).length;
   const isEditingFactions = mapView === "factions" && isEditingOwnership;
@@ -708,10 +733,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const campaignKey = baseMap?.campaignKey;
   useEffect(() => {
     setOwnershipEdits({});
+    setOwnershipBaseline({});
     setEditHistory([]);
     setBrushFaction(undefined);
     setExtendedState(undefined);
     setExtendedHistory([]);
+    setExtendedImportUndo(undefined);
     setSelectedCharacterKey(undefined);
     setCharacterDragPreview(undefined);
     factionRegionCycleRef.current = undefined;
@@ -724,16 +751,43 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [ownershipEdits],
   );
 
-  /** Records an owner for a region, dropping the edit again when it lands back on the startpos owner. */
+  const captureExtendedMapImportUndo = useCallback(
+    (): ExtendedMapImportUndo => ({
+      ownershipBaseline: { ...ownershipBaseline },
+      ownershipEdits: { ...ownershipEdits },
+      editHistory: editHistory.map((edits) => ({ ...edits })),
+      extendedState: extendedState
+        ? {
+            ...extendedState,
+            baseline: cloneExtendedMap(extendedState.baseline),
+            document: cloneExtendedMap(extendedState.document),
+          }
+        : undefined,
+      extendedHistory: extendedHistory.map(cloneExtendedMap),
+      showCharacters,
+      selectedCharacterKey: selectedCharacterKey ? { ...selectedCharacterKey } : undefined,
+    }),
+    [
+      editHistory,
+      extendedHistory,
+      extendedState,
+      ownershipBaseline,
+      ownershipEdits,
+      selectedCharacterKey,
+      showCharacters,
+    ],
+  );
+
+  /** Records an owner for a region, dropping the edit again when it lands back on the clean baseline owner. */
   const paintRegion = (regionKey: string, owner: string | null) => {
-    const startposOwner = baseOwnerByRegion.get(regionKey) ?? null;
-    const currentOwner = regionKey in ownershipEdits ? ownershipEdits[regionKey] : startposOwner;
+    const baselineOwner = baseOwnerByRegion.get(regionKey) ?? null;
+    const currentOwner = regionKey in ownershipEdits ? ownershipEdits[regionKey] : baselineOwner;
     if (factionKey(currentOwner) === factionKey(owner)) return;
 
     pushEditHistory();
     setOwnershipEdits((edits) => {
       const next = { ...edits };
-      if (factionKey(startposOwner) === factionKey(owner)) delete next[regionKey];
+      if (factionKey(baselineOwner) === factionKey(owner)) delete next[regionKey];
       else next[regionKey] = owner;
       return next;
     });
@@ -832,6 +886,30 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setExtendedHistory((history) => history.slice(0, -1));
   }, [extendedHistory, extendedState]);
 
+  const undoExtendedImport = useCallback(() => {
+    if (!extendedImportUndo) return;
+    setOwnershipBaseline({ ...extendedImportUndo.ownershipBaseline });
+    setOwnershipEdits({ ...extendedImportUndo.ownershipEdits });
+    setEditHistory(extendedImportUndo.editHistory.map((edits) => ({ ...edits })));
+    setExtendedState(
+      extendedImportUndo.extendedState
+        ? {
+            ...extendedImportUndo.extendedState,
+            baseline: cloneExtendedMap(extendedImportUndo.extendedState.baseline),
+            document: cloneExtendedMap(extendedImportUndo.extendedState.document),
+          }
+        : undefined,
+    );
+    setExtendedHistory(extendedImportUndo.extendedHistory.map(cloneExtendedMap));
+    setShowCharacters(extendedImportUndo.showCharacters);
+    setSelectedCharacterKey(
+      extendedImportUndo.selectedCharacterKey ? { ...extendedImportUndo.selectedCharacterKey } : undefined,
+    );
+    setCharacterDragPreview(undefined);
+    setOpenEditPanel(undefined);
+    setExtendedImportUndo(undefined);
+  }, [extendedImportUndo]);
+
   const revertExtendedEdits = () => {
     if (!extendedState || !extendedDelta || extendedDelta.actions.length === 0) return;
     setExtendedHistory((history) =>
@@ -914,14 +992,21 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           ? detected.ownership
           : Object.fromEntries(detected.document.regions.map((region) => [region.region, region.faction]));
       const { edits, unknownRegions, unknownFactions } = ownershipEditsFromImport(baseMap, ownership, baseMap.factions);
-      pushEditHistory();
-      setOwnershipEdits(edits);
       if (detected.format === "extended") {
+        const importedMap = applyOwnershipEdits(baseMap, edits, factionsByKey);
+        setExtendedImportUndo(captureExtendedMapImportUndo());
+        setOwnershipBaseline(regionOwnership(importedMap));
+        setOwnershipEdits({});
+        setEditHistory([]);
         setExtendedState(createExtendedMapEditState(detected.document));
         setExtendedHistory([]);
         setSelectedCharacterKey(undefined);
         setShowCharacters(true);
       } else {
+        pushEditHistory();
+        setOwnershipBaseline({});
+        setOwnershipEdits(edits);
+        setExtendedImportUndo(undefined);
         setExtendedState(undefined);
         setExtendedHistory([]);
         setSelectedCharacterKey(undefined);
@@ -1801,6 +1886,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             <span className="rounded border border-emerald-700 bg-emerald-950/50 px-2 py-1 text-xs text-emerald-300">
               {mapText("mapExtendedFormat", "Extended map")}
             </span>
+            {extendedImportUndo && (
+              <button
+                type="button"
+                onClick={undoExtendedImport}
+                disabled={isTransferringOwnership}
+                title={mapText("mapUndoImportHint", "Undo extended map import")}
+                className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
+              >
+                {mapText("mapUndoImport", "Undo import")}
+              </button>
+            )}
             <button
               type="button"
               onClick={undoExtendedEdit}
@@ -1899,22 +1995,24 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 {mapMessage("mapEditedRegions", "{{count}} edited", { count: editedRegionCount })}
               </button>
             )}
-            <button
-              type="button"
-              onClick={importOwnership}
-              disabled={isTransferringOwnership}
-              className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
-            >
-              {mapText("mapImportOwnership", "Import…")}
-            </button>
-            <button
-              type="button"
-              onClick={exportOwnership}
-              disabled={isTransferringOwnership}
-              className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
-            >
-              {mapText("mapExportOwnership", "Export…")}
-            </button>
+            <div className="ml-2 flex items-center gap-2 border-l border-gray-700 pl-2">
+              <button
+                type="button"
+                onClick={importOwnership}
+                disabled={isTransferringOwnership}
+                className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
+              >
+                {mapText("mapImportOwnership", "Import…")}
+              </button>
+              <button
+                type="button"
+                onClick={exportOwnership}
+                disabled={isTransferringOwnership}
+                className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
+              >
+                {mapText("mapExportOwnership", "Export…")}
+              </button>
+            </div>
           </div>
         )}
         {map && (
@@ -2099,7 +2197,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     ))}
                   </div>
                 </div>
-                {isEditingFactions && (
+                {isEditingOwnership && (
                   <>
                     <div
                       className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
