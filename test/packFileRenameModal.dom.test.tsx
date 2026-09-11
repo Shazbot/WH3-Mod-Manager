@@ -5,6 +5,29 @@ import { describe, expect, it } from "vitest";
 import PackFileRenameModal from "../src/components/viewer/PackFileRenameModal";
 
 describe("PackFileRenameModal", () => {
+  it("uses the primary field to replace the whole file name", async () => {
+    render(
+      <PackFileRenameModal
+        show
+        mode="rename"
+        paths={["ui\\data.txt"]}
+        existingPaths={{ pack: ["ui\\data.txt"], unsaved: [] }}
+        onClose={() => undefined}
+        onApply={() => undefined}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "New file name" }), {
+      target: { value: "renamed.txt" },
+    });
+
+    await waitFor(() => expect(screen.getByTestId("rename-preview")).toHaveTextContent("ui\\renamed.txt"), {
+      timeout: 1000,
+    });
+    expect(screen.getByTestId("rename-preview")).not.toHaveTextContent("ui\\data.txt → ui\\renamed.txt");
+    expect(screen.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+  });
+
   it("updates its preview after the debounce", async () => {
     render(
       <PackFileRenameModal

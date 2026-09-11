@@ -9,6 +9,8 @@ export interface PackFileRenameOptions {
   replace: string;
   useRegex: boolean;
   scope: PackFileRenameScope;
+  /** Replaces the selected file name as a whole instead of matching within it. */
+  replaceWholeName?: boolean;
 }
 
 export interface PackFileRenameEntry {
@@ -92,7 +94,10 @@ export const planPackFileRename = (
     }
 
     const sourceSegment = options.scope === "name" ? name : options.scope === "folder" ? folder : normalized;
-    const replacedSegment = getReplacement(sourceSegment, options, regex);
+    const replacedSegment =
+      options.replaceWholeName && options.scope === "name"
+        ? options.replace
+        : getReplacement(sourceSegment, options, regex);
     if (options.scope === "name" && !replacedSegment) {
       result.errors.push({ path: originalPath, message: "The resulting file name is empty" });
       continue;

@@ -34,6 +34,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
   onApply,
 }) => {
   const localized: Record<string, string> = useContext(localizationContext);
+  const [newFileName, setNewFileName] = useState("");
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
   const [useRegex, setUseRegex] = useState(false);
@@ -48,6 +49,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
 
   useEffect(() => {
     if (!show) return;
+    setNewFileName("");
     setFind("");
     setReplace("");
     setUseRegex(false);
@@ -60,7 +62,8 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
     if (!show) return;
     setPreviewPlan(emptyPlan);
     const timeout = window.setTimeout(() => {
-      if (!find) {
+      const useWholeName = mode === "rename" && !!newFileName;
+      if (!useWholeName && !find) {
         setPreviewPlan(emptyPlan);
         return;
       }
@@ -69,16 +72,17 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
           {
             paths,
             find,
-            replace,
-            useRegex,
+            replace: useWholeName ? newFileName : replace,
+            useRegex: useWholeName ? false : useRegex,
             scope,
+            replaceWholeName: useWholeName,
           },
           existingPaths,
         ),
       );
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [existingPaths, find, paths, replace, scope, show, useRegex]);
+  }, [existingPaths, find, mode, newFileName, paths, replace, scope, show, useRegex]);
 
   const canApply =
     !isApplying &&
@@ -114,36 +118,55 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
             ).replace("{{count}}", String(paths.length))}
           </p>
 
-          <label className="mb-3 flex items-center gap-2 text-white">
-            <input
-              type="checkbox"
-              checked={useRegex}
-              onChange={(event) => setUseRegex(event.target.checked)}
-              className="h-4 w-4"
-            />
-            {localized.viewerUseRegularExpression || "Use regular expression"}
-          </label>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-1 block text-gray-300">{localized.viewerFind || "Find"}</span>
+          {mode === "rename" && (
+            <label className="mb-5 block">
+              <span className="mb-1 block text-gray-300">{localized.viewerNewFileName || "New file name"}</span>
               <input
-                aria-label={localized.viewerFind || "Find"}
-                value={find}
-                onChange={(event) => setFind(event.target.value)}
+                aria-label={localized.viewerNewFileName || "New file name"}
+                value={newFileName}
+                onChange={(event) => setNewFileName(event.target.value)}
                 className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
                 autoFocus
               />
             </label>
-            <label className="block">
-              <span className="mb-1 block text-gray-300">{localized.viewerReplaceWith || "Replace with"}</span>
+          )}
+
+          <div className={mode === "rename" ? "border-t border-gray-700 pt-4" : ""}>
+            {mode === "rename" && (
+              <div className="mb-3 font-medium text-white">{localized.viewerPartialMatching || "Partial matching"}</div>
+            )}
+
+            <label className="mb-3 flex items-center gap-2 text-white">
               <input
-                aria-label={localized.viewerReplaceWith || "Replace with"}
-                value={replace}
-                onChange={(event) => setReplace(event.target.value)}
-                className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                type="checkbox"
+                checked={useRegex}
+                onChange={(event) => setUseRegex(event.target.checked)}
+                className="h-4 w-4"
               />
+              {localized.viewerUseRegularExpression || "Use regular expression"}
             </label>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-gray-300">{localized.viewerFind || "Find"}</span>
+                <input
+                  aria-label={localized.viewerFind || "Find"}
+                  value={find}
+                  onChange={(event) => setFind(event.target.value)}
+                  className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                  autoFocus={mode === "move"}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-gray-300">{localized.viewerReplaceWith || "Replace with"}</span>
+                <input
+                  aria-label={localized.viewerReplaceWith || "Replace with"}
+                  value={replace}
+                  onChange={(event) => setReplace(event.target.value)}
+                  className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                />
+              </label>
+            </div>
           </div>
 
           {mode === "move" && (

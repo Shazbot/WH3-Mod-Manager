@@ -33,6 +33,22 @@ describe("pack file rename planning", () => {
     ).toEqual([{ originalPath: "ui\\custom\\file.txt", newPath: "content\\overrides\\file.txt" }]);
   });
 
+  it("replaces the whole file name when requested", () => {
+    expect(
+      planPackFileRename(
+        {
+          paths: ["ui\\data.txt"],
+          find: "data",
+          replace: "renamed_{x}.txt",
+          useRegex: false,
+          scope: "name",
+          replaceWholeName: true,
+        },
+        existing,
+      ).entries,
+    ).toEqual([{ originalPath: "ui\\data.txt", newPath: "ui\\renamed_{x}.txt" }]);
+  });
+
   it("applies regexes to the selected name, folder, or full path", () => {
     expect(
       planPackFileRename(

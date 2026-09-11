@@ -1868,6 +1868,8 @@
   "viewerRenameFilesTitle": "Rename files",
   "viewerMoveFilesTitle": "Move files",
   "viewerSelectedFilesPattern": "{{count}} file(s) selected. Enter a pattern to preview the result.",
+  "viewerNewFileName": "New file name",
+  "viewerPartialMatching": "Partial matching",
   "viewerUseRegularExpression": "Use regular expression",
   "viewerFind": "Find",
   "viewerReplaceWith": "Replace with",
