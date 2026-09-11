@@ -3,18 +3,18 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import { Modal } from "../flowbite/components/Modal/index";
 import { Spinner, Tabs } from "../flowbite";
 import { Tooltip } from "flowbite-react";
+import CompatConflictCard from "./CompatConflictCard";
+import CompatCollapsibleSection from "./CompatCollapsibleSection";
 import { compareModNames, sortByNameAndLoadOrder } from "../modSortingHelpers";
-import { faStar } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { PiFiles } from "react-icons/pi";
 import {
   DBFileName,
   DBRefOrigin,
   FileAnalysisError,
   FileToFileReference,
-  PackFileCollision,
   PackName,
   PackCollisions,
+  PackFileCollision,
   PackTableCollision,
   ScriptListenerCollision,
   UniqueIdsCollision,
@@ -27,9 +27,16 @@ import { vanillaPackNames } from "../supportedGames";
 import { IoPeople } from "react-icons/io5";
 import { BsPersonVcard } from "react-icons/bs";
 import { LuPaintbrush2 } from "react-icons/lu";
+import {
+  collapsePackFileCollisions,
+  collapsePackTableCollisions,
+  higherPriorityDatabaseFile,
+  higherPriorityPack,
+} from "../modCompat/compatViewModels";
 
-const baseNameOfFile = /.*\\/;
 const matchTablePartOfFileName = /.*?\\(.*?)\\.*?/;
+const dbTableNameFromFileName = (fileName: string) => fileName.match(matchTablePartOfFileName)?.[1] || fileName;
+const topLevelFolderFromFileName = (fileName: string) => fileName.split(/[\\/]/).find(Boolean) || fileName;
 
 const fileNameToIcon = (packFileName: string) => {
   if (packFileName.endsWith(".wsmodel")) return <IoPeople className="h-5 w-5 self-center ml-2" />;
@@ -145,80 +152,75 @@ const CompatScreen = memo(() => {
   }, [isCompatOpen, packCollisions]);
 
   const localized = useLocalizations();
-  const compatHelpTwo = ((localized.compatHelpTwo ?? "").includes("STAR_ICON") &&
-    localized.compatHelpTwo.split("STAR_ICON")) || ["", ""];
 
-  const groupedPackFileCollisions: Record<string, Record<string, PackFileCollision[]>> = {};
-  if (packCollisions.packFileCollisions) {
-    for (const pfCollision of packCollisions.packFileCollisions) {
-      if (!groupedPackFileCollisions[pfCollision.firstPackName])
-        groupedPackFileCollisions[pfCollision.firstPackName] = {};
-      if (!groupedPackFileCollisions[pfCollision.firstPackName][pfCollision.secondPackName])
-        groupedPackFileCollisions[pfCollision.firstPackName][pfCollision.secondPackName] = [];
-      const collisionsWithSecond = groupedPackFileCollisions[pfCollision.firstPackName][pfCollision.secondPackName];
-      if (collisionsWithSecond.every((collisiosWithSecond) => collisiosWithSecond.fileName != pfCollision.fileName)) {
-        collisionsWithSecond.push(pfCollision);
-      }
-    }
-  }
+  const enabledModNames = new Set(enabledMods.map((mod) => mod.name));
+  const isPackInCompatScope = (packName: string) =>
+    !useEnabledModsOnly || enabledModNames.has(packName) || vanillaPackNames.includes(packName);
 
-  const groupedPackTableCollisions: Record<string, Record<string, Record<string, PackTableCollision[]>>> = {};
-  if (packCollisions.packTableCollisions) {
-    for (const pfCollision of packCollisions.packTableCollisions) {
-      if (!groupedPackTableCollisions[pfCollision.firstPackName])
-        groupedPackTableCollisions[pfCollision.firstPackName] = {};
-      if (!groupedPackTableCollisions[pfCollision.firstPackName][pfCollision.secondPackName])
-        groupedPackTableCollisions[pfCollision.firstPackName][pfCollision.secondPackName] = {};
-      const collisionsWithSecond = groupedPackTableCollisions[pfCollision.firstPackName][pfCollision.secondPackName];
-
-      if (!collisionsWithSecond[pfCollision.secondFileName]) collisionsWithSecond[pfCollision.secondFileName] = [];
-
-      collisionsWithSecond[pfCollision.secondFileName].push(pfCollision);
-    }
-  }
-
-  if (useEnabledModsOnly) {
-    Object.keys(groupedPackFileCollisions).forEach((packName) => {
-      const mod = enabledMods.find((iterMod) => iterMod.name == packName);
-      if (!mod) delete groupedPackFileCollisions[packName];
-    });
-
-    Object.keys(groupedPackFileCollisions).forEach((packName) => {
-      const secondPackNames = Object.keys(groupedPackFileCollisions[packName]);
-      secondPackNames.forEach((secondPackName) => {
-        const mod = enabledMods.find((iterMod) => iterMod.name == secondPackName);
-        if (!mod) delete groupedPackFileCollisions[packName][secondPackName];
-      });
-    });
-
-    Object.keys(groupedPackTableCollisions).forEach((packName) => {
-      const mod = enabledMods.find((iterMod) => iterMod.name == packName);
-      if (!mod) delete groupedPackTableCollisions[packName];
-    });
-
-    Object.keys(groupedPackTableCollisions).forEach((packName) => {
-      const secondPackNames = Object.keys(groupedPackTableCollisions[packName]);
-      secondPackNames.forEach((secondPackName) => {
-        const mod = enabledMods.find((iterMod) => iterMod.name == secondPackName);
-        if (!mod) delete groupedPackTableCollisions[packName][secondPackName];
-      });
-    });
-  }
-
-  const numPackFileCollisions = Object.values(groupedPackFileCollisions).reduce(
-    (acc, curr) => acc + Object.values(curr).reduce((acc2, curr2) => acc2 + Object.values(curr2).length, 0),
-    0,
+  // File and table collisions are emitted in both directions by the scanner. Keep the raw data for
+  // exports, but use one record per real conflict in the interactive view.
+  const displayPackFileCollisions = collapsePackFileCollisions(packCollisions.packFileCollisions).filter(
+    (collision) => isPackInCompatScope(collision.firstPackName) && isPackInCompatScope(collision.secondPackName),
+  );
+  const displayPackTableCollisions = collapsePackTableCollisions(packCollisions.packTableCollisions).filter(
+    (collision) => isPackInCompatScope(collision.firstPackName) && isPackInCompatScope(collision.secondPackName),
   );
 
-  const numPackTableCollisions = Object.values(groupedPackTableCollisions).reduce(
-    (acc, curr) =>
-      acc +
-      Object.values(curr).reduce(
-        (acc2, curr2) => acc2 + Object.values(curr2).reduce((acc3, curr3) => acc3 + Object.values(curr3).length, 0),
-        0,
-      ),
-    0,
-  );
+  const packOrderIndex = (packName: string) => {
+    const index = sortedMods.findIndex((mod) => mod.name === packName);
+    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const sortPackNamesByLoadOrder = (firstPackName: string, secondPackName: string) =>
+    packOrderIndex(firstPackName) - packOrderIndex(secondPackName) || compareModNames(firstPackName, secondPackName);
+  const orderedPackNames = sortedMods.map((mod) => mod.name);
+
+  const filteredDisplayPackFileCollisions = displayPackFileCollisions
+    .filter(
+      (collision) =>
+        selectedModFilter === "" ||
+        collision.firstPackName === selectedModFilter ||
+        collision.secondPackName === selectedModFilter,
+    )
+    .sort(
+      (first, second) =>
+        compareModNames(first.fileName, second.fileName) ||
+        sortPackNamesByLoadOrder(first.firstPackName, second.firstPackName) ||
+        sortPackNamesByLoadOrder(first.secondPackName, second.secondPackName),
+    );
+  const filteredDisplayPackTableCollisions = displayPackTableCollisions
+    .filter(
+      (collision) =>
+        selectedModFilter === "" ||
+        collision.firstPackName === selectedModFilter ||
+        collision.secondPackName === selectedModFilter,
+    )
+    .sort(
+      (first, second) =>
+        compareModNames(first.fileName, second.fileName) ||
+        compareModNames(first.value, second.value) ||
+        sortPackNamesByLoadOrder(first.firstPackName, second.firstPackName) ||
+        sortPackNamesByLoadOrder(first.secondPackName, second.secondPackName),
+    );
+
+  const groupedDisplayPackFileCollisions: Record<string, PackFileCollision[]> = {};
+  for (const collision of filteredDisplayPackFileCollisions) {
+    const topLevelFolder = topLevelFolderFromFileName(collision.fileName);
+    groupedDisplayPackFileCollisions[topLevelFolder] ||= [];
+    groupedDisplayPackFileCollisions[topLevelFolder].push(collision);
+  }
+  const displayTopLevelFolders = Object.keys(groupedDisplayPackFileCollisions).sort(compareModNames);
+
+  const groupedDisplayPackTableCollisions: Record<string, PackTableCollision[]> = {};
+  for (const collision of filteredDisplayPackTableCollisions) {
+    const dbName = dbTableNameFromFileName(collision.fileName);
+    groupedDisplayPackTableCollisions[dbName] ||= [];
+    groupedDisplayPackTableCollisions[dbName].push(collision);
+  }
+  const displayDbTableNames = Object.keys(groupedDisplayPackTableCollisions).sort(compareModNames);
+
+  const numPackFileCollisions = displayPackFileCollisions.length;
+  const numPackTableCollisions = displayPackTableCollisions.length;
+  const compatFilterMods = useEnabledModsOnly ? enabledMods : sortedMods;
 
   // for(const [packName, refs] of Object.entries(packCollisions.missingTableReferences)){
   //   groupBy(refs,(ref)=>{return `${ref.targetDBFileName}/${ref.targetFieldName}`})
@@ -312,6 +314,15 @@ const CompatScreen = memo(() => {
     }
   }
 
+  // The scanner creates an empty bucket for packs that have no duplicate listeners. Do not turn
+  // those buckets into visible disclosure sections, especially after the enabled-mod filter removes
+  // collisions involving out-of-scope packs.
+  for (const packName of Object.keys(groupedScriptListenerCollisions)) {
+    if (groupedScriptListenerCollisions[packName].length === 0) {
+      delete groupedScriptListenerCollisions[packName];
+    }
+  }
+
   const numScriptListenerCollisions = Object.values(groupedScriptListenerCollisions).reduce(
     (acc, curr) => acc + curr.length,
     0,
@@ -356,6 +367,7 @@ const CompatScreen = memo(() => {
       console.log("READ ALL MODS");
       window.api?.readMods(mods, false);
     }
+    setSelectedModFilter("");
     setUseEnabledModsOnly(!useEnabledModsOnly);
   }, [useEnabledModsOnly, mods]);
 
@@ -437,342 +449,165 @@ const CompatScreen = memo(() => {
                   : localized.exportCompatReportHtml || "Export HTML"}
               </button>
             </div>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+              <label
+                className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"
+                htmlFor="compat-enabled-mods-only"
+              >
+                <input
+                  type="checkbox"
+                  id="compat-enabled-mods-only"
+                  checked={useEnabledModsOnly}
+                  onChange={() => toggleUseEnabledModsOnly()}
+                />
+                {localized.enabledModsOnly}
+              </label>
+              <label
+                className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"
+                htmlFor="compat-mod-filter"
+              >
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {localized.packName}
+                </span>
+                <select
+                  id="compat-mod-filter"
+                  value={selectedModFilter}
+                  onChange={(e) => setSelectedModFilter(e.target.value)}
+                  className="max-w-[18rem] rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="">{localized.allMods}</option>
+                  {compatFilterMods
+                    .slice()
+                    .sort((first, second) => sortPackNamesByLoadOrder(first.name, second.name))
+                    .map((mod) => (
+                      <option key={mod.name} value={mod.name}>
+                        {mod.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </div>
             <Tabs.Group style="underline">
               <Tabs.Item active={true} title={`${localized.files} (${numPackFileCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="compat-enabled-mod-only-files"
-                        checked={useEnabledModsOnly}
-                        onChange={() => toggleUseEnabledModsOnly()}
-                      ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only-files">
-                        {localized.enabledModsOnly}
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <select
-                        value={selectedModFilter}
-                        onChange={(e) => setSelectedModFilter(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">{localized.allMods}</option>
-                        {(() => {
-                          const availableMods = Object.keys(groupedPackFileCollisions);
-                          const modsToShow =
-                            selectedModFilter && !availableMods.includes(selectedModFilter)
-                              ? [...availableMods, selectedModFilter]
-                              : availableMods;
-                          return modsToShow
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((modName) => (
-                              <option key={modName} value={modName}>
-                                {modName}
-                              </option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                  </span>
-                  {packCollisions.packFileCollisions.length == 0 && (
+                  {filteredDisplayPackFileCollisions.length == 0 ? (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noFileCollisionsFound}
                     </p>
-                  )}
-                  {packCollisions &&
-                    packCollisions.packFileCollisions &&
-                    Object.keys(groupedPackFileCollisions)
-                      .filter((firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter)
-                      .sort((firstPackName, secondPackName) => {
-                        const firstPackIndex = sortedMods.indexOf(
-                          sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                        );
-                        const secondPackIndex = sortedMods.indexOf(
-                          sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                        );
+                  ) : (
+                    <div className="space-y-2 pt-2">
+                      {displayTopLevelFolders.map((topLevelFolder) => (
+                        <CompatCollapsibleSection
+                          key={topLevelFolder}
+                          title={topLevelFolder}
+                          count={groupedDisplayPackFileCollisions[topLevelFolder].length}
+                        >
+                          <div className="space-y-3 text-sm">
+                            {groupedDisplayPackFileCollisions[topLevelFolder].map((collision) => {
+                              const firstIsWinner =
+                                higherPriorityPack(
+                                  collision.firstPackName,
+                                  collision.secondPackName,
+                                  orderedPackNames,
+                                ) === "first";
 
-                        return firstPackIndex - secondPackIndex;
-                      })
-                      .map((firstPackName) => {
-                        const firstPackIndex = sortedMods.indexOf(
-                          sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                        );
-                        const secondPacks = groupedPackFileCollisions[firstPackName];
-                        let donePackName = false;
-                        return Object.keys(secondPacks)
-                          .sort((firstPackName, secondPackName) => {
-                            const firstPackIndex = sortedMods.indexOf(
-                              sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                            );
-                            const secondPackIndex = sortedMods.indexOf(
-                              sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                            );
-
-                            return firstPackIndex - secondPackIndex;
-                          })
-                          .map((secondPackName) => {
-                            const secondPackIndex = sortedMods.indexOf(
-                              sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                            );
-                            let doneSecondPackName = false;
-                            return secondPacks[secondPackName].map((secondPack) => {
-                              const fragment = (
-                                <React.Fragment key={firstPackName + secondPackName + secondPack.fileName}>
-                                  {!donePackName && <div className="mt-4 underline">{firstPackName}</div>}
-                                  {!doneSecondPackName && (
-                                    <div className="ml-8">
-                                      {secondPackName}
-                                      {firstPackIndex > secondPackIndex && (
-                                        <span className="mx-2 text-green-700">
-                                          <FontAwesomeIcon fill="green" icon={faStar} />
-                                        </span>
-                                      )}
-                                      <span className="opacity-50 ml-[1ch]">vs {firstPackName}</span>
-                                    </div>
-                                  )}
-                                  <div className={`ml-16 flex`}>
-                                    <span className={`${secondPack.areSameSize ? "opacity-50" : ""}`}>
-                                      {secondPack.fileName}
-                                    </span>
-                                    {secondPack.areSameSize && (
-                                      <span className="make-tooltip-inline px-2">
-                                        <Tooltip style="light" content={<p>{localized.sameFileSize}</p>}>
-                                          <span className="text-center w-full">
-                                            <PiFiles className="align-middle w-6 h-6 hover:opacity-100 opacity-50" />
-                                          </span>
-                                        </Tooltip>
-                                      </span>
-                                    )}
-                                  </div>
-                                </React.Fragment>
+                              return (
+                                <CompatConflictCard
+                                  key={`${collision.firstPackName}:${collision.secondPackName}:${collision.fileName}`}
+                                  heading={collision.fileName}
+                                  headingLabel={localized.packFileName}
+                                  first={{ packName: collision.firstPackName }}
+                                  second={{ packName: collision.secondPackName }}
+                                  firstIsWinner={firstIsWinner}
+                                  status={
+                                    collision.areSameSize && (
+                                      <div className="flex items-start gap-2 text-sm">
+                                        <PiFiles className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                                        <div>
+                                          <div className="font-bold">{localized.sameFileSize}</div>
+                                          <div className="text-xs text-emerald-800 dark:text-emerald-200">
+                                            {localized.sameFileSizeLikelyNoConflict}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )
+                                  }
+                                  labels={{
+                                    winner: localized.compatHigherPriority,
+                                    lowerPriority: localized.compatLowerPriority,
+                                    compare: localized.compatCompare,
+                                  }}
+                                />
                               );
-                              donePackName = true;
-                              doneSecondPackName = true;
-                              return fragment;
-                            });
-                          });
-                      })}
+                            })}
+                          </div>
+                        </CompatCollapsibleSection>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </Tabs.Item>
               <Tabs.Item title={`${localized.tables} (${numPackTableCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="compat-enabled-mod-only-tables"
-                        checked={useEnabledModsOnly}
-                        onChange={() => toggleUseEnabledModsOnly()}
-                      ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only-tables">
-                        {localized.enabledModsOnly}
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <select
-                        value={selectedModFilter}
-                        onChange={(e) => setSelectedModFilter(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">{localized.allMods}</option>
-                        {(() => {
-                          const availableMods = Object.keys(groupedPackTableCollisions);
-                          const modsToShow =
-                            selectedModFilter && !availableMods.includes(selectedModFilter)
-                              ? [...availableMods, selectedModFilter]
-                              : availableMods;
-                          return modsToShow
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((modName) => (
-                              <option key={modName} value={modName}>
-                                {modName}
-                              </option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                  </span>
-                  {packCollisions.packTableCollisions.length == 0 && (
+                  {filteredDisplayPackTableCollisions.length == 0 ? (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noDBKeyCollisionsFound}
                     </p>
+                  ) : (
+                    <div className="space-y-2 pt-2">
+                      {displayDbTableNames.map((dbName) => (
+                        <CompatCollapsibleSection
+                          key={dbName}
+                          title={dbName}
+                          count={groupedDisplayPackTableCollisions[dbName].length}
+                        >
+                          <div className="space-y-3 text-sm">
+                            {groupedDisplayPackTableCollisions[dbName].map((collision) => {
+                              const firstIsWinner = higherPriorityDatabaseFile(collision) === "first";
+
+                              return (
+                                <CompatConflictCard
+                                  key={`${collision.firstPackName}:${collision.secondPackName}:${collision.fileName}:${collision.secondFileName}:${collision.key}:${collision.value}`}
+                                  heading={collision.value}
+                                  headingLabel={localized.key}
+                                  headingClassName="font-mono text-base font-bold tracking-tight text-amber-950 sm:text-lg dark:text-amber-100"
+                                  metaClassName="mt-2 text-sm text-gray-700 dark:text-gray-300"
+                                  meta={
+                                    <div className="grid gap-2 sm:grid-cols-[max-content_minmax(0,1fr)] sm:items-center">
+                                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        {localized.tableColumn}
+                                      </span>
+                                      <code className="min-w-0 break-all rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-sm font-semibold leading-snug text-gray-800 dark:border-gray-600 dark:bg-gray-900/40 dark:text-gray-100">
+                                        {collision.key}
+                                      </code>
+                                    </div>
+                                  }
+                                  first={{ packName: collision.firstPackName, fileName: collision.fileName }}
+                                  second={{ packName: collision.secondPackName, fileName: collision.secondFileName }}
+                                  firstIsWinner={firstIsWinner}
+                                  labels={{
+                                    winner: localized.compatHigherPriority,
+                                    lowerPriority: localized.compatLowerPriority,
+                                    compare: localized.compatCompare,
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </CompatCollapsibleSection>
+                      ))}
+                    </div>
                   )}
-                  {packCollisions &&
-                    packCollisions.packTableCollisions &&
-                    Object.keys(groupedPackTableCollisions)
-                      .filter((firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter)
-                      .sort((firstPackName, secondPackName) => {
-                        const firstPackIndex = sortedMods.indexOf(
-                          sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                        );
-                        const secondPackIndex = sortedMods.indexOf(
-                          sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                        );
-
-                        return firstPackIndex - secondPackIndex;
-                      })
-                      .map((firstPackName) => {
-                        const secondPacks = groupedPackTableCollisions[firstPackName];
-                        let donePackName = false;
-                        return Object.keys(secondPacks)
-                          .sort((firstPackName, secondPackName) => {
-                            const firstPackIndex = sortedMods.indexOf(
-                              sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                            );
-                            const secondPackIndex = sortedMods.indexOf(
-                              sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                            );
-
-                            return firstPackIndex - secondPackIndex;
-                          })
-                          .map((secondPackName) => {
-                            let doneSecondPackName = false;
-                            return Object.keys(secondPacks[secondPackName]).map((secondFileName) => {
-                              const collisions = secondPacks[secondPackName][secondFileName];
-                              let doneSecondFileName = false;
-
-                              return collisions.map((collision) => {
-                                const firstBaseName = collision.fileName.replace(baseNameOfFile, "");
-                                const secondBaseName = collision.secondFileName.replace(baseNameOfFile, "");
-
-                                const dbNameMatches = collision.fileName.match(matchTablePartOfFileName);
-                                const dbName = dbNameMatches && dbNameMatches[1];
-
-                                const fragment = (
-                                  <React.Fragment
-                                    key={
-                                      collision.firstPackName +
-                                      donePackName +
-                                      collision.secondPackName +
-                                      doneSecondPackName +
-                                      collision.fileName +
-                                      collision.secondFileName +
-                                      doneSecondFileName +
-                                      collision.key +
-                                      collision.value
-                                    }
-                                  >
-                                    {!donePackName && <div className="mt-4 underline">{firstPackName}</div>}
-                                    {!doneSecondPackName && <div className="ml-4">{secondPackName}</div>}
-                                    {!doneSecondFileName && (
-                                      <div className="ml-12">
-                                        <span className="make-tooltip-inline">
-                                          <Tooltip style="light" content={<p>{localized.dbTable}</p>}>
-                                            <span className="text-center w-full">{dbName}</span>
-                                          </Tooltip>
-                                        </span>
-
-                                        <span className="ml-2 make-tooltip-inline">
-                                          <Tooltip
-                                            style="light"
-                                            content={
-                                              <>
-                                                <p>{localized.collisionWith}</p>
-                                                <p>{firstBaseName}</p>
-                                                <p>
-                                                  {localized.in} {firstPackName}
-                                                </p>
-                                              </>
-                                            }
-                                          >
-                                            <span className="text-center w-full">{secondBaseName}</span>
-                                          </Tooltip>
-                                        </span>
-                                        <span className="ml-3 font-normal make-tooltip-inline">
-                                          <Tooltip style="light" content={<p>{localized.tableColumn}</p>}>
-                                            <span className="text-center w-full">{collision.key}</span>
-                                          </Tooltip>
-                                        </span>
-                                        {compareModNames(firstBaseName, secondBaseName) == 1 && (
-                                          <span className="ml-2 text-green-700">
-                                            <FontAwesomeIcon fill="green" icon={faStar} />
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                    <div className="ml-20">{collision.value}</div>
-                                  </React.Fragment>
-                                );
-                                doneSecondFileName = true;
-                                donePackName = true;
-                                doneSecondPackName = true;
-                                return fragment;
-                              });
-                            });
-                          });
-                      })}
                 </div>
               </Tabs.Item>
               <Tabs.Item title={`${localized.missingKeys} (${numMissingTableReferences})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="compat-enabled-mod-only-missing-keys"
-                        checked={useEnabledModsOnly}
-                        onChange={() => toggleUseEnabledModsOnly()}
-                      ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only-missing-keys">
-                        {localized.enabledModsOnly}
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <select
-                        value={selectedModFilter}
-                        onChange={(e) => setSelectedModFilter(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">{localized.allMods}</option>
-                        {(() => {
-                          const availableMods = Object.keys(groupedMissingTableReferences);
-                          const modsToShow =
-                            selectedModFilter && !availableMods.includes(selectedModFilter)
-                              ? [...availableMods, selectedModFilter]
-                              : availableMods;
-                          return modsToShow
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((modName) => (
-                              <option key={modName} value={modName}>
-                                {modName}
-                              </option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                  </span>
                   {Object.keys(groupedMissingTableReferences).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noMissingDBKeysFound}
                     </p>
                   )}
-                  <div className="text-lg">
+                  <div className="space-y-2 text-lg">
                     {Object.keys(groupedMissingTableReferences)
                       .filter((firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
@@ -787,82 +622,82 @@ const CompatScreen = memo(() => {
                       })
                       .map((firstPackName) => {
                         const tableKeyGroupToRefs = groupedMissingTableReferences[firstPackName];
-                        let donePackName = false;
-                        return Object.keys(tableKeyGroupToRefs).map((tableKeyGroup) => {
-                          const refs = tableKeyGroupToRefs[tableKeyGroup];
-                          let doneTableKeyGroup = false;
-                          return refs.map((ref) => {
-                            const targetDBFileName = ref.targetDBFileName;
-                            const targetFieldName = ref.targetFieldName;
-                            const value = ref.value;
-                            const originFieldName = ref.originFieldName;
-                            const originDBFileName = ref.originDBFileName;
-                            const originFileSuffix = ref.originFileSuffix;
+                        return (
+                          <CompatCollapsibleSection key={firstPackName} title={firstPackName}>
+                            {Object.keys(tableKeyGroupToRefs).map((tableKeyGroup) => {
+                              const refs = tableKeyGroupToRefs[tableKeyGroup];
+                              let doneTableKeyGroup = false;
+                              return refs.map((ref) => {
+                                const targetDBFileName = ref.targetDBFileName;
+                                const targetFieldName = ref.targetFieldName;
+                                const value = ref.value;
+                                const originFieldName = ref.originFieldName;
+                                const originDBFileName = ref.originDBFileName;
+                                const originFileSuffix = ref.originFileSuffix;
 
-                            const fragment = (
-                              <React.Fragment
-                                key={
-                                  firstPackName +
-                                  targetDBFileName +
-                                  targetFieldName +
-                                  value +
-                                  originFieldName +
-                                  originDBFileName +
-                                  originFileSuffix +
-                                  donePackName +
-                                  doneTableKeyGroup
-                                }
-                              >
-                                {!donePackName && <div className="mt-4 font-normal">{firstPackName}</div>}
-                                {!doneTableKeyGroup && (
-                                  <div className="ml-8">
-                                    <span className="make-tooltip-inline">
-                                      <Tooltip
-                                        style="light"
-                                        content={
-                                          <>
-                                            <p>{localized.missingKeyTableAndColumn}</p>
-                                          </>
-                                        }
-                                      >
-                                        <span className="text-center w-full ">{tableKeyGroup}</span>
-                                      </Tooltip>
-                                    </span>
-                                  </div>
-                                )}
+                                const fragment = (
+                                  <React.Fragment
+                                    key={
+                                      firstPackName +
+                                      targetDBFileName +
+                                      targetFieldName +
+                                      value +
+                                      originFieldName +
+                                      originDBFileName +
+                                      originFileSuffix +
+                                      doneTableKeyGroup
+                                    }
+                                  >
+                                    {!doneTableKeyGroup && (
+                                      <div className="ml-4">
+                                        <span className="make-tooltip-inline">
+                                          <Tooltip
+                                            style="light"
+                                            content={
+                                              <>
+                                                <p>{localized.missingKeyTableAndColumn}</p>
+                                              </>
+                                            }
+                                          >
+                                            <span className="text-center w-full ">{tableKeyGroup}</span>
+                                          </Tooltip>
+                                        </span>
+                                      </div>
+                                    )}
 
-                                <div className="ml-16">
-                                  <span className="make-tooltip-inline">
-                                    <Tooltip
-                                      style="light"
-                                      content={
-                                        <>
-                                          <p>{localized.missingDBKey}</p>
-                                        </>
-                                      }
-                                    >
-                                      <span className="text-center w-full decoration-red-700 underline decoration-2 underline-offset-4">
-                                        {value}
+                                    <div className="ml-8">
+                                      <span className="make-tooltip-inline">
+                                        <Tooltip
+                                          style="light"
+                                          content={
+                                            <>
+                                              <p>{localized.missingDBKey}</p>
+                                            </>
+                                          }
+                                        >
+                                          <span className="text-center w-full decoration-red-700 underline decoration-2 underline-offset-4">
+                                            {value}
+                                          </span>
+                                        </Tooltip>
                                       </span>
-                                    </Tooltip>
-                                  </span>
 
-                                  <span className="ml-2 make-tooltip-inline">
-                                    <span className="text-center w-full">
-                                      {localized.missingKeyIsReferencedIn &&
-                                        localized.missingKeyIsReferencedIn
-                                          .replace("<originFileSuffix>", originFileSuffix)
-                                          .replace("<originFieldName>", originFieldName)}
-                                    </span>
-                                  </span>
-                                </div>
-                              </React.Fragment>
-                            );
-                            donePackName = true;
-                            doneTableKeyGroup = true;
-                            return fragment;
-                          });
-                        });
+                                      <span className="ml-2 make-tooltip-inline">
+                                        <span className="text-center w-full">
+                                          {localized.missingKeyIsReferencedIn &&
+                                            localized.missingKeyIsReferencedIn
+                                              .replace("<originFileSuffix>", originFileSuffix)
+                                              .replace("<originFieldName>", originFieldName)}
+                                        </span>
+                                      </span>
+                                    </div>
+                                  </React.Fragment>
+                                );
+                                doneTableKeyGroup = true;
+                                return fragment;
+                              });
+                            })}
+                          </CompatCollapsibleSection>
+                        );
                       })}
                   </div>
                 </div>
@@ -870,56 +705,12 @@ const CompatScreen = memo(() => {
 
               <Tabs.Item title={`${localized.duplicateKeys} (${numUniqueIdsCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="compat-enabled-mod-only-duplicate-keys"
-                        checked={useEnabledModsOnly}
-                        onChange={() => toggleUseEnabledModsOnly()}
-                      ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only-duplicate-keys">
-                        {localized.enabledModsOnly}
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <select
-                        value={selectedModFilter}
-                        onChange={(e) => setSelectedModFilter(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">{localized.allMods}</option>
-                        {(() => {
-                          const availableMods = Object.keys(groupedUniqueIdsCollisions);
-                          const modsToShow =
-                            selectedModFilter && !availableMods.includes(selectedModFilter)
-                              ? [...availableMods, selectedModFilter]
-                              : availableMods;
-                          return modsToShow
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((modName) => (
-                              <option key={modName} value={modName}>
-                                {modName}
-                              </option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                  </span>
                   {Object.keys(groupedUniqueIdsCollisions).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noDuplicateKeysFound}
                     </p>
                   )}
-                  <div className="text-lg">
+                  <div className="space-y-2 text-lg">
                     {Object.keys(groupedUniqueIdsCollisions)
                       .filter((firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
@@ -934,168 +725,162 @@ const CompatScreen = memo(() => {
                       })
                       .map((firstPackName) => {
                         const tableToUniqueIdCollisions = groupedUniqueIdsCollisions[firstPackName];
-                        let donePackName = false;
-                        return Object.keys(tableToUniqueIdCollisions).map((tableName) => {
-                          const secondPackToUniqueIdCollisions = tableToUniqueIdCollisions[tableName];
+                        return (
+                          <CompatCollapsibleSection key={firstPackName} title={firstPackName}>
+                            <div className="space-y-2">
+                              {Object.keys(tableToUniqueIdCollisions).map((tableName) => {
+                                const secondPackToUniqueIdCollisions = tableToUniqueIdCollisions[tableName];
+                                const tableCollisionCount = Object.values(secondPackToUniqueIdCollisions).reduce(
+                                  (count, collisions) => count + collisions.length,
+                                  0,
+                                );
 
-                          let doneTableName = false;
-                          return Object.keys(secondPackToUniqueIdCollisions)
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((secondPackName) => {
-                              let doneSecondPackName = false;
-                              const uniqueIdCollisions = secondPackToUniqueIdCollisions[secondPackName];
-                              return uniqueIdCollisions.map((uniqueIdCollision) => {
-                                const tableName = uniqueIdCollision.tableName;
-                                const fieldName = uniqueIdCollision.fieldName;
-                                const value = uniqueIdCollision.value;
-                                const valueTwo = uniqueIdCollision.valueTwo;
-
-                                const fragment = (
-                                  <React.Fragment
-                                    key={
-                                      tableName +
-                                      fieldName +
-                                      value.value +
-                                      firstPackName +
-                                      secondPackName +
-                                      donePackName +
-                                      doneSecondPackName +
-                                      doneTableName
-                                    }
+                                return (
+                                  <CompatCollapsibleSection
+                                    key={tableName}
+                                    title={tableName}
+                                    count={tableCollisionCount}
                                   >
-                                    {!donePackName && <div className="mt-4 font-normal">{firstPackName}</div>}
-                                    {!doneTableName && (
-                                      <div className="ml-8 font-normal">
-                                        <span className="make-tooltip-inline">
-                                          <Tooltip
-                                            style="light"
-                                            content={
-                                              <>
-                                                <p>{localized.dbTable}</p>
-                                              </>
-                                            }
-                                          >
-                                            <span className="text-center w-full">{tableName}</span>
-                                          </Tooltip>
-                                        </span>
-                                      </div>
-                                    )}
-                                    {!doneSecondPackName && (
-                                      <div className="ml-16">
-                                        <span className="make-tooltip-inline">
-                                          <Tooltip
-                                            style="light"
-                                            content={
-                                              <>
-                                                <p>{localized.packName}</p>
-                                              </>
-                                            }
-                                          >
-                                            <span className="text-center w-full font-normal">{secondPackName}</span>
-                                          </Tooltip>
-                                        </span>
-                                      </div>
-                                    )}
+                                    {Object.keys(secondPackToUniqueIdCollisions)
+                                      .sort((firstPackName, secondPackName) => {
+                                        const firstPackIndex = sortedMods.indexOf(
+                                          sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
+                                        );
+                                        const secondPackIndex = sortedMods.indexOf(
+                                          sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
+                                        );
 
-                                    <div className="ml-24">
-                                      <div className="make-tooltip-inline">
-                                        <Tooltip
-                                          style="light"
-                                          content={
-                                            <>
-                                              <p>{localized.duplicateDBKey}</p>
-                                            </>
-                                          }
-                                        >
-                                          <span className="text-center w-full">{value.value}</span>
-                                        </Tooltip>
-                                      </div>
+                                        return firstPackIndex - secondPackIndex;
+                                      })
+                                      .map((secondPackName) => {
+                                        let doneSecondPackName = false;
+                                        const uniqueIdCollisions = secondPackToUniqueIdCollisions[secondPackName];
+                                        return uniqueIdCollisions.map((uniqueIdCollision) => {
+                                          const collisionTableName = uniqueIdCollision.tableName;
+                                          const fieldName = uniqueIdCollision.fieldName;
+                                          const value = uniqueIdCollision.value;
+                                          const valueTwo = uniqueIdCollision.valueTwo;
 
-                                      {(valueTwo &&
-                                        ((valueTwo.packName == secondPackName && (
-                                          <div className="ml-6 mb-4">
-                                            <div>
-                                              {value.packFileName} in {firstPackName}
-                                            </div>
-                                            <div className="ml-4 flex gap-2 flex-wrap">
-                                              {value.tableRow.map((field, i) => {
-                                                if (field != valueTwo.tableRow[i])
-                                                  return (
-                                                    <span key={i} className="text-blue-500">
-                                                      {field}
-                                                    </span>
-                                                  );
-                                                return <span key={i}>{field}</span>;
-                                              })}
-                                            </div>
-                                            <div>
-                                              {valueTwo.packFileName} in {secondPackName}
-                                            </div>
-                                            <div className="ml-4 flex gap-2 flex-wrap">
-                                              {valueTwo.tableRow.map((field, i) => {
-                                                if (field != value.tableRow[i])
-                                                  return (
-                                                    <span key={i} className="text-blue-500">
-                                                      {field}
-                                                    </span>
-                                                  );
-                                                return <span key={i}>{field}</span>;
-                                              })}
-                                            </div>
-                                          </div>
-                                        )) || (
-                                          <div className="ml-6 mb-4">
-                                            <div>
-                                              {valueTwo.packFileName} in {firstPackName}
-                                            </div>
-                                            <div className="ml-4 flex gap-2 flex-wrap">
-                                              {valueTwo.tableRow.map((field, i) => {
-                                                if (field != value.tableRow[i])
-                                                  return (
-                                                    <span key={i} className="text-blue-500">
-                                                      {field}
-                                                    </span>
-                                                  );
-                                                return <span key={i}>{field}</span>;
-                                              })}
-                                            </div>
-                                            <div>
-                                              {value.packFileName} in {secondPackName}
-                                            </div>
-                                            <div className="ml-4 flex gap-2 flex-wrap">
-                                              {value.tableRow.map((field, i) => {
-                                                if (field != valueTwo.tableRow[i])
-                                                  return (
-                                                    <span key={i} className="text-blue-500">
-                                                      {field}
-                                                    </span>
-                                                  );
-                                                return <span key={i}>{field}</span>;
-                                              })}
-                                            </div>
-                                          </div>
-                                        ))) || (
-                                        <div className="ml-6 mb-4">
-                                          <div>
-                                            {value.packFileName} in {firstPackName}
-                                          </div>
-                                          <div className="ml-4 flex gap-2 flex-wrap">
-                                            {value.tableRow.map((field, i) => {
-                                              return <span key={i}>{field}</span>;
-                                            })}
-                                          </div>
-                                        </div>
-                                      )}
-                                      {/* <span className="ml-2 make-tooltip-inline">
+                                          const fragment = (
+                                            <React.Fragment
+                                              key={
+                                                collisionTableName +
+                                                fieldName +
+                                                value.value +
+                                                firstPackName +
+                                                secondPackName +
+                                                doneSecondPackName
+                                              }
+                                            >
+                                              {!doneSecondPackName && (
+                                                <div className="ml-4">
+                                                  <span className="make-tooltip-inline">
+                                                    <Tooltip
+                                                      style="light"
+                                                      content={
+                                                        <>
+                                                          <p>{localized.packName}</p>
+                                                        </>
+                                                      }
+                                                    >
+                                                      <span className="text-center w-full font-normal">
+                                                        {secondPackName}
+                                                      </span>
+                                                    </Tooltip>
+                                                  </span>
+                                                </div>
+                                              )}
+
+                                              <div className="ml-12">
+                                                <div className="make-tooltip-inline">
+                                                  <Tooltip
+                                                    style="light"
+                                                    content={
+                                                      <>
+                                                        <p>{localized.duplicateDBKey}</p>
+                                                      </>
+                                                    }
+                                                  >
+                                                    <span className="text-center w-full">{value.value}</span>
+                                                  </Tooltip>
+                                                </div>
+
+                                                {(valueTwo &&
+                                                  ((valueTwo.packName == secondPackName && (
+                                                    <div className="ml-6 mb-4">
+                                                      <div>
+                                                        {value.packFileName} in {firstPackName}
+                                                      </div>
+                                                      <div className="ml-4 flex gap-2 flex-wrap">
+                                                        {value.tableRow.map((field, i) => {
+                                                          if (field != valueTwo.tableRow[i])
+                                                            return (
+                                                              <span key={i} className="text-blue-500">
+                                                                {field}
+                                                              </span>
+                                                            );
+                                                          return <span key={i}>{field}</span>;
+                                                        })}
+                                                      </div>
+                                                      <div>
+                                                        {valueTwo.packFileName} in {secondPackName}
+                                                      </div>
+                                                      <div className="ml-4 flex gap-2 flex-wrap">
+                                                        {valueTwo.tableRow.map((field, i) => {
+                                                          if (field != value.tableRow[i])
+                                                            return (
+                                                              <span key={i} className="text-blue-500">
+                                                                {field}
+                                                              </span>
+                                                            );
+                                                          return <span key={i}>{field}</span>;
+                                                        })}
+                                                      </div>
+                                                    </div>
+                                                  )) || (
+                                                    <div className="ml-6 mb-4">
+                                                      <div>
+                                                        {valueTwo.packFileName} in {firstPackName}
+                                                      </div>
+                                                      <div className="ml-4 flex gap-2 flex-wrap">
+                                                        {valueTwo.tableRow.map((field, i) => {
+                                                          if (field != value.tableRow[i])
+                                                            return (
+                                                              <span key={i} className="text-blue-500">
+                                                                {field}
+                                                              </span>
+                                                            );
+                                                          return <span key={i}>{field}</span>;
+                                                        })}
+                                                      </div>
+                                                      <div>
+                                                        {value.packFileName} in {secondPackName}
+                                                      </div>
+                                                      <div className="ml-4 flex gap-2 flex-wrap">
+                                                        {value.tableRow.map((field, i) => {
+                                                          if (field != valueTwo.tableRow[i])
+                                                            return (
+                                                              <span key={i} className="text-blue-500">
+                                                                {field}
+                                                              </span>
+                                                            );
+                                                          return <span key={i}>{field}</span>;
+                                                        })}
+                                                      </div>
+                                                    </div>
+                                                  ))) || (
+                                                  <div className="ml-6 mb-4">
+                                                    <div>
+                                                      {value.packFileName} in {firstPackName}
+                                                    </div>
+                                                    <div className="ml-4 flex gap-2 flex-wrap">
+                                                      {value.tableRow.map((field, i) => {
+                                                        return <span key={i}>{field}</span>;
+                                                      })}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                {/* <span className="ml-2 make-tooltip-inline">
                                     <span className="text-center w-full">
                                       {localized.missingKeyIsReferencedIn &&
                                         localized.missingKeyIsReferencedIn
@@ -1103,17 +888,20 @@ const CompatScreen = memo(() => {
                                           .replace("<originFieldName>", originFieldName)}
                                     </span>
                                   </span> */}
-                                    </div>
-                                  </React.Fragment>
-                                );
+                                              </div>
+                                            </React.Fragment>
+                                          );
 
-                                doneTableName = true;
-                                doneSecondPackName = true;
-                                donePackName = true;
-                                return fragment;
-                              });
-                            });
-                        });
+                                          doneSecondPackName = true;
+                                          return fragment;
+                                        });
+                                      })}
+                                  </CompatCollapsibleSection>
+                                );
+                              })}
+                            </div>
+                          </CompatCollapsibleSection>
+                        );
                       })}
                   </div>
                 </div>
@@ -1121,56 +909,12 @@ const CompatScreen = memo(() => {
 
               <Tabs.Item title={`${localized.duplicateListenerNames} (${numScriptListenerCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="compat-enabled-mod-only-duplicate-listeners"
-                        checked={useEnabledModsOnly}
-                        onChange={() => toggleUseEnabledModsOnly()}
-                      ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only-duplicate-listeners">
-                        {localized.enabledModsOnly}
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <select
-                        value={selectedModFilter}
-                        onChange={(e) => setSelectedModFilter(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">{localized.allMods}</option>
-                        {(() => {
-                          const availableMods = Object.keys(groupedScriptListenerCollisions);
-                          const modsToShow =
-                            selectedModFilter && !availableMods.includes(selectedModFilter)
-                              ? [...availableMods, selectedModFilter]
-                              : availableMods;
-                          return modsToShow
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((modName) => (
-                              <option key={modName} value={modName}>
-                                {modName}
-                              </option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                  </span>
                   {numScriptListenerCollisions == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noDuplicateListenerNamesFound}
                     </p>
                   )}
-                  <div className="text-lg">
+                  <div className="space-y-2 text-lg">
                     {Object.keys(groupedScriptListenerCollisions)
                       .filter((packName) => selectedModFilter === "" || packName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
@@ -1185,80 +929,81 @@ const CompatScreen = memo(() => {
                       })
                       .map((packName) => {
                         const scriptListenerCollisions = groupedScriptListenerCollisions[packName];
-                        let donePackName = false;
-                        return scriptListenerCollisions.map((collision) => {
-                          const firstPackName = collision.firstPackName;
-                          const secondPackName = collision.secondPackName;
-                          const packFileName = collision.packFileName;
-                          const value = collision.value;
-                          const valueTwo = collision.valueTwo;
+                        return (
+                          <CompatCollapsibleSection key={packName} title={packName}>
+                            {scriptListenerCollisions.map((collision) => {
+                              const firstPackName = collision.firstPackName;
+                              const secondPackName = collision.secondPackName;
+                              const packFileName = collision.packFileName;
+                              const value = collision.value;
+                              const valueTwo = collision.valueTwo;
 
-                          const fragment = (
-                            <React.Fragment
-                              key={
-                                packName +
-                                firstPackName +
-                                packFileName +
-                                value.value +
-                                value.packName +
-                                value.packFileName +
-                                value.position +
-                                valueTwo.position +
-                                (secondPackName || "")
-                              }
-                            >
-                              {!donePackName && <div className="mt-4 font-normal">{packName}</div>}
-                              <div className="ml-8 font-normal">
-                                <span className="make-tooltip-inline">
-                                  <Tooltip
-                                    style="light"
-                                    content={
-                                      <>
-                                        <p>{localized.duplicateListenerName}</p>
-                                      </>
-                                    }
-                                  >
-                                    <span className="text-center w-full">{value.value}</span>
-                                  </Tooltip>
-                                </span>
-                              </div>
-
-                              <div className="ml-24">
-                                {(valueTwo &&
-                                  valueTwo.packName != value.packName &&
-                                  ((valueTwo.packName == packName && (
-                                    <div className="mb-4">
-                                      <div>
-                                        {value.packFileName} in {value.packName}
-                                      </div>
-                                      <div>
-                                        {valueTwo.packFileName} in {valueTwo.packName}
-                                      </div>
-                                    </div>
-                                  )) || (
-                                    <div className="mb-4">
-                                      <div>
-                                        {valueTwo.packFileName} in {valueTwo.packName}
-                                      </div>
-
-                                      <div>
-                                        {value.packFileName} in {value.packName}
-                                      </div>
-                                    </div>
-                                  ))) || (
-                                  <div className="mb-4">
-                                    <div>
-                                      {value.packFileName} in {packName}
-                                    </div>
+                              const fragment = (
+                                <React.Fragment
+                                  key={
+                                    packName +
+                                    firstPackName +
+                                    packFileName +
+                                    value.value +
+                                    value.packName +
+                                    value.packFileName +
+                                    value.position +
+                                    valueTwo.position +
+                                    (secondPackName || "")
+                                  }
+                                >
+                                  <div className="ml-4 font-normal">
+                                    <span className="make-tooltip-inline">
+                                      <Tooltip
+                                        style="light"
+                                        content={
+                                          <>
+                                            <p>{localized.duplicateListenerName}</p>
+                                          </>
+                                        }
+                                      >
+                                        <span className="text-center w-full">{value.value}</span>
+                                      </Tooltip>
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                            </React.Fragment>
-                          );
 
-                          donePackName = true;
-                          return fragment;
-                        });
+                                  <div className="ml-16">
+                                    {(valueTwo &&
+                                      valueTwo.packName != value.packName &&
+                                      ((valueTwo.packName == packName && (
+                                        <div className="mb-4">
+                                          <div>
+                                            {value.packFileName} in {value.packName}
+                                          </div>
+                                          <div>
+                                            {valueTwo.packFileName} in {valueTwo.packName}
+                                          </div>
+                                        </div>
+                                      )) || (
+                                        <div className="mb-4">
+                                          <div>
+                                            {valueTwo.packFileName} in {valueTwo.packName}
+                                          </div>
+
+                                          <div>
+                                            {value.packFileName} in {value.packName}
+                                          </div>
+                                        </div>
+                                      ))) || (
+                                      <div className="mb-4">
+                                        <div>
+                                          {value.packFileName} in {value.packName}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </React.Fragment>
+                              );
+
+                              return fragment;
+                            })}
+                          </CompatCollapsibleSection>
+                        );
                       })}
                   </div>
                 </div>
@@ -1266,56 +1011,12 @@ const CompatScreen = memo(() => {
 
               <Tabs.Item title={`${localized.fileErrors} (${numPackFileAnalysisErrors})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="compat-enabled-mod-only-file-errors"
-                        checked={useEnabledModsOnly}
-                        onChange={() => toggleUseEnabledModsOnly()}
-                      ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only-file-errors">
-                        {localized.enabledModsOnly}
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <select
-                        value={selectedModFilter}
-                        onChange={(e) => setSelectedModFilter(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">{localized.allMods}</option>
-                        {(() => {
-                          const availableMods = Object.keys(groupedPackFileAnalysisErrors);
-                          const modsToShow =
-                            selectedModFilter && !availableMods.includes(selectedModFilter)
-                              ? [...availableMods, selectedModFilter]
-                              : availableMods;
-                          return modsToShow
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((modName) => (
-                              <option key={modName} value={modName}>
-                                {modName}
-                              </option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                  </span>
                   {Object.keys(groupedPackFileAnalysisErrors).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noFileErrorsFound}
                     </p>
                   )}
-                  <div className="text-lg">
+                  <div className="space-y-2 text-lg">
                     {Object.keys(groupedPackFileAnalysisErrors)
                       .filter((packName) => selectedModFilter === "" || packName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
@@ -1331,107 +1032,64 @@ const CompatScreen = memo(() => {
                       .map((packName) => {
                         const packFileToErrors = groupedPackFileAnalysisErrors[packName];
 
-                        let donePackName = false;
-                        return Object.keys(packFileToErrors).map((packFileName) => {
-                          const errors = packFileToErrors[packFileName];
-                          return errors.map((error) => {
-                            const packName = error.packName;
-                            const packFileName = error.packFileName;
-                            const msg = error.msg;
+                        return (
+                          <CompatCollapsibleSection key={packName} title={packName}>
+                            {Object.keys(packFileToErrors).map((packFileName) => {
+                              const errors = packFileToErrors[packFileName];
+                              return errors.map((error) => {
+                                const packName = error.packName;
+                                const packFileName = error.packFileName;
+                                const msg = error.msg;
 
-                            const fragment = (
-                              <React.Fragment key={packName + packFileName + msg}>
-                                {!donePackName && <div className="mt-4 font-normal">{packName}</div>}
-                                <div className="ml-8 font-normal">
-                                  <span className="make-tooltip-inline">
-                                    <Tooltip
-                                      style="light"
-                                      content={
-                                        <>
-                                          <p>{localized.packFileName}</p>
-                                        </>
-                                      }
-                                    >
-                                      <span className="text-center w-full">{packFileName}</span>
-                                    </Tooltip>
-                                  </span>
-                                </div>
+                                const fragment = (
+                                  <React.Fragment key={packName + packFileName + msg}>
+                                    <div className="ml-4 font-normal">
+                                      <span className="make-tooltip-inline">
+                                        <Tooltip
+                                          style="light"
+                                          content={
+                                            <>
+                                              <p>{localized.packFileName}</p>
+                                            </>
+                                          }
+                                        >
+                                          <span className="text-center w-full">{packFileName}</span>
+                                        </Tooltip>
+                                      </span>
+                                    </div>
 
-                                <div className="ml-24">
-                                  <div className="mb-4">
-                                    <div>{msg}</div>
-                                    {error.lineNum && (
-                                      <div>
-                                        {localized.line} {error.lineNum}
-                                        {error.colNum && `, ${localized.column} ${error.colNum}`}
+                                    <div className="ml-16">
+                                      <div className="mb-4">
+                                        <div>{msg}</div>
+                                        {error.lineNum && (
+                                          <div>
+                                            {localized.line} {error.lineNum}
+                                            {error.colNum && `, ${localized.column} ${error.colNum}`}
+                                          </div>
+                                        )}
                                       </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </React.Fragment>
-                            );
+                                    </div>
+                                  </React.Fragment>
+                                );
 
-                            donePackName = true;
-                            return fragment;
-                          });
-                        });
+                                return fragment;
+                              });
+                            })}
+                          </CompatCollapsibleSection>
+                        );
                       })}
                   </div>
                 </div>
               </Tabs.Item>
 
               <Tabs.Item title={`${localized.missingFiles} (${numMissingFileRefs})`}>
-                <div className="leading-relaxed dark:text-gray-300 relative whitespace-nowrap">
-                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="compat-enabled-mod-only-missing-files"
-                        checked={useEnabledModsOnly}
-                        onChange={() => toggleUseEnabledModsOnly()}
-                      ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only-missing-files">
-                        {localized.enabledModsOnly}
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <select
-                        value={selectedModFilter}
-                        onChange={(e) => setSelectedModFilter(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">{localized.allMods}</option>
-                        {(() => {
-                          const availableMods = Object.keys(groupedMissingFileRefs);
-                          const modsToShow =
-                            selectedModFilter && !availableMods.includes(selectedModFilter)
-                              ? [...availableMods, selectedModFilter]
-                              : availableMods;
-                          return modsToShow
-                            .sort((firstPackName, secondPackName) => {
-                              const firstPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod,
-                              );
-                              const secondPackIndex = sortedMods.indexOf(
-                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod,
-                              );
-                              return firstPackIndex - secondPackIndex;
-                            })
-                            .map((modName) => (
-                              <option key={modName} value={modName}>
-                                {modName}
-                              </option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                  </span>
+                <div className="leading-relaxed dark:text-gray-300 relative">
                   {Object.keys(groupedMissingFileRefs).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noMissingFilesFound}
                     </p>
                   )}
-                  <div className="text-lg">
+                  <div className="space-y-2 text-lg">
                     {Object.keys(groupedMissingFileRefs)
                       .filter((packName) => selectedModFilter === "" || packName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
@@ -1448,47 +1106,48 @@ const CompatScreen = memo(() => {
                         const packFileToMissingRefs = groupedMissingFileRefs[packName];
                         const packFileTooltip = localized.fileInsidePack.replace("<PACKNAME>", packName);
 
-                        let donePackName = false;
-                        return Object.keys(packFileToMissingRefs).map((packFileName) => {
-                          let doneFileName = false;
-                          const refs = packFileToMissingRefs[packFileName];
-                          return refs.map((ref, refsIndex) => {
-                            const packName = ref.packName;
-                            const packFileName = ref.packFileName;
-                            const reference = ref.reference;
+                        return (
+                          <CompatCollapsibleSection key={packName} title={packName}>
+                            {Object.keys(packFileToMissingRefs).map((packFileName) => {
+                              let doneFileName = false;
+                              const refs = packFileToMissingRefs[packFileName];
+                              return refs.map((ref, refsIndex) => {
+                                const packName = ref.packName;
+                                const packFileName = ref.packFileName;
+                                const reference = ref.reference;
 
-                            const fragment = (
-                              <React.Fragment key={packName + packFileName + reference}>
-                                {!donePackName && <div className="mt-4 font-normal">{packName}</div>}
-                                {!doneFileName && (
-                                  <div className="ml-8 font-normal mb-2 flex">
-                                    <span className="make-tooltip-inline">
-                                      <Tooltip
-                                        style="light"
-                                        content={
-                                          <>
-                                            <p>{packFileTooltip}</p>
-                                          </>
-                                        }
-                                      >
-                                        <span className="text-center w-full">{packFileName}</span>
-                                      </Tooltip>
-                                    </span>
-                                    {fileNameToIcon(packFileName)}
-                                  </div>
-                                )}
+                                const fragment = (
+                                  <React.Fragment key={packName + packFileName + reference}>
+                                    {!doneFileName && (
+                                      <div className="ml-4 font-normal mb-2 flex">
+                                        <span className="make-tooltip-inline">
+                                          <Tooltip
+                                            style="light"
+                                            content={
+                                              <>
+                                                <p>{packFileTooltip}</p>
+                                              </>
+                                            }
+                                          >
+                                            <span className="text-center w-full">{packFileName}</span>
+                                          </Tooltip>
+                                        </span>
+                                        {fileNameToIcon(packFileName)}
+                                      </div>
+                                    )}
 
-                                <div className={`ml-24 mb-2 ${refsIndex == refs.length - 1 && "mb-5"}`}>
-                                  <div>{reference}</div>
-                                </div>
-                              </React.Fragment>
-                            );
+                                    <div className={`ml-16 mb-2 ${refsIndex == refs.length - 1 && "mb-5"}`}>
+                                      <div>{reference}</div>
+                                    </div>
+                                  </React.Fragment>
+                                );
 
-                            donePackName = true;
-                            doneFileName = true;
-                            return fragment;
-                          });
-                        });
+                                doneFileName = true;
+                                return fragment;
+                              });
+                            })}
+                          </CompatCollapsibleSection>
+                        );
                       })}
                   </div>
                 </div>
@@ -1497,11 +1156,11 @@ const CompatScreen = memo(() => {
               <Tabs.Item title={localized.help}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
                   <p>
-                    {compatHelpTwo[0]}
-                    <span className="mx-1 text-green-700">
-                      <FontAwesomeIcon fill="green" icon={faStar} />
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                      {localized.compatHigherPriority}
                     </span>
-                    {compatHelpTwo[1]}
+                    <span className="mx-1">—</span>
+                    {localized.compatHelpTwo}
                   </p>
                   <p>{localized.compatHelpOne}</p>
                   <p className="mt-6">{localized.compatHelpThree}</p>

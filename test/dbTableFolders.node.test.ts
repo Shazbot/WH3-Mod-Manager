@@ -14,6 +14,7 @@ import {
 } from "../src/utility/packFileHelpers";
 
 const LIVE = "db\\main_units_tables\\pj_my_table";
+const CUSTOM_SUFFIX_LIVE = "db\\armed_citizenry_units_to_unit_groups_junctions_tables\\ak_kraka";
 const SPARE = "unusedtables\\main_units_tables\\pj_my_tablex";
 
 describe("parseDBTablePath", () => {
@@ -60,6 +61,14 @@ describe("parseLiveDBTablePath", () => {
     expect(parseLiveDBTablePath(LIVE)?.dbName).toBe("main_units_tables");
     // A spare is inert: not loaded by the game, so not a live table.
     expect(parseLiveDBTablePath(SPARE)).toBeUndefined();
+  });
+
+  it("recognises custom live table subnames, not only data__", () => {
+    expect(parseLiveDBTablePath(CUSTOM_SUFFIX_LIVE)).toEqual({
+      dbFolder: "db",
+      dbName: "armed_citizenry_units_to_unit_groups_junctions_tables",
+      dbSubname: "ak_kraka",
+    });
   });
 });
 

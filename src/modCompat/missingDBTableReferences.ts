@@ -5,7 +5,7 @@ import { Pack, PackTableReferences, PackName, DBRefOrigin, DBField, DBFileName }
 import { gameToReferences, gameToDBFieldsThatReference, DBNameToDBVersions } from "../schema";
 import optionalNontextFields from "../../schema/optional_nontext_fields.json";
 import additionalFieldKeysOrig from "../../schema/additional_field_keys.json"; // startpos and other keys that the game is tolerant of not existing
-import { getDBName } from "../utility/packFileHelpers";
+import { parseLiveDBTablePath } from "../utility/packFileHelpers";
 import { binarySearchIncludes, insertIntoPresortedArray } from "../utility/packFileSorting";
 import { appendScriptToFileChecksRegistry, appendToFileChecksRegistry } from "./fileSyntaxChecks";
 import { appendToAddListenerRegistry } from "./scriptFileListenerNames";
@@ -72,7 +72,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
       }
 
       try {
-        const dbName = getDBName(packFile);
+        const dbName = parseLiveDBTablePath(packFile.name)?.dbName;
         if (!dbName) {
           console.log("findPackTableReferences: cannot find db name for", packFile.name);
           continue;
@@ -299,7 +299,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
       }
 
       try {
-        const dbName = getDBName(packFile);
+        const dbName = parseLiveDBTablePath(packFile.name)?.dbName;
         if (!dbName) {
           console.log("findPackTableReferences: cannot find db name for", packFile.name);
           continue;

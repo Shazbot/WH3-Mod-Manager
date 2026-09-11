@@ -948,7 +948,7 @@ const appendCollisions = async (newPack: Pack) => {
     );
   }
 };
-const matchVanillaDBFiles = /^db\\.*\\data__/;
+const isLiveDBPackedFileName = (packedFileName: string) => parseLiveDBTablePath(packedFileName) != undefined;
 const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
   const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
   console.log("appendPacksData: appending", newPack.name);
@@ -960,7 +960,7 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
     }
     const candidateFileNames = newPack.packedFiles
       .map((packedFile) => packedFile.name)
-      .filter((packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua"));
+      .filter((packedFileName) => isLiveDBPackedFileName(packedFileName) || packedFileName.endsWith(".lua"));
     // Gathered once rather than scanned per candidate: a mod adding scripts of its own finds no
     // match for any of them, and that is the case that walked every vanilla pack in full each time.
     const vanillaFileNames = new Set<string>();
@@ -5264,7 +5264,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     removePackFromCollisions(path);
   };
-  const matchTableNamePart = /^db\\(.*?)\\data__/;
   const getAllMods = async (afterModsPopulated?: () => void | Promise<void>) => {
     const timeStartedFetchingSubbedIds = Date.now();
     try {
@@ -5417,9 +5416,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               }
             }
             const vanillaDBFileNames = packedFileNames
-              .map((name) => name.match(matchTableNamePart))
-              .filter((matchResult) => matchResult)
-              .map((matchResult) => matchResult![1]);
+              .flatMap((name) => {
+                const dbName = parseLiveDBTablePath(name)?.dbName;
+                return dbName ? [dbName] : [];
+              });
             if (vanillaDBFileNames.length > 0) {
               appData.vanillaPacksDBFileNames = Array.from(
                 new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values(),
@@ -5959,9 +5959,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const pack of appData.vanillaPacks) {
       if (!vanillaPackPathsSet.has(pack.path)) continue;
       for (const packedFile of pack.packedFiles) {
-        const tableNameMatch = packedFile.name.match(matchTableNamePart);
-        if (!tableNameMatch) continue;
-        const tableName = tableNameMatch[1];
+        const tableName = parseLiveDBTablePath(packedFile.name)?.dbName;
+        if (!tableName) continue;
         tableToPackPaths[tableName] = tableToPackPaths[tableName] || [];
         if (!tableToPackPaths[tableName].includes(pack.path)) {
           tableToPackPaths[tableName].push(pack.path);
@@ -5978,9 +5977,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!modPaths.has(pack.path)) continue;
       for (const packedFile of pack.packedFiles) {
         if (!packedFile.schemaFields) continue;
-        const tableNameMatch = packedFile.name.match(matchTableNamePart);
-        if (!tableNameMatch) continue;
-        const tableName = tableNameMatch[1];
+        const tableName = parseLiveDBTablePath(packedFile.name)?.dbName;
+        if (!tableName) continue;
         const dbVersion = getDBVersion(packedFile);
         if (!dbVersion) continue;
         const tableFieldRefs = tablesAndDBFieldsThatReference[tableName];
