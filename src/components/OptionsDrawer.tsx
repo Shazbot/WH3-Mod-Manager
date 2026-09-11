@@ -957,65 +957,6 @@ const OptionsDrawer = memo(() => {
             <h6 className="mt-8">{localized.contentVsData}</h6>
             <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.contentVsDataMsg}</p>
 
-            <div className="mb-3 rounded border border-gray-600 p-3 text-sm">
-              <p className="mb-2 text-gray-300">
-                {localized.automaticWorkshopStagingHelp ||
-                  "Prepare enabled Workshop mods in game_folder/whmm_copied_mods when the game starts."}
-              </p>
-              <label className="flex items-center ml-1 mt-2">
-                <input
-                  className="mt-1"
-                  type="checkbox"
-                  id="automatically-copy-workshop-mods-on-start"
-                  checked={workshopModStagingMode === "copy"}
-                  onChange={() =>
-                    dispatch(setWorkshopModStagingMode(workshopModStagingMode === "copy" ? "disabled" : "copy"))
-                  }
-                />
-                <span className="ml-2 mt-1">
-                  {localized.automaticallyCopyWorkshopModsOnStart || "Automatically copy to data on start"}
-                </span>
-              </label>
-              <label
-                className={
-                  "flex items-center ml-1 mt-2 " + (!canCreateSymbolicLinks ? "cursor-not-allowed opacity-50" : "")
-                }
-              >
-                <input
-                  className="mt-1"
-                  type="checkbox"
-                  id="automatically-link-workshop-mods-on-start"
-                  checked={workshopModStagingMode === "symlink"}
-                  disabled={!canCreateSymbolicLinks}
-                  onChange={() =>
-                    dispatch(setWorkshopModStagingMode(workshopModStagingMode === "symlink" ? "disabled" : "symlink"))
-                  }
-                />
-                <span className="ml-2 mt-1">
-                  {localized.automaticallyCopySymbolicLinksOnStart || "Automatically copy symbolic links on start"}
-                </span>
-              </label>
-              {!canCreateSymbolicLinks && (
-                <p className="mt-2 text-xs text-red-400">
-                  {localized.automaticWorkshopSymlinkUnavailable ||
-                    "Symbolic-link staging requires administrator access or Windows Developer Mode."}
-                </p>
-              )}
-              <label className="flex items-center ml-1 mt-3">
-                <input
-                  className="mt-1"
-                  type="checkbox"
-                  id="clean-up-workshop-mods-after-game-exit"
-                  checked={!!cleanUpWorkshopModStagingAfterGameExit}
-                  disabled={workshopModStagingMode === "disabled"}
-                  onChange={() => dispatch(toggleCleanUpWorkshopModStagingAfterGameExit())}
-                />
-                <span className="ml-2 mt-1">
-                  {localized.cleanUpWorkshopModsAfterGameExit || "Clean up after game exit"}
-                </span>
-              </label>
-            </div>
-
             <div className="flex mt-2">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
@@ -1089,6 +1030,93 @@ const OptionsDrawer = memo(() => {
                 </Tooltip>
               </button>
             </div>
+
+            <h6 className="mt-8">{localized.automaticWorkshopStagingTitle || "Automatic Workshop Mod Staging"}</h6>
+            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+              {localized.automaticWorkshopStagingHelp ||
+                "This is the automatic launch-time alternative to the copy and symbolic-link tools above. It prepares enabled Workshop mods in game_folder/whmm_copied_mods."}
+            </p>
+
+            <fieldset className="mb-3 rounded border border-gray-600 p-3 text-sm">
+              <legend className="px-1 font-medium text-gray-200">
+                {localized.automaticWorkshopStagingMode || "On game start"}
+              </legend>
+              <div className="space-y-2">
+                <label className="flex cursor-pointer items-center rounded px-2 py-2 hover:bg-gray-700/50">
+                  <input
+                    type="radio"
+                    name="automatic-workshop-staging-mode"
+                    id="disable-automatic-workshop-staging"
+                    checked={workshopModStagingMode === "disabled"}
+                    onChange={() => dispatch(setWorkshopModStagingMode("disabled"))}
+                  />
+                  <span className="ml-3">{localized.automaticWorkshopStagingDisabled || "Off"}</span>
+                </label>
+                <label className="flex cursor-pointer items-center rounded px-2 py-2 hover:bg-gray-700/50">
+                  <input
+                    type="radio"
+                    name="automatic-workshop-staging-mode"
+                    id="automatically-copy-workshop-mods-on-start"
+                    checked={workshopModStagingMode === "copy"}
+                    onChange={() => dispatch(setWorkshopModStagingMode("copy"))}
+                  />
+                  <span className="ml-3">{localized.automaticallyCopyWorkshopModsOnStart || "Copy mod files"}</span>
+                </label>
+                <label
+                  className={
+                    "flex items-center rounded px-2 py-2 " +
+                    (canCreateSymbolicLinks ? "cursor-pointer hover:bg-gray-700/50" : "cursor-not-allowed opacity-50")
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="automatic-workshop-staging-mode"
+                    id="automatically-link-workshop-mods-on-start"
+                    checked={workshopModStagingMode === "symlink"}
+                    disabled={!canCreateSymbolicLinks}
+                    onChange={() => dispatch(setWorkshopModStagingMode("symlink"))}
+                  />
+                  <span className="ml-3">
+                    {localized.automaticallyCopySymbolicLinksOnStart || "Create symbolic links"}
+                  </span>
+                </label>
+              </div>
+              {!canCreateSymbolicLinks && (
+                <p className="mt-2 px-2 text-xs text-red-400">
+                  {localized.automaticWorkshopSymlinkUnavailable ||
+                    "Symbolic-link staging requires administrator access or Windows Developer Mode."}
+                </p>
+              )}
+
+              <div className="mt-3 border-t border-gray-600 pt-3">
+                <label
+                  className={
+                    "flex items-start px-2 " +
+                    (workshopModStagingMode === "disabled" ? "cursor-not-allowed opacity-50" : "cursor-pointer")
+                  }
+                >
+                  <input
+                    className="mt-1"
+                    type="checkbox"
+                    id="clean-up-workshop-mods-after-game-exit"
+                    checked={!!cleanUpWorkshopModStagingAfterGameExit}
+                    disabled={workshopModStagingMode === "disabled"}
+                    onChange={() => dispatch(toggleCleanUpWorkshopModStagingAfterGameExit())}
+                  />
+                  <span className="ml-3">
+                    <span className="block">
+                      {localized.cleanUpWorkshopModsAfterGameExit || "Clean up after game exit"}
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-400">
+                      {workshopModStagingMode === "disabled"
+                        ? localized.cleanUpWorkshopModsDisabledHelp || "Select a staging mode to enable cleanup."
+                        : localized.cleanUpWorkshopModsHelp ||
+                          "Applies to both copy and symbolic-link modes and removes staged mods after the game closes."}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
 
             <h6 className="mt-10">{localized.hiddenMods}</h6>
             <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{localized.unhideMods}</p>

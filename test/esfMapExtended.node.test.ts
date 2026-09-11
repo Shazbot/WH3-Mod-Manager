@@ -6,6 +6,8 @@ import {
   createExtendedMapEditState,
   fillExtendedBuildingSlots,
   formatExtendedMapJson,
+  groupExtendedUnitOptionsByCaste,
+  mergeExtendedMapOwnership,
   parseMapFile,
   resolveExtendedBuildingOptions,
   resolveExtendedUnitOptions,
@@ -65,6 +67,20 @@ describe("extended map files", () => {
       format: "extended",
       document: { regions: [{ region: "abandoned", faction: null, buildings: null }], faction_to_chars: [] },
     });
+  });
+
+  it("merges current ownership into one complete extended export document", () => {
+    const merged = mergeExtendedMapOwnership(document, {
+      REGION_A: "faction_b",
+      region_b: null,
+    });
+
+    expect(merged).toEqual({
+      ...document,
+      regions: [{ ...document.regions[0], faction: "faction_b" }],
+    });
+    expect(document.regions[0].faction).toBe("faction_a");
+    expect(merged.faction_to_chars).toEqual(document.faction_to_chars);
   });
 
   it("rejects invalid ranges, obsolete unit shapes, and duplicate ids", () => {
@@ -282,6 +298,39 @@ describe("extended map files", () => {
     ];
     expect(resolveExtendedUnitOptions(units, "sc_a", true).map((unit) => unit.key)).toEqual(["lord"]);
     expect(resolveExtendedUnitOptions(units, "sc_a").map((unit) => unit.key)).toEqual(["hero"]);
+  });
+
+  it("groups editing unit choices by caste in Unit Viewer order", () => {
+    const options = [
+      { key: "spear", name: "Spearmen", caste: "melee_infantry", isLord: false },
+      { key: "hero_b", name: "B Hero", caste: "hero", isLord: false },
+      { key: "lord", name: "Lord", caste: "lord", isLord: true },
+      { key: "hero_a", name: "A Hero", caste: "hero", isLord: false },
+      { key: "unknown", name: "Unknown", caste: "", isLord: false },
+    ];
+
+    expect(groupExtendedUnitOptionsByCaste(options)).toEqual([
+      {
+        key: "lord",
+        name: "Lord",
+        options: [options[2]],
+      },
+      {
+        key: "hero",
+        name: "Hero",
+        options: [options[3], options[1]],
+      },
+      {
+        key: "melee_infantry",
+        name: "Melee Infantry",
+        options: [options[0]],
+      },
+      {
+        key: "__unknown",
+        name: "Unknown caste",
+        options: [options[4]],
+      },
+    ]);
   });
 
   it("resolves building choices from the selected slot template and faction availability", () => {

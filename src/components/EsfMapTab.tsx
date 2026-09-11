@@ -1,12 +1,19 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
+import { Modal } from "../flowbite";
 import { addToast, clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
 import { unitAssetUrl } from "../assetUrls";
 import { useLocalizations } from "../localizationContext";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
-import { applyOwnershipEdits, formatRegionOwnershipJson, ownershipEditsFromImport } from "../esfMap/ownership";
+import {
+  applyOwnershipEdits,
+  formatRegionOwnershipJson,
+  ownershipEditsFromImport,
+  regionOwnership,
+} from "../esfMap/ownership";
 import type { OwnershipEdits } from "../esfMap/ownership";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
+import { nextFactionRegionMarker } from "../esfMap/navigation";
 import { mapPointToCharacterCoordinate, projectCharacterCoordinateToMap } from "../esfMap/coordinates";
 import {
   CHARACTER_TERRAIN_COLOURS,
@@ -19,9 +26,13 @@ import {
   cloneExtendedMap,
   createExtendedMapEditState,
   fillExtendedBuildingSlots,
+  formatExtendedMapJson,
+  groupExtendedUnitOptionsByCaste,
+  mergeExtendedMapOwnership,
   parseMapFile,
   resolveExtendedUnitOptions,
   type ExtendedMapCharacter,
+  type ExtendedMapDeltaAction,
   type ExtendedMapDocument,
   type ExtendedMapEditAction,
   type ExtendedMapEditState,
@@ -34,6 +45,8 @@ type EsfMapTabProps = {
 };
 
 const MAP_AREA_OPACITY = 0.36;
+const OWNERSHIP_EDIT_TERRAIN_OPACITY = 0.3;
+const OWNERSHIP_EDIT_CHARACTER_OPACITY = 0.45;
 const FACTION_FLAG_SIZE = 20;
 const CHARACTER_DRAG_THRESHOLD = 3;
 const CHARACTER_MARKER_RADIUS = 10;
@@ -127,6 +140,133 @@ const formatSubtypeOption = (option: UnitViewerLordOption) => `${option.subtype}
 
 const characterUiKey = (faction: string, id: number) => `${faction.toLowerCase()}:${id}`;
 
+type MapEditPanel = "ownership" | "extended";
+
+type OwnershipEditEntry = {
+  region: string;
+  before: string | null;
+  after: string | null;
+};
+
+const extendedEditActionKey = (action: ExtendedMapDeltaAction, index: number) => {
+  const target = "region" in action ? action.region : `${action.faction}:${action.characterId}`;
+  const detail =
+    "unitId" in action
+      ? action.unitId
+      : "slotIndex" in action
+        ? action.slotIndex
+        : "index" in action
+          ? action.index
+          : action.type;
+  return `${index}:${action.type}:${target}:${detail}`;
+};
+
+const cloneExtendedCharacter = (character: ExtendedMapCharacter): ExtendedMapCharacter => ({
+  ...character,
+  ...(character.units ? { units: character.units.map((unit) => ({ ...unit })) } : {}),
+});
+
+/** Applies the inverse of one baseline delta action while preserving every other current edit. */
+const revertExtendedDeltaAction = (
+  document: ExtendedMapDocument,
+  action: ExtendedMapDeltaAction,
+): ExtendedMapDocument | undefined => {
+  const next = cloneExtendedMap(document);
+
+  if (action.type === "set_building" || action.type === "add_building_slot") {
+    const region = next.regions.find((candidate) => candidate.region.toLowerCase() === action.region.toLowerCase());
+    if (!region?.buildings) return undefined;
+    if (action.type === "set_building") {
+      if (!region.buildings[action.slotIndex]) return undefined;
+      region.buildings[action.slotIndex] = { ...action.before };
+    } else {
+      const current = region.buildings[action.slotIndex];
+      if (!current || JSON.stringify(current) !== JSON.stringify(action.building)) return undefined;
+      region.buildings.splice(action.slotIndex, 1);
+    }
+    return next;
+  }
+
+  const group = next.faction_to_chars.find(
+    (candidate) => candidate.faction.toLowerCase() === action.faction.toLowerCase(),
+  );
+  const character = group?.chars.find((candidate) => candidate.id === action.characterId);
+
+  if (action.type === "remove_character") {
+    if (!group || character) return undefined;
+    group.chars.splice(
+      Math.min(Math.max(action.index, 0), group.chars.length),
+      0,
+      cloneExtendedCharacter(action.character),
+    );
+    return next;
+  }
+
+  if (!character) return undefined;
+  if (action.type === "update_character") {
+    for (const field of ["x", "y", "rank", "subtype"] as const) {
+      const change = action.changes[field];
+      if (!change) continue;
+      if (field === "subtype") character.subtype = String(change.before);
+      else character[field] = Number(change.before);
+    }
+    return next;
+  }
+
+  if (!character.units) character.units = [];
+  if (action.type === "add_unit") {
+    const unitIndex = character.units.findIndex((unit) => unit.id === action.unit.id);
+    if (unitIndex < 0) return undefined;
+    character.units.splice(unitIndex, 1);
+    return next;
+  }
+  if (action.type === "remove_unit") {
+    if (character.units.some((unit) => unit.id === action.unit.id)) return undefined;
+    character.units.splice(Math.min(Math.max(action.index, 0), character.units.length), 0, { ...action.unit });
+    return next;
+  }
+
+  const unit = character.units.find((candidate) => candidate.id === action.unitId);
+  if (!unit) return undefined;
+  for (const field of ["unit_key", "xp", "health"] as const) {
+    const change = action.changes[field];
+    if (!change) continue;
+    if (field === "unit_key") unit.unit_key = String(change.before);
+    else unit[field] = Number(change.before);
+  }
+  return next;
+};
+
+const extendedEditActionTitle = (action: ExtendedMapDeltaAction) => {
+  if (action.type === "set_building" || action.type === "add_building_slot") return `Building · ${action.region}`;
+  if (action.type === "update_character" || action.type === "remove_character")
+    return `Character · ${action.faction} · ID ${action.characterId}`;
+  return `Unit · ${action.faction} · character ID ${action.characterId}`;
+};
+
+const formatChangeList = (
+  fields: readonly string[],
+  changes: Partial<Record<string, { before: number | string; after: number | string }>>,
+) =>
+  fields
+    .flatMap((field) => {
+      const change = changes[field];
+      return change ? [`${field}: ${String(change.before)} → ${String(change.after)}`] : [];
+    })
+    .join(" · ");
+
+const extendedEditActionDescription = (action: ExtendedMapDeltaAction) => {
+  if (action.type === "set_building")
+    return `Slot ${action.slotIndex + 1}: ${action.before.building || "(empty)"} → ${action.after.building || "(empty)"}`;
+  if (action.type === "add_building_slot")
+    return `Added slot ${action.slotIndex + 1}: ${action.building.building || "(empty)"}`;
+  if (action.type === "update_character") return formatChangeList(["x", "y", "rank", "subtype"], action.changes);
+  if (action.type === "remove_character") return `Removed ${action.character.subtype}`;
+  if (action.type === "add_unit") return `Added unit: ${action.unit.unit_key}`;
+  if (action.type === "remove_unit") return `Removed unit: ${action.unit.unit_key}`;
+  return formatChangeList(["unit_key", "xp", "health"], action.changes);
+};
+
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useLocalizations();
@@ -160,6 +300,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     selectionBeforePointerDown?: { faction: string; id: number };
     clickHandled: boolean;
   }>();
+  const factionRegionCycleRef = useRef<{ factionKey: string; markerId: number }>();
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -220,6 +361,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [unitViewerSessionId, setUnitViewerSessionId] = useState<string>();
   const [resolvedCharacterThumbnailPaths, setResolvedCharacterThumbnailPaths] = useState<string[]>([]);
   const [extendedLoading, setExtendedLoading] = useState(false);
+  const [openEditPanel, setOpenEditPanel] = useState<MapEditPanel>();
 
   const mapText = (key: string, fallback: string) => localized[key] || fallback;
   const mapMessage = (key: string, fallback: string, values: Record<string, string | number>) =>
@@ -241,6 +383,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const editedRegionCount = Object.keys(ownershipEdits).length;
   const isEditingFactions = mapView === "factions" && isEditingOwnership;
   const brushFactionKey = factionKey(brushFaction);
+  const brushFactionDetails = brushFactionKey ? factionsByKey.get(brushFactionKey) : undefined;
   const extendedCharacters = useMemo(
     () =>
       extendedState?.document.faction_to_chars.flatMap((group) =>
@@ -250,19 +393,27 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   );
   const selectedCharacter = useMemo(
     () =>
-      selectedCharacterKey && !mapSelectedRegion
+      selectedCharacterKey && !mapSelectedRegion && !isEditingFactions
         ? extendedCharacters.find(
             ({ faction, character }) =>
               faction.toLowerCase() === selectedCharacterKey.faction.toLowerCase() &&
               character.id === selectedCharacterKey.id,
           )
         : undefined,
-    [extendedCharacters, mapSelectedRegion, selectedCharacterKey],
+    [extendedCharacters, isEditingFactions, mapSelectedRegion, selectedCharacterKey],
   );
   const extendedDelta = useMemo(
     () => (extendedState ? buildExtendedMapDelta(extendedState.baseline, extendedState.document) : undefined),
     [extendedState],
   );
+  const ownershipEditEntries = useMemo<OwnershipEditEntry[]>(
+    () =>
+      Object.entries(ownershipEdits)
+        .map(([region, after]) => ({ region, before: baseOwnerByRegion.get(region) ?? null, after }))
+        .sort((first, second) => first.region.localeCompare(second.region)),
+    [baseOwnerByRegion, ownershipEdits],
+  );
+  const extendedEditActions = extendedDelta?.actions ?? [];
   const isExtendedFormat = !!extendedState;
   const characterMapOverlayActive = isActive && !!map && showCharacters && !!extendedState;
   const mapDisplayWidthPx = map ? Math.max(320, Math.round(map.width * zoom)) : 0;
@@ -271,6 +422,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const mapDisplayHeight = map ? `${mapDisplayHeightPx}px` : undefined;
   const mapScaleX = map && map.width > 0 ? mapDisplayWidthPx / map.width : 1;
   const mapScaleY = map && map.height > 0 ? mapDisplayHeightPx / map.height : 1;
+
+  useEffect(() => {
+    if (!isEditingFactions) return;
+    setSelectedCharacterKey(undefined);
+    setCharacterDragPreview(undefined);
+    characterDragRef.current = undefined;
+    characterClickGestureRef.current = undefined;
+  }, [isEditingFactions]);
   const factionFlagMarkers = useMemo(
     () =>
       mapView === "factions" && map
@@ -547,7 +706,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setExtendedHistory([]);
     setSelectedCharacterKey(undefined);
     setCharacterDragPreview(undefined);
+    factionRegionCycleRef.current = undefined;
     setBuildingsView(undefined);
+    setOpenEditPanel(undefined);
   }, [campaignKey, currentGame]);
 
   const pushEditHistory = useCallback(
@@ -569,6 +730,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       return next;
     });
   };
+
+  const revertOwnershipEdit = useCallback(
+    (regionKey: string) => {
+      if (!(regionKey in ownershipEdits)) return;
+      pushEditHistory();
+      setOwnershipEdits((edits) => {
+        const next = { ...edits };
+        delete next[regionKey];
+        return next;
+      });
+    },
+    [ownershipEdits, pushEditHistory],
+  );
 
   const undoOwnershipEdit = useCallback(() => {
     if (editHistory.length === 0) return;
@@ -630,6 +804,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [updateExtendedDocuments],
   );
 
+  const revertExtendedEdit = useCallback(
+    (action: ExtendedMapDeltaAction) => {
+      if (!extendedState) return;
+      const document = revertExtendedDeltaAction(extendedState.document, action);
+      if (!document || JSON.stringify(document) === JSON.stringify(extendedState.document)) return;
+      setExtendedHistory((history) =>
+        [...history, cloneExtendedMap(extendedState.document)].slice(-OWNERSHIP_HISTORY_LIMIT),
+      );
+      setExtendedState((current) => (current ? { ...current, document } : current));
+    },
+    [extendedState],
+  );
+
   const undoExtendedEdit = useCallback(() => {
     if (!extendedState || extendedHistory.length === 0) return;
     const document = extendedHistory[extendedHistory.length - 1];
@@ -664,22 +851,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!map || isTransferringOwnership) return;
     setIsTransferringOwnership(true);
     try {
+      const extendedDocument = extendedState
+        ? mergeExtendedMapOwnership(extendedState.document, regionOwnership(map))
+        : undefined;
       const result = await window.api?.exportRegionOwnership(
-        formatRegionOwnershipJson(map),
-        "map.json",
-        extendedDelta && extendedDelta.actions.length > 0
-          ? `${JSON.stringify(extendedDelta, undefined, 2)}\n`
-          : undefined,
+        extendedDocument ? formatExtendedMapJson(extendedDocument) : formatRegionOwnershipJson(map),
+        extendedDocument ? "map_out3.json" : "map.json",
       );
       if (!result || result.canceled) return;
       if (result.success) {
         showOwnershipToast("success", [
           mapMessage(
-            "mapOwnershipExported",
-            extendedDelta && extendedDelta.actions.length > 0
-              ? "Region ownership written to {{path}}; extended changes written to {{changesPath}}"
-              : "Region ownership written to {{path}}",
-            { path: result.savedPath ?? "", changesPath: result.changesPath ?? "" },
+            extendedDocument ? "mapExtendedExported" : "mapOwnershipExported",
+            extendedDocument ? "Extended map written to {{path}}" : "Region ownership written to {{path}}",
+            { path: result.savedPath ?? "" },
           ),
         ]);
       } else {
@@ -1046,7 +1231,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         }
       }
 
-      if (characterMapOverlayActive) drawCharacterTerrainAreas(context, map);
+      if (characterMapOverlayActive) {
+        context.save();
+        context.globalAlpha = isEditingOwnership ? OWNERSHIP_EDIT_TERRAIN_OPACITY : 1;
+        drawCharacterTerrainAreas(context, map);
+        context.restore();
+      }
 
       for (const marker of map.markers) {
         const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
@@ -1244,6 +1434,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     dispatch(clearMapRegionSelection());
   };
 
+  const selectBrushFactionForRegion = (marker: EsfMapMarker) => {
+    const owner = marker.ownerFaction?.trim();
+    if (!owner) return;
+
+    // Keep the brush aligned with the faction roster's canonical spelling when possible.
+    setBrushFaction(factionsByKey.get(owner.toLowerCase())?.key ?? owner);
+  };
+
   const selectMapFaction = (factionKeyToSelect: string) => {
     const factionMarkers =
       map?.markers.filter((candidate) => factionKey(candidate.ownerFaction) === factionKeyToSelect) ?? [];
@@ -1251,11 +1449,32 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     centerMapOnMarkers(factionMarkers);
   };
 
+  const focusNextFactionRegion = (factionKeyToFocus: string) => {
+    if (!map) return;
+    const normalizedKey = factionKeyToFocus.toLowerCase();
+    const previousMarkerId =
+      factionRegionCycleRef.current?.factionKey === normalizedKey ? factionRegionCycleRef.current.markerId : undefined;
+    const marker = nextFactionRegionMarker(map.markers, normalizedKey, previousMarkerId);
+    if (!marker) return;
+
+    factionRegionCycleRef.current = { factionKey: normalizedKey, markerId: marker.id };
+    selectMapMarker(marker, true);
+  };
+
   const beginMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0) return;
-    if (showCharacters && extendedState) {
-      const character = characterAtCanvasPoint(event);
-      if (character) {
+    let hasCharacterClickTarget = false;
+    if (!isEditingFactions && showCharacters && extendedState) {
+      const characters = charactersAtCanvasPoint(event);
+      const selectedCharacterAtPoint = selectedCharacterKey
+        ? characters.find(
+            ({ faction, character }) =>
+              character.id === selectedCharacterKey.id &&
+              faction.toLowerCase() === selectedCharacterKey.faction.toLowerCase(),
+          )
+        : undefined;
+      if (characters.length > 0) {
+        hasCharacterClickTarget = true;
         const currentGesture = characterClickGestureRef.current;
         if (!currentGesture || currentGesture.pointerId !== event.pointerId || currentGesture.clickHandled) {
           characterClickGestureRef.current = {
@@ -1264,28 +1483,31 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             clickHandled: false,
           };
         }
+      }
+      // Selecting and moving are separate gestures. This prevents a pan that starts over an
+      // unselected marker from unexpectedly picking up and relocating that character.
+      if (selectedCharacterAtPoint) {
         suppressMapClickRef.current = false;
         characterDragRef.current = {
           pointerId: event.pointerId,
-          faction: character.faction,
-          characterId: character.character.id,
+          faction: selectedCharacterAtPoint.faction,
+          characterId: selectedCharacterAtPoint.character.id,
           startX: event.clientX,
           startY: event.clientY,
           hasMoved: false,
         };
-        selectMapCharacter(character.faction, character.character);
         setCharacterDragPreview({
-          faction: character.faction,
-          id: character.character.id,
-          x: character.character.x,
-          y: character.character.y,
+          faction: selectedCharacterAtPoint.faction,
+          id: selectedCharacterAtPoint.character.id,
+          x: selectedCharacterAtPoint.character.x,
+          y: selectedCharacterAtPoint.character.y,
         });
         event.currentTarget.setPointerCapture(event.pointerId);
         event.preventDefault();
         return;
       }
     }
-    characterClickGestureRef.current = undefined;
+    if (!hasCharacterClickTarget) characterClickGestureRef.current = undefined;
     const canvasWrap = canvasWrapRef.current;
     if (!canvasWrap) return;
 
@@ -1435,8 +1657,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       .reverse();
   };
 
-  const characterAtCanvasPoint = (event: { clientX: number; clientY: number }) => charactersAtCanvasPoint(event)[0];
-
   const handleMapClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const characterClickGesture = characterClickGestureRef.current;
     if (characterClickGesture?.clickHandled) return;
@@ -1445,7 +1665,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       if (characterClickGesture) characterClickGesture.clickHandled = true;
       return;
     }
-    if (showCharacters && extendedState) {
+    if (!isEditingFactions && showCharacters && extendedState) {
       const characters = charactersAtCanvasPoint(event);
       const selectionBeforePointerDown = characterClickGesture
         ? characterClickGesture.selectionBeforePointerDown
@@ -1474,7 +1694,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       }
     }
     const marker = markerAtCanvasPoint(event);
-    if (marker && isEditingFactions && brushFaction) paintRegion(marker.key, brushFaction);
+    if (marker && isEditingFactions) {
+      if (event.ctrlKey || !brushFaction) selectBrushFactionForRegion(marker);
+      else paintRegion(marker.key, brushFaction);
+    }
     selectMapMarker(marker);
   };
 
@@ -1499,6 +1722,34 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     <div className="flex h-[92vh] min-h-0 flex-col text-gray-200">
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-700 px-4 py-2 text-sm">
         <span className="font-medium text-gray-100">{mapText("mapTitle", "Campaign map")}</span>
+        {map && campaignOptions.length > 0 && (
+          <select
+            value={mapCampaignName}
+            onChange={(event) => {
+              // The edits below are keyed by region, and another campaign has none of these regions.
+              if (editedRegionCount > 0) {
+                showOwnershipToast("info", [
+                  mapMessage(
+                    "mapOwnershipEditsCleared",
+                    "{{count}} region ownership edit(s) dropped: campaign changed.",
+                    {
+                      count: editedRegionCount,
+                    },
+                  ),
+                ]);
+              }
+              dispatch(setMapCampaignName(event.target.value));
+            }}
+            className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
+            aria-label={mapText("mapTitle", "Campaign map")}
+          >
+            {campaignOptions.map((campaign) => (
+              <option key={campaign.key} value={campaign.key}>
+                {campaign.label}
+              </option>
+            ))}
+          </select>
+        )}
         <div
           className="flex rounded border border-gray-700 bg-gray-900 p-0.5"
           role="tablist"
@@ -1565,38 +1816,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             >
               {mapText("mapRevertExtendedEdits", "Revert extended")}
             </button>
-            {!!extendedDelta?.actions.length && (
-              <span className="text-xs text-amber-300">{extendedDelta.actions.length} changed</span>
+            {extendedEditActions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setOpenEditPanel("extended")}
+                title={mapText("mapOpenEditsHint", "Open the list of edits")}
+                className="rounded border border-amber-700 bg-amber-950/40 px-2 py-1 text-xs text-amber-300 hover:bg-amber-900/60"
+              >
+                {mapMessage("mapExtendedEdits", "{{count}} edited", { count: extendedEditActions.length })}
+              </button>
             )}
           </div>
-        )}
-        {map && campaignOptions.length > 0 && (
-          <select
-            value={mapCampaignName}
-            onChange={(event) => {
-              // The edits below are keyed by region, and another campaign has none of these regions.
-              if (editedRegionCount > 0) {
-                showOwnershipToast("info", [
-                  mapMessage(
-                    "mapOwnershipEditsCleared",
-                    "{{count}} region ownership edit(s) dropped: campaign changed.",
-                    {
-                      count: editedRegionCount,
-                    },
-                  ),
-                ]);
-              }
-              dispatch(setMapCampaignName(event.target.value));
-            }}
-            className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
-            aria-label={mapText("mapTitle", "Campaign map")}
-          >
-            {campaignOptions.map((campaign) => (
-              <option key={campaign.key} value={campaign.key}>
-                {campaign.label}
-              </option>
-            ))}
-          </select>
         )}
         {map && mapView === "regions" && map.settlementTypes.length > 0 && (
           <select
@@ -1656,12 +1886,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 >
                   {mapText("mapRevertEdits", "Revert edits")}
                 </button>
-                {editedRegionCount > 0 && (
-                  <span className="text-xs text-amber-300">
-                    {mapMessage("mapEditedRegions", "{{count}} edited", { count: editedRegionCount })}
-                  </span>
-                )}
               </>
+            )}
+            {editedRegionCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setOpenEditPanel("ownership")}
+                title={mapText("mapOpenEditsHint", "Open the list of edits")}
+                className="rounded border border-amber-700 bg-amber-950/40 px-2 py-1 text-xs text-amber-300 hover:bg-amber-900/60"
+              >
+                {mapMessage("mapEditedRegions", "{{count}} edited", { count: editedRegionCount })}
+              </button>
             )}
             <button
               type="button"
@@ -1833,6 +2068,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                           height: marker.radiusY * 2,
                           border: `${marker.borderWidth}px solid rgba(0, 0, 0, 0.95)`,
                           backgroundColor: factionColour(marker.faction.toLowerCase()),
+                          opacity: isEditingOwnership ? OWNERSHIP_EDIT_CHARACTER_OPACITY : 1,
                           boxShadow: marker.selected ? "0 0 0 3px #facc15" : undefined,
                           boxSizing: "border-box",
                         }}
@@ -1848,6 +2084,45 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       </div>
                     ))}
                   </div>
+                  {isEditingFactions && (
+                    <div
+                      className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-center rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
+                      role="status"
+                    >
+                      <div className="flex items-center gap-2 font-medium text-gray-100">
+                        {brushFactionDetails?.flagUrl && (
+                          <img src={brushFactionDetails.flagUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
+                        )}
+                        <span>
+                          {brushFaction
+                            ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
+                                faction: brushFactionDetails?.label ?? brushFaction,
+                              })
+                            : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[0.7rem] text-gray-400">
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                          <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                            Ctrl + left click
+                          </kbd>
+                          {mapText("mapOwnershipSelectFaction", "Select faction")}
+                        </span>
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                          <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                            Left click
+                          </kbd>
+                          {mapText("mapOwnershipAssignFaction", "Give region")}
+                        </span>
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                          <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                            Right click
+                          </kbd>
+                          {mapText("mapOwnershipClearRegion", "Clear ownership")}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2162,6 +2437,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       const selectableUnitOptions = leaderUnitKeys
                         ? unitOptions.filter((option) => leaderUnitKeys.has(option.key))
                         : unitOptions;
+                      const selectableUnitOptionGroups = groupExtendedUnitOptionsByCaste(selectableUnitOptions);
                       return (
                         <div key={unit.id} className="mb-1 rounded border border-gray-800 bg-gray-950/60 p-1.5">
                           <div className="flex items-center gap-1">
@@ -2206,12 +2482,18 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                               aria-label={mapText("mapUnit", "Unit")}
                             >
                               {!selectableUnitOptions.some((option) => option.key === unit.unit_key) && (
-                                <option value={unit.unit_key}>{unit.unit_key}</option>
-                              )}
-                              {selectableUnitOptions.map((option) => (
-                                <option key={option.key} value={option.key}>
-                                  {option.name}
+                                <option value={unit.unit_key} title={unit.unit_key}>
+                                  {unit.unit_key}
                                 </option>
+                              )}
+                              {selectableUnitOptionGroups.map((group) => (
+                                <optgroup key={group.key} label={group.name}>
+                                  {group.options.map((option) => (
+                                    <option key={option.key} value={option.key} title={option.key}>
+                                      {option.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
                               ))}
                             </select>
                             {index > 0 && (
@@ -2293,13 +2575,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         aria-label={mapText("mapAddUnit", "Add unit")}
                       >
                         <option value="">{mapText("mapAddUnit", "Add unit…")}</option>
-                        {resolveExtendedUnitOptions(
-                          unitCatalog,
-                          factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture,
-                        ).map((option) => (
-                          <option key={option.key} value={option.key}>
-                            {option.name}
-                          </option>
+                        {groupExtendedUnitOptionsByCaste(
+                          resolveExtendedUnitOptions(
+                            unitCatalog,
+                            factionsByKey.get(selectedCharacter.faction.toLowerCase())?.subculture,
+                          ),
+                        ).map((group) => (
+                          <optgroup key={group.key} label={group.name}>
+                            {group.options.map((option) => (
+                              <option key={option.key} value={option.key} title={option.key}>
+                                {option.name}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
                     )}
@@ -2395,11 +2683,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         <button
                           key={`${faction}:${character.id}`}
                           type="button"
+                          disabled={isEditingFactions}
                           onClick={() => {
+                            if (isEditingFactions) return;
                             selectMapCharacter(faction, character);
                             if (characterPoint) centerMapOnPoint(characterPoint.x, characterPoint.y);
                           }}
-                          className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${selected ? "border-yellow-500 bg-yellow-950/40 text-gray-100" : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"}`}
+                          className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs disabled:cursor-not-allowed disabled:opacity-40 ${selected ? "border-yellow-500 bg-yellow-950/40 text-gray-100" : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"}`}
                         >
                           <span className="block truncate">{character.subtype}</span>
                           <span className="block truncate text-[0.7rem] text-gray-500">
@@ -2524,6 +2814,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       onClick={() =>
                         isEditingFactions ? setBrushFaction(faction.key) : selectMapFaction(faction.key.toLowerCase())
                       }
+                      onDoubleClick={() => focusNextFactionRegion(faction.key)}
+                      title={mapText(
+                        "mapFactionDoubleClickHint",
+                        "Double click to cycle through this faction's regions",
+                      )}
                       className={`mb-1 flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-sm ${
                         isSelected
                           ? "border-blue-500 bg-blue-950/60 text-gray-100"
@@ -2580,6 +2875,90 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         <div className="flex flex-1 items-center justify-center text-sm text-gray-500">
           {mapText("mapLoading", "Loading campaign map…")}
         </div>
+      )}
+
+      {openEditPanel && (
+        <Modal show onClose={() => setOpenEditPanel(undefined)} size="3xl" position="center">
+          <Modal.Header>
+            {openEditPanel === "ownership"
+              ? mapText("mapOwnershipEditsTitle", "Ownership edits")
+              : mapText("mapExtendedEditsTitle", "Character and map edits")}
+          </Modal.Header>
+          <Modal.Body>
+            <div className="max-h-[65vh] space-y-2 overflow-y-auto">
+              {openEditPanel === "ownership" ? (
+                ownershipEditEntries.length > 0 ? (
+                  ownershipEditEntries.map((edit) => {
+                    const beforeLabel = edit.before
+                      ? (factionsByKey.get(edit.before.toLowerCase())?.label ?? edit.before)
+                      : mapText("mapUnowned", "Unowned");
+                    const afterLabel = edit.after
+                      ? (factionsByKey.get(edit.after.toLowerCase())?.label ?? edit.after)
+                      : mapText("mapUnowned", "Unowned");
+                    return (
+                      <div
+                        key={edit.region}
+                        className="flex items-center gap-3 rounded border border-gray-700 bg-gray-950/60 px-3 py-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium text-gray-200" title={edit.region}>
+                            {edit.region}
+                          </div>
+                          <div className="truncate text-xs text-gray-400" title={`${beforeLabel} → ${afterLabel}`}>
+                            {beforeLabel} <span className="px-1 text-gray-600">→</span> {afterLabel}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => revertOwnershipEdit(edit.region)}
+                          className="shrink-0 rounded border border-gray-600 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+                          aria-label={`${mapText("mapRevertEdit", "Revert")} ${edit.region}`}
+                        >
+                          {mapText("mapRevertEdit", "Revert")}
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-4 text-center text-sm text-gray-400">
+                    {mapText("mapNoPendingEdits", "No pending edits.")}
+                  </div>
+                )
+              ) : extendedEditActions.length > 0 ? (
+                extendedEditActions.map((action, index) => {
+                  const title = extendedEditActionTitle(action);
+                  return (
+                    <div
+                      key={extendedEditActionKey(action, index)}
+                      className="flex items-center gap-3 rounded border border-gray-700 bg-gray-950/60 px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-gray-200" title={title}>
+                          {title}
+                        </div>
+                        <div className="truncate text-xs text-gray-400" title={extendedEditActionDescription(action)}>
+                          {extendedEditActionDescription(action)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => revertExtendedEdit(action)}
+                        className="shrink-0 rounded border border-gray-600 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+                        aria-label={`${mapText("mapRevertEdit", "Revert")} ${title}`}
+                      >
+                        {mapText("mapRevertEdit", "Revert")}
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="px-2 py-4 text-center text-sm text-gray-400">
+                  {mapText("mapNoPendingEdits", "No pending edits.")}
+                </div>
+              )}
+            </div>
+          </Modal.Body>
+        </Modal>
       )}
     </div>
   );

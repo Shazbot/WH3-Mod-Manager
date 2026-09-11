@@ -12966,7 +12966,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
   /**
-   * Writes the campaign map's region ownership to a file the user picks.
+   * Writes the campaign map data to a JSON file the user picks.
    *
    * Defaults to the game folder because that is where the game reads a hand-written map.json from.
    */
@@ -12976,11 +12976,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       event,
       json: string,
       suggestedName: string,
-      changesJson?: string,
-    ): Promise<{ success: boolean; savedPath?: string; changesPath?: string; canceled?: boolean; error?: string }> => {
+    ): Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }> => {
       const requestingWindow = BrowserWindow.fromWebContents(event.sender);
       let savedPath: string | undefined;
-      let changesPath: string | undefined;
       try {
         const defaultDirectory =
           appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath || app.getPath("documents");
@@ -12992,18 +12990,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
         savedPath = result.filePath.toLowerCase().endsWith(".json") ? result.filePath : `${result.filePath}.json`;
         await fs.promises.writeFile(savedPath, json, "utf8");
-        if (changesJson?.trim()) {
-          const parsedName = nodePath.parse(savedPath);
-          changesPath = nodePath.join(parsedName.dir, `${parsedName.name}_changes.json`);
-          await fs.promises.writeFile(changesPath, changesJson, "utf8");
-        }
-        return { success: true, savedPath, changesPath };
+        return { success: true, savedPath };
       } catch (error) {
         console.error("Error exporting region ownership:", error);
         return {
           success: false,
           savedPath,
-          changesPath,
           error: error instanceof Error ? error.message : "Unknown error",
         };
       } finally {

@@ -704,9 +704,8 @@ const api = {
   exportRegionOwnership: (
     json: string,
     suggestedName: string,
-    changesJson?: string,
-  ): Promise<{ success: boolean; savedPath?: string; changesPath?: string; canceled?: boolean; error?: string }> =>
-    ipcRenderer.invoke("exportRegionOwnership", json, suggestedName, changesJson),
+  ): Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }> =>
+    ipcRenderer.invoke("exportRegionOwnership", json, suggestedName),
 
   importRegionOwnership: (): Promise<{
     success: boolean;

@@ -247,6 +247,26 @@ export const cloneExtendedMap = (document: ExtendedMapDocument): ExtendedMapDocu
   JSON.parse(JSON.stringify(document)) as ExtendedMapDocument;
 
 /**
+ * Applies the map tab's current ownership to an extended document without dropping its buildings
+ * or character data. Ownership edits are maintained separately while the map is open, so they need
+ * to be folded back into the extended document at export time.
+ */
+export const mergeExtendedMapOwnership = (
+  document: ExtendedMapDocument,
+  ownership: Record<string, string | null>,
+): ExtendedMapDocument => {
+  const next = cloneExtendedMap(document);
+  const ownershipByRegion = new Map(
+    Object.entries(ownership).map(([region, faction]) => [region.trim().toLowerCase(), faction] as const),
+  );
+  for (const region of next.regions) {
+    const key = region.region.trim().toLowerCase();
+    if (ownershipByRegion.has(key)) region.faction = ownershipByRegion.get(key) ?? null;
+  }
+  return next;
+};
+
+/**
  * Adds virtual empty slots up to the settlement's active-slot count. The returned slots are only a
  * render/edit surface; callers append them to the document through `add_building_slot` when one is
  * actually changed, so merely opening a settlement never creates a delta.
@@ -721,6 +741,53 @@ export interface ExtendedUnitOption {
   caste: string;
   isLord: boolean;
 }
+
+export interface ExtendedUnitOptionGroup {
+  key: string;
+  name: string;
+  options: ExtendedUnitOption[];
+}
+
+const EXTENDED_UNKNOWN_CASTE_KEY = "__unknown";
+
+const getExtendedCasteSortOrder = (caste: string) => {
+  const normalized = caste.toLowerCase();
+  if (normalized === "lord") return 0;
+  if (normalized === "hero") return 1;
+  return 2;
+};
+
+const formatExtendedCasteLabel = (caste: string) =>
+  caste.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unknown caste";
+
+/** Groups unit choices by caste in the same order used by Unit Viewer. */
+export const groupExtendedUnitOptionsByCaste = (options: ExtendedUnitOption[]): ExtendedUnitOptionGroup[] => {
+  const groups = new Map<string, { name: string; options: ExtendedUnitOption[] }>();
+  for (const option of options) {
+    const caste = option.caste.trim();
+    const key = caste ? caste.toLowerCase() : EXTENDED_UNKNOWN_CASTE_KEY;
+    const group = groups.get(key);
+    if (group) group.options.push(option);
+    else groups.set(key, { name: caste ? formatExtendedCasteLabel(caste) : "Unknown caste", options: [option] });
+  }
+
+  const collator = new Intl.Collator("en");
+  return Array.from(groups.entries())
+    .sort(([firstKey, first], [secondKey, second]) => {
+      return (
+        getExtendedCasteSortOrder(firstKey) - getExtendedCasteSortOrder(secondKey) ||
+        collator.compare(first.name, second.name) ||
+        collator.compare(firstKey, secondKey)
+      );
+    })
+    .map(([key, group]) => ({
+      key,
+      name: group.name,
+      options: [...group.options].sort(
+        (first, second) => collator.compare(first.name, second.name) || collator.compare(first.key, second.key),
+      ),
+    }));
+};
 
 /** Filters Unit Viewer units to the owning faction's subculture roster. */
 export const resolveExtendedUnitOptions = (

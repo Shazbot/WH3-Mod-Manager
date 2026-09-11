@@ -1448,7 +1448,7 @@ const PackTablesTreeView = React.memo(
                 handleContextMenu(e, treeTab, filePath ? { kind: "file", packPath, filePath } : undefined);
               }}
               style={{
-                marginLeft: 40 * (level - 1),
+                marginLeft: 20 * (level - 1),
                 opacity: isDisabled ? 0.5 : 1,
               }}
               className={
