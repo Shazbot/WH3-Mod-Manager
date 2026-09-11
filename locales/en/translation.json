@@ -1270,6 +1270,7 @@
   "mapEditOwnership": "Edit ownership",
   "mapEditOwnershipHint": "Left click gives a region to the selected faction; Ctrl+left click selects its owner; right click empties it.",
   "mapOwnershipNoFactionSelected": "No faction selected",
+  "mapOwnershipMouseActions": "Mouse actions",
   "mapOwnershipSelectFaction": "Select faction",
   "mapOwnershipAssignFaction": "Give region",
   "mapOwnershipClearRegion": "Clear ownership",

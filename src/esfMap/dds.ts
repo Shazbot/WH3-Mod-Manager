@@ -558,8 +558,25 @@ const encodePng = (pixels: Buffer, width: number, height: number): Buffer => {
   ]);
 };
 
-export const encodeDdsAsPng = (buffer: Buffer, width: number, height: number): Buffer => {
-  if (width <= 0 || height <= 0) throw new Error(`Invalid target image dimensions ${width}x${height}.`);
+export interface EncodedDdsPng {
+  width: number;
+  height: number;
+  png: Buffer;
+}
+
+export const encodeDdsAsPngImage = (buffer: Buffer, width?: number, height?: number): EncodedDdsPng => {
   const image = decodeDds(buffer);
-  return encodePng(resizeRgba(image, width, height), width, height);
+  const targetWidth = width ?? image.width;
+  const targetHeight = height ?? image.height;
+  if (targetWidth <= 0 || targetHeight <= 0) {
+    throw new Error(`Invalid target image dimensions ${targetWidth}x${targetHeight}.`);
+  }
+  return {
+    width: targetWidth,
+    height: targetHeight,
+    png: encodePng(resizeRgba(image, targetWidth, targetHeight), targetWidth, targetHeight),
+  };
 };
+
+export const encodeDdsAsPng = (buffer: Buffer, width?: number, height?: number): Buffer =>
+  encodeDdsAsPngImage(buffer, width, height).png;

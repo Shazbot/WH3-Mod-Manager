@@ -1145,13 +1145,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         ? undefined
         : (climateSelectionKey?.toLowerCase() ?? (selected ? (selectedRegionClimateKey ?? null) : undefined));
 
-    const drawMap = (
-      backgroundImage: HTMLImageElement | undefined,
-      backgroundTextImage: HTMLImageElement | undefined,
-    ) => {
+    const drawMap = (backgroundImage: HTMLImageElement | undefined) => {
       context.clearRect(0, 0, map.width, map.height);
       if (backgroundImage) context.drawImage(backgroundImage, 0, 0, map.width, map.height);
-      if (backgroundTextImage) context.drawImage(backgroundTextImage, 0, 0, map.width, map.height);
 
       const regionMatchesSettlementType = (regionKey: string | undefined) =>
         !selectedSettlementType ||
@@ -1262,10 +1258,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     };
 
     const backgroundSrc = map.backgroundImage?.src;
-    const backgroundTextSrc = map.backgroundTextImage?.src;
-    const imageSources = Array.from(
-      new Set([backgroundSrc, backgroundTextSrc, ...characterThumbnailSources].filter(Boolean)),
-    ) as string[];
+    const imageSources = Array.from(new Set([backgroundSrc, ...characterThumbnailSources].filter(Boolean))) as string[];
     const cachedImages = new Map(
       imageSources
         .map((src) => [src, mapImagesRef.current.get(src)] as const)
@@ -1278,7 +1271,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       mapImageLoadsRef.current.set(source, load);
       return load;
     };
-    drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""));
+    drawMap(cachedImages.get(backgroundSrc ?? ""));
 
     const missingSources = imageSources.filter((src) => !cachedImages.has(src));
     if (missingSources.length === 0) return;
@@ -1293,7 +1286,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           cachedImages.set(src, image);
         }
       }
-      drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""));
+      drawMap(cachedImages.get(backgroundSrc ?? ""));
     });
     return () => {
       cancelled = true;
@@ -1991,7 +1984,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               </span>
             </div>
             <div className="relative min-h-0 flex-1">
-              <div ref={canvasWrapRef} className="h-full overflow-auto p-3">
+              <div ref={canvasWrapRef} className="relative h-full overflow-auto p-3">
                 <div
                   className="relative inline-block align-top"
                   style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
@@ -2022,6 +2015,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
                     />
                   </div>
+                  {map.backgroundTextImage && (
+                    <img
+                      aria-hidden="true"
+                      src={map.backgroundTextImage.src}
+                      alt=""
+                      draggable={false}
+                      className="pointer-events-none absolute left-0 top-0 z-10 block select-none"
+                      style={{
+                        width: mapDisplayWidthPx,
+                        height: mapDisplayHeightPx,
+                      }}
+                    />
+                  )}
                   <div
                     aria-hidden="true"
                     className="pointer-events-none absolute left-0 top-0 z-10"
@@ -2084,24 +2090,29 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       </div>
                     ))}
                   </div>
-                  {isEditingFactions && (
+                </div>
+                {isEditingFactions && (
+                  <>
                     <div
-                      className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-center rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
+                      className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
                       role="status"
                     >
-                      <div className="flex items-center gap-2 font-medium text-gray-100">
-                        {brushFactionDetails?.flagUrl && (
-                          <img src={brushFactionDetails.flagUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
-                        )}
-                        <span>
-                          {brushFaction
-                            ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
-                                faction: brushFactionDetails?.label ?? brushFaction,
-                              })
-                            : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
-                        </span>
+                      {brushFactionDetails?.flagUrl && (
+                        <img src={brushFactionDetails.flagUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
+                      )}
+                      <span>
+                        {brushFaction
+                          ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
+                              faction: brushFactionDetails?.label ?? brushFaction,
+                            })
+                          : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
+                      </span>
+                    </div>
+                    <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)] rounded border border-gray-600/80 bg-gray-950/90 px-3 py-2 text-xs text-gray-300 shadow-lg backdrop-blur-sm">
+                      <div className="mb-1 font-medium text-gray-100">
+                        {mapText("mapOwnershipMouseActions", "Mouse actions")}
                       </div>
-                      <div className="mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[0.7rem] text-gray-400">
+                      <div className="flex flex-col gap-1 text-[0.7rem]">
                         <span className="flex items-center gap-1 whitespace-nowrap">
                           <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
                             Ctrl + left click
@@ -2122,8 +2133,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         </span>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

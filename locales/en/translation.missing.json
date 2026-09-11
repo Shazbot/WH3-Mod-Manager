@@ -40,5 +40,6 @@
   "nodeEditorEditTextFileRequired": "nodeEditorEditTextFileRequired",
   "nodeEditorTargetNameHasPath": "nodeEditorTargetNameHasPath",
   "configurationColumn": "configurationColumn",
-  "hideRepeatedKeyPrefixes": "hideRepeatedKeyPrefixes"
+  "hideRepeatedKeyPrefixes": "hideRepeatedKeyPrefixes",
+  "mapOwnershipMouseActions": "mapOwnershipMouseActions"
 }

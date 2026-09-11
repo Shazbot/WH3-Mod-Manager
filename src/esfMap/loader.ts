@@ -19,7 +19,7 @@ import {
 } from "../../tools/esf/src";
 import { DEFAULT_ESF_CAMPAIGN } from "./constants";
 import { buildEsfMapData } from "./data";
-import { encodeDdsAsPng } from "./dds";
+import { encodeDdsAsPngImage } from "./dds";
 import type { EsfMapCampaignOption, EsfMapImage, EsfMapPayload } from "./types";
 
 interface EsfFileCandidate {
@@ -524,12 +524,16 @@ const convertDdsToMapImage = (
   candidate: EsfFileCandidate,
   width: number,
   height: number,
+  preserveSourceResolution = false,
 ): EsfMapImage => {
   try {
+    const encoded = preserveSourceResolution
+      ? encodeDdsAsPngImage(buffer)
+      : encodeDdsAsPngImage(buffer, width, height);
     return {
-      width,
-      height,
-      src: `data:image/png;base64,${encodeDdsAsPng(buffer, width, height).toString("base64")}`,
+      width: encoded.width,
+      height: encoded.height,
+      src: `data:image/png;base64,${encoded.png.toString("base64")}`,
     };
   } catch (error) {
     throw new Error(
@@ -672,9 +676,10 @@ export async function loadEsfMapData(
       backgroundBuffer && backgroundCandidate
         ? convertDdsToMapImage(backgroundBuffer, backgroundCandidate, map.width, map.height)
         : null,
+    // Keep labels at the texture's native resolution; the renderer scales this layer in the DOM.
     backgroundTextImage:
       backgroundTextBuffer && backgroundTextCandidate
-        ? convertDdsToMapImage(backgroundTextBuffer, backgroundTextCandidate, map.width, map.height)
+        ? convertDdsToMapImage(backgroundTextBuffer, backgroundTextCandidate, map.width, map.height, true)
         : null,
     campaignKey: startposCandidate.campaignName,
     availableCampaigns,

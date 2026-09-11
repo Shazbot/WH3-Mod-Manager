@@ -57,6 +57,7 @@ export interface EsfMapClimateOption {
 export type EsfMapGridSource = "lookup" | "region-areas";
 
 export interface EsfMapImage {
+  /** Pixel dimensions of the encoded image; these can differ from the map grid dimensions. */
   width: number;
   height: number;
   src: string;
