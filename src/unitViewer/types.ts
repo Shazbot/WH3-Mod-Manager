@@ -236,6 +236,29 @@ export interface UnitViewerLordOption {
   associatedUnitBySubculture?: Record<string, string>;
 }
 
+/** One rank threshold from `character_experience_skill_tiers`. */
+export interface UnitViewerCharacterExperienceTier {
+  agentKey: string;
+  rank: number;
+  experienceThreshold: number;
+  campaignKey?: string;
+  forArmy: boolean;
+  forNavy: boolean;
+}
+
+/** One effective faction/subtype -> agent mapping used by character experience tiers. */
+export interface UnitViewerFactionAgentPermittedSubtype {
+  faction: string;
+  agentKey: string;
+  subtype: string;
+}
+
+/** Data needed to turn an exported character rank into the XP accepted by `cm:add_agent_experience`. */
+export interface UnitViewerCharacterExperienceData {
+  tiers: UnitViewerCharacterExperienceTier[];
+  permittedSubtypes: UnitViewerFactionAgentPermittedSubtype[];
+}
+
 /** A roster bucket from ui_unit_group_parents (Lords, Missile Infantry, Extended Roster, …). */
 export interface UnitViewerUiGroup {
   key: string;
@@ -250,6 +273,7 @@ export interface UnitViewerCatalogResponse {
   lordOptions?: UnitViewerLordOption[];
   unitGroups?: UnitViewerUiGroup[];
   constants?: UnitViewerConstants;
+  characterExperience?: UnitViewerCharacterExperienceData;
   /** Asset protocol URLs, keyed by the icon's path inside the pack. */
   statIcons?: Record<string, string>;
   error?: string;

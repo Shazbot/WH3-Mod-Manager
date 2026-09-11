@@ -3113,7 +3113,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 16,
+          feature: 17,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -3269,6 +3269,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         lordOptions: built.data.lordOptions,
         unitGroups: built.data.unitGroups,
         constants: built.data.constants,
+        characterExperience: built.data.characterExperience,
         statIcons,
       };
     } catch (error) {
@@ -5497,11 +5498,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 appendPacksData(reconstructedPack);
               }
             }
-            const vanillaDBFileNames = packedFileNames
-              .flatMap((name) => {
-                const dbName = parseLiveDBTablePath(name)?.dbName;
-                return dbName ? [dbName] : [];
-              });
+            const vanillaDBFileNames = packedFileNames.flatMap((name) => {
+              const dbName = parseLiveDBTablePath(name)?.dbName;
+              return dbName ? [dbName] : [];
+            });
             if (vanillaDBFileNames.length > 0) {
               appData.vanillaPacksDBFileNames = Array.from(
                 new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values(),

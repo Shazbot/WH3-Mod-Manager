@@ -3,6 +3,9 @@ import type {
   UnitViewerCatalogGroup,
   UnitViewerUiGroup,
   UnitViewerConstants,
+  UnitViewerCharacterExperienceData,
+  UnitViewerCharacterExperienceTier,
+  UnitViewerFactionAgentPermittedSubtype,
   UnitViewerEntity,
   UnitViewerFatigue,
   UnitViewerMeleeWeapon,
@@ -61,6 +64,8 @@ export const UNIT_VIEWER_TABLES = [
   "factions_tables",
   "agent_subtypes_tables",
   "agent_subtype_subculture_overrides_tables",
+  "character_experience_skill_tiers_tables",
+  "faction_agent_permitted_subtypes_tables",
   "unit_variants_tables",
   "land_units_to_unit_abilites_junctions_tables",
   "unit_attributes_to_groups_junctions_tables",
@@ -159,6 +164,114 @@ const groupRows = (rows: Array<Record<string, string>> | undefined, key: string)
     result.set(rowKey, group);
   }
   return result;
+};
+
+const parseFiniteInteger = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+};
+
+const effectiveCharacterExperienceData = (tables: UnitViewerTableRows): UnitViewerCharacterExperienceData => {
+  // These two tables have compound keys.  `indexRows` is intentionally only for one-column keys,
+  // so keep the last row for each complete database key here; that is the same last-pack-wins
+  // behaviour used by the game's effective DB and by the rest of this module.
+  const tierRows = new Map<string, { row: Record<string, string>; order: number }>();
+  for (const [order, row] of (tables.character_experience_skill_tiers_tables ?? []).entries()) {
+    const agentKey = asString(row.agent_key).trim();
+    const rank = parseFiniteInteger(row.skill_rank);
+    const campaignKey = asString(row.optional_campaign_key).trim();
+    const forArmy = asBool(row.for_army);
+    const forNavy = asBool(row.for_navy);
+    if (rank === undefined || rank < 0) continue;
+    const key = `${agentKey.toLowerCase()}|${rank}|${campaignKey.toLowerCase()}|${forArmy ? 1 : 0}|${forNavy ? 1 : 0}`;
+    tierRows.set(key, { row, order });
+  }
+  const tiers: UnitViewerCharacterExperienceTier[] = Array.from(tierRows.values())
+    .sort((first, second) => first.order - second.order)
+    .flatMap(({ row }) => {
+      const rank = parseFiniteInteger(row.skill_rank)!;
+      const experienceThreshold = Number(row.experience_threshold);
+      if (!Number.isFinite(experienceThreshold) || experienceThreshold < 0) return [];
+      return [
+        {
+          agentKey: asString(row.agent_key).trim(),
+          rank,
+          experienceThreshold,
+          ...(asString(row.optional_campaign_key).trim()
+            ? { campaignKey: asString(row.optional_campaign_key).trim() }
+            : {}),
+          forArmy: asBool(row.for_army),
+          forNavy: asBool(row.for_navy),
+        },
+      ];
+    });
+
+  const permittedRows = new Map<string, { row: Record<string, string>; order: number }>();
+  for (const [order, row] of (tables.faction_agent_permitted_subtypes_tables ?? []).entries()) {
+    const faction = asString(row.faction).trim();
+    const agentKey = asString(row.agent).trim();
+    const subtype = asString(row.subtype).trim();
+    if (!faction || !agentKey || !subtype) continue;
+    const key = `${faction.toLowerCase()}|${agentKey.toLowerCase()}|${subtype.toLowerCase()}`;
+    permittedRows.set(key, { row, order });
+  }
+  const permittedSubtypes: UnitViewerFactionAgentPermittedSubtype[] = Array.from(permittedRows.values())
+    .sort((first, second) => first.order - second.order)
+    .filter(({ row }) => !asBool(row.mod_disabled))
+    .map(({ row }) => ({
+      faction: asString(row.faction).trim(),
+      agentKey: asString(row.agent).trim(),
+      subtype: asString(row.subtype).trim(),
+    }));
+  return { tiers, permittedSubtypes };
+};
+
+export interface UnitViewerCharacterExperienceQuery {
+  faction?: string;
+  subtype?: string;
+  agentKey?: string;
+  campaign?: string;
+  rank: number;
+  forArmy: boolean;
+  forNavy?: boolean;
+}
+
+/**
+ * Resolves the absolute XP threshold for a campaign character rank.  Campaign- and agent-specific
+ * rows win over neutral rows; army/navy-specific rows win over the neutral row when both exist.
+ * Returning `undefined` is deliberate: an importer must not guess a threshold for a modded agent.
+ */
+export const resolveCharacterExperienceThreshold = (
+  data: UnitViewerCharacterExperienceData,
+  query: UnitViewerCharacterExperienceQuery,
+): number | undefined => {
+  if (!Number.isSafeInteger(query.rank)) return undefined;
+  const campaign = query.campaign?.trim().toLowerCase() || "";
+  const faction = query.faction?.trim().toLowerCase() || "";
+  const subtype = query.subtype?.trim().toLowerCase() || "";
+  const requestedAgent =
+    query.agentKey?.trim().toLowerCase() ||
+    data.permittedSubtypes
+      .find((row) => row.faction.toLowerCase() === faction && row.subtype.toLowerCase() === subtype)
+      ?.agentKey.toLowerCase() ||
+    "";
+  const forArmy = !!query.forArmy;
+  const forNavy = !!query.forNavy;
+  let best: { score: number; order: number; threshold: number } | undefined;
+  data.tiers.forEach((tier, order) => {
+    if (tier.rank !== query.rank) return;
+    const tierCampaign = tier.campaignKey?.trim().toLowerCase() || "";
+    const tierAgent = tier.agentKey.trim().toLowerCase();
+    const contextExact = tier.forArmy === forArmy && tier.forNavy === forNavy;
+    const contextNeutral = !tier.forArmy && !tier.forNavy;
+    if (!contextExact && !contextNeutral) return;
+    if (tierAgent && tierAgent !== requestedAgent) return;
+    if (tierCampaign && tierCampaign !== campaign) return;
+    const score = (tierCampaign ? 4 : 0) + (tierAgent ? 2 : 0) + (contextExact ? 1 : 0);
+    if (!best || score > best.score || (score === best.score && order > best.order))
+      best = { score, order, threshold: tier.experienceThreshold };
+  });
+  return best?.threshold;
 };
 
 const stripGameMarkup = (value: string) =>
@@ -388,6 +501,7 @@ export interface BuiltUnitViewerData {
   iconPathsByUnit: Map<string, string[]>;
   statIcons: Record<string, string>;
   lordOptions: UnitViewerLordOption[];
+  characterExperience: UnitViewerCharacterExperienceData;
 }
 
 export const buildUnitViewerData = (
@@ -783,5 +897,14 @@ export const buildUnitViewerData = (
     (first, second) => collator.compare(first.name, second.name) || collator.compare(first.subtype, second.subtype),
   );
 
-  return { groups, unitGroups, units, constants, iconPathsByUnit, statIcons: {}, lordOptions };
+  return {
+    groups,
+    unitGroups,
+    units,
+    constants,
+    iconPathsByUnit,
+    statIcons: {},
+    lordOptions,
+    characterExperience: effectiveCharacterExperienceData(tables),
+  };
 };

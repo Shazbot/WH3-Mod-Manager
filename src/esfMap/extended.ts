@@ -1,13 +1,16 @@
 import type { BuiltBuildingsData, BuildingVariantRow, RegionSlot } from "../buildingsData/types";
 import { expandChainSet, pickCultureVariant } from "../buildingsData/derive";
-import type { UnitViewerCatalogUnit } from "../unitViewer/types";
+import { resolveCharacterExperienceThreshold } from "../unitViewer/data";
+import type { UnitViewerCharacterExperienceData, UnitViewerCatalogUnit } from "../unitViewer/types";
 
-/** The on-disk representation emitted by map_out3.json. */
+/** The editor's full baseline representation, historically emitted by map_out3.json. */
 export interface ExtendedMapBuildingSlot {
   building: string;
   type: string;
   template: string;
   resource_key?: string;
+  /** Building level, present when the editor has enough DB metadata to export it. */
+  level?: number;
 }
 
 export interface ExtendedMapRegion {
@@ -44,7 +47,8 @@ export interface ExtendedMapDocument {
 
 export type ParsedMapFile =
   | { format: "legacy"; ownership: Record<string, string | null> }
-  | { format: "extended"; document: ExtendedMapDocument };
+  | { format: "extended"; document: ExtendedMapDocument }
+  | { format: "extended-export"; document: ExtendedMapExport };
 
 export type ParseMapFileResult = ParsedMapFile | { error: string };
 
@@ -82,6 +86,11 @@ const parseBuildingSlot = (value: unknown, path: string): ExtendedMapBuildingSlo
   const template = requiredString(value.template);
   if (template === undefined) return `Expected a non-empty string at ${path}.template.`;
   const slot: ExtendedMapBuildingSlot = { building, type, template };
+  if (value.level !== undefined) {
+    const level = integer(value.level, `${path}.level`, 0, 100);
+    if (typeof level !== "number") return level;
+    slot.level = level;
+  }
   if (value.resource_key !== undefined) {
     const resource = requiredString(value.resource_key);
     if (resource === undefined) return `Expected a non-empty string at ${path}.resource_key.`;
@@ -209,15 +218,23 @@ export const parseMapFile = (text: string): ParseMapFileResult => {
   if (!isRecord(parsed)) return { error: "Expected a JSON object." };
   const hasRegionsField = Object.prototype.hasOwnProperty.call(parsed, "regions");
   const hasFactionCharactersField = Object.prototype.hasOwnProperty.call(parsed, "faction_to_chars");
+  const hasActionsField = Object.prototype.hasOwnProperty.call(parsed, "actions");
   // A legacy ownership object is allowed to use any region key, including the literal words
   // "regions" and "faction_to_chars". Array-shaped markers switch formats immediately; when both
   // reserved keys are scalar, retain the old flat-object behavior if every value is a valid owner,
   // while malformed two-key documents still receive the useful extended schema error.
   const isValidLegacyShape = Object.values(parsed).every((value) => value === null || typeof value === "string");
+  if (Array.isArray(parsed.regions) && Array.isArray(parsed.actions) && !hasFactionCharactersField) {
+    const extendedExport = parseExtendedExportDocument(parsed);
+    return "error" in extendedExport
+      ? extendedExport
+      : { format: "extended-export", document: extendedExport.document };
+  }
   if (
     Array.isArray(parsed.regions) ||
     Array.isArray(parsed.faction_to_chars) ||
-    (hasRegionsField && hasFactionCharactersField && !isValidLegacyShape)
+    (hasRegionsField && hasFactionCharactersField && !isValidLegacyShape) ||
+    (hasActionsField && !isValidLegacyShape)
   ) {
     const extended = parseExtendedDocument(parsed);
     return "error" in extended ? extended : { format: "extended", document: extended.document };
@@ -351,6 +368,11 @@ const validateBuildingSlot = (building: ExtendedMapBuildingSlot) => {
   if (typeof building.template !== "string" || !building.template.trim())
     throw new Error("Building slot template cannot be empty.");
   if (
+    building.level !== undefined &&
+    (!Number.isSafeInteger(building.level) || building.level < 0 || building.level > 100)
+  )
+    throw new Error("Building level must be a non-negative integer from 0 to 100.");
+  if (
     building.resource_key !== undefined &&
     (typeof building.resource_key !== "string" || !building.resource_key.trim())
   )
@@ -376,6 +398,7 @@ export const applyExtendedMapEdit = (
       type: action.building.type,
       template: action.building.template,
       ...(action.building.resource_key ? { resource_key: action.building.resource_key } : {}),
+      ...(action.building.level !== undefined ? { level: action.building.level } : {}),
     };
   } else if (action.type === "add_building_slot") {
     validateBuildingSlot(action.building);
@@ -390,6 +413,7 @@ export const applyExtendedMapEdit = (
       type: action.building.type,
       template: action.building.template,
       ...(action.building.resource_key ? { resource_key: action.building.resource_key } : {}),
+      ...(action.building.level !== undefined ? { level: action.building.level } : {}),
     });
   } else if (action.type === "update_character") {
     validateCharacterChange(action);
@@ -476,6 +500,15 @@ export interface ExtendedMapExport extends ExtendedMapDelta {
   regions: ExtendedMapExportRegion[];
 }
 
+export interface ExtendedMapCharacterExperienceDelta {
+  /** Absolute XP threshold for the baseline rank. */
+  before: number;
+  /** Absolute XP threshold for the exported rank. */
+  after: number;
+  /** `after - before`, suitable for `cm:add_agent_experience`. */
+  delta: number;
+}
+
 export type ExtendedMapDeltaAction =
   | {
       type: "set_building";
@@ -495,6 +528,8 @@ export type ExtendedMapDeltaAction =
       faction: string;
       characterId: number;
       changes: Partial<Record<"x" | "y" | "rank" | "subtype", { before: number | string; after: number | string }>>;
+      /** Included whenever character experience data was available while exporting. */
+      xp?: ExtendedMapCharacterExperienceDelta;
     }
   | { type: "remove_character"; faction: string; characterId: number; index: number; character: ExtendedMapCharacter }
   | { type: "add_unit"; faction: string; characterId: number; index: number; unit: ExtendedMapUnit }
@@ -508,10 +543,194 @@ export type ExtendedMapDeltaAction =
       changes: Partial<Record<"unit_key" | "xp" | "health", { before: number | string; after: number | string }>>;
     };
 
+const parseDeltaValue = (value: unknown, path: string): { value: number | string } | { error: string } => {
+  if (typeof value === "number") {
+    const parsed = finiteNumber(value, path);
+    return typeof parsed === "number" ? { value: parsed } : { error: parsed };
+  }
+  const parsed = requiredString(value);
+  return parsed === undefined ? { error: `Expected a number or non-empty string at ${path}.` } : { value: parsed };
+};
+
+const parseDeltaPair = (value: unknown, path: string): { before: number | string; after: number | string } | string => {
+  if (!isRecord(value)) return `Expected a before/after object${describePath(path)}.`;
+  const before = parseDeltaValue(value.before, `${path}.before`);
+  if ("error" in before) return before.error;
+  const after = parseDeltaValue(value.after, `${path}.after`);
+  if ("error" in after) return after.error;
+  return { before: before.value, after: after.value };
+};
+
+const parseDeltaChanges = (
+  value: unknown,
+  path: string,
+  fields: readonly string[],
+): { changes: Record<string, { before: number | string; after: number | string }> } | string => {
+  if (!isRecord(value)) return `Expected a changes object${describePath(path)}.`;
+  const changes: Record<string, { before: number | string; after: number | string }> = {};
+  for (const [field, pairValue] of Object.entries(value)) {
+    if (!fields.includes(field)) return `Unknown change field "${field}"${describePath(path)}.`;
+    const pair = parseDeltaPair(pairValue, `${path}.${field}`);
+    if (typeof pair === "string") return pair;
+    changes[field] = pair;
+  }
+  if (Object.keys(changes).length === 0) return `Expected at least one change${describePath(path)}.`;
+  return { changes };
+};
+
+const parseCharacterExperienceDelta = (value: unknown, path: string): ExtendedMapCharacterExperienceDelta | string => {
+  if (!isRecord(value)) return `Expected a character experience object${describePath(path)}.`;
+  const before = finiteNumber(value.before, `${path}.before`, 0);
+  if (typeof before !== "number") return before;
+  const after = finiteNumber(value.after, `${path}.after`, 0);
+  if (typeof after !== "number") return after;
+  const delta = finiteNumber(value.delta, `${path}.delta`);
+  if (typeof delta !== "number") return delta;
+  if (delta !== after - before) return `Character experience delta does not equal after - before${describePath(path)}.`;
+  return { before, after, delta };
+};
+
+const parseExtendedExportAction = (value: unknown, path: string): ExtendedMapDeltaAction | string => {
+  if (!isRecord(value)) return `Expected an action object${describePath(path)}.`;
+  const type = requiredString(value.type);
+  if (!type) return `Expected a non-empty action type${describePath(path)}.`;
+  const faction = requiredString(value.faction);
+  const characterId = integer(value.characterId, `${path}.characterId`, 0);
+  const region = requiredString(value.region);
+  const slotIndex = integer(value.slotIndex, `${path}.slotIndex`, 0);
+  if (type === "set_building") {
+    if (region === undefined) return `Expected a non-empty string at ${path}.region.`;
+    if (typeof slotIndex !== "number") return slotIndex;
+    const before = parseBuildingSlot(value.before, `${path}.before`);
+    if (typeof before === "string") return before;
+    const after = parseBuildingSlot(value.after, `${path}.after`);
+    if (typeof after === "string") return after;
+    return { type, region, slotIndex, before, after };
+  }
+  if (type === "add_building_slot") {
+    if (region === undefined) return `Expected a non-empty string at ${path}.region.`;
+    if (typeof slotIndex !== "number") return slotIndex;
+    const building = parseBuildingSlot(value.building, `${path}.building`);
+    if (typeof building === "string") return building;
+    return { type, region, slotIndex, building };
+  }
+  if (type === "update_character") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const changes = parseDeltaChanges(value.changes, `${path}.changes`, ["x", "y", "rank", "subtype"]);
+    if (typeof changes === "string") return changes;
+    const parsed: Extract<ExtendedMapDeltaAction, { type: "update_character" }> = {
+      type,
+      faction,
+      characterId,
+      changes: changes.changes as Extract<ExtendedMapDeltaAction, { type: "update_character" }>["changes"],
+    };
+    if (value.xp !== undefined) {
+      const xp = parseCharacterExperienceDelta(value.xp, `${path}.xp`);
+      if (typeof xp === "string") return xp;
+      parsed.xp = xp;
+    }
+    return parsed;
+  }
+  if (type === "remove_character") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const index = integer(value.index, `${path}.index`, 0);
+    if (typeof index !== "number") return index;
+    const character = parseCharacter(value.character, `${path}.character`);
+    if (typeof character === "string") return character;
+    return { type, faction, characterId, index, character };
+  }
+  if (type === "add_unit" || type === "remove_unit") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const index = integer(value.index, `${path}.index`, 0);
+    if (typeof index !== "number") return index;
+    const unit = parseUnit(value.unit, `${path}.unit`);
+    if (typeof unit === "string") return unit;
+    return { type, faction, characterId, index, unit } as ExtendedMapDeltaAction;
+  }
+  if (type === "update_unit") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const unitId = integer(value.unitId, `${path}.unitId`, 0);
+    if (typeof unitId !== "number") return unitId;
+    const index = integer(value.index, `${path}.index`, 0);
+    if (typeof index !== "number") return index;
+    const changes = parseDeltaChanges(value.changes, `${path}.changes`, ["unit_key", "xp", "health"]);
+    if (typeof changes === "string") return changes;
+    return {
+      type,
+      faction,
+      characterId,
+      unitId,
+      index,
+      changes: changes.changes as Extract<ExtendedMapDeltaAction, { type: "update_unit" }>["changes"],
+    };
+  }
+  return `Unknown action type "${type}"${describePath(path)}.`;
+};
+
+const parseExtendedExportDocument = (
+  parsed: Record<string, unknown>,
+): { document: ExtendedMapExport } | { error: string } => {
+  if (parsed.version !== 1) return { error: "Expected extended map version 1." };
+  if (!Array.isArray(parsed.regions)) return { error: "Expected an extended map export with a regions array." };
+  if (!Array.isArray(parsed.actions)) return { error: "Expected an extended map export with an actions array." };
+  const regions: ExtendedMapExportRegion[] = [];
+  const regionKeys = new Set<string>();
+  for (const [index, value] of parsed.regions.entries()) {
+    const path = `regions[${index}]`;
+    if (!isRecord(value)) return { error: `Expected a region object at ${path}.` };
+    const region = requiredString(value.region);
+    if (region === undefined) return { error: `Expected a non-empty string at ${path}.region.` };
+    const key = region.toLowerCase();
+    if (regionKeys.has(key)) return { error: `Duplicate region key "${region}" at ${path}.` };
+    regionKeys.add(key);
+    let faction: string | null;
+    if (value.faction === null) faction = null;
+    else {
+      const parsedFaction = requiredString(value.faction);
+      if (parsedFaction === undefined) return { error: `Expected a non-empty string at ${path}.faction.` };
+      faction = parsedFaction;
+    }
+    regions.push({ region, faction });
+  }
+  const actions: ExtendedMapDeltaAction[] = [];
+  for (const [index, value] of parsed.actions.entries()) {
+    const action = parseExtendedExportAction(value, `actions[${index}]`);
+    if (typeof action === "string") return { error: action };
+    actions.push(action);
+  }
+  return { document: { version: 1, regions, actions } };
+};
+
+/** Strict parser for the one-file `map_extended_out.json` export consumed by the campaign importer. */
+export const parseExtendedMapExportFile = (text: string): { document: ExtendedMapExport } | { error: string } => {
+  const parsed = parseMapFile(text);
+  if ("error" in parsed) return parsed;
+  return parsed.format === "extended-export"
+    ? { document: parsed.document }
+    : { error: "Expected an extended map export." };
+};
+
+export const parseExtendedMapExport = parseExtendedMapExportFile;
+
 const equal = (first: unknown, second: unknown) => JSON.stringify(first) === JSON.stringify(second);
 
+export interface BuildExtendedMapDeltaOptions {
+  /** Campaign key used to select campaign-specific experience thresholds. */
+  campaign?: string;
+  /** Effective Unit Viewer rows used to resolve rank thresholds. */
+  characterExperience?: UnitViewerCharacterExperienceData;
+}
+
 /** Builds a deterministic delta. Reverted edits naturally disappear because this compares baselines. */
-export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: ExtendedMapDocument): ExtendedMapDelta => {
+export const buildExtendedMapDelta = (
+  before: ExtendedMapDocument,
+  after: ExtendedMapDocument,
+  options: BuildExtendedMapDeltaOptions = {},
+): ExtendedMapDelta => {
   const actions: ExtendedMapDeltaAction[] = [];
   const beforeRegions = new Map(before.regions.map((region) => [region.region.toLowerCase(), region]));
   for (const afterRegion of after.regions) {
@@ -553,13 +772,38 @@ export const buildExtendedMapDelta = (before: ExtendedMapDocument, after: Extend
         if (beforeCharacter[field] !== afterCharacter[field])
           characterChanges[field] = { before: beforeCharacter[field], after: afterCharacter[field] };
       }
-      if (Object.keys(characterChanges).length > 0)
+      if (Object.keys(characterChanges).length > 0) {
+        let xp: ExtendedMapCharacterExperienceDelta | undefined;
+        if (options.characterExperience) {
+          const beforeThreshold = resolveCharacterExperienceThreshold(options.characterExperience, {
+            faction: afterGroup.faction,
+            subtype: beforeCharacter.subtype,
+            campaign: options.campaign,
+            rank: beforeCharacter.rank,
+            forArmy: beforeCharacter.units !== undefined,
+          });
+          const afterThreshold = resolveCharacterExperienceThreshold(options.characterExperience, {
+            faction: afterGroup.faction,
+            subtype: afterCharacter.subtype,
+            campaign: options.campaign,
+            rank: afterCharacter.rank,
+            forArmy: afterCharacter.units !== undefined,
+          });
+          if (beforeThreshold === undefined || afterThreshold === undefined) {
+            throw new Error(
+              `Could not resolve character experience threshold for ${afterGroup.faction}/${afterCharacter.subtype} rank ${afterCharacter.rank}.`,
+            );
+          }
+          xp = { before: beforeThreshold, after: afterThreshold, delta: afterThreshold - beforeThreshold };
+        }
         actions.push({
           type: "update_character",
           faction: afterGroup.faction,
           characterId: afterCharacter.id,
           changes: characterChanges,
+          ...(xp ? { xp } : {}),
         });
+      }
 
       const oldUnits = beforeCharacter.units ?? [];
       const newUnits = afterCharacter.units ?? [];

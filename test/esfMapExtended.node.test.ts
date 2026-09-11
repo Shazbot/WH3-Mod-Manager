@@ -217,6 +217,55 @@ describe("extended map files", () => {
     expect(JSON.parse(formatExtendedMapExportJson(exported))).toEqual(exported);
   });
 
+  it("exports rank thresholds and parses the one-file campaign import format", () => {
+    let state = createExtendedMapEditState(document);
+    state = applyExtendedMapEdit(state, {
+      type: "update_character",
+      faction: "faction_a",
+      characterId: 4,
+      changes: { rank: 5 },
+    });
+    const delta = buildExtendedMapDelta(document, state.document, {
+      campaign: "campaign_a",
+      characterExperience: {
+        tiers: [
+          { agentKey: "general", rank: 2, experienceThreshold: 100, forArmy: true, forNavy: false },
+          { agentKey: "general", rank: 5, experienceThreshold: 900, forArmy: true, forNavy: false },
+        ],
+        permittedSubtypes: [{ faction: "faction_a", subtype: "lord_a", agentKey: "general" }],
+      },
+    });
+    const exported = buildExtendedMapExport({ region_a: "faction_a" }, delta);
+
+    expect(delta.actions[0]).toMatchObject({
+      type: "update_character",
+      xp: { before: 100, after: 900, delta: 800 },
+    });
+    expect(parseMapFile(formatExtendedMapExportJson(exported))).toEqual({
+      format: "extended-export",
+      document: exported,
+    });
+  });
+
+  it("rejects malformed extended-export change values", () => {
+    expect(
+      parseMapFile(
+        JSON.stringify({
+          version: 1,
+          regions: [],
+          actions: [
+            {
+              type: "update_character",
+              faction: "faction_a",
+              characterId: 4,
+              changes: { subtype: { before: "", after: "lord_b" } },
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ error: expect.stringContaining("non-empty string") });
+  });
+
   it("allocates unit ids above the imported maximum and drops reverted changes", () => {
     let state = createExtendedMapEditState(document);
     state = applyExtendedMapEdit(state, {

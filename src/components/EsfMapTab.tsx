@@ -39,7 +39,11 @@ import {
   type ExtendedMapEditState,
 } from "../esfMap/extended";
 import type { BuildingsRegionView } from "../buildingsData/types";
-import type { UnitViewerCatalogUnit, UnitViewerLordOption } from "../unitViewer/types";
+import type {
+  UnitViewerCatalogUnit,
+  UnitViewerCharacterExperienceData,
+  UnitViewerLordOption,
+} from "../unitViewer/types";
 
 type EsfMapTabProps = {
   isActive?: boolean;
@@ -372,6 +376,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [buildingsView, setBuildingsView] = useState<BuildingsRegionView>();
   const [unitCatalog, setUnitCatalog] = useState<UnitViewerCatalogUnit[]>([]);
   const [lordOptions, setLordOptions] = useState<UnitViewerLordOption[]>([]);
+  const [characterExperience, setCharacterExperience] = useState<UnitViewerCharacterExperienceData>();
   const [unitViewerSessionId, setUnitViewerSessionId] = useState<string>();
   const [resolvedCharacterThumbnailPaths, setResolvedCharacterThumbnailPaths] = useState<string[]>([]);
   const [extendedLoading, setExtendedLoading] = useState(false);
@@ -743,6 +748,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setCharacterDragPreview(undefined);
     factionRegionCycleRef.current = undefined;
     setBuildingsView(undefined);
+    setCharacterExperience(undefined);
     setOpenEditPanel(undefined);
   }, [campaignKey, currentGame]);
 
@@ -937,11 +943,31 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!map || isTransferringOwnership) return;
     setIsTransferringOwnership(true);
     try {
-      const extendedExport =
-        extendedState && extendedDelta ? buildExtendedMapExport(regionOwnership(map), extendedDelta) : undefined;
+      let extendedExport;
+      try {
+        if (
+          extendedState &&
+          extendedDelta?.actions.some((action) => action.type === "update_character") &&
+          !characterExperience
+        ) {
+          throw new Error("Character experience data is still loading; try exporting again in a moment.");
+        }
+        const exportDelta =
+          extendedState && characterExperience
+            ? buildExtendedMapDelta(extendedState.baseline, extendedState.document, {
+                campaign: map.campaignKey,
+                characterExperience,
+              })
+            : extendedDelta;
+        extendedExport =
+          extendedState && exportDelta ? buildExtendedMapExport(regionOwnership(map), exportDelta) : undefined;
+      } catch (reason) {
+        showOwnershipToast("warning", [reason instanceof Error ? reason.message : String(reason)]);
+        return;
+      }
       const result = await window.api?.exportRegionOwnership(
         extendedExport ? formatExtendedMapExportJson(extendedExport) : formatRegionOwnershipJson(map),
-        extendedExport ? "map_out3.json" : "map.json",
+        extendedExport ? "map_extended_out.json" : "map.json",
       );
       if (!result || result.canceled) return;
       if (result.success) {
@@ -1017,9 +1043,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           "mapOwnershipImported",
           detected.format === "extended"
             ? "Imported extended map data and ownership for {{count}} region(s)."
-            : "Imported ownership for {{count}} region(s).",
+            : detected.format === "extended-export"
+              ? "Imported ownership and {{count}} extended action(s); action data is applied by the campaign importer."
+              : "Imported ownership for {{count}} region(s).",
           {
-            count: Object.keys(edits).length,
+            count: detected.format === "extended-export" ? detected.document.actions.length : Object.keys(edits).length,
           },
         ),
       ];
@@ -1049,6 +1077,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!isExtendedFormat || !window.api) {
       setUnitCatalog([]);
       setLordOptions([]);
+      setCharacterExperience(undefined);
       setUnitViewerSessionId(undefined);
       setResolvedCharacterThumbnailPaths([]);
       return;
@@ -1056,6 +1085,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     let current = true;
     setUnitCatalog([]);
     setLordOptions([]);
+    setCharacterExperience(undefined);
     setUnitViewerSessionId(undefined);
     setResolvedCharacterThumbnailPaths([]);
     setExtendedLoading(true);
@@ -1067,6 +1097,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           showOwnershipToast("warning", [response.error ?? "Could not load the unit roster."]);
           setUnitCatalog([]);
           setLordOptions([]);
+          setCharacterExperience(undefined);
           return;
         }
         const byKey = new Map<string, UnitViewerCatalogUnit>();
@@ -1074,11 +1105,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         setUnitViewerSessionId(response.sessionId);
         setUnitCatalog([...byKey.values()]);
         setLordOptions(response.lordOptions ?? []);
+        setCharacterExperience(response.characterExperience);
       })
       .catch((reason) => {
         if (current) {
           setUnitCatalog([]);
           setLordOptions([]);
+          setCharacterExperience(undefined);
           setUnitViewerSessionId(undefined);
           setResolvedCharacterThumbnailPaths([]);
           showOwnershipToast("warning", [reason instanceof Error ? reason.message : String(reason)]);
@@ -2350,7 +2383,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                             type: "set_building",
                             region: region.region,
                             slotIndex,
-                            building: { ...slot, building },
+                            building: (() => {
+                              const { level: _previousLevel, ...withoutLevel } = slot;
+                              const selectedTile = allTiles.find((tile) => tile.levelKey === building);
+                              return building
+                                ? {
+                                    ...withoutLevel,
+                                    building,
+                                    ...(selectedTile ? { level: selectedTile.level } : {}),
+                                  }
+                                : { ...withoutLevel, building: "" };
+                            })(),
                           });
                           updateExtendedDocuments(actions);
                         }}

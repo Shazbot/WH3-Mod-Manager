@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { calculateUnitViewerStats } from "../src/unitViewer/calculator";
-import { buildUnitViewerData, createLocLookup, type UnitViewerTableRows } from "../src/unitViewer/data";
+import {
+  buildUnitViewerData,
+  createLocLookup,
+  resolveCharacterExperienceThreshold,
+  type UnitViewerTableRows,
+} from "../src/unitViewer/data";
 import type { UnitViewerConstants, UnitViewerEntity, UnitViewerUnitModel } from "../src/unitViewer/types";
 
 const rider: UnitViewerEntity = {
@@ -595,5 +600,53 @@ describe("Unit Viewer catalog", () => {
     );
 
     expect(built.groups[0].units[0].originPackPath).toBe("/mods/example.pack");
+  });
+
+  it("resolves character XP with campaign and agent-specific rows taking precedence", () => {
+    const built = buildUnitViewerData(
+      {
+        character_experience_skill_tiers_tables: [
+          { agent_key: "", skill_rank: "4", experience_threshold: "1000", for_army: "false", for_navy: "false" },
+          { agent_key: "general", skill_rank: "4", experience_threshold: "1500", for_army: "true", for_navy: "false" },
+          {
+            agent_key: "general",
+            skill_rank: "4",
+            experience_threshold: "2000",
+            optional_campaign_key: "campaign_a",
+            for_army: "true",
+            for_navy: "false",
+          },
+        ],
+        faction_agent_permitted_subtypes_tables: [
+          { faction: "faction_a", agent: "general", subtype: "lord_a", mod_disabled: "false" },
+        ],
+      },
+      () => undefined,
+    );
+
+    expect(
+      resolveCharacterExperienceThreshold(built.characterExperience, {
+        faction: "faction_a",
+        subtype: "lord_a",
+        campaign: "campaign_a",
+        rank: 4,
+        forArmy: true,
+      }),
+    ).toBe(2000);
+    expect(
+      resolveCharacterExperienceThreshold(built.characterExperience, {
+        faction: "faction_a",
+        subtype: "lord_a",
+        campaign: "campaign_b",
+        rank: 4,
+        forArmy: true,
+      }),
+    ).toBe(1500);
+    expect(
+      resolveCharacterExperienceThreshold(built.characterExperience, {
+        rank: 4,
+        forArmy: false,
+      }),
+    ).toBe(1000);
   });
 });
