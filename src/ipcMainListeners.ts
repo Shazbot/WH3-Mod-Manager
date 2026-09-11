@@ -17,6 +17,7 @@ import type { PackFileRenameEntry } from "./utility/packFileRenamePlan";
 import { resolveExportOutputPath } from "./utility/exportPaths";
 import { buildRpfmTsvContent, getRpfmTsvExportPath } from "./utility/rpfmTsv";
 import { buildImportedPackedFile } from "./utility/packImportStaging";
+import { applyTextPackedFileEdit } from "./utility/textPackStaging";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
@@ -6910,27 +6911,30 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   });
   ipcMain.handle("saveTextPackedFileEdits", async (event, packPath: string, filePath: string, text: string) => {
     try {
-      let unsavedFiles = appData.unsavedPacksData[packPath];
-      if (!unsavedFiles) {
-        unsavedFiles = [];
-        appData.unsavedPacksData[packPath] = unsavedFiles;
+      let originalText: string | undefined;
+      if (!packPath.startsWith("memory://")) {
+        try {
+          // Text files in the app's pack index usually carry only their position and size, so read
+          // the original payload before deciding whether this edit is a no-op. Use the indexed
+          // spelling when available because readPack's targeted lookup is case-sensitive.
+          const indexedFile = findPackedFileInList(findPackByPath(packPath)?.packedFiles ?? [], filePath);
+          const originalPack = await readPack(packPath, {
+            skipParsingTables: true,
+            filesToRead: [indexedFile?.name ?? filePath],
+          });
+          const originalFile = findPackedFileCaseInsensitive(originalPack, filePath);
+          if (originalFile) originalText = decodePackedFileText(originalFile);
+        } catch (error) {
+          // Failing to read the source should not discard a user's edit. In that case the previous
+          // staging behavior is retained and the next save can try again.
+          console.warn("Could not read original text file while staging edit:", filePath, error);
+        }
       }
 
-      const buffer = Buffer.from(text, "utf8");
-      const nextUnsavedFile = {
-        name: filePath,
-        file_size: buffer.length,
-        start_pos: -1,
-        text,
-        buffer,
-      } as PackedFile;
-
-      const existingFileIndex = unsavedFiles.findIndex((file) => file.name == filePath);
-      if (existingFileIndex != -1) {
-        unsavedFiles.splice(existingFileIndex, 1, nextUnsavedFile);
-      } else {
-        unsavedFiles.push(nextUnsavedFile);
-      }
+      const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+      const nextUnsavedFiles = applyTextPackedFileEdit(unsavedFiles, filePath, text, originalText);
+      if (nextUnsavedFiles.length > 0) appData.unsavedPacksData[packPath] = nextUnsavedFiles;
+      else delete appData.unsavedPacksData[packPath];
 
       clearDeletedPackFilePath(packPath, filePath);
       broadcastPackStagingState(packPath);

@@ -97,6 +97,30 @@ const HelpBadge: React.FC<{ text: string }> = ({ text }) => (
   </span>
 );
 
+const copyTextToClipboard = async (text: string): Promise<void> => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Fall back to the document command below when the Clipboard API is unavailable or blocked.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+};
+
 /**
  * `flattenTree` assigns numeric ids from the node's position in the tree unless a node supplies one.
  * Position-based ids make a data refresh after a file operation point at different nodes, so use the
@@ -883,6 +907,14 @@ const PackTablesTreeView = React.memo(
       setContextMenu({ x: e.clientX, y: e.clientY, treeTab, target });
     };
 
+    const handleCopyPath = async () => {
+      const pathToCopy =
+        contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : selectedExportPaths.join("\n");
+      if (!pathToCopy) return;
+      await copyTextToClipboard(pathToCopy);
+      setContextMenu(null);
+    };
+
     const handleCopyIntoPack = (targetPackPath: string, openAfterCopy: boolean) => {
       const target = contextMenu?.target;
       if (
@@ -1610,6 +1642,9 @@ const PackTablesTreeView = React.memo(
 
           const isContextTarget = isContextMenuTarget(element, treeTab, isBranch, nodeById);
           const nodePath = getNodeFullPath(element, nodeById).replaceAll("\\", "/");
+          const parentNode = element.parent == null ? undefined : nodeById.get(element.parent);
+          const siblingIndex = parentNode?.children.indexOf(element.id) ?? 0;
+          const isStriped = siblingIndex >= 0 && siblingIndex % 2 === 1;
 
           return (
             <div
@@ -1662,7 +1697,13 @@ const PackTablesTreeView = React.memo(
               className={
                 "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
                 (isBranch ? "font-medium text-gray-200 " : "text-gray-300 ") +
-                (isContextTarget ? "bg-blue-700/60 " : isSelected ? "bg-gray-700/60 " : "") +
+                (isContextTarget
+                  ? "bg-blue-700/60 "
+                  : isSelected
+                    ? "bg-gray-700/60 "
+                    : isStriped
+                      ? "bg-gray-800/40 "
+                      : "") +
                 "hover:underline " +
                 (isTreeNodeFiltered(element, treeTab) ? "hidden" : "")
               }
@@ -1717,6 +1758,7 @@ const PackTablesTreeView = React.memo(
     );
     const showImportInContext = Boolean(contextMenu && !isVanillaPackOpen);
     const showPackFileActionsInContext = Boolean(contextMenu && !isVanillaPackOpen && selectedExportPaths.length > 0);
+    const showCopyPathInContext = Boolean(contextMenu && selectedExportPaths.length > 0);
     const deleteLabel =
       selectedExportPaths.length === 1
         ? localized.viewerDeleteFile || "Delete file"
@@ -1874,7 +1916,19 @@ const PackTablesTreeView = React.memo(
                 )}
               </ContextMenuSubmenu>
             )}
-            {showAddInContext && showPackFileActionsInContext && (
+            {showAddInContext && (showCopyPathInContext || showPackFileActionsInContext) && (
+              <div role="separator" className="my-1 border-t border-gray-700" />
+            )}
+            {showCopyPathInContext && (
+              <button
+                type="button"
+                onClick={() => void handleCopyPath()}
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+              >
+                {localized.viewerCopyPath || "Copy path"}
+              </button>
+            )}
+            {showCopyPathInContext && showPackFileActionsInContext && (
               <div role="separator" className="my-1 border-t border-gray-700" />
             )}
             {showPackFileActionsInContext && (
@@ -1902,7 +1956,7 @@ const PackTablesTreeView = React.memo(
                 </button>
               </>
             )}
-            {showPackFileActionsInContext && showImportInContext && (
+            {(showCopyPathInContext || showPackFileActionsInContext) && showImportInContext && (
               <div role="separator" className="my-1 border-t border-gray-700" />
             )}
             {showImportInContext && (

@@ -1786,6 +1786,7 @@
   "viewerImportFiles": "Import Files",
   "viewerImportFolders": "Import Folders",
   "viewerImportInto": "{{label}} into {{path}}…",
+  "viewerCopyPath": "Copy path",
   "viewerDeleteFile": "Delete file",
   "viewerDeleteFiles": "Delete {{count}} files",
   "viewerRenameFile": "Rename file…",

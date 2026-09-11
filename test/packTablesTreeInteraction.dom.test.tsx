@@ -475,6 +475,8 @@ describe("pack table tree interactions", () => {
       "Copy into",
       "Add",
       "separator",
+      "Copy path",
+      "separator",
       "Rename file…",
       "Move file…",
       "Delete file",
@@ -491,6 +493,38 @@ describe("pack table tree interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export", exact: true }));
     expect(screen.getByRole("button", { name: "Export Selection…", exact: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export Whole Pack…", exact: true })).toBeInTheDocument();
+    expect(tree).toBeInTheDocument();
+  });
+
+  it("copies the selected packed-file path", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const tree = renderPackTree(["scripts\\hello.lua"], "files");
+
+    fireEvent.click(screen.getByText("scripts"));
+    fireEvent.contextMenu(screen.getByText("hello.lua"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy path", exact: true }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("scripts\\hello.lua"));
+    expect(screen.queryByTestId("pack-tables-context-menu")).not.toBeInTheDocument();
+    expect(tree).toBeInTheDocument();
+  });
+
+  it("copies the clicked folder path instead of its descendant file paths", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const tree = renderPackTree(["scripts\\hello.lua"], "files");
+
+    fireEvent.contextMenu(screen.getByText("scripts"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy path", exact: true }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("scripts"));
     expect(tree).toBeInTheDocument();
   });
 
