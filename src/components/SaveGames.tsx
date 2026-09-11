@@ -134,6 +134,10 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
+  const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
+    (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
+  );
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const userFlowOptions = useAppSelector((state) => state.app.userFlowOptions);
   const savesState = useAppSelector((state) => state.app.saves);
@@ -164,13 +168,27 @@ const SaveGame = memo((props: SaveGameProps) => {
           isScriptLoggingEnabled,
           isAutoStartCustomBattleEnabled,
           isClosedOnPlay,
+          workshopModStagingMode,
+          cleanUpWorkshopModStagingAfterGameExit,
           packDataOverwrites,
           userFlowOptions,
         },
         name,
       );
     },
-    [mods, isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled],
+    [
+      mods,
+      areModsInOrder,
+      isMakeUnitsGeneralsEnabled,
+      isSkipIntroMoviesEnabled,
+      isScriptLoggingEnabled,
+      isAutoStartCustomBattleEnabled,
+      isClosedOnPlay,
+      workshopModStagingMode,
+      cleanUpWorkshopModStagingAfterGameExit,
+      packDataOverwrites,
+      userFlowOptions,
+    ],
   );
 
   const onComparePacksClick = useCallback(

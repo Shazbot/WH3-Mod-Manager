@@ -207,6 +207,8 @@ declare global {
     lastModThatWasRead: ModReadingInfo | undefined;
     currentlyReadingMod: ModReadingInfo | undefined;
     isClosedOnPlay: boolean;
+    workshopModStagingMode: WorkshopModStagingMode;
+    cleanUpWorkshopModStagingAfterGameExit: boolean;
     /** Read the game's English locs even when the app is set to another language. */
     isUsingEnglishLocalizations: boolean;
     isCompatCheckingVanillaPacks: boolean;
@@ -236,6 +238,7 @@ declare global {
     areCategoryThumbnailsEnabled: boolean;
     isDev: boolean;
     isAdmin: boolean;
+    canCreateSymbolicLinks: boolean;
     startArgs: string[];
     isMakeUnitsGeneralsEnabled: boolean;
     isScriptLoggingEnabled: boolean;
@@ -348,6 +351,8 @@ declare global {
 
   type ModListDensity = "compact" | "comfortable" | "roomy";
 
+  type WorkshopModStagingMode = import("./utility/workshopModStaging").WorkshopModStagingMode;
+
   type SkillsViewOptions = Pick<
     AppState,
     | "isShowingSkillNodeSetNames"
@@ -379,6 +384,8 @@ declare global {
     | "isFeaturesForModdersEnabled"
     | "moddersPrefix"
     | "isClosedOnPlay"
+    | "workshopModStagingMode"
+    | "cleanUpWorkshopModStagingAfterGameExit"
     | "isUsingEnglishLocalizations"
     | "categories"
     | "categoryColors"
@@ -458,7 +465,14 @@ declare global {
   >;
 
   type StartGameOptions = StartGameSpecificOptions &
-    Pick<AppState, "isClosedOnPlay" | "packDataOverwrites" | "userFlowOptions">;
+    Pick<
+      AppState,
+      | "isClosedOnPlay"
+      | "workshopModStagingMode"
+      | "cleanUpWorkshopModStagingAfterGameExit"
+      | "packDataOverwrites"
+      | "userFlowOptions"
+    >;
 
   interface SetCurrentGamePayload {
     game: SupportedGames;

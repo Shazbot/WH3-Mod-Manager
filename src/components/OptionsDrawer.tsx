@@ -4,6 +4,8 @@ import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
+  setWorkshopModStagingMode,
+  toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
   toggleIsDualModListLayoutEnabled,
@@ -100,6 +102,10 @@ const OptionsDrawer = memo(() => {
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
+  const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
+    (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
+  );
   const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
@@ -118,6 +124,7 @@ const OptionsDrawer = memo(() => {
   const hiddenMainWindowTabs = useAppSelector((state) => state.app.hiddenMainWindowTabs);
   const isDev = useAppSelector((state) => state.app.isDev);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
+  const canCreateSymbolicLinks = useAppSelector((state) => state.app.canCreateSymbolicLinks);
   const availableLanguages = useAppSelector((state) => state.app.availableLanguages);
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
   const currentGame = useAppSelector((state) => state.app.currentGame);
@@ -949,6 +956,65 @@ const OptionsDrawer = memo(() => {
 
             <h6 className="mt-8">{localized.contentVsData}</h6>
             <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.contentVsDataMsg}</p>
+
+            <div className="mb-3 rounded border border-gray-600 p-3 text-sm">
+              <p className="mb-2 text-gray-300">
+                {localized.automaticWorkshopStagingHelp ||
+                  "Prepare enabled Workshop mods in game_folder/whmm_copied_mods when the game starts."}
+              </p>
+              <label className="flex items-center ml-1 mt-2">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  id="automatically-copy-workshop-mods-on-start"
+                  checked={workshopModStagingMode === "copy"}
+                  onChange={() =>
+                    dispatch(setWorkshopModStagingMode(workshopModStagingMode === "copy" ? "disabled" : "copy"))
+                  }
+                />
+                <span className="ml-2 mt-1">
+                  {localized.automaticallyCopyWorkshopModsOnStart || "Automatically copy to data on start"}
+                </span>
+              </label>
+              <label
+                className={
+                  "flex items-center ml-1 mt-2 " + (!canCreateSymbolicLinks ? "cursor-not-allowed opacity-50" : "")
+                }
+              >
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  id="automatically-link-workshop-mods-on-start"
+                  checked={workshopModStagingMode === "symlink"}
+                  disabled={!canCreateSymbolicLinks}
+                  onChange={() =>
+                    dispatch(setWorkshopModStagingMode(workshopModStagingMode === "symlink" ? "disabled" : "symlink"))
+                  }
+                />
+                <span className="ml-2 mt-1">
+                  {localized.automaticallyCopySymbolicLinksOnStart || "Automatically copy symbolic links on start"}
+                </span>
+              </label>
+              {!canCreateSymbolicLinks && (
+                <p className="mt-2 text-xs text-red-400">
+                  {localized.automaticWorkshopSymlinkUnavailable ||
+                    "Symbolic-link staging requires administrator access or Windows Developer Mode."}
+                </p>
+              )}
+              <label className="flex items-center ml-1 mt-3">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  id="clean-up-workshop-mods-after-game-exit"
+                  checked={!!cleanUpWorkshopModStagingAfterGameExit}
+                  disabled={workshopModStagingMode === "disabled"}
+                  onChange={() => dispatch(toggleCleanUpWorkshopModStagingAfterGameExit())}
+                />
+                <span className="ml-2 mt-1">
+                  {localized.cleanUpWorkshopModsAfterGameExit || "Clean up after game exit"}
+                </span>
+              </label>
+            </div>
 
             <div className="flex mt-2">
               <button

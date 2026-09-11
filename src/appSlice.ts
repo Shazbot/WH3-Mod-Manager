@@ -1192,6 +1192,10 @@ const appSlice = createSlice({
 
       state.areThumbnailsEnabled = fromConfigAppState.areThumbnailsEnabled;
       state.isClosedOnPlay = fromConfigAppState.isClosedOnPlay;
+      state.workshopModStagingMode = ["disabled", "copy", "symlink"].includes(fromConfigAppState.workshopModStagingMode)
+        ? fromConfigAppState.workshopModStagingMode
+        : "disabled";
+      state.cleanUpWorkshopModStagingAfterGameExit = !!fromConfigAppState.cleanUpWorkshopModStagingAfterGameExit;
       state.isUsingEnglishLocalizations = !!fromConfigAppState.isUsingEnglishLocalizations;
       state.isCompatCheckingVanillaPacks =
         !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isCompatCheckingVanillaPacks;
@@ -1568,6 +1572,22 @@ const appSlice = createSlice({
     toggleIsClosedOnPlay: (state: AppState) => {
       state.isClosedOnPlay = !state.isClosedOnPlay;
     },
+    setWorkshopModStagingMode: (state: AppState, action: PayloadAction<WorkshopModStagingMode>) => {
+      if (!(["disabled", "copy", "symlink"] as WorkshopModStagingMode[]).includes(action.payload)) {
+        state.workshopModStagingMode = "disabled";
+        state.cleanUpWorkshopModStagingAfterGameExit = false;
+        return;
+      }
+      state.workshopModStagingMode = action.payload;
+      if (action.payload === "disabled") state.cleanUpWorkshopModStagingAfterGameExit = false;
+    },
+    toggleCleanUpWorkshopModStagingAfterGameExit: (state: AppState) => {
+      if (state.workshopModStagingMode === "disabled") {
+        state.cleanUpWorkshopModStagingAfterGameExit = false;
+        return;
+      }
+      state.cleanUpWorkshopModStagingAfterGameExit = !state.cleanUpWorkshopModStagingAfterGameExit;
+    },
     toggleIsUsingEnglishLocalizations: (state: AppState) => {
       state.isUsingEnglishLocalizations = !state.isUsingEnglishLocalizations;
     },
@@ -1648,6 +1668,9 @@ const appSlice = createSlice({
     },
     setIsAdmin: (state: AppState, action: PayloadAction<boolean>) => {
       state.isAdmin = action.payload;
+    },
+    setCanCreateSymbolicLinks: (state: AppState, action: PayloadAction<boolean>) => {
+      state.canCreateSymbolicLinks = action.payload;
     },
     setIsWH3Running: (state: AppState, action: PayloadAction<boolean>) => {
       if (state.isWH3Running == action.payload) return;
@@ -2009,9 +2032,12 @@ export const {
   toggleIsCategoryAuthorEnabled,
   toggleAreCategoryThumbnailsEnabled,
   toggleIsClosedOnPlay,
+  setWorkshopModStagingMode,
+  toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   setIsDev,
   setIsAdmin,
+  setCanCreateSymbolicLinks,
   setIsWH3Running,
   setStartArgs,
   setPackHeaderData,

@@ -14,7 +14,7 @@ import { isMainThread } from "worker_threads";
 import electronLog from "electron-log/main";
 import i18n, { getLocaleDirectory } from "./configs/i18next.config";
 import { globSync } from "glob";
-import { windows, registerIpcMainListeners } from "./ipcMainListeners";
+import { cleanupWorkshopStagingAfterGameExit, windows, registerIpcMainListeners } from "./ipcMainListeners";
 import * as https from "https";
 import { Extract } from "unzipper";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
@@ -24,6 +24,7 @@ import { findGameProcessIds, setGameProcessPriority } from "./utility/gameProces
 import { forkSteamWorker as fork } from "./steamWorker";
 import { buildWindowsUpdateBootstrapScript, buildWindowsUpdateScript } from "./utility/updateScripts";
 import { buildUpdateTempDirPath, removeStaleUpdateTempDirs } from "./utility/updateTempDirs";
+import { isWindowsDeveloperModeEnabled } from "./utility/windowsDeveloperMode";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -54,10 +55,16 @@ if (!gotTheLock) {
     exec("NET SESSION", function (err, so, se) {
       appData.isAdmin = se.length === 0;
       console.log("isAdmin:", appData.isAdmin);
+      void isWindowsDeveloperModeEnabled().then((isDeveloperModeEnabled) => {
+        appData.canCreateSymbolicLinks = appData.isAdmin || isDeveloperModeEnabled;
+        windows.mainWindow?.webContents.send("setCanCreateSymbolicLinks", appData.canCreateSymbolicLinks);
+        console.log("canCreateSymbolicLinks:", appData.canCreateSymbolicLinks);
+      });
     });
   } else {
     // Creating symbolic links does not require an elevated process on Unix-like systems.
     appData.isAdmin = true;
+    appData.canCreateSymbolicLinks = true;
     console.log("isAdmin: true (Unix symbolic links do not require elevation)");
   }
 
@@ -642,6 +649,7 @@ exec ${quoteForShell(process.execPath)}
       windows.mainWindow?.webContents.send("setIsDev", isDev);
       windows.mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       windows.mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
+      windows.mainWindow?.webContents.send("setCanCreateSymbolicLinks", appData.canCreateSymbolicLinks);
       windows.mainWindow?.webContents.send("setSkillsViewOptions", {
         isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
         hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
@@ -668,6 +676,7 @@ exec ${quoteForShell(process.execPath)}
             const isGameRunning = processIds.length > 0;
 
             if (appData.isWH3Running !== isGameRunning) {
+              const didGameStop = appData.isWH3Running && !isGameRunning;
               if (appData.isChangingGameProcessPriority && isGameRunning && !appData.isWH3Running) {
                 console.log("Setting process priority to high...");
                 try {
@@ -689,6 +698,7 @@ exec ${quoteForShell(process.execPath)}
               }
               appData.isWH3Running = isGameRunning;
               windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+              if (didGameStop) void cleanupWorkshopStagingAfterGameExit();
             }
           } catch (e) {
             console.log("Game process check failed:", e);

@@ -83,6 +83,10 @@ const Sidebar = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
+  const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
+    (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
+  );
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const userFlowOptions = useAppSelector((state) => state.app.userFlowOptions);
   const filter = useAppSelector((state) => state.app.filter);
@@ -185,6 +189,8 @@ const Sidebar = memo(() => {
               isScriptLoggingEnabled,
               isAutoStartCustomBattleEnabled,
               isClosedOnPlay,
+              workshopModStagingMode,
+              cleanUpWorkshopModStagingAfterGameExit,
               packDataOverwrites,
               userFlowOptions,
             });
@@ -199,6 +205,8 @@ const Sidebar = memo(() => {
         isScriptLoggingEnabled,
         isAutoStartCustomBattleEnabled,
         isClosedOnPlay,
+        workshopModStagingMode,
+        cleanUpWorkshopModStagingAfterGameExit,
         packDataOverwrites,
         userFlowOptions,
       });
@@ -208,6 +216,8 @@ const Sidebar = memo(() => {
       dispatch,
       isAutoStartCustomBattleEnabled,
       isClosedOnPlay,
+      workshopModStagingMode,
+      cleanUpWorkshopModStagingAfterGameExit,
       isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled,
       isSkipIntroMoviesEnabled,
@@ -253,6 +263,8 @@ const Sidebar = memo(() => {
                 isScriptLoggingEnabled,
                 isAutoStartCustomBattleEnabled,
                 isClosedOnPlay,
+                workshopModStagingMode,
+                cleanUpWorkshopModStagingAfterGameExit,
                 packDataOverwrites,
                 userFlowOptions,
               },
@@ -272,6 +284,8 @@ const Sidebar = memo(() => {
           isScriptLoggingEnabled,
           isAutoStartCustomBattleEnabled,
           isClosedOnPlay,
+          workshopModStagingMode,
+          cleanUpWorkshopModStagingAfterGameExit,
           packDataOverwrites,
           userFlowOptions,
         },
@@ -282,6 +296,8 @@ const Sidebar = memo(() => {
       areModsInOrder,
       isAutoStartCustomBattleEnabled,
       isClosedOnPlay,
+      workshopModStagingMode,
+      cleanUpWorkshopModStagingAfterGameExit,
       isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled,
       isSkipIntroMoviesEnabled,

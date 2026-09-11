@@ -97,6 +97,8 @@ const api = {
     ipcRenderer.on("setIsDev", callback),
   setIsAdmin: (callback: (event: Electron.IpcRendererEvent, isAdmin: boolean) => void) =>
     ipcRenderer.on("setIsAdmin", callback),
+  setCanCreateSymbolicLinks: (callback: (event: Electron.IpcRendererEvent, canCreate: boolean) => void) =>
+    ipcRenderer.on("setCanCreateSymbolicLinks", callback),
   setIsWH3Running: (callback: (event: Electron.IpcRendererEvent, isWH3Running: boolean) => void) =>
     ipcRenderer.on("setIsWH3Running", callback),
   setStartArgs: (callback: (event: Electron.IpcRendererEvent, startArgs: string[]) => void) =>

@@ -338,6 +338,15 @@ import {
 } from "./utility/loadOrderRulesFile";
 import { collator } from "./utility/packFileSorting";
 import { launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
+import {
+  cleanupWorkshopModStaging,
+  buildWorkshopStagingWorkingDirectoryLines,
+  stageWorkshopMods,
+  WorkshopModStagingError,
+  WORKSHOP_MOD_STAGING_FOLDER,
+  type WorkshopStagingResult,
+} from "./utility/workshopModStaging";
+import { findGameProcessIds } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie, { type KeyedLookup } from "./utility/trie";
@@ -425,6 +434,54 @@ export const windows = {
   viewerWindow: undefined as BrowserWindow | undefined,
   skillsWindow: undefined as BrowserWindow | undefined,
   techTreesWindow: undefined as BrowserWindow | undefined,
+};
+
+let workshopCleanupInFlight: Promise<void> | undefined;
+
+const formatWorkshopStagingBytes = (bytes: number) => {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = Math.max(0, bytes);
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+};
+
+const reportWorkshopCleanupFailure = (error: unknown) => {
+  const detail = error instanceof Error ? error.message : String(error);
+  const message = i18n.t("automaticWorkshopStagingCleanupFailed", { error: detail });
+  console.error(message, error);
+  windows.mainWindow?.webContents.send("handleLog", message);
+  windows.mainWindow?.webContents.send("addToast", {
+    type: "warning",
+    messages: [message],
+    startTime: Date.now(),
+  } as Toast);
+};
+
+/** Removes a previous launch's manager-owned staging folder after the game has stopped. */
+export const cleanupWorkshopStagingAfterGameExit = async (): Promise<void> => {
+  if (appData.isWH3Running || !appData.workshopStagingCleanupPending || !appData.workshopStagingCleanupGamePath) {
+    return;
+  }
+  if (workshopCleanupInFlight) return workshopCleanupInFlight;
+
+  const gamePath = appData.workshopStagingCleanupGamePath;
+  workshopCleanupInFlight = cleanupWorkshopModStaging(gamePath)
+    .then(() => {
+      appData.workshopStagingCleanupPending = false;
+      appData.workshopStagingCleanupGamePath = undefined;
+      console.log(`Cleaned ${WORKSHOP_MOD_STAGING_FOLDER} after game exit.`);
+    })
+    .catch((error) => {
+      reportWorkshopCleanupFailure(error);
+    })
+    .finally(() => {
+      workshopCleanupInFlight = undefined;
+    });
+  return workshopCleanupInFlight;
 };
 
 setVanillaDbCacheBuildProgressReporter((progress) => {
@@ -1375,6 +1432,31 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const log = (msg: string) => {
     mainWindow?.webContents.send("handleLog", msg);
     console.log(msg);
+  };
+  const checkWorkshopStagingCleanupOnStartup = async (
+    config: Pick<ConfigForRenderer, "currentGame" | "cleanUpWorkshopModStagingAfterGameExit" | "appFolderPaths">,
+  ) => {
+    const gamePath = config.appFolderPaths.gamePath;
+    if (!config.cleanUpWorkshopModStagingAfterGameExit || !gamePath) {
+      appData.workshopStagingCleanupPending = false;
+      appData.workshopStagingCleanupGamePath = undefined;
+      return;
+    }
+
+    try {
+      const processIds = await findGameProcessIds(gameToProcessName[config.currentGame]);
+      appData.workshopStagingCleanupGamePath = gamePath;
+      if (processIds.length > 0) {
+        appData.workshopStagingCleanupPending = true;
+        log("Workshop staging cleanup is waiting for the running game to exit.");
+        return;
+      }
+
+      appData.workshopStagingCleanupPending = true;
+      await cleanupWorkshopStagingAfterGameExit();
+    } catch (error) {
+      reportWorkshopCleanupFailure(error);
+    }
   };
   const packPathKey = (packPath: string) =>
     packPath.startsWith("memory://") ? packPath.toLowerCase() : nodePath.resolve(packPath).toLowerCase();
@@ -5661,6 +5743,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.isCheckingSkillRequirements = appState.isCheckingSkillRequirements ?? appData.isCheckingSkillRequirements;
       appData.skillTreesDisplayMode = appState.skillTreesDisplayMode ?? appData.skillTreesDisplayMode;
       appData.technologyTreesDisplayMode = appState.technologyTreesDisplayMode ?? appData.technologyTreesDisplayMode;
+
+      await checkWorkshopStagingCleanupOnStartup({
+        currentGame: appState.currentGame,
+        cleanUpWorkshopModStagingAfterGameExit: appState.cleanUpWorkshopModStagingAfterGameExit,
+        appFolderPaths: currentGameFolderPaths,
+      });
 
       // flatten to the single-game view the renderer works with
       const { games, gameFolderPaths, ...options } = appState;
@@ -12284,6 +12372,22 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("getDataFolder", async (event) => {
     return appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
   });
+  const getRealDataPackNames = async (dataFolder: string): Promise<Set<string>> => {
+    const names = new Set(appData.allMods.filter((mod) => mod.isInData).map((mod) => mod.name.toLowerCase()));
+    const collectPackNames = async (folderPath: string) => {
+      try {
+        const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+        entries
+          .filter((entry) => (entry.isFile() || entry.isSymbolicLink()) && entry.name.toLowerCase().endsWith(".pack"))
+          .forEach((entry) => names.add(entry.name.toLowerCase()));
+      } catch {
+        // The configured Data folder is normally present, but a missing optional modding folder is valid.
+      }
+    };
+    await collectPackNames(dataFolder);
+    await collectPackNames(nodePath.join(dataFolder, "modding"));
+    return names;
+  };
   ipcMain.on(
     "startGame",
     async (event, mods: Mod[], areModsPresorted: boolean, startGameOptions: StartGameOptions, saveName?: string) => {
@@ -12299,6 +12403,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           messages: [message],
           startTime: Date.now(),
         } as Toast);
+      };
+      let workshopStagingResult: WorkshopStagingResult | undefined;
+      let stagedGamePath: string | undefined;
+      const cleanStagingAfterFailedLaunch = async () => {
+        if (!workshopStagingResult || !stagedGamePath) return;
+        try {
+          await cleanupWorkshopModStaging(stagedGamePath);
+          appData.workshopStagingCleanupPending = false;
+          appData.workshopStagingCleanupGamePath = undefined;
+          log(`Cleaned ${WORKSHOP_MOD_STAGING_FOLDER} after the game failed to launch.`);
+        } catch (error) {
+          reportWorkshopCleanupFailure(error);
+        }
       };
       try {
         // getSkillsData(mods.filter((mod) => mod.isEnabled));
@@ -12318,6 +12435,32 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const myModsPath = nodePath.join(gamePath, "my_mods.txt");
         const usedModsPath = nodePath.join(gamePath, "used_mods.txt");
         let sortedMods = sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled));
+        const workshopModStagingMode =
+          startGameOptions.workshopModStagingMode === "copy" || startGameOptions.workshopModStagingMode === "symlink"
+            ? startGameOptions.workshopModStagingMode
+            : "disabled";
+        const cleanUpWorkshopModStagingAfterGameExit = !!startGameOptions.cleanUpWorkshopModStagingAfterGameExit;
+        let realDataPackNames = new Set<string>();
+        let stagedWorkshopModNames = new Set<string>();
+        if (workshopModStagingMode !== "disabled") {
+          realDataPackNames = await getRealDataPackNames(dataFolder);
+          stagedGamePath = gamePath;
+          workshopStagingResult = await stageWorkshopMods({
+            gameFolder: gamePath,
+            mode: workshopModStagingMode,
+            workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod)),
+            realDataPackNames,
+            canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
+            recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
+          });
+          stagedWorkshopModNames = new Set(workshopStagingResult.stagedModNames.map((name) => name.toLowerCase()));
+          log(
+            `Prepared ${stagedWorkshopModNames.size} Workshop mod(s) in ${workshopStagingResult.destinationPath}; ` +
+              `${workshopStagingResult.changedEntries.length} changed entr${
+                workshopStagingResult.changedEntries.length === 1 ? "y" : "ies"
+              }.`,
+          );
+        }
         const moddingFolderPacks = await createModdingFolderPacks(
           nodePath.join(dataFolder, "modding"),
           nodePath.join(gamePath, WHMM_MODDING_FOLDER),
@@ -12656,20 +12799,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             console.log(`Added flow pack to mod list: ${packFileName}`);
           }
         }
-        const workingDirectoryLines = Array.from(
-          new Set(
-            enabledModsWithoutMergedInMods
-              .filter((mod) => !mod.isInModding)
-              .filter(
-                (mod) =>
-                  nodePath.relative(
-                    appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string,
-                    mod.modDirectory,
-                  ) != "",
-              )
-              .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`),
-          ),
-        );
+        const workingDirectoryLines = buildWorkshopStagingWorkingDirectoryLines({
+          dataFolder: dataFolder as string,
+          destinationPath:
+            workshopStagingResult?.destinationPath || nodePath.join(gamePath, WORKSHOP_MOD_STAGING_FOLDER),
+          stagedModNames: stagedWorkshopModNames,
+          realDataPackNames,
+          pathPrefix: linuxBit,
+          mods: enabledModsWithoutMergedInMods.map((mod) => ({
+            name: mod.name,
+            modDirectory: mod.modDirectory,
+            isInModding: mod.isInModding,
+            isWorkshop: isWorkshopMod(mod),
+          })),
+        });
         const text =
           workingDirectoryLines.concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`)).join("\n") +
           extraEnabledMods;
@@ -12697,6 +12840,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             });
         } catch (e) {
           console.error(e);
+          await cleanStagingAfterFailedLaunch();
           return;
         }
         let fileNameWithModList = "used_mods.txt";
@@ -12712,6 +12856,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const gameExecutablePath = nodePath.join(gamePath, gameToProcessName[appData.currentGame]);
         if (!fs.existsSync(gameExecutablePath)) {
           reportGameLaunchError(`Game executable not found: ${gameExecutablePath}`);
+          await cleanStagingAfterFailedLaunch();
           return;
         }
 
@@ -12723,6 +12868,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
         if (launchPlan.kind === "error") {
           reportGameLaunchError(launchPlan.message);
+          await cleanStagingAfterFailedLaunch();
           return;
         }
         // Create steam_appid.txt for Attila
@@ -12748,7 +12894,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const launchResult = await launchGame(launchPlan.candidates, gamePath);
         if (!launchResult.started) {
           reportGameLaunchError(launchResult.message);
+          await cleanStagingAfterFailedLaunch();
           return;
+        }
+        if (cleanUpWorkshopModStagingAfterGameExit && workshopStagingResult) {
+          appData.workshopStagingCleanupPending = true;
+          appData.workshopStagingCleanupGamePath = gamePath;
         }
         appData.compatData = {
           packTableCollisions: [],
@@ -12768,7 +12919,22 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           app.exit();
         }
       } catch (e) {
-        console.log(e);
+        await cleanStagingAfterFailedLaunch();
+        if (e instanceof WorkshopModStagingError) {
+          const message =
+            e.code === "INSUFFICIENT_SPACE"
+              ? i18n.t("automaticWorkshopStagingInsufficientSpace", {
+                  required: formatWorkshopStagingBytes(e.requiredBytes ?? 0),
+                  available: formatWorkshopStagingBytes(e.availableBytes ?? 0),
+                  destination: e.destinationPath || WORKSHOP_MOD_STAGING_FOLDER,
+                })
+              : e.code === "SYMLINK_UNAVAILABLE"
+                ? i18n.t("automaticWorkshopStagingSymlinkUnavailable")
+                : i18n.t("automaticWorkshopStagingFailed", { error: e.message });
+          reportGameLaunchError(message, e);
+        } else {
+          console.log(e);
+        }
       }
     },
   );

@@ -189,6 +189,9 @@ interface AppData {
   loadOrderRuleDisabledPacks: string[];
   startArgs: string[];
   isAdmin: boolean;
+  canCreateSymbolicLinks: boolean;
+  workshopStagingCleanupPending: boolean;
+  workshopStagingCleanupGamePath?: string;
   gameUpdates: GameUpdateData[];
   isWH3Running: boolean;
   currentGame: SupportedGames;
@@ -269,6 +272,9 @@ const appData = {
   loadOrderRuleDisabledPacks: [],
   startArgs: [],
   isAdmin: false,
+  canCreateSymbolicLinks: false,
+  workshopStagingCleanupPending: false,
+  workshopStagingCleanupGamePath: undefined,
   gameUpdates: [],
   isWH3Running: false,
   currentGame: "wh3",

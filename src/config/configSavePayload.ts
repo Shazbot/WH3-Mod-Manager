@@ -107,6 +107,8 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,
       moddersPrefix: appState.moddersPrefix,
       isClosedOnPlay: appState.isClosedOnPlay,
+      workshopModStagingMode: appState.workshopModStagingMode,
+      cleanUpWorkshopModStagingAfterGameExit: appState.cleanUpWorkshopModStagingAfterGameExit,
       isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,
       isUsingEnglishLocalizations: appState.isUsingEnglishLocalizations,
       categories: appState.categories,

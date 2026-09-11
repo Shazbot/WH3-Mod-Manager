@@ -18,8 +18,11 @@ const initialState = {
   wasOnboardingEverRun: false,
   isDev: false,
   isAdmin: false,
+  canCreateSymbolicLinks: false,
   areThumbnailsEnabled: true,
   isClosedOnPlay: false,
+  workshopModStagingMode: "disabled",
+  cleanUpWorkshopModStagingAfterGameExit: false,
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,
   // A missing config means this is the manager's first run. Start with the two-pane mod list;

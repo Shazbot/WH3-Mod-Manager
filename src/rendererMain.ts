@@ -32,6 +32,7 @@ import {
   setFromConfig,
   setHasConfigBeenRead,
   setIsAdmin,
+  setCanCreateSymbolicLinks,
   setIsDev,
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
@@ -84,6 +85,10 @@ window.api?.setIsDev((event, isDev) => {
 
 window.api?.setIsAdmin((event, isAdmin) => {
   store.dispatch(setIsAdmin(isAdmin));
+});
+
+window.api?.setCanCreateSymbolicLinks((event, canCreate) => {
+  store.dispatch(setCanCreateSymbolicLinks(canCreate));
 });
 
 window.api?.setIsWH3Running((event, isWH3Running) => {

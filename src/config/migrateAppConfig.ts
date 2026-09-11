@@ -146,6 +146,11 @@ const withDefaults = (config: AppConfig): AppConfig => {
     games[game] = { ...emptyGameConfig(), ...games[game] };
   }
 
+  const workshopModStagingMode =
+    config.workshopModStagingMode === "copy" || config.workshopModStagingMode === "symlink"
+      ? config.workshopModStagingMode
+      : "disabled";
+
   return {
     ...config,
     configVersion: CONFIG_VERSION,
@@ -162,6 +167,9 @@ const withDefaults = (config: AppConfig): AppConfig => {
     isVisualsSortByCultureEnabled: config.isVisualsSortByCultureEnabled ?? true,
     isVisualsHideDuplicatesEnabled: config.isVisualsHideDuplicatesEnabled ?? true,
     moddersPrefix: config.moddersPrefix ?? "",
+    workshopModStagingMode,
+    cleanUpWorkshopModStagingAfterGameExit:
+      workshopModStagingMode !== "disabled" && !!config.cleanUpWorkshopModStagingAfterGameExit,
     modRowsSortingType: config.modRowsSortingType ?? SortingType.Ordered,
     enabledModsPaneSortingType: config.enabledModsPaneSortingType ?? SortingType.Ordered,
     currentGame: config.currentGame ?? "wh3",
