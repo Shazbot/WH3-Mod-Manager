@@ -144,4 +144,36 @@ describe("preset editor additions", () => {
     expect(missingRow).toHaveTextContent("(missing)");
     expect(screen.getByText("1 missing deps")).toBeInTheDocument();
   });
+
+  it("only shows categories that have mods in each preset pane", () => {
+    const enabledMod = { ...createMod("enabled.pack", "Enabled Mod", true), categories: ["Enabled"] };
+    const disabledMod = { ...createMod("disabled.pack", "Disabled Mod", false), categories: ["Disabled"] };
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          categories: ["Empty", "Enabled", "Disabled"],
+          currentPreset: { name: "", mods: [enabledMod, disabledMod] },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={{}}>
+          <PresetsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    const selects = screen.getAllByRole("combobox");
+    expect(selects).toHaveLength(2);
+    expect(selects[0]).toHaveTextContent("Enabled");
+    expect(selects[0]).not.toHaveTextContent("Empty");
+    expect(selects[0]).not.toHaveTextContent("Disabled");
+    expect(selects[1]).toHaveTextContent("Disabled");
+    expect(selects[1]).not.toHaveTextContent("Empty");
+    expect(selects[1]).not.toHaveTextContent("Enabled");
+  });
 });

@@ -374,6 +374,28 @@ const PresetsTab = memo(() => {
     return getModsSortedByHumanName(mods);
   }, [effectiveEnabledNames, installedMods]);
 
+  const inPresetCategories = useMemo(() => {
+    const categoriesWithMods = new Set(enabledDraftMods.flatMap((mod) => mod.categories ?? []));
+    return categories.filter((category) => categoriesWithMods.has(category));
+  }, [categories, enabledDraftMods]);
+
+  const notInPresetCategories = useMemo(() => {
+    const categoriesWithMods = new Set(notInPresetInstalledMods.flatMap((mod) => mod.categories ?? []));
+    return categories.filter((category) => categoriesWithMods.has(category));
+  }, [categories, notInPresetInstalledMods]);
+
+  useEffect(() => {
+    if (inPresetCategoryFilter && !inPresetCategories.includes(inPresetCategoryFilter)) {
+      setInPresetCategoryFilter(undefined);
+    }
+  }, [inPresetCategories, inPresetCategoryFilter]);
+
+  useEffect(() => {
+    if (categoryFilter && !notInPresetCategories.includes(categoryFilter)) {
+      setCategoryFilter(undefined);
+    }
+  }, [categoryFilter, notInPresetCategories]);
+
   const visibleEnabledDraftMods = useMemo(() => {
     if (placeMode) return enabledDraftMods;
     let mods = enabledDraftMods;
@@ -1080,7 +1102,7 @@ const PresetsTab = memo(() => {
               </button>
             </div>
           </div>
-          {categories.length > 0 && (
+          {inPresetCategories.length > 0 && (
             <select
               value={inPresetCategoryFilter ?? ""}
               onChange={(event) => setInPresetCategoryFilter(event.target.value || undefined)}
@@ -1088,7 +1110,7 @@ const PresetsTab = memo(() => {
               disabled={!!placeMode}
             >
               <option value="">{localized.noCategoryFilter || "No category filter"}</option>
-              {categories.map((category) => (
+              {inPresetCategories.map((category) => (
                 <option key={category} value={category}>
                   {category}
                 </option>
@@ -1306,7 +1328,7 @@ const PresetsTab = memo(() => {
               {`${selectedNotInPresetNames.size} ${localized.selected || "selected"}`}
             </span>
           </div>
-          {categories.length > 0 && (
+          {notInPresetCategories.length > 0 && (
             <select
               value={categoryFilter ?? ""}
               onChange={(event) => setCategoryFilter(event.target.value || undefined)}
@@ -1314,7 +1336,7 @@ const PresetsTab = memo(() => {
               disabled={!!placeMode}
             >
               <option value="">{localized.noCategoryFilter || "No category filter"}</option>
-              {categories.map((category) => (
+              {notInPresetCategories.map((category) => (
                 <option key={category} value={category}>
                   {category}
                 </option>
