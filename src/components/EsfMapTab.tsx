@@ -33,9 +33,6 @@ const FACTION_FLAG_SIZE = 20;
 const CHARACTER_DRAG_THRESHOLD = 3;
 const CHARACTER_MARKER_RADIUS = 10;
 const CHARACTER_MAX_SCREEN_RADIUS = 24;
-const CHARACTER_THUMBNAIL_SIZE = 64;
-const CHARACTER_OVERLAY_SCALE = 2;
-const CHARACTER_OVERLAY_MAX_PIXELS = 8_000_000;
 /** Deep enough to walk back a mis-click run, shallow enough that the snapshots stay cheap. */
 const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
@@ -47,6 +44,18 @@ type CharacterMapEntry = {
   faction: string;
   character: ExtendedMapCharacter;
   point: { x: number; y: number };
+};
+
+type CharacterMapMarker = {
+  key: string;
+  faction: string;
+  x: number;
+  y: number;
+  radiusX: number;
+  radiusY: number;
+  borderWidth: number;
+  selected: boolean;
+  thumbnailSource?: string;
 };
 
 const displayYFromVertex = (height: number, y: number, displayFlipY: boolean) => (displayFlipY ? height - y : y);
@@ -113,50 +122,6 @@ const formatSubtypeOption = (option: UnitViewerLordOption) => `${option.subtype}
 
 const characterUiKey = (faction: string, id: number) => `${faction.toLowerCase()}:${id}`;
 
-/**
- * Creates the small image actually drawn on the map once per unique unit card. Keeping this raster
- * separate from the full card lets pointer moves redraw hundreds of markers without clipping and
- * resampling each source image again.
- */
-const createCharacterThumbnail = (image: HTMLImageElement): HTMLCanvasElement | undefined => {
-  const sourceWidth = image.naturalWidth || image.width;
-  const sourceHeight = image.naturalHeight || image.height;
-  if (!sourceWidth || !sourceHeight) return undefined;
-
-  const thumbnail = document.createElement("canvas");
-  thumbnail.width = CHARACTER_THUMBNAIL_SIZE;
-  thumbnail.height = CHARACTER_THUMBNAIL_SIZE;
-  const context = thumbnail.getContext("2d");
-  if (!context) return undefined;
-
-  context.save();
-  context.beginPath();
-  context.arc(CHARACTER_THUMBNAIL_SIZE / 2, CHARACTER_THUMBNAIL_SIZE / 2, CHARACTER_THUMBNAIL_SIZE / 2, 0, Math.PI * 2);
-  context.clip();
-  context.fillStyle = "rgba(15, 23, 42, 0.95)";
-  context.fillRect(0, 0, CHARACTER_THUMBNAIL_SIZE, CHARACTER_THUMBNAIL_SIZE);
-  context.imageSmoothingEnabled = true;
-
-  // The Unit Viewer uses cover for cards. Do the same here, cropping the portrait to a square so it
-  // remains recognisable inside the map marker instead of stretching the card into a circle.
-  const sourceSide = Math.min(sourceWidth, sourceHeight);
-  const sourceX = (sourceWidth - sourceSide) / 2;
-  const sourceY = (sourceHeight - sourceSide) / 2;
-  context.drawImage(
-    image,
-    sourceX,
-    sourceY,
-    sourceSide,
-    sourceSide,
-    0,
-    0,
-    CHARACTER_THUMBNAIL_SIZE,
-    CHARACTER_THUMBNAIL_SIZE,
-  );
-  context.restore();
-  return thumbnail;
-};
-
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useLocalizations();
@@ -177,13 +142,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   enabledModsRef.current = enabledMods;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSurfaceRef = useRef<HTMLDivElement>(null);
-  const characterMapCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const mapListItemRefs = useRef(new Map<string, HTMLButtonElement>());
   const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
   const mapImageLoadsRef = useRef(new Map<string, Promise<HTMLImageElement | undefined>>());
   const characterThumbnailSourcesRef = useRef(new Set<string>());
-  const characterThumbnailCanvasesRef = useRef(new Map<string, HTMLCanvasElement>());
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -243,7 +206,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [lordOptions, setLordOptions] = useState<UnitViewerLordOption[]>([]);
   const [unitViewerSessionId, setUnitViewerSessionId] = useState<string>();
   const [resolvedCharacterThumbnailPaths, setResolvedCharacterThumbnailPaths] = useState<string[]>([]);
-  const [characterThumbnailRevision, setCharacterThumbnailRevision] = useState(0);
   const [extendedLoading, setExtendedLoading] = useState(false);
 
   const mapText = (key: string, fallback: string) => localized[key] || fallback;
@@ -813,14 +775,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     };
   }, [characterThumbnailPaths, isActive, showCharacters, unitViewerSessionId]);
 
-  // Unit cards can be much larger than the map marker. Drop their decoded and circularized copies
-  // when the map no longer references them, while leaving the background/flag cache untouched.
+  // Drop decoded character-card copies when the map no longer references them, while leaving the
+  // background/flag cache untouched.
   useEffect(() => {
     const activeSources = new Set(characterThumbnailSources);
     for (const source of characterThumbnailSourcesRef.current) {
       if (activeSources.has(source)) continue;
       mapImagesRef.current.delete(source);
-      characterThumbnailCanvasesRef.current.delete(source);
       characterThumbnailSourcesRef.current.delete(source);
     }
     for (const source of activeSources) characterThumbnailSourcesRef.current.add(source);
@@ -1071,23 +1032,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       mapImageLoadsRef.current.set(source, load);
       return load;
     };
-    const cacheThumbnailImages = (images: Map<string, HTMLImageElement>) => {
-      let changed = false;
-      for (const source of characterThumbnailSources) {
-        const image = images.get(source);
-        if (!image) continue;
-        let thumbnail = characterThumbnailCanvasesRef.current.get(source);
-        if (!thumbnail) {
-          thumbnail = createCharacterThumbnail(image);
-          if (thumbnail) {
-            characterThumbnailCanvasesRef.current.set(source, thumbnail);
-            changed = true;
-          }
-        }
-      }
-      return changed;
-    };
-    cacheThumbnailImages(cachedImages);
     drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), flagImages);
 
     const missingSources = imageSources.filter((src) => !cachedImages.has(src));
@@ -1108,7 +1052,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           .map((src) => [src, cachedImages.get(src)] as const)
           .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
       );
-      if (cacheThumbnailImages(cachedImages)) setCharacterThumbnailRevision((revision) => revision + 1);
       drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), loadedFlagImages);
     });
     return () => {
@@ -1128,37 +1071,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     selectedSettlementType,
   ]);
 
-  useEffect(() => {
-    const canvas = characterMapCanvasRef.current;
-    if (!canvas) return;
+  const characterMapMarkers = useMemo<CharacterMapMarker[]>(() => {
+    if (!characterMapOverlayActive || !map) return [];
 
-    if (!characterMapOverlayActive || !map) return;
-
-    const mapSurface = mapSurfaceRef.current;
-    const mapRect = mapSurface?.getBoundingClientRect();
-    const mapScaleX = mapRect?.width ? mapRect.width / map.width : 1;
-    const mapScaleY = mapRect?.height ? mapRect.height / map.height : 1;
-    const markerRadiusX = Math.min(CHARACTER_MARKER_RADIUS, CHARACTER_MAX_SCREEN_RADIUS / mapScaleX);
-    const markerRadiusY = Math.min(CHARACTER_MARKER_RADIUS, CHARACTER_MAX_SCREEN_RADIUS / mapScaleY);
-
-    const mapPixels = map.width * map.height;
-    const renderScale = Math.max(
-      1,
-      Math.min(CHARACTER_OVERLAY_SCALE, Math.sqrt(CHARACTER_OVERLAY_MAX_PIXELS / mapPixels)),
-    );
-    const backingWidth = Math.max(1, Math.round(map.width * renderScale));
-    const backingHeight = Math.max(1, Math.round(map.height * renderScale));
-    if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
-      canvas.width = backingWidth;
-      canvas.height = backingHeight;
-    }
-
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
-    context.clearRect(0, 0, map.width, map.height);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
+    const markers: CharacterMapMarker[] = [];
     for (const { faction, character, point: characterPoint } of characterMapIndex.entries) {
       const isPreview =
         characterDragPreview?.faction.toLowerCase() === faction.toLowerCase() &&
@@ -1167,58 +1083,31 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         ? projectCharacterCoordinateToMap(map, characterDragPreview.x, characterDragPreview.y)
         : characterPoint;
       if (!drawPoint) continue;
-      const thumbnailSource = characterThumbnailUrls.get(characterUiKey(faction, character.id));
-      const thumbnailCanvas = thumbnailSource ? characterThumbnailCanvasesRef.current.get(thumbnailSource) : undefined;
 
-      context.save();
-      context.fillStyle = factionColour(faction.toLowerCase());
-      context.strokeStyle = "rgba(0, 0, 0, 0.95)";
-      context.lineWidth = 0.75;
-      context.beginPath();
-      context.ellipse(drawPoint.x, drawPoint.y, markerRadiusX, markerRadiusY, 0, 0, Math.PI * 2);
-      context.fill();
-      if (thumbnailCanvas) {
-        context.drawImage(
-          thumbnailCanvas,
-          drawPoint.x - markerRadiusX,
-          drawPoint.y - markerRadiusY,
-          markerRadiusX * 2,
-          markerRadiusY * 2,
-        );
-      }
-      context.stroke();
-      if (
-        selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
-        selectedCharacterKey.id === character.id
-      ) {
-        context.strokeStyle = "#facc15";
-        context.lineWidth = 1;
-        context.beginPath();
-        context.ellipse(
-          drawPoint.x,
-          drawPoint.y,
-          markerRadiusX + 3 / mapScaleX,
-          markerRadiusY + 3 / mapScaleY,
-          0,
-          0,
-          Math.PI * 2,
-        );
-        context.stroke();
-      }
-      context.restore();
+      markers.push({
+        key: characterUiKey(faction, character.id),
+        faction,
+        x: drawPoint.x * mapScaleX,
+        y: drawPoint.y * mapScaleY,
+        radiusX: Math.min(CHARACTER_MARKER_RADIUS * mapScaleX, CHARACTER_MAX_SCREEN_RADIUS),
+        radiusY: Math.min(CHARACTER_MARKER_RADIUS * mapScaleY, CHARACTER_MAX_SCREEN_RADIUS),
+        borderWidth: 0.75,
+        selected:
+          selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
+          selectedCharacterKey.id === character.id,
+        thumbnailSource: characterThumbnailUrls.get(characterUiKey(faction, character.id)),
+      });
     }
+    return markers;
   }, [
-    characterThumbnailRevision,
-    characterThumbnailUrls,
-    characterMapIndex,
     characterDragPreview,
-    extendedState,
-    isActive,
-    map,
-    selectedCharacterKey,
-    showCharacters,
+    characterMapIndex,
     characterMapOverlayActive,
-    zoom,
+    characterThumbnailUrls,
+    map,
+    mapScaleX,
+    mapScaleY,
+    selectedCharacterKey,
   ]);
 
   useLayoutEffect(() => {
@@ -1763,16 +1652,41 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       }}
                       className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
                     />
-                    <canvas
-                      ref={characterMapCanvasRef}
-                      aria-hidden="true"
-                      style={{
-                        width: map ? `${map.width}px` : undefined,
-                        height: map ? `${map.height}px` : undefined,
-                        display: characterMapOverlayActive ? "block" : "none",
-                      }}
-                      className="pointer-events-none absolute left-0 top-0 z-10 block"
-                    />
+                  </div>
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-0 top-0 z-10"
+                    style={{
+                      width: mapDisplayWidthPx,
+                      height: mapDisplayHeightPx,
+                      display: characterMapOverlayActive ? "block" : "none",
+                    }}
+                  >
+                    {characterMapMarkers.map((marker) => (
+                      <div
+                        key={marker.key}
+                        className="absolute overflow-hidden rounded-full"
+                        style={{
+                          left: marker.x - marker.radiusX,
+                          top: marker.y - marker.radiusY,
+                          width: marker.radiusX * 2,
+                          height: marker.radiusY * 2,
+                          border: `${marker.borderWidth}px solid rgba(0, 0, 0, 0.95)`,
+                          backgroundColor: factionColour(marker.faction.toLowerCase()),
+                          boxShadow: marker.selected ? "0 0 0 3px #facc15" : undefined,
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        {marker.thumbnailSource && (
+                          <img
+                            src={marker.thumbnailSource}
+                            alt=""
+                            draggable={false}
+                            className="block h-full w-full rounded-full object-cover"
+                          />
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
