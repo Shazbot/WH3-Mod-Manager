@@ -75,6 +75,12 @@ export interface EsfMapCharacterPathfinding {
   height: number;
   /** Base64-encoded bitset, one bit per source-grid cell. */
   usableCells: string;
+  /** Base64-encoded bitset for sea and settlement-sea cells. */
+  seaCells: string;
+  /** Base64-encoded bitset for river and settlement-river cells. */
+  riverCells: string;
+  /** Base64-encoded bitset for beach and settlement-beach cells. */
+  beachCells: string;
 }
 
 /** Bounds of the campaign's world-coordinate system used by REGION_KEYS settlement points. */

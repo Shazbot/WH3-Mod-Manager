@@ -47,7 +47,7 @@ import {
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
 import {
   buildBuildingsData,
-  buildingNameLocKeys,
+  buildVariantNameLocKey,
   createBuildingsLocLookup,
   BUILDINGS_TABLES,
   variantLocKey,
@@ -3844,7 +3844,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     "building_chains_encyclopedia_name_",
     "building_chains_chain_tooltip_",
     "building_culture_variants_name_",
-    "building_levels_onscreen_name_",
     "building_short_description_texts_short_description_",
     "building_description_texts_description_",
     "building_sets_onscreen_name_",
@@ -3930,18 +3929,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       recordWithReplacements(`building_chains_encyclopedia_name_${key}`);
       recordWithReplacements(`building_chains_chain_tooltip_${key}`);
     }
-    for (const row of tables.building_levels_tables ?? []) {
-      const building = (row.level_name ?? "").trim();
-      if (!building) continue;
-      for (const key of buildingNameLocKeys(building, "", "", "")) recordWithReplacements(key);
-    }
     for (const row of tables.building_culture_variants_tables ?? []) {
       const building = (row.building ?? "").trim();
       if (!building) continue;
       const culture = (row.culture ?? "").trim();
       const subculture = (row.subculture ?? "").trim();
       const faction = (row.faction ?? "").trim();
-      for (const key of buildingNameLocKeys(building, culture, subculture, faction)) recordWithReplacements(key);
+      recordWithReplacements(buildVariantNameLocKey(building, culture, subculture, faction));
       const shortDescription = (row.short_description ?? "").trim();
       if (shortDescription) {
         recordWithReplacements(`building_short_description_texts_short_description_${shortDescription}`);
@@ -4028,7 +4022,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }),
     );
     const signatureInputs: BuildingsVanillaSignatureInputs = {
-      feature: 5,
+      feature: 4,
       game: appData.currentGame,
       schema: getVisualsSchemaHash(appData.currentGame),
       identities,
@@ -4135,7 +4129,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 5,
+          feature: 4,
           game: appData.currentGame,
           vanilla: vanilla.signature,
           mods: orderedEnabledMods.map((mod) => ({

@@ -36,6 +36,9 @@ const bitsetFor = (width: number, height: number, usable: number[]) => {
   return Buffer.from(bitset).toString("base64");
 };
 
+const bitsetIndexes = (bitset: Uint8Array, count: number) =>
+  Array.from({ length: count }, (_, index) => (bitset[index >> 3] >> (index & 7)) & 1);
+
 describe("campaign pathfinding character placement", () => {
   it("decodes only navigable army terrain from the PPD cell grid", () => {
     const parsed = parsePathfindingCharacterGrid(
@@ -50,8 +53,10 @@ describe("campaign pathfinding character placement", () => {
     );
 
     expect(parsed).toMatchObject({ version: 2, regionKeys: ["region_a"], width: 3, height: 2 });
-    const usable = Array.from({ length: 6 }, (_, index) => (parsed.usableCells[index >> 3] >> (index & 7)) & 1);
-    expect(usable).toEqual([1, 0, 0, 0, 1, 1]);
+    expect(bitsetIndexes(parsed.usableCells, 6)).toEqual([1, 0, 1, 0, 1, 1]);
+    expect(bitsetIndexes(parsed.seaCells, 6)).toEqual([0, 0, 1, 0, 0, 0]);
+    expect(bitsetIndexes(parsed.riverCells, 6)).toEqual([0, 0, 0, 1, 1, 0]);
+    expect(bitsetIndexes(parsed.beachCells, 6)).toEqual([0, 0, 0, 0, 0, 1]);
   });
 
   it("snaps an in-map character point to the nearest usable cell", () => {
@@ -63,6 +68,9 @@ describe("campaign pathfinding character placement", () => {
         width: 5,
         height: 5,
         usableCells: bitsetFor(5, 5, [24]),
+        seaCells: bitsetFor(5, 5, []),
+        riverCells: bitsetFor(5, 5, []),
+        beachCells: bitsetFor(5, 5, []),
       },
     };
 

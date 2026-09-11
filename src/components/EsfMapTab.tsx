@@ -8,7 +8,11 @@ import { applyOwnershipEdits, formatRegionOwnershipJson, ownershipEditsFromImpor
 import type { OwnershipEdits } from "../esfMap/ownership";
 import type { EsfMapArea, EsfMapCampaignOption, EsfMapMarker, EsfMapPayload } from "../esfMap/types";
 import { mapPointToCharacterCoordinate, projectCharacterCoordinateToMap } from "../esfMap/coordinates";
-import { drawUnusableCharacterAreas, snapCharacterPointToUsable } from "../esfMap/pathfinding";
+import {
+  CHARACTER_TERRAIN_COLOURS,
+  drawCharacterTerrainAreas,
+  snapCharacterPointToUsable,
+} from "../esfMap/pathfinding";
 import {
   applyExtendedMapEdit,
   buildExtendedMapDelta,
@@ -987,7 +991,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         }
       }
 
-      if (characterMapOverlayActive) drawUnusableCharacterAreas(context, map);
+      if (characterMapOverlayActive) drawCharacterTerrainAreas(context, map);
 
       for (const marker of map.markers) {
         const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
@@ -1645,6 +1649,26 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 +
               </button>
               <span>{Math.round(zoom * 100)}%</span>
+              {characterMapOverlayActive && (
+                <div className="flex shrink-0 items-center gap-2 text-[0.7rem] text-gray-300" aria-label="Map terrain">
+                  {(
+                    [
+                      ["unusable", mapText("mapTerrainUnusable", "Unusable")],
+                      ["sea", mapText("mapTerrainSea", "Sea")],
+                      ["river", mapText("mapTerrainRiver", "River")],
+                      ["beach", mapText("mapTerrainBeach", "Beach")],
+                    ] as const
+                  ).map(([terrain, label]) => (
+                    <span key={terrain} className="flex items-center gap-1" title={label}>
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-sm border border-black/60"
+                        style={{ backgroundColor: CHARACTER_TERRAIN_COLOURS[terrain] }}
+                      />
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              )}
               <span className="ml-auto truncate" title={map.mapDataPath}>
                 {map.mapDataPath}
               </span>
@@ -1788,10 +1812,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         )) &&
                       (!slot.building || tile.levelKey === slot.building || tile.chainKey === currentChainKey),
                   );
+                  const selectableTiles = tiles.filter((tile) => !tile.hasNoVariant || tile.levelKey === slot.building);
                   const options = new Map<string, string>();
                   options.set("", mapText("mapEmptyBuilding", "(empty)"));
                   if (slot.building && !options.has(slot.building)) options.set(slot.building, slot.building);
-                  for (const tile of tiles) {
+                  for (const tile of selectableTiles) {
                     const title = tile.title || tile.levelKey;
                     const level = tile.romanNumeral || tile.level;
                     options.set(tile.levelKey, `${title} (${level})`);

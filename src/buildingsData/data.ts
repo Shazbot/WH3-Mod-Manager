@@ -279,35 +279,11 @@ export const variantLocKey = (building: string, culture: string, subculture: str
 export const buildVariantNameLocKey = (building: string, culture: string, subculture: string, faction: string) =>
   `building_culture_variants_name_${building}${culture}${subculture}${faction}`;
 
-/**
- * Vanilla has a few culture-variant rows whose name is stored under the generic level key, and
- * older building data can still use the legacy building-level prefix. Keep those fallbacks beside
- * the schema-derived key so every caller resolves names the same way.
- */
-export const buildingNameLocKeys = (building: string, culture: string, subculture: string, faction: string) => [
-  ...new Set([
-    buildVariantNameLocKey(building, culture, subculture, faction),
-    buildVariantNameLocKey(building, "", "", ""),
-    `building_levels_onscreen_name_${building}`,
-  ]),
-];
-
 const localize = (getLoc: BuildingsGetLoc, key: string) => {
   const localized = getLoc(key);
   if (!localized) return undefined;
   return stripLocImgTags(resolveTextReplacements(localized, getLoc) || localized) || undefined;
 };
-
-const localizeBuildingName = (
-  getLoc: BuildingsGetLoc,
-  building: string,
-  culture: string,
-  subculture: string,
-  faction: string,
-) =>
-  buildingNameLocKeys(building, culture, subculture, faction)
-    .map((key) => localize(getLoc, key))
-    .find(Boolean);
 
 export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: BuildingsGetLoc): BuiltBuildingsData => {
   const rowsOf = (tableName: string) => {
@@ -393,7 +369,7 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
       rawValues: { ...row },
     });
     variantLoc[variantLocKey(building, culture, subculture, faction)] = {
-      name: localizeBuildingName(getLoc, building, culture, subculture, faction),
+      name: localize(getLoc, buildVariantNameLocKey(building, culture, subculture, faction)),
       // These two tables carry no schema at all: their text exists only in loc files, keyed off the
       // value in the variant's description / short_description column.
       short: shortDescription

@@ -71,6 +71,9 @@ function parseCharacterPathfinding(
         width: parsed.width,
         height: parsed.height,
         usableCells: Buffer.from(parsed.usableCells).toString("base64"),
+        seaCells: Buffer.from(parsed.seaCells).toString("base64"),
+        riverCells: Buffer.from(parsed.riverCells).toString("base64"),
+        beachCells: Buffer.from(parsed.beachCells).toString("base64"),
       },
     };
   } catch (error) {

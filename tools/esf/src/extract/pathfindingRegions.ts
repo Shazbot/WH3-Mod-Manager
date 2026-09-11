@@ -8,10 +8,19 @@ export interface PathfindingCharacterGrid extends PathfindingRegionList {
   height: number;
   /** One bit per cell; set when a character can stand on the cell. */
   usableCells: Uint8Array;
+  /** One bit per cell; set for sea and settlement-sea cells. */
+  seaCells: Uint8Array;
+  /** One bit per cell; set for river and settlement-river cells. */
+  riverCells: Uint8Array;
+  /** One bit per cell; set for beach and settlement-beach cells. */
+  beachCells: Uint8Array;
 }
 
 const MAGIC = Buffer.from([0x89, 0x50, 0x50, 0x44, 0x0d, 0x0a, 0x1a, 0x0a]);
-const CHARACTER_TERRAIN_TYPES = new Set([0, 3, 4, 5, 6, 7, 9]);
+const CHARACTER_TERRAIN_TYPES = new Set([0, 1, 3, 4, 5, 6, 7, 8, 9]);
+const SEA_TERRAIN_TYPES = new Set([1, 8]);
+const RIVER_TERRAIN_TYPES = new Set([6, 9]);
+const BEACH_TERRAIN_TYPES = new Set([3, 7]);
 
 function readU32LE(buffer: Buffer, offset: number): number {
   if (offset + 4 > buffer.length) {
@@ -64,8 +73,10 @@ export function parsePathfindingRegionKeys(buffer: Buffer): PathfindingRegionLis
  * Reads the cell-level character passability from the pathfinding grid.
  *
  * The first six bytes of each cell are directional edge records. Bit 7 is the
- * navigability flag. The upper nibble of the final u16 is the hex type; sea
- * and impassable types are deliberately excluded from character placement.
+ * navigability flag. The upper nibble of the final u16 is the hex type. Land,
+ * sea, river, and beach cells are character-placeable when at least one edge
+ * is navigable; impassable cells remain excluded. The terrain masks retain
+ * the water and beach distinctions for display.
  */
 export function parsePathfindingCharacterGrid(buffer: Buffer): PathfindingCharacterGrid {
   const header = readPathfindingHeader(buffer);
@@ -83,19 +94,27 @@ export function parsePathfindingCharacterGrid(buffer: Buffer): PathfindingCharac
   }
 
   const usableCells = new Uint8Array(Math.ceil(cellCount / 8));
+  const seaCells = new Uint8Array(Math.ceil(cellCount / 8));
+  const riverCells = new Uint8Array(Math.ceil(cellCount / 8));
+  const beachCells = new Uint8Array(Math.ceil(cellCount / 8));
   for (let cellIndex = 0; cellIndex < cellCount; cellIndex += 1) {
     let hasNavigableEdge = false;
     for (let direction = 0; direction < 6; direction += 1) {
       if ((buffer[offset + direction] & 0x80) !== 0) hasNavigableEdge = true;
     }
     const hexType = buffer.readUInt16LE(offset + 6) >>> 12;
-    // Land, beach, settlement land/beach, bridge cliff, river, and settlement river.
+    const cellByte = cellIndex >> 3;
+    const cellBit = 1 << (cellIndex & 7);
+    if (SEA_TERRAIN_TYPES.has(hexType)) seaCells[cellByte] |= cellBit;
+    if (RIVER_TERRAIN_TYPES.has(hexType)) riverCells[cellByte] |= cellBit;
+    if (BEACH_TERRAIN_TYPES.has(hexType)) beachCells[cellByte] |= cellBit;
+    // Land, sea, beach, settlement land/sea/beach, bridge cliff, river, and settlement river.
     const isCharacterTerrain = CHARACTER_TERRAIN_TYPES.has(hexType);
     if (isCharacterTerrain && hasNavigableEdge) {
-      usableCells[cellIndex >> 3] |= 1 << (cellIndex & 7);
+      usableCells[cellByte] |= cellBit;
     }
     offset += 8;
   }
 
-  return { ...header, width, height, usableCells };
+  return { ...header, width, height, usableCells, seaCells, riverCells, beachCells };
 }
