@@ -21,6 +21,7 @@
     "lint": "eslint --cache --cache-strategy content --cache-location .eslintcache \"src/**/*.{ts,tsx}\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "analyze:vanilla-compression": "node scripts/analyze-vanilla-pack-compression.mjs",
     "typecheck": "tsc --noEmit",
     "esf:build": "tsc -p tools/esf/tsconfig.json",
     "esf:typecheck": "tsc -p tools/esf/tsconfig.json --noEmit",
