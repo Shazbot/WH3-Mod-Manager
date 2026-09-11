@@ -154,6 +154,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const characterThumbnailSourcesRef = useRef(new Set<string>());
   const characterThumbnailPathsRef = useRef<string[]>([]);
   const characterThumbnailSessionRef = useRef<string>();
+  /** Keeps click cycling tied to one pointer gesture, even if React replays an event. */
+  const characterClickGestureRef = useRef<{
+    pointerId: number;
+    selectionBeforePointerDown?: { faction: string; id: number };
+    clickHandled: boolean;
+  }>();
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -244,14 +250,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   );
   const selectedCharacter = useMemo(
     () =>
-      selectedCharacterKey
+      selectedCharacterKey && !mapSelectedRegion
         ? extendedCharacters.find(
             ({ faction, character }) =>
               faction.toLowerCase() === selectedCharacterKey.faction.toLowerCase() &&
               character.id === selectedCharacterKey.id,
           )
         : undefined,
-    [extendedCharacters, selectedCharacterKey],
+    [extendedCharacters, mapSelectedRegion, selectedCharacterKey],
   );
   const extendedDelta = useMemo(
     () => (extendedState ? buildExtendedMapDelta(extendedState.baseline, extendedState.document) : undefined),
@@ -265,6 +271,31 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const mapDisplayHeight = map ? `${mapDisplayHeightPx}px` : undefined;
   const mapScaleX = map && map.width > 0 ? mapDisplayWidthPx / map.width : 1;
   const mapScaleY = map && map.height > 0 ? mapDisplayHeightPx / map.height : 1;
+  const factionFlagMarkers = useMemo(
+    () =>
+      mapView === "factions" && map
+        ? map.markers.flatMap((marker) => {
+            const ownerKey = factionKey(marker.ownerFaction);
+            const flagUrl = ownerKey ? factionsByKey.get(ownerKey)?.flagUrl : undefined;
+            if (!flagUrl) return [];
+
+            const width = FACTION_FLAG_SIZE * mapScaleX;
+            const height = FACTION_FLAG_SIZE * mapScaleY;
+            const y = displayYFromCell(map.height, marker.gy, map.displayFlipY) * mapScaleY;
+            return [
+              {
+                key: `${marker.id}:${flagUrl}`,
+                src: flagUrl,
+                left: marker.gx * mapScaleX - width / 2,
+                top: y - height / 2,
+                width,
+                height,
+              },
+            ];
+          })
+        : [],
+    [factionsByKey, map, mapScaleX, mapScaleY, mapView],
+  );
   const characterThumbnailPathByKey = useMemo(() => {
     const cardPathByUnitKey = new Map(
       unitCatalog
@@ -380,8 +411,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   }, [filter, map]);
 
   const selectedMarker = useMemo(
-    () => map?.markers.find((marker) => marker.id === selectedMarkerId),
-    [map, selectedMarkerId],
+    () => (selectedCharacterKey ? undefined : map?.markers.find((marker) => marker.id === selectedMarkerId)),
+    [map, selectedCharacterKey, selectedMarkerId],
   );
   const selectedExtendedRegion = useMemo(
     () =>
@@ -878,6 +909,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       mapSelectedRegion?.campaign.toLowerCase() === map.campaignKey.toLowerCase()
         ? mapSelectedRegion.region.toLowerCase()
         : undefined;
+    // A region handed off from the Buildings tab is authoritative. Do not leave a character
+    // panel visible beside that region's building panel, including when the handoff happens
+    // while this map tab is kept mounted in the background.
+    if (mapSelectedRegion) {
+      setSelectedCharacterKey(undefined);
+      setCharacterDragPreview(undefined);
+    }
     setSelectedMarkerId(
       selectedRegion === undefined
         ? undefined
@@ -925,7 +963,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     const drawMap = (
       backgroundImage: HTMLImageElement | undefined,
       backgroundTextImage: HTMLImageElement | undefined,
-      flagImages: Map<string, HTMLImageElement>,
     ) => {
       context.clearRect(0, 0, map.width, map.height);
       if (backgroundImage) context.drawImage(backgroundImage, 0, 0, map.width, map.height);
@@ -1016,21 +1053,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         const markerFaction = marker.ownerFaction
           ? factionsByKey.get(factionKey(marker.ownerFaction) ?? "")
           : undefined;
-        const flagImage =
-          mapView === "factions" && markerFaction?.flagUrl ? flagImages.get(markerFaction.flagUrl) : undefined;
-        if (flagImage) {
-          context.save();
-          context.shadowColor = "rgba(0, 0, 0, 0.8)";
-          context.shadowBlur = 2;
-          context.drawImage(
-            flagImage,
-            marker.gx - FACTION_FLAG_SIZE / 2,
-            y - FACTION_FLAG_SIZE / 2,
-            FACTION_FLAG_SIZE,
-            FACTION_FLAG_SIZE,
-          );
-          context.restore();
-        } else {
+        // Faction flags are rendered in a separate image overlay so zooming can use the original
+        // asset instead of enlarging a 20px copy that was already rasterised into this canvas.
+        if (!(mapView === "factions" && markerFaction?.flagUrl)) {
           context.fillStyle = "rgba(255, 255, 255, 0.92)";
           context.fillRect(marker.gx - 1, y - 1, 2, 2);
         }
@@ -1048,25 +1073,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
     const backgroundSrc = map.backgroundImage?.src;
     const backgroundTextSrc = map.backgroundTextImage?.src;
-    // Only landholders put a flag on the map, and the roster is mostly factions that hold nothing.
-    const flagSources =
-      mapView === "factions"
-        ? map.factions
-            .filter((faction) => faction.regionCount > 0)
-            .map((faction) => faction.flagUrl)
-            .filter((src): src is string => !!src)
-        : [];
     const imageSources = Array.from(
-      new Set([backgroundSrc, backgroundTextSrc, ...flagSources, ...characterThumbnailSources].filter(Boolean)),
+      new Set([backgroundSrc, backgroundTextSrc, ...characterThumbnailSources].filter(Boolean)),
     ) as string[];
     const cachedImages = new Map(
       imageSources
         .map((src) => [src, mapImagesRef.current.get(src)] as const)
-        .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
-    );
-    const flagImages = new Map(
-      flagSources
-        .map((src) => [src, cachedImages.get(src)] as const)
         .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
     );
     const loadImageOnce = (source: string) => {
@@ -1076,7 +1088,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       mapImageLoadsRef.current.set(source, load);
       return load;
     };
-    drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), flagImages);
+    drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""));
 
     const missingSources = imageSources.filter((src) => !cachedImages.has(src));
     if (missingSources.length === 0) return;
@@ -1091,12 +1103,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           cachedImages.set(src, image);
         }
       }
-      const loadedFlagImages = new Map(
-        flagSources
-          .map((src) => [src, cachedImages.get(src)] as const)
-          .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
-      );
-      drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""), loadedFlagImages);
+      drawMap(cachedImages.get(backgroundSrc ?? ""), cachedImages.get(backgroundTextSrc ?? ""));
     });
     return () => {
       cancelled = true;
@@ -1227,6 +1234,16 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     }
   };
 
+  const selectMapCharacter = (faction: string, character: ExtendedMapCharacter) => {
+    // Character and region selection are mutually exclusive. Clearing both the local marker and
+    // the app-level handoff is important: the latter is what drives the Buildings tab.
+    setSelectedMarkerId(undefined);
+    setClimateSelectionKey(undefined);
+    setSelectedCharacterKey({ faction, id: character.id });
+    setCharacterDragPreview(undefined);
+    dispatch(clearMapRegionSelection());
+  };
+
   const selectMapFaction = (factionKeyToSelect: string) => {
     const factionMarkers =
       map?.markers.filter((candidate) => factionKey(candidate.ownerFaction) === factionKeyToSelect) ?? [];
@@ -1239,6 +1256,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (showCharacters && extendedState) {
       const character = characterAtCanvasPoint(event);
       if (character) {
+        const currentGesture = characterClickGestureRef.current;
+        if (!currentGesture || currentGesture.pointerId !== event.pointerId || currentGesture.clickHandled) {
+          characterClickGestureRef.current = {
+            pointerId: event.pointerId,
+            selectionBeforePointerDown: selectedCharacterKey,
+            clickHandled: false,
+          };
+        }
         suppressMapClickRef.current = false;
         characterDragRef.current = {
           pointerId: event.pointerId,
@@ -1248,7 +1273,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           startY: event.clientY,
           hasMoved: false,
         };
-        setSelectedCharacterKey({ faction: character.faction, id: character.character.id });
+        selectMapCharacter(character.faction, character.character);
         setCharacterDragPreview({
           faction: character.faction,
           id: character.character.id,
@@ -1260,6 +1285,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         return;
       }
     }
+    characterClickGestureRef.current = undefined;
     const canvasWrap = canvasWrapRef.current;
     if (!canvasWrap) return;
 
@@ -1319,6 +1345,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       const point = map && mapPoint ? mapPointToCharacterCoordinate(map, mapPoint) : undefined;
       const usablePoint = map && point ? snapCharacterPointToUsable(map, point) : point;
       if (hasMoved) suppressMapClickRef.current = true;
+      if (event.type === "pointercancel") characterClickGestureRef.current = undefined;
       characterDragRef.current = undefined;
       const currentCharacter = findCharacterForUi(extendedCharacters, characterDrag.faction, characterDrag.characterId);
       if (
@@ -1394,33 +1421,56 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     return { x: Math.round(displayX), y: Math.round(displayY) };
   };
 
-  const characterAtCanvasPoint = (event: { clientX: number; clientY: number }) => {
+  const charactersAtCanvasPoint = (event: { clientX: number; clientY: number }) => {
     const point = mapCoordinatesAtClientPoint(event);
-    if (!map || !point) return undefined;
-    let closest: { faction: string; character: ExtendedMapCharacter } | undefined;
-    let closestDistance = Number.POSITIVE_INFINITY;
-    for (const candidate of extendedCharacters) {
-      const characterPoint = projectCharacterCoordinateToMap(map, candidate.character.x, candidate.character.y);
-      if (!characterPoint) continue;
-      const distance = (characterPoint.x - point.x) ** 2 + (characterPoint.y - point.y) ** 2;
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closest = candidate;
-      }
-    }
-    return closestDistance <= 400 ? closest : undefined;
+    if (!map || !point) return [];
+
+    // Character markers are rendered in document order, so later entries are visually on top of
+    // earlier entries. Keep that same order for hit-testing and return topmost first.
+    return characterMapIndex.entries
+      .filter(({ point: characterPoint }) => {
+        const distance = (characterPoint.x - point.x) ** 2 + (characterPoint.y - point.y) ** 2;
+        return distance <= 400;
+      })
+      .reverse();
   };
 
+  const characterAtCanvasPoint = (event: { clientX: number; clientY: number }) => charactersAtCanvasPoint(event)[0];
+
   const handleMapClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const characterClickGesture = characterClickGestureRef.current;
+    if (characterClickGesture?.clickHandled) return;
     if (suppressMapClickRef.current) {
       suppressMapClickRef.current = false;
+      if (characterClickGesture) characterClickGesture.clickHandled = true;
       return;
     }
     if (showCharacters && extendedState) {
-      const character = characterAtCanvasPoint(event);
-      if (character) {
-        setSelectedCharacterKey({ faction: character.faction, id: character.character.id });
-        return;
+      const characters = charactersAtCanvasPoint(event);
+      const selectionBeforePointerDown = characterClickGesture
+        ? characterClickGesture.selectionBeforePointerDown
+        : selectedCharacterKey;
+      if (characterClickGesture) characterClickGesture.clickHandled = true;
+      const topCharacter = characters[0];
+      if (topCharacter) {
+        const selectedCharacterIndex = selectionBeforePointerDown
+          ? characters.findIndex(
+              ({ faction, character }) =>
+                character.id === selectionBeforePointerDown.id &&
+                faction.toLowerCase() === selectionBeforePointerDown.faction.toLowerCase(),
+            )
+          : -1;
+        const nextCharacter = selectedCharacterIndex >= 0 ? characters[selectedCharacterIndex + 1] : undefined;
+        if (nextCharacter) {
+          selectMapCharacter(nextCharacter.faction, nextCharacter.character);
+          return;
+        }
+        if (selectedCharacterIndex === -1) {
+          selectMapCharacter(topCharacter.faction, topCharacter.character);
+          return;
+        }
+        // Clicking the last selected character in the overlap falls through to the region
+        // hit-test, which opens the building edit panel for that region.
       }
     }
     const marker = markerAtCanvasPoint(event);
@@ -1722,6 +1772,32 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       }}
                       className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
                     />
+                  </div>
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-0 top-0 z-10"
+                    style={{
+                      width: mapDisplayWidthPx,
+                      height: mapDisplayHeightPx,
+                      display: mapView === "factions" ? "block" : "none",
+                    }}
+                  >
+                    {factionFlagMarkers.map((marker) => (
+                      <img
+                        key={marker.key}
+                        src={marker.src}
+                        alt=""
+                        draggable={false}
+                        className="absolute object-contain"
+                        style={{
+                          left: marker.left,
+                          top: marker.top,
+                          width: marker.width,
+                          height: marker.height,
+                          filter: "drop-shadow(0 0 2px rgba(0, 0, 0, 0.8))",
+                        }}
+                      />
+                    ))}
                   </div>
                   <div
                     aria-hidden="true"
@@ -2291,7 +2367,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                           key={`${faction}:${character.id}`}
                           type="button"
                           onClick={() => {
-                            setSelectedCharacterKey({ faction, id: character.id });
+                            selectMapCharacter(faction, character);
                             if (characterPoint) centerMapOnPoint(characterPoint.x, characterPoint.y);
                           }}
                           className={`mb-1 block w-full rounded border px-2 py-1.5 text-left text-xs ${selected ? "border-yellow-500 bg-yellow-950/40 text-gray-100" : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"}`}
