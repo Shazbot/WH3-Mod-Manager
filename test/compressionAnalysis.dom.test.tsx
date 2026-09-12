@@ -31,7 +31,20 @@ const makeResult = (): CompressionAnalysisResult => ({
       },
       existingCounts: { NONE: 1, LZ4: 0, ZSTD: 0, UNKNOWN: 0 },
       existingStoredBytes: { NONE: 10000, LZ4: 0, ZSTD: 0, UNKNOWN: 0 },
-      topWins: [],
+      topWins: [
+        {
+          fileName: "db\\example.foo",
+          extension: ".foo",
+          storedBytes: 8192,
+          originalBytes: 8192,
+          existingMethod: "NONE",
+          status: "accepted",
+          selectedCodec: "ZSTD",
+          selectedRatioPercent: 50,
+          selectedRatio: 0.5,
+          savingsBytes: 4096,
+        },
+      ],
       rigidModelV2Wins: [],
       fileResults: [],
       warnings: [],
@@ -95,6 +108,12 @@ describe("CompressionAnalysis", () => {
     await waitFor(() => expect(start).toHaveBeenCalledWith({ packPaths: ["/mods/example.pack"] }));
     expect(await screen.findByText("Overall")).toBeInTheDocument();
     expect(screen.getByText("example.pack")).toBeInTheDocument();
+    expect(screen.getByText("10% saved")).toBeInTheDocument();
+    expect(screen.getByText("(1,000 B)")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Compression type" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "ZSTD" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "4 KiB" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "50%" })).toBeInTheDocument();
     progressCallback?.({}, { phase: "file", packIndex: 0, packCount: 1, fileIndex: 0, fileCount: 1 });
   });
 
@@ -121,5 +140,34 @@ describe("CompressionAnalysis", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(cancel).toHaveBeenCalledTimes(1);
     resolveStart({ accepted: true, result: makeResult() });
+  });
+
+  it("orders pack results by saved bytes", async () => {
+    const result = makeResult();
+    result.packs.push({
+      ...result.packs[0],
+      packPath: "/mods/larger-savings.pack",
+      packName: "larger-savings.pack",
+      bytesSaved: 2000,
+    });
+    result.packs[0].bytesSaved = 1000;
+    result.overall.packCount = 2;
+    result.overall.analyzedPackCount = 2;
+
+    window.api = {
+      startCompressionAnalysis: vi.fn(async () => ({ accepted: true, result })),
+      cancelCompressionAnalysis: vi.fn(),
+      onCompressionAnalysisProgress: vi.fn(() => () => undefined),
+    } as unknown as NonNullable<Window["api"]>;
+
+    render(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis isOpen onClose={vi.fn()} currentGame="wh3" enabledModPaths={["/mods/example.pack"]} />
+      </LocalizationContext.Provider>,
+    );
+
+    const largerPack = await screen.findByText("larger-savings.pack");
+    const smallerPack = screen.getByText("example.pack");
+    expect(largerPack.compareDocumentPosition(smallerPack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

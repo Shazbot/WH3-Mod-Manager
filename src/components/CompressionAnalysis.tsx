@@ -6,6 +6,7 @@ import type {
   CompressionAnalysisProgress,
   CompressionAnalysisResult,
   CompressionPackAnalysis,
+  CompressionWin,
 } from "../compressionAnalysis";
 
 interface CompressionAnalysisProps {
@@ -28,6 +29,58 @@ const formatBytes = (bytes: number): string => {
 };
 
 const formatPercent = (value: number): string => `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+
+const formatFileSavingsPercent = (file: CompressionWin): string => {
+  const originalBytes = file.originalBytes ?? file.storedBytes;
+  if (!Number.isFinite(originalBytes) || originalBytes <= 0 || !Number.isFinite(file.savingsBytes)) return "—";
+  return formatPercent((file.savingsBytes / originalBytes) * 100);
+};
+
+interface CompressionWinTableProps {
+  wins: CompressionWin[];
+  localized: Record<string, string | undefined>;
+}
+
+const CompressionWinTable = ({ wins, localized }: CompressionWinTableProps) => (
+  <div className="mt-1 overflow-x-auto">
+    <table className="min-w-[30rem] w-full table-fixed text-xs">
+      <colgroup>
+        <col />
+        <col className="w-28" />
+        <col className="w-24" />
+        <col className="w-20" />
+      </colgroup>
+      <thead className="text-left text-gray-400">
+        <tr>
+          <th scope="col" className="pr-3 font-medium">
+            {localized.compressionAnalysisFile || "File"}
+          </th>
+          <th scope="col" className="whitespace-nowrap pr-3 font-medium">
+            {localized.compressionAnalysisCompressionType || "Compression type"}
+          </th>
+          <th scope="col" className="whitespace-nowrap pr-3 text-right font-medium">
+            {localized.compressionAnalysisSaved || "Saved"}
+          </th>
+          <th scope="col" className="whitespace-nowrap text-right font-medium">
+            {localized.compressionAnalysisPercentSaved || "% saved"}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {wins.map((win) => (
+          <tr key={win.fileName} className="border-t border-gray-700/60">
+            <td className="max-w-0 truncate py-1 pr-3" title={win.fileName}>
+              {win.fileName}
+            </td>
+            <td className="whitespace-nowrap py-1 pr-3">{win.selectedCodec}</td>
+            <td className="whitespace-nowrap py-1 pr-3 text-right">{formatBytes(win.savingsBytes)}</td>
+            <td className="whitespace-nowrap py-1 text-right">{formatFileSavingsPercent(win)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
 
 const statusLabel = (pack: CompressionPackAnalysis, localized: Record<string, string | undefined>): string => {
   if (!pack.success) return localized.compressionAnalysisPackError || "Pack could not be analyzed";
@@ -108,6 +161,12 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
         ? localized.compressionAnalysisNoEnabledMods || "Enable at least one mod first."
         : undefined;
   const overall = result?.overall;
+  const orderedPacks = useMemo(() => {
+    if (!result) return [];
+    return [...result.packs].sort(
+      (first, second) => second.bytesSaved - first.bytesSaved || first.packName.localeCompare(second.packName),
+    );
+  }, [result]);
   const progressPercent = progress?.packCount
     ? Math.min(
         100,
@@ -203,15 +262,26 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
               </section>
               <section className="mt-4 space-y-2">
                 <h6 className="font-semibold">{localized.compressionAnalysisPerPack || "Per pack"}</h6>
-                {result?.packs.map((pack) => (
+                {orderedPacks.map((pack) => (
                   <details
                     key={pack.packPath}
                     className="rounded border border-gray-600 p-3"
-                    open={result.packs.length === 1}
+                    open={orderedPacks.length === 1}
                   >
                     <summary className="cursor-pointer text-sm font-medium">
-                      <span className="break-all">{pack.packName}</span>
-                      <span className="ml-2 text-xs text-gray-400">{statusLabel(pack, localized)}</span>
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 break-all">{pack.packName}</span>
+                        <span className="flex shrink-0 items-center gap-2 text-xs text-gray-400">
+                          <span className="whitespace-nowrap">{statusLabel(pack, localized)}</span>
+                          <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-gray-200">
+                            <span>
+                              {formatPercent(pack.wholePackPercentSaved)}{" "}
+                              {localized.compressionAnalysisSavedSuffix || "saved"}
+                            </span>
+                            <span className="font-normal text-gray-400">({formatBytes(pack.bytesSaved)})</span>
+                          </span>
+                        </span>
+                      </span>
                     </summary>
                     <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
                       <span>
@@ -247,18 +317,7 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
                         <div className="text-xs font-semibold uppercase text-gray-400">
                           {localized.compressionAnalysisTopWins || "Largest wins"}
                         </div>
-                        <ul className="mt-1 space-y-1 text-xs">
-                          {pack.topWins.map((win) => (
-                            <li key={win.fileName} className="flex justify-between gap-2">
-                              <span className="truncate" title={win.fileName}>
-                                {win.fileName}
-                              </span>
-                              <span className="whitespace-nowrap">
-                                {win.selectedCodec}: {formatBytes(win.savingsBytes)}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                        <CompressionWinTable wins={pack.topWins} localized={localized} />
                       </div>
                     )}
                     {pack.rigidModelV2Wins.length > 0 && (
@@ -267,18 +326,7 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
                           {localized.compressionAnalysisRigidWins ||
                             ".rigid_model_v2 wins (excluded from primary totals)"}
                         </div>
-                        <ul className="mt-1 space-y-1 text-xs">
-                          {pack.rigidModelV2Wins.slice(0, 10).map((win) => (
-                            <li key={win.fileName} className="flex justify-between gap-2">
-                              <span className="truncate" title={win.fileName}>
-                                {win.fileName}
-                              </span>
-                              <span className="whitespace-nowrap">
-                                {win.selectedCodec}: {formatBytes(win.savingsBytes)}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                        <CompressionWinTable wins={pack.rigidModelV2Wins.slice(0, 10)} localized={localized} />
                       </div>
                     )}
                   </details>
