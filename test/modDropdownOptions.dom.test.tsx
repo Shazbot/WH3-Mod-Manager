@@ -1,6 +1,6 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { describe, expect, it, vi } from "vitest";
 
@@ -122,5 +122,69 @@ describe("ModDropdownOptions", () => {
     expect(openFolderInExplorer).toHaveBeenCalledTimes(2);
     expect(openFolderInExplorer).toHaveBeenNthCalledWith(1, dataMod.path);
     expect(openFolderInExplorer).toHaveBeenNthCalledWith(2, workshopMod.path);
+  });
+
+  it("compares a custom copy with its matching Workshop file byte-for-byte", async () => {
+    const workshopMod = createMod({});
+    const customMod = createMod({
+      path: "/custom/example.pack",
+      modDirectory: "/custom",
+      sourceId: "custom-1",
+      sourceKind: "custom",
+    });
+    const compareModsByteForByte = vi.fn().mockResolvedValue({ success: true, identical: true });
+    window.api = {
+      ...window.api,
+      compareModsByteForByte,
+    } as NonNullable<Window["api"]>;
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          allMods: [customMod, workshopMod],
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <ModDropdownOptions mod={customMod} mods={[customMod, workshopMod]} />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    fireEvent.click(screen.getByText(enTranslation.compareToWorkshop));
+
+    await waitFor(() => expect(compareModsByteForByte).toHaveBeenCalledWith(customMod.path, workshopMod.path));
+    expect(store.getState().app.toasts.at(-1)).toMatchObject({
+      type: "success",
+      messages: [enTranslation.modMatchesWorkshop],
+    });
+  });
+
+  it("does not offer a Workshop comparison without a matching Workshop copy", () => {
+    const dataMod = createMod({
+      path: "/game/data/example.pack",
+      modDirectory: "/game/data",
+      isInData: true,
+      sourceId: "data",
+      sourceKind: "data",
+    });
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: { app: { ...initialState, allMods: [dataMod] } },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <ModDropdownOptions mod={dataMod} mods={[dataMod]} />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    expect(screen.queryByText(enTranslation.compareToWorkshop)).not.toBeInTheDocument();
   });
 });

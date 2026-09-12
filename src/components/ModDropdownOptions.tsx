@@ -1,6 +1,7 @@
 import { Tooltip } from "flowbite-react";
 import React, { memo, useCallback, useContext, useMemo, useState } from "react";
 import {
+  addToast,
   setCurrentModToUpload,
   setIsModTagPickerOpen,
   toggleAlwaysEnabledMods,
@@ -19,6 +20,7 @@ import {
   FaTrash,
   FaSync,
   FaClock,
+  FaExchangeAlt,
 } from "react-icons/fa";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
 
@@ -27,7 +29,7 @@ import RenameModal from "./RenameModal";
 
 import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
-import { isWorkshopMod } from "../modSources";
+import { getModSourceKind, isWorkshopMod } from "../modSources";
 
 type ModDropdownOptionsProps = {
   mod?: Mod;
@@ -76,9 +78,58 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const isDev = useAppSelector((state) => state.app.isDev);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isComparingToWorkshop, setIsComparingToWorkshop] = useState(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
   const { onAction } = props;
+
+  const workshopVersion =
+    props.mod && getModSourceKind(props.mod) !== "workshop"
+      ? allMods.find((iterMod) => iterMod.name === props.mod?.name && isWorkshopMod(iterMod))
+      : undefined;
+
+  const compareToWorkshop = useCallback(
+    async (mod: Mod, workshopMod: Mod) => {
+      if (isComparingToWorkshop) return;
+      setIsComparingToWorkshop(true);
+
+      try {
+        const result = await window.api?.compareModsByteForByte(mod.path, workshopMod.path);
+        if (!result?.success || result.identical === undefined) {
+          throw new Error(result?.error || "The comparison could not be completed.");
+        }
+
+        dispatch(
+          addToast({
+            type: result.identical ? "success" : "info",
+            messages: [
+              result.identical
+                ? localized.modMatchesWorkshop || `${mod.name} is byte-for-byte identical to the Workshop version.`
+                : localized.modDiffersFromWorkshop || `${mod.name} differs from the Workshop version.`,
+            ],
+            duration: 8000,
+            startTime: Date.now(),
+          }),
+        );
+      } catch (error) {
+        dispatch(
+          addToast({
+            type: "warning",
+            messages: [
+              `${localized.compareToWorkshopFailed || "Failed to compare with the Workshop version:"} ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            ],
+            duration: 8000,
+            startTime: Date.now(),
+          }),
+        );
+      } finally {
+        setIsComparingToWorkshop(false);
+      }
+    },
+    [dispatch, isComparingToWorkshop, localized],
+  );
 
   const selectedMods = useMemo(
     () => props.selectedMods ?? (props.mod ? [props.mod] : []),
@@ -418,6 +469,26 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   <span className="flex items-center gap-2">
                     <FaRegCopy className="w-5 h-5"></FaRegCopy>
                     {localized.copyModToData}
+                  </span>
+                </a>
+              </li>
+            )}
+            {props.mod && workshopVersion && ["data", "custom"].includes(getModSourceKind(props.mod)) && (
+              <li>
+                <a
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (!isComparingToWorkshop) void compareToWorkshop(props.mod!, workshopVersion);
+                  }}
+                  href="#"
+                  aria-disabled={isComparingToWorkshop}
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <span className="flex items-center gap-2">
+                    <FaExchangeAlt className="w-5 h-5"></FaExchangeAlt>
+                    {isComparingToWorkshop
+                      ? localized.comparingToWorkshop || "Comparing to Workshop..."
+                      : localized.compareToWorkshop || "Compare to Workshop"}
                   </span>
                 </a>
               </li>

@@ -74,6 +74,11 @@ const api = {
   requestSaves: () => ipcRenderer.send("requestSaves"),
   putPathInClipboard: (path: string) => ipcRenderer.send("putPathInClipboard", path),
   copyModToData: (path: string) => ipcRenderer.send("copyModToData", path),
+  compareModsByteForByte: (
+    modPath: string,
+    workshopModPath: string,
+  ): Promise<{ success: boolean; identical?: boolean; error?: string }> =>
+    ipcRenderer.invoke("compareModsByteForByte", modPath, workshopModPath),
   updateMod: (mod: Mod, contentMod: Mod) => ipcRenderer.send("updateMod", mod, contentMod),
   uploadMod: (mod: Mod) => ipcRenderer.send("uploadMod", mod),
   fakeUpdatePack: (mod: Mod) => ipcRenderer.send("fakeUpdatePack", mod),

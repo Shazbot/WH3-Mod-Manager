@@ -18,6 +18,7 @@ import { resolveExportOutputPath } from "./utility/exportPaths";
 import { buildRpfmTsvContent, getRpfmTsvExportPath } from "./utility/rpfmTsv";
 import { buildImportedPackedFile } from "./utility/packImportStaging";
 import { applyTextPackedFileEdit } from "./utility/textPackStaging";
+import { compareFilesByteForByte } from "./utility/fileComparison";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
@@ -11774,6 +11775,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const destPath = nodePath.join(dataFolder, baseName);
     fs.copyFileSync(path, destPath);
   });
+  ipcMain.removeHandler("compareModsByteForByte");
+  ipcMain.handle(
+    "compareModsByteForByte",
+    async (
+      _event,
+      modPath: string,
+      workshopModPath: string,
+    ): Promise<{ success: boolean; identical?: boolean; error?: string }> => {
+      try {
+        return { success: true, identical: await compareFilesByteForByte(modPath, workshopModPath) };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
   const checkIsModThumbnailValid = (modThumbnailPath: string) => {
     if (modThumbnailPath == "" || !fs.existsSync(modThumbnailPath)) {
       mainWindow?.webContents.send("addToast", {
