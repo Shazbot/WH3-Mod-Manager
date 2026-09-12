@@ -767,7 +767,7 @@ const Sidebar = memo(() => {
               className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
             ></input>
 
-            <span className="absolute right-[0.65rem] top-8 text-gray-400">
+            <span className="absolute right-[0.65rem] top-8 text-gray-400 scale-150">
               <button onClick={() => clearFilter()}>
                 <FontAwesomeIcon icon={faXmark} />
               </button>

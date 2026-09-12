@@ -9049,7 +9049,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
   ipcMain.on("saveConfig", (event, payload: ConfigSavePayload) => {
-    console.log("saveConfig");
     const { config } = payload;
 
     applyConfigSavePayloadToAppData(payload);
