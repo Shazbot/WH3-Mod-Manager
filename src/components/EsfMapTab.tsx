@@ -890,17 +890,27 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
   useEffect(() => {
     if (!mapContextMenu) return;
+    /**
+     * A click outside the open context menu dismisses it, and does nothing else.
+     *
+     * Capture the click before React delivers it to the map underneath. Otherwise the menu
+     * closes, but the same click still selects a character/region or paints ownership.
+     */
     const dismiss = (event?: MouseEvent) => {
-      if (event && mapContextMenuRef.current?.contains(event.target as Node)) return;
+      if (event) {
+        if (mapContextMenuRef.current?.contains(event.target as Node)) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }
       setMapContextMenu(undefined);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") dismiss();
     };
-    window.addEventListener("mousedown", dismiss);
+    document.addEventListener("click", dismiss, true);
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("click", dismiss, true);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [mapContextMenu]);
@@ -1903,6 +1913,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
   const beginMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0) return;
+    if (mapContextMenuRef.current) {
+      // The menu owns the first left click outside itself. Do not let the canvas interpret it as
+      // a region selection, character selection, ownership paint, or drag gesture.
+      setMapContextMenu(undefined);
+      suppressMapClickRef.current = true;
+      characterClickGestureRef.current = undefined;
+      return;
+    }
     let hasCharacterClickTarget = false;
     if (!isEditingFactions && showCharacters && extendedState) {
       const characters = charactersAtCanvasPoint(event);
