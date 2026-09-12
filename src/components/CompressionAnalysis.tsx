@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LuChevronRight } from "react-icons/lu";
 import { Modal } from "../flowbite";
 import { useLocalizations } from "../localizationContext";
 import type { SupportedGames } from "../supportedGames";
@@ -265,21 +266,23 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
                 {orderedPacks.map((pack) => (
                   <details
                     key={pack.packPath}
-                    className="rounded border border-gray-600 p-3"
+                    className="group rounded border border-gray-600 p-3"
                     open={orderedPacks.length === 1}
                   >
-                    <summary className="cursor-pointer text-sm font-medium">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 break-all">{pack.packName}</span>
-                        <span className="flex shrink-0 items-center gap-2 text-xs text-gray-400">
-                          <span className="whitespace-nowrap">{statusLabel(pack, localized)}</span>
-                          <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-gray-200">
-                            <span>
-                              {formatPercent(pack.wholePackPercentSaved)}{" "}
-                              {localized.compressionAnalysisSavedSuffix || "saved"}
-                            </span>
-                            <span className="font-normal text-gray-400">({formatBytes(pack.bytesSaved)})</span>
+                    <summary className="flex list-none cursor-pointer items-center gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                      <LuChevronRight
+                        className="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-90"
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 break-all">{pack.packName}</span>
+                      <span className="flex shrink-0 items-center gap-2 text-xs text-gray-400">
+                        <span className="whitespace-nowrap">{statusLabel(pack, localized)}</span>
+                        <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-gray-200">
+                          <span>
+                            {formatPercent(pack.wholePackPercentSaved)}{" "}
+                            {localized.compressionAnalysisSavedSuffix || "saved"}
                           </span>
+                          <span className="font-normal text-gray-400">({formatBytes(pack.bytesSaved)})</span>
                         </span>
                       </span>
                     </summary>
@@ -324,7 +327,7 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
                       <div className="mt-3">
                         <div className="text-xs font-semibold uppercase text-yellow-300">
                           {localized.compressionAnalysisRigidWins ||
-                            ".rigid_model_v2 wins (excluded from primary totals)"}
+                            ".rigid_model_v2 wins (reported separately; LZ4 is the cautious default)"}
                         </div>
                         <CompressionWinTable wins={pack.rigidModelV2Wins.slice(0, 10)} localized={localized} />
                       </div>

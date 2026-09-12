@@ -213,7 +213,7 @@
   "compressionAnalysisFile": "File",
   "compressionAnalysisCompressionType": "Compression type",
   "compressionAnalysisTopWins": "Largest wins",
-  "compressionAnalysisRigidWins": ".rigid_model_v2 wins (excluded from primary totals)",
+  "compressionAnalysisRigidWins": ".rigid_model_v2 wins (reported separately; LZ4 is the cautious default)",
   "applicationLogs": "Application Logs",
   "applicationLogsHelp": "Open application diagnostics. Hold Shift while clicking to copy the path instead.",
   "openMainLog": "Open main.log",

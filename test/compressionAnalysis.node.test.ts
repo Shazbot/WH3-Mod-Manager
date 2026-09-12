@@ -210,6 +210,30 @@ describe("PFH5 compression analysis", () => {
     expect(analyzed.errorCount).toBe(0);
   });
 
+  it("ignores .rpfm_reserved files", async () => {
+    const directory = await mkdtemp(nodePath.join(tmpdir(), "whmm-compression-"));
+    tempDirectories.push(directory);
+    const packPath = await writeTempPack(
+      directory,
+      "reserved.pack",
+      makePFH5Pack([{ name: "db\\table.rpfm_reserved", data: Buffer.alloc(8192) }]),
+    );
+    const fake = makeFakeCodecs(0.5, 0.5);
+    const result = await analyzeCompressionPacks([packPath], {
+      codecs: fake.codecs,
+      vanillaRecords: new Map(),
+    });
+    const analyzed = result.packs[0];
+    expect(analyzed.fileResults[0].skipReason).toBe("guardrailNeverCompress");
+    expect(analyzed.testedCount).toBe(0);
+    expect(analyzed.skippedCount).toBe(1);
+    expect(analyzed.bytesSaved).toBe(0);
+    expect(analyzed.fileResults[0].warning).toBeUndefined();
+    expect(analyzed.warnings).not.toContain("No vanilla compression precedent for extension .rpfm_reserved");
+    expect(fake.calls.lz4.compress).not.toHaveBeenCalled();
+    expect(fake.calls.zstd.compress).not.toHaveBeenCalled();
+  });
+
   it("keeps rigid_model_v2 savings out of the primary totals", async () => {
     const directory = await mkdtemp(nodePath.join(tmpdir(), "whmm-compression-"));
     tempDirectories.push(directory);

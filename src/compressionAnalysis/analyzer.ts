@@ -30,7 +30,7 @@ export const LZ4_FRAME_MAGIC = Buffer.from([0x04, 0x22, 0x4d, 0x18]);
 export const ZSTD_FRAME_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 const COMPRESSION_DETECTION_SAMPLE_BYTES = 64;
 const VANILLA_GUARDRAIL_RELATIVE_PATH = "scripts/out/vanilla-pack-compression-by-extension.csv";
-const ALWAYS_SKIP_EXTENSIONS = new Set([".wem", ".bnk", ".ca_vp8"]);
+const ALWAYS_SKIP_EXTENSIONS = new Set([".wem", ".bnk", ".ca_vp8", ".rpfm_reserved"]);
 
 export interface PFH5HeaderInfo {
   format: "PFH5";
@@ -574,20 +574,21 @@ const analyzeOnePack = async (
       file.originalBytes = entry.fileSize;
       const vanillaRecord = context.records.get(extension);
       file.noVanillaPrecedent = !vanillaRecord;
+      if (ALWAYS_SKIP_EXTENSIONS.has(extension)) {
+        file.skipReason = "guardrailNeverCompress";
+        pack.skippedCount++;
+        continue;
+      }
       if (!vanillaRecord) {
         const warning = `No vanilla compression precedent for extension ${extension}`;
         file.warning = warning;
         appendUnique(warnings, warning);
       }
       if (isRigidModelV2) {
-        const warning = ".rigid_model_v2 is benchmarked with LZ4 only and excluded from primary totals";
+        const warning =
+          ".rigid_model_v2 uses a cautious LZ4-only check; results are reported separately from primary totals";
         file.warning = file.warning ? `${file.warning}; ${warning}` : warning;
         appendUnique(warnings, warning);
-      }
-      if (ALWAYS_SKIP_EXTENSIONS.has(extension)) {
-        file.skipReason = "guardrailNeverCompress";
-        pack.skippedCount++;
-        continue;
       }
       if (vanillaRecordIsAllNone(vanillaRecord)) {
         file.skipReason = "vanillaExtensionIs100PercentNone";
