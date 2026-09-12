@@ -9,6 +9,7 @@ import {
   parsePFH5PackBuffer,
   ZSTD_FRAME_MAGIC,
 } from "../src/compressionAnalysis/analyzer";
+import { compressAnalyzedPack } from "../src/compressionAnalysis/compressor";
 import {
   chooseCompressionCodec,
   getCompressionEligibilityThreshold,
@@ -240,9 +241,9 @@ describe("PFH5 compression analysis", () => {
     const packPath = await writeTempPack(
       directory,
       "rigid.pack",
-      makePFH5Pack([{ name: "variantmeshes\\unit.rigid_model_v2", data: Buffer.alloc(8192) }]),
+      makePFH5Pack([{ name: "variantmeshes\\unit.rigid_model_v2", data: Buffer.alloc(256 * 1024) }]),
     );
-    const fake = makeFakeCodecs(0.8, 0.5);
+    const fake = makeFakeCodecs(0.7, 0.5);
     const result = await analyzeCompressionPacks([packPath], {
       codecs: fake.codecs,
       vanillaRecords: new Map([
@@ -262,6 +263,36 @@ describe("PFH5 compression analysis", () => {
     expect(result.packs[0].bytesSaved).toBe(0);
     expect(result.packs[0].projectedSizeIncludingRigidModelV2).toBeLessThan(result.packs[0].currentSize);
     expect(fake.calls.zstd.compress).not.toHaveBeenCalled();
+  });
+
+  it("rewrites an analyzed pack and creates a timestamped backup", async () => {
+    const directory = await mkdtemp(nodePath.join(tmpdir(), "whmm-compression-"));
+    tempDirectories.push(directory);
+    const originalPayload = Buffer.alloc(8192, 7);
+    const originalPack = makePFH5Pack([{ name: "db\\compressible.foo", data: originalPayload }], true);
+    const packPath = await writeTempPack(directory, "rewrite.pack", originalPack);
+    const fake = makeFakeCodecs(0.8, 0.5);
+    const analysis = await analyzeCompressionPacks([packPath], {
+      codecs: fake.codecs,
+      vanillaRecords: new Map(),
+    });
+
+    const response = await compressAnalyzedPack(packPath, analysis.packs[0], directory, true, {
+      codecs: fake.codecs,
+      now: () => new Date("2026-09-12T10:11:12.345Z"),
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.compressedFileCount).toBe(1);
+    expect(response.backupPath).toBe(nodePath.join(directory, "whmm_backups", "rewrite.2026-09-12T10-11-12-345Z.pack"));
+    expect(await readFile(response.backupPath!)).toEqual(originalPack);
+    const rewritten = await readFile(packPath);
+    const parsed = parsePFH5PackBuffer(rewritten, packPath);
+    expect(parsed.header.byteMask).toBe(0x40);
+    expect(parsed.entries[0].isCompressed).toBe(true);
+    expect(parsed.entries[0].fileSize).toBe(Math.ceil(originalPayload.length * 0.5));
+    const compressedPayload = rewritten.subarray(parsed.entries[0].payloadOffset);
+    expect(await fake.codecs.zstdDecompress(compressedPayload)).toEqual(originalPayload);
   });
 
   it("limits displayed wins to ten without dropping additional savings from totals", async () => {

@@ -7,7 +7,9 @@ import {
   getCompressionEligibilityThreshold,
   LARGE_FILE_SAMPLE_BYTES,
   LARGE_FILE_SAMPLE_THRESHOLD_BYTES,
+  RIGID_MODEL_V2_MINIMUM_BYTES,
   TOP_COMPRESSION_WINS,
+  passesRigidModelV2CompressionThreshold,
   ZSTD_COMPRESSION_LEVEL,
 } from "./policy";
 import { createEmptyMethodStats, parseVanillaCompressionCsv, vanillaRecordIsAllNone } from "./vanillaGuardrail";
@@ -49,6 +51,9 @@ export interface PFH5IndexEntry {
   fileSize: number;
   isCompressed: boolean;
   payloadOffset: number;
+  /** Byte offsets inside the packed-file index, used by the lossless pack rewriter. */
+  fileSizeIndexOffset: number;
+  compressionFlagIndexOffset: number;
 }
 
 export interface ParsedPFH5Pack {
@@ -148,6 +153,7 @@ export const parsePFH5Index = (
   let position = 0;
   let payloadOffset = header.dataStart;
   for (let indexNumber = 0; indexNumber < header.fileCount; indexNumber++) {
+    const fileSizeIndexOffset = position;
     const fileSize = readUInt32LE(index, position, `PFH5 file ${indexNumber} size`);
     position += 4;
     if (header.hasFileNameHash) {
@@ -155,6 +161,7 @@ export const parsePFH5Index = (
       position += 4;
     }
     if (position + 1 > index.length) throw new Error(`PFH5 file ${indexNumber} compression flag is truncated`);
+    const compressionFlagIndexOffset = position;
     const isCompressed = index[position] === 1;
     position += 1;
     const nameEnd = index.indexOf(0, position);
@@ -165,7 +172,15 @@ export const parsePFH5Index = (
     if (!Number.isSafeInteger(payloadEnd) || (header.packSize !== undefined && payloadEnd > header.packSize)) {
       throw new Error(`PFH5 file ${indexNumber} payload extends past the end of the pack`);
     }
-    entries.push({ index: indexNumber, name, fileSize, isCompressed, payloadOffset });
+    entries.push({
+      index: indexNumber,
+      name,
+      fileSize,
+      isCompressed,
+      payloadOffset,
+      fileSizeIndexOffset,
+      compressionFlagIndexOffset,
+    });
     payloadOffset = payloadEnd;
   }
   if (position !== index.length) {
@@ -595,8 +610,13 @@ const analyzeOnePack = async (
         pack.skippedCount++;
         continue;
       }
-      const threshold = getCompressionEligibilityThreshold(entry.fileSize);
-      if (threshold === undefined) {
+      const threshold = isRigidModelV2 ? undefined : getCompressionEligibilityThreshold(entry.fileSize);
+      if (isRigidModelV2 && entry.fileSize < RIGID_MODEL_V2_MINIMUM_BYTES) {
+        file.skipReason = "belowRigidModelMinimumSize";
+        pack.skippedCount++;
+        continue;
+      }
+      if (!isRigidModelV2 && threshold === undefined) {
         file.skipReason = "belowMinimumSize";
         pack.skippedCount++;
         continue;
@@ -641,9 +661,15 @@ const analyzeOnePack = async (
           };
         }
         const sampledResults = codecList.map((codec) => sampled[codec]!);
-        const hasSamplePass = sampledResults.some(
-          (result) => !result.error && result.ratioPercent !== undefined && result.ratioPercent < threshold,
-        );
+        const hasSamplePass = sampledResults.some((result) => {
+          if (result.error || result.ratioPercent === undefined || result.compressedBytes === undefined) return false;
+          return isRigidModelV2
+            ? passesRigidModelV2CompressionThreshold(
+                LARGE_FILE_SAMPLE_BYTES * sampleOffsets.length,
+                result.compressedBytes,
+              )
+            : result.ratioPercent < threshold!;
+        });
         if (!hasSamplePass) {
           addCodecWarning(file, sampledResults);
           if (sampledResults.some((result) => !result.error)) {
@@ -699,7 +725,12 @@ const analyzeOnePack = async (
       const benchmarkResults = codecList.map((codec) => benchmarks[codec]!).filter(Boolean);
       addCodecWarning(file, benchmarkResults);
       if (file.warning && file.warning.startsWith("Codec benchmark failure")) appendUnique(warnings, file.warning);
-      const selectedCodec = chooseCompressionCodec(entry.fileSize, benchmarks);
+      const selectedCodec = isRigidModelV2
+        ? benchmarks.LZ4?.compressedBytes !== undefined &&
+          passesRigidModelV2CompressionThreshold(entry.fileSize, benchmarks.LZ4.compressedBytes)
+          ? "LZ4"
+          : undefined
+        : chooseCompressionCodec(entry.fileSize, benchmarks);
       if (!selectedCodec) {
         if (benchmarkResults.length > 0 && benchmarkResults.every((result) => result.error)) {
           file.status = "error";

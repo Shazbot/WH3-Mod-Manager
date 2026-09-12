@@ -148,3 +148,18 @@ export interface CompressionAnalysisStartResponse {
   reason?: "unsupportedGame" | "noEnabledMods" | "alreadyRunning";
   result?: CompressionAnalysisResult;
 }
+
+export interface CompressPackRequest {
+  packPath: string;
+  includeRigidModelV2: boolean;
+}
+
+export interface CompressPackResponse {
+  success: boolean;
+  packPath?: string;
+  backupPath?: string;
+  originalSize?: number;
+  compressedSize?: number;
+  compressedFileCount?: number;
+  error?: string;
+}

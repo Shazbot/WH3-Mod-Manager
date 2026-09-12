@@ -14,6 +14,8 @@ export const LARGE_FILE_SAMPLE_THRESHOLD_BYTES = 100 * 1024 * 1024;
 export const LARGE_FILE_SAMPLE_BYTES = 4 * 1024 * 1024;
 export const TOP_COMPRESSION_WINS = 10;
 export const ZSTD_COMPRESSION_LEVEL = 3;
+export const RIGID_MODEL_V2_MINIMUM_BYTES = 256 * 1024;
+export const RIGID_MODEL_V2_MAXIMUM_RATIO_PERCENT = 75;
 
 /**
  * Returns the strict maximum ratio for a file size, or undefined for the below-4KiB skip band.
@@ -71,3 +73,8 @@ export const chooseCompressionCodec = (
 };
 
 export const selectCompressionCodec = chooseCompressionCodec;
+
+/** Conservative, LZ4-only policy for rigid models based on the vanilla compression findings. */
+export const passesRigidModelV2CompressionThreshold = (originalBytes: number, compressedBytes: number): boolean =>
+  originalBytes >= RIGID_MODEL_V2_MINIMUM_BYTES &&
+  compressionRatioPercent(compressedBytes, originalBytes) <= RIGID_MODEL_V2_MAXIMUM_RATIO_PERCENT;

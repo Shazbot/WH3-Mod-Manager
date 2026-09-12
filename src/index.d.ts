@@ -15,6 +15,8 @@ declare global {
   type CompressionAnalysisRequest = import("./compressionAnalysis").CompressionAnalysisRequest;
   type CompressionAnalysisResult = import("./compressionAnalysis").CompressionAnalysisResult;
   type CompressionAnalysisStartResponse = import("./compressionAnalysis").CompressionAnalysisStartResponse;
+  type CompressPackRequest = import("./compressionAnalysis").CompressPackRequest;
+  type CompressPackResponse = import("./compressionAnalysis").CompressPackResponse;
 
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
 

@@ -31,6 +31,8 @@ import type {
   CompressionAnalysisProgress,
   CompressionAnalysisRequest,
   CompressionAnalysisStartResponse,
+  CompressPackRequest,
+  CompressPackResponse,
 } from "./compressionAnalysis";
 
 console.log("IN PRELOAD");
@@ -152,6 +154,8 @@ const api = {
     ipcRenderer.invoke("translateAllStatic", translationIds),
   startCompressionAnalysis: (request: CompressionAnalysisRequest): Promise<CompressionAnalysisStartResponse> =>
     ipcRenderer.invoke("startCompressionAnalysis", request),
+  compressPack: (request: CompressPackRequest): Promise<CompressPackResponse> =>
+    ipcRenderer.invoke("compressPack", request),
   cancelCompressionAnalysis: () => ipcRenderer.send("cancelCompressionAnalysis"),
   onCompressionAnalysisProgress: (
     callback: (event: Electron.IpcRendererEvent, progress: CompressionAnalysisProgress) => void,

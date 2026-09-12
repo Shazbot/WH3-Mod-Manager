@@ -465,6 +465,7 @@ const OptionsDrawer = memo(() => {
         onClose={() => setIsShowingCompressionAnalysis(false)}
         currentGame={currentGame}
         enabledModPaths={enabledMods.map((mod) => mod.path)}
+        isFeaturesForModdersEnabled={isFeaturesForModdersEnabled}
       />
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <CreateSteamCollection />
@@ -1476,35 +1477,41 @@ const OptionsDrawer = memo(() => {
               </button>
             </div>
 
-            <h6 className="mt-10">{localized.compressionAnalysis || "Compression Analysis"}</h6>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {localized.compressionAnalysisDescription ||
-                "Benchmark currently enabled Warhammer 3 mod packs without changing any files."}
-            </p>
-            <div className="flex mt-2 w-full">
-              <button
-                type="button"
-                disabled={currentGame !== "wh3" || enabledMods.length === 0}
-                title={
-                  currentGame !== "wh3"
-                    ? localized.compressionAnalysisOnlyWH3 || "Compression analysis is available for Warhammer 3 only."
-                    : enabledMods.length === 0
-                      ? localized.compressionAnalysisNoEnabledMods || "Enable at least one mod first."
-                      : undefined
-                }
-                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%] disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={() => setIsShowingCompressionAnalysis(true)}
-              >
-                <span className="uppercase">{localized.compressionAnalysis || "Compression Analysis"}</span>
-              </button>
-              {(currentGame !== "wh3" || enabledMods.length === 0) && (
-                <p className="mt-2 text-center text-xs text-yellow-200">
-                  {currentGame !== "wh3"
-                    ? localized.compressionAnalysisOnlyWH3 || "Compression analysis is available for Warhammer 3 only."
-                    : localized.compressionAnalysisNoEnabledMods || "Enable at least one mod first."}
+            {isFeaturesForModdersEnabled && (
+              <>
+                <h6 className="mt-10">{localized.compressionAnalysis || "Compression Analysis"}</h6>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {localized.compressionAnalysisDescription ||
+                    "Benchmark currently enabled Warhammer 3 mod packs and optionally compress them."}
                 </p>
-              )}
-            </div>
+                <div className="flex mt-2 w-full">
+                  <button
+                    type="button"
+                    disabled={currentGame !== "wh3" || enabledMods.length === 0}
+                    title={
+                      currentGame !== "wh3"
+                        ? localized.compressionAnalysisOnlyWH3 ||
+                          "Compression analysis is available for Warhammer 3 only."
+                        : enabledMods.length === 0
+                          ? localized.compressionAnalysisNoEnabledMods || "Enable at least one mod first."
+                          : undefined
+                    }
+                    className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%] disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => setIsShowingCompressionAnalysis(true)}
+                  >
+                    <span className="uppercase">{localized.compressionAnalysis || "Compression Analysis"}</span>
+                  </button>
+                  {(currentGame !== "wh3" || enabledMods.length === 0) && (
+                    <p className="mt-2 text-center text-xs text-yellow-200">
+                      {currentGame !== "wh3"
+                        ? localized.compressionAnalysisOnlyWH3 ||
+                          "Compression analysis is available for Warhammer 3 only."
+                        : localized.compressionAnalysisNoEnabledMods || "Enable at least one mod first."}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </Drawer>
       )}

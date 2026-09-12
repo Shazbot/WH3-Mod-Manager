@@ -353,9 +353,12 @@ import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie, { type KeyedLookup } from "./utility/trie";
 import {
   analyzeCompressionPacks,
+  compressAnalyzedPack,
   type CompressionAnalysisProgress,
   type CompressionAnalysisRequest,
   type CompressionAnalysisResult,
+  type CompressPackRequest,
+  type CompressPackResponse,
 } from "./compressionAnalysis";
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
@@ -736,6 +739,7 @@ const getVisualsLocContribution = (pack: Pack): Array<[string, string]> => {
 };
 const dbDuplicationCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
 const compressionAnalysisCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
+const compressionPackPathsInProgress = new Set<string>();
 const globalSearchCancelStateByWebContentsId = new Map<
   number,
   { canceled: boolean; done?: Promise<GlobalSearchResponse> }
@@ -8048,6 +8052,58 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  ipcMain.handle("compressPack", async (_event, request: CompressPackRequest): Promise<CompressPackResponse> => {
+    if (!appData.isFeaturesForModdersEnabled) {
+      return { success: false, error: "Enable Features For Modders before compressing packs." };
+    }
+    if (appData.currentGame !== "wh3") {
+      return { success: false, error: "Pack compression is available for Warhammer 3 only." };
+    }
+    if (!request || typeof request.packPath !== "string" || request.packPath.trim() === "") {
+      return { success: false, error: "No pack was selected." };
+    }
+    const normalizePackPath = (packPath: string) => nodePath.resolve(packPath).toLowerCase();
+    const normalizedRequestedPath = normalizePackPath(request.packPath);
+    const enabledMod = appData.enabledMods.find(
+      (mod) => !mod.isDeleted && !!mod.path && normalizePackPath(mod.path) === normalizedRequestedPath,
+    );
+    if (!enabledMod) return { success: false, error: "Only currently enabled mod packs can be compressed." };
+    const dataFolder = appData.gamesToGameFolderPaths.wh3?.dataFolder;
+    const vanillaPaths = new Set(
+      appData.vanillaPacks
+        .map((pack) => normalizePackPath(pack.path))
+        .concat(
+          [...appData.allVanillaPackNames].map((packName) =>
+            dataFolder ? normalizePackPath(nodePath.join(dataFolder, packName)) : "",
+          ),
+        ),
+    );
+    if (vanillaPaths.has(normalizedRequestedPath)) {
+      return { success: false, error: "Vanilla packs cannot be compressed." };
+    }
+    const gameFolder = appData.gamesToGameFolderPaths.wh3?.gamePath;
+    if (!gameFolder) return { success: false, error: "Set the Warhammer 3 game folder before compressing packs." };
+    if (compressionPackPathsInProgress.has(normalizedRequestedPath)) {
+      return { success: false, error: "This pack is already being compressed." };
+    }
+    compressionPackPathsInProgress.add(normalizedRequestedPath);
+
+    try {
+      // Analyze again in the main process so renderer data can never choose unsafe files/codecs.
+      const analysisResult = await analyzeCompressionPacks([enabledMod.path], {
+        vanillaCsv: getVanillaCompressionCsv(),
+      });
+      const analysis = analysisResult.packs[0];
+      if (!analysis || !analysis.success) {
+        return { success: false, error: analysis?.errors[0] || analysisResult.error || "Pack analysis failed." };
+      }
+      return await compressAnalyzedPack(enabledMod.path, analysis, gameFolder, request.includeRigidModelV2 === true);
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      compressionPackPathsInProgress.delete(normalizedRequestedPath);
+    }
+  });
   ipcMain.on("cancelGlobalSearch", (event) => {
     const state = globalSearchCancelStateByWebContentsId.get(event.sender.id);
     if (state) state.canceled = true;

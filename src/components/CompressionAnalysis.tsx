@@ -15,6 +15,7 @@ interface CompressionAnalysisProps {
   onClose: () => void;
   currentGame: SupportedGames;
   enabledModPaths: string[];
+  isFeaturesForModdersEnabled?: boolean;
 }
 
 const formatBytes = (bytes: number): string => {
@@ -90,12 +91,23 @@ const statusLabel = (pack: CompressionPackAnalysis, localized: Record<string, st
   }, ${pack.errorCount} ${localized.compressionAnalysisErrors || "errors"}`;
 };
 
-const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: CompressionAnalysisProps) => {
+const CompressionAnalysis = ({
+  isOpen,
+  onClose,
+  currentGame,
+  enabledModPaths,
+  isFeaturesForModdersEnabled = false,
+}: CompressionAnalysisProps) => {
   const localized = useLocalizations() as Record<string, string | undefined>;
   const [result, setResult] = useState<CompressionAnalysisResult>();
   const [progress, setProgress] = useState<CompressionAnalysisProgress>();
   const [isRunning, setIsRunning] = useState(false);
   const [startError, setStartError] = useState<string>();
+  const [includeRigidModelV2, setIncludeRigidModelV2] = useState(true);
+  const [compressingPackPath, setCompressingPackPath] = useState<string>();
+  const [compressionMessages, setCompressionMessages] = useState<Record<string, { success: boolean; message: string }>>(
+    {},
+  );
   const startedForOpen = useRef(false);
   const pathsForRun = useMemo(() => [...new Set(enabledModPaths.filter(Boolean))], [enabledModPaths]);
 
@@ -180,6 +192,37 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
       )
     : 0;
 
+  const compressPack = useCallback(
+    (pack: CompressionPackAnalysis) => {
+      if (!isFeaturesForModdersEnabled || compressingPackPath) return;
+      setCompressingPackPath(pack.packPath);
+      setCompressionMessages((messages) => {
+        const next = { ...messages };
+        delete next[pack.packPath];
+        return next;
+      });
+      void window.api
+        ?.compressPack({ packPath: pack.packPath, includeRigidModelV2 })
+        .then((response) => {
+          const message = response.success
+            ? `${response.compressedFileCount ?? 0} file(s) compressed. Backup: ${response.backupPath}`
+            : response.error || "Pack compression failed.";
+          setCompressionMessages((messages) => ({
+            ...messages,
+            [pack.packPath]: { success: response.success, message },
+          }));
+        })
+        .catch((error: unknown) => {
+          setCompressionMessages((messages) => ({
+            ...messages,
+            [pack.packPath]: { success: false, message: error instanceof Error ? error.message : String(error) },
+          }));
+        })
+        .finally(() => setCompressingPackPath(undefined));
+    },
+    [compressingPackPath, includeRigidModelV2, isFeaturesForModdersEnabled],
+  );
+
   return (
     <Modal show={isOpen} onClose={close} size="4xl" position="center" explicitClasses={["max-h-[90vh]"]}>
       <Modal.Header>{localized.compressionAnalysis || "Compression Analysis"}</Modal.Header>
@@ -189,6 +232,18 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
             {localized.compressionAnalysisDescription ||
               "Benchmarks currently enabled Warhammer 3 mod packs without changing any files. Existing compression is retained."}
           </p>
+          {isFeaturesForModdersEnabled && (
+            <label className="mt-3 flex items-center gap-2 text-sm text-gray-300" htmlFor="compress-rigid-model-v2">
+              <input
+                id="compress-rigid-model-v2"
+                type="checkbox"
+                checked={includeRigidModelV2}
+                onChange={(event) => setIncludeRigidModelV2(event.target.checked)}
+              />
+              {localized.compressionAnalysisIncludeRigidModelV2 ||
+                "Compress eligible .rigid_model_v2 files (conservative LZ4 only)"}
+            </label>
+          )}
           {reason && (
             <p className="mt-3 rounded border border-yellow-700 bg-yellow-900/30 p-2 text-sm text-yellow-200">
               {reason}
@@ -330,6 +385,38 @@ const CompressionAnalysis = ({ isOpen, onClose, currentGame, enabledModPaths }: 
                             ".rigid_model_v2 wins (reported separately; LZ4 is the cautious default)"}
                         </div>
                         <CompressionWinTable wins={pack.rigidModelV2Wins.slice(0, 10)} localized={localized} />
+                      </div>
+                    )}
+                    {isFeaturesForModdersEnabled && pack.success && (
+                      <div className="mt-3 border-t border-gray-700 pt-3">
+                        <button
+                          type="button"
+                          disabled={
+                            !!compressingPackPath ||
+                            (pack.acceptedCount === 0 &&
+                              (!includeRigidModelV2 || pack.rigidModelV2Wins.length === 0)) ||
+                            compressionMessages[pack.packPath]?.success
+                          }
+                          onClick={() => compressPack(pack)}
+                          className="rounded bg-purple-600 px-3 py-1.5 text-xs text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {compressingPackPath === pack.packPath
+                            ? localized.compressionAnalysisCompressing || "Compressing…"
+                            : localized.compressionAnalysisCompressPack || "Compress this pack"}
+                        </button>
+                        <p className="mt-2 text-xs text-gray-400">
+                          {localized.compressionAnalysisBackupNotice ||
+                            "A timestamped backup will be saved in the game's whmm_backups folder first."}
+                        </p>
+                        {compressionMessages[pack.packPath] && (
+                          <p
+                            className={`mt-2 break-all text-sm ${
+                              compressionMessages[pack.packPath].success ? "text-green-300" : "text-red-300"
+                            }`}
+                          >
+                            {compressionMessages[pack.packPath].message}
+                          </p>
+                        )}
                       </div>
                     )}
                   </details>

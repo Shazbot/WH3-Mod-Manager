@@ -170,4 +170,42 @@ describe("CompressionAnalysis", () => {
     const smallerPack = screen.getByText("example.pack");
     expect(largerPack.compareDocumentPosition(smallerPack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("shows pack-writing controls only for modders and forwards the rigid-model choice", async () => {
+    const compressPack = vi.fn(async () => ({
+      success: true,
+      backupPath: "/game/whmm_backups/example.2026.pack",
+      compressedFileCount: 1,
+    }));
+    window.api = {
+      startCompressionAnalysis: vi.fn(async () => ({ accepted: true, result: makeResult() })),
+      compressPack,
+      cancelCompressionAnalysis: vi.fn(),
+      onCompressionAnalysisProgress: vi.fn(() => () => undefined),
+    } as unknown as NonNullable<Window["api"]>;
+
+    const { rerender } = render(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis isOpen onClose={vi.fn()} currentGame="wh3" enabledModPaths={["/mods/example.pack"]} />
+      </LocalizationContext.Provider>,
+    );
+    await screen.findByText("Overall");
+    expect(screen.queryByRole("button", { name: "Compress this pack" })).not.toBeInTheDocument();
+
+    rerender(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis
+          isOpen
+          onClose={vi.fn()}
+          currentGame="wh3"
+          enabledModPaths={["/mods/example.pack"]}
+          isFeaturesForModdersEnabled
+        />
+      </LocalizationContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Compress this pack" }));
+    await waitFor(() =>
+      expect(compressPack).toHaveBeenCalledWith({ packPath: "/mods/example.pack", includeRigidModelV2: true }),
+    );
+  });
 });
