@@ -313,7 +313,12 @@ const ModListPane = memo(
                   <div
                     ref={(element) => {
                       listWrapperRef.current = element;
-                      (registerChild as unknown as (element: HTMLDivElement | null) => void)(element);
+                      // react-virtualized calls findDOMNode(this) when registerChild receives null.
+                      // Callback refs receive null during StrictMode's development cleanup, so only
+                      // register the mounted element and let WindowScroller keep it until unmount.
+                      if (element) {
+                        (registerChild as unknown as (element: HTMLDivElement) => void)(element);
+                      }
                     }}
                   >
                     <List
