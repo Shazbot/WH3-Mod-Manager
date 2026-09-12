@@ -28,8 +28,8 @@ vi.mock("../src/components/ancillaries/AncillariesTab", () => ({
 vi.mock("../src/components/PresetsTab", () => ({ default: () => <div /> }));
 vi.mock("../src/components/loadOrderRules/LoadOrderRulesTab", () => ({ default: () => <div /> }));
 vi.mock("../src/components/Categories", () => ({ default: () => <div>Categories tab</div> }));
-vi.mock("../src/components/ModRows", () => ({ default: () => <div /> }));
-vi.mock("../src/components/Sidebar", () => ({ default: () => <div /> }));
+vi.mock("../src/components/ModRows", () => ({ default: () => <div id="rowsParent" /> }));
+vi.mock("../src/components/Sidebar", () => ({ default: () => <input id="filterInput" aria-label="Mod filter" /> }));
 vi.mock("../src/components/ModTagPicker", () => ({ default: () => <div /> }));
 
 describe("main tab persistence", () => {
@@ -125,5 +125,26 @@ describe("main tab persistence", () => {
     // The tab is not available for wh2, so the request lands on mods and nothing is mounted.
     expect(store.getState().app.currentTab).toBe("mods");
     expect(screen.queryByLabelText("Tech trees state")).not.toBeInTheDocument();
+  });
+
+  it("moves Ctrl+F to the sidebar filter while mod rows exist", () => {
+    renderMain({ currentTab: "mods" as const });
+    const filterInput = screen.getByLabelText("Mod filter");
+    const event = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true });
+
+    document.dispatchEvent(event);
+
+    expect(filterInput).toHaveFocus();
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("leaves Ctrl+F alone when mod rows do not exist", () => {
+    renderMain({ currentTab: "categories" as const });
+    const event = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true });
+
+    document.dispatchEvent(event);
+
+    expect(screen.queryByLabelText("Mod filter")).not.toBeInTheDocument();
+    expect(event.defaultPrevented).toBe(false);
   });
 });

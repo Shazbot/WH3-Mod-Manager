@@ -1,4 +1,4 @@
-import React, { RefObject } from "react";
+import React, { RefObject, useEffect } from "react";
 import { useAppSelector } from "../hooks";
 import Sidebar from "./Sidebar";
 import ModRows from "./ModRows";
@@ -55,6 +55,23 @@ const Main = (props: MainProps) => {
     isBuildingsTab ||
     isAncillariesTab ||
     isMapTab;
+
+  useEffect(() => {
+    const focusSidebarFilter = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.key.toLowerCase() !== "f") return;
+
+      const modRows = document.getElementById("rowsParent");
+      const filterInput = document.getElementById("filterInput");
+      if (!modRows || !filterInput) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      filterInput.focus();
+    };
+
+    document.addEventListener("keydown", focusSidebarFilter, true);
+    return () => document.removeEventListener("keydown", focusSidebarFilter, true);
+  }, []);
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =

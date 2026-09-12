@@ -407,11 +407,6 @@ const Sidebar = memo(() => {
     getUpdateData();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "f") {
-        const filterInput = document.getElementById("filterInput");
-        filterInput?.focus();
-      }
-
       if (e.key === "Shift") isShiftDownRef.current = true;
       if (e.key === "Control") isControlDownRef.current = true;
     };
