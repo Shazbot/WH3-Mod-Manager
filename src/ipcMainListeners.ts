@@ -128,7 +128,7 @@ import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemp
 import { addClimateDataToEsfMap } from "./esfMap/climates";
 import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
 import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
-import type { EsfMapResponse } from "./esfMap/types";
+import type { EsfMapDiplomacyIconUrls, EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
 import { VanillaLocCacheBuildCanceled, openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
 import { runGlobalSearch, type GlobalSearchRunDeps } from "./globalSearch/run";
@@ -541,6 +541,8 @@ type CachedBuildingsData = {
   buildingIconPaths: string[];
   icons: Record<string, AssetBytes>;
   iconGeneration: number;
+  /** Runtime URLs for the extended map's diplomacy controls. */
+  diplomacyIconUrls: EsfMapDiplomacyIconUrls;
 };
 let cachedBuildingsData: CachedBuildingsData | undefined;
 type CachedAncillariesData = {
@@ -3833,7 +3835,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           return registeredPath ? iconAssetUrl(buildings.iconGeneration, registeredPath) : undefined;
         });
         const withClimates = addClimateDataToEsfMap(withFactions, buildings.data);
-        return addSettlementTypeDataToEsfMap(withClimates, buildings.data);
+        return {
+          ...addSettlementTypeDataToEsfMap(withClimates, buildings.data),
+          diplomacyIconUrls: buildings.diplomacyIconUrls,
+        };
       };
       if (cachedEsfMapData?.signature === signature) {
         return { success: true, map: decorate(cachedEsfMapData.data) };
@@ -3847,8 +3852,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
       const extractedMap = await loadEsfMapData(enabledMods, campaignName);
       const data = decorate(extractedMap);
+      const { diplomacyIconUrls: _diplomacyIconUrls, ...withoutDiplomacyUrls } = data;
       const cacheData = {
-        ...data,
+        ...withoutDiplomacyUrls,
         factions: data.factions.map(({ flagUrl: _flagUrl, ...faction }) => faction),
       };
       await saveEsfMapDiskCache(app.getPath("userData"), signature, cacheData);
@@ -3863,6 +3869,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   // --- Buildings -------------------------------------------------------------
   const BUILDING_FRAME_PATH = "ui\\skins\\default\\building_frame.png";
   const BUILDING_FRAME_PACK_NAME = "ui2.pack";
+  const DIPLOMACY_ICON_PATHS = {
+    mil_access: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_soft_access.png",
+    def_ally: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_defensive_alliance.png",
+    mil_ally: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_military_alliance.png",
+    non_aggression: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_nonaggression_pact.png",
+    vassals: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_vassal.png",
+    trade: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_trade_agreement.png",
+    war: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_join_war.png",
+    peace: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_peace.png",
+    confederate: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_confederation.png",
+  } as const;
   /** Folders the game keeps building icons in. Scanned, not assumed: `icon` holds a bare name. */
   const BUILDING_ICON_PREFIXES = ["ui\\campaign ui\\building_icons\\", "ui\\buildings\\"];
   const BUILDING_ICON_BROWSE_PREFIX = "ui\\buildings\\icons\\";
@@ -4364,6 +4381,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const flagPath = factionFlagPath(faction.flagPath);
       if (flagPath) factionFlagPaths.add(flagPath);
     }
+    const diplomacyIconPaths = Object.values(DIPLOMACY_ICON_PATHS);
     const wantedPaths = Array.from(
       new Set([
         ...(buildingFrame ? [BUILDING_FRAME_PATH] : []),
@@ -4372,6 +4390,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         ...effectIconPaths,
         ...unitCardPaths,
         ...factionFlagPaths,
+        ...diplomacyIconPaths,
       ]),
     );
     const wantedPackPaths = new Set(
@@ -4381,11 +4400,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const icons =
       wantedPaths.length > 0 ? await loadIconsFromPacks(await getIconPacks(neededPackPaths), wantedPaths) : {};
     if (buildingFrame) icons[BUILDING_FRAME_PATH] = buildingFrame;
+    const iconGeneration = registerIconAssets(icons);
+    const diplomacyIconUrls = Object.fromEntries(
+      Object.entries(DIPLOMACY_ICON_PATHS).flatMap(([key, iconPath]) =>
+        icons[iconPath] ? [[key, iconAssetUrl(iconGeneration, iconPath)]] : [],
+      ),
+    );
     return {
       iconPathByBaseName,
       buildingIconPaths: iconIndex.buildingIconPaths,
       icons,
-      iconGeneration: registerIconAssets(icons),
+      iconGeneration,
+      diplomacyIconUrls,
     };
   };
 

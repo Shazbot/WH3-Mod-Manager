@@ -26,6 +26,7 @@ import {
   buildExtendedMapExport,
   buildExtendedMapDelta,
   cloneExtendedMap,
+  cloneExtendedMapEditState,
   createExtendedMapEditState,
   fillExtendedBuildingSlots,
   formatExtendedMapExportJson,
@@ -34,7 +35,7 @@ import {
   resolveExtendedUnitOptions,
   type ExtendedMapCharacter,
   type ExtendedMapDeltaAction,
-  type ExtendedMapDocument,
+  type ExtendedMapDiplomacyField,
   type ExtendedMapEditAction,
   type ExtendedMapEditState,
 } from "../esfMap/extended";
@@ -158,13 +159,63 @@ type ExtendedMapImportUndo = {
   ownershipEdits: OwnershipEdits;
   editHistory: OwnershipEdits[];
   extendedState?: ExtendedMapEditState;
-  extendedHistory: ExtendedMapDocument[];
+  extendedHistory: ExtendedMapEditState[];
   showCharacters: boolean;
   selectedCharacterKey?: { faction: string; id: number };
+  selectedFactionKey?: string;
+};
+
+type DiplomacyRelationship = ExtendedMapDiplomacyField;
+
+type MapContextMenu = {
+  left: number;
+  top: number;
+  source: "map" | "faction";
+  targetFaction?: string;
+  region?: EsfMapMarker;
+  mapPoint?: { x: number; y: number };
+};
+
+type NewForceDraft = {
+  faction: string;
+  subtype: string;
+  x: number;
+  y: number;
+  units: string[];
+};
+
+const DIPLOMACY_RELATIONSHIPS: readonly DiplomacyRelationship[] = [
+  "mil_ally",
+  "non_aggression",
+  "trade",
+  "war",
+  "vassals",
+  "mil_access",
+  "def_ally",
+];
+
+const diplomacyRelationshipLabelKey = (relationship: DiplomacyRelationship) => `mapDiplomacy_${relationship}`;
+
+const diplomacyRelationshipFallback = (relationship: DiplomacyRelationship) => {
+  const labels: Record<DiplomacyRelationship, string> = {
+    mil_ally: "Military alliance",
+    non_aggression: "Non-aggression pact",
+    trade: "Trade agreement",
+    war: "At war",
+    vassals: "Vassals",
+    mil_access: "Military access",
+    def_ally: "Defensive alliance",
+  };
+  return labels[relationship];
 };
 
 const extendedEditActionKey = (action: ExtendedMapDeltaAction, index: number) => {
-  const target = "region" in action ? action.region : `${action.faction}:${action.characterId}`;
+  const target =
+    "region" in action
+      ? action.region
+      : "targetFaction" in action
+        ? `${action.faction}:${action.targetFaction}`
+        : `${action.faction}:${action.type === "add_character" ? action.character.id : action.characterId}`;
   const detail =
     "unitId" in action
       ? action.unitId
@@ -183,13 +234,14 @@ const cloneExtendedCharacter = (character: ExtendedMapCharacter): ExtendedMapCha
 
 /** Applies the inverse of one baseline delta action while preserving every other current edit. */
 const revertExtendedDeltaAction = (
-  document: ExtendedMapDocument,
+  state: ExtendedMapEditState,
   action: ExtendedMapDeltaAction,
-): ExtendedMapDocument | undefined => {
-  const next = cloneExtendedMap(document);
+): ExtendedMapEditState | undefined => {
+  const next = cloneExtendedMapEditState(state);
+  const document = next.document;
 
   if (action.type === "set_building" || action.type === "add_building_slot") {
-    const region = next.regions.find((candidate) => candidate.region.toLowerCase() === action.region.toLowerCase());
+    const region = document.regions.find((candidate) => candidate.region.toLowerCase() === action.region.toLowerCase());
     if (!region?.buildings) return undefined;
     if (action.type === "set_building") {
       if (!region.buildings[action.slotIndex]) return undefined;
@@ -202,10 +254,52 @@ const revertExtendedDeltaAction = (
     return next;
   }
 
-  const group = next.faction_to_chars.find(
+  const group = next.document.faction_to_chars.find(
     (candidate) => candidate.faction.toLowerCase() === action.faction.toLowerCase(),
   );
-  const character = group?.chars.find((candidate) => candidate.id === action.characterId);
+  const character =
+    "characterId" in action ? group?.chars.find((candidate) => candidate.id === action.characterId) : undefined;
+
+  if (action.type === "set_diplomacy") {
+    const source = next.document.faction_to_chars.find(
+      (candidate) => candidate.faction.toLowerCase() === action.faction.toLowerCase(),
+    );
+    const target = next.document.faction_to_chars.find(
+      (candidate) => candidate.faction.toLowerCase() === action.targetFaction.toLowerCase(),
+    );
+    if (!source || !target) return undefined;
+    const fields = new Set<ExtendedMapDiplomacyField>([...action.before, ...action.after]);
+    for (const field of fields) {
+      source.diplo[field] = source.diplo[field].filter((entry) => entry.toLowerCase() !== target.faction.toLowerCase());
+      target.diplo[field] = target.diplo[field].filter((entry) => entry.toLowerCase() !== source.faction.toLowerCase());
+    }
+    for (const field of action.before) {
+      source.diplo[field].push(target.faction);
+      if (field !== "vassals") target.diplo[field].push(source.faction);
+    }
+    return next;
+  }
+
+  if (action.type === "confederate") {
+    const pendingIndex = next.pendingConfederations.findIndex(
+      (entry) =>
+        entry.faction.toLowerCase() === action.faction.toLowerCase() &&
+        entry.targetFaction.toLowerCase() === action.targetFaction.toLowerCase(),
+    );
+    if (pendingIndex < 0) return undefined;
+    next.pendingConfederations.splice(pendingIndex, 1);
+    return next;
+  }
+
+  if (action.type === "add_character") {
+    const addedCharacter = group?.chars.find((candidate) => candidate.id === action.character.id);
+    if (!group || !addedCharacter) return undefined;
+    group.chars.splice(
+      group.chars.findIndex((candidate) => candidate.id === action.character.id),
+      1,
+    );
+    return next;
+  }
 
   if (action.type === "remove_character") {
     if (!group || character) return undefined;
@@ -254,8 +348,10 @@ const revertExtendedDeltaAction = (
 
 const extendedEditActionTitle = (action: ExtendedMapDeltaAction) => {
   if (action.type === "set_building" || action.type === "add_building_slot") return `Building · ${action.region}`;
-  if (action.type === "update_character" || action.type === "remove_character")
-    return `Character · ${action.faction} · ID ${action.characterId}`;
+  if (action.type === "set_diplomacy") return `Diplomacy · ${action.faction} → ${action.targetFaction}`;
+  if (action.type === "confederate") return `Confederation · ${action.faction} → ${action.targetFaction}`;
+  if (action.type === "update_character" || action.type === "remove_character" || action.type === "add_character")
+    return `Character · ${action.faction} · ID ${action.type === "add_character" ? action.character.id : action.characterId}`;
   return `Unit · ${action.faction} · character ID ${action.characterId}`;
 };
 
@@ -276,10 +372,18 @@ const extendedEditActionDescription = (action: ExtendedMapDeltaAction) => {
   if (action.type === "add_building_slot")
     return `Added slot ${action.slotIndex + 1}: ${action.building.building || "(empty)"}`;
   if (action.type === "update_character") return formatChangeList(["x", "y", "rank", "subtype"], action.changes);
+  if (action.type === "add_character") return `Added ${action.character.subtype}`;
   if (action.type === "remove_character") return `Removed ${action.character.subtype}`;
+  if (action.type === "set_diplomacy") {
+    const before = action.before.length > 0 ? action.before.join(", ") : "none";
+    const after = action.after.length > 0 ? action.after.join(", ") : "none";
+    return `${before} → ${after}`;
+  }
+  if (action.type === "confederate") return `Queued ${action.targetFaction} to join ${action.faction}`;
   if (action.type === "add_unit") return `Added unit: ${action.unit.unit_key}`;
   if (action.type === "remove_unit") return `Removed unit: ${action.unit.unit_key}`;
-  return formatChangeList(["unit_key", "xp", "health"], action.changes);
+  if (action.type === "update_unit") return formatChangeList(["unit_key", "xp", "health"], action.changes);
+  return "";
 };
 
 const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
@@ -303,7 +407,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSurfaceRef = useRef<HTMLDivElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
-  const mapListItemRefs = useRef(new Map<string, HTMLButtonElement>());
+  const mapListItemRefs = useRef(new Map<string, HTMLElement>());
   const mapImagesRef = useRef(new Map<string, HTMLImageElement>());
   const mapImageLoadsRef = useRef(new Map<string, Promise<HTMLImageElement | undefined>>());
   const characterThumbnailSourcesRef = useRef(new Set<string>());
@@ -316,6 +420,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     clickHandled: boolean;
   }>();
   const factionRegionCycleRef = useRef<{ factionKey: string; markerId: number }>();
+  const factionFlagClickTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const mapContextMenuRef = useRef<HTMLDivElement>(null);
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -344,6 +450,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [baseMap, setBaseMap] = useState<EsfMapPayload>();
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);
   const [selectedMarkerId, setSelectedMarkerId] = useState<number>();
+  /** Explicit diplomacy source selection; unlike the map marker this can represent a landless faction. */
+  const [selectedFactionKey, setSelectedFactionKey] = useState<string>();
   const [selectedSettlementType, setSelectedSettlementType] = useState("");
   const [mapView, setMapView] = useState<MapView>("regions");
   /** undefined follows region selection, null explicitly shows every climate, and a string filters to one climate. */
@@ -363,7 +471,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
   /** Extended map data is kept separate from ESF ownership so legacy map.json remains unchanged. */
   const [extendedState, setExtendedState] = useState<ExtendedMapEditState>();
-  const [extendedHistory, setExtendedHistory] = useState<ExtendedMapDocument[]>([]);
+  const [extendedHistory, setExtendedHistory] = useState<ExtendedMapEditState[]>([]);
   const [extendedImportUndo, setExtendedImportUndo] = useState<ExtendedMapImportUndo>();
   const [showCharacters, setShowCharacters] = useState(false);
   const [selectedCharacterKey, setSelectedCharacterKey] = useState<{ faction: string; id: number }>();
@@ -381,6 +489,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [resolvedCharacterThumbnailPaths, setResolvedCharacterThumbnailPaths] = useState<string[]>([]);
   const [extendedLoading, setExtendedLoading] = useState(false);
   const [openEditPanel, setOpenEditPanel] = useState<MapEditPanel>();
+  const [mapContextMenu, setMapContextMenu] = useState<MapContextMenu>();
+  const [newForceDraft, setNewForceDraft] = useState<NewForceDraft>();
 
   const mapText = (key: string, fallback: string) => localized[key] || fallback;
   const mapMessage = (key: string, fallback: string, values: Record<string, string | number>) =>
@@ -434,7 +544,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [extendedCharacters, isEditingFactions, mapSelectedRegion, selectedCharacterKey],
   );
   const extendedDelta = useMemo(
-    () => (extendedState ? buildExtendedMapDelta(extendedState.baseline, extendedState.document) : undefined),
+    () =>
+      extendedState
+        ? buildExtendedMapDelta(extendedState.baseline, extendedState.document, {
+            pendingConfederations: extendedState.pendingConfederations,
+          })
+        : undefined,
     [extendedState],
   );
   const ownershipEditEntries = useMemo<OwnershipEditEntry[]>(
@@ -652,12 +767,22 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!map) return [];
     const query = filter.trim().toLowerCase();
     const factions =
-      isEditingFactions && query ? map.factions : map.factions.filter((faction) => faction.regionCount > 0);
+      isEditingFactions && query
+        ? map.factions
+        : map.factions.filter(
+            (faction) =>
+              faction.regionCount > 0 ||
+              extendedState?.document.faction_to_chars.some(
+                (group) =>
+                  group.faction.toLowerCase() === faction.key.toLowerCase() &&
+                  DIPLOMACY_RELATIONSHIPS.some((relationship) => group.diplo[relationship].length > 0),
+              ),
+          );
     if (!query) return factions;
     return factions.filter((faction) =>
       [faction.key, faction.label].some((value) => value.toLowerCase().includes(query)),
     );
-  }, [filter, isEditingFactions, map]);
+  }, [extendedState, filter, isEditingFactions, map]);
 
   const filteredFactions = useMemo(
     () => (isEditingFactions ? factionMatches.slice(0, LISTED_FACTION_LIMIT) : factionMatches),
@@ -741,6 +866,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setOwnershipBaseline({});
     setEditHistory([]);
     setBrushFaction(undefined);
+    setSelectedFactionKey(undefined);
     setExtendedState(undefined);
     setExtendedHistory([]);
     setExtendedImportUndo(undefined);
@@ -750,7 +876,34 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setBuildingsView(undefined);
     setCharacterExperience(undefined);
     setOpenEditPanel(undefined);
+    setMapContextMenu(undefined);
+    setNewForceDraft(undefined);
   }, [campaignKey, currentGame]);
+
+  useEffect(() => {
+    const timers = factionFlagClickTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapContextMenu) return;
+    const dismiss = (event?: MouseEvent) => {
+      if (event && mapContextMenuRef.current?.contains(event.target as Node)) return;
+      setMapContextMenu(undefined);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismiss();
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mapContextMenu]);
 
   const pushEditHistory = useCallback(
     () => setEditHistory((history) => [...history, ownershipEdits].slice(-OWNERSHIP_HISTORY_LIMIT)),
@@ -767,11 +920,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             ...extendedState,
             baseline: cloneExtendedMap(extendedState.baseline),
             document: cloneExtendedMap(extendedState.document),
+            pendingConfederations: extendedState.pendingConfederations.map((entry) => ({ ...entry })),
           }
         : undefined,
-      extendedHistory: extendedHistory.map(cloneExtendedMap),
+      extendedHistory: extendedHistory.map(cloneExtendedMapEditState),
       showCharacters,
       selectedCharacterKey: selectedCharacterKey ? { ...selectedCharacterKey } : undefined,
+      selectedFactionKey,
     }),
     [
       editHistory,
@@ -780,6 +935,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       ownershipBaseline,
       ownershipEdits,
       selectedCharacterKey,
+      selectedFactionKey,
       showCharacters,
     ],
   );
@@ -853,9 +1009,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           (current, action) => applyExtendedMapEdit(current, action),
           extendedState,
         );
-        if (JSON.stringify(nextState.document) === JSON.stringify(extendedState.document)) return true;
+        if (JSON.stringify(nextState) === JSON.stringify(extendedState)) return true;
         setExtendedHistory((history) =>
-          [...history, cloneExtendedMap(extendedState.document)].slice(-OWNERSHIP_HISTORY_LIMIT),
+          [...history, cloneExtendedMapEditState(extendedState)].slice(-OWNERSHIP_HISTORY_LIMIT),
         );
         setExtendedState(nextState);
         return true;
@@ -875,20 +1031,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const revertExtendedEdit = useCallback(
     (action: ExtendedMapDeltaAction) => {
       if (!extendedState) return;
-      const document = revertExtendedDeltaAction(extendedState.document, action);
-      if (!document || JSON.stringify(document) === JSON.stringify(extendedState.document)) return;
+      const state = revertExtendedDeltaAction(extendedState, action);
+      if (!state || JSON.stringify(state) === JSON.stringify(extendedState)) return;
       setExtendedHistory((history) =>
-        [...history, cloneExtendedMap(extendedState.document)].slice(-OWNERSHIP_HISTORY_LIMIT),
+        [...history, cloneExtendedMapEditState(extendedState)].slice(-OWNERSHIP_HISTORY_LIMIT),
       );
-      setExtendedState((current) => (current ? { ...current, document } : current));
+      setExtendedState(state);
     },
     [extendedState],
   );
 
   const undoExtendedEdit = useCallback(() => {
     if (!extendedState || extendedHistory.length === 0) return;
-    const document = extendedHistory[extendedHistory.length - 1];
-    setExtendedState((current) => (current ? { ...current, document: cloneExtendedMap(document) } : current));
+    const state = extendedHistory[extendedHistory.length - 1];
+    setExtendedState(cloneExtendedMapEditState(state));
     setExtendedHistory((history) => history.slice(0, -1));
   }, [extendedHistory, extendedState]);
 
@@ -903,14 +1059,18 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             ...extendedImportUndo.extendedState,
             baseline: cloneExtendedMap(extendedImportUndo.extendedState.baseline),
             document: cloneExtendedMap(extendedImportUndo.extendedState.document),
+            pendingConfederations: extendedImportUndo.extendedState.pendingConfederations.map((entry) => ({
+              ...entry,
+            })),
           }
         : undefined,
     );
-    setExtendedHistory(extendedImportUndo.extendedHistory.map(cloneExtendedMap));
+    setExtendedHistory(extendedImportUndo.extendedHistory.map(cloneExtendedMapEditState));
     setShowCharacters(extendedImportUndo.showCharacters);
     setSelectedCharacterKey(
       extendedImportUndo.selectedCharacterKey ? { ...extendedImportUndo.selectedCharacterKey } : undefined,
     );
+    setSelectedFactionKey(extendedImportUndo.selectedFactionKey);
     setCharacterDragPreview(undefined);
     setOpenEditPanel(undefined);
     setExtendedImportUndo(undefined);
@@ -919,9 +1079,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const revertExtendedEdits = () => {
     if (!extendedState || !extendedDelta || extendedDelta.actions.length === 0) return;
     setExtendedHistory((history) =>
-      [...history, cloneExtendedMap(extendedState.document)].slice(-OWNERSHIP_HISTORY_LIMIT),
+      [...history, cloneExtendedMapEditState(extendedState)].slice(-OWNERSHIP_HISTORY_LIMIT),
     );
-    setExtendedState((current) => (current ? { ...current, document: cloneExtendedMap(current.baseline) } : current));
+    setExtendedState(createExtendedMapEditState(extendedState.baseline));
   };
 
   useEffect(() => {
@@ -957,6 +1117,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             ? buildExtendedMapDelta(extendedState.baseline, extendedState.document, {
                 campaign: map.campaignKey,
                 characterExperience,
+                pendingConfederations: extendedState.pendingConfederations,
               })
             : extendedDelta;
         extendedExport =
@@ -1026,6 +1187,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         setExtendedState(createExtendedMapEditState(detected.document));
         setExtendedHistory([]);
         setSelectedCharacterKey(undefined);
+        setSelectedFactionKey(undefined);
         setShowCharacters(true);
       } else {
         pushEditHistory();
@@ -1035,6 +1197,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         setExtendedState(undefined);
         setExtendedHistory([]);
         setSelectedCharacterKey(undefined);
+        setSelectedFactionKey(undefined);
         setShowCharacters(false);
       }
 
@@ -1226,11 +1389,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       setSelectedCharacterKey(undefined);
       setCharacterDragPreview(undefined);
     }
-    setSelectedMarkerId(
+    const handedOffMarker =
       selectedRegion === undefined
         ? undefined
-        : map.markers.find((marker) => marker.key.toLowerCase() === selectedRegion)?.id,
-    );
+        : map.markers.find((marker) => marker.key.toLowerCase() === selectedRegion);
+    setSelectedMarkerId(handedOffMarker?.id);
+    if (handedOffMarker?.ownerFaction) setSelectedFactionKey(factionKey(handedOffMarker.ownerFaction));
     setClimateSelectionKey(undefined);
   }, [map, mapSelectedRegion]);
 
@@ -1263,7 +1427,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
     const selected =
       selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
-    const selectedFactionKey = factionKey(selected?.ownerFaction);
+    const selectedFactionForMap = selectedFactionKey ?? factionKey(selected?.ownerFaction);
     const selectedRegionClimateKey = selected ? map.climatesByRegion[selected.key]?.toLowerCase() : undefined;
     const climateFilterKey =
       climateSelectionKey === null
@@ -1322,12 +1486,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           context.lineWidth = 1.2;
           context.stroke();
         }
-      } else if (mapView === "factions" && selectedFactionKey) {
+      } else if (mapView === "factions" && selectedFactionForMap) {
         for (const area of map.areas) {
-          if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== selectedFactionKey)
+          if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== selectedFactionForMap)
             continue;
           drawAreaPath(context, area, map.height, map.displayFlipY);
-          context.fillStyle = factionColour(selectedFactionKey);
+          context.fillStyle = factionColour(selectedFactionForMap);
           context.strokeStyle = "rgba(255, 255, 255, 0.9)";
           context.lineWidth = 1.2;
           context.fill("evenodd");
@@ -1428,6 +1592,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     map,
     mapView,
     selectedMarkerId,
+    selectedFactionKey,
     selectedSettlementType,
   ]);
 
@@ -1534,6 +1699,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setSelectedCharacterKey(undefined);
     setCharacterDragPreview(undefined);
     setSelectedMarkerId(marker?.id);
+    if (marker?.ownerFaction) setSelectedFactionKey(factionKey(marker.ownerFaction));
     if (marker && map) {
       dispatch(selectMapRegion({ campaign: map.campaignKey, region: marker.key }));
       if (center) centerMapOnMarker(marker);
@@ -1546,6 +1712,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     // Character and region selection are mutually exclusive. Clearing both the local marker and
     // the app-level handoff is important: the latter is what drives the Buildings tab.
     setSelectedMarkerId(undefined);
+    setSelectedFactionKey(faction.toLowerCase());
     setClimateSelectionKey(undefined);
     setSelectedCharacterKey({ faction, id: character.id });
     setCharacterDragPreview(undefined);
@@ -1561,13 +1728,22 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   };
 
   const selectMapFaction = (factionKeyToSelect: string) => {
+    const canonicalKey = factionsByKey.get(factionKeyToSelect.toLowerCase())?.key ?? factionKeyToSelect;
+    setSelectedFactionKey(canonicalKey.toLowerCase());
     const factionMarkers =
-      map?.markers.filter((candidate) => factionKey(candidate.ownerFaction) === factionKeyToSelect) ?? [];
-    selectMapMarker(factionMarkers[0]);
-    centerMapOnMarkers(factionMarkers);
+      map?.markers.filter((candidate) => factionKey(candidate.ownerFaction) === factionKeyToSelect.toLowerCase()) ?? [];
+    if (factionMarkers.length > 0) {
+      selectMapMarker(factionMarkers[0]);
+      centerMapOnMarkers(factionMarkers);
+    } else {
+      setSelectedMarkerId(undefined);
+      setSelectedCharacterKey(undefined);
+      setClimateSelectionKey(undefined);
+      dispatch(clearMapRegionSelection());
+    }
   };
 
-  const focusNextFactionRegion = (factionKeyToFocus: string) => {
+  const focusNextFactionRegion = (factionKeyToFocus: string, select = true) => {
     if (!map) return;
     const normalizedKey = factionKeyToFocus.toLowerCase();
     const previousMarkerId =
@@ -1576,7 +1752,153 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!marker) return;
 
     factionRegionCycleRef.current = { factionKey: normalizedKey, markerId: marker.id };
-    selectMapMarker(marker, true);
+    if (select) {
+      setSelectedFactionKey((factionsByKey.get(normalizedKey)?.key ?? factionKeyToFocus).toLowerCase());
+      selectMapMarker(marker);
+    }
+    if (zoom < 2) {
+      setZoom(2);
+      // Wait for the scaled surface to commit before calculating the scroll offset.
+      requestAnimationFrame(() => requestAnimationFrame(() => centerMapOnMarker(marker)));
+    } else centerMapOnMarker(marker);
+  };
+
+  const extendedFactionGroup = (key: string | undefined) =>
+    key
+      ? extendedState?.document.faction_to_chars.find((group) => group.faction.toLowerCase() === key.toLowerCase())
+      : undefined;
+
+  const diplomacyHasRelation = (
+    sourceKey: string | undefined,
+    targetKey: string | undefined,
+    relation: DiplomacyRelationship,
+  ) => {
+    if (!sourceKey || !targetKey) return false;
+    return !!extendedFactionGroup(sourceKey)?.diplo[relation].some(
+      (entry) => entry.toLowerCase() === targetKey.toLowerCase(),
+    );
+  };
+
+  const diplomacySourceFaction = selectedFactionKey ?? selectedMarkerFactionKey;
+
+  const factionLordOptions = (faction: string) => {
+    const factionDetails = factionsByKey.get(faction.toLowerCase());
+    const subculture = factionDetails?.subculture?.toLowerCase();
+    return lordOptions.filter(
+      (option) =>
+        (!subculture || option.subcultureKeys.some((key) => key.toLowerCase() === subculture)) &&
+        !!associatedUnitForSubculture(option, factionDetails?.subculture),
+    );
+  };
+
+  const nextAvailableCharacterId = (state: ExtendedMapEditState) => {
+    const used = new Set(
+      state.document.faction_to_chars.flatMap((group) => group.chars.map((character) => character.id)),
+    );
+    let candidate = state.nextCharacterId;
+    while (used.has(candidate)) candidate += 1;
+    return candidate;
+  };
+
+  const openNewForce = (factionToUse: string, point?: { x: number; y: number }) => {
+    if (!extendedState || !map) return;
+    const group = extendedFactionGroup(factionToUse);
+    if (!group) {
+      showOwnershipToast("warning", [
+        mapText("mapDiplomacyFactionUnavailable", "That faction is not available in the extended map."),
+      ]);
+      return;
+    }
+    const mapPoint =
+      point ??
+      (selectedMarker
+        ? { x: selectedMarker.gx, y: displayYFromCell(map.height, selectedMarker.gy, map.displayFlipY) }
+        : { x: Math.floor(map.width / 2), y: Math.floor(map.height / 2) });
+    const convertedPoint = mapPointToCharacterCoordinate(map, mapPoint);
+    if (!convertedPoint) return;
+    const characterPoint = snapCharacterPointToUsable(map, convertedPoint);
+    const options = factionLordOptions(factionToUse);
+    const leader = options[0];
+    const leaderUnit = leader
+      ? associatedUnitForSubculture(leader, factionsByKey.get(factionToUse.toLowerCase())?.subculture)
+      : undefined;
+    setMapContextMenu(undefined);
+    setNewForceDraft({
+      faction: group.faction,
+      subtype: leader?.subtype ?? "",
+      x: characterPoint.x,
+      y: characterPoint.y,
+      units: leaderUnit ? [leaderUnit] : [],
+    });
+  };
+
+  const addNewForceUnit = (unitKey: string) => {
+    if (!unitKey) return;
+    setNewForceDraft((draft) =>
+      draft && draft.units.length < 20 ? { ...draft, units: [...draft.units, unitKey] } : draft,
+    );
+  };
+
+  const submitNewForce = () => {
+    if (!extendedState || !newForceDraft || !newForceDraft.subtype || newForceDraft.units.length === 0) return;
+    const characterId = nextAvailableCharacterId(extendedState);
+    const applied = updateExtendedDocument({
+      type: "add_character",
+      faction: newForceDraft.faction,
+      character: {
+        x: newForceDraft.x,
+        y: newForceDraft.y,
+        subtype: newForceDraft.subtype,
+        rank: 1,
+        units: newForceDraft.units.map((unit_key) => ({ unit_key, xp: 0, health: 100 })),
+      },
+    });
+    if (!applied) return;
+    setSelectedFactionKey(newForceDraft.faction.toLowerCase());
+    setSelectedCharacterKey({ faction: newForceDraft.faction, id: characterId });
+    setSelectedMarkerId(undefined);
+    dispatch(clearMapRegionSelection());
+    setShowCharacters(true);
+    setNewForceDraft(undefined);
+  };
+
+  const openDiplomacyContextMenu = (
+    event: React.MouseEvent,
+    source: "map" | "faction",
+    targetFaction?: string,
+    region?: EsfMapMarker,
+    mapPoint?: { x: number; y: number },
+  ) => {
+    if (!extendedState) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setMapContextMenu({ left: event.clientX, top: event.clientY, source, targetFaction, region, mapPoint });
+  };
+
+  const applyDiplomacyContextAction = (action: ExtendedMapEditAction) => {
+    const applied = updateExtendedDocument(action);
+    if (applied) setMapContextMenu(undefined);
+  };
+
+  const handleDiplomacyFlagClick = (event: React.MouseEvent, targetFaction: string, double = false) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const key = targetFaction.toLowerCase();
+    const pending = factionFlagClickTimersRef.current.get(key);
+    if (pending) {
+      clearTimeout(pending);
+      factionFlagClickTimersRef.current.delete(key);
+    }
+    if (double) {
+      focusNextFactionRegion(targetFaction, true);
+      if (!map?.markers.some((marker) => factionKey(marker.ownerFaction) === key)) selectMapFaction(targetFaction);
+      return;
+    }
+    const timer = setTimeout(() => {
+      factionFlagClickTimersRef.current.delete(key);
+      focusNextFactionRegion(targetFaction, false);
+    }, 280);
+    factionFlagClickTimersRef.current.set(key, timer);
   };
 
   const beginMapDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1820,10 +2142,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   };
 
   const handleMapContextMenu = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const marker = markerAtCanvasPoint(event);
+    if (extendedState) {
+      openDiplomacyContextMenu(
+        event,
+        "map",
+        marker?.ownerFaction ?? undefined,
+        marker,
+        mapCoordinatesAtClientPoint(event),
+      );
+      return;
+    }
+    if (!marker) return;
     if (!isEditingFactions) return;
     event.preventDefault();
-    const marker = markerAtCanvasPoint(event);
-    if (!marker) return;
     paintRegion(marker.key, null);
     selectMapMarker(marker);
   };
@@ -2959,47 +3291,111 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 filteredFactions.map((faction) => {
                   const isSelected = isEditingFactions
                     ? brushFactionKey === faction.key.toLowerCase()
-                    : factionKey(selectedMarker?.ownerFaction) === faction.key.toLowerCase();
+                    : selectedFactionKey === faction.key.toLowerCase() ||
+                      (!selectedFactionKey && factionKey(selectedMarker?.ownerFaction) === faction.key.toLowerCase());
+                  const diplomacyGroup = extendedState?.document.faction_to_chars.find(
+                    (group) => group.faction.toLowerCase() === faction.key.toLowerCase(),
+                  );
                   return (
-                    <button
+                    <div
                       key={faction.key}
-                      type="button"
                       ref={(element) => {
                         const key = `faction:${faction.key.toLowerCase()}`;
                         if (element) mapListItemRefs.current.set(key, element);
                         else mapListItemRefs.current.delete(key);
                       }}
-                      aria-pressed={isEditingFactions ? isSelected : undefined}
-                      onClick={() =>
-                        isEditingFactions ? setBrushFaction(faction.key) : selectMapFaction(faction.key.toLowerCase())
-                      }
-                      onDoubleClick={() => focusNextFactionRegion(faction.key)}
-                      title={mapText(
-                        "mapFactionDoubleClickHint",
-                        "Double click to cycle through this faction's regions",
-                      )}
-                      className={`mb-1 flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-sm ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-950/60 text-gray-100"
-                          : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
-                      }`}
+                      className="mb-1 rounded"
+                      onContextMenu={(event) => openDiplomacyContextMenu(event, "faction", faction.key)}
                     >
-                      {faction.flagUrl ? (
-                        <img src={faction.flagUrl} alt="" loading="lazy" className="h-6 w-6 shrink-0 object-contain" />
-                      ) : (
-                        <span className="h-2 w-2 shrink-0 rounded-full bg-gray-500" />
-                      )}
-                      <span className="min-w-0">
-                        <span className="block truncate">{faction.label}</span>
-                        <span className="block truncate text-[0.8125rem] text-gray-400">
-                          {mapMessage(
-                            faction.regionCount === 1 ? "mapFactionRegionOne" : "mapFactionRegionOther",
-                            faction.regionCount === 1 ? "{{count}} region · {{key}}" : "{{count}} regions · {{key}}",
-                            { count: faction.regionCount, key: faction.key },
-                          )}
+                      <button
+                        type="button"
+                        aria-pressed={isEditingFactions ? isSelected : undefined}
+                        onClick={() =>
+                          isEditingFactions ? setBrushFaction(faction.key) : selectMapFaction(faction.key.toLowerCase())
+                        }
+                        onDoubleClick={() => focusNextFactionRegion(faction.key)}
+                        title={mapText(
+                          "mapFactionDoubleClickHint",
+                          "Double click to cycle through this faction's regions",
+                        )}
+                        className={`flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-sm ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-950/60 text-gray-100"
+                            : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
+                        }`}
+                      >
+                        {faction.flagUrl ? (
+                          <img
+                            src={faction.flagUrl}
+                            alt=""
+                            loading="lazy"
+                            className="h-6 w-6 shrink-0 object-contain"
+                          />
+                        ) : (
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-gray-500" />
+                        )}
+                        <span className="min-w-0">
+                          <span className="block truncate">{faction.label}</span>
+                          <span className="block truncate text-[0.8125rem] text-gray-400">
+                            {mapMessage(
+                              faction.regionCount === 1 ? "mapFactionRegionOne" : "mapFactionRegionOther",
+                              faction.regionCount === 1 ? "{{count}} region · {{key}}" : "{{count}} regions · {{key}}",
+                              { count: faction.regionCount, key: faction.key },
+                            )}
+                          </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                      {extendedState &&
+                        diplomacyGroup &&
+                        DIPLOMACY_RELATIONSHIPS.map((relationship) => {
+                          const targets = diplomacyGroup.diplo[relationship];
+                          if (!targets || targets.length === 0) return null;
+                          const icon = map.diplomacyIconUrls?.[relationship];
+                          const label = mapText(
+                            diplomacyRelationshipLabelKey(relationship),
+                            diplomacyRelationshipFallback(relationship),
+                          );
+                          return (
+                            <div
+                              key={`${faction.key}:${relationship}`}
+                              className="flex items-center gap-1 border-x border-b border-gray-800 bg-gray-950/40 px-2 py-1"
+                              title={label}
+                            >
+                              {icon ? (
+                                <img src={icon} alt="" className="h-4 w-4 shrink-0 object-contain" />
+                              ) : (
+                                <span className="h-4 w-4 shrink-0 rounded-sm border border-gray-600 text-center text-[0.6rem] text-gray-500">
+                                  ·
+                                </span>
+                              )}
+                              <span className="mr-1 w-20 shrink-0 truncate text-[0.65rem] text-gray-400">{label}</span>
+                              <span className="flex min-w-0 flex-wrap gap-1">
+                                {targets.map((targetKey) => {
+                                  const target = factionsByKey.get(targetKey.toLowerCase());
+                                  const targetLabel = target?.label ?? targetKey;
+                                  return (
+                                    <button
+                                      key={`${relationship}:${targetKey}`}
+                                      type="button"
+                                      title={`${targetLabel} (${targetKey})`}
+                                      aria-label={`${label}: ${targetLabel} (${targetKey})`}
+                                      onClick={(event) => handleDiplomacyFlagClick(event, targetKey)}
+                                      onDoubleClick={(event) => handleDiplomacyFlagClick(event, targetKey, true)}
+                                      className="flex h-6 w-6 items-center justify-center rounded border border-gray-700 bg-gray-900 hover:border-blue-400 focus:border-blue-400 focus:outline-none"
+                                    >
+                                      {target?.flagUrl ? (
+                                        <img src={target.flagUrl} alt="" className="h-5 w-5 object-contain" />
+                                      ) : (
+                                        <span className="text-[0.58rem] font-medium text-gray-400">?</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
                   );
                 })
               )}
@@ -3034,6 +3430,329 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         <div className="flex flex-1 items-center justify-center text-sm text-gray-500">
           {mapText("mapLoading", "Loading campaign map…")}
         </div>
+      )}
+
+      {map && mapContextMenu && extendedState && (
+        <div
+          ref={mapContextMenuRef}
+          className="fixed z-50 min-w-64 max-w-[calc(100vw-1rem)] rounded border border-gray-600 bg-gray-950 p-1 text-sm shadow-2xl"
+          style={{ left: Math.max(8, mapContextMenu.left), top: Math.max(8, mapContextMenu.top) }}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          {(() => {
+            const source = diplomacySourceFaction;
+            const target = mapContextMenu.targetFaction;
+            const sourceGroup = extendedFactionGroup(source);
+            const targetGroup = extendedFactionGroup(target);
+            const validPair = !!sourceGroup && !!targetGroup && source!.toLowerCase() !== target!.toLowerCase();
+            const atWar = diplomacyHasRelation(source, target, "war") || diplomacyHasRelation(target, source, "war");
+            const sourceLabel = source
+              ? (factionsByKey.get(source.toLowerCase())?.label ?? source)
+              : mapText("mapNoFactionSelected", "No faction selected");
+            const targetLabel = target
+              ? (factionsByKey.get(target.toLowerCase())?.label ?? target)
+              : mapText("mapNoTargetFaction", "No target faction");
+            const mapPoint =
+              mapContextMenu.mapPoint ??
+              (mapContextMenu.region
+                ? {
+                    x: mapContextMenu.region.gx,
+                    y: displayYFromCell(map.height, mapContextMenu.region.gy, map.displayFlipY),
+                  }
+                : undefined);
+            return (
+              <>
+                <div className="border-b border-gray-800 px-2 py-1 text-xs text-gray-400">
+                  <div>
+                    {mapText("mapDiplomacySource", "Source")}: <span className="text-gray-200">{sourceLabel}</span>
+                  </div>
+                  <div>
+                    {mapText("mapDiplomacyTarget", "Target")}: <span className="text-gray-200">{targetLabel}</span>
+                  </div>
+                </div>
+                {mapContextMenu.source === "map" && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!sourceGroup}
+                      onClick={() => source && openNewForce(source, mapPoint)}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <span className="w-5 text-center">＋</span>
+                      {mapText("mapCreateForceSelected", "Create force for source faction")}
+                    </button>
+                    {target && (
+                      <button
+                        type="button"
+                        disabled={!targetGroup}
+                        onClick={() => openNewForce(target, mapPoint)}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <span className="w-5 text-center">＋</span>
+                        {mapText("mapCreateForceTarget", "Create force for region owner")}
+                      </button>
+                    )}
+                    {isEditingFactions && mapContextMenu.region && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          paintRegion(mapContextMenu.region!.key, null);
+                          selectMapMarker(mapContextMenu.region);
+                          setMapContextMenu(undefined);
+                        }}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-gray-200 hover:bg-gray-800"
+                      >
+                        <span className="w-5 text-center">×</span>
+                        {mapText("mapClearRegionOwnership", "Clear region ownership")}
+                      </button>
+                    )}
+                  </>
+                )}
+                <div className="my-1 border-t border-gray-800" />
+                <div className="px-2 py-1 text-[0.65rem] uppercase tracking-wide text-gray-500">
+                  {mapText("mapDiplomacyOptions", "Diplomacy")}
+                </div>
+                {DIPLOMACY_RELATIONSHIPS.map((relationship) => {
+                  const icon = map.diplomacyIconUrls?.[relationship];
+                  return (
+                    <button
+                      key={relationship}
+                      type="button"
+                      disabled={!validPair}
+                      onClick={() =>
+                        source &&
+                        target &&
+                        applyDiplomacyContextAction({
+                          type: "set_diplomacy",
+                          faction: source,
+                          targetFaction: target,
+                          relationship,
+                        })
+                      }
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {icon ? (
+                        <img src={icon} alt="" className="h-5 w-5 object-contain" />
+                      ) : (
+                        <span className="w-5 text-center">◆</span>
+                      )}
+                      {mapText(
+                        diplomacyRelationshipLabelKey(relationship),
+                        diplomacyRelationshipFallback(relationship),
+                      )}
+                    </button>
+                  );
+                })}
+                {atWar && (
+                  <button
+                    type="button"
+                    disabled={!validPair}
+                    onClick={() =>
+                      source &&
+                      target &&
+                      applyDiplomacyContextAction({ type: "make_peace", faction: source, targetFaction: target })
+                    }
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {map.diplomacyIconUrls?.peace ? (
+                      <img src={map.diplomacyIconUrls.peace} alt="" className="h-5 w-5 object-contain" />
+                    ) : (
+                      <span className="w-5 text-center">☮</span>
+                    )}
+                    {mapText("mapDiplomacyPeace", "Make peace")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={!validPair}
+                  onClick={() =>
+                    source &&
+                    target &&
+                    applyDiplomacyContextAction({ type: "confederate", faction: source, targetFaction: target })
+                  }
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {map.diplomacyIconUrls?.confederate ? (
+                    <img src={map.diplomacyIconUrls.confederate} alt="" className="h-5 w-5 object-contain" />
+                  ) : (
+                    <span className="w-5 text-center">⇄</span>
+                  )}
+                  {mapText("mapDiplomacyConfederate", "Confederate target")}
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {newForceDraft && extendedState && (
+        <Modal show onClose={() => setNewForceDraft(undefined)} size="2xl" position="center">
+          <Modal.Header>{mapText("mapNewForceTitle", "Create new force")}</Modal.Header>
+          <Modal.Body>
+            <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-400">{mapText("mapFaction", "Faction")}</span>
+                <select
+                  value={newForceDraft.faction}
+                  onChange={(event) => {
+                    const faction = event.target.value;
+                    const option = factionLordOptions(faction)[0];
+                    const leaderUnit = option
+                      ? associatedUnitForSubculture(option, factionsByKey.get(faction.toLowerCase())?.subculture)
+                      : undefined;
+                    setNewForceDraft((draft) =>
+                      draft
+                        ? { ...draft, faction, subtype: option?.subtype ?? "", units: leaderUnit ? [leaderUnit] : [] }
+                        : draft,
+                    );
+                  }}
+                  className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-gray-200"
+                >
+                  {extendedState.document.faction_to_chars.map((group) => (
+                    <option key={group.faction} value={group.faction}>
+                      {factionsByKey.get(group.faction.toLowerCase())?.label ?? group.faction}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-400">{mapText("mapSubtype", "Lord subtype")}</span>
+                <select
+                  value={newForceDraft.subtype}
+                  onChange={(event) => {
+                    const subtype = event.target.value;
+                    const option = factionLordOptions(newForceDraft.faction).find(
+                      (candidate) => candidate.subtype === subtype,
+                    );
+                    const leaderUnit = option
+                      ? associatedUnitForSubculture(
+                          option,
+                          factionsByKey.get(newForceDraft.faction.toLowerCase())?.subculture,
+                        )
+                      : undefined;
+                    setNewForceDraft((draft) =>
+                      draft
+                        ? { ...draft, subtype, units: leaderUnit ? [leaderUnit, ...draft.units.slice(1)] : [] }
+                        : draft,
+                    );
+                  }}
+                  disabled={factionLordOptions(newForceDraft.faction).length === 0}
+                  className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-gray-200 disabled:opacity-50"
+                >
+                  {factionLordOptions(newForceDraft.faction).map((option) => (
+                    <option key={option.subtype} value={option.subtype}>
+                      {formatSubtypeOption(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
+                <label className="flex items-center gap-2">
+                  X
+                  <input
+                    type="number"
+                    value={newForceDraft.x}
+                    onChange={(event) =>
+                      setNewForceDraft((draft) => (draft ? { ...draft, x: Number(event.target.value) } : draft))
+                    }
+                    className="w-full rounded border border-gray-700 bg-gray-950 px-1.5 py-1 text-gray-200"
+                  />
+                </label>
+                <label className="flex items-center gap-2">
+                  Y
+                  <input
+                    type="number"
+                    value={newForceDraft.y}
+                    onChange={(event) =>
+                      setNewForceDraft((draft) => (draft ? { ...draft, y: Number(event.target.value) } : draft))
+                    }
+                    className="w-full rounded border border-gray-700 bg-gray-950 px-1.5 py-1 text-gray-200"
+                  />
+                </label>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs text-gray-400">
+                  <span>
+                    {mapMessage("mapNewForceUnits", "Units ({{count}}/20)", { count: newForceDraft.units.length })}
+                  </span>
+                  <span>{mapText("mapNewForceLeaderNote", "Leader is in slot 1")}</span>
+                </div>
+                <div className="space-y-1">
+                  {newForceDraft.units.map((unitKey, index) => (
+                    <div
+                      key={`${unitKey}:${index}`}
+                      className="flex items-center gap-2 rounded border border-gray-800 bg-gray-950/50 px-2 py-1 text-xs text-gray-300"
+                    >
+                      <span className="w-5 text-gray-500">{index + 1}</span>
+                      <span className="min-w-0 flex-1 truncate" title={unitKey}>
+                        {unitKey}
+                      </span>
+                      {index > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNewForceDraft((draft) =>
+                              draft
+                                ? { ...draft, units: draft.units.filter((_, unitIndex) => unitIndex !== index) }
+                                : draft,
+                            )
+                          }
+                          className="text-red-300 hover:text-red-200"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {newForceDraft.units.length < 20 && (
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      addNewForceUnit(event.target.value);
+                      event.currentTarget.value = "";
+                    }}
+                    className="mt-2 w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-xs text-gray-300"
+                  >
+                    <option value="">{mapText("mapAddUnit", "Add unit…")}</option>
+                    {groupExtendedUnitOptionsByCaste(
+                      resolveExtendedUnitOptions(
+                        unitCatalog,
+                        factionsByKey.get(newForceDraft.faction.toLowerCase())?.subculture,
+                      ),
+                    ).map((group) => (
+                      <optgroup key={group.key} label={group.name}>
+                        {group.options.map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <button
+              type="button"
+              onClick={() => setNewForceDraft(undefined)}
+              className="rounded border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800"
+            >
+              {mapText("mapCancel", "Cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={!newForceDraft.subtype || newForceDraft.units.length === 0}
+              onClick={submitNewForce}
+              className="rounded bg-blue-700 px-3 py-1.5 text-sm text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {mapText("mapCreateForce", "Create force")}
+            </button>
+          </Modal.Footer>
+        </Modal>
       )}
 
       {openEditPanel && (

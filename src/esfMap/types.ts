@@ -37,6 +37,13 @@ export interface EsfMapFaction {
   regionCount: number;
 }
 
+/** Relationship keys used by the extended campaign-map diplomacy table. */
+export type EsfMapDiplomacyKey =
+  "mil_ally" | "non_aggression" | "trade" | "war" | "vassals" | "mil_access" | "def_ally";
+
+/** Runtime asset-protocol URLs for the vanilla diplomacy option icons. */
+export type EsfMapDiplomacyIconUrls = Partial<Record<EsfMapDiplomacyKey | "peace" | "confederate", string>>;
+
 export interface EsfMapCampaignOption {
   key: string;
   label: string;
@@ -114,6 +121,8 @@ export interface EsfMapPayload {
   areas: EsfMapArea[];
   markers: EsfMapMarker[];
   factions: EsfMapFaction[];
+  /** Runtime-only URLs; this property is removed before the map payload is written to disk cache. */
+  diplomacyIconUrls?: EsfMapDiplomacyIconUrls;
   componentCount: number;
   totalLoops: number;
   totalVertices: number;

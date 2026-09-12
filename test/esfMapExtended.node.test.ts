@@ -27,6 +27,7 @@ const document: ExtendedMapDocument = {
   faction_to_chars: [
     {
       faction: "faction_a",
+      diplo: { mil_ally: [], non_aggression: [], trade: [], war: [], vassals: [], mil_access: [], def_ally: [] },
       chars: [
         {
           x: 10,
@@ -37,6 +38,38 @@ const document: ExtendedMapDocument = {
           units: [{ id: 8, unit_key: "lord_unit", xp: 0, health: 100 }],
         },
       ],
+    },
+  ],
+};
+
+const diplomacyDocument: ExtendedMapDocument = {
+  regions: [],
+  faction_to_chars: [
+    {
+      faction: "faction_a",
+      chars: [
+        {
+          x: 1,
+          y: 2,
+          subtype: "lord_a",
+          id: 4,
+          rank: 2,
+        },
+      ],
+      diplo: { mil_ally: [], non_aggression: [], trade: [], war: [], vassals: [], mil_access: [], def_ally: [] },
+    },
+    {
+      faction: "faction_b",
+      chars: [
+        {
+          x: 3,
+          y: 4,
+          subtype: "lord_b",
+          id: 12,
+          rank: 1,
+        },
+      ],
+      diplo: { mil_ally: [], non_aggression: [], trade: [], war: [], vassals: [], mil_access: [], def_ally: [] },
     },
   ],
 };
@@ -68,6 +101,38 @@ describe("extended map files", () => {
       format: "extended",
       document: { regions: [{ region: "abandoned", faction: null, buildings: null }], faction_to_chars: [] },
     });
+  });
+
+  it("normalizes diplomacy arrays and rejects duplicate faction references", () => {
+    const parsed = parseMapFile(
+      JSON.stringify({ regions: [], faction_to_chars: [{ faction: "faction_a", chars: [] }] }),
+    );
+    expect(parsed).toEqual({
+      format: "extended",
+      document: {
+        regions: [],
+        faction_to_chars: [
+          {
+            faction: "faction_a",
+            chars: [],
+            diplo: { mil_ally: [], non_aggression: [], trade: [], war: [], vassals: [], mil_access: [], def_ally: [] },
+          },
+        ],
+      },
+    });
+    expect(
+      parseMapFile(
+        JSON.stringify({
+          regions: [],
+          faction_to_chars: [{ faction: "faction_a", chars: [], diplo: { war: ["Faction_B", "faction_b"] } }],
+        }),
+      ),
+    ).toMatchObject({ error: expect.stringContaining("Duplicate faction") });
+    expect(
+      parseMapFile(
+        JSON.stringify({ regions: [], faction_to_chars: [{ faction: "faction_a", chars: [], diplo: { war: [4] } }] }),
+      ),
+    ).toMatchObject({ error: expect.stringContaining("non-empty string") });
   });
 
   it("rejects invalid ranges, obsolete unit shapes, and duplicate ids", () => {
@@ -277,6 +342,158 @@ describe("extended map files", () => {
     expect(state.document.faction_to_chars[0].chars[0].units?.at(-1)?.id).toBe(9);
     state = applyExtendedMapEdit(state, { type: "remove_unit", faction: "faction_a", characterId: 4, unitId: 9 });
     expect(buildExtendedMapDelta(state.baseline, state.document)).toEqual({ version: 1, actions: [] });
+  });
+
+  it("allocates character and unit ids for a new character", () => {
+    let state = createExtendedMapEditState(document);
+    state = applyExtendedMapEdit(state, {
+      type: "add_character",
+      faction: "faction_a",
+      character: {
+        x: 30,
+        y: 40,
+        subtype: "lord_b",
+        rank: 1,
+        units: [
+          { unit_key: "new_unit" },
+          { id: 20, unit_key: "supplied_unit", xp: 2, health: 80 },
+        ],
+      },
+    });
+    const character = state.document.faction_to_chars[0].chars[1];
+    expect(character).toEqual({
+      x: 30,
+      y: 40,
+      subtype: "lord_b",
+      id: 5,
+      rank: 1,
+      units: [
+        { id: 9, unit_key: "new_unit", xp: 0, health: 100 },
+        { id: 20, unit_key: "supplied_unit", xp: 2, health: 80 },
+      ],
+    });
+    expect(state.nextCharacterId).toBe(6);
+    expect(state.nextUnitId).toBe(21);
+    expect(buildExtendedMapDelta(state.baseline, state.document).actions).toEqual([
+      {
+        type: "add_character",
+        faction: "faction_a",
+        index: 1,
+        character,
+      },
+    ]);
+  });
+
+  it("applies reciprocal war, directional vassal diplomacy, and make peace", () => {
+    let state = createExtendedMapEditState(diplomacyDocument);
+    state = applyExtendedMapEdit(state, {
+      type: "set_diplomacy",
+      faction: "faction_a",
+      targetFaction: "faction_b",
+      relationship: "trade",
+    });
+    expect(state.document.faction_to_chars[0].diplo.trade).toEqual(["faction_b"]);
+    expect(state.document.faction_to_chars[1].diplo.trade).toEqual(["faction_a"]);
+
+    state = applyExtendedMapEdit(state, {
+      type: "set_diplomacy",
+      faction: "faction_a",
+      targetFaction: "faction_b",
+      relationship: "war",
+    });
+    expect(state.document.faction_to_chars[0].diplo).toMatchObject({
+      trade: [],
+      war: ["faction_b"],
+      vassals: [],
+    });
+    expect(state.document.faction_to_chars[1].diplo).toMatchObject({
+      trade: [],
+      war: ["faction_a"],
+      vassals: [],
+    });
+
+    state = applyExtendedMapEdit(state, {
+      type: "set_diplomacy",
+      faction: "faction_a",
+      targetFaction: "faction_b",
+      relationship: "vassals",
+    });
+    expect(state.document.faction_to_chars[0].diplo).toMatchObject({ war: [], vassals: ["faction_b"] });
+    expect(state.document.faction_to_chars[1].diplo).toMatchObject({ war: [], vassals: [] });
+
+    state = applyExtendedMapEdit(state, {
+      type: "set_diplomacy",
+      faction: "faction_b",
+      targetFaction: "faction_a",
+      relationship: "war",
+    });
+    state = applyExtendedMapEdit(state, { type: "make_peace", faction: "faction_a", targetFaction: "faction_b" });
+    expect(state.document.faction_to_chars[0].diplo.war).toEqual([]);
+    expect(state.document.faction_to_chars[1].diplo.war).toEqual([]);
+    expect(state.document.faction_to_chars[0].diplo.vassals).toEqual([]);
+  });
+
+  it("emits and parses diplomacy delta actions", () => {
+    let state = createExtendedMapEditState(diplomacyDocument);
+    state = applyExtendedMapEdit(state, {
+      type: "set_diplomacy",
+      faction: "faction_a",
+      targetFaction: "faction_b",
+      relationship: "war",
+    });
+    const delta = buildExtendedMapDelta(state.baseline, state.document);
+    expect(delta.actions).toEqual([
+      { type: "set_diplomacy", faction: "faction_a", targetFaction: "faction_b", before: [], after: ["war"] },
+    ]);
+    const exported = buildExtendedMapExport({}, delta);
+    expect(parseMapFile(formatExtendedMapExportJson(exported))).toEqual({
+      format: "extended-export",
+      document: exported,
+    });
+    expect(
+      parseMapFile(
+        JSON.stringify({
+          version: 1,
+          regions: [],
+          actions: [
+            {
+              type: "set_diplomacy",
+              faction: "faction_a",
+              targetFaction: "faction_b",
+              before: [],
+              after: ["not_a_relationship"],
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ error: expect.stringContaining("Unknown diplomacy relationship") });
+  });
+
+  it("makes peace without discarding unrelated treaties", () => {
+    const baseline: ExtendedMapDocument = structuredClone(diplomacyDocument);
+    baseline.faction_to_chars[0].diplo.trade = ["faction_b"];
+    baseline.faction_to_chars[1].diplo.trade = ["faction_a"];
+    baseline.faction_to_chars[0].diplo.war = ["faction_b"];
+    baseline.faction_to_chars[1].diplo.war = ["faction_a"];
+    const state = applyExtendedMapEdit(createExtendedMapEditState(baseline), {
+      type: "make_peace",
+      faction: "faction_a",
+      targetFaction: "faction_b",
+    });
+    expect(state.document.faction_to_chars[0].diplo.trade).toEqual(["faction_b"]);
+    expect(state.document.faction_to_chars[0].diplo.war).toEqual([]);
+  });
+
+  it("records idempotent confederations as semantic pending actions", () => {
+    let state = createExtendedMapEditState(diplomacyDocument);
+    state = applyExtendedMapEdit(state, { type: "confederate", faction: "faction_a", targetFaction: "faction_b" });
+    state = applyExtendedMapEdit(state, { type: "confederate", faction: "faction_a", targetFaction: "faction_b" });
+    expect(state.document).toEqual(diplomacyDocument);
+    expect(state.pendingConfederations).toEqual([{ faction: "faction_a", targetFaction: "faction_b" }]);
+    expect(buildExtendedMapDelta(state.baseline, state.document, state.pendingConfederations)).toEqual({
+      version: 1,
+      actions: [{ type: "confederate", faction: "faction_a", targetFaction: "faction_b" }],
+    });
   });
 
   it("removes characters and emits the complete character in the delta", () => {
