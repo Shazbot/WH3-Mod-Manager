@@ -721,54 +721,47 @@ const OptionsDrawer = memo(() => {
                 "Split the All Mods tab into two lists: disabled mods on the left, enabled mods on the right. Click a mod to move it between them."}
             </p>
 
-            {/* Both sub-options only bite in the dual layout, so they follow its checkbox and grey out with it. */}
-            <div className={"ml-6 mt-3 " + (isDualModListLayoutEnabled ? "" : "opacity-40")}>
-              <label className="block mb-1" htmlFor="modListDensity">
-                {localized.modListDensity || "Row Size"}
-              </label>
-              <FormSelect
-                id="modListDensity"
-                disabled={!isDualModListLayoutEnabled}
-                value={modListDensity}
-                onChange={(event) => dispatch(setModListDensity(event.target.value as ModListDensity))}
-              >
-                {modListDensityOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </FormSelect>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {localized.modListDensityHelp ||
-                  "How much room each mod gets in the two lists. Larger rows are easier to read but fewer fit on screen."}
-              </p>
-            </div>
+            {isDualModListLayoutEnabled && (
+              <>
+                <div className="ml-6 mt-3">
+                  <label className="block mb-1" htmlFor="modListDensity">
+                    {localized.modListDensity || "Row Size"}
+                  </label>
+                  <FormSelect
+                    id="modListDensity"
+                    value={modListDensity}
+                    onChange={(event) => dispatch(setModListDensity(event.target.value as ModListDensity))}
+                  >
+                    {modListDensityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </FormSelect>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {localized.modListDensityHelp ||
+                      "How much room each mod gets in the two lists. Larger rows are easier to read but fewer fit on screen."}
+                  </p>
+                </div>
 
-            {/* Only affects the disabled list, which exists solely in the dual layout. */}
-            <div className={"flex items-center ml-6 mt-3 " + (isDualModListLayoutEnabled ? "" : "opacity-40")}>
-              <input
-                className="mt-1"
-                type="checkbox"
-                id="show-disabled-mods-load-order"
-                disabled={!isDualModListLayoutEnabled}
-                checked={!!isShowingDisabledModsLoadOrder}
-                onChange={() => dispatch(toggleIsShowingDisabledModsLoadOrder())}
-              ></input>
-              <label
-                className={"ml-2 mt-1 " + (isDualModListLayoutEnabled ? "" : "cursor-not-allowed")}
-                htmlFor="show-disabled-mods-load-order"
-              >
-                {localized.showDisabledModsLoadOrder || "Number The Disabled Mods List"}
-              </label>
-            </div>
-            <p
-              className={
-                "ml-6 mt-1 text-sm text-gray-500 dark:text-gray-400 " + (isDualModListLayoutEnabled ? "" : "opacity-40")
-              }
-            >
-              {localized.showDisabledModsLoadOrderHelp ||
-                "A disabled mod's position is its rank among all mods, which is not where it lands once enabled. Load orders you have pinned are shown either way."}
-            </p>
+                <div className="flex items-center ml-6 mt-3">
+                  <input
+                    className="mt-1"
+                    type="checkbox"
+                    id="show-disabled-mods-load-order"
+                    checked={!!isShowingDisabledModsLoadOrder}
+                    onChange={() => dispatch(toggleIsShowingDisabledModsLoadOrder())}
+                  ></input>
+                  <label className="ml-2 mt-1" htmlFor="show-disabled-mods-load-order">
+                    {localized.showDisabledModsLoadOrder || "Number The Disabled Mods List"}
+                  </label>
+                </div>
+                <p className="ml-6 mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {localized.showDisabledModsLoadOrderHelp ||
+                    "A disabled mod's position is its rank among all mods, which is not where it lands once enabled. Load orders you have pinned are shown either way."}
+                </p>
+              </>
+            )}
 
             <h6 className="mt-6">{localized.extraColumns}</h6>
             <div className="flex items-center ml-1">
