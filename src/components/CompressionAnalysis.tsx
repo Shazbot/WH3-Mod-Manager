@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronRight } from "react-icons/lu";
+import { Tooltip } from "flowbite-react";
 import { Modal } from "../flowbite";
 import { useLocalizations } from "../localizationContext";
 import type { SupportedGames } from "../supportedGames";
@@ -93,6 +94,18 @@ const statusLabel = (pack: CompressionPackAnalysis, localized: Record<string, st
   }, ${pack.errorCount} ${localized.compressionAnalysisErrors || "errors"}`;
 };
 
+const packProjectedSize = (pack: CompressionPackAnalysis, includeRigidModelV2: boolean): number =>
+  includeRigidModelV2 ? pack.projectedSizeIncludingRigidModelV2 : pack.projectedSize;
+
+const packBytesSaved = (pack: CompressionPackAnalysis, includeRigidModelV2: boolean): number =>
+  Math.max(0, pack.currentSize - packProjectedSize(pack, includeRigidModelV2));
+
+const packPercentSaved = (pack: CompressionPackAnalysis, includeRigidModelV2: boolean): number =>
+  includeRigidModelV2 ? pack.wholePackPercentSavedIncludingRigidModelV2 : pack.wholePackPercentSaved;
+
+const packAcceptedCount = (pack: CompressionPackAnalysis, includeRigidModelV2: boolean): number =>
+  pack.acceptedCount + (includeRigidModelV2 ? pack.rigidModelV2Wins.length : 0);
+
 const CompressionAnalysis = ({
   isOpen,
   onClose,
@@ -181,9 +194,26 @@ const CompressionAnalysis = ({
   const orderedPacks = useMemo(() => {
     if (!result) return [];
     return [...result.packs].sort(
-      (first, second) => second.bytesSaved - first.bytesSaved || first.packName.localeCompare(second.packName),
+      (first, second) =>
+        packBytesSaved(second, includeRigidModelV2) - packBytesSaved(first, includeRigidModelV2) ||
+        first.packName.localeCompare(second.packName),
     );
-  }, [result]);
+  }, [includeRigidModelV2, result]);
+  const overallProjectedSize = overall
+    ? includeRigidModelV2
+      ? overall.projectedSizeIncludingRigidModelV2
+      : overall.projectedSize
+    : 0;
+  const overallBytesSaved = overall ? Math.max(0, overall.currentSize - overallProjectedSize) : 0;
+  const overallPercentSaved = overall
+    ? includeRigidModelV2
+      ? overall.wholePackPercentSavedIncludingRigidModelV2
+      : overall.wholePackPercentSaved
+    : 0;
+  const overallAcceptedCount = overall
+    ? overall.acceptedCount +
+      (includeRigidModelV2 ? result?.packs.reduce((sum, pack) => sum + pack.rigidModelV2Wins.length, 0) || 0 : 0)
+    : 0;
   const progressPercent = progress?.packCount
     ? Math.min(
         100,
@@ -236,7 +266,7 @@ const CompressionAnalysis = ({
             {localized.compressionAnalysisDescription ||
               "Benchmarks currently enabled Warhammer 3 mod packs without changing any files. Existing compression is retained."}
           </p>
-          {isFeaturesForModdersEnabled && (
+          {isFeaturesForModdersEnabled && !isRunning && (
             <label className="mt-3 flex items-center gap-2 text-sm text-gray-300" htmlFor="compress-rigid-model-v2">
               <input
                 id="compress-rigid-model-v2"
@@ -244,8 +274,21 @@ const CompressionAnalysis = ({
                 checked={includeRigidModelV2}
                 onChange={(event) => onRigidModelV2CompressionEnabledChange?.(event.target.checked)}
               />
-              {localized.compressionAnalysisIncludeRigidModelV2 ||
-                "Compress eligible .rigid_model_v2 files (conservative LZ4 only)"}
+              <Tooltip
+                placement="bottom"
+                style="light"
+                content={
+                  <div className="max-w-sm">
+                    {localized.compressionAnalysisRigidModelV2Tooltip ||
+                      "Vanilla leaves 89.72% of rigid models uncompressed; its LZ4 examples are terrain tiles and its ZSTD examples are UI 3D models, with no universal size or ratio cutoff. The original recommendation was therefore to avoid blanket compression and preserve that path-specific pattern. We found no evidence that compression itself is unsafe, so WHMM uses a conservative rule: LZ4 only, files of at least 256 KiB, and a compressed size no greater than 75% of the original."}
+                  </div>
+                }
+              >
+                <span>
+                  {localized.compressionAnalysisIncludeRigidModelV2 ||
+                    "Compress eligible .rigid_model_v2 files (conservative LZ4 only)"}
+                </span>
+              </Tooltip>
             </label>
           )}
           {reason && (
@@ -287,20 +330,19 @@ const CompressionAnalysis = ({
                   </span>
                   <span>
                     {localized.compressionAnalysisProjectedSize || "Projected size"}:{" "}
-                    {formatBytes(overall.projectedSize)}
+                    {formatBytes(overallProjectedSize)}
                   </span>
                   <span>
-                    {localized.compressionAnalysisSaved || "Saved"}: {formatBytes(overall.bytesSaved)}
+                    {localized.compressionAnalysisSaved || "Saved"}: {formatBytes(overallBytesSaved)}
                   </span>
                   <span>
-                    {localized.compressionAnalysisPercentSaved || "% saved"}:{" "}
-                    {formatPercent(overall.wholePackPercentSaved)}
+                    {localized.compressionAnalysisPercentSaved || "% saved"}: {formatPercent(overallPercentSaved)}
                   </span>
                   <span>
                     {localized.compressionAnalysisPacks || "Packs"}: {overall.analyzedPackCount}/{overall.packCount}
                   </span>
                   <span>
-                    {localized.compressionAnalysisAccepted || "Accepted"}: {overall.acceptedCount}
+                    {localized.compressionAnalysisAccepted || "Accepted"}: {overallAcceptedCount}
                   </span>
                   <span>
                     {localized.compressionAnalysisTested || "Tested"}: {overall.testedCount}
@@ -338,10 +380,12 @@ const CompressionAnalysis = ({
                         <span className="whitespace-nowrap">{statusLabel(pack, localized)}</span>
                         <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-gray-200">
                           <span>
-                            {formatPercent(pack.wholePackPercentSaved)}{" "}
+                            {formatPercent(packPercentSaved(pack, includeRigidModelV2))}{" "}
                             {localized.compressionAnalysisSavedSuffix || "saved"}
                           </span>
-                          <span className="font-normal text-gray-400">({formatBytes(pack.bytesSaved)})</span>
+                          <span className="font-normal text-gray-400">
+                            ({formatBytes(packBytesSaved(pack, includeRigidModelV2))})
+                          </span>
                         </span>
                       </span>
                     </summary>
@@ -351,14 +395,15 @@ const CompressionAnalysis = ({
                       </span>
                       <span>
                         {localized.compressionAnalysisProjectedSize || "Projected size"}:{" "}
-                        {formatBytes(pack.projectedSize)}
+                        {formatBytes(packProjectedSize(pack, includeRigidModelV2))}
                       </span>
                       <span>
                         {localized.compressionAnalysisPercentSaved || "% saved"}:{" "}
-                        {formatPercent(pack.wholePackPercentSaved)}
+                        {formatPercent(packPercentSaved(pack, includeRigidModelV2))}
                       </span>
                       <span>
-                        {localized.compressionAnalysisAccepted || "Accepted"}: {pack.acceptedCount}
+                        {localized.compressionAnalysisAccepted || "Accepted"}:{" "}
+                        {packAcceptedCount(pack, includeRigidModelV2)}
                       </span>
                     </div>
                     <div className="mt-2 text-xs text-gray-400">

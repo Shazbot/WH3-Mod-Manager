@@ -149,6 +149,8 @@ describe("CompressionAnalysis", () => {
       packPath: "/mods/larger-savings.pack",
       packName: "larger-savings.pack",
       bytesSaved: 2000,
+      projectedSize: 8000,
+      projectedSizeIncludingRigidModelV2: 8000,
     });
     result.packs[0].bytesSaved = 1000;
     result.overall.packCount = 2;
@@ -209,6 +211,39 @@ describe("CompressionAnalysis", () => {
     );
   });
 
+  it("hides the rigid-model checkbox while packs are being read", async () => {
+    let resolveStart!: (value: { accepted: true; result: CompressionAnalysisResult }) => void;
+    const start = vi.fn(
+      () =>
+        new Promise<{ accepted: true; result: CompressionAnalysisResult }>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    window.api = {
+      startCompressionAnalysis: start,
+      cancelCompressionAnalysis: vi.fn(),
+      onCompressionAnalysisProgress: vi.fn(() => () => undefined),
+    } as unknown as NonNullable<Window["api"]>;
+
+    render(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis
+          isOpen
+          onClose={vi.fn()}
+          currentGame="wh3"
+          enabledModPaths={["/mods/example.pack"]}
+          isFeaturesForModdersEnabled
+        />
+      </LocalizationContext.Provider>,
+    );
+
+    await waitFor(() => expect(start).toHaveBeenCalled());
+    expect(screen.queryByRole("checkbox", { name: /rigid_model_v2/i })).not.toBeInTheDocument();
+
+    resolveStart({ accepted: true, result: makeResult() });
+    expect(await screen.findByRole("checkbox", { name: /rigid_model_v2/i })).toBeInTheDocument();
+  });
+
   it("uses the persisted rigid-model setting and reports checkbox changes to its owner", async () => {
     const onRigidModelV2CompressionEnabledChange = vi.fn();
     window.api = {
@@ -236,5 +271,63 @@ describe("CompressionAnalysis", () => {
     expect(checkbox).not.toBeChecked();
     fireEvent.click(checkbox);
     expect(onRigidModelV2CompressionEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("counts rigid-model savings when the persisted option is enabled", async () => {
+    const result = makeResult();
+    const rigidWin = {
+      fileName: "variantmeshes\\unit.rigid_model_v2",
+      extension: ".rigid_model_v2",
+      storedBytes: 1000,
+      originalBytes: 1000,
+      existingMethod: "NONE" as const,
+      status: "accepted" as const,
+      selectedCodec: "LZ4" as const,
+      selectedRatioPercent: 50,
+      selectedRatio: 0.5,
+      savingsBytes: 500,
+      isRigidModelV2: true,
+    };
+    result.packs[0].rigidModelV2Wins = [rigidWin];
+    result.packs[0].projectedSizeIncludingRigidModelV2 = 8500;
+    result.packs[0].wholePackPercentSavedIncludingRigidModelV2 = 15;
+    result.overall.projectedSizeIncludingRigidModelV2 = 8500;
+    result.overall.wholePackPercentSavedIncludingRigidModelV2 = 15;
+    window.api = {
+      startCompressionAnalysis: vi.fn(async () => ({ accepted: true, result })),
+      cancelCompressionAnalysis: vi.fn(),
+      onCompressionAnalysisProgress: vi.fn(() => () => undefined),
+    } as unknown as NonNullable<Window["api"]>;
+
+    const commonProps = {
+      isOpen: true,
+      onClose: vi.fn(),
+      currentGame: "wh3" as const,
+      enabledModPaths: ["/mods/example.pack"],
+      isFeaturesForModdersEnabled: true,
+    };
+    const { rerender } = render(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis {...commonProps} isRigidModelV2CompressionEnabled />
+      </LocalizationContext.Provider>,
+    );
+
+    await screen.findByText("Overall");
+    expect(screen.getAllByText("Projected size: 8.3 KiB")).toHaveLength(2);
+    expect(screen.getAllByText("Accepted: 2")).toHaveLength(2);
+    expect(screen.getByText("15% saved")).toBeInTheDocument();
+
+    const checkboxLabel = screen.getByText(/Compress eligible \.rigid_model_v2 files/);
+    fireEvent.mouseEnter(checkboxLabel);
+    expect(await screen.findByText(/Vanilla leaves 89\.72% of rigid models uncompressed/)).toBeInTheDocument();
+
+    rerender(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis {...commonProps} isRigidModelV2CompressionEnabled={false} />
+      </LocalizationContext.Provider>,
+    );
+    expect(screen.getAllByText("Projected size: 8.8 KiB")).toHaveLength(2);
+    expect(screen.getAllByText("Accepted: 1")).toHaveLength(2);
+    expect(screen.getByText("10% saved")).toBeInTheDocument();
   });
 });

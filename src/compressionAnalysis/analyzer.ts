@@ -599,12 +599,6 @@ const analyzeOnePack = async (
         file.warning = warning;
         appendUnique(warnings, warning);
       }
-      if (isRigidModelV2) {
-        const warning =
-          ".rigid_model_v2 uses a cautious LZ4-only check; results are reported separately from primary totals";
-        file.warning = file.warning ? `${file.warning}; ${warning}` : warning;
-        appendUnique(warnings, warning);
-      }
       if (vanillaRecordIsAllNone(vanillaRecord)) {
         file.skipReason = "vanillaExtensionIs100PercentNone";
         pack.skippedCount++;

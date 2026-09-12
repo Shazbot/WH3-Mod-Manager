@@ -262,6 +262,9 @@ describe("PFH5 compression analysis", () => {
     expect(result.packs[0].rigidModelV2Wins).toHaveLength(1);
     expect(result.packs[0].bytesSaved).toBe(0);
     expect(result.packs[0].projectedSizeIncludingRigidModelV2).toBeLessThan(result.packs[0].currentSize);
+    expect(result.packs[0].warnings).not.toContain(
+      ".rigid_model_v2 uses a cautious LZ4-only check; results are reported separately from primary totals",
+    );
     expect(fake.calls.zstd.compress).not.toHaveBeenCalled();
   });
 
