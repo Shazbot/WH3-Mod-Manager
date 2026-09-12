@@ -208,4 +208,33 @@ describe("CompressionAnalysis", () => {
       expect(compressPack).toHaveBeenCalledWith({ packPath: "/mods/example.pack", includeRigidModelV2: true }),
     );
   });
+
+  it("uses the persisted rigid-model setting and reports checkbox changes to its owner", async () => {
+    const onRigidModelV2CompressionEnabledChange = vi.fn();
+    window.api = {
+      startCompressionAnalysis: vi.fn(async () => ({ accepted: true, result: makeResult() })),
+      cancelCompressionAnalysis: vi.fn(),
+      onCompressionAnalysisProgress: vi.fn(() => () => undefined),
+    } as unknown as NonNullable<Window["api"]>;
+
+    render(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis
+          isOpen
+          onClose={vi.fn()}
+          currentGame="wh3"
+          enabledModPaths={["/mods/example.pack"]}
+          isFeaturesForModdersEnabled
+          isRigidModelV2CompressionEnabled={false}
+          onRigidModelV2CompressionEnabledChange={onRigidModelV2CompressionEnabledChange}
+        />
+      </LocalizationContext.Provider>,
+    );
+
+    await screen.findByText("Overall");
+    const checkbox = screen.getByRole("checkbox", { name: /rigid_model_v2/i });
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    expect(onRigidModelV2CompressionEnabledChange).toHaveBeenCalledWith(true);
+  });
 });

@@ -253,6 +253,8 @@ declare global {
     isChangingGameProcessPriority: boolean;
     isFeaturesForModdersEnabled: boolean;
     moddersPrefix: string;
+    /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
+    isRigidModelV2CompressionEnabled: boolean;
     allMods: Mod[];
     workshopInstallStatuses: Record<string, WorkshopInstallStatus>;
     workshopUpdateCheckResults: Record<string, WorkshopUpdateCheckItem>;
@@ -389,6 +391,7 @@ declare global {
     | "isChangingGameProcessPriority"
     | "isFeaturesForModdersEnabled"
     | "moddersPrefix"
+    | "isRigidModelV2CompressionEnabled"
     | "isClosedOnPlay"
     | "workshopModStagingMode"
     | "cleanUpWorkshopModStagingAfterGameExit"

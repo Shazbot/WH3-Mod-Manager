@@ -17,6 +17,7 @@ import {
   toggleMakeUnitsGenerals,
   toggleIsChangingGameProcessPriority,
   toggleIsFeaturesForModdersEnabled,
+  setIsRigidModelV2CompressionEnabled,
   setModdersPrefix,
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,
@@ -120,6 +121,7 @@ const OptionsDrawer = memo(() => {
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const isRigidModelV2CompressionEnabled = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
   const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
@@ -466,6 +468,8 @@ const OptionsDrawer = memo(() => {
         currentGame={currentGame}
         enabledModPaths={enabledMods.map((mod) => mod.path)}
         isFeaturesForModdersEnabled={isFeaturesForModdersEnabled}
+        isRigidModelV2CompressionEnabled={isRigidModelV2CompressionEnabled}
+        onRigidModelV2CompressionEnabledChange={(enabled) => dispatch(setIsRigidModelV2CompressionEnabled(enabled))}
       />
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <CreateSteamCollection />

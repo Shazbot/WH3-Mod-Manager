@@ -21,6 +21,8 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
   appData.isCompatCheckingVanillaPacks = config.isCompatCheckingVanillaPacks;
   appData.isUsingEnglishLocalizations = !!config.isUsingEnglishLocalizations;
   appData.isChangingGameProcessPriority = config.isChangingGameProcessPriority;
+  appData.isRigidModelV2CompressionEnabled =
+    config.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
   appData.isShowingSkillNodeSetNames = config.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
   appData.hideRepeatedKeyPrefixes = config.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
   appData.recentPackPaths = sanitizeRecentPackPaths(

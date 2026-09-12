@@ -1218,6 +1218,8 @@ const appSlice = createSlice({
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
+      state.isRigidModelV2CompressionEnabled =
+        fromConfigAppState.isRigidModelV2CompressionEnabled ?? state.isRigidModelV2CompressionEnabled;
       state.nodeEditorFavorites = fromConfigAppState.nodeEditorFavorites || [];
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
       state.enabledModsPaneSortingType =
@@ -1663,6 +1665,9 @@ const appSlice = createSlice({
     setModdersPrefix: (state: AppState, action: PayloadAction<string>) => {
       state.moddersPrefix = action.payload;
     },
+    setIsRigidModelV2CompressionEnabled: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isRigidModelV2CompressionEnabled = action.payload;
+    },
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
@@ -2049,6 +2054,7 @@ export const {
   toggleIsFeaturesForModdersEnabled,
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
+  setIsRigidModelV2CompressionEnabled,
   setNodeEditorFavorites,
   orderImportedMods,
   addMod,

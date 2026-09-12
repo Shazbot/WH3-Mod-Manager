@@ -16,6 +16,8 @@ interface CompressionAnalysisProps {
   currentGame: SupportedGames;
   enabledModPaths: string[];
   isFeaturesForModdersEnabled?: boolean;
+  isRigidModelV2CompressionEnabled?: boolean;
+  onRigidModelV2CompressionEnabledChange?: (enabled: boolean) => void;
 }
 
 const formatBytes = (bytes: number): string => {
@@ -97,13 +99,15 @@ const CompressionAnalysis = ({
   currentGame,
   enabledModPaths,
   isFeaturesForModdersEnabled = false,
+  isRigidModelV2CompressionEnabled = true,
+  onRigidModelV2CompressionEnabledChange,
 }: CompressionAnalysisProps) => {
   const localized = useLocalizations() as Record<string, string | undefined>;
   const [result, setResult] = useState<CompressionAnalysisResult>();
   const [progress, setProgress] = useState<CompressionAnalysisProgress>();
   const [isRunning, setIsRunning] = useState(false);
   const [startError, setStartError] = useState<string>();
-  const [includeRigidModelV2, setIncludeRigidModelV2] = useState(true);
+  const includeRigidModelV2 = isRigidModelV2CompressionEnabled;
   const [compressingPackPath, setCompressingPackPath] = useState<string>();
   const [compressionMessages, setCompressionMessages] = useState<Record<string, { success: boolean; message: string }>>(
     {},
@@ -238,7 +242,7 @@ const CompressionAnalysis = ({
                 id="compress-rigid-model-v2"
                 type="checkbox"
                 checked={includeRigidModelV2}
-                onChange={(event) => setIncludeRigidModelV2(event.target.checked)}
+                onChange={(event) => onRigidModelV2CompressionEnabledChange?.(event.target.checked)}
               />
               {localized.compressionAnalysisIncludeRigidModelV2 ||
                 "Compress eligible .rigid_model_v2 files (conservative LZ4 only)"}

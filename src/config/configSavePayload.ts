@@ -106,6 +106,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isChangingGameProcessPriority: appState.isChangingGameProcessPriority,
       isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,
       moddersPrefix: appState.moddersPrefix,
+      isRigidModelV2CompressionEnabled: appState.isRigidModelV2CompressionEnabled,
       isClosedOnPlay: appState.isClosedOnPlay,
       workshopModStagingMode: appState.workshopModStagingMode,
       cleanUpWorkshopModStagingAfterGameExit: appState.cleanUpWorkshopModStagingAfterGameExit,

@@ -5772,6 +5772,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
       appData.moddersPrefix = appState.moddersPrefix || "";
+      appData.isRigidModelV2CompressionEnabled =
+        appState.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
       appData.isShowingSkillNodeSetNames = appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;

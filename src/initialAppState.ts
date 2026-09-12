@@ -43,6 +43,7 @@ const initialState = {
   isChangingGameProcessPriority: false,
   isFeaturesForModdersEnabled: false,
   moddersPrefix: "",
+  isRigidModelV2CompressionEnabled: true,
   nodeEditorFavorites: [],
   isCompatCheckingVanillaPacks: false,
   allMods: [],

@@ -161,6 +161,8 @@ interface AppData {
   isMakeUnitsGeneralsEnabled: boolean;
   isFeaturesForModdersEnabled: boolean;
   moddersPrefix: string;
+  /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
+  isRigidModelV2CompressionEnabled: boolean;
   isShowingSkillNodeSetNames: boolean;
   hideRepeatedKeyPrefixes: boolean;
   isShowingHiddenSkills: boolean;
@@ -241,6 +243,7 @@ const appData = {
   isMakeUnitsGeneralsEnabled: false,
   isFeaturesForModdersEnabled: false,
   moddersPrefix: "",
+  isRigidModelV2CompressionEnabled: true,
   isShowingSkillNodeSetNames: false,
   hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,
