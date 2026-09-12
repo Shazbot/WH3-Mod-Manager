@@ -13,7 +13,7 @@ const METHODS = ["NONE", "LZ4", "ZSTD", "UNKNOWN"];
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(scriptDirectory, "..");
-const defaultOutputPath = path.join(repositoryDirectory, "dumps", "vanilla-pack-compression-by-extension.csv");
+const defaultOutputPath = path.join(repositoryDirectory, "scripts", "out", "vanilla-pack-compression-by-extension.csv");
 
 const usage = () => {
   console.error("Usage: node scripts/analyze-vanilla-pack-compression.mjs <game-data-folder> [output.csv]");

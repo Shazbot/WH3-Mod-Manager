@@ -27,6 +27,11 @@ import type {
 import type { EsfMapResponse } from "./esfMap/types";
 import type { PackRowsForSave } from "./utility/packRowsForSave";
 import type { PackFileRenameEntry } from "./utility/packFileRenamePlan";
+import type {
+  CompressionAnalysisProgress,
+  CompressionAnalysisRequest,
+  CompressionAnalysisStartResponse,
+} from "./compressionAnalysis";
 
 console.log("IN PRELOAD");
 
@@ -145,6 +150,15 @@ const api = {
     ipcRenderer.invoke("translateAll", translationIdsWithOptions),
   translateAllStatic: (translationIds: Record<string, string | number>) =>
     ipcRenderer.invoke("translateAllStatic", translationIds),
+  startCompressionAnalysis: (request: CompressionAnalysisRequest): Promise<CompressionAnalysisStartResponse> =>
+    ipcRenderer.invoke("startCompressionAnalysis", request),
+  cancelCompressionAnalysis: () => ipcRenderer.send("cancelCompressionAnalysis"),
+  onCompressionAnalysisProgress: (
+    callback: (event: Electron.IpcRendererEvent, progress: CompressionAnalysisProgress) => void,
+  ) => {
+    ipcRenderer.on("compressionAnalysisProgress", callback);
+    return () => ipcRenderer.removeListener("compressionAnalysisProgress", callback);
+  },
   fromAppConfig: (callback: (event: Electron.IpcRendererEvent, config: ConfigForRenderer) => void) =>
     ipcRenderer.on("fromAppConfig", callback),
   failedReadingConfig: (callback: (event: Electron.IpcRendererEvent) => void) =>

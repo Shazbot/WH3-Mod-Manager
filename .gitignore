@@ -86,7 +86,7 @@ typings/
 .webpack/
 
 # Electron-Forge
-out/
+/out/
 
 .yarn/cache/
 

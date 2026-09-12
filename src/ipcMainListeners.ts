@@ -351,6 +351,12 @@ import { findGameProcessIds } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie, { type KeyedLookup } from "./utility/trie";
+import {
+  analyzeCompressionPacks,
+  type CompressionAnalysisProgress,
+  type CompressionAnalysisRequest,
+  type CompressionAnalysisResult,
+} from "./compressionAnalysis";
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
@@ -729,6 +735,7 @@ const getVisualsLocContribution = (pack: Pack): Array<[string, string]> => {
   return trie ? Object.entries(trie.getEntries()) : [];
 };
 const dbDuplicationCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
+const compressionAnalysisCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
 const globalSearchCancelStateByWebContentsId = new Map<
   number,
   { canceled: boolean; done?: Promise<GlobalSearchResponse> }
@@ -1433,6 +1440,31 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const log = (msg: string) => {
     mainWindow?.webContents.send("handleLog", msg);
     console.log(msg);
+  };
+  let vanillaCompressionCsv: string | undefined;
+  let vanillaCompressionCsvLoaded = false;
+  const getVanillaCompressionCsv = (): string | undefined => {
+    if (vanillaCompressionCsvLoaded) return vanillaCompressionCsv;
+    const candidates = [
+      nodePath.resolve(process.cwd(), "scripts/out/vanilla-pack-compression-by-extension.csv"),
+      nodePath.resolve(__dirname, "../scripts/out/vanilla-pack-compression-by-extension.csv"),
+      nodePath.resolve(__dirname, "../../scripts/out/vanilla-pack-compression-by-extension.csv"),
+      typeof process.resourcesPath === "string"
+        ? nodePath.join(process.resourcesPath, "scripts/out/vanilla-pack-compression-by-extension.csv")
+        : undefined,
+    ].filter((candidate): candidate is string => !!candidate);
+    for (const candidate of candidates) {
+      try {
+        vanillaCompressionCsv = fs.readFileSync(candidate, "utf8");
+        vanillaCompressionCsvLoaded = true;
+        return vanillaCompressionCsv;
+      } catch {
+        // Try the next development/packaged location.
+      }
+    }
+    // Cache the miss too; a packaged resource cannot appear while this process is running.
+    vanillaCompressionCsvLoaded = true;
+    return undefined;
   };
   const checkWorkshopStagingCleanupOnStartup = async (
     config: Pick<ConfigForRenderer, "currentGame" | "cleanUpWorkshopModStagingAfterGameExit" | "appFolderPaths">,
@@ -7907,6 +7939,115 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       };
     }
   });
+  ipcMain.on("cancelCompressionAnalysis", (event) => {
+    const state = compressionAnalysisCancelStateByWebContentsId.get(event.sender.id);
+    if (state) state.canceled = true;
+  });
+  ipcMain.handle(
+    "startCompressionAnalysis",
+    async (
+      event,
+      request: CompressionAnalysisRequest,
+    ): Promise<import("./compressionAnalysis").CompressionAnalysisStartResponse> => {
+      if (appData.currentGame !== "wh3") {
+        return { accepted: false, reason: "unsupportedGame" };
+      }
+      const requestedPackPaths = Array.isArray(request?.packPaths)
+        ? request.packPaths.filter((packPath): packPath is string => typeof packPath === "string")
+        : [];
+      const enabledMods = appData.enabledMods.filter((mod) => !mod.isDeleted && !!mod.path);
+      if (enabledMods.length === 0 || requestedPackPaths.length === 0) {
+        return { accepted: false, reason: "noEnabledMods" };
+      }
+      const webContentsId = event.sender.id;
+      if (compressionAnalysisCancelStateByWebContentsId.has(webContentsId)) {
+        return { accepted: false, busy: true, reason: "alreadyRunning" };
+      }
+      const normalizeRequestedPath = (packPath: string) => nodePath.resolve(packPath).toLowerCase();
+      const enabledPathSet = new Set(enabledMods.map((mod) => normalizeRequestedPath(mod.path)));
+      const vanillaPathSet = new Set(
+        appData.vanillaPacks
+          .map((pack) => normalizeRequestedPath(pack.path))
+          .concat(
+            [...appData.allVanillaPackNames].map((packName) => {
+              const dataFolder = appData.gamesToGameFolderPaths.wh3?.dataFolder;
+              return dataFolder ? normalizeRequestedPath(nodePath.join(dataFolder, packName)) : "";
+            }),
+          ),
+      );
+      const packPaths: string[] = [];
+      const seenPaths = new Set<string>();
+      for (const packPath of requestedPackPaths) {
+        const normalizedPath = normalizeRequestedPath(packPath);
+        if (
+          !enabledPathSet.has(normalizedPath) ||
+          vanillaPathSet.has(normalizedPath) ||
+          seenPaths.has(normalizedPath)
+        ) {
+          continue;
+        }
+        seenPaths.add(normalizedPath);
+        packPaths.push(packPath);
+      }
+      if (packPaths.length === 0) return { accepted: false, reason: "noEnabledMods" };
+
+      const cancelState = { canceled: false };
+      compressionAnalysisCancelStateByWebContentsId.set(webContentsId, cancelState);
+      const sendProgress = (progress: CompressionAnalysisProgress) => {
+        if (event.sender.isDestroyed()) return;
+        try {
+          event.sender.send("compressionAnalysisProgress", progress);
+        } catch {
+          // The renderer may close between the destroyed check and send.
+        }
+      };
+      try {
+        const result: CompressionAnalysisResult = await analyzeCompressionPacks(packPaths, {
+          isCanceled: () => cancelState.canceled || event.sender.isDestroyed(),
+          onProgress: sendProgress,
+          vanillaCsv: getVanillaCompressionCsv(),
+        });
+        return { accepted: true, result };
+      } catch (error) {
+        return {
+          accepted: true,
+          result: {
+            status: "error",
+            packs: [],
+            overall: {
+              currentSize: 0,
+              projectedSize: 0,
+              bytesSaved: 0,
+              wholePackPercentSaved: 0,
+              projectedSizeIncludingRigidModelV2: 0,
+              wholePackPercentSavedIncludingRigidModelV2: 0,
+              packCount: packPaths.length,
+              analyzedPackCount: 0,
+              testedCount: 0,
+              skippedCount: 0,
+              errorCount: 1,
+              acceptedCount: 0,
+              sampledRejectedCount: 0,
+              existing: {
+                NONE: { count: 0, storedBytes: 0 },
+                LZ4: { count: 0, storedBytes: 0 },
+                ZSTD: { count: 0, storedBytes: 0 },
+                UNKNOWN: { count: 0, storedBytes: 0 },
+              },
+              existingCounts: { NONE: 0, LZ4: 0, ZSTD: 0, UNKNOWN: 0 },
+              existingStoredBytes: { NONE: 0, LZ4: 0, ZSTD: 0, UNKNOWN: 0 },
+            },
+            requestedPackCount: requestedPackPaths.length,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        };
+      } finally {
+        if (compressionAnalysisCancelStateByWebContentsId.get(webContentsId) === cancelState) {
+          compressionAnalysisCancelStateByWebContentsId.delete(webContentsId);
+        }
+      }
+    },
+  );
   ipcMain.on("cancelGlobalSearch", (event) => {
     const state = globalSearchCancelStateByWebContentsId.get(event.sender.id);
     if (state) state.canceled = true;

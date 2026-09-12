@@ -11,6 +11,10 @@ declare global {
   }
 
   type VanillaDbCacheBuildProgress = import("./vanillaDbCache/progress").VanillaDbCacheBuildProgress;
+  type CompressionAnalysisProgress = import("./compressionAnalysis").CompressionAnalysisProgress;
+  type CompressionAnalysisRequest = import("./compressionAnalysis").CompressionAnalysisRequest;
+  type CompressionAnalysisResult = import("./compressionAnalysis").CompressionAnalysisResult;
+  type CompressionAnalysisStartResponse = import("./compressionAnalysis").CompressionAnalysisStartResponse;
 
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
 
