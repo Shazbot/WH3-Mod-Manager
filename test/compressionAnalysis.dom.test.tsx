@@ -109,7 +109,7 @@ describe("CompressionAnalysis", () => {
     expect(await screen.findByText("Overall")).toBeInTheDocument();
     expect(screen.getByText("example.pack")).toBeInTheDocument();
     expect(screen.getByText("10% saved")).toBeInTheDocument();
-    expect(screen.getByText("(1,000 B)")).toBeInTheDocument();
+    expect(screen.getByText(/\(1[.,\s\u00a0\u202f]000 B\)/)).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Compression type" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "ZSTD" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "4 KiB" })).toBeInTheDocument();
@@ -313,7 +313,7 @@ describe("CompressionAnalysis", () => {
     );
 
     await screen.findByText("Overall");
-    expect(screen.getAllByText("Projected size: 8.3 KiB")).toHaveLength(2);
+    expect(screen.getAllByText(/Projected size: 8[.,]3 KiB/)).toHaveLength(2);
     expect(screen.getAllByText("Accepted: 2")).toHaveLength(2);
     expect(screen.getByText("15% saved")).toBeInTheDocument();
 
@@ -326,7 +326,7 @@ describe("CompressionAnalysis", () => {
         <CompressionAnalysis {...commonProps} isRigidModelV2CompressionEnabled={false} />
       </LocalizationContext.Provider>,
     );
-    expect(screen.getAllByText("Projected size: 8.8 KiB")).toHaveLength(2);
+    expect(screen.getAllByText(/Projected size: 8[.,]8 KiB/)).toHaveLength(2);
     expect(screen.getAllByText("Accepted: 1")).toHaveLength(2);
     expect(screen.getByText("10% saved")).toBeInTheDocument();
   });
