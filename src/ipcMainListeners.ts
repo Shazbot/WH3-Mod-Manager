@@ -12643,6 +12643,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ? startGameOptions.workshopModStagingMode
             : "disabled";
         const cleanUpWorkshopModStagingAfterGameExit = !!startGameOptions.cleanUpWorkshopModStagingAfterGameExit;
+        const compressWorkshopMods =
+          appData.currentGame === "wh3" &&
+          workshopModStagingMode === "copy" &&
+          startGameOptions.compressWorkshopModsOnStart === true;
         let realDataPackNames = new Set<string>();
         let stagedWorkshopModNames = new Set<string>();
         if (workshopModStagingMode !== "disabled") {
@@ -12655,6 +12659,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             realDataPackNames,
             canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
             recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
+            compressMods: compressWorkshopMods,
+            includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
           });
           stagedWorkshopModNames = new Set(workshopStagingResult.stagedModNames.map((name) => name.toLowerCase()));
           log(
@@ -12663,6 +12669,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 workshopStagingResult.changedEntries.length === 1 ? "y" : "ies"
               }.`,
           );
+          for (const warning of workshopStagingResult.compressionWarnings) {
+            const localizedWarning = i18n.t("automaticWorkshopStagingWarning", { warning });
+            console.warn(localizedWarning);
+            mainWindow?.webContents.send("handleLog", localizedWarning);
+            mainWindow?.webContents.send("addToast", {
+              type: "warning",
+              messages: [localizedWarning],
+              startTime: Date.now(),
+            } as Toast);
+          }
         }
         const moddingFolderPacks = await createModdingFolderPacks(
           nodePath.join(dataFolder, "modding"),

@@ -214,6 +214,7 @@ declare global {
     currentlyReadingMod: ModReadingInfo | undefined;
     isClosedOnPlay: boolean;
     workshopModStagingMode: WorkshopModStagingMode;
+    compressWorkshopModsOnStart: boolean;
     cleanUpWorkshopModStagingAfterGameExit: boolean;
     /** Read the game's English locs even when the app is set to another language. */
     isUsingEnglishLocalizations: boolean;
@@ -394,6 +395,7 @@ declare global {
     | "isRigidModelV2CompressionEnabled"
     | "isClosedOnPlay"
     | "workshopModStagingMode"
+    | "compressWorkshopModsOnStart"
     | "cleanUpWorkshopModStagingAfterGameExit"
     | "isUsingEnglishLocalizations"
     | "categories"
@@ -478,6 +480,7 @@ declare global {
       AppState,
       | "isClosedOnPlay"
       | "workshopModStagingMode"
+      | "compressWorkshopModsOnStart"
       | "cleanUpWorkshopModStagingAfterGameExit"
       | "packDataOverwrites"
       | "userFlowOptions"

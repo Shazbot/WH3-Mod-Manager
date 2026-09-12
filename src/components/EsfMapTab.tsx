@@ -2228,52 +2228,52 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       </div>
                     ))}
                   </div>
-                  {isEditingOwnership && (
-                    <div className="pointer-events-none absolute inset-0 z-20">
-                      <div
-                        className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
-                        role="status"
-                      >
-                        {brushFactionDetails?.flagUrl && (
-                          <img src={brushFactionDetails.flagUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
-                        )}
-                        <span>
-                          {brushFaction
-                            ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
-                                faction: brushFactionDetails?.label ?? brushFaction,
-                              })
-                            : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
-                        </span>
-                      </div>
-                      <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)] rounded border border-gray-600/80 bg-gray-950/90 px-3 py-2 text-xs text-gray-300 shadow-lg backdrop-blur-sm">
-                        <div className="mb-1 font-medium text-gray-100">
-                          {mapText("mapOwnershipMouseActions", "Mouse actions")}
-                        </div>
-                        <div className="flex flex-col gap-1 text-[0.7rem]">
-                          <span className="flex items-center gap-1 whitespace-nowrap">
-                            <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
-                              Ctrl + left click
-                            </kbd>
-                            {mapText("mapOwnershipSelectFaction", "Select faction")}
-                          </span>
-                          <span className="flex items-center gap-1 whitespace-nowrap">
-                            <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
-                              Left click
-                            </kbd>
-                            {mapText("mapOwnershipAssignFaction", "Give region")}
-                          </span>
-                          <span className="flex items-center gap-1 whitespace-nowrap">
-                            <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
-                              Right click
-                            </kbd>
-                            {mapText("mapOwnershipClearRegion", "Clear ownership")}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
+              {isEditingOwnership && (
+                <div className="pointer-events-none absolute inset-0 z-20">
+                  <div
+                    className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
+                    role="status"
+                  >
+                    {brushFactionDetails?.flagUrl && (
+                      <img src={brushFactionDetails.flagUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
+                    )}
+                    <span>
+                      {brushFaction
+                        ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
+                            faction: brushFactionDetails?.label ?? brushFaction,
+                          })
+                        : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
+                    </span>
+                  </div>
+                  <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)] rounded border border-gray-600/80 bg-gray-950/90 px-3 py-2 text-xs text-gray-300 shadow-lg backdrop-blur-sm">
+                    <div className="mb-1 font-medium text-gray-100">
+                      {mapText("mapOwnershipMouseActions", "Mouse actions")}
+                    </div>
+                    <div className="flex flex-col gap-1 text-[0.7rem]">
+                      <span className="flex items-center gap-1 whitespace-nowrap">
+                        <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                          Ctrl + left click
+                        </kbd>
+                        {mapText("mapOwnershipSelectFaction", "Select faction")}
+                      </span>
+                      <span className="flex items-center gap-1 whitespace-nowrap">
+                        <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                          Left click
+                        </kbd>
+                        {mapText("mapOwnershipAssignFaction", "Give region")}
+                      </span>
+                      <span className="flex items-center gap-1 whitespace-nowrap">
+                        <kbd className="rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[0.65rem] text-gray-200">
+                          Right click
+                        </kbd>
+                        {mapText("mapOwnershipClearRegion", "Clear ownership")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

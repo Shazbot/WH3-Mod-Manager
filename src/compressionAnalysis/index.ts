@@ -3,3 +3,4 @@ export * from "./policy";
 export * from "./vanillaGuardrail";
 export * from "./analyzer";
 export * from "./compressor";
+export * from "./stagingCompressor";

@@ -84,6 +84,7 @@ const Sidebar = memo(() => {
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
+  const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
     (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
   );
@@ -190,6 +191,7 @@ const Sidebar = memo(() => {
               isAutoStartCustomBattleEnabled,
               isClosedOnPlay,
               workshopModStagingMode,
+              compressWorkshopModsOnStart,
               cleanUpWorkshopModStagingAfterGameExit,
               packDataOverwrites,
               userFlowOptions,
@@ -206,6 +208,7 @@ const Sidebar = memo(() => {
         isAutoStartCustomBattleEnabled,
         isClosedOnPlay,
         workshopModStagingMode,
+        compressWorkshopModsOnStart,
         cleanUpWorkshopModStagingAfterGameExit,
         packDataOverwrites,
         userFlowOptions,
@@ -217,6 +220,7 @@ const Sidebar = memo(() => {
       isAutoStartCustomBattleEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
+      compressWorkshopModsOnStart,
       cleanUpWorkshopModStagingAfterGameExit,
       isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled,
@@ -264,6 +268,7 @@ const Sidebar = memo(() => {
                 isAutoStartCustomBattleEnabled,
                 isClosedOnPlay,
                 workshopModStagingMode,
+                compressWorkshopModsOnStart,
                 cleanUpWorkshopModStagingAfterGameExit,
                 packDataOverwrites,
                 userFlowOptions,
@@ -285,6 +290,7 @@ const Sidebar = memo(() => {
           isAutoStartCustomBattleEnabled,
           isClosedOnPlay,
           workshopModStagingMode,
+          compressWorkshopModsOnStart,
           cleanUpWorkshopModStagingAfterGameExit,
           packDataOverwrites,
           userFlowOptions,
@@ -297,6 +303,7 @@ const Sidebar = memo(() => {
       isAutoStartCustomBattleEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
+      compressWorkshopModsOnStart,
       cleanUpWorkshopModStagingAfterGameExit,
       isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled,

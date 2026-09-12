@@ -1195,6 +1195,8 @@ const appSlice = createSlice({
       state.workshopModStagingMode = ["disabled", "copy", "symlink"].includes(fromConfigAppState.workshopModStagingMode)
         ? fromConfigAppState.workshopModStagingMode
         : "disabled";
+      state.compressWorkshopModsOnStart =
+        state.workshopModStagingMode === "copy" && !!fromConfigAppState.compressWorkshopModsOnStart;
       state.cleanUpWorkshopModStagingAfterGameExit = !!fromConfigAppState.cleanUpWorkshopModStagingAfterGameExit;
       state.isUsingEnglishLocalizations = !!fromConfigAppState.isUsingEnglishLocalizations;
       state.isCompatCheckingVanillaPacks =
@@ -1577,11 +1579,17 @@ const appSlice = createSlice({
     setWorkshopModStagingMode: (state: AppState, action: PayloadAction<WorkshopModStagingMode>) => {
       if (!(["disabled", "copy", "symlink"] as WorkshopModStagingMode[]).includes(action.payload)) {
         state.workshopModStagingMode = "disabled";
+        state.compressWorkshopModsOnStart = false;
         state.cleanUpWorkshopModStagingAfterGameExit = false;
         return;
       }
       state.workshopModStagingMode = action.payload;
+      if (action.payload !== "copy") state.compressWorkshopModsOnStart = false;
       if (action.payload === "disabled") state.cleanUpWorkshopModStagingAfterGameExit = false;
+    },
+    toggleCompressWorkshopModsOnStart: (state: AppState) => {
+      if (state.currentGame !== "wh3" || state.workshopModStagingMode !== "copy") return;
+      state.compressWorkshopModsOnStart = !state.compressWorkshopModsOnStart;
     },
     toggleCleanUpWorkshopModStagingAfterGameExit: (state: AppState) => {
       if (state.workshopModStagingMode === "disabled") {
@@ -2038,6 +2046,7 @@ export const {
   toggleAreCategoryThumbnailsEnabled,
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
+  toggleCompressWorkshopModsOnStart,
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   setIsDev,

@@ -9,6 +9,8 @@ import {
   cleanupWorkshopModStaging,
   stageWorkshopMods,
   WORKSHOP_MOD_STAGING_FOLDER,
+  WORKSHOP_MOD_STAGING_MANIFEST_FILENAME,
+  WORKSHOP_MOD_STAGING_MANIFEST_VERSION,
   WorkshopModStagingError,
 } from "../src/utility/workshopModStaging";
 
@@ -25,6 +27,22 @@ const writeSourceMod = (directory: string, name: string, contents: string) => {
   fs.writeFileSync(sourcePath, contents);
   return sourcePath;
 };
+
+const makeStagingCompressionRunner =
+  (calls: Array<{ packPath: string; includeRigidModelV2: boolean }>) =>
+  async (packPath: string, options: { includeRigidModelV2: boolean }) => {
+    calls.push({ packPath, includeRigidModelV2: options.includeRigidModelV2 });
+    const original = fs.readFileSync(packPath);
+    fs.writeFileSync(packPath, Buffer.concat([Buffer.from("compressed:"), original]));
+    return {
+      status: "compressed" as const,
+      success: true,
+      packPath,
+      originalSize: original.length,
+      compressedSize: original.length + Buffer.byteLength("compressed:"),
+      compressedFileCount: 1,
+    };
+  };
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -103,6 +121,157 @@ describe("Workshop mod staging", () => {
     });
     expect(changedPlan.entries[0].action).toBe("copy");
     expect(changedPlan.requiredBytes).toBe(Buffer.byteLength("alpha-updated"));
+  });
+
+  it("compresses only the staged copy and reuses its manifest on the next launch", async () => {
+    const gameFolder = makeDirectory();
+    const sourcePath = writeSourceMod(makeDirectory(), "alpha.pack", "alpha");
+    const calls: Array<{ packPath: string; includeRigidModelV2: boolean }> = [];
+    const compressionRunner = makeStagingCompressionRunner(calls);
+
+    const first = await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      compressMods: true,
+      includeRigidModelV2: true,
+      compressionRunner,
+      workshopMods: [{ name: "alpha.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 100,
+    });
+    const destinationPath = path.join(first.destinationPath, "alpha.pack");
+    const manifestPath = path.join(first.destinationPath, WORKSHOP_MOD_STAGING_MANIFEST_FILENAME);
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+
+    expect(fs.readFileSync(sourcePath, "utf8")).toBe("alpha");
+    expect(fs.readFileSync(destinationPath, "utf8")).toBe("compressed:alpha");
+    expect(first.compressionResults[0]).toMatchObject({ status: "compressed", compressedFileCount: 1 });
+    expect(first.compressionWarnings).toEqual([]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].includeRigidModelV2).toBe(true);
+    expect(manifest).toMatchObject({
+      version: WORKSHOP_MOD_STAGING_MANIFEST_VERSION,
+      policy: { mode: "copy", compressMods: true, includeRigidModelV2: true },
+      entries: { "alpha.pack": { compressed: true, compressionStatus: "compressed" } },
+    });
+
+    const second = await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      compressMods: true,
+      includeRigidModelV2: true,
+      compressionRunner,
+      workshopMods: [{ name: "alpha.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 0,
+    });
+    expect(second.entries[0].action).toBe("unchanged");
+    expect(second.requiredBytes).toBe(0);
+    expect(second.compressionResults).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("restores the source-identical copy when compression is disabled after a compressed run", async () => {
+    const gameFolder = makeDirectory();
+    const sourcePath = writeSourceMod(makeDirectory(), "alpha.pack", "alpha");
+    const compressionRunner = makeStagingCompressionRunner([]);
+
+    await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      compressMods: true,
+      compressionRunner,
+      workshopMods: [{ name: "alpha.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 100,
+    });
+    const restored = await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      compressMods: false,
+      workshopMods: [{ name: "alpha.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 100,
+    });
+
+    expect(restored.entries[0].action).toBe("copy");
+    expect(fs.readFileSync(path.join(restored.destinationPath, "alpha.pack"), "utf8")).toBe("alpha");
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(restored.destinationPath, WORKSHOP_MOD_STAGING_MANIFEST_FILENAME), "utf8"),
+    );
+    expect(manifest.policy).toMatchObject({ compressMods: false, includeRigidModelV2: false });
+    expect(manifest.entries["alpha.pack"]).toMatchObject({ compressed: false, compressionStatus: "notRequested" });
+  });
+
+  it("leaves a failed compression retryable and reports a warning without touching the source", async () => {
+    const gameFolder = makeDirectory();
+    const sourcePath = writeSourceMod(makeDirectory(), "alpha.pack", "alpha");
+    let attempts = 0;
+    const compressionRunner = async (packPath: string) => {
+      attempts++;
+      if (attempts === 1) {
+        return {
+          status: "failed" as const,
+          success: false,
+          packPath,
+          compressedFileCount: 0,
+          error: "codec unavailable",
+        };
+      }
+      const original = fs.readFileSync(packPath);
+      fs.writeFileSync(packPath, Buffer.concat([Buffer.from("compressed:"), original]));
+      return {
+        status: "compressed" as const,
+        success: true,
+        packPath,
+        compressedFileCount: 1,
+      };
+    };
+
+    const first = await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      compressMods: true,
+      compressionRunner,
+      workshopMods: [{ name: "alpha.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 100,
+    });
+    expect(first.compressionWarnings).toContain("alpha.pack: codec unavailable");
+    expect(fs.readFileSync(sourcePath, "utf8")).toBe("alpha");
+    expect(fs.readFileSync(path.join(first.destinationPath, "alpha.pack"), "utf8")).toBe("alpha");
+
+    const second = await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      compressMods: true,
+      compressionRunner,
+      workshopMods: [{ name: "alpha.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 100,
+    });
+    expect(second.entries[0].action).toBe("copy");
+    expect(second.compressionResults[0].status).toBe("compressed");
+    expect(attempts).toBe(2);
+    expect(fs.readFileSync(sourcePath, "utf8")).toBe("alpha");
+  });
+
+  it("ignores a compression request in symlink mode and explains the policy", async () => {
+    const gameFolder = makeDirectory();
+    const sourcePath = writeSourceMod(makeDirectory(), "alpha.pack", "alpha");
+    const calls: string[] = [];
+
+    const result = await stageWorkshopMods({
+      gameFolder,
+      mode: "symlink",
+      compressMods: true,
+      compressionRunner: async (packPath) => {
+        calls.push(packPath);
+        throw new Error("should not run");
+      },
+      workshopMods: [{ name: "alpha.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 0,
+    });
+
+    expect(result.compressionWarnings).toContain(
+      'Workshop mod compression is only available with "copy mod files" staging.',
+    );
+    expect(calls).toEqual([]);
+    expect(fs.lstatSync(path.join(result.destinationPath, "alpha.pack")).isSymbolicLink()).toBe(true);
   });
 
   it("rebuilds cached entries when cleanup is enabled and counts reclaimable destination space", async () => {

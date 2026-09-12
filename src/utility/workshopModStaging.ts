@@ -2,7 +2,18 @@ import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
 
+import {
+  analyzeCompressionPacks,
+  compressStagedPack,
+  type CompressionCodecs,
+  type CompressStagedPackResult,
+} from "../compressionAnalysis";
+import type { VanillaCompressionExtensionRecord } from "../compressionAnalysis/vanillaGuardrail";
+
 export const WORKSHOP_MOD_STAGING_FOLDER = "whmm_copied_mods";
+export const WORKSHOP_MOD_STAGING_MANIFEST_FILENAME = ".whmm-staging-manifest.json";
+export const WORKSHOP_MOD_STAGING_MANIFEST_VERSION = 1;
+export const WORKSHOP_MOD_STAGING_POLICY_ID = "workshop-mod-staging-v2";
 
 export type WorkshopModStagingMode = "disabled" | "copy" | "symlink";
 
@@ -14,26 +25,89 @@ export interface WorkshopStagingMod {
 
 export type WorkshopStagingAction = "copy" | "symlink" | "unchanged";
 
+export interface WorkshopStagingFingerprint {
+  size: number;
+  mtimeMs: number;
+}
+
+export type WorkshopStagingCompressionStatus = "compressed" | "noEligibleFiles" | "failed";
+
+export interface WorkshopStagingCompressionResult {
+  name: string;
+  status: WorkshopStagingCompressionStatus;
+  success: boolean;
+  compressedFileCount: number;
+  originalSize?: number;
+  compressedSize?: number;
+  warnings: string[];
+}
+
+export interface WorkshopStagingCompressionRunnerOptions {
+  includeRigidModelV2: boolean;
+  codecs?: Partial<CompressionCodecs>;
+}
+
+/**
+ * Overrides the default analyzer/compressor in focused tests and embedders. The default runner
+ * only receives a path inside the manager-owned staging directory, so it cannot mutate a Workshop
+ * source file.
+ */
+export type WorkshopStagingCompressionRunner = (
+  packPath: string,
+  options: WorkshopStagingCompressionRunnerOptions,
+) => Promise<CompressStagedPackResult | WorkshopStagingCompressionResult>;
+
+export interface WorkshopStagingManifestPolicy {
+  id: string;
+  mode: Exclude<WorkshopModStagingMode, "disabled">;
+  compressMods: boolean;
+  includeRigidModelV2: boolean;
+}
+
+export interface WorkshopStagingManifestEntry {
+  name: string;
+  sourcePath: string;
+  sourceFingerprint: WorkshopStagingFingerprint;
+  destinationFingerprint: WorkshopStagingFingerprint;
+  /** `true` means the destination was transformed; false means it is a source-identical copy. */
+  compressed: boolean;
+  /** A stable no-op is cacheable; failures are deliberately not written to the manifest. */
+  compressionStatus: "compressed" | "noEligibleFiles" | "notRequested";
+}
+
+export interface WorkshopStagingManifest {
+  version: number;
+  policy: WorkshopStagingManifestPolicy;
+  entries: Record<string, WorkshopStagingManifestEntry>;
+}
+
 export interface WorkshopStagingPlanEntry {
   name: string;
   sourcePath: string;
   destinationPath: string;
   sourceSize: number;
   sourceMtimeMs: number;
+  sourceFingerprint: WorkshopStagingFingerprint;
   action: WorkshopStagingAction;
 }
 
 export interface WorkshopStagingPlan {
   destinationPath: string;
+  manifestPath: string;
   entries: WorkshopStagingPlanEntry[];
   stagedModNames: string[];
   requiredBytes: number;
   availableBytes: number;
   recreateDestination: boolean;
+  mode: Exclude<WorkshopModStagingMode, "disabled">;
+  compressMods: boolean;
+  includeRigidModelV2: boolean;
+  compressionWarnings: string[];
 }
 
 export interface WorkshopStagingResult extends WorkshopStagingPlan {
   changedEntries: WorkshopStagingPlanEntry[];
+  compressionResults: WorkshopStagingCompressionResult[];
 }
 
 export type WorkshopModStagingErrorCode =
@@ -71,6 +145,18 @@ export interface BuildWorkshopStagingPlanOptions {
   platform?: NodeJS.Platform;
   /** Cleanup-enabled launches rebuild the manager-owned directory instead of reusing cached entries. */
   recreateDestination?: boolean;
+  /** Compress copied packs after staging. Ignored for symlink mode. */
+  compressMods?: boolean;
+  /** Include the conservative `.rigid_model_v2` compression path when compressing. */
+  includeRigidModelV2?: boolean;
+  /** Optional codec overrides for staging compression tests/embedders. */
+  compressionCodecs?: Partial<CompressionCodecs>;
+  /** Optional checked-in vanilla guardrail override for staging compression tests/embedders. */
+  compressionVanillaCsv?: string;
+  /** Optional parsed vanilla guardrail override for staging compression tests/embedders. */
+  compressionVanillaRecords?: Map<string, VanillaCompressionExtensionRecord>;
+  /** Optional staging compressor override for tests/embedders. */
+  compressionRunner?: WorkshopStagingCompressionRunner;
 }
 
 export type StageWorkshopModsOptions = BuildWorkshopStagingPlanOptions;
@@ -109,6 +195,116 @@ const comparablePath = (path: string, platform = process.platform) => {
 };
 
 const isSafePackName = (name: string) => nodePath.basename(name) === name && name !== "." && name !== "..";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+const isFingerprint = (value: unknown): value is WorkshopStagingFingerprint =>
+  isRecord(value) && isFiniteNumber(value.size) && value.size >= 0 && isFiniteNumber(value.mtimeMs);
+
+const isManifestEntry = (value: unknown): value is WorkshopStagingManifestEntry =>
+  isRecord(value) &&
+  typeof value.name === "string" &&
+  typeof value.sourcePath === "string" &&
+  isFingerprint(value.sourceFingerprint) &&
+  isFingerprint(value.destinationFingerprint) &&
+  typeof value.compressed === "boolean" &&
+  (value.compressionStatus === "compressed" ||
+    value.compressionStatus === "noEligibleFiles" ||
+    value.compressionStatus === "notRequested");
+
+const isManifestPolicy = (value: unknown): value is WorkshopStagingManifestPolicy =>
+  isRecord(value) &&
+  typeof value.id === "string" &&
+  (value.mode === "copy" || value.mode === "symlink") &&
+  typeof value.compressMods === "boolean" &&
+  typeof value.includeRigidModelV2 === "boolean";
+
+const isManifest = (value: unknown): value is WorkshopStagingManifest => {
+  if (!isRecord(value) || value.version !== WORKSHOP_MOD_STAGING_MANIFEST_VERSION || !isManifestPolicy(value.policy)) {
+    return false;
+  }
+  if (!isRecord(value.entries)) return false;
+  return Object.values(value.entries).every(isManifestEntry);
+};
+
+const fingerprintMatches = (first: WorkshopStagingFingerprint, second: WorkshopStagingFingerprint) =>
+  first.size === second.size && sameModificationTime(first.mtimeMs, second.mtimeMs);
+
+const fingerprintForStats = (stats: fs.Stats): WorkshopStagingFingerprint => ({
+  size: stats.size,
+  mtimeMs: stats.mtimeMs,
+});
+
+interface WorkshopStagingManifestRead {
+  manifest?: WorkshopStagingManifest;
+  present: boolean;
+  warning?: string;
+}
+
+const manifestPathFor = (destinationPath: string) =>
+  nodePath.join(destinationPath, WORKSHOP_MOD_STAGING_MANIFEST_FILENAME);
+
+const readWorkshopStagingManifest = async (manifestPath: string): Promise<WorkshopStagingManifestRead> => {
+  let contents: string;
+  try {
+    contents = await fs.promises.readFile(manifestPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { present: false };
+    return {
+      present: true,
+      warning: `Unable to read Workshop staging manifest ${manifestPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(contents);
+    if (!isManifest(parsed)) {
+      return {
+        present: true,
+        warning: `Ignoring invalid Workshop staging manifest ${manifestPath}; staged packs will be refreshed.`,
+      };
+    }
+    return { manifest: parsed, present: true };
+  } catch (error) {
+    return {
+      present: true,
+      warning: `Ignoring unreadable Workshop staging manifest ${manifestPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+};
+
+const writeWorkshopStagingManifestAtomically = async (
+  manifestPath: string,
+  manifest: WorkshopStagingManifest,
+): Promise<void> => {
+  const temporaryPath = `${manifestPath}.${randomUUID()}.tmp`;
+  try {
+    await fs.promises.writeFile(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    try {
+      await fs.promises.rename(temporaryPath, manifestPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST" && code !== "EPERM" && code !== "ENOTEMPTY") throw error;
+      // Windows does not replace an existing file with rename. Remove only the known manifest
+      // path, then complete the same-directory rename; the temp file is never exposed as the
+      // manifest itself.
+      await fs.promises.rm(manifestPath, { force: true });
+      await fs.promises.rename(temporaryPath, manifestPath);
+    }
+  } finally {
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+};
 
 const readDestination = async (destinationPath: string): Promise<fs.Stats | undefined> => {
   try {
@@ -187,6 +383,47 @@ const dedupeWorkshopMods = (mods: WorkshopStagingMod[]) => {
   });
 };
 
+const manifestEntryFor = (manifest: WorkshopStagingManifest | undefined, name: string) =>
+  manifest?.entries[comparableName(name)];
+
+const manifestPolicyMatches = (
+  policy: WorkshopStagingManifestPolicy,
+  mode: Exclude<WorkshopModStagingMode, "disabled">,
+  compressMods: boolean,
+  includeRigidModelV2: boolean,
+) =>
+  policy.id === WORKSHOP_MOD_STAGING_POLICY_ID &&
+  policy.mode === mode &&
+  policy.compressMods === compressMods &&
+  policy.includeRigidModelV2 === includeRigidModelV2;
+
+const manifestEntryCanBeReused = (
+  manifestRead: WorkshopStagingManifestRead,
+  policy: WorkshopStagingManifestPolicy,
+  name: string,
+  sourcePath: string,
+  sourceFingerprint: WorkshopStagingFingerprint,
+  destinationFingerprint: WorkshopStagingFingerprint | undefined,
+  platform: NodeJS.Platform,
+) => {
+  if (
+    !manifestRead.manifest ||
+    !manifestPolicyMatches(manifestRead.manifest.policy, policy.mode, policy.compressMods, policy.includeRigidModelV2)
+  ) {
+    return false;
+  }
+  const entry = manifestEntryFor(manifestRead.manifest, name);
+  if (!entry || !destinationFingerprint) return false;
+  if (entry.name.toLowerCase() !== name.toLowerCase()) return false;
+  if (comparablePath(entry.sourcePath, platform) !== comparablePath(sourcePath, platform)) return false;
+  if (!fingerprintMatches(entry.sourceFingerprint, sourceFingerprint)) return false;
+  if (!fingerprintMatches(entry.destinationFingerprint, destinationFingerprint)) return false;
+  if (policy.compressMods) {
+    return entry.compressed ? entry.compressionStatus === "compressed" : entry.compressionStatus === "noEligibleFiles";
+  }
+  return !entry.compressed && entry.compressionStatus === "notRequested";
+};
+
 /**
  * Builds the complete plan without creating the destination folder or changing any staging entry.
  * This separation is what lets callers reject an insufficient disk before any staging mutation.
@@ -200,8 +437,23 @@ export const buildWorkshopStagingPlan = async ({
   canCreateSymbolicLinks = true,
   platform = process.platform,
   recreateDestination = false,
+  compressMods = false,
+  includeRigidModelV2 = false,
 }: BuildWorkshopStagingPlanOptions): Promise<WorkshopStagingPlan> => {
   const destinationPath = nodePath.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
+  const manifestPath = manifestPathFor(destinationPath);
+  const compressionEnabled = mode === "copy" && compressMods;
+  const effectiveIncludeRigidModelV2 = compressionEnabled && includeRigidModelV2;
+  const policy: WorkshopStagingManifestPolicy = {
+    id: WORKSHOP_MOD_STAGING_POLICY_ID,
+    mode,
+    compressMods: compressionEnabled,
+    includeRigidModelV2: effectiveIncludeRigidModelV2,
+  };
+  const compressionWarnings: string[] = [];
+  if (compressMods && mode !== "copy") {
+    compressionWarnings.push('Workshop mod compression is only available with "copy mod files" staging.');
+  }
   if (mode === "symlink" && platform === "win32" && !canCreateSymbolicLinks) {
     throw new WorkshopModStagingError(
       "SYMLINK_UNAVAILABLE",
@@ -215,6 +467,10 @@ export const buildWorkshopStagingPlan = async ({
     workshopMods.filter((mod) => mod.isEnabled && !selectedDataNames.has(comparableName(mod.name))),
   );
   await validateDestinationDirectory(destinationPath);
+
+  const manifestRead: WorkshopStagingManifestRead =
+    mode === "copy" ? await readWorkshopStagingManifest(manifestPath) : { present: false };
+  if (manifestRead.warning) compressionWarnings.push(manifestRead.warning);
 
   const entries: WorkshopStagingPlanEntry[] = [];
   for (const mod of selectedMods) {
@@ -233,6 +489,7 @@ export const buildWorkshopStagingPlan = async ({
 
     const destinationPackPath = nodePath.join(destinationPath, mod.name);
     const destinationStats = recreateDestination ? undefined : await readDestination(destinationPackPath);
+    const sourceFingerprint = fingerprintForStats(sourceStats);
     let action: WorkshopStagingAction = "copy";
 
     if (mode === "symlink") {
@@ -241,14 +498,27 @@ export const buildWorkshopStagingPlan = async ({
         (await hasCorrectSymbolicLinkTarget(destinationPackPath, mod.path, destinationStats, platform))
           ? "unchanged"
           : "symlink";
-    } else if (
-      destinationStats &&
-      !destinationStats.isSymbolicLink() &&
-      destinationStats.isFile() &&
-      destinationStats.size === sourceStats.size &&
-      sameModificationTime(destinationStats.mtimeMs, sourceStats.mtimeMs)
-    ) {
-      action = "unchanged";
+    } else if (destinationStats && !destinationStats.isSymbolicLink() && destinationStats.isFile()) {
+      const destinationFingerprint = fingerprintForStats(destinationStats);
+      if (manifestRead.present) {
+        if (
+          manifestEntryCanBeReused(
+            manifestRead,
+            policy,
+            mod.name,
+            mod.path,
+            sourceFingerprint,
+            destinationFingerprint,
+            platform,
+          )
+        ) {
+          action = "unchanged";
+        }
+      } else if (!compressionEnabled && fingerprintMatches(sourceFingerprint, destinationFingerprint)) {
+        // Legacy staging folders did not have a manifest. A stat match is safe for the original
+        // uncompressed copy mode and the first successful run will migrate it to the manifest.
+        action = "unchanged";
+      }
     }
 
     entries.push({
@@ -257,6 +527,7 @@ export const buildWorkshopStagingPlan = async ({
       destinationPath: destinationPackPath,
       sourceSize: sourceStats.size,
       sourceMtimeMs: sourceStats.mtimeMs,
+      sourceFingerprint,
       action,
     });
   }
@@ -267,11 +538,16 @@ export const buildWorkshopStagingPlan = async ({
 
   return {
     destinationPath,
+    manifestPath,
     entries,
     stagedModNames: entries.map((entry) => entry.name),
     requiredBytes,
     availableBytes,
     recreateDestination,
+    mode,
+    compressMods: compressionEnabled,
+    includeRigidModelV2: effectiveIncludeRigidModelV2,
+    compressionWarnings,
   };
 };
 
@@ -335,20 +611,260 @@ const copyFileAtomically = async (entry: WorkshopStagingPlanEntry) => {
   }
 };
 
-const executeWorkshopStagingPlan = async (plan: WorkshopStagingPlan) => {
+const uniqueWarnings = (warnings: Iterable<string>) => {
+  const seen = new Set<string>();
+  return [...warnings].filter((warning) => {
+    if (seen.has(warning)) return false;
+    seen.add(warning);
+    return true;
+  });
+};
+
+const defaultWorkshopStagingCompressionRunner = async (
+  packPath: string,
+  options: WorkshopStagingCompressionRunnerOptions & {
+    vanillaCsv?: string;
+    vanillaRecords?: Map<string, VanillaCompressionExtensionRecord>;
+  },
+): Promise<WorkshopStagingCompressionResult> => {
+  let analysisResult;
+  try {
+    analysisResult = await analyzeCompressionPacks([packPath], {
+      codecs: options.codecs,
+      vanillaCsv: options.vanillaCsv,
+      vanillaRecords: options.vanillaRecords,
+    });
+  } catch (error) {
+    return {
+      name: nodePath.basename(packPath),
+      status: "failed",
+      success: false,
+      compressedFileCount: 0,
+      warnings: [error instanceof Error ? error.message : String(error)],
+    };
+  }
+
+  const analysis = analysisResult.packs[0];
+  if (!analysis) {
+    return {
+      name: nodePath.basename(packPath),
+      status: "failed",
+      success: false,
+      compressedFileCount: 0,
+      warnings: [analysisResult.error || "The staged pack could not be analyzed."],
+    };
+  }
+
+  const hasEligibleFile = analysis.fileResults.some(
+    (file) =>
+      file.status === "accepted" && !!file.selectedCodec && (options.includeRigidModelV2 || !file.isRigidModelV2),
+  );
+  if (analysis.errorCount > 0 && !hasEligibleFile) {
+    const firstFileError = analysis.fileResults.find((file) => file.error)?.error;
+    return {
+      name: nodePath.basename(packPath),
+      status: "failed",
+      success: false,
+      compressedFileCount: 0,
+      warnings: [analysis.errors[0] || firstFileError || "All eligible file compression checks failed."],
+    };
+  }
+
+  const result = await compressStagedPack(packPath, analysis, {
+    includeRigidModelV2: options.includeRigidModelV2,
+    codecs: options.codecs,
+  });
+  return {
+    name: nodePath.basename(packPath),
+    status: result.status,
+    success: result.success,
+    compressedFileCount: result.compressedFileCount,
+    originalSize: result.originalSize,
+    compressedSize: result.compressedSize,
+    warnings:
+      result.status === "failed" ? [result.error || analysis.errors[0] || "Staged pack compression failed."] : [],
+  };
+};
+
+const normalizeCompressionResult = (
+  name: string,
+  result: CompressStagedPackResult | WorkshopStagingCompressionResult,
+): WorkshopStagingCompressionResult => {
+  const warnings = "warnings" in result && Array.isArray(result.warnings) ? result.warnings : [];
+  const status: WorkshopStagingCompressionStatus =
+    result.success && (result.status === "compressed" || result.status === "noEligibleFiles")
+      ? result.status
+      : "failed";
+  const error = "error" in result ? result.error : undefined;
+  return {
+    name,
+    status,
+    success: status !== "failed" && result.success,
+    compressedFileCount: result.compressedFileCount || 0,
+    originalSize: result.originalSize,
+    compressedSize: result.compressedSize,
+    warnings: status === "failed" ? uniqueWarnings([...warnings, ...(error ? [error] : [])]) : [],
+  };
+};
+
+interface WorkshopStagingExecutionResult {
+  compressionResults: WorkshopStagingCompressionResult[];
+  compressionWarnings: string[];
+  compressionByName: Map<string, WorkshopStagingCompressionResult>;
+}
+
+const ensureRegularDestinationAfterCompressionFailure = async (entry: WorkshopStagingPlanEntry) => {
+  try {
+    const stats = await fs.promises.lstat(entry.destinationPath);
+    if (stats.isSymbolicLink() || !stats.isFile()) {
+      throw new Error("the destination is no longer a regular file");
+    }
+  } catch (error) {
+    throw new WorkshopModStagingError(
+      "STAGING_FAILED",
+      `Compression failed for ${entry.name}, and its staged destination could not be preserved: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { destinationPath: entry.destinationPath },
+    );
+  }
+};
+
+const executeWorkshopStagingPlan = async (
+  plan: WorkshopStagingPlan,
+  options: StageWorkshopModsOptions,
+): Promise<WorkshopStagingExecutionResult> => {
+  const compressionResults: WorkshopStagingCompressionResult[] = [];
+  const compressionWarnings = [...plan.compressionWarnings];
+  const compressionByName = new Map<string, WorkshopStagingCompressionResult>();
   if (plan.recreateDestination) await removeDestination(plan.destinationPath);
-  if (plan.entries.length === 0) return;
+  if (plan.entries.length === 0) return { compressionResults, compressionWarnings, compressionByName };
   await fs.promises.mkdir(plan.destinationPath, { recursive: true });
   for (const entry of plan.entries) {
     if (entry.action === "unchanged") continue;
     if (entry.action === "copy") {
       await copyFileAtomically(entry);
+      if (plan.compressMods) {
+        let compressionResult: WorkshopStagingCompressionResult;
+        try {
+          const rawResult = options.compressionRunner
+            ? await options.compressionRunner(entry.destinationPath, {
+                includeRigidModelV2: plan.includeRigidModelV2,
+                codecs: options.compressionCodecs,
+              })
+            : await defaultWorkshopStagingCompressionRunner(entry.destinationPath, {
+                includeRigidModelV2: plan.includeRigidModelV2,
+                codecs: options.compressionCodecs,
+                vanillaCsv: options.compressionVanillaCsv,
+                vanillaRecords: options.compressionVanillaRecords,
+              });
+          compressionResult = normalizeCompressionResult(entry.name, rawResult);
+        } catch (error) {
+          compressionResult = {
+            name: entry.name,
+            status: "failed",
+            success: false,
+            compressedFileCount: 0,
+            warnings: [error instanceof Error ? error.message : String(error)],
+          };
+        }
+        compressionResults.push(compressionResult);
+        compressionByName.set(comparableName(entry.name), compressionResult);
+        compressionWarnings.push(...compressionResult.warnings.map((warning) => `${entry.name}: ${warning}`));
+        if (compressionResult.status === "failed") {
+          // A failed compressor is retryable, but only when its rollback guarantees that the
+          // freshly copied uncompressed destination still exists.
+          await ensureRegularDestinationAfterCompressionFailure(entry);
+        }
+      }
       continue;
     }
 
     await removeDestination(entry.destinationPath);
     await fs.promises.symlink(nodePath.resolve(entry.sourcePath), entry.destinationPath, "file");
   }
+  return { compressionResults, compressionWarnings: uniqueWarnings(compressionWarnings), compressionByName };
+};
+
+const writePlanManifest = async (
+  plan: WorkshopStagingPlan,
+  execution: WorkshopStagingExecutionResult,
+): Promise<string[]> => {
+  if (plan.mode !== "copy" || plan.entries.length === 0) return [];
+
+  const warnings: string[] = [];
+  const previous = await readWorkshopStagingManifest(plan.manifestPath);
+  if (previous.warning) warnings.push(previous.warning);
+  const policy: WorkshopStagingManifestPolicy = {
+    id: WORKSHOP_MOD_STAGING_POLICY_ID,
+    mode: plan.mode,
+    compressMods: plan.compressMods,
+    includeRigidModelV2: plan.includeRigidModelV2,
+  };
+  const entries: Record<string, WorkshopStagingManifestEntry> = {};
+
+  for (const entry of plan.entries) {
+    let destinationStats: fs.Stats;
+    try {
+      destinationStats = await fs.promises.lstat(entry.destinationPath);
+    } catch (error) {
+      warnings.push(
+        `Unable to record Workshop staging cache for ${entry.name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      continue;
+    }
+    if (destinationStats.isSymbolicLink() || !destinationStats.isFile()) {
+      warnings.push(`Unable to record Workshop staging cache for ${entry.name}: destination is not a regular file.`);
+      continue;
+    }
+
+    const compressionResult = execution.compressionByName.get(comparableName(entry.name));
+    let compressionStatus: WorkshopStagingManifestEntry["compressionStatus"];
+    if (plan.compressMods) {
+      if (compressionResult?.status === "compressed") compressionStatus = "compressed";
+      else if (compressionResult?.status === "noEligibleFiles") compressionStatus = "noEligibleFiles";
+      else {
+        const previousEntry = manifestEntryFor(previous.manifest, entry.name);
+        if (entry.action === "unchanged" && previousEntry && previousEntry.compressed) {
+          compressionStatus = "compressed";
+        } else if (entry.action === "unchanged" && previousEntry) {
+          compressionStatus = previousEntry.compressionStatus;
+        } else {
+          // A failed compression is intentionally absent from the new manifest. The next launch
+          // will copy and retry rather than accepting an uncompressed result as a cache hit.
+          continue;
+        }
+      }
+    } else {
+      compressionStatus = "notRequested";
+    }
+
+    entries[comparableName(entry.name)] = {
+      name: entry.name,
+      sourcePath: entry.sourcePath,
+      sourceFingerprint: entry.sourceFingerprint,
+      destinationFingerprint: fingerprintForStats(destinationStats),
+      compressed: compressionStatus === "compressed",
+      compressionStatus,
+    };
+  }
+
+  const manifest: WorkshopStagingManifest = {
+    version: WORKSHOP_MOD_STAGING_MANIFEST_VERSION,
+    policy,
+    entries,
+  };
+  try {
+    await fs.promises.mkdir(plan.destinationPath, { recursive: true });
+    await writeWorkshopStagingManifestAtomically(plan.manifestPath, manifest);
+  } catch (error) {
+    warnings.push(
+      `Unable to persist Workshop staging manifest ${plan.manifestPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  return uniqueWarnings(warnings);
 };
 
 export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Promise<WorkshopStagingResult> => {
@@ -376,8 +892,17 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
     );
   }
 
+  let execution: WorkshopStagingExecutionResult = {
+    compressionResults: [],
+    compressionWarnings: [...plan.compressionWarnings],
+    compressionByName: new Map(),
+  };
   try {
-    if (plan.entries.length > 0 || plan.recreateDestination) await executeWorkshopStagingPlan(plan);
+    if (plan.entries.length > 0 || plan.recreateDestination) {
+      execution = await executeWorkshopStagingPlan(plan, options);
+      execution.compressionWarnings.push(...(await writePlanManifest(plan, execution)));
+      execution.compressionWarnings = uniqueWarnings(execution.compressionWarnings);
+    }
   } catch (error) {
     if (plan.recreateDestination) await removeDestination(plan.destinationPath).catch(() => undefined);
     if (error instanceof WorkshopModStagingError) throw error;
@@ -391,6 +916,8 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
   return {
     ...plan,
     changedEntries: plan.entries.filter((entry) => entry.action !== "unchanged"),
+    compressionResults: execution.compressionResults,
+    compressionWarnings: execution.compressionWarnings,
   };
 };
 

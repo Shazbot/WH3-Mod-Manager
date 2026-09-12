@@ -135,6 +135,7 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
+  const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
     (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
   );
@@ -169,6 +170,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           isAutoStartCustomBattleEnabled,
           isClosedOnPlay,
           workshopModStagingMode,
+          compressWorkshopModsOnStart,
           cleanUpWorkshopModStagingAfterGameExit,
           packDataOverwrites,
           userFlowOptions,
@@ -185,6 +187,7 @@ const SaveGame = memo((props: SaveGameProps) => {
       isAutoStartCustomBattleEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
+      compressWorkshopModsOnStart,
       cleanUpWorkshopModStagingAfterGameExit,
       packDataOverwrites,
       userFlowOptions,

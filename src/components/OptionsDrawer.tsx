@@ -5,6 +5,7 @@ import {
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
+  toggleCompressWorkshopModsOnStart,
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
@@ -106,6 +107,7 @@ const OptionsDrawer = memo(() => {
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
+  const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
     (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
   );
@@ -1104,34 +1106,49 @@ const OptionsDrawer = memo(() => {
                 </p>
               )}
 
-              <div className="mt-3 border-t border-gray-600 pt-3">
-                <label
-                  className={
-                    "flex items-start px-2 " +
-                    (workshopModStagingMode === "disabled" ? "cursor-not-allowed opacity-50" : "cursor-pointer")
-                  }
-                >
-                  <input
-                    className="mt-1"
-                    type="checkbox"
-                    id="clean-up-workshop-mods-after-game-exit"
-                    checked={!!cleanUpWorkshopModStagingAfterGameExit}
-                    disabled={workshopModStagingMode === "disabled"}
-                    onChange={() => dispatch(toggleCleanUpWorkshopModStagingAfterGameExit())}
-                  />
-                  <span className="ml-3">
-                    <span className="block">
-                      {localized.cleanUpWorkshopModsAfterGameExit || "Clean up after game exit"}
+              {currentGame === "wh3" && workshopModStagingMode === "copy" && (
+                <div className="mt-3 border-t border-gray-600 pt-3">
+                  <label className="flex cursor-pointer items-start px-2">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="compress-workshop-mods-on-start"
+                      checked={!!compressWorkshopModsOnStart}
+                      onChange={() => dispatch(toggleCompressWorkshopModsOnStart())}
+                    />
+                    <span className="ml-3">
+                      <span className="block">{localized.compressWorkshopModsOnStart || "Compress mods"}</span>
+                      <span className="mt-1 block text-xs text-gray-400">
+                        {localized.compressWorkshopModsHelp ||
+                          "Copies the pack, then compresses eligible files in the staged copy."}
+                      </span>
                     </span>
-                    <span className="mt-1 block text-xs text-gray-400">
-                      {workshopModStagingMode === "disabled"
-                        ? localized.cleanUpWorkshopModsDisabledHelp || "Select a staging mode to enable cleanup."
-                        : localized.cleanUpWorkshopModsHelp ||
+                  </label>
+                </div>
+              )}
+
+              {workshopModStagingMode !== "disabled" && (
+                <div className="mt-3 border-t border-gray-600 pt-3">
+                  <label className="flex cursor-pointer items-start px-2">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="clean-up-workshop-mods-after-game-exit"
+                      checked={!!cleanUpWorkshopModStagingAfterGameExit}
+                      onChange={() => dispatch(toggleCleanUpWorkshopModStagingAfterGameExit())}
+                    />
+                    <span className="ml-3">
+                      <span className="block">
+                        {localized.cleanUpWorkshopModsAfterGameExit || "Clean up after game exit"}
+                      </span>
+                      <span className="mt-1 block text-xs text-gray-400">
+                        {localized.cleanUpWorkshopModsHelp ||
                           "Applies to both copy and symbolic-link modes and removes staged mods after the game closes."}
+                      </span>
                     </span>
-                  </span>
-                </label>
-              </div>
+                  </label>
+                </div>
+              )}
             </fieldset>
 
             <h6 className="mt-10">{localized.hiddenMods}</h6>

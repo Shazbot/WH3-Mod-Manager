@@ -169,6 +169,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     moddersPrefix: config.moddersPrefix ?? "",
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
     workshopModStagingMode,
+    compressWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.compressWorkshopModsOnStart,
     cleanUpWorkshopModStagingAfterGameExit:
       workshopModStagingMode !== "disabled" && !!config.cleanUpWorkshopModStagingAfterGameExit,
     modRowsSortingType: config.modRowsSortingType ?? SortingType.Ordered,

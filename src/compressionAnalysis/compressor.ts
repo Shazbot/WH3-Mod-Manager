@@ -16,6 +16,14 @@ const COPY_CHUNK_BYTES = 8 * 1024 * 1024;
 export interface CompressPackOptions {
   codecs?: Partial<CompressionCodecs>;
   now?: () => Date;
+  /**
+   * When false, replace the analyzed pack with a temporary rollback path instead of creating a
+   * persistent whmm_backups copy. This is used by automatic Workshop staging, where the pack is
+   * already a disposable copy and the original Workshop file must never be touched.
+   *
+   * The default remains true for the manual compression action.
+   */
+  createBackup?: boolean;
 }
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -111,6 +119,10 @@ export const compressAnalyzedPack = async (
   let source: fs.promises.FileHandle | undefined;
   let destination: fs.promises.FileHandle | undefined;
   let backupPath: string | undefined;
+  let rollbackPath: string | undefined;
+  // If both replacement and restoration fail, keep this path so the only remaining copy of the
+  // original staged pack is not deleted by the cleanup below.
+  let preserveRollback = false;
   try {
     source = await fs.promises.open(packPath, "r");
     destination = await fs.promises.open(tempPath, "wx+");
@@ -176,15 +188,74 @@ export const compressAnalyzedPack = async (
     await source.close();
     source = undefined;
 
-    const backupFolder = nodePath.join(gameFolder, "whmm_backups");
-    await fs.promises.mkdir(backupFolder, { recursive: true });
-    backupPath = await reserveBackupPath(backupFolder, nodePath.basename(packPath), options.now?.() ?? new Date());
-    await fs.promises.copyFile(packPath, backupPath, fs.constants.COPYFILE_EXCL);
-    try {
-      await fs.promises.copyFile(tempPath, packPath);
-    } catch (error) {
-      await fs.promises.copyFile(backupPath, packPath);
-      throw error;
+    if (options.createBackup === false) {
+      // Keep a same-directory rollback entry until the replacement has committed. Renaming the
+      // original away first makes a failed replacement unable to leave a partially copied pack;
+      // the catch restores the exact uncompressed bytes before returning the failure.
+      rollbackPath = nodePath.join(
+        nodePath.dirname(packPath),
+        `.${nodePath.basename(packPath)}.whmm-staging-rollback-${process.pid}-${randomBytes(6).toString("hex")}.tmp`,
+      );
+      const originalRollbackPath = rollbackPath;
+      await fs.promises.rename(packPath, originalRollbackPath);
+      try {
+        await fs.promises.rename(tempPath, packPath);
+      } catch (error) {
+        let restored = false;
+        try {
+          await fs.promises.rename(originalRollbackPath, packPath);
+          restored = true;
+          rollbackPath = undefined;
+        } catch (restoreError) {
+          // A rename can fail on a filesystem that temporarily refuses replacement. If the
+          // destination was recreated or partially written, copy the rollback bytes over it as a
+          // second restoration attempt. Keep rollbackPath when this also fails so cleanup cannot
+          // discard the only recoverable original.
+          try {
+            await fs.promises.copyFile(originalRollbackPath, packPath);
+            restored = true;
+            await fs.promises.unlink(originalRollbackPath).then(
+              () => {
+                rollbackPath = undefined;
+              },
+              () => undefined,
+            );
+          } catch (copyError) {
+            preserveRollback = true;
+            throw new Error(
+              `Failed to replace ${packPath} and restore the original staged pack: ${errorMessage(
+                copyError,
+              )}; rename restoration error: ${errorMessage(restoreError)}; replacement error: ${errorMessage(error)}`,
+            );
+          }
+        }
+        if (!restored) {
+          preserveRollback = true;
+          throw new Error(
+            `Failed to replace ${packPath} and restore the original staged pack; replacement error: ${errorMessage(
+              error,
+            )}`,
+          );
+        }
+        throw error;
+      }
+      await fs.promises.unlink(originalRollbackPath).then(
+        () => {
+          rollbackPath = undefined;
+        },
+        () => undefined,
+      );
+    } else {
+      const backupFolder = nodePath.join(gameFolder, "whmm_backups");
+      await fs.promises.mkdir(backupFolder, { recursive: true });
+      backupPath = await reserveBackupPath(backupFolder, nodePath.basename(packPath), options.now?.() ?? new Date());
+      await fs.promises.copyFile(packPath, backupPath, fs.constants.COPYFILE_EXCL);
+      try {
+        await fs.promises.copyFile(tempPath, packPath);
+      } catch (error) {
+        await fs.promises.copyFile(backupPath, packPath);
+        throw error;
+      }
     }
     const compressedSize = (await fs.promises.stat(packPath)).size;
     return {
@@ -201,5 +272,6 @@ export const compressAnalyzedPack = async (
     await destination?.close().catch(() => undefined);
     await source?.close().catch(() => undefined);
     await fs.promises.unlink(tempPath).catch(() => undefined);
+    if (!preserveRollback && rollbackPath) await fs.promises.unlink(rollbackPath).catch(() => undefined);
   }
 };

@@ -22,6 +22,7 @@ const initialState = {
   areThumbnailsEnabled: true,
   isClosedOnPlay: false,
   workshopModStagingMode: "disabled",
+  compressWorkshopModsOnStart: false,
   cleanUpWorkshopModStagingAfterGameExit: false,
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,
