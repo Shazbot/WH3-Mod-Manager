@@ -11120,8 +11120,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
     const additionalPackCount = Math.max(0, appData.openViewerPackPaths.length - 1);
     viewerWindow.setTitle(
-      `WH3 Mod Manager v${version}: viewing ${nodePath.basename(activePackPath)}` +
-        (additionalPackCount > 0 ? ` (+${additionalPackCount} more)` : ""),
+      `${nodePath.basename(activePackPath)}` + (additionalPackCount > 0 ? ` (+${additionalPackCount} more)` : ""),
     );
   };
   const createSkillsWindow = () => {

@@ -55,7 +55,7 @@ const TopBarMain = memo(() => {
 const TopBarViewer = memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packPath = currentDBTableSelection?.packPath;
-  const title = `${managerNameAndVersion}` + (packPath ? `: viewing ${packPath.replace(/.*\/\//, "")}` : "");
+  const title = packPath ? `${packPath.replace(/.*\/\//, "")}` : managerNameAndVersion;
   return <TopBarFrame title={title} />;
 });
 
