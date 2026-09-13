@@ -3,6 +3,7 @@ import { Edge, Node } from "@xyflow/react";
 import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph, resolveRadioChoiceId } from "./types";
 import {
   substituteDeepCloneOptionValues,
+  substituteEditXmlOptionValues,
   substituteFilterOptionValues,
   substituteLocRuleValues,
   substituteTextFileRuleValues,
@@ -258,6 +259,8 @@ export const prepareGraphForExecution = ({
         "joinSeparator",
         "packName",
         "packedFileName",
+        "filePath",
+        "replacementXml",
       ];
 
       for (const fieldName of textFields) {
@@ -274,6 +277,13 @@ export const prepareGraphForExecution = ({
       if (
         node.type === "edittextfile" &&
         substituteTextFileRuleValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
+      }
+
+      if (
+        node.type === "editxmlfile" &&
+        substituteEditXmlOptionValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
       ) {
         modified = true;
       }

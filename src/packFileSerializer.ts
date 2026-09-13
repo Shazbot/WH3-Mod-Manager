@@ -35,6 +35,7 @@ import { resolveRadioChoiceId } from "./nodeGraph/types";
 import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
 import {
   substituteDeepCloneOptionValues,
+  substituteEditXmlOptionValues,
   substituteFilterOptionValues,
   substituteLocRuleValues,
   substituteTextFileRuleValues,
@@ -1169,6 +1170,8 @@ const flowOptionTextFields = [
   "joinSeparator",
   "packName",
   "packedFileName",
+  "filePath",
+  "replacementXml",
 ] as const;
 const schemaAwareFlowNodeTypes = new Set([
   "columnselectiondropdown",
@@ -1324,6 +1327,16 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
         ignoreFlowSourcePack: (node.data as any).ignoreFlowSourcePack === true,
         flowSourcePack: (node.data as any).flowSourcePack || "",
       };
+    case "editxmlfile":
+      return {
+        targetMode: (node.data as any).targetMode || "path",
+        filePath: (node.data as any).filePath || "",
+        ignoreHierarchy: (node.data as any).ignoreHierarchy !== false,
+        locatorSteps: (node.data as any).locatorSteps || [],
+        action: (node.data as any).action || "setAttributes",
+        attributeEdits: (node.data as any).attributeEdits || [],
+        replacementXml: (node.data as any).replacementXml || "",
+      };
     case "editloctext":
       return { locRules: (node.data as any).locRules || [] };
     case "removetables":
@@ -1398,7 +1411,8 @@ export const prepareFlow = (
       (node.type === "deepclone" ||
         node.type === "filter" ||
         node.type === "editloctext" ||
-        node.type === "edittextfile")
+        node.type === "edittextfile" ||
+        node.type === "editxmlfile")
     ) {
       const replace = (value: string) => {
         let modifiedValue = value;
@@ -1412,6 +1426,7 @@ export const prepareFlow = (
       if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
       else if (node.type === "editloctext") substituteLocRuleValues(nestedData, replace);
       else if (node.type === "edittextfile") substituteTextFileRuleValues(nestedData, replace);
+      else if (node.type === "editxmlfile") substituteEditXmlOptionValues(nestedData, replace);
       else substituteDeepCloneOptionValues(nestedData, replace);
     }
     // The manual run substitutes into transformation fields too; without this the same flow behaves

@@ -5,6 +5,7 @@ import { fireEvent, render, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { reactFlowNodeTypes } from "../../src/nodeGraph/nodeTypes";
+import { getEditXmlFileValidationErrors } from "../../src/nodeGraph/nodes/renderers";
 
 const makeNode = (onUpdateNodeData = vi.fn(), overrides: Record<string, unknown> = {}) => ({
   id: "edit_xml_1",
@@ -37,6 +38,42 @@ const renderNode = (node = makeNode()) =>
   );
 
 describe("Edit XML File node", () => {
+  it("rejects duplicate attribute names and invalid replacement fragments before saving", () => {
+    const common = {
+      targetMode: "path",
+      filePath: "ui/test.xml",
+      ignoreHierarchy: true,
+      locatorSteps: [{ id: "locator", elementName: "*", attributes: [] }],
+      replacementXml: "",
+    } as const;
+
+    expect(
+      getEditXmlFileValidationErrors(
+        {
+          ...common,
+          action: "setAttributes",
+          attributeEdits: [
+            { id: "first", name: "dock_offset", newValue: "one" },
+            { id: "second", name: "dock_offset", newValue: "two" },
+          ],
+        },
+        "PackFiles",
+      ).map((error) => error.code),
+    ).toContain("setAttributeDuplicateName");
+
+    expect(
+      getEditXmlFileValidationErrors(
+        {
+          ...common,
+          action: "replaceElement",
+          attributeEdits: [],
+          replacementXml: "<one /><two />",
+        },
+        "PackFiles",
+      ).map((error) => error.code),
+    ).toContain("replacementInvalid");
+  });
+
   it("opens with the safe authoring defaults", async () => {
     const view = renderNode();
 

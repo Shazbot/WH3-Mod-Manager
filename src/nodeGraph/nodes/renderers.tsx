@@ -15,6 +15,7 @@ import {
   getSelectedCloneTables,
 } from "../deepCloneTree";
 import { validateLookupSchemaReference } from "../lookupSchemaValidation";
+import { isSingleXmlElement, isValidXmlName } from "../editXmlFileValidation";
 import {
   dispatchNodeDataUpdate,
   nodeEditorDebugLog,
@@ -7226,9 +7227,15 @@ type EditXmlFileValidationCode =
   | "inputUnavailable"
   | "locatorRequired"
   | "elementNameRequired"
+  | "elementNameInvalid"
   | "locatorAttributeIncomplete"
+  | "locatorAttributeInvalidName"
+  | "locatorAttributeDuplicateName"
   | "setAttributeRequired"
-  | "replacementRequired";
+  | "setAttributeInvalidName"
+  | "setAttributeDuplicateName"
+  | "replacementRequired"
+  | "replacementInvalid";
 
 interface EditXmlFileValidationError {
   code: EditXmlFileValidationCode;
@@ -7317,10 +7324,21 @@ export const getEditXmlFileValidationErrors = (
   draft.locatorSteps.forEach((step, stepIndex) => {
     if (!step.elementName.trim()) {
       errors.push({ code: "elementNameRequired", stepIndex });
+    } else if (step.elementName.trim() !== "*" && !isValidXmlName(step.elementName.trim())) {
+      errors.push({ code: "elementNameInvalid", stepIndex });
     }
+    const locatorAttributeNames = new Set<string>();
     step.attributes.forEach((attribute, attributeIndex) => {
       if (!attribute.name.trim() || !attribute.value.trim()) {
         errors.push({ code: "locatorAttributeIncomplete", stepIndex, attributeIndex });
+        return;
+      }
+      if (!isValidXmlName(attribute.name.trim())) {
+        errors.push({ code: "locatorAttributeInvalidName", stepIndex, attributeIndex });
+      } else if (locatorAttributeNames.has(attribute.name.trim())) {
+        errors.push({ code: "locatorAttributeDuplicateName", stepIndex, attributeIndex });
+      } else {
+        locatorAttributeNames.add(attribute.name.trim());
       }
     });
   });
@@ -7330,14 +7348,28 @@ export const getEditXmlFileValidationErrors = (
     if (!hasCompleteEdit) {
       errors.push({ code: "setAttributeRequired" });
     }
+    const mutationNames = new Set<string>();
     draft.attributeEdits.forEach((edit, editIndex) => {
       if ((edit.name.trim() || edit.newValue.trim()) && (!edit.name.trim() || !edit.newValue.trim())) {
         errors.push({ code: "setAttributeRequired", editIndex });
+        return;
+      }
+      if (!edit.name.trim() || !edit.newValue.trim()) return;
+      if (!isValidXmlName(edit.name.trim())) {
+        errors.push({ code: "setAttributeInvalidName", editIndex });
+      } else if (mutationNames.has(edit.name.trim())) {
+        errors.push({ code: "setAttributeDuplicateName", editIndex });
+      } else {
+        mutationNames.add(edit.name.trim());
       }
     });
   }
-  if (draft.action === "replaceElement" && !draft.replacementXml.trim()) {
-    errors.push({ code: "replacementRequired" });
+  if (draft.action === "replaceElement") {
+    if (!draft.replacementXml.trim()) {
+      errors.push({ code: "replacementRequired" });
+    } else if (!isSingleXmlElement(draft.replacementXml)) {
+      errors.push({ code: "replacementInvalid" });
+    }
   }
 
   return errors;
@@ -7358,14 +7390,31 @@ const getEditXmlValidationMessage = (
       return `${localized.nodeEditorEditXmlFileElementNameRequired || "Enter an element name for locator step"} ${
         (error.stepIndex ?? 0) + 1
       }.`;
+    case "elementNameInvalid":
+      return `${localized.nodeEditorEditXmlFileElementNameInvalid || "Enter a valid XML element name for locator step"} ${
+        (error.stepIndex ?? 0) + 1
+      }.`;
     case "locatorAttributeIncomplete":
       return `${localized.nodeEditorEditXmlFileLocatorAttributeIncomplete || "Complete the name and value for locator step"} ${
         (error.stepIndex ?? 0) + 1
       }.`;
+    case "locatorAttributeInvalidName":
+      return localized.nodeEditorEditXmlFileAttributeNameInvalid || "Enter a valid XML attribute name.";
+    case "locatorAttributeDuplicateName":
+      return (
+        localized.nodeEditorEditXmlFileLocatorAttributeDuplicate ||
+        "Use each locator attribute name only once per step."
+      );
     case "setAttributeRequired":
       return localized.nodeEditorEditXmlFileSetAttributeRequired || "Add at least one complete attribute edit.";
+    case "setAttributeInvalidName":
+      return localized.nodeEditorEditXmlFileAttributeNameInvalid || "Enter a valid XML attribute name.";
+    case "setAttributeDuplicateName":
+      return localized.nodeEditorEditXmlFileAttributeDuplicate || "Use each attribute name only once per edit.";
     case "replacementRequired":
       return localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML.";
+    case "replacementInvalid":
+      return localized.nodeEditorEditXmlFileReplacementInvalid || "Enter one well-formed XML element.";
   }
 };
 
@@ -7564,7 +7613,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
               <DeepCloneHelp
                 text={
                   localized.nodeEditorEditXmlFileHelp ||
-                  "Select exactly one XML element with the locator, then set attributes or replace that element."
+                  "An exact path resolves to the highest-priority pack copy. Previous output must contain one file. The locator must select exactly one XML element to edit."
                 }
               />
             </div>
@@ -7772,7 +7821,9 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                   <div className="space-y-3">
                     {draft.locatorSteps.map((step, stepIndex) => {
                       const stepElementError = validationErrors.some(
-                        (error) => error.code === "elementNameRequired" && error.stepIndex === stepIndex,
+                        (error) =>
+                          (error.code === "elementNameRequired" || error.code === "elementNameInvalid") &&
+                          error.stepIndex === stepIndex,
                       );
                       return (
                         <div key={step.id} className="rounded-lg border border-gray-600 bg-gray-800 p-3">
@@ -7811,7 +7862,11 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                           </label>
                           {stepElementError && (
                             <p className="mt-1 text-xs text-red-300">
-                              {localized.nodeEditorEditXmlFileElementNameRequired || "Enter an element name."}
+                              {validationErrors.some(
+                                (error) => error.code === "elementNameInvalid" && error.stepIndex === stepIndex,
+                              )
+                                ? localized.nodeEditorEditXmlFileElementNameInvalid || "Enter a valid XML element name."
+                                : localized.nodeEditorEditXmlFileElementNameRequired || "Enter an element name."}
                             </p>
                           )}
 
@@ -7831,7 +7886,9 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                             {step.attributes.map((attribute, attributeIndex) => {
                               const attributeError = validationErrors.some(
                                 (error) =>
-                                  error.code === "locatorAttributeIncomplete" &&
+                                  (error.code === "locatorAttributeIncomplete" ||
+                                    error.code === "locatorAttributeInvalidName" ||
+                                    error.code === "locatorAttributeDuplicateName") &&
                                   error.stepIndex === stepIndex &&
                                   error.attributeIndex === attributeIndex,
                               );
@@ -7867,8 +7924,24 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                   </button>
                                   {attributeError && (
                                     <p className="col-span-2 text-xs text-red-300">
-                                      {localized.nodeEditorEditXmlFileLocatorAttributeIncomplete ||
-                                        "Complete both the attribute name and value."}
+                                      {validationErrors.some(
+                                        (error) =>
+                                          error.code === "locatorAttributeInvalidName" &&
+                                          error.stepIndex === stepIndex &&
+                                          error.attributeIndex === attributeIndex,
+                                      )
+                                        ? localized.nodeEditorEditXmlFileAttributeNameInvalid ||
+                                          "Enter a valid XML attribute name."
+                                        : validationErrors.some(
+                                              (error) =>
+                                                error.code === "locatorAttributeDuplicateName" &&
+                                                error.stepIndex === stepIndex &&
+                                                error.attributeIndex === attributeIndex,
+                                            )
+                                          ? localized.nodeEditorEditXmlFileLocatorAttributeDuplicate ||
+                                            "Use each locator attribute name only once per step."
+                                          : localized.nodeEditorEditXmlFileLocatorAttributeIncomplete ||
+                                            "Complete both the attribute name and value."}
                                     </p>
                                   )}
                                 </div>
@@ -7923,7 +7996,11 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                       </div>
                       {draft.attributeEdits.map((edit, editIndex) => {
                         const editError = validationErrors.some(
-                          (error) => error.code === "setAttributeRequired" && error.editIndex === editIndex,
+                          (error) =>
+                            (error.code === "setAttributeRequired" ||
+                              error.code === "setAttributeInvalidName" ||
+                              error.code === "setAttributeDuplicateName") &&
+                            error.editIndex === editIndex,
                         );
                         return (
                           <div key={edit.id} className="grid grid-cols-[1fr_1fr_auto] items-start gap-2">
@@ -7953,8 +8030,19 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                             </button>
                             {editError && (
                               <p className="col-span-2 text-xs text-red-300">
-                                {localized.nodeEditorEditXmlFileSetAttributeRequired ||
-                                  "Complete the attribute name and new value."}
+                                {validationErrors.some(
+                                  (error) => error.code === "setAttributeInvalidName" && error.editIndex === editIndex,
+                                )
+                                  ? localized.nodeEditorEditXmlFileAttributeNameInvalid ||
+                                    "Enter a valid XML attribute name."
+                                  : validationErrors.some(
+                                        (error) =>
+                                          error.code === "setAttributeDuplicateName" && error.editIndex === editIndex,
+                                      )
+                                    ? localized.nodeEditorEditXmlFileAttributeDuplicate ||
+                                      "Use each attribute name only once per edit."
+                                    : localized.nodeEditorEditXmlFileSetAttributeRequired ||
+                                      "Complete the attribute name and new value."}
                               </p>
                             )}
                           </div>
@@ -7966,7 +8054,9 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                       <span>{localized.nodeEditorEditXmlFileReplacementXml || "Replacement XML"}</span>
                       <textarea
                         aria-label={localized.nodeEditorEditXmlFileReplacementXml || "Replacement XML"}
-                        aria-invalid={validationErrors.some((error) => error.code === "replacementRequired")}
+                        aria-invalid={validationErrors.some(
+                          (error) => error.code === "replacementRequired" || error.code === "replacementInvalid",
+                        )}
                         value={draft.replacementXml}
                         onChange={(event) =>
                           updateDraft((current) => ({ ...current, replacementXml: event.target.value }))
@@ -7975,9 +8065,13 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                         rows={8}
                         className="w-full rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                       />
-                      {validationErrors.some((error) => error.code === "replacementRequired") && (
+                      {validationErrors.some(
+                        (error) => error.code === "replacementRequired" || error.code === "replacementInvalid",
+                      ) && (
                         <span className="text-xs text-red-300">
-                          {localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML."}
+                          {validationErrors.some((error) => error.code === "replacementInvalid")
+                            ? localized.nodeEditorEditXmlFileReplacementInvalid || "Enter one well-formed XML element."
+                            : localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML."}
                         </span>
                       )}
                     </label>
