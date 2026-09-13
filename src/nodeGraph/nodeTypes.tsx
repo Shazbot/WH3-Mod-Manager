@@ -14,6 +14,7 @@ import {
   DumpToTSVNode,
   EditLocTextNode,
   EditTextFileNode,
+  EditXmlFileNode,
   ExtractTableNode,
   FilterNode,
   FlattenNestedNode,
@@ -90,5 +91,6 @@ export const reactFlowNodeTypes = {
   removetables: withInteractiveNodeBoundary(RemoveTablesNode),
   editloctext: withInteractiveNodeBoundary(EditLocTextNode),
   edittextfile: withInteractiveNodeBoundary(EditTextFileNode),
+  editxmlfile: withInteractiveNodeBoundary(EditXmlFileNode),
   packfileoperations: withInteractiveNodeBoundary(PackFileOperationsNode),
 };

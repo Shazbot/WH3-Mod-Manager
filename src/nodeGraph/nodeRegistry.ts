@@ -14,6 +14,7 @@ import type {
   CustomSchemaNodeData,
   EditLocTextNodeData,
   EditTextFileNodeData,
+  EditXmlFileNodeData,
   PackFileOperationsNodeData,
   RemoveTablesNodeData,
   DeduplicateNodeData,
@@ -788,6 +789,26 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       ignoreFlowSourcePack: false,
     }),
   }),
+  editxmlfile: createNodeDefinition<EditXmlFileNodeData>({
+    type: "editxmlfile",
+    labelKey: "nodeEditorNodeEditXmlFileLabel",
+    labelFallback: "Edit XML File",
+    descriptionKey: "nodeEditorNodeEditXmlFileDescription",
+    descriptionFallback: "Edits one exact XML element selected by a structural locator",
+    createData: ({ label }) => ({
+      label,
+      type: "editxmlfile",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      targetMode: "path",
+      filePath: "",
+      ignoreHierarchy: true,
+      locatorSteps: [{ id: "locator_1", elementName: "*", attributes: [] }],
+      action: "setAttributes",
+      attributeEdits: [{ id: "attribute_1", name: "", newValue: "" }],
+      replacementXml: "",
+    }),
+  }),
   editloctext: createNodeDefinition<EditLocTextNodeData>({
     type: "editloctext",
     labelKey: "nodeEditorNodeEditLocTextLabel",
@@ -851,7 +872,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
     // Files inside a pack, as opposed to the packs themselves above.
     titleKey: "nodeEditorSectionPackedFiles",
     titleFallback: "Packed Files",
-    nodes: ["edittextfile", "packfileoperations"],
+    nodes: ["edittextfile", "editxmlfile", "packfileoperations"],
   },
   {
     titleKey: "nodeEditorSectionTableSelection",

@@ -54,6 +54,7 @@ const TABLE_SELECTION_SOURCES = new Set([
   "removetables",
   "editloctext",
   "edittextfile",
+  "editxmlfile",
 ]);
 
 const TABLE_METADATA_TARGETS = new Set([
@@ -479,6 +480,8 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
 
   const isEditTextFileCompatible =
     targetNode.type === "edittextfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isEditXmlFileCompatible =
+    targetNode.type === "editxmlfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
 
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
@@ -493,6 +496,7 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     isTextJoinCompatible ||
     isPackFileOperationsCompatible ||
     isEditTextFileCompatible ||
+    isEditXmlFileCompatible ||
     isSaveChangesCompatible
   );
 };
@@ -539,6 +543,8 @@ export const applyConnection = (state: GraphState, params: Connection, context: 
     (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
   const isEditTextFileCompatible =
     targetNode.type === "edittextfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isEditXmlFileCompatible =
+    targetNode.type === "editxmlfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
 
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
@@ -553,6 +559,7 @@ export const applyConnection = (state: GraphState, params: Connection, context: 
     isTextJoinCompatible ||
     isPackFileOperationsCompatible ||
     isEditTextFileCompatible ||
+    isEditXmlFileCompatible ||
     isSaveChangesCompatible
   )) {
     return { ...state, accepted: false };
@@ -628,6 +635,10 @@ export const applyConnection = (state: GraphState, params: Connection, context: 
   }
 
   if (targetNode.type === "edittextfile" && sourceOutputType) {
+    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
+  }
+
+  if (targetNode.type === "editxmlfile" && sourceOutputType) {
     setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
   }
 

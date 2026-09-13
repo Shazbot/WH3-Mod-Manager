@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
 
+import { Modal } from "../../flowbite";
 import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
 import { SCHEMA_FIELD_TYPE } from "../../packFileTypes";
@@ -38,6 +39,7 @@ import type {
   CustomSchemaNodeData,
   EditLocTextNodeData,
   EditTextFileNodeData,
+  EditXmlFileNodeData,
   LocTextRule,
   PackFileOperationRuleData,
   PackFileOperationsNodeData,
@@ -78,6 +80,9 @@ import type {
   TableSelectionNodeData,
   TextJoinNodeData,
   TextSurroundNodeData,
+  XmlAttributeEdit,
+  XmlLocatorAttribute,
+  XmlLocatorStep,
 } from "./types";
 import { targetHasPathButMatchesName } from "./types";
 
@@ -7208,6 +7213,801 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
         data-output-type="TableSelection"
       />
     </div>
+  );
+};
+
+type EditXmlFileDraft = Pick<
+  EditXmlFileNodeData,
+  "targetMode" | "filePath" | "ignoreHierarchy" | "locatorSteps" | "action" | "attributeEdits" | "replacementXml"
+>;
+
+type EditXmlFileValidationCode =
+  | "pathRequired"
+  | "inputUnavailable"
+  | "locatorRequired"
+  | "elementNameRequired"
+  | "locatorAttributeIncomplete"
+  | "setAttributeRequired"
+  | "replacementRequired";
+
+interface EditXmlFileValidationError {
+  code: EditXmlFileValidationCode;
+  stepIndex?: number;
+  attributeIndex?: number;
+  editIndex?: number;
+}
+
+const createEditXmlId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+const defaultXmlLocatorStep = (id = "locator_1"): XmlLocatorStep => ({
+  id,
+  elementName: "*",
+  attributes: [],
+});
+
+const defaultXmlAttributeEdit = (id = "attribute_1"): XmlAttributeEdit => ({
+  id,
+  name: "",
+  newValue: "",
+});
+
+const normalizeXmlLocatorAttribute = (value: unknown, index: number): XmlLocatorAttribute => {
+  const candidate = value && typeof value === "object" ? (value as Partial<XmlLocatorAttribute>) : {};
+  return {
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `attribute_${index + 1}`,
+    name: typeof candidate.name === "string" ? candidate.name : "",
+    value: typeof candidate.value === "string" ? candidate.value : "",
+  };
+};
+
+const normalizeXmlLocatorStep = (value: unknown, index: number): XmlLocatorStep => {
+  const candidate = value && typeof value === "object" ? (value as Partial<XmlLocatorStep>) : {};
+  const attributes = Array.isArray(candidate.attributes) ? candidate.attributes.map(normalizeXmlLocatorAttribute) : [];
+  return {
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `locator_${index + 1}`,
+    elementName: typeof candidate.elementName === "string" ? candidate.elementName : "*",
+    attributes,
+  };
+};
+
+const normalizeXmlAttributeEdit = (value: unknown, index: number): XmlAttributeEdit => {
+  const candidate = value && typeof value === "object" ? (value as Partial<XmlAttributeEdit>) : {};
+  return {
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `attribute_${index + 1}`,
+    name: typeof candidate.name === "string" ? candidate.name : "",
+    newValue: typeof candidate.newValue === "string" ? candidate.newValue : "",
+  };
+};
+
+const normalizeEditXmlFileDraft = (data: Partial<EditXmlFileNodeData>): EditXmlFileDraft => {
+  const locatorSteps = Array.isArray(data.locatorSteps)
+    ? data.locatorSteps.map(normalizeXmlLocatorStep)
+    : [defaultXmlLocatorStep()];
+  const attributeEdits = Array.isArray(data.attributeEdits)
+    ? data.attributeEdits.map(normalizeXmlAttributeEdit)
+    : [defaultXmlAttributeEdit()];
+
+  return {
+    targetMode: data.targetMode === "input" ? "input" : "path",
+    filePath: typeof data.filePath === "string" ? data.filePath : "",
+    ignoreHierarchy: data.ignoreHierarchy !== false,
+    locatorSteps: locatorSteps.length > 0 ? locatorSteps : [defaultXmlLocatorStep()],
+    action: data.action === "replaceElement" ? "replaceElement" : "setAttributes",
+    attributeEdits,
+    replacementXml: typeof data.replacementXml === "string" ? data.replacementXml : "",
+  };
+};
+
+export const getEditXmlFileValidationErrors = (
+  draft: EditXmlFileDraft,
+  inputType: EditXmlFileNodeData["inputType"],
+): EditXmlFileValidationError[] => {
+  const errors: EditXmlFileValidationError[] = [];
+
+  if (draft.targetMode === "path" && !draft.filePath.trim()) {
+    errors.push({ code: "pathRequired" });
+  }
+  if (draft.targetMode === "input" && inputType !== "TableSelection") {
+    errors.push({ code: "inputUnavailable" });
+  }
+  if (draft.locatorSteps.length === 0) {
+    errors.push({ code: "locatorRequired" });
+  }
+
+  draft.locatorSteps.forEach((step, stepIndex) => {
+    if (!step.elementName.trim()) {
+      errors.push({ code: "elementNameRequired", stepIndex });
+    }
+    step.attributes.forEach((attribute, attributeIndex) => {
+      if (!attribute.name.trim() || !attribute.value.trim()) {
+        errors.push({ code: "locatorAttributeIncomplete", stepIndex, attributeIndex });
+      }
+    });
+  });
+
+  if (draft.action === "setAttributes") {
+    const hasCompleteEdit = draft.attributeEdits.some((edit) => edit.name.trim() && edit.newValue.trim());
+    if (!hasCompleteEdit) {
+      errors.push({ code: "setAttributeRequired" });
+    }
+    draft.attributeEdits.forEach((edit, editIndex) => {
+      if ((edit.name.trim() || edit.newValue.trim()) && (!edit.name.trim() || !edit.newValue.trim())) {
+        errors.push({ code: "setAttributeRequired", editIndex });
+      }
+    });
+  }
+  if (draft.action === "replaceElement" && !draft.replacementXml.trim()) {
+    errors.push({ code: "replacementRequired" });
+  }
+
+  return errors;
+};
+
+const getEditXmlValidationMessage = (
+  error: EditXmlFileValidationError,
+  localized: ReturnType<typeof useLocalizations>,
+) => {
+  switch (error.code) {
+    case "pathRequired":
+      return localized.nodeEditorEditXmlFilePathRequired || "Enter an exact XML file path.";
+    case "inputUnavailable":
+      return localized.nodeEditorEditXmlFileInputUnavailable || "Previous output requires a TableSelection input.";
+    case "locatorRequired":
+      return localized.nodeEditorEditXmlFileLocatorRequired || "Add at least one locator step.";
+    case "elementNameRequired":
+      return `${localized.nodeEditorEditXmlFileElementNameRequired || "Enter an element name for locator step"} ${
+        (error.stepIndex ?? 0) + 1
+      }.`;
+    case "locatorAttributeIncomplete":
+      return `${localized.nodeEditorEditXmlFileLocatorAttributeIncomplete || "Complete the name and value for locator step"} ${
+        (error.stepIndex ?? 0) + 1
+      }.`;
+    case "setAttributeRequired":
+      return localized.nodeEditorEditXmlFileSetAttributeRequired || "Add at least one complete attribute edit.";
+    case "replacementRequired":
+      return localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML.";
+  }
+};
+
+const formatXmlLocatorStep = (step: XmlLocatorStep) => {
+  const attributes = step.attributes
+    .filter((attribute) => attribute.name || attribute.value)
+    .map((attribute) => `${attribute.name}="${attribute.value}"`)
+    .join(" AND ");
+  return `${step.elementName || "*"}${attributes ? ` [${attributes}]` : ""}`;
+};
+
+export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const inputType = data.inputType || "PackFiles";
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isDiscardConfirmationOpen, setIsDiscardConfirmationOpen] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [draft, setDraft] = useState<EditXmlFileDraft>(() => normalizeEditXmlFileDraft(data));
+
+  // Keep the compact card in sync with external graph patches while preserving the local modal draft.
+  const displayedDraft = isEditorOpen ? draft : normalizeEditXmlFileDraft(data);
+  const validationErrors = getEditXmlFileValidationErrors(displayedDraft, inputType);
+  const isValid = validationErrors.length === 0;
+  const firstValidationMessage = validationErrors[0]
+    ? getEditXmlValidationMessage(validationErrors[0], localized)
+    : localized.nodeEditorEditXmlFileValidationValid || "Ready to edit one matching XML element.";
+
+  const requestClose = React.useCallback(() => {
+    if (isDirty) {
+      setIsDiscardConfirmationOpen(true);
+      return;
+    }
+
+    setIsEditorOpen(false);
+  }, [isDirty]);
+
+  React.useEffect(() => {
+    if (!isEditorOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      requestClose();
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isEditorOpen, requestClose]);
+
+  const openEditor = () => {
+    setDraft(normalizeEditXmlFileDraft(data));
+    setIsDirty(false);
+    setIsDiscardConfirmationOpen(false);
+    setIsEditorOpen(true);
+  };
+
+  const closeEditorWithoutSaving = () => {
+    setIsEditorOpen(false);
+    setIsDirty(false);
+    setIsDiscardConfirmationOpen(false);
+  };
+
+  const updateDraft = (updater: (current: EditXmlFileDraft) => EditXmlFileDraft) => {
+    setDraft((current) => updater(current));
+    setIsDirty(true);
+  };
+
+  const updateLocatorStep = (stepId: string, updates: Partial<XmlLocatorStep>) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) => (step.id === stepId ? { ...step, ...updates } : step)),
+    }));
+
+  const updateLocatorAttribute = (stepId: string, attributeId: string, updates: Partial<XmlLocatorAttribute>) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) =>
+        step.id === stepId
+          ? {
+              ...step,
+              attributes: step.attributes.map((attribute) =>
+                attribute.id === attributeId ? { ...attribute, ...updates } : attribute,
+              ),
+            }
+          : step,
+      ),
+    }));
+
+  const addLocatorStep = () =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: [...current.locatorSteps, defaultXmlLocatorStep(createEditXmlId("locator"))],
+    }));
+
+  const removeLocatorStep = (stepId: string) =>
+    updateDraft((current) =>
+      current.locatorSteps.length <= 1
+        ? current
+        : {
+            ...current,
+            locatorSteps: current.locatorSteps.filter((step) => step.id !== stepId),
+          },
+    );
+
+  const addLocatorAttribute = (stepId: string) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) =>
+        step.id === stepId
+          ? {
+              ...step,
+              attributes: [...step.attributes, { id: createEditXmlId("locator-attribute"), name: "", value: "" }],
+            }
+          : step,
+      ),
+    }));
+
+  const removeLocatorAttribute = (stepId: string, attributeId: string) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) =>
+        step.id === stepId
+          ? { ...step, attributes: step.attributes.filter((attribute) => attribute.id !== attributeId) }
+          : step,
+      ),
+    }));
+
+  const updateAttributeEdit = (editId: string, updates: Partial<XmlAttributeEdit>) =>
+    updateDraft((current) => ({
+      ...current,
+      attributeEdits: current.attributeEdits.map((edit) => (edit.id === editId ? { ...edit, ...updates } : edit)),
+    }));
+
+  const addAttributeEdit = () =>
+    updateDraft((current) => ({
+      ...current,
+      attributeEdits: [...current.attributeEdits, defaultXmlAttributeEdit(createEditXmlId("edit-attribute"))],
+    }));
+
+  const removeAttributeEdit = (editId: string) =>
+    updateDraft((current) => ({
+      ...current,
+      attributeEdits: current.attributeEdits.filter((edit) => edit.id !== editId),
+    }));
+
+  const handleDone = () => {
+    const errors = getEditXmlFileValidationErrors(draft, inputType);
+    if (errors.length > 0) return;
+
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      targetMode: draft.targetMode,
+      filePath: draft.filePath,
+      ignoreHierarchy: draft.ignoreHierarchy,
+      locatorSteps: draft.locatorSteps as unknown as Record<string, unknown>[],
+      action: draft.action,
+      attributeEdits: draft.attributeEdits as unknown as Record<string, unknown>[],
+      replacementXml: draft.replacementXml,
+    });
+    closeEditorWithoutSaving();
+  };
+
+  const targetSummary =
+    displayedDraft.targetMode === "input"
+      ? localized.nodeEditorEditXmlFilePreviousOutput || "Previous output"
+      : displayedDraft.filePath.trim() || localized.nodeEditorEditXmlFilePathRequired || "Exact path required";
+  const firstLocatorLabel = displayedDraft.ignoreHierarchy
+    ? localized.nodeEditorEditXmlFileFindInComponents || "Find in <components>"
+    : localized.nodeEditorEditXmlFileFindInDocument || "Find in document";
+  const locatorSummary = [firstLocatorLabel, ...displayedDraft.locatorSteps.map(formatXmlLocatorStep)].join(" › ");
+  const actionSummary =
+    displayedDraft.action === "setAttributes"
+      ? `${localized.nodeEditorEditXmlFileSetAttributes || "Set attributes"}: ${
+          displayedDraft.attributeEdits
+            .filter((edit) => edit.name || edit.newValue)
+            .map((edit) => `${edit.name} → ${edit.newValue}`)
+            .join(", ") ||
+          localized.nodeEditorEditXmlFileNoAttributeEdits ||
+          "no attribute edits"
+        }`
+      : localized.nodeEditorEditXmlFileReplaceElement || "Replace element";
+
+  return (
+    <>
+      <div className="relative min-w-[300px] max-w-[360px] rounded-lg border-2 border-sky-500 bg-gray-700 p-3 text-white">
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="w-3 h-3 bg-blue-500"
+          data-input-type="PackFiles,TableSelection"
+        />
+
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-white">
+              {localized.nodeEditorEditXmlFileTitle || "Edit XML File"}
+              <DeepCloneHelp
+                text={
+                  localized.nodeEditorEditXmlFileHelp ||
+                  "Select exactly one XML element with the locator, then set attributes or replace that element."
+                }
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-300">
+              {localized.nodeEditorNodeEditXmlFileDescription ||
+                "Edits one exact XML element selected by a structural locator"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openEditor}
+            aria-haspopup="dialog"
+            className="shrink-0 rounded bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+          >
+            {localized.nodeEditorEditXmlFileEdit || "Edit"}
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-1 text-xs">
+          <div className="flex gap-1">
+            <span className="shrink-0 text-gray-400">{localized.nodeEditorEditXmlFileTargetLabel || "Target:"}</span>
+            <span className="min-w-0 truncate" title={targetSummary}>
+              {targetSummary}
+            </span>
+          </div>
+          <div className="flex gap-1">
+            <span className="shrink-0 text-gray-400">{localized.nodeEditorEditXmlFileLocatorLabel || "Locator:"}</span>
+            <span className="min-w-0 truncate" title={locatorSummary}>
+              {locatorSummary}
+            </span>
+          </div>
+          <div className="flex gap-1">
+            <span className="shrink-0 text-gray-400">{localized.nodeEditorEditXmlFileActionLabel || "Action:"}</span>
+            <span className="min-w-0 truncate" title={actionSummary}>
+              {actionSummary}
+            </span>
+          </div>
+        </div>
+
+        <div className={`mt-3 text-xs ${isValid ? "text-green-300" : "text-red-300"}`} role="status" aria-live="polite">
+          {isValid ? "✓ " : "! "}
+          {firstValidationMessage}
+        </div>
+
+        <div className="mt-2 text-xs text-gray-400">
+          {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+        </div>
+
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="w-3 h-3 bg-orange-500"
+          data-output-type="TableSelection"
+        />
+      </div>
+
+      {isEditorOpen && (
+        <Modal
+          aria-labelledby={`edit-xml-file-title-${id}`}
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) requestClose();
+          }}
+          onClose={requestClose}
+          position="center"
+          show
+          size="5xl"
+          explicitClasses={["!max-w-5xl", "!max-h-[90vh]", "overflow-hidden"]}
+        >
+          <Modal.Header>
+            <span id={`edit-xml-file-title-${id}`}>{localized.nodeEditorEditXmlFileTitle || "Edit XML File"}</span>
+          </Modal.Header>
+          <Modal.Body onWheel={stopWheelPropagation}>
+            {isDiscardConfirmationOpen ? (
+              <div className="flex min-h-48 flex-col justify-center gap-4" role="alertdialog" aria-live="assertive">
+                <h4 className="text-lg font-medium text-white">
+                  {localized.nodeEditorEditXmlFileDiscardTitle || "Discard XML edit changes?"}
+                </h4>
+                <p className="text-sm text-gray-300">
+                  {localized.nodeEditorEditXmlFileDiscardMessage ||
+                    "Your unsaved XML edit changes will be lost if you close this editor."}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsDiscardConfirmationOpen(false)}
+                    className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    {localized.nodeEditorEditXmlFileKeepEditing || "Keep editing"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditorWithoutSaving}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400"
+                  >
+                    {localized.nodeEditorEditXmlFileDiscard || "Discard changes"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5 text-sm text-gray-100">
+                {validationErrors.length > 0 && (
+                  <div className="rounded-lg border border-red-500 bg-red-900/30 p-3" role="alert">
+                    <p className="font-medium text-red-200">
+                      {localized.nodeEditorEditXmlFileValidationInvalid ||
+                        "Complete the highlighted fields before saving."}
+                    </p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-red-200">
+                      {validationErrors.map((error, errorIndex) => (
+                        <li key={`${error.code}-${errorIndex}`}>{getEditXmlValidationMessage(error, localized)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <section aria-labelledby={`edit-xml-file-target-${id}`} className="space-y-3">
+                  <h4 id={`edit-xml-file-target-${id}`} className="text-base font-medium text-white">
+                    {localized.nodeEditorEditXmlFileTargetLabel || "Target"}
+                  </h4>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[12rem_1fr]">
+                    <label className="flex flex-col gap-1 text-xs text-gray-300">
+                      <span>{localized.nodeEditorEditXmlFileTargetMode || "File target"}</span>
+                      <select
+                        aria-label={localized.nodeEditorEditXmlFileTargetMode || "File target"}
+                        value={draft.targetMode}
+                        onChange={(event) =>
+                          updateDraft((current) => ({
+                            ...current,
+                            targetMode: event.target.value as EditXmlFileDraft["targetMode"],
+                          }))
+                        }
+                        className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      >
+                        <option value="path">{localized.nodeEditorEditXmlFileTargetPath || "Exact path"}</option>
+                        <option value="input" disabled={inputType !== "TableSelection"}>
+                          {localized.nodeEditorEditXmlFilePreviousOutput || "Previous output"}
+                        </option>
+                      </select>
+                    </label>
+                    {draft.targetMode === "path" ? (
+                      <label className="flex flex-col gap-1 text-xs text-gray-300">
+                        <span>{localized.nodeEditorEditXmlFilePathLabel || "Exact XML path"}</span>
+                        <input
+                          autoFocus
+                          aria-invalid={validationErrors.some((error) => error.code === "pathRequired")}
+                          aria-label={localized.nodeEditorEditXmlFilePathLabel || "Exact XML path"}
+                          value={draft.filePath}
+                          onChange={(event) => updateDraft((current) => ({ ...current, filePath: event.target.value }))}
+                          placeholder={localized.nodeEditorEditXmlFilePathPlaceholder || "ui/campaign/objectives.xml"}
+                          className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                        {validationErrors.some((error) => error.code === "pathRequired") && (
+                          <span className="text-xs text-red-300">
+                            {localized.nodeEditorEditXmlFilePathRequired || "Enter an exact XML file path."}
+                          </span>
+                        )}
+                      </label>
+                    ) : (
+                      <div className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-gray-200">
+                        {localized.nodeEditorEditXmlFilePreviousOutput || "Previous output"}
+                        {inputType !== "TableSelection" && (
+                          <p className="mt-1 text-xs text-red-300">
+                            {localized.nodeEditorEditXmlFileInputUnavailable ||
+                              "Previous output requires a TableSelection input."}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={draft.ignoreHierarchy}
+                      onChange={(event) =>
+                        updateDraft((current) => ({ ...current, ignoreHierarchy: event.target.checked }))
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>
+                      {localized.nodeEditorEditXmlFileIgnoreHierarchy || "Ignore hierarchy (start in <components>)"}
+                    </span>
+                  </label>
+                </section>
+
+                <section aria-labelledby={`edit-xml-file-locator-${id}`} className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 id={`edit-xml-file-locator-${id}`} className="text-base font-medium text-white">
+                        {localized.nodeEditorEditXmlFileLocatorTitle || "Locator"}
+                      </h4>
+                      <p className="mt-1 text-xs text-gray-300">
+                        {localized.nodeEditorEditXmlFileExactOneHelp ||
+                          "The locator must match exactly one element. Each later step searches inside the previous match."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addLocatorStep}
+                      className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      + {localized.nodeEditorEditXmlFileAddStep || "Add step"}
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {draft.locatorSteps.map((step, stepIndex) => {
+                      const stepElementError = validationErrors.some(
+                        (error) => error.code === "elementNameRequired" && error.stepIndex === stepIndex,
+                      );
+                      return (
+                        <div key={step.id} className="rounded-lg border border-gray-600 bg-gray-800 p-3">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-gray-200">
+                                {stepIndex === 0
+                                  ? firstLocatorLabel
+                                  : localized.nodeEditorEditXmlFileInsidePrevious || "Inside previous match"}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-gray-400">
+                                {localized.nodeEditorEditXmlFileStep || "Step"} {stepIndex + 1}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeLocatorStep(step.id)}
+                              disabled={draft.locatorSteps.length <= 1}
+                              aria-label={`${localized.nodeEditorEditXmlFileRemoveStep || "Remove step"} ${stepIndex + 1}`}
+                              className="rounded px-2 py-1 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {localized.nodeEditorEditXmlFileRemoveStep || "Remove step"}
+                            </button>
+                          </div>
+
+                          <label className="flex flex-col gap-1 text-xs text-gray-300">
+                            <span>{localized.nodeEditorEditXmlFileElementName || "Element name"}</span>
+                            <input
+                              aria-invalid={stepElementError}
+                              aria-label={`${localized.nodeEditorEditXmlFileElementName || "Element name"} ${stepIndex + 1}`}
+                              value={step.elementName}
+                              onChange={(event) => updateLocatorStep(step.id, { elementName: event.target.value })}
+                              placeholder={localized.nodeEditorEditXmlFileElementNamePlaceholder || "*"}
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                          </label>
+                          {stepElementError && (
+                            <p className="mt-1 text-xs text-red-300">
+                              {localized.nodeEditorEditXmlFileElementNameRequired || "Enter an element name."}
+                            </p>
+                          )}
+
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs text-gray-300">
+                                {localized.nodeEditorEditXmlFileLocatorAttributes || "Exact attributes (AND)"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => addLocatorAttribute(step.id)}
+                                className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              >
+                                + {localized.nodeEditorEditXmlFileAddAttribute || "Add attribute"}
+                              </button>
+                            </div>
+                            {step.attributes.map((attribute, attributeIndex) => {
+                              const attributeError = validationErrors.some(
+                                (error) =>
+                                  error.code === "locatorAttributeIncomplete" &&
+                                  error.stepIndex === stepIndex &&
+                                  error.attributeIndex === attributeIndex,
+                              );
+                              return (
+                                <div key={attribute.id} className="grid grid-cols-[1fr_1fr_auto] items-start gap-2">
+                                  <input
+                                    aria-label={`${localized.nodeEditorEditXmlFileAttributeName || "Attribute name"} ${stepIndex + 1}.${attributeIndex + 1}`}
+                                    aria-invalid={attributeError}
+                                    value={attribute.name}
+                                    onChange={(event) =>
+                                      updateLocatorAttribute(step.id, attribute.id, { name: event.target.value })
+                                    }
+                                    placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
+                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                  <input
+                                    aria-label={`${localized.nodeEditorEditXmlFileAttributeValue || "Attribute value"} ${stepIndex + 1}.${attributeIndex + 1}`}
+                                    aria-invalid={attributeError}
+                                    value={attribute.value}
+                                    onChange={(event) =>
+                                      updateLocatorAttribute(step.id, attribute.id, { value: event.target.value })
+                                    }
+                                    placeholder={localized.nodeEditorEditXmlFileAttributeValue || "value"}
+                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLocatorAttribute(step.id, attribute.id)}
+                                    aria-label={`${localized.nodeEditorEditXmlFileRemoveAttribute || "Remove attribute"} ${stepIndex + 1}.${attributeIndex + 1}`}
+                                    className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                                  >
+                                    ✕
+                                  </button>
+                                  {attributeError && (
+                                    <p className="col-span-2 text-xs text-red-300">
+                                      {localized.nodeEditorEditXmlFileLocatorAttributeIncomplete ||
+                                        "Complete both the attribute name and value."}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section aria-labelledby={`edit-xml-file-action-${id}`} className="space-y-3">
+                  <h4 id={`edit-xml-file-action-${id}`} className="text-base font-medium text-white">
+                    {localized.nodeEditorEditXmlFileActionLabel || "Action"}
+                  </h4>
+                  <label className="flex max-w-sm flex-col gap-1 text-xs text-gray-300">
+                    <span>{localized.nodeEditorEditXmlFileAction || "XML action"}</span>
+                    <select
+                      aria-label={localized.nodeEditorEditXmlFileAction || "XML action"}
+                      value={draft.action}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          action: event.target.value as EditXmlFileDraft["action"],
+                        }))
+                      }
+                      className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    >
+                      <option value="setAttributes">
+                        {localized.nodeEditorEditXmlFileSetAttributes || "Set attributes"}
+                      </option>
+                      <option value="replaceElement">
+                        {localized.nodeEditorEditXmlFileReplaceElement || "Replace element"}
+                      </option>
+                    </select>
+                  </label>
+
+                  {draft.action === "setAttributes" ? (
+                    <div className="space-y-2 rounded-lg border border-gray-600 bg-gray-800 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-gray-300">
+                          {localized.nodeEditorEditXmlFileAttributeEdits || "Attribute edits"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={addAttributeEdit}
+                          className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        >
+                          + {localized.nodeEditorEditXmlFileAddAttributeEdit || "Add attribute edit"}
+                        </button>
+                      </div>
+                      {draft.attributeEdits.map((edit, editIndex) => {
+                        const editError = validationErrors.some(
+                          (error) => error.code === "setAttributeRequired" && error.editIndex === editIndex,
+                        );
+                        return (
+                          <div key={edit.id} className="grid grid-cols-[1fr_1fr_auto] items-start gap-2">
+                            <input
+                              aria-label={`${localized.nodeEditorEditXmlFileAttributeName || "Attribute name"} ${editIndex + 1}`}
+                              aria-invalid={editError}
+                              value={edit.name}
+                              onChange={(event) => updateAttributeEdit(edit.id, { name: event.target.value })}
+                              placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            <input
+                              aria-label={`${localized.nodeEditorEditXmlFileNewValue || "New value"} ${editIndex + 1}`}
+                              aria-invalid={editError}
+                              value={edit.newValue}
+                              onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
+                              placeholder={localized.nodeEditorEditXmlFileNewValue || "new value"}
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeAttributeEdit(edit.id)}
+                              aria-label={`${localized.nodeEditorEditXmlFileRemoveAttributeEdit || "Remove attribute edit"} ${editIndex + 1}`}
+                              className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                            >
+                              ✕
+                            </button>
+                            {editError && (
+                              <p className="col-span-2 text-xs text-red-300">
+                                {localized.nodeEditorEditXmlFileSetAttributeRequired ||
+                                  "Complete the attribute name and new value."}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <label className="flex flex-col gap-1 text-xs text-gray-300">
+                      <span>{localized.nodeEditorEditXmlFileReplacementXml || "Replacement XML"}</span>
+                      <textarea
+                        aria-label={localized.nodeEditorEditXmlFileReplacementXml || "Replacement XML"}
+                        aria-invalid={validationErrors.some((error) => error.code === "replacementRequired")}
+                        value={draft.replacementXml}
+                        onChange={(event) =>
+                          updateDraft((current) => ({ ...current, replacementXml: event.target.value }))
+                        }
+                        placeholder={localized.nodeEditorEditXmlFileReplacementPlaceholder || "<element />"}
+                        rows={8}
+                        className="w-full rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                      {validationErrors.some((error) => error.code === "replacementRequired") && (
+                        <span className="text-xs text-red-300">
+                          {localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML."}
+                        </span>
+                      )}
+                    </label>
+                  )}
+                </section>
+              </div>
+            )}
+          </Modal.Body>
+          {!isDiscardConfirmationOpen && (
+            <Modal.Footer>
+              <button
+                type="button"
+                onClick={requestClose}
+                className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                {localized.nodeEditorEditXmlFileCancel || localized.cancel || "Cancel"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDone}
+                disabled={!isValid}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {localized.nodeEditorEditXmlFileDone || "Done"}
+              </button>
+            </Modal.Footer>
+          )}
+        </Modal>
+      )}
+    </>
   );
 };
 

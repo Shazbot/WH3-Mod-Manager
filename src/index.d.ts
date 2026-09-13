@@ -1528,6 +1528,7 @@ declare global {
     | "removetables"
     | "editloctext"
     | "edittextfile"
+    | "editxmlfile"
     | "packfileoperations";
 
   // FlowNodeData = "string"|
