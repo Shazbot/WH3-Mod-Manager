@@ -130,6 +130,24 @@ describe("pack table tree interactions", () => {
     expect(screen.getByText("hello.lua")).toBeInTheDocument();
   });
 
+  it("shows folders before files at each tree level", () => {
+    const tree = renderPackTree(
+      ["root-file.lua", "folder\\z-file.lua", "folder\\a-folder\\nested.lua", "folder\\a-file.lua"],
+      "files",
+    );
+
+    const labelsAtLevel = (level: string) =>
+      Array.from(tree.querySelectorAll(`[role="treeitem"][aria-level="${level}"]`)).map((node) =>
+        node.textContent?.trim(),
+      );
+
+    expect(labelsAtLevel("1")).toEqual(["folder", "root-file.lua"]);
+
+    fireEvent.click(screen.getByText("folder"));
+
+    expect(labelsAtLevel("2")).toEqual(["a-folder", "a-file.lua", "z-file.lua"]);
+  });
+
   it("keeps collapsed DB groups collapsed after deleting a file", async () => {
     const user = userEvent.setup();
     const packPath = "K:\\mods\\menu.pack";

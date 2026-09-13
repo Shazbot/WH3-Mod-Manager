@@ -192,6 +192,11 @@ const buildPathTree = (
       const firstIsLoadMore = first.metadata?.kind === "vanilla-load-more";
       const secondIsLoadMore = second.metadata?.kind === "vanilla-load-more";
       if (firstIsLoadMore !== secondIsLoadMore) return firstIsLoadMore ? 1 : -1;
+
+      const firstIsFolder = first.isBranch || (first.children?.length ?? 0) > 0;
+      const secondIsFolder = second.isBranch || (second.children?.length ?? 0) > 0;
+      if (firstIsFolder !== secondIsFolder) return firstIsFolder ? -1 : 1;
+
       return first.name.localeCompare(second.name);
     });
     node.children?.forEach(sortChildren);
