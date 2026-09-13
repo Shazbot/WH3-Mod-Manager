@@ -304,7 +304,11 @@ import {
 } from "./assetProtocol";
 import { normalizeAssetPath } from "./assetUrls";
 import { forkSteamWorker as fork, terminateSteamWorker } from "./steamWorker";
-import { collectVanillaFilesUnderPrefix, findVanillaPackContaining } from "./vanillaPackIndex/format";
+import {
+  collectVanillaFilesUnderPrefix,
+  findVanillaPackContaining,
+  type VanillaPackIndex,
+} from "./vanillaPackIndex/format";
 import {
   selectPackPathsToSearch,
   selectVanillaPacksHoldingFiles,
@@ -1691,8 +1695,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         throw new Error(`The source file "${normalizedFilePath}" has no saved payload`);
       }
 
+      const sourceReadPath = await resolveVanillaViewerFilePackPath(sourcePackPath, normalizedFilePath);
       const sourceRead = await readPack(
-        sourcePackPath,
+        sourceReadPath,
         isDBFile
           ? {
               tablesToRead: [normalizedFilePath],
@@ -7914,8 +7919,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           error: `File "${fileName}" was deleted from the pack and has not been saved yet`,
         };
       }
-      // Read the pack with the specific file
-      const pack = await readPack(packPath, { filesToRead: [fileName] });
+      // The viewer's db.pack tree also contains files whose winning bytes live in another vanilla
+      // pack. Resolve that source here, keeping the full payload read lazy until this request.
+      const sourcePackPath = await resolveVanillaViewerFilePackPath(packPath, fileName);
+      const pack = await readPack(sourcePackPath, { filesToRead: [fileName] });
       // Find the file
       const file = findPackedFileCaseInsensitive(pack, fileName);
       if (!file) {
@@ -11533,17 +11540,76 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return getDBPackedFilePath(dbTable as DBTableSelection);
   };
   const viewerTableRequests = createInFlightTableRequests();
-  const sendPackViewData = (packViewData: PackViewData | undefined) => {
+  /**
+   * The database pack is the viewer's base-game entry point, but its own index does not contain
+   * files shipped by the other vanilla packs. Keep the large name list out of the main renderer's
+   * pack data and add it only to the copy sent to the viewer. Payloads remain lazy: the list has
+   * names only, and `readFileFromPack` resolves the winning source pack when a file is opened.
+   */
+  const vanillaViewerFileNamesByIndex = new WeakMap<VanillaPackIndex, string[]>();
+  const getVanillaViewerFileNames = async (packPath: string): Promise<readonly string[] | undefined> => {
+    if (!canUseVanillaDbCacheForPack(packPath)) return undefined;
+
+    const vanillaIndex = await getVanillaPackIndex();
+    if (!vanillaIndex) return undefined;
+
+    const cachedNames = vanillaViewerFileNamesByIndex.get(vanillaIndex);
+    if (cachedNames) return cachedNames;
+
+    // DB table paths already belong in the DB Tables tree. The aggregate here is specifically for
+    // the Files tab; keeping DB paths out also avoids presenting a table from another vanilla pack
+    // as though it were physically inside db.pack.
+    const names = [...collectVanillaFilesUnderPrefix(vanillaIndex, "").keys()].filter(
+      (fileName) => parseDBTablePath(fileName) == undefined,
+    );
+    vanillaViewerFileNamesByIndex.set(vanillaIndex, names);
+    return names;
+  };
+  const addVanillaFilesToViewerData = async (
+    packViewData: PackViewData | undefined,
+  ): Promise<PackViewData | undefined> => {
+    if (!packViewData) return undefined;
+
+    const vanillaFileNames = await getVanillaViewerFileNames(packViewData.packPath);
+    if (!vanillaFileNames || vanillaFileNames.length === 0) return packViewData;
+
+    const tables = [...packViewData.tables];
+    const knownNames = new Set(tables.map(normalizePackFilePathKey));
+    for (const fileName of vanillaFileNames) {
+      const fileKey = normalizePackFilePathKey(fileName);
+      if (knownNames.has(fileKey)) continue;
+      knownNames.add(fileKey);
+      tables.push(fileName);
+    }
+
+    return tables.length === packViewData.tables.length ? packViewData : { ...packViewData, tables };
+  };
+  const resolveVanillaViewerFilePackPath = async (packPath: string, fileName: string): Promise<string> => {
+    if (!canUseVanillaDbCacheForPack(packPath)) return packPath;
+
+    const vanillaIndex = await getVanillaPackIndex();
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+    const vanillaPackName = vanillaIndex ? findVanillaPackContaining(vanillaIndex, fileName) : undefined;
+    return dataFolder && vanillaPackName ? nodePath.join(dataFolder, vanillaPackName) : packPath;
+  };
+  const sendPackViewData = async (packViewData: PackViewData | undefined) => {
     if (!packViewData) return;
-    const toSend = [packViewData];
+    const mainToSend = [packViewData];
     const viewerWindow = getLiveViewerWindow();
-    mainWindow?.webContents.send("setPacksData", toSend);
-    viewerWindow?.webContents.send("setPacksData", toSend);
+    mainWindow?.webContents.send("setPacksData", mainToSend);
+    // There is no viewer-side consumer until the window exists. In particular, opening the viewer
+    // for the first time starts this read before creating the window; replayOpenPacksToViewer will
+    // request it again once the renderer is ready.
+    if (!viewerWindow) return;
+
+    const viewerPackViewData = await addVanillaFilesToViewerData(packViewData);
+    const viewerToSend = [viewerPackViewData ?? packViewData];
+    viewerWindow.webContents.send("setPacksData", viewerToSend);
     // Main-window consumers also request pack data. Queue it only when a viewer window actually
     // exists and is still starting; otherwise a future viewer would receive an unrelated stale pack.
     if (viewerWindow && !appData.isViewerReady) {
       console.log("VIEWER NOT READY, QUEUEING");
-      appData.queuedViewerData = toSend;
+      appData.queuedViewerData = viewerToSend;
     }
   };
 
@@ -11605,7 +11671,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const packData = appData.packsData.find((pack) => pack.path === packPath);
 
       if (packData && !table) {
-        sendPackViewData(getPackViewData(packData, undefined, getLocs));
+        await sendPackViewData(getPackViewData(packData, undefined, getLocs));
         return;
       }
 
@@ -11614,7 +11680,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (packData && table && !getLocs) {
         const loaded = getLoadedPackViewData(packData, table);
         if (loaded) {
-          sendPackViewData(loaded);
+          await sendPackViewData(loaded);
           return;
         }
       }
@@ -11651,7 +11717,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         console.log("APPENDING packsData", packPath);
         appendPacksData(newPack);
       }
-      sendPackViewData(getPackViewData(newPack, table, getLocs));
+      await sendPackViewData(getPackViewData(newPack, table, getLocs));
     });
   };
   const readMods = async (
