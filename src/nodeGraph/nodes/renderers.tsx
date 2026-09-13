@@ -7684,7 +7684,14 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
           position="center"
           show={isNodeEditorActive}
           size="5xl"
-          explicitClasses={["!max-w-5xl", "!max-h-[90vh]", "overflow-hidden"]}
+          explicitClasses={[
+            "!max-w-5xl",
+            "!h-[90vh]",
+            "!max-h-[90vh]",
+            "overflow-hidden",
+            "first-child-div-second-child-div-flex-grow",
+            "first-child-div-flex-col",
+          ]}
         >
           <Modal.Header>
             <span id={`edit-xml-file-title-${id}`}>{localized.nodeEditorEditXmlFileTitle || "Edit XML File"}</span>
