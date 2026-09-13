@@ -79,9 +79,10 @@
           "name": "@electron-forge/maker-rpm",
           "config": {
             "options": {
-              "name": "Warhammer 3 Mod Manager",
+              "name": "wh3mm",
               "productName": "Warhammer 3 Mod Manager",
               "description": "Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2.",
+              "productDescription": "Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2.",
               "icon": "./src/assets/modmanager.ico",
               "categories": ["Game", "Utility"],
               "homepage": "github.com/Shazbot/WH3-Mod-Manager"
