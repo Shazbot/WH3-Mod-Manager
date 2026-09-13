@@ -19,6 +19,7 @@ import { buildRpfmTsvContent, getRpfmTsvExportPath } from "./utility/rpfmTsv";
 import { buildImportedPackedFile } from "./utility/packImportStaging";
 import { applyTextPackedFileEdit } from "./utility/textPackStaging";
 import { compareFilesByteForByte } from "./utility/fileComparison";
+import { invalidateCustomizableModPath } from "./utility/customizableModsState";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
@@ -5472,13 +5473,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   };
   const onPackDeleted = async (path: string, isDeletedFromContent = false) => {
+    await invalidateCachedPackData(path);
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
     console.log("MOD REMOVED: " + path);
     await removeMod(mainWindow, path);
-    if (appData.packsData && appData.packsData.some((pack) => pack.path == path)) {
-      appData.packsData = appData.packsData.filter((pack) => pack.path != path);
-    }
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (isDeletedFromContent && dataFolder) {
       try {
@@ -5751,8 +5750,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("NEW CONTENT CHANGE", path);
-          onPackDeleted(path);
-          onNewPackFound(path);
+          await onPackDeleted(path);
+          await onNewPackFound(path);
         });
     }
     if (!downloadsWatcher) {
@@ -5793,9 +5792,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("data pack changed:", path);
-          onPackDeleted(path);
+          await onPackDeleted(path);
           console.log("dataWatcher change:", path);
-          onNewPackFound(path);
+          await onNewPackFound(path);
         });
     }
     const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
@@ -5841,8 +5840,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("pack changed:", path);
-          onPackDeleted(path);
-          onNewPackFound(path);
+          await onPackDeleted(path);
+          await onNewPackFound(path);
         });
     }
   };
@@ -6546,7 +6545,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         } else {
           // Calculate and update cache
           foundTables = tablesForMatching.filter((tableForMatching) =>
-            currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching)),
+            currentPack.packedFiles.some((packedFile) =>
+              tableForMatching === "whmmflows\\"
+                ? isPackedFlowName(packedFile.name)
+                : packedFile.name.startsWith(tableForMatching),
+            ),
           );
           cache[currentPack.path] = {
             size: currentPack.size,
@@ -7096,12 +7099,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
   /**
-   * Drops everything read from a pack file that has just been written over, so the next read sees
-   * the new contents instead of the old ones.
+   * Drops everything read from a pack file that has just been written over or changed externally,
+   * so the next read sees the new contents instead of the old ones.
    */
   const invalidateCachedPackData = async (packPath: string) => {
     appData.packsData = appData.packsData.filter((packData) => packData.path !== packPath);
-    delete appData.packMetaData[packPath];
+    const hadCustomizableMod = packPath in appData.customizableMods;
+    invalidateCustomizableModPath(appData, packPath);
+    if (hadCustomizableMod) {
+      mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
+    }
+    const customizableModsCache = await loadCustomizableModsCache();
+    if (packPath in customizableModsCache) {
+      delete customizableModsCache[packPath];
+      await saveCustomizableModsCache(customizableModsCache);
+    }
     if (packHeaderCache) {
       delete packHeaderCache[packPath];
       await savePackHeaderCache();

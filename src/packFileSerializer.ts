@@ -3307,7 +3307,7 @@ export const readPack = async (
       }
     }
     if (packReadingOptions.readFlows) {
-      const flowFiles = pack_files.filter((packFile) => packFile.name.startsWith("whmmflows\\"));
+      const flowFiles = pack_files.filter((packFile) => isPackedFlowName(packFile.name));
       for (const flowFile of flowFiles) {
         let buffer = Buffer.allocUnsafe(flowFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, flowFile.start_pos);
