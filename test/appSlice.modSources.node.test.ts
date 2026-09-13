@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import appReducer, {
   addMod,
   queueDataModsToEnableByName,
+  removeMod,
   setAppFolderPaths,
+  setModData,
   setModLoadOrderRelativeTo,
   setMods,
 } from "../src/appSlice";
@@ -83,6 +85,54 @@ describe("app mod source reconciliation", () => {
 
     expect(state.currentPreset.mods[0].path).toBe(dataMod.path);
     expect(state.currentPreset.mods[0].subbedTime).toBe(workshopMod.subbedTime);
+  });
+
+  it("keeps Workshop metadata when a same-named Data copy is re-read", () => {
+    const folderPaths = {
+      gamePath: "/game",
+      dataFolder: "/game/data",
+      contentFolder: "/workshop",
+      customModFolders: [],
+      modSourceOrder: ["data", "workshop"],
+    };
+    const dataMod = {
+      ...createMod("/game/data/example.pack", "data", "data", true),
+      workshopId: "",
+      humanName: "",
+      author: "",
+    };
+    const workshopMod = {
+      ...createMod("/workshop/123/example.pack", "workshop", "workshop", false),
+      humanName: "",
+      author: "",
+    };
+
+    let state = appReducer({ ...initialState, appFolderPaths: folderPaths }, setMods([dataMod, workshopMod]));
+    state = appReducer(
+      state,
+      setModData([
+        {
+          humanName: "Workshop title",
+          workshopId: "123",
+          reqModIdToName: [],
+          reqModIds: [],
+          lastChanged: 1,
+          author: "Workshop author",
+          isDeleted: false,
+          subscriptionTime: 0,
+          tags: ["mod"],
+        },
+      ]),
+    );
+
+    state = appReducer(state, removeMod(dataMod.path));
+    state = appReducer(state, addMod({ ...dataMod }));
+
+    expect(state.currentPreset.mods[0]).toMatchObject({
+      humanName: "Workshop title",
+      author: "Workshop author",
+      path: dataMod.path,
+    });
   });
 
   it("does not restore stale startup load order when folder settings are reconciled", () => {

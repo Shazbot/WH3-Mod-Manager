@@ -971,6 +971,11 @@ const appSlice = createSlice({
         // Propagate Workshop metadata to whichever same-named source currently wins priority.
         const contentMod = state.allMods.find((mod) => isWorkshopMod(mod) && mod.workshopId == data.workshopId);
         if (contentMod) {
+          // Keep the Workshop source hydrated as well. A same-named Data copy can be the visible
+          // winner, but the Workshop entry is used as the fallback while that Data copy is re-read.
+          if (data.humanName && data.humanName != "" && contentMod.humanName != data.humanName)
+            contentMod.humanName = data.humanName;
+          if (data.author && data.author != "" && contentMod.author != data.author) contentMod.author = data.author;
           const preferredMod = state.currentPreset.mods.find((iterMod) => iterMod.name == contentMod.name);
           if (preferredMod) {
             if (data.humanName && data.humanName != "" && preferredMod.humanName != data.humanName)
