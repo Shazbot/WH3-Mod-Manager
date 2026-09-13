@@ -3,6 +3,7 @@ import * as nodePath from "node:path";
 import { compressAnalyzedPack } from "./compressor";
 import type { CompressionCodecs } from "./analyzer";
 import type { CompressionPackAnalysis } from "./types";
+import type { CompressionAnalysisProgress } from "./types";
 
 /** The terminal outcomes of a staging compression attempt. */
 export type StagedPackCompressionStatus = "compressed" | "noEligibleFiles" | "failed";
@@ -12,6 +13,10 @@ export interface CompressStagedPackOptions {
   includeRigidModelV2?: boolean;
   /** Codec overrides used by focused tests and embedders. */
   codecs?: Partial<CompressionCodecs>;
+  /** Abort before or during the staged rewrite. */
+  signal?: AbortSignal;
+  /** Receives analyzer progress while the pack is being inspected. */
+  onProgress?: (progress: CompressionAnalysisProgress) => void;
 }
 
 export interface CompressStagedPackResult {
@@ -27,6 +32,15 @@ export interface CompressStagedPackResult {
 }
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (!signal?.aborted) return;
+  const reason = signal.reason;
+  if (reason !== undefined) throw reason;
+  const error = new Error("Compression canceled");
+  error.name = "AbortError";
+  throw error;
+};
 
 const hasEligibleFile = (analysis: CompressionPackAnalysis, includeRigidModelV2: boolean): boolean =>
   analysis.fileResults.some(
@@ -47,6 +61,7 @@ export const compressStagedPack = async (
   analysis: CompressionPackAnalysis,
   options: CompressStagedPackOptions = {},
 ): Promise<CompressStagedPackResult> => {
+  throwIfAborted(options.signal);
   const includeRigidModelV2 = options.includeRigidModelV2 === true;
   const baseResult = {
     packPath,
@@ -80,6 +95,8 @@ export const compressStagedPack = async (
     const result = await compressAnalyzedPack(packPath, analysis, nodePath.dirname(packPath), includeRigidModelV2, {
       codecs: options.codecs,
       createBackup: false,
+      signal: options.signal,
+      onProgress: options.onProgress,
     });
     if (!result.success) {
       return {
@@ -98,6 +115,7 @@ export const compressStagedPack = async (
       compressedFileCount: result.compressedFileCount || 0,
     };
   } catch (error) {
+    if (options.signal?.aborted) throw error;
     return {
       ...baseResult,
       status: "failed",

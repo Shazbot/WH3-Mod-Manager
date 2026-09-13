@@ -346,6 +346,7 @@ import {
   stageWorkshopMods,
   WorkshopModStagingError,
   WORKSHOP_MOD_STAGING_FOLDER,
+  type WorkshopStagingProgress,
   type WorkshopStagingResult,
 } from "./utility/workshopModStaging";
 import { findGameProcessIds } from "./utility/gameProcess";
@@ -743,10 +744,85 @@ const getVisualsLocContribution = (pack: Pack): Array<[string, string]> => {
 const dbDuplicationCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
 const compressionAnalysisCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
 const compressionPackPathsInProgress = new Set<string>();
+interface ActiveWorkshopStagingRun {
+  runId: string;
+  senderId: number;
+  controller: AbortController;
+  canceled: boolean;
+  lastProgress: WorkshopStagingProgress;
+}
+let activeWorkshopStagingRun: ActiveWorkshopStagingRun | undefined;
 const globalSearchCancelStateByWebContentsId = new Map<
   number,
   { canceled: boolean; done?: Promise<GlobalSearchResponse> }
 >();
+
+const workshopStagingProgressChannel = "workshopModStagingProgress";
+
+const workshopStagingStageForPhase = (phase: WorkshopStagingProgress["phase"]): string => {
+  switch (phase) {
+    case "planning":
+      return "preparing";
+    case "pruning":
+      return "cleaning";
+    case "copying":
+      return "copying";
+    case "compressing":
+      return "compressing";
+    case "checkpointing":
+      return "saving";
+    case "completed":
+      return "complete";
+    case "canceled":
+      return "cleaning";
+    default:
+      return phase;
+  }
+};
+
+const makeWorkshopStagingProgressEvent = (
+  runId: string,
+  progress: WorkshopStagingProgress,
+  status: WorkshopModStagingProgressStatus,
+  overrides: Partial<WorkshopModStagingProgressEvent> = {},
+): WorkshopModStagingProgressEvent => {
+  const total = Number.isFinite(progress.total) ? Math.max(0, progress.total) : 0;
+  const completed = Number.isFinite(progress.current) ? Math.max(0, Math.min(total, progress.current)) : 0;
+  const byteFraction =
+    progress.bytesCopied !== undefined && progress.totalBytes !== undefined && progress.totalBytes > 0
+      ? Math.min(1, Math.max(0, progress.bytesCopied / progress.totalBytes))
+      : undefined;
+  const fileFraction =
+    progress.fileIndex !== undefined && progress.fileCount !== undefined && progress.fileCount > 0
+      ? Math.min(1, Math.max(0, progress.fileIndex / progress.fileCount))
+      : undefined;
+  const itemFraction = byteFraction ?? fileFraction ?? 0;
+  return {
+    runId,
+    status,
+    stage: workshopStagingStageForPhase(progress.phase),
+    ...(total > 0 ? { percent: Math.round(((completed + itemFraction) / total) * 100) } : {}),
+    completedMods: completed,
+    totalMods: total,
+    ...(progress.bytesCopied !== undefined ? { bytesCopied: progress.bytesCopied } : {}),
+    ...(progress.totalBytes !== undefined ? { totalBytes: progress.totalBytes } : {}),
+    ...(progress.fileIndex !== undefined ? { fileIndex: progress.fileIndex } : {}),
+    ...(progress.fileCount !== undefined ? { fileCount: progress.fileCount } : {}),
+    ...(progress.modName ? { currentMod: progress.modName } : {}),
+    ...(progress.phase === "compressing" && progress.message ? { currentFile: progress.message } : {}),
+    ...(progress.message ? { detail: progress.message } : {}),
+    ...overrides,
+  };
+};
+
+const sendWorkshopStagingProgress = (sender: Electron.WebContents, progress: WorkshopModStagingProgressEvent): void => {
+  if (sender.isDestroyed()) return;
+  try {
+    sender.send(workshopStagingProgressChannel, progress);
+  } catch {
+    // The renderer may close between the destroyed check and send.
+  }
+};
 /** Serializes the handoff between overlapping invocations from one viewer sender. */
 const globalSearchStartLockByWebContentsId = new Map<number, Promise<void>>();
 const dbIndirectReferenceCacheByWebContentsId = new Map<number, DBIndirectReferenceCacheContext>();
@@ -12633,7 +12709,58 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
   ipcMain.on(
     "startGame",
-    async (event, mods: Mod[], areModsPresorted: boolean, startGameOptions: StartGameOptions, saveName?: string) => {
+    async (
+      event,
+      mods: Mod[],
+      areModsPresorted: boolean,
+      startGameOptions: StartGameOptions,
+      saveName?: string,
+      requestedRunId?: string,
+    ) => {
+      const requestedWorkshopStaging =
+        startGameOptions?.workshopModStagingMode === "copy" || startGameOptions?.workshopModStagingMode === "symlink";
+      const runId = requestedWorkshopStaging
+        ? typeof requestedRunId === "string" && requestedRunId.trim().length > 0 && requestedRunId.length <= 128
+          ? requestedRunId
+          : randomUUID()
+        : undefined;
+
+      if (requestedWorkshopStaging && activeWorkshopStagingRun) {
+        sendWorkshopStagingProgress(event.sender, {
+          runId: runId || randomUUID(),
+          status: "failed",
+          stage: "preparing",
+          completedMods: 0,
+          totalMods: 0,
+          detail: "Another Workshop mod staging launch is already in progress.",
+          error: "alreadyRunning",
+        });
+        return;
+      }
+
+      const workshopStagingRun: ActiveWorkshopStagingRun | undefined = runId
+        ? {
+            runId,
+            senderId: event.sender.id,
+            controller: new AbortController(),
+            canceled: false,
+            lastProgress: { phase: "planning", current: 0, total: 0 },
+          }
+        : undefined;
+      if (workshopStagingRun) {
+        activeWorkshopStagingRun = workshopStagingRun;
+        sendWorkshopStagingProgress(event.sender, {
+          runId: workshopStagingRun.runId,
+          status: "running",
+          stage: "preparing",
+          completedMods: 0,
+          totalMods: 0,
+          detail: "Preparing Workshop mods…",
+        });
+      }
+
+      let stagingCompleted = false;
+      let stagingFailureMessage: string | undefined;
       console.log("before start:");
       for (const pack of appData.packsData) {
         console.log(pack.name, pack.readTables);
@@ -12658,6 +12785,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           log(`Cleaned ${WORKSHOP_MOD_STAGING_FOLDER} after the game failed to launch.`);
         } catch (error) {
           reportWorkshopCleanupFailure(error);
+        }
+      };
+      const reportStagingProgress = (
+        progress: WorkshopStagingProgress,
+        status: WorkshopModStagingProgressStatus = "running",
+        overrides: Partial<WorkshopModStagingProgressEvent> = {},
+      ) => {
+        if (!workshopStagingRun) return;
+        workshopStagingRun.lastProgress = progress;
+        sendWorkshopStagingProgress(
+          event.sender,
+          makeWorkshopStagingProgressEvent(workshopStagingRun.runId, progress, status, overrides),
+        );
+      };
+      const throwIfWorkshopStagingCanceled = () => {
+        if (workshopStagingRun?.canceled) {
+          throw new WorkshopModStagingError("CANCELED", "Workshop mod staging was canceled.");
         }
       };
       try {
@@ -12690,6 +12834,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         let realDataPackNames = new Set<string>();
         let stagedWorkshopModNames = new Set<string>();
         if (workshopModStagingMode !== "disabled") {
+          throwIfWorkshopStagingCanceled();
           realDataPackNames = await getRealDataPackNames(dataFolder);
           stagedGamePath = gamePath;
           workshopStagingResult = await stageWorkshopMods({
@@ -12701,7 +12846,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
             compressMods: compressWorkshopMods,
             includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
+            signal: workshopStagingRun?.controller.signal,
+            onProgress: (progress) => reportStagingProgress(progress),
           });
+          stagingCompleted = true;
+          reportStagingProgress(
+            {
+              phase: "completed",
+              current: workshopStagingResult.entries.length,
+              total: workshopStagingResult.entries.length,
+              message: "Workshop mods ready",
+            },
+            "complete",
+            { stage: "complete", percent: 100, detail: "Workshop mods ready" },
+          );
+          if (activeWorkshopStagingRun === workshopStagingRun) activeWorkshopStagingRun = undefined;
           stagedWorkshopModNames = new Set(workshopStagingResult.stagedModNames.map((name) => name.toLowerCase()));
           log(
             `Prepared ${stagedWorkshopModNames.size} Workshop mod(s) in ${workshopStagingResult.destinationPath}; ` +
@@ -13178,6 +13337,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           app.exit();
         }
       } catch (e) {
+        const wasCanceled =
+          !stagingCompleted &&
+          (workshopStagingRun?.canceled || workshopStagingRun?.controller.signal.aborted || event.sender.isDestroyed());
+        if (wasCanceled || (e instanceof WorkshopModStagingError && e.code === "CANCELED")) {
+          if (e instanceof WorkshopModStagingError && e.code === "CANCELED" && workshopStagingRun) {
+            workshopStagingRun.canceled = true;
+          }
+          stagingFailureMessage = "Workshop mod staging canceled.";
+          return;
+        }
+
         await cleanStagingAfterFailedLaunch();
         if (e instanceof WorkshopModStagingError) {
           const message =
@@ -13190,13 +13360,61 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               : e.code === "SYMLINK_UNAVAILABLE"
                 ? i18n.t("automaticWorkshopStagingSymlinkUnavailable")
                 : i18n.t("automaticWorkshopStagingFailed", { error: e.message });
+          stagingFailureMessage = message;
           reportGameLaunchError(message, e);
         } else {
+          stagingFailureMessage = e instanceof Error ? e.message : String(e);
           console.log(e);
+        }
+      } finally {
+        if (workshopStagingRun && !stagingCompleted) {
+          const canceled =
+            workshopStagingRun.canceled || workshopStagingRun.controller.signal.aborted || event.sender.isDestroyed();
+          if (canceled) {
+            reportStagingProgress(
+              {
+                ...workshopStagingRun.lastProgress,
+                phase: "canceled",
+                message: "Workshop mod staging canceled.",
+              },
+              "cancelled",
+              { stage: "canceled", detail: "Workshop mod staging canceled." },
+            );
+          } else {
+            reportStagingProgress(
+              {
+                ...workshopStagingRun.lastProgress,
+                message: stagingFailureMessage || "Workshop mod staging failed.",
+              },
+              "failed",
+              {
+                stage: "failed",
+                detail: stagingFailureMessage || "Workshop mod staging failed.",
+                error: stagingFailureMessage,
+              },
+            );
+          }
+          if (activeWorkshopStagingRun === workshopStagingRun) activeWorkshopStagingRun = undefined;
         }
       }
     },
   );
+  ipcMain.on("cancelWorkshopModStaging", (event, requestedRunId?: string) => {
+    const run = activeWorkshopStagingRun;
+    if (!run || run.senderId !== event.sender.id) return;
+    if (typeof requestedRunId === "string" && requestedRunId.length > 0 && requestedRunId !== run.runId) return;
+    if (run.canceled) return;
+
+    run.canceled = true;
+    run.controller.abort();
+    sendWorkshopStagingProgress(event.sender, {
+      ...makeWorkshopStagingProgressEvent(run.runId, run.lastProgress, "canceling", {
+        stage: "cleaning",
+        detail: "Canceling Workshop mod staging…",
+      }),
+      status: "canceling",
+    });
+  });
   /**
    * Writes a compatibility report to a file the user picks.
    *

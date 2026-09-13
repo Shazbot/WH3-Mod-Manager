@@ -37,9 +37,24 @@ import type {
 
 console.log("IN PRELOAD");
 
+const createWorkshopStagingRunId = (): string => {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  } catch {
+    // Fall through to the local fallback for older Electron runtimes.
+  }
+  return `workshop-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+};
+
 const api = {
-  startGame: (mods: Mod[], areModsInOrder: boolean, startGameOptions: StartGameOptions, name?: string) =>
-    ipcRenderer.send("startGame", mods, areModsInOrder, startGameOptions, name),
+  startGame: (mods: Mod[], areModsInOrder: boolean, startGameOptions: StartGameOptions, name?: string) => {
+    const usesWorkshopStaging =
+      startGameOptions.workshopModStagingMode === "copy" || startGameOptions.workshopModStagingMode === "symlink";
+    const runId = usesWorkshopStaging ? createWorkshopStagingRunId() : undefined;
+    if (runId) ipcRenderer.send("startGame", mods, areModsInOrder, startGameOptions, name, runId);
+    else ipcRenderer.send("startGame", mods, areModsInOrder, startGameOptions, name);
+    return runId;
+  },
   exportModsToClipboard: (mods: Mod[], availableMods: Mod[]) =>
     ipcRenderer.send("exportModsToClipboard", mods, availableMods),
   exportModNamesToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModNamesToClipboard", mods),
@@ -162,6 +177,13 @@ const api = {
   compressPack: (request: CompressPackRequest): Promise<CompressPackResponse> =>
     ipcRenderer.invoke("compressPack", request),
   cancelCompressionAnalysis: () => ipcRenderer.send("cancelCompressionAnalysis"),
+  cancelWorkshopModStaging: (runId?: string) => ipcRenderer.send("cancelWorkshopModStaging", runId),
+  onWorkshopModStagingProgress: (
+    callback: (event: Electron.IpcRendererEvent, progress: WorkshopModStagingProgressEvent) => void,
+  ) => {
+    ipcRenderer.on("workshopModStagingProgress", callback);
+    return () => ipcRenderer.removeListener("workshopModStagingProgress", callback);
+  },
   onCompressionAnalysisProgress: (
     callback: (event: Electron.IpcRendererEvent, progress: CompressionAnalysisProgress) => void,
   ) => {

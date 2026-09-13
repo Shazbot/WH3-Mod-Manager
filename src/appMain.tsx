@@ -10,6 +10,7 @@ import Onboarding from "./components/Onboarding";
 import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
 import UsedModsLoadOrderModal from "./components/UsedModsLoadOrderModal";
+import WorkshopGameStartProgressCard from "./components/WorkshopGameStartProgress";
 
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
@@ -61,6 +62,7 @@ const AppMain = React.memo(() => {
           <Main scrollElement={scrollElement} />
         </div>
         <UsedModsLoadOrderModal />
+        <WorkshopGameStartProgressCard />
         <Toasts />
       </ErrorBoundary>
     </LocalizationContext.Provider>

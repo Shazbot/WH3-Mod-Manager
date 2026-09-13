@@ -17,6 +17,28 @@ declare global {
   type CompressionAnalysisStartResponse = import("./compressionAnalysis").CompressionAnalysisStartResponse;
   type CompressPackRequest = import("./compressionAnalysis").CompressPackRequest;
   type CompressPackResponse = import("./compressionAnalysis").CompressPackResponse;
+  type WorkshopStagingProgress = import("./utility/workshopModStaging").WorkshopStagingProgress;
+  type WorkshopStagingProgressPhase = import("./utility/workshopModStaging").WorkshopStagingProgressPhase;
+
+  type WorkshopModStagingProgressStatus = "running" | "canceling" | "cancelled" | "complete" | "failed";
+
+  /** Progress envelope sent to the renderer for one Workshop-aware game-start request. */
+  interface WorkshopModStagingProgressEvent {
+    runId: string;
+    status: WorkshopModStagingProgressStatus;
+    stage: string;
+    percent?: number;
+    completedMods?: number;
+    totalMods?: number;
+    bytesCopied?: number;
+    totalBytes?: number;
+    fileIndex?: number;
+    fileCount?: number;
+    currentMod?: string;
+    currentFile?: string;
+    detail?: string;
+    error?: string;
+  }
 
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
 

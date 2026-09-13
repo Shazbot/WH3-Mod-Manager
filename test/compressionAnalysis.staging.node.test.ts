@@ -204,4 +204,26 @@ describe("staged PFH5 compression", () => {
     expect(await fs.readFile(stagedPath)).toEqual(originalPack);
     expect((await fs.readdir(root)).filter((name) => name.includes("whmm-staging-rollback"))).toEqual([]);
   });
+
+  it("honors cancellation during staged compression and cleans temporary artifacts", async () => {
+    const root = await makeDirectory();
+    const originalPack = makePFH5Pack([{ name: "db\\compressible.foo", data: Buffer.alloc(8192, 6) }]);
+    const stagedPath = await writePack(root, "alpha.pack", originalPack);
+    const fake = makeFakeCodecs(0.5);
+    const analysis = await analyze(stagedPath, fake.codecs);
+    const controller = new AbortController();
+    const cancelingCodecs: CompressionCodecs = {
+      ...fake.codecs,
+      lz4Compress: vi.fn(async (data: Buffer) => {
+        controller.abort();
+        return fake.codecs.lz4Compress(data);
+      }),
+    };
+
+    await expect(
+      compressStagedPack(stagedPath, analysis, { codecs: cancelingCodecs, signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(await fs.readFile(stagedPath)).toEqual(originalPack);
+    expect((await fs.readdir(root)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+  });
 });

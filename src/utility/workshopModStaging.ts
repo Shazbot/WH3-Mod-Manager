@@ -7,6 +7,7 @@ import {
   compressStagedPack,
   type CompressionCodecs,
   type CompressStagedPackResult,
+  type CompressionAnalysisProgress,
 } from "../compressionAnalysis";
 import type { VanillaCompressionExtensionRecord } from "../compressionAnalysis/vanillaGuardrail";
 
@@ -24,6 +25,21 @@ export interface WorkshopStagingMod {
 }
 
 export type WorkshopStagingAction = "copy" | "symlink" | "unchanged";
+
+export type WorkshopStagingProgressPhase =
+  "planning" | "pruning" | "copying" | "compressing" | "checkpointing" | "completed" | "canceled";
+
+export interface WorkshopStagingProgress {
+  phase: WorkshopStagingProgressPhase;
+  current: number;
+  total: number;
+  modName?: string;
+  fileIndex?: number;
+  fileCount?: number;
+  bytesCopied?: number;
+  totalBytes?: number;
+  message?: string;
+}
 
 export interface WorkshopStagingFingerprint {
   size: number;
@@ -45,6 +61,8 @@ export interface WorkshopStagingCompressionResult {
 export interface WorkshopStagingCompressionRunnerOptions {
   includeRigidModelV2: boolean;
   codecs?: Partial<CompressionCodecs>;
+  signal?: AbortSignal;
+  onProgress?: (progress: CompressionAnalysisProgress) => void;
 }
 
 /**
@@ -98,6 +116,10 @@ export interface WorkshopStagingPlan {
   stagedModNames: string[];
   requiredBytes: number;
   availableBytes: number;
+  /** Bytes occupied by manager-owned .pack outputs that this plan will remove or replace. */
+  reclaimableBytes: number;
+  /** Managed .pack outputs absent from the selected set, removed before the next copy. */
+  staleOutputPaths: string[];
   recreateDestination: boolean;
   mode: Exclude<WorkshopModStagingMode, "disabled">;
   compressMods: boolean;
@@ -111,7 +133,12 @@ export interface WorkshopStagingResult extends WorkshopStagingPlan {
 }
 
 export type WorkshopModStagingErrorCode =
-  "INSUFFICIENT_SPACE" | "SYMLINK_UNAVAILABLE" | "INVALID_DESTINATION" | "STAGING_FAILED" | "CLEANUP_FAILED";
+  | "INSUFFICIENT_SPACE"
+  | "SYMLINK_UNAVAILABLE"
+  | "INVALID_DESTINATION"
+  | "STAGING_FAILED"
+  | "CLEANUP_FAILED"
+  | "CANCELED";
 
 export class WorkshopModStagingError extends Error {
   readonly code: WorkshopModStagingErrorCode;
@@ -132,6 +159,22 @@ export class WorkshopModStagingError extends Error {
     this.destinationPath = details.destinationPath;
   }
 }
+
+const reportWorkshopProgress = (
+  onProgress: BuildWorkshopStagingPlanOptions["onProgress"],
+  progress: WorkshopStagingProgress,
+) => {
+  try {
+    onProgress?.(progress);
+  } catch {
+    // A progress consumer must never abort staging.
+  }
+};
+
+const throwIfStagingAborted = (signal: AbortSignal | undefined, destinationPath: string): void => {
+  if (!signal?.aborted) return;
+  throw new WorkshopModStagingError("CANCELED", "Workshop mod staging was canceled.", { destinationPath });
+};
 
 export type GetFreeBytes = (path: string) => Promise<number>;
 
@@ -157,6 +200,10 @@ export interface BuildWorkshopStagingPlanOptions {
   compressionVanillaRecords?: Map<string, VanillaCompressionExtensionRecord>;
   /** Optional staging compressor override for tests/embedders. */
   compressionRunner?: WorkshopStagingCompressionRunner;
+  /** Cancels planning or staging at the next safe I/O boundary. */
+  signal?: AbortSignal;
+  /** Receives best-effort progress notifications; callback failures are ignored. */
+  onProgress?: (progress: WorkshopStagingProgress) => void;
 }
 
 export type StageWorkshopModsOptions = BuildWorkshopStagingPlanOptions;
@@ -373,6 +420,26 @@ const getReclaimableBytes = async (destinationPath: string): Promise<number> => 
   return childSizes.reduce((total, size) => total + size, 0);
 };
 
+const isManagedPackOutputName = (name: string): boolean => nodePath.extname(name).toLowerCase() === ".pack";
+
+/**
+ * Workshop staging writes packs directly below its manager-owned directory. Only those direct
+ * `.pack` outputs are candidates for automatic pruning; manifests, temporary files, and unrelated
+ * user files are intentionally left alone.
+ */
+const listManagedPackOutputs = async (destinationPath: string): Promise<string[]> => {
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(destinationPath, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return entries
+    .filter((entry) => isManagedPackOutputName(entry.name) && (entry.isFile() || entry.isSymbolicLink()))
+    .map((entry) => nodePath.join(destinationPath, entry.name));
+};
+
 const dedupeWorkshopMods = (mods: WorkshopStagingMod[]) => {
   const seenNames = new Set<string>();
   return mods.filter((mod) => {
@@ -439,9 +506,12 @@ export const buildWorkshopStagingPlan = async ({
   recreateDestination = false,
   compressMods = false,
   includeRigidModelV2 = false,
+  signal,
+  onProgress,
 }: BuildWorkshopStagingPlanOptions): Promise<WorkshopStagingPlan> => {
   const destinationPath = nodePath.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
   const manifestPath = manifestPathFor(destinationPath);
+  throwIfStagingAborted(signal, destinationPath);
   const compressionEnabled = mode === "copy" && compressMods;
   const effectiveIncludeRigidModelV2 = compressionEnabled && includeRigidModelV2;
   const policy: WorkshopStagingManifestPolicy = {
@@ -467,6 +537,17 @@ export const buildWorkshopStagingPlan = async ({
     workshopMods.filter((mod) => mod.isEnabled && !selectedDataNames.has(comparableName(mod.name))),
   );
   await validateDestinationDirectory(destinationPath);
+  const managedPackOutputs = await listManagedPackOutputs(destinationPath);
+  const selectedNames = new Set(selectedMods.map((mod) => comparableName(mod.name)));
+  const staleOutputPaths = recreateDestination
+    ? managedPackOutputs
+    : managedPackOutputs.filter((outputPath) => !selectedNames.has(comparableName(nodePath.basename(outputPath))));
+  reportWorkshopProgress(onProgress, {
+    phase: "planning",
+    current: 0,
+    total: selectedMods.length,
+    message: `Planning ${selectedMods.length} Workshop mod(s)`,
+  });
 
   const manifestRead: WorkshopStagingManifestRead =
     mode === "copy" ? await readWorkshopStagingManifest(manifestPath) : { present: false };
@@ -474,6 +555,7 @@ export const buildWorkshopStagingPlan = async ({
 
   const entries: WorkshopStagingPlanEntry[] = [];
   for (const mod of selectedMods) {
+    throwIfStagingAborted(signal, destinationPath);
     if (!isSafePackName(mod.name)) {
       throw new WorkshopModStagingError("STAGING_FAILED", `Invalid Workshop pack name: ${mod.name}`, {
         destinationPath,
@@ -533,8 +615,14 @@ export const buildWorkshopStagingPlan = async ({
   }
 
   const requiredBytes = entries.reduce((total, entry) => total + (entry.action === "copy" ? entry.sourceSize : 0), 0);
-  const availableBytes =
-    (await getFreeBytes(gameFolder)) + (recreateDestination ? await getReclaimableBytes(destinationPath) : 0);
+  // Existing destinations that are about to be replaced must stay in place while the atomic temp
+  // copy is assembled, so only outputs removed in the pre-copy prune contribute reclaimable space.
+  const reclaimableBytes = (
+    await Promise.all(staleOutputPaths.map((outputPath) => getReclaimableBytes(outputPath)))
+  ).reduce((total, size) => total + size, 0);
+  const freeBytes = await getFreeBytes(gameFolder);
+  throwIfStagingAborted(signal, destinationPath);
+  const availableBytes = freeBytes + reclaimableBytes;
 
   return {
     destinationPath,
@@ -543,6 +631,8 @@ export const buildWorkshopStagingPlan = async ({
     stagedModNames: entries.map((entry) => entry.name),
     requiredBytes,
     availableBytes,
+    reclaimableBytes,
+    staleOutputPaths,
     recreateDestination,
     mode,
     compressMods: compressionEnabled,
@@ -581,17 +671,51 @@ const removeDestination = async (destinationPath: string) => {
   await fs.promises.rm(destinationPath, { recursive: true, force: true });
 };
 
-const copyFileAtomically = async (entry: WorkshopStagingPlanEntry) => {
+const STAGING_COPY_CHUNK_BYTES = 8 * 1024 * 1024;
+
+const copyFileAtomically = async (
+  entry: WorkshopStagingPlanEntry,
+  signal?: AbortSignal,
+  onBytesCopied?: (bytesCopied: number) => void,
+) => {
   const temporaryPath = nodePath.join(
     nodePath.dirname(entry.destinationPath),
     `.${nodePath.basename(entry.destinationPath)}.${randomUUID()}.tmp`,
   );
+  let source: fs.promises.FileHandle | undefined;
+  let destination: fs.promises.FileHandle | undefined;
   try {
-    await fs.promises.copyFile(entry.sourcePath, temporaryPath);
+    throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+    source = await fs.promises.open(entry.sourcePath, "r");
+    destination = await fs.promises.open(temporaryPath, "wx+");
+    const chunk = Buffer.allocUnsafe(Math.min(STAGING_COPY_CHUNK_BYTES, Math.max(1, entry.sourceSize)));
+    let copied = 0;
+    while (copied < entry.sourceSize) {
+      throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+      const bytes = Math.min(chunk.length, entry.sourceSize - copied);
+      const read = await source.read(chunk, 0, bytes, copied);
+      if (read.bytesRead !== bytes) throw new Error(`short source read at ${copied}`);
+      let written = 0;
+      while (written < bytes) {
+        throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+        const result = await destination.write(chunk, written, bytes - written, copied + written);
+        if (result.bytesWritten === 0) throw new Error(`short destination write at ${copied + written}`);
+        written += result.bytesWritten;
+      }
+      copied += bytes;
+      onBytesCopied?.(copied);
+    }
+    throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+    await destination.sync();
+    await destination.close();
+    destination = undefined;
+    await source.close();
+    source = undefined;
     // Pass fractional seconds rather than Date objects so filesystems that expose sub-millisecond
     // mtimes can round-trip the source timestamp and be recognized as unchanged next launch.
     const sourceMtime = entry.sourceMtimeMs / 1000;
     await fs.promises.utimes(temporaryPath, sourceMtime, sourceMtime);
+    throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
 
     try {
       // On POSIX this replaces the old entry atomically. Windows rejects the rename when the old
@@ -602,10 +726,38 @@ const copyFileAtomically = async (entry: WorkshopStagingPlanEntry) => {
       if (code !== "EEXIST" && code !== "EPERM" && code !== "ENOTEMPTY" && code !== "EISDIR" && code !== "ENOTDIR") {
         throw error;
       }
+      throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
       await removeDestination(entry.destinationPath);
       await fs.promises.rename(temporaryPath, entry.destinationPath);
     }
     await fs.promises.utimes(entry.destinationPath, sourceMtime, sourceMtime);
+  } finally {
+    await destination?.close().catch(() => undefined);
+    await source?.close().catch(() => undefined);
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+};
+
+const createSymlinkAtomically = async (entry: WorkshopStagingPlanEntry, signal?: AbortSignal) => {
+  const temporaryPath = nodePath.join(
+    nodePath.dirname(entry.destinationPath),
+    `.${nodePath.basename(entry.destinationPath)}.${randomUUID()}.tmp`,
+  );
+  try {
+    throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+    await fs.promises.symlink(nodePath.resolve(entry.sourcePath), temporaryPath, "file");
+    throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+    try {
+      await fs.promises.rename(temporaryPath, entry.destinationPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST" && code !== "EPERM" && code !== "ENOTEMPTY" && code !== "EISDIR" && code !== "ENOTDIR") {
+        throw error;
+      }
+      throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+      await removeDestination(entry.destinationPath);
+      await fs.promises.rename(temporaryPath, entry.destinationPath);
+    }
   } finally {
     await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
   }
@@ -633,8 +785,11 @@ const defaultWorkshopStagingCompressionRunner = async (
       codecs: options.codecs,
       vanillaCsv: options.vanillaCsv,
       vanillaRecords: options.vanillaRecords,
+      isCanceled: () => options.signal?.aborted === true,
+      onProgress: options.onProgress,
     });
   } catch (error) {
+    if (options.signal?.aborted) throw error;
     return {
       name: nodePath.basename(packPath),
       status: "failed",
@@ -642,6 +797,10 @@ const defaultWorkshopStagingCompressionRunner = async (
       compressedFileCount: 0,
       warnings: [error instanceof Error ? error.message : String(error)],
     };
+  }
+
+  if (analysisResult.status === "canceled") {
+    throw new Error("Compression analysis canceled");
   }
 
   const analysis = analysisResult.packs[0];
@@ -673,6 +832,8 @@ const defaultWorkshopStagingCompressionRunner = async (
   const result = await compressStagedPack(packPath, analysis, {
     includeRigidModelV2: options.includeRigidModelV2,
     codecs: options.codecs,
+    signal: options.signal,
+    onProgress: options.onProgress,
   });
   return {
     name: nodePath.basename(packPath),
@@ -711,6 +872,8 @@ interface WorkshopStagingExecutionResult {
   compressionResults: WorkshopStagingCompressionResult[];
   compressionWarnings: string[];
   compressionByName: Map<string, WorkshopStagingCompressionResult>;
+  /** Entries whose copy/symlink (and optional compression) reached a checkpoint boundary. */
+  completedEntries: Set<string>;
 }
 
 const ensureRegularDestinationAfterCompressionFailure = async (entry: WorkshopStagingPlanEntry) => {
@@ -733,33 +896,117 @@ const ensureRegularDestinationAfterCompressionFailure = async (entry: WorkshopSt
 const executeWorkshopStagingPlan = async (
   plan: WorkshopStagingPlan,
   options: StageWorkshopModsOptions,
+  onCheckpoint?: (execution: WorkshopStagingExecutionResult) => Promise<void>,
 ): Promise<WorkshopStagingExecutionResult> => {
   const compressionResults: WorkshopStagingCompressionResult[] = [];
   const compressionWarnings = [...plan.compressionWarnings];
   const compressionByName = new Map<string, WorkshopStagingCompressionResult>();
-  if (plan.recreateDestination) await removeDestination(plan.destinationPath);
-  if (plan.entries.length === 0) return { compressionResults, compressionWarnings, compressionByName };
+  const completedEntries = new Set<string>();
+  const execution = { compressionResults, compressionWarnings, compressionByName, completedEntries };
+
+  if (plan.staleOutputPaths.length > 0) {
+    await fs.promises.mkdir(plan.destinationPath, { recursive: true });
+    for (const [index, staleOutputPath] of plan.staleOutputPaths.entries()) {
+      throwIfStagingAborted(options.signal, plan.destinationPath);
+      reportWorkshopProgress(options.onProgress, {
+        phase: "pruning",
+        current: index,
+        total: plan.staleOutputPaths.length,
+        modName: nodePath.basename(staleOutputPath),
+        message: `Removing stale Workshop output ${nodePath.basename(staleOutputPath)}`,
+      });
+      await removeDestination(staleOutputPath);
+      reportWorkshopProgress(options.onProgress, {
+        phase: "pruning",
+        current: index + 1,
+        total: plan.staleOutputPaths.length,
+        modName: nodePath.basename(staleOutputPath),
+      });
+    }
+  }
+
+  if (plan.entries.length === 0) return execution;
   await fs.promises.mkdir(plan.destinationPath, { recursive: true });
   for (const entry of plan.entries) {
-    if (entry.action === "unchanged") continue;
+    throwIfStagingAborted(options.signal, plan.destinationPath);
+    const completedCount = completedEntries.size;
+    reportWorkshopProgress(options.onProgress, {
+      phase: "copying",
+      current: completedCount,
+      total: plan.entries.length,
+      modName: entry.name,
+      message: entry.action === "unchanged" ? `Using cached ${entry.name}` : `Copying ${entry.name}`,
+    });
+
+    if (entry.action === "unchanged") {
+      completedEntries.add(comparableName(entry.name));
+      await onCheckpoint?.(execution);
+      reportWorkshopProgress(options.onProgress, {
+        phase: "copying",
+        current: completedEntries.size,
+        total: plan.entries.length,
+        modName: entry.name,
+      });
+      throwIfStagingAborted(options.signal, plan.destinationPath);
+      continue;
+    }
     if (entry.action === "copy") {
-      await copyFileAtomically(entry);
+      await copyFileAtomically(entry, options.signal, (bytesCopied) =>
+        reportWorkshopProgress(options.onProgress, {
+          phase: "copying",
+          current: completedEntries.size,
+          total: plan.entries.length,
+          modName: entry.name,
+          bytesCopied,
+          totalBytes: entry.sourceSize,
+        }),
+      );
       if (plan.compressMods) {
+        reportWorkshopProgress(options.onProgress, {
+          phase: "compressing",
+          current: completedEntries.size,
+          total: plan.entries.length,
+          modName: entry.name,
+          message: `Compressing ${entry.name}`,
+        });
         let compressionResult: WorkshopStagingCompressionResult;
         try {
           const rawResult = options.compressionRunner
             ? await options.compressionRunner(entry.destinationPath, {
                 includeRigidModelV2: plan.includeRigidModelV2,
                 codecs: options.compressionCodecs,
+                signal: options.signal,
+                onProgress: (progress) =>
+                  reportWorkshopProgress(options.onProgress, {
+                    phase: "compressing",
+                    current: completedEntries.size,
+                    total: plan.entries.length,
+                    modName: entry.name,
+                    fileIndex: progress.fileIndex,
+                    fileCount: progress.fileCount,
+                    message: progress.message || progress.fileName,
+                  }),
               })
             : await defaultWorkshopStagingCompressionRunner(entry.destinationPath, {
                 includeRigidModelV2: plan.includeRigidModelV2,
                 codecs: options.compressionCodecs,
                 vanillaCsv: options.compressionVanillaCsv,
                 vanillaRecords: options.compressionVanillaRecords,
+                signal: options.signal,
+                onProgress: (progress) =>
+                  reportWorkshopProgress(options.onProgress, {
+                    phase: "compressing",
+                    current: completedEntries.size,
+                    total: plan.entries.length,
+                    modName: entry.name,
+                    fileIndex: progress.fileIndex,
+                    fileCount: progress.fileCount,
+                    message: progress.message || progress.fileName,
+                  }),
               });
           compressionResult = normalizeCompressionResult(entry.name, rawResult);
         } catch (error) {
+          if (options.signal?.aborted) throw error;
           compressionResult = {
             name: entry.name,
             status: "failed",
@@ -777,20 +1024,38 @@ const executeWorkshopStagingPlan = async (
           await ensureRegularDestinationAfterCompressionFailure(entry);
         }
       }
+      completedEntries.add(comparableName(entry.name));
+      await onCheckpoint?.(execution);
+      reportWorkshopProgress(options.onProgress, {
+        phase: "copying",
+        current: completedEntries.size,
+        total: plan.entries.length,
+        modName: entry.name,
+      });
+      throwIfStagingAborted(options.signal, plan.destinationPath);
       continue;
     }
 
-    await removeDestination(entry.destinationPath);
-    await fs.promises.symlink(nodePath.resolve(entry.sourcePath), entry.destinationPath, "file");
+    await createSymlinkAtomically(entry, options.signal);
+    completedEntries.add(comparableName(entry.name));
+    await onCheckpoint?.(execution);
+    reportWorkshopProgress(options.onProgress, {
+      phase: "copying",
+      current: completedEntries.size,
+      total: plan.entries.length,
+      modName: entry.name,
+    });
+    throwIfStagingAborted(options.signal, plan.destinationPath);
   }
-  return { compressionResults, compressionWarnings: uniqueWarnings(compressionWarnings), compressionByName };
+  execution.compressionWarnings = uniqueWarnings(compressionWarnings);
+  return execution;
 };
 
 const writePlanManifest = async (
   plan: WorkshopStagingPlan,
   execution: WorkshopStagingExecutionResult,
 ): Promise<string[]> => {
-  if (plan.mode !== "copy" || plan.entries.length === 0) return [];
+  if (plan.mode !== "copy") return [];
 
   const warnings: string[] = [];
   const previous = await readWorkshopStagingManifest(plan.manifestPath);
@@ -804,6 +1069,7 @@ const writePlanManifest = async (
   const entries: Record<string, WorkshopStagingManifestEntry> = {};
 
   for (const entry of plan.entries) {
+    if (entry.action !== "unchanged" && !execution.completedEntries.has(comparableName(entry.name))) continue;
     let destinationStats: fs.Stats;
     try {
       destinationStats = await fs.promises.lstat(entry.destinationPath);
@@ -872,6 +1138,18 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
   try {
     plan = await buildWorkshopStagingPlan(options);
   } catch (error) {
+    if (options.signal?.aborted || (error instanceof WorkshopModStagingError && error.code === "CANCELED")) {
+      reportWorkshopProgress(options.onProgress, {
+        phase: "canceled",
+        current: 0,
+        total: 0,
+        message: "Workshop mod staging canceled",
+      });
+      if (error instanceof WorkshopModStagingError && error.code === "CANCELED") throw error;
+      throw new WorkshopModStagingError("CANCELED", "Workshop mod staging was canceled.", {
+        destinationPath: nodePath.join(options.gameFolder, WORKSHOP_MOD_STAGING_FOLDER),
+      });
+    }
     if (error instanceof WorkshopModStagingError) throw error;
     const destinationPath = nodePath.join(options.gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
     throw new WorkshopModStagingError(
@@ -880,6 +1158,7 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
       { destinationPath },
     );
   }
+  throwIfStagingAborted(options.signal, plan.destinationPath);
   if (plan.requiredBytes > plan.availableBytes) {
     throw new WorkshopModStagingError(
       "INSUFFICIENT_SPACE",
@@ -896,15 +1175,51 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
     compressionResults: [],
     compressionWarnings: [...plan.compressionWarnings],
     compressionByName: new Map(),
+    completedEntries: new Set(),
   };
+  let latestExecution = execution;
   try {
-    if (plan.entries.length > 0 || plan.recreateDestination) {
-      execution = await executeWorkshopStagingPlan(plan, options);
+    if (plan.entries.length > 0 || plan.recreateDestination || plan.staleOutputPaths.length > 0) {
+      execution = await executeWorkshopStagingPlan(plan, options, async (checkpoint) => {
+        latestExecution = checkpoint;
+        reportWorkshopProgress(options.onProgress, {
+          phase: "checkpointing",
+          current: checkpoint.completedEntries.size,
+          total: plan.entries.length,
+          message: "Saving Workshop staging checkpoint",
+        });
+        checkpoint.compressionWarnings.push(...(await writePlanManifest(plan, checkpoint)));
+      });
       execution.compressionWarnings.push(...(await writePlanManifest(plan, execution)));
       execution.compressionWarnings = uniqueWarnings(execution.compressionWarnings);
+      reportWorkshopProgress(options.onProgress, {
+        phase: "completed",
+        current: execution.completedEntries.size,
+        total: plan.entries.length,
+        message: "Workshop mod staging complete",
+      });
     }
   } catch (error) {
-    if (plan.recreateDestination) await removeDestination(plan.destinationPath).catch(() => undefined);
+    if (error instanceof WorkshopModStagingError && error.code === "CANCELED") {
+      reportWorkshopProgress(options.onProgress, {
+        phase: "canceled",
+        current: latestExecution.completedEntries.size,
+        total: plan.entries.length,
+        message: "Workshop mod staging canceled",
+      });
+      throw error;
+    }
+    if (options.signal?.aborted) {
+      reportWorkshopProgress(options.onProgress, {
+        phase: "canceled",
+        current: latestExecution.completedEntries.size,
+        total: plan.entries.length,
+        message: "Workshop mod staging canceled",
+      });
+      throw new WorkshopModStagingError("CANCELED", "Workshop mod staging was canceled.", {
+        destinationPath: plan.destinationPath,
+      });
+    }
     if (error instanceof WorkshopModStagingError) throw error;
     throw new WorkshopModStagingError(
       "STAGING_FAILED",

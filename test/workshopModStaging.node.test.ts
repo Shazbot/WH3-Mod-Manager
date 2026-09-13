@@ -355,6 +355,128 @@ describe("Workshop mod staging", () => {
     expect(fs.existsSync(path.join(result.destinationPath, "collision.pack"))).toBe(false);
   });
 
+  it("prunes stale managed packs before copying and credits their bytes without touching unrelated files", async () => {
+    const gameFolder = makeDirectory();
+    const sourcePath = writeSourceMod(makeDirectory(), "fresh.pack", "fresh");
+    const destinationPath = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
+    fs.mkdirSync(destinationPath);
+    const stalePath = path.join(destinationPath, "disabled.pack");
+    fs.writeFileSync(stalePath, "disabled");
+    const unrelatedPath = path.join(destinationPath, "notes.txt");
+    fs.writeFileSync(unrelatedPath, "keep");
+
+    const plan = await buildWorkshopStagingPlan({
+      gameFolder,
+      mode: "copy",
+      workshopMods: [{ name: "fresh.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 0,
+    });
+    expect(plan.staleOutputPaths).toEqual([stalePath]);
+    expect(plan.reclaimableBytes).toBeGreaterThan(0);
+    expect(plan.availableBytes).toBeGreaterThanOrEqual(plan.requiredBytes);
+
+    const result = await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      workshopMods: [{ name: "fresh.pack", path: sourcePath, isEnabled: true }],
+      getFreeBytes: async () => 0,
+    });
+    expect(fs.existsSync(stalePath)).toBe(false);
+    expect(fs.readFileSync(unrelatedPath, "utf8")).toBe("keep");
+    expect(fs.readFileSync(path.join(result.destinationPath, "fresh.pack"), "utf8")).toBe("fresh");
+  });
+
+  it("prunes disabled outputs even when there are no enabled Workshop mods", async () => {
+    const gameFolder = makeDirectory();
+    const destinationPath = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
+    fs.mkdirSync(destinationPath);
+    const stalePath = path.join(destinationPath, "disabled.pack");
+    fs.writeFileSync(stalePath, "disabled");
+    const unrelatedPath = path.join(destinationPath, "notes.txt");
+    fs.writeFileSync(unrelatedPath, "keep");
+
+    const result = await stageWorkshopMods({
+      gameFolder,
+      mode: "copy",
+      workshopMods: [{ name: "disabled.pack", path: stalePath, isEnabled: false }],
+      getFreeBytes: async () => 0,
+    });
+
+    expect(result.stagedModNames).toEqual([]);
+    expect(fs.existsSync(stalePath)).toBe(false);
+    expect(fs.readFileSync(unrelatedPath, "utf8")).toBe("keep");
+  });
+
+  it("cancels between sequential entries while preserving completed output and its manifest checkpoint", async () => {
+    const gameFolder = makeDirectory();
+    const sourceDirectory = makeDirectory();
+    const alphaPath = writeSourceMod(sourceDirectory, "alpha.pack", "alpha");
+    const betaPath = writeSourceMod(sourceDirectory, "beta.pack", "beta");
+    const controller = new AbortController();
+    const progress: string[] = [];
+    const copiedByteUpdates: number[] = [];
+
+    await expect(
+      stageWorkshopMods({
+        gameFolder,
+        mode: "copy",
+        workshopMods: [
+          { name: "alpha.pack", path: alphaPath, isEnabled: true },
+          { name: "beta.pack", path: betaPath, isEnabled: true },
+        ],
+        getFreeBytes: async () => 100,
+        signal: controller.signal,
+        onProgress: (update) => {
+          progress.push(`${update.phase}:${update.current}:${update.modName || ""}`);
+          if (update.bytesCopied !== undefined) copiedByteUpdates.push(update.bytesCopied);
+          if (update.phase === "copying" && update.current === 1 && update.modName === "alpha.pack") {
+            controller.abort();
+          }
+        },
+      }),
+    ).rejects.toMatchObject<WorkshopModStagingError>({ code: "CANCELED" });
+
+    const destinationPath = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
+    expect(fs.readFileSync(path.join(destinationPath, "alpha.pack"), "utf8")).toBe("alpha");
+    expect(fs.existsSync(path.join(destinationPath, "beta.pack"))).toBe(false);
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(destinationPath, WORKSHOP_MOD_STAGING_MANIFEST_FILENAME), "utf8"),
+    );
+    expect(Object.keys(manifest.entries)).toEqual(["alpha.pack"]);
+    expect(fs.readdirSync(destinationPath).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+    expect(copiedByteUpdates.at(-1)).toBe(Buffer.byteLength("alpha"));
+    expect(progress.some((update) => update.startsWith("canceled:"))).toBe(true);
+  });
+
+  it("aborts a streamed copy before committing its temporary file", async () => {
+    const gameFolder = makeDirectory();
+    const sourceDirectory = makeDirectory();
+    const sourceBytes = Buffer.alloc(9 * 1024 * 1024, 7);
+    const sourcePath = path.join(sourceDirectory, "large.pack");
+    fs.writeFileSync(sourcePath, sourceBytes);
+    const controller = new AbortController();
+
+    await expect(
+      stageWorkshopMods({
+        gameFolder,
+        mode: "copy",
+        workshopMods: [{ name: "large.pack", path: sourcePath, isEnabled: true }],
+        getFreeBytes: async () => sourceBytes.length,
+        signal: controller.signal,
+        onProgress: (update) => {
+          if (update.bytesCopied !== undefined && update.bytesCopied < (update.totalBytes || 0)) {
+            controller.abort();
+          }
+        },
+      }),
+    ).rejects.toMatchObject<WorkshopModStagingError>({ code: "CANCELED" });
+
+    const destinationPath = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
+    expect(fs.existsSync(path.join(destinationPath, "large.pack"))).toBe(false);
+    expect(fs.readdirSync(destinationPath).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+    expect(fs.readFileSync(sourcePath).equals(sourceBytes)).toBe(true);
+  });
+
   it("rejects insufficient space before creating or changing staging contents", async () => {
     const gameFolder = makeDirectory();
     const sourcePath = writeSourceMod(makeDirectory(), "alpha.pack", "12345");
