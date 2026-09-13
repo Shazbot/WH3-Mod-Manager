@@ -8,6 +8,7 @@ import { prepareNodeConfig } from "../../src/packFileSerializer";
 const packFileSerializerMocks = vi.hoisted(() => ({
   getPacksTableData: vi.fn(),
   readPack: vi.fn(),
+  readDBPackedFilesFromIndex: vi.fn(),
 }));
 const vanillaCacheMocks = vi.hoisted(() => ({
   readVanillaPackFromCache: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("../../src/packFileSerializer", async () => {
     ...actual,
     getPacksTableData: packFileSerializerMocks.getPacksTableData,
     readPack: packFileSerializerMocks.readPack,
+    readDBPackedFilesFromIndex: packFileSerializerMocks.readDBPackedFilesFromIndex,
   };
 });
 vi.mock("../../src/vanillaDbCache/store", async () => {
@@ -90,6 +92,7 @@ describe("reverse reference lookup node", () => {
   beforeEach(() => {
     vanillaCacheMocks.readVanillaPackFromCache.mockResolvedValue(undefined);
     packFileSerializerMocks.getPacksTableData.mockImplementation(() => undefined);
+    packFileSerializerMocks.readDBPackedFilesFromIndex.mockResolvedValue([reversePackedFile]);
     packFileSerializerMocks.readPack.mockResolvedValue({
       name: "source.pack",
       path: "source.pack",

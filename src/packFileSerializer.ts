@@ -2970,6 +2970,36 @@ const readDBPackedFiles = async (
     }
   }
 };
+
+/**
+ * Reads and parses only entries already resolved from a compact pack index. The pack directory is
+ * deliberately not parsed here; flow execution can therefore reuse one index across many nodes.
+ */
+export const readDBPackedFilesFromIndex = async (
+  modPath: string,
+  indexedFiles: readonly PackedFile[],
+): Promise<PackedFile[]> => {
+  const packedFiles = indexedFiles.map((file) => ({
+    name: file.name,
+    file_size: file.file_size,
+    start_pos: file.start_pos,
+    is_compressed: file.is_compressed,
+  }));
+  const readRuns = groupPackedFilesIntoReadRuns(packedFiles);
+  if (readRuns.length === 0) return packedFiles;
+
+  const fileId = fs.openSync(modPath, "r");
+  try {
+    for (const run of readRuns) {
+      const buffer = Buffer.allocUnsafe(run.endPos - run.startPos);
+      fs.readSync(fileId, buffer, 0, buffer.length, run.startPos);
+      await readDBPackedFiles({}, run.packedFiles, buffer, run.startPos, modPath);
+    }
+  } finally {
+    fs.closeSync(fileId);
+  }
+  return packedFiles;
+};
 const readLoc = async (
   packReadingOptions: PackReadingOptions,
   locPackFile: PackedFile,

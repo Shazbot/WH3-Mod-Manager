@@ -5,7 +5,7 @@ import {
   DBVersion,
   LocFields,
   LocVersion,
-  Pack,
+  PackSource,
   PackedFile,
   FIELD_TYPE,
 } from "./packFileTypes";
@@ -42,7 +42,7 @@ export const buildFileCopyOutputs = async (
   fileCopies: DeepCloneFileCopy[],
   packPathByFileName: Map<string, string>,
   readPackedFiles: PackedFileReader,
-  sourceFile: Pack | undefined,
+  sourceFile: PackSource | undefined,
   onWarn: (message: string) => void,
 ): Promise<DBTablesNodeTable[]> => {
   const copiesByPackPath = new Map<string, DeepCloneFileCopy[]>();
@@ -79,7 +79,7 @@ export const buildFileCopyOutputs = async (
       outputs.push({
         name: fileCopy.targetName,
         fileName: fileCopy.targetName,
-        sourceFile: sourceFile as Pack,
+        sourceFile: sourceFile as PackSource,
         table: {
           name: fileCopy.targetName,
           file_size: buffer.length,

@@ -55,6 +55,12 @@ export interface Pack {
   readTables: string[] | "all";
 }
 
+/** Lightweight provenance carried through flow results instead of the complete pack index. */
+export interface PackSource {
+  name: string;
+  path: string;
+}
+
 export interface PackFileCollision {
   firstPackName: string;
   secondPackName: string;

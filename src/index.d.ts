@@ -622,6 +622,7 @@ declare global {
 
   interface FlowExecutionContext {
     readPackCache: Map<string, Promise<Pack>>;
+    packIndexCache: Map<string, Promise<import("./utility/compactPackIndex").CompactPackIndex>>;
     tableFilesByPackAndTable: Map<string, PackedFile[]>;
     rowsByPackedFile: WeakMap<PackedFile, AmendedSchemaField[][]>;
     columnIndexesByPackedFile: WeakMap<PackedFile, Map<string, number>>;
@@ -1585,10 +1586,15 @@ declare global {
     loadedCount: number;
   }
 
+  interface PackSource {
+    name: string;
+    path: string;
+  }
+
   interface DBTablesNodeTable {
     name: string;
     fileName: string;
-    sourceFile: Pack;
+    sourceFile: PackSource;
     table: PackedFile;
     /**
      * Overrides the default `db\<tableName>\` output folder when this table is written by the save
@@ -1627,7 +1633,7 @@ declare global {
   interface DBColumnSelectionTableValues {
     tableName: string;
     fileName: string;
-    sourcePack: Pack;
+    sourcePack: PackSource;
     sourceTable: PackedFile;
     selectedColumns: string[];
     data: { col: string; data: string }[];

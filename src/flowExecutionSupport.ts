@@ -1,5 +1,6 @@
 import type { SerializedConnection, SerializedNode } from "./nodeGraph/types";
 import { AmendedSchemaField, NewPackedFile, Pack, PackedFile } from "./packFileTypes";
+import type { CompactPackIndex } from "./utility/compactPackIndex";
 
 export interface PreparedFlow {
   flowFileName: string;
@@ -9,6 +10,8 @@ export interface PreparedFlow {
 }
 export interface FlowExecutionContext {
   readPackCache: Map<string, Promise<Pack>>;
+  /** One compact directory per physical pack, shared by table/file nodes in this execution. */
+  packIndexCache: Map<string, Promise<CompactPackIndex>>;
   tableFilesByPackAndTable: Map<string, PackedFile[]>;
   rowsByPackedFile: WeakMap<PackedFile, AmendedSchemaField[][]>;
   columnIndexesByPackedFile: WeakMap<PackedFile, Map<string, number>>;
@@ -85,6 +88,7 @@ export const buildFlowOutputPackBaseName = (flowExecutionId: string): string => 
 
 export const createFlowExecutionContext = (isDebug = false): FlowExecutionContext => ({
   readPackCache: new Map<string, Promise<Pack>>(),
+  packIndexCache: new Map<string, Promise<CompactPackIndex>>(),
   tableFilesByPackAndTable: new Map<string, PackedFile[]>(),
   rowsByPackedFile: new WeakMap<PackedFile, AmendedSchemaField[][]>(),
   columnIndexesByPackedFile: new WeakMap<PackedFile, Map<string, number>>(),

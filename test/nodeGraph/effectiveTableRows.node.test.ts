@@ -7,6 +7,7 @@ import type { AmendedSchemaField, Pack, PackedFile } from "../../src/packFileTyp
 const packFileSerializerMocks = vi.hoisted(() => ({
   getPacksTableData: vi.fn(),
   readPack: vi.fn(),
+  readDBPackedFilesFromIndex: vi.fn(),
 }));
 const vanillaCacheMocks = vi.hoisted(() => ({
   readVanillaPackFromCache: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("../../src/packFileSerializer", async () => {
     ...actual,
     getPacksTableData: packFileSerializerMocks.getPacksTableData,
     readPack: packFileSerializerMocks.readPack,
+    readDBPackedFilesFromIndex: packFileSerializerMocks.readDBPackedFilesFromIndex,
   };
 });
 vi.mock("../../src/vanillaDbCache/store", async () => {
@@ -210,6 +212,12 @@ describe("effective rows in selection and lookup nodes", () => {
     vanillaCacheMocks.readVanillaPackFromCache.mockResolvedValue(undefined);
     packFileSerializerMocks.getPacksTableData.mockImplementation(() => undefined);
     packFileSerializerMocks.readPack.mockImplementation(async (packPath: string) => packs.get(packPath));
+    packFileSerializerMocks.readDBPackedFilesFromIndex.mockImplementation(
+      async (packPath: string, indexedFiles: PackedFile[]) => {
+        const files = packs.get(packPath)?.packedFiles ?? [];
+        return indexedFiles.map((indexedFile) => files.find((file) => file.name === indexedFile.name)!);
+      },
+    );
   });
 
   const addPack = (packName: string, packedFiles: PackedFile[]) => {
@@ -244,7 +252,34 @@ describe("effective rows in selection and lookup nodes", () => {
       const output = result.data as DBTablesNodeData;
       expect(output.tables).toHaveLength(1);
       expect(rowValues(output.tables[0])).toEqual(["same", "wins"]);
+      expect(output.tables[0].sourceFile).toEqual({ name: "high.pack", path: "/packs/high.pack" });
     }
+  });
+
+  it("reuses one compact directory and negatively caches a missing table across nodes", async () => {
+    const source = addPack("source.pack", [
+      makePackedFile("db\\main_units_tables\\data__", fields, [{ key: "unit", value: "one" }]),
+    ]);
+    const inputData = { type: "PackFiles", files: [source], count: 1, loadedCount: 1 } as PackFilesNodeData;
+    const executionContext = createFlowExecutionContext();
+    const readPackCallsBefore = packFileSerializerMocks.readPack.mock.calls.length;
+    const readPayloadCallsBefore = packFileSerializerMocks.readDBPackedFilesFromIndex.mock.calls.length;
+
+    for (const tableName of ["main_units_tables", "main_units_tables", "missing_tables", "missing_tables"]) {
+      await executeNodeAction({
+        nodeId: tableName,
+        nodeType: "tableselection",
+        textValue: tableName,
+        inputData,
+        executionContext,
+      });
+    }
+
+    expect(packFileSerializerMocks.readPack.mock.calls.length - readPackCallsBefore).toBe(1);
+    // Only the matching table reaches the payload reader; misses are answered by the directory.
+    expect(packFileSerializerMocks.readDBPackedFilesFromIndex.mock.calls.length - readPayloadCallsBefore).toBe(1);
+    expect(executionContext.packIndexCache.size).toBe(1);
+    expect(executionContext.readPackCache.size).toBe(0);
   });
 
   it("resolves target rows before Reference Lookup filtering", async () => {

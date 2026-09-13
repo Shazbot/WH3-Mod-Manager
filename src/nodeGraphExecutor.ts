@@ -33,6 +33,19 @@ const getConnectionKey = (connection: SerializedConnection): string =>
 
 const isMultiOutputNodeType = (nodeType?: string): boolean =>
   nodeType === "generaterows" || nodeType === "generaterowsschema" || nodeType === "multifilter";
+
+const memorySnapshot = () => {
+  const memory = process.memoryUsage();
+  return {
+    rss: memory.rss,
+    heapUsed: memory.heapUsed,
+    heapTotal: memory.heapTotal,
+    external: memory.external,
+    arrayBuffers: memory.arrayBuffers,
+  };
+};
+
+const formatMemoryMb = (bytes: number): string => `${(bytes / 1048576).toFixed(1)}MB`;
 /** Exported for tests: every save-node option has to survive this hop on a manual run. */
 export const serializeNodeConfigForExecution = (node: SerializedNode): string => {
   if (node.type === "packfilesdropdown") {
@@ -385,6 +398,7 @@ const buildInputDataForTarget = (
 export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Promise<NodeGraphExecutionResult> => {
   const { nodes, connections, nodeConfigs, executionContext, resetCounters = true } = request;
   const startTime = performance.now();
+  let peakMemory = executionContext?.isDebug ? memorySnapshot() : undefined;
   console.log(`Starting node graph execution: ${nodes.length} nodes, ${connections.length} connections`);
   if (resetCounters) {
     resetCounterTracking();
@@ -478,6 +492,7 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       }
       try {
         flowExecutionDebugLog(executionContext, `Executing node ${node.id} (${node.type})`);
+        const nodeStartedAt = performance.now();
         const config = nodeConfigs?.[node.id];
         const textValue =
           config === undefined ? serializeNodeConfigForExecution(node) : typeof config === "string" ? config : "";
@@ -489,6 +504,27 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
           config,
           executionContext,
         });
+        if (executionContext?.isDebug) {
+          const memory = memorySnapshot();
+          peakMemory = peakMemory
+            ? {
+                rss: Math.max(peakMemory.rss, memory.rss),
+                heapUsed: Math.max(peakMemory.heapUsed, memory.heapUsed),
+                heapTotal: Math.max(peakMemory.heapTotal, memory.heapTotal),
+                external: Math.max(peakMemory.external, memory.external),
+                arrayBuffers: Math.max(peakMemory.arrayBuffers, memory.arrayBuffers),
+              }
+            : memory;
+          flowExecutionDebugLog(
+            executionContext,
+            `[flow memory] ${node.id}(${node.type}) ${(performance.now() - nodeStartedAt).toFixed(1)}ms` +
+              ` rss=${formatMemoryMb(memory.rss)} heap=${formatMemoryMb(memory.heapUsed)}` +
+              ` external=${formatMemoryMb(memory.external)} arrayBuffers=${formatMemoryMb(memory.arrayBuffers)}` +
+              ` indexes=${executionContext.packIndexCache.size}` +
+              ` tables=${executionContext.tableFilesByPackAndTable.size}` +
+              ` retainedResults=${executionResults.size + 1}`,
+          );
+        }
         executionResults.set(node.id, result);
         executed.add(node.id);
         if (!result.success) {
@@ -548,6 +584,16 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
     console.log(
       `Node graph execution finished in ${elapsedTime.toFixed(2)}ms: ${successCount}/${executionResults.size} nodes succeeded`,
     );
+    if (executionContext?.isDebug && peakMemory) {
+      flowExecutionDebugLog(
+        executionContext,
+        `[flow memory] peak rss=${formatMemoryMb(peakMemory.rss)}` +
+          ` heap=${formatMemoryMb(peakMemory.heapUsed)}` +
+          ` heapTotal=${formatMemoryMb(peakMemory.heapTotal)}` +
+          ` external=${formatMemoryMb(peakMemory.external)}` +
+          ` arrayBuffers=${formatMemoryMb(peakMemory.arrayBuffers)}`,
+      );
+    }
     return {
       success: failureCount === 0,
       executionResults,
