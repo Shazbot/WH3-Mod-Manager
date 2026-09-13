@@ -8,8 +8,8 @@
  * dwarfs the text.
  *
  * So the names live front-coded instead, the same representation the vanilla DB cache uses for its
- * string pool: 12.5 MB held, an exact lookup in microseconds, and a folder listing as a contiguous
- * rank range. See `../vanillaDbCache/frontCodedBlock` for why that beats a trie.
+ * string pool: 12.5 MB held, an exact lookup in microseconds, and binary-searchable folder ranges.
+ * See `../vanillaDbCache/frontCodedBlock` for why that beats a trie.
  *
  * Everything here is pure so the format can be tested without a game install; `./store` owns the
  * filesystem and the cache file.
@@ -18,6 +18,7 @@
 import {
   FrontCodedBlock,
   buildFrontCodedBlock,
+  findFrontCodedLowerBound,
   findFrontCodedPrefixRange,
   findFrontCodedRank,
   forEachFrontCodedEntryInRange,
@@ -67,6 +68,13 @@ export interface VanillaPackFileNames {
 export interface VanillaPackTreeChild {
   path: string;
   isBranch: boolean;
+}
+
+export interface VanillaPackTreeChildrenPage {
+  children: VanillaPackTreeChild[];
+  totalChildren?: number;
+  hasMore: boolean;
+  nextOffset?: number;
 }
 
 /**
@@ -254,6 +262,89 @@ export const collectVanillaPackTreeChildren = (
   });
 
   return [...childrenByPath.values()];
+};
+
+/**
+ * Lists a page directly from the flat path block. A folder's upper bound is found by binary search,
+ * and each branch jumps to the end of its own range, so a large folder is never fully decoded just
+ * to return its first page. `includeBranch` lets callers discard whole roots such as db\ without
+ * scanning their contents.
+ */
+export const collectVanillaPackTreeChildrenPageFromFlat = (
+  index: VanillaPackIndex,
+  prefix: string,
+  offset: number,
+  limit: number,
+  includeFile: (filePath: string) => boolean = () => true,
+  includeBranch: (folderPath: string) => boolean = () => true,
+): VanillaPackTreeChildrenPage => {
+  const normalizedPrefix = normalizeVanillaPackPath(prefix).replace(/\\+$/, "");
+  const rangePrefix = normalizedPrefix ? `${normalizedPrefix}\\` : "";
+  const rangeEndTarget = normalizedPrefix ? `${normalizedPrefix}\uffff` : "\uffff";
+  const rangeStart = findFrontCodedLowerBound(index.block, rangePrefix);
+  const rangeEnd = findFrontCodedLowerBound(index.block, rangeEndTarget);
+  const safeOffset = Math.max(0, Math.floor(Number.isFinite(offset) ? offset : 0));
+  const safeLimit = Math.max(0, Math.floor(Number.isFinite(limit) ? limit : 0));
+  const targetChildCount = safeOffset + safeLimit + 1;
+  const children: VanillaPackTreeChild[] = [];
+  let childCount = 0;
+  let lastChildPath: string | undefined;
+  let lastChild: VanillaPackTreeChild | undefined;
+
+  const addChild = (childPath: string, isBranch: boolean) => {
+    if (lastChildPath === childPath) {
+      if (lastChild && isBranch) lastChild.isBranch = true;
+      return;
+    }
+
+    lastChildPath = childPath;
+    lastChild = undefined;
+    if (childCount >= safeOffset && children.length < safeLimit) {
+      lastChild = { path: childPath, isBranch };
+      children.push(lastChild);
+    }
+    childCount++;
+  };
+
+  let rank = rangeStart;
+  while (rank < rangeEnd && childCount < targetChildCount) {
+    const filePath = readFrontCodedEntry(index.block, rank);
+    if (filePath === undefined || !filePath.startsWith(rangePrefix)) break;
+
+    const relativePath = rangePrefix ? filePath.slice(rangePrefix.length) : filePath;
+    const separator = relativePath.indexOf("\\");
+    if (separator < 0) {
+      if (includeFile(filePath)) addChild(filePath, false);
+      rank++;
+      continue;
+    }
+
+    const childPath = `${rangePrefix}${relativePath.slice(0, separator)}`;
+    const branchEnd = findFrontCodedLowerBound(index.block, `${childPath}\\\uffff`);
+    if (includeBranch(childPath)) {
+      let hasIncludedFile = includeFile(filePath);
+      if (!hasIncludedFile) {
+        const branchStart = findFrontCodedLowerBound(index.block, childPath);
+        forEachFrontCodedEntryInRange(index.block, branchStart, branchEnd, (candidatePath) => {
+          if (candidatePath !== childPath && !candidatePath.startsWith(`${childPath}\\`)) return;
+          if (includeFile(candidatePath)) {
+            hasIncludedFile = true;
+            return false;
+          }
+        });
+      }
+      if (hasIncludedFile) addChild(childPath, true);
+    }
+
+    rank = Math.max(rank + 1, branchEnd);
+  }
+
+  const hasMore = childCount > safeOffset + safeLimit;
+  return {
+    children,
+    hasMore,
+    ...(hasMore ? { nextOffset: safeOffset + children.length } : {}),
+  };
 };
 
 /**

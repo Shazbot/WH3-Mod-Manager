@@ -622,6 +622,9 @@ describe("pack table tree interactions", () => {
           { path: "animation\\campaign", isBranch: true },
           { path: "animation\\campaign\\dragon.anim", isBranch: false },
         ],
+        totalChildren: 1002,
+        hasMore: true,
+        nextOffset: 2,
       });
     const previousApi = window.api;
     window.api = { getVanillaPackFileTree } as unknown as NonNullable<Window["api"]>;
@@ -667,7 +670,10 @@ describe("pack table tree interactions", () => {
 
       await waitFor(() => expect(getVanillaPackFileTree).toHaveBeenCalledWith(packPath, "animation"));
       expect(screen.getByText("campaign")).toBeInTheDocument();
+      const campaignNode = screen.getByText("campaign").closest('[role="treeitem"]');
+      if (campaignNode?.getAttribute("aria-expanded") !== "true") fireEvent.click(screen.getByText("campaign"));
       expect(screen.getByText("dragon.anim")).toBeInTheDocument();
+      expect(screen.getByText("Load more files… (1,000 remaining)")).toBeInTheDocument();
     } finally {
       view.unmount();
       window.api = previousApi;

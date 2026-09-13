@@ -58,7 +58,15 @@ type PackTablesTreeViewProps = {
   onOpenPackedFile: (selection: { filePath: string; packPath: string }, options?: { forceNewTab?: boolean }) => void;
 };
 
-type TreeData = { id?: string | number; name: string; children?: TreeData[]; isBranch?: boolean };
+type VanillaLoadMoreTreeChild = { parentPath: string; offset: number; label: string };
+type VanillaFileTreeMorePage = { nextOffset: number; totalChildren?: number };
+type TreeData = {
+  id?: string | number;
+  name: string;
+  children?: TreeData[];
+  isBranch?: boolean;
+  metadata?: { kind: "vanilla-load-more"; parentPath: string; offset: number };
+};
 type TableOption = { value: string; label: string };
 type TreeTab = "db" | "files";
 type ExpandedIdsByTreeTab = Partial<Record<TreeTab, Array<INode["id"]>>>;
@@ -133,8 +141,13 @@ const copyTextToClipboard = async (text: string): Promise<void> => {
 const getStableTreeNodeId = (treeTab: TreeTab, path: string, nodeKind: "group" | "leaf" | "path") =>
   `${treeTab}:${nodeKind}:${encodeURIComponent(path.replaceAll("/", "\\"))}`;
 
-const buildPathTree = (filePaths: string[], extraFolders: string[] = []): TreeData => {
+const buildPathTree = (
+  filePaths: string[],
+  extraFolders: string[] = [],
+  extraChildren: VanillaLoadMoreTreeChild[] = [],
+): TreeData => {
   const root: TreeData = { id: 0, name: "", children: [] };
+  const nodesByPath = new Map<string, TreeData>([["", root]]);
 
   const addPath = (path: string, isFolder: boolean) => {
     const segments = path.split(/[\\/]/).filter(Boolean);
@@ -150,6 +163,7 @@ const buildPathTree = (filePaths: string[], extraFolders: string[] = []): TreeDa
         nextNode = { id: getStableTreeNodeId("files", currentPath, "path"), name: segment, children: [] };
         currentNode.children?.push(nextNode);
       }
+      nodesByPath.set(normalizeVanillaTreePath(currentPath), nextNode);
       if (isFolder && isLastSegment) nextNode.isBranch = true;
       currentNode = nextNode;
     }
@@ -157,9 +171,29 @@ const buildPathTree = (filePaths: string[], extraFolders: string[] = []): TreeDa
 
   for (const filePath of filePaths) addPath(filePath, false);
   for (const folderPath of extraFolders) addPath(folderPath, true);
+  for (const extraChild of extraChildren) {
+    const parentNode = nodesByPath.get(normalizeVanillaTreePath(extraChild.parentPath));
+    if (!parentNode) continue;
+
+    parentNode.children?.push({
+      id: getStableTreeNodeId("files", `${extraChild.parentPath}\\__whmm_load_more_${extraChild.offset}`, "path"),
+      name: extraChild.label,
+      children: [],
+      metadata: {
+        kind: "vanilla-load-more",
+        parentPath: extraChild.parentPath,
+        offset: extraChild.offset,
+      },
+    });
+  }
 
   const sortChildren = (node: TreeData) => {
-    node.children?.sort((first, second) => first.name.localeCompare(second.name));
+    node.children?.sort((first, second) => {
+      const firstIsLoadMore = first.metadata?.kind === "vanilla-load-more";
+      const secondIsLoadMore = second.metadata?.kind === "vanilla-load-more";
+      if (firstIsLoadMore !== secondIsLoadMore) return firstIsLoadMore ? 1 : -1;
+      return first.name.localeCompare(second.name);
+    });
     node.children?.forEach(sortChildren);
   };
 
@@ -296,7 +330,10 @@ const PackTablesTreeView = React.memo(
     const [createdFoldersByPack, setCreatedFoldersByPack] = React.useState<Record<string, string[]>>({});
     const [expandedIdsByPack, setExpandedIdsByPack] = React.useState<Record<string, ExpandedIdsByTreeTab>>({});
     const [vanillaFileTreeChildren, setVanillaFileTreeChildren] = React.useState<VanillaPackTreeChild[]>([]);
-    const vanillaFileTreeLoadedPrefixesRef = React.useRef(new Set<string>());
+    const [vanillaFileTreeMorePages, setVanillaFileTreeMorePages] = React.useState<
+      Record<string, VanillaFileTreeMorePage>
+    >({});
+    const vanillaFileTreeLoadedPageKeysRef = React.useRef(new Set<string>());
     const vanillaFileTreeRequestsRef = React.useRef(new Map<string, Promise<void>>());
     const vanillaFileTreeGenerationRef = React.useRef(0);
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
@@ -341,16 +378,18 @@ const PackTablesTreeView = React.memo(
       packData?.packName.toLowerCase() === (gameToPackWithDBTablesName[currentGame] || "db.pack").toLowerCase();
 
     const loadVanillaFileTreeFolder = React.useCallback(
-      async (prefix: string): Promise<void> => {
+      async (prefix: string, offset = 0): Promise<void> => {
         if (!isVanillaDBPackOpen) return;
         const getVanillaPackFileTree = window.api?.getVanillaPackFileTree;
         if (!getVanillaPackFileTree) return;
 
         const prefixKey = normalizeVanillaTreePath(prefix);
+        const pageOffset = Math.max(0, Math.floor(Number.isFinite(offset) ? offset : 0));
+        const requestKey = `${prefixKey}\u0000${pageOffset}`;
         const requestGeneration = vanillaFileTreeGenerationRef.current;
-        if (vanillaFileTreeLoadedPrefixesRef.current.has(prefixKey)) return;
+        if (vanillaFileTreeLoadedPageKeysRef.current.has(requestKey)) return;
 
-        const inFlightRequest = vanillaFileTreeRequestsRef.current.get(prefixKey);
+        const inFlightRequest = vanillaFileTreeRequestsRef.current.get(requestKey);
         if (inFlightRequest) {
           await inFlightRequest;
           return;
@@ -358,10 +397,13 @@ const PackTablesTreeView = React.memo(
 
         const request = (async () => {
           try {
-            const result = await getVanillaPackFileTree(packPath, prefixKey);
+            const result =
+              pageOffset === 0
+                ? await getVanillaPackFileTree(packPath, prefixKey)
+                : await getVanillaPackFileTree(packPath, prefixKey, pageOffset);
             if (requestGeneration !== vanillaFileTreeGenerationRef.current || !result?.success) return;
 
-            vanillaFileTreeLoadedPrefixesRef.current.add(prefixKey);
+            vanillaFileTreeLoadedPageKeysRef.current.add(requestKey);
             const children = result.children ?? [];
             setVanillaFileTreeChildren((previousChildren) => {
               const childrenByPath = new Map(
@@ -374,17 +416,29 @@ const PackTablesTreeView = React.memo(
               }
               return [...childrenByPath.values()];
             });
+            setVanillaFileTreeMorePages((previousPages) => {
+              const nextPages = { ...previousPages };
+              if (result.hasMore && result.nextOffset != undefined) {
+                nextPages[prefixKey] = {
+                  nextOffset: result.nextOffset,
+                  totalChildren: result.totalChildren,
+                };
+              } else {
+                delete nextPages[prefixKey];
+              }
+              return nextPages;
+            });
           } catch (error) {
             console.error(`Could not load vanilla files under ${prefix || "the pack root"}:`, error);
           }
         })();
 
-        vanillaFileTreeRequestsRef.current.set(prefixKey, request);
+        vanillaFileTreeRequestsRef.current.set(requestKey, request);
         try {
           await request;
         } finally {
-          if (vanillaFileTreeRequestsRef.current.get(prefixKey) === request) {
-            vanillaFileTreeRequestsRef.current.delete(prefixKey);
+          if (vanillaFileTreeRequestsRef.current.get(requestKey) === request) {
+            vanillaFileTreeRequestsRef.current.delete(requestKey);
           }
         }
       },
@@ -393,9 +447,10 @@ const PackTablesTreeView = React.memo(
 
     useEffect(() => {
       vanillaFileTreeGenerationRef.current += 1;
-      vanillaFileTreeLoadedPrefixesRef.current.clear();
+      vanillaFileTreeLoadedPageKeysRef.current.clear();
       vanillaFileTreeRequestsRef.current.clear();
       setVanillaFileTreeChildren([]);
+      setVanillaFileTreeMorePages({});
       if (isVanillaDBPackOpen) void loadVanillaFileTreeFolder("");
     }, [isVanillaDBPackOpen, loadVanillaFileTreeFolder, packPath]);
 
@@ -421,6 +476,20 @@ const PackTablesTreeView = React.memo(
     const vanillaFolderPaths = useMemo(
       () => vanillaFileTreeChildren.filter((child) => child.isBranch).map((child) => child.path),
       [vanillaFileTreeChildren],
+    );
+    const vanillaLoadMoreChildren = useMemo<VanillaLoadMoreTreeChild[]>(
+      () =>
+        isVanillaDBPackOpen
+          ? Object.entries(vanillaFileTreeMorePages).map(([parentPath, page]) => ({
+              parentPath,
+              offset: page.nextOffset,
+              label:
+                page.totalChildren == undefined
+                  ? "Load more files…"
+                  : `Load more files… (${(page.totalChildren - page.nextOffset).toLocaleString()} remaining)`,
+            }))
+          : [],
+      [isVanillaDBPackOpen, vanillaFileTreeMorePages],
     );
     const filePackFileNames = useMemo(
       () =>
@@ -483,9 +552,13 @@ const PackTablesTreeView = React.memo(
       }
 
       return flattenTree(
-        buildPathTree(filePackFileNames, [...(createdFoldersByPack[packPath] ?? []), ...vanillaFolderPaths]),
+        buildPathTree(
+          filePackFileNames,
+          [...(createdFoldersByPack[packPath] ?? []), ...vanillaFolderPaths],
+          vanillaLoadMoreChildren,
+        ),
       );
-    }, [createdFoldersByPack, filePackFileNames, vanillaFolderPaths, packData, packPath]);
+    }, [createdFoldersByPack, filePackFileNames, vanillaFolderPaths, vanillaLoadMoreChildren, packData, packPath]);
 
     const dbNodeById = useMemo(() => buildNodeById(dbData), [dbData]);
     const dbDefaultExpandedIds = useMemo(() => getAutoExpandedDBGroupIds(dbData), [dbData]);
@@ -870,6 +943,7 @@ const PackTablesTreeView = React.memo(
     };
 
     const onFileTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
+      if (selectionProps.element.metadata?.kind === "vanilla-load-more") return;
       applySelectionFromTree(selectionProps, setFileSelectedNodeIds);
 
       if (!packData || !selectionProps.isSelected) return;
@@ -1663,6 +1737,31 @@ const PackTablesTreeView = React.memo(
           handleExpand,
           handleSelect,
         }) => {
+          const loadMoreMetadata =
+            treeTab === "files" && element.metadata?.kind === "vanilla-load-more"
+              ? {
+                  parentPath: String(element.metadata.parentPath ?? ""),
+                  offset: Number(element.metadata.offset ?? 0),
+                }
+              : undefined;
+          if (loadMoreMetadata) {
+            return (
+              <div
+                {...getNodeProps({
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    void loadVanillaFileTreeFolder(loadMoreMetadata.parentPath, loadMoreMetadata.offset);
+                  },
+                })}
+                style={{ marginLeft: PACK_TREE_INDENT_PX * (level - 1) }}
+                className="flex items-center [&:not(:first-child)]:mt-2 cursor-pointer rounded text-blue-300 hover:text-white hover:underline"
+              >
+                <span aria-hidden="true" className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0`} />
+                <span className="relative select-none">{element.name}</span>
+              </div>
+            );
+          }
+
           const handleLabelClick = (e: React.MouseEvent<HTMLSpanElement>) => {
             e.stopPropagation();
             if (e.shiftKey) {

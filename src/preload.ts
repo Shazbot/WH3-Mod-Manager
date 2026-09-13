@@ -173,11 +173,15 @@ const api = {
   getVanillaPackFileTree: (
     packPath: string,
     prefix: string,
+    offset?: number,
   ): Promise<{
     success: boolean;
     children?: { path: string; isBranch: boolean }[];
+    totalChildren?: number;
+    hasMore?: boolean;
+    nextOffset?: number;
     error?: string;
-  }> => ipcRenderer.invoke("getVanillaPackFileTree", packPath, prefix),
+  }> => ipcRenderer.invoke("getVanillaPackFileTree", packPath, prefix, offset),
   saveConfig: (payload: ConfigSavePayload) => ipcRenderer.send("saveConfig", payload),
   readMods: debounce(
     (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>

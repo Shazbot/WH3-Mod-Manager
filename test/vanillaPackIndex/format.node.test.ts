@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   VanillaPackIndexIdentity,
   buildVanillaPackIndex,
+  collectVanillaPackTreeChildrenPageFromFlat,
   collectVanillaPackTreeChildren,
   collectVanillaFilesMatching,
   collectVanillaFilesUnderPrefix,
@@ -114,6 +115,43 @@ describe("vanilla pack index", () => {
       { path: "scripts", isBranch: true },
       { path: "ui", isBranch: true },
     ]);
+  });
+
+  it("pages a large flat folder without decoding its whole descendant range", () => {
+    const pagedIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: [
+          "audio\\wwise\\0001.wem",
+          "audio\\wwise\\0002.wem",
+          "audio\\wwise\\0003.wem",
+          "audio\\wwise\\english\\0001.wem",
+          "db\\main_units_tables\\data__",
+        ],
+      },
+    ]);
+    const includeFile = (filePath: string) => !filePath.startsWith("db\\");
+    const includeBranch = (folderPath: string) => folderPath !== "db";
+
+    expect(
+      collectVanillaPackTreeChildrenPageFromFlat(pagedIndex, "audio\\wwise", 0, 2, includeFile, includeBranch),
+    ).toEqual({
+      children: [
+        { path: "audio\\wwise\\0001.wem", isBranch: false },
+        { path: "audio\\wwise\\0002.wem", isBranch: false },
+      ],
+      hasMore: true,
+      nextOffset: 2,
+    });
+    expect(
+      collectVanillaPackTreeChildrenPageFromFlat(pagedIndex, "audio\\wwise", 2, 2, includeFile, includeBranch),
+    ).toEqual({
+      children: [
+        { path: "audio\\wwise\\0003.wem", isBranch: false },
+        { path: "audio\\wwise\\english", isBranch: true },
+      ],
+      hasMore: false,
+    });
   });
 
   it("names the packs that win a file under a folder, in load order", () => {
