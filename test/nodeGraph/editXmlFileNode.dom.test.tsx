@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { reactFlowNodeTypes } from "../../src/nodeGraph/nodeTypes";
 import { getEditXmlFileValidationErrors } from "../../src/nodeGraph/nodes/renderers";
+import { NodeEditorPanelContext } from "../../src/nodeGraph/nodes/shared";
 
 const makeNode = (onUpdateNodeData = vi.fn(), overrides: Record<string, unknown> = {}) => ({
   id: "edit_xml_1",
@@ -28,13 +29,15 @@ const makeNode = (onUpdateNodeData = vi.fn(), overrides: Record<string, unknown>
   },
 });
 
-const renderNode = (node = makeNode()) =>
+const renderNode = (node = makeNode(), isActive = true) =>
   render(
-    <div style={{ width: 800, height: 600 }}>
-      <ReactFlowProvider>
-        <ReactFlow fitView edges={[]} nodeTypes={reactFlowNodeTypes} nodes={[node as any]} />
-      </ReactFlowProvider>
-    </div>,
+    <NodeEditorPanelContext.Provider value={{ isActive, modalRoot: null }}>
+      <div style={{ width: 800, height: 600 }}>
+        <ReactFlowProvider>
+          <ReactFlow fitView edges={[]} nodeTypes={reactFlowNodeTypes} nodes={[node as any]} />
+        </ReactFlowProvider>
+      </div>
+    </NodeEditorPanelContext.Provider>,
   );
 
 describe("Edit XML File node", () => {
@@ -85,6 +88,27 @@ describe("Edit XML File node", () => {
     expect(within(dialog).getByLabelText("Ignore hierarchy (start in <components>)")).toBeChecked();
     expect(within(dialog).getByRole("button", { name: "Done" })).toBeDisabled();
     expect(within(dialog).getByText(/must match exactly one element/i)).toBeInTheDocument();
+  });
+
+  it("hides its modal when the Node Editor panel becomes inactive", async () => {
+    const node = makeNode();
+    const view = renderNode(node);
+
+    fireEvent.click(await view.findByText("Edit", { selector: "button" }));
+    expect(await view.findByRole("dialog")).toBeInTheDocument();
+
+    view.rerender(
+      <NodeEditorPanelContext.Provider value={{ isActive: false, modalRoot: null }}>
+        <div style={{ width: 800, height: 600 }}>
+          <ReactFlowProvider>
+            <ReactFlow fitView edges={[]} nodeTypes={reactFlowNodeTypes} nodes={[node as any]} />
+          </ReactFlowProvider>
+        </div>
+      </NodeEditorPanelContext.Provider>,
+    );
+
+    expect(view.queryByTestId("modal")).not.toBeInTheDocument();
+    expect(view.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("builds nested locator steps and commits one valid attribute edit", async () => {

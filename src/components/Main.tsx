@@ -85,7 +85,11 @@ const Main = (props: MainProps) => {
         // Hidden rather than unmounted: React Flow keeps its nodes, edges and viewport, so the tab
         // comes back exactly as it was left.
         <div className={isNodeEditorTab ? undefined : "hidden"}>
-          <NodeEditor currentFile={currentFlowFileSelection} currentPack={currentPack}></NodeEditor>
+          <NodeEditor
+            currentFile={currentFlowFileSelection}
+            currentPack={currentPack}
+            isActive={isNodeEditorTab}
+          ></NodeEditor>
         </div>
       )}
 

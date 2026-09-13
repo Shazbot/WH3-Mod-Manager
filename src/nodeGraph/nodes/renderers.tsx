@@ -19,6 +19,7 @@ import { isSingleXmlElement, isValidXmlName } from "../editXmlFileValidation";
 import {
   dispatchNodeDataUpdate,
   nodeEditorDebugLog,
+  useNodeEditorPanel,
   stopWheelPropagation,
   useDefaultTableVersions,
   useFlowOptions,
@@ -7428,6 +7429,7 @@ const formatXmlLocatorStep = (step: XmlLocatorStep) => {
 
 export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }> = ({ data, id }) => {
   const localized = useLocalizations();
+  const { isActive: isNodeEditorActive, modalRoot } = useNodeEditorPanel();
   const inputType = data.inputType || "PackFiles";
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isDiscardConfirmationOpen, setIsDiscardConfirmationOpen] = useState(false);
@@ -7672,6 +7674,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
 
       {isEditorOpen && (
         <Modal
+          root={modalRoot ?? undefined}
           aria-labelledby={`edit-xml-file-title-${id}`}
           aria-modal="true"
           onClick={(event) => {
@@ -7679,7 +7682,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
           }}
           onClose={requestClose}
           position="center"
-          show
+          show={isNodeEditorActive}
           size="5xl"
           explicitClasses={["!max-w-5xl", "!max-h-[90vh]", "overflow-hidden"]}
         >
