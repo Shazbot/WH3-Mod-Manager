@@ -156,6 +156,18 @@ const api = {
   copyToDataAsSymbolicLink: (modPathsToCopy?: string[]) => ipcRenderer.send("copyToDataAsSymbolicLink", modPathsToCopy),
   cleanData: () => ipcRenderer.send("cleanData"),
   cleanSymbolicLinksInData: () => ipcRenderer.send("cleanSymbolicLinksInData"),
+  getWorkshopModStagingInfo: (): Promise<{
+    success: boolean;
+    size?: number;
+    hasContents?: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("getWorkshopModStagingInfo"),
+  clearWorkshopModStaging: (): Promise<{
+    success: boolean;
+    removed?: boolean;
+    code?: "GAME_RUNNING" | "CLEANUP_FAILED";
+    error?: string;
+  }> => ipcRenderer.invoke("clearWorkshopModStaging"),
   getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
   getPackDataWithLocs: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackDataWithLocs", packPath, table),
   saveConfig: (payload: ConfigSavePayload) => ipcRenderer.send("saveConfig", payload),

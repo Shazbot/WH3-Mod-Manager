@@ -342,6 +342,7 @@ import { collator } from "./utility/packFileSorting";
 import { launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
 import {
   cleanupWorkshopModStaging,
+  getWorkshopModStagingFolderInfo,
   buildWorkshopStagingWorkingDirectoryLines,
   stageWorkshopMods,
   WorkshopModStagingError,
@@ -461,16 +462,21 @@ const formatWorkshopStagingBytes = (bytes: number) => {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
 };
 
-const reportWorkshopCleanupFailure = (error: unknown) => {
-  const detail = error instanceof Error ? error.message : String(error);
-  const message = i18n.t("automaticWorkshopStagingCleanupFailed", { error: detail });
-  console.error(message, error);
+const reportWorkshopCleanupWarning = (message: string, error?: unknown) => {
+  if (error === undefined) console.warn(message);
+  else console.error(message, error);
   windows.mainWindow?.webContents.send("handleLog", message);
   windows.mainWindow?.webContents.send("addToast", {
     type: "warning",
     messages: [message],
     startTime: Date.now(),
   } as Toast);
+};
+
+const reportWorkshopCleanupFailure = (error: unknown) => {
+  const detail = error instanceof Error ? error.message : String(error);
+  const message = i18n.t("automaticWorkshopStagingCleanupFailed", { error: detail });
+  reportWorkshopCleanupWarning(message, error);
 };
 
 /** Removes a previous launch's manager-owned staging folder after the game has stopped. */
@@ -8659,6 +8665,63 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     } catch (e) {
       console.log(e);
+    }
+  });
+  const getCurrentGameFolder = () => appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
+  const isCurrentGameRunning = async () => {
+    if (appData.isWH3Running) return true;
+    try {
+      return (await findGameProcessIds(gameToProcessName[appData.currentGame])).length > 0;
+    } catch (error) {
+      console.warn("Could not check whether the game is running before Workshop staging cleanup:", error);
+      return false;
+    }
+  };
+  ipcMain.handle("getWorkshopModStagingInfo", async () => {
+    const gamePath = getCurrentGameFolder();
+    if (!gamePath) return { success: true, size: 0, hasContents: false };
+
+    try {
+      return { success: true, ...(await getWorkshopModStagingFolderInfo(gamePath)) };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = i18n.t("automaticWorkshopStagingFolderSizeFailed", { error: detail });
+      console.error(message, error);
+      return { success: false, size: 0, hasContents: false, error: message };
+    }
+  });
+  ipcMain.handle("clearWorkshopModStaging", async () => {
+    const gamePath = getCurrentGameFolder();
+    if (!gamePath) {
+      const message = i18n.t("automaticWorkshopStagingClearFailed", { error: "No game folder is configured." });
+      reportWorkshopCleanupWarning(message);
+      return { success: false, code: "CLEANUP_FAILED", error: message };
+    }
+
+    if (await isCurrentGameRunning()) {
+      const message = i18n.t("automaticWorkshopStagingGameRunning");
+      reportWorkshopCleanupWarning(message);
+      return { success: false, code: "GAME_RUNNING", error: message };
+    }
+
+    try {
+      const removed = await cleanupWorkshopModStaging(gamePath);
+      if (appData.workshopStagingCleanupGamePath === gamePath) {
+        appData.workshopStagingCleanupPending = false;
+        appData.workshopStagingCleanupGamePath = undefined;
+      }
+      return { success: true, removed };
+    } catch (error) {
+      if (await isCurrentGameRunning()) {
+        const message = i18n.t("automaticWorkshopStagingGameRunning");
+        reportWorkshopCleanupWarning(message, error);
+        return { success: false, code: "GAME_RUNNING", error: message };
+      }
+
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = i18n.t("automaticWorkshopStagingClearFailed", { error: detail });
+      reportWorkshopCleanupWarning(message, error);
+      return { success: false, code: "CLEANUP_FAILED", error: message };
     }
   });
   ipcMain.handle("getSteamCollectionName", async (event, steamCollectionURL: string) => {

@@ -7,6 +7,7 @@ import {
   buildWorkshopStagingWorkingDirectoryLines,
   buildWorkshopStagingPlan,
   cleanupWorkshopModStaging,
+  getWorkshopModStagingFolderInfo,
   stageWorkshopMods,
   WORKSHOP_MOD_STAGING_FOLDER,
   WORKSHOP_MOD_STAGING_MANIFEST_FILENAME,
@@ -587,5 +588,21 @@ describe("Workshop mod staging", () => {
     expect(await cleanupWorkshopModStaging(gameFolder)).toBe(true);
     expect(fs.existsSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER))).toBe(false);
     expect(await cleanupWorkshopModStaging(gameFolder)).toBe(false);
+  });
+
+  it("reports the staged folder's file size and whether it has contents", async () => {
+    const gameFolder = makeDirectory();
+    const destinationPath = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
+    fs.mkdirSync(path.join(destinationPath, "nested"), { recursive: true });
+    fs.writeFileSync(path.join(destinationPath, "alpha.pack"), "alpha");
+    fs.writeFileSync(path.join(destinationPath, "nested", "beta.pack"), "beta");
+
+    await expect(getWorkshopModStagingFolderInfo(gameFolder)).resolves.toEqual({
+      size: Buffer.byteLength("alpha") + Buffer.byteLength("beta"),
+      hasContents: true,
+    });
+
+    fs.rmSync(destinationPath, { recursive: true, force: true });
+    await expect(getWorkshopModStagingFolderInfo(gameFolder)).resolves.toEqual({ size: 0, hasContents: false });
   });
 });

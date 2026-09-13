@@ -72,6 +72,23 @@ const exportModNamesToClipboard = (enabledMods: Mod[]) => {
   window.api?.exportModNamesToClipboard(enabledMods);
 };
 
+const formatWorkshopStagingBytes = (bytes: number): string => {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = Math.max(0, bytes);
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+};
+
+const formatWorkshopStagingFolderSize = (template: string | undefined, bytes: number): string =>
+  (template || "Folder size: {{size}}").replace("{{size}}", formatWorkshopStagingBytes(bytes));
+
+const formatWorkshopStagingError = (template: string | undefined, fallback: string, detail: string): string =>
+  (template || fallback).replace("{{error}}", detail);
+
 type OptionType = {
   value: string;
   label: string;
@@ -93,6 +110,16 @@ const OptionsDrawer = memo(() => {
   const [isForceResubscribeConfirmOpen, setIsForceResubscribeConfirmOpen] = useState(false);
   const [modsToForceResubscribe, setModsToForceResubscribe] = useState<Mod[]>([]);
   const [modFolderMessage, setModFolderMessage] = useState("");
+  const [workshopStagingFolderInfo, setWorkshopStagingFolderInfo] = useState({
+    size: 0,
+    hasContents: false,
+  });
+  const [isLoadingWorkshopStagingFolderInfo, setIsLoadingWorkshopStagingFolderInfo] = useState(true);
+  const [isClearingWorkshopStaging, setIsClearingWorkshopStaging] = useState(false);
+  const [workshopStagingFolderMessage, setWorkshopStagingFolderMessage] = useState<{
+    message: string;
+    isError: boolean;
+  }>();
   const [logPathStatus, setLogPathStatus] = useState<{ message: string; isError: boolean }>();
   const [customFolderStatuses, setCustomFolderStatuses] = useState<Record<string, boolean>>({});
   const [syncingCustomFolderId, setSyncingCustomFolderId] = useState<string>();
@@ -106,6 +133,7 @@ const OptionsDrawer = memo(() => {
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
@@ -163,6 +191,107 @@ const OptionsDrawer = memo(() => {
   useEffect(() => {
     window.api?.getCustomModFolderStatuses(customModFolders.map((folder) => folder.path)).then(setCustomFolderStatuses);
   }, [customModFolders]);
+
+  const refreshWorkshopStagingFolderInfo = useCallback(async () => {
+    const getWorkshopModStagingInfo = window.api?.getWorkshopModStagingInfo;
+    if (!getWorkshopModStagingInfo) {
+      setIsLoadingWorkshopStagingFolderInfo(false);
+      return;
+    }
+
+    setIsLoadingWorkshopStagingFolderInfo(true);
+    try {
+      const result = await getWorkshopModStagingInfo();
+      if (!result?.success) {
+        setWorkshopStagingFolderInfo({ size: 0, hasContents: false });
+        setWorkshopStagingFolderMessage({
+          message:
+            result?.error ||
+            formatWorkshopStagingError(
+              localized.automaticWorkshopStagingFolderSizeFailed,
+              "Could not read folder size.",
+              "Unknown error",
+            ),
+          isError: true,
+        });
+        return;
+      }
+
+      setWorkshopStagingFolderInfo({
+        size: Math.max(0, result.size || 0),
+        hasContents: result.hasContents ?? (result.size || 0) > 0,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setWorkshopStagingFolderMessage({
+        message: formatWorkshopStagingError(
+          localized.automaticWorkshopStagingFolderSizeFailed,
+          "Could not read folder size.",
+          detail,
+        ),
+        isError: true,
+      });
+    } finally {
+      setIsLoadingWorkshopStagingFolderInfo(false);
+    }
+  }, [localized.automaticWorkshopStagingFolderSizeFailed]);
+
+  useEffect(() => {
+    void refreshWorkshopStagingFolderInfo();
+  }, [currentGame, appFolderPaths.gamePath, isWH3Running, refreshWorkshopStagingFolderInfo, workshopModStagingMode]);
+
+  const clearWorkshopStagingFolder = useCallback(async () => {
+    const clearWorkshopModStaging = window.api?.clearWorkshopModStaging;
+    if (!clearWorkshopModStaging) {
+      setWorkshopStagingFolderMessage({ message: "Workshop staging cleanup is unavailable.", isError: true });
+      return;
+    }
+
+    setIsClearingWorkshopStaging(true);
+    setWorkshopStagingFolderMessage(undefined);
+    try {
+      const result = await clearWorkshopModStaging();
+      if (!result?.success) {
+        setWorkshopStagingFolderMessage({
+          message:
+            result?.code === "GAME_RUNNING"
+              ? localized.automaticWorkshopStagingGameRunning ||
+                "Cannot clear copied Workshop mods while the game is running. Close the game and try again."
+              : result?.error ||
+                formatWorkshopStagingError(
+                  localized.automaticWorkshopStagingClearFailed,
+                  "Could not clear copied Workshop mods.",
+                  "Unknown error",
+                ),
+          isError: true,
+        });
+        return;
+      }
+
+      setWorkshopStagingFolderMessage({
+        message: localized.automaticWorkshopStagingCleared || "Cleared copied Workshop mods.",
+        isError: false,
+      });
+      await refreshWorkshopStagingFolderInfo();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setWorkshopStagingFolderMessage({
+        message: formatWorkshopStagingError(
+          localized.automaticWorkshopStagingClearFailed,
+          "Could not clear copied Workshop mods.",
+          detail,
+        ),
+        isError: true,
+      });
+    } finally {
+      setIsClearingWorkshopStaging(false);
+    }
+  }, [
+    localized.automaticWorkshopStagingClearFailed,
+    localized.automaticWorkshopStagingCleared,
+    localized.automaticWorkshopStagingGameRunning,
+    refreshWorkshopStagingFolderInfo,
+  ]);
 
   const updateCustomModSources = useCallback(
     async (folders: CustomModFolder[], sourceOrder: string[]) => {
@@ -1068,10 +1197,23 @@ const OptionsDrawer = memo(() => {
                     type="radio"
                     name="automatic-workshop-staging-mode"
                     id="automatically-copy-workshop-mods-on-start"
+                    aria-label={localized.automaticallyCopyWorkshopModsOnStart || "Copy mod files"}
                     checked={workshopModStagingMode === "copy"}
                     onChange={() => dispatch(setWorkshopModStagingMode("copy"))}
                   />
-                  <span className="ml-3">{localized.automaticallyCopyWorkshopModsOnStart || "Copy mod files"}</span>
+                  <span className="ml-3 flex min-w-0 flex-1 items-center justify-between gap-2">
+                    <span>{localized.automaticallyCopyWorkshopModsOnStart || "Copy mod files"}</span>
+                    {(isLoadingWorkshopStagingFolderInfo || workshopStagingFolderInfo.size > 0) && (
+                      <span className="shrink-0 text-xs text-gray-400">
+                        {isLoadingWorkshopStagingFolderInfo
+                          ? "…"
+                          : formatWorkshopStagingFolderSize(
+                              localized.automaticWorkshopStagingFolderSize,
+                              workshopStagingFolderInfo.size,
+                            )}
+                      </span>
+                    )}
+                  </span>
                 </label>
                 <label
                   className={
@@ -1092,6 +1234,34 @@ const OptionsDrawer = memo(() => {
                   </span>
                 </label>
               </div>
+              {workshopStagingFolderInfo.hasContents && (
+                <div className="mt-2 border-t border-gray-600 px-2 pt-2">
+                  <button
+                    type="button"
+                    className="rounded bg-red-700 px-3 py-1.5 text-xs font-medium uppercase text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isClearingWorkshopStaging}
+                    onClick={clearWorkshopStagingFolder}
+                  >
+                    {isClearingWorkshopStaging
+                      ? localized.automaticWorkshopStagingClearing || "Clearing…"
+                      : localized.automaticWorkshopStagingClearFolder || "Clear copied mods"}
+                  </button>
+                  <p className="mt-2 text-xs text-amber-300">
+                    {localized.automaticWorkshopStagingClearHelp ||
+                      "Clearing these copied packs will fail while the game is running. Close the game before clearing this folder."}
+                  </p>
+                </div>
+              )}
+              {workshopStagingFolderMessage && (
+                <p
+                  className={`mt-2 px-2 text-xs ${
+                    workshopStagingFolderMessage.isError ? "text-red-400" : "text-green-400"
+                  }`}
+                  role={workshopStagingFolderMessage.isError ? "alert" : "status"}
+                >
+                  {workshopStagingFolderMessage.message}
+                </p>
+              )}
               {!canCreateSymbolicLinks && (
                 <p className="mt-2 px-2 text-xs text-red-400">
                   {localized.automaticWorkshopSymlinkUnavailable ||

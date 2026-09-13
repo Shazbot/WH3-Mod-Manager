@@ -127,6 +127,11 @@ export interface WorkshopStagingPlan {
   compressionWarnings: string[];
 }
 
+export interface WorkshopStagingFolderInfo {
+  size: number;
+  hasContents: boolean;
+}
+
 export interface WorkshopStagingResult extends WorkshopStagingPlan {
   changedEntries: WorkshopStagingPlanEntry[];
   compressionResults: WorkshopStagingCompressionResult[];
@@ -418,6 +423,51 @@ const getReclaimableBytes = async (destinationPath: string): Promise<number> => 
     entries.map((entry) => getReclaimableBytes(nodePath.join(destinationPath, entry))),
   );
   return childSizes.reduce((total, size) => total + size, 0);
+};
+
+const getFolderFileSize = async (folderPath: string): Promise<number> => {
+  const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+  let size = 0;
+
+  for (const entry of entries) {
+    const entryPath = nodePath.join(folderPath, entry.name);
+    const stats = await fs.promises.lstat(entryPath);
+    if (stats.isSymbolicLink()) continue;
+    if (stats.isDirectory()) size += await getFolderFileSize(entryPath);
+    else if (stats.isFile()) size += stats.size;
+  }
+
+  return size;
+};
+
+/** Reports the logical size and whether the manager-owned staging directory has anything in it. */
+export const getWorkshopModStagingFolderInfo = async (gameFolder: string): Promise<WorkshopStagingFolderInfo> => {
+  const destinationPath = nodePath.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
+  let stats: fs.Stats;
+  try {
+    stats = await fs.promises.lstat(destinationPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { size: 0, hasContents: false };
+    throw new WorkshopModStagingError(
+      "CLEANUP_FAILED",
+      `Unable to inspect Workshop staging destination ${destinationPath}: ${error instanceof Error ? error.message : String(error)}`,
+      { destinationPath },
+    );
+  }
+
+  if (stats.isSymbolicLink() || !stats.isDirectory()) {
+    throw new WorkshopModStagingError(
+      "CLEANUP_FAILED",
+      `Refusing to inspect a non-directory Workshop staging destination: ${destinationPath}`,
+      { destinationPath },
+    );
+  }
+
+  const entries = await fs.promises.readdir(destinationPath);
+  return {
+    size: await getFolderFileSize(destinationPath),
+    hasContents: entries.length > 0,
+  };
 };
 
 const isManagedPackOutputName = (name: string): boolean => nodePath.extname(name).toLowerCase() === ".pack";
