@@ -30,7 +30,8 @@
     "esf:dump-campaigns": "yarn esf:build && node tools/esf/dist/cli/dumpCampaignsTable.js",
     "test": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native",
     "test:watch": "node node_modules/vitest/vitest.mjs --config vitest.config.mjs --configLoader native",
-    "test:coverage": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native --coverage"
+    "test:coverage": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native --coverage",
+    "postinstall": "patch-package"
   },
   "keywords": [],
   "author": {
@@ -76,7 +77,16 @@
         },
         {
           "name": "@electron-forge/maker-rpm",
-          "config": {}
+          "config": {
+            "options": {
+              "name": "Warhammer 3 Mod Manager",
+              "productName": "Warhammer 3 Mod Manager",
+              "description": "Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2.",
+              "icon": "./src/assets/modmanager.ico",
+              "categories": ["Game", "Utility"],
+              "homepage": "github.com/Shazbot/WH3-Mod-Manager"
+            }
+          }
         }
       ],
       "plugins": [
@@ -180,6 +190,7 @@
     "globals": "^17.4.0",
     "jsdom": "26.1.0",
     "node-loader": "^2.0.0",
+    "patch-package": "^8.0.1",
     "postcss": "8.4.47",
     "postcss-loader": "7.0.1 ",
     "prettier": "^3.9.6",
