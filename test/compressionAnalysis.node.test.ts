@@ -336,9 +336,10 @@ describe("PFH5 compression analysis", () => {
     const parsed = parsePFH5PackBuffer(rewritten, packPath);
     expect(parsed.header.byteMask).toBe(0x40);
     expect(parsed.entries[0].isCompressed).toBe(true);
-    expect(parsed.entries[0].fileSize).toBe(Math.ceil(originalPayload.length * 0.5));
+    expect(parsed.entries[0].fileSize).toBe(Math.ceil(originalPayload.length * 0.5) + 4);
     const compressedPayload = rewritten.subarray(parsed.entries[0].payloadOffset);
-    expect(await fake.codecs.zstdDecompress(compressedPayload)).toEqual(originalPayload);
+    expect(compressedPayload.readUInt32LE(0)).toBe(originalPayload.length);
+    expect(await fake.codecs.zstdDecompress(compressedPayload.subarray(4))).toEqual(originalPayload);
   });
 
   it("writes a compressed copy to the output path without changing the source or creating a backup", async () => {
@@ -370,7 +371,9 @@ describe("PFH5 compression analysis", () => {
     const copied = await readFile(outputPath);
     const parsed = parsePFH5PackBuffer(copied, outputPath);
     expect(parsed.entries[0].isCompressed).toBe(true);
-    expect(await fake.codecs.zstdDecompress(copied.subarray(parsed.entries[0].payloadOffset))).toEqual(originalPayload);
+    const compressedPayload = copied.subarray(parsed.entries[0].payloadOffset);
+    expect(compressedPayload.readUInt32LE(0)).toBe(originalPayload.length);
+    expect(await fake.codecs.zstdDecompress(compressedPayload.subarray(4))).toEqual(originalPayload);
   });
 
   it("limits displayed wins to ten without dropping additional savings from totals", async () => {
@@ -387,7 +390,7 @@ describe("PFH5 compression analysis", () => {
       vanillaRecords: new Map(),
     });
     const analyzed = result.packs[0];
-    const savingsPerFile = 8192 - Math.ceil(8192 * 0.8);
+    const savingsPerFile = 8192 - (Math.ceil(8192 * 0.8) + 4);
     expect(analyzed.acceptedCount).toBe(12);
     expect(analyzed.topWins).toHaveLength(10);
     expect(analyzed.bytesSaved).toBe(savingsPerFile * 12);

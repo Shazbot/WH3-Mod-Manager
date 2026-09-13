@@ -114,7 +114,8 @@ describe("staged PFH5 compression", () => {
     const parsed = parsePFH5PackBuffer(rewritten, stagedPath);
     expect(parsed.entries[0].isCompressed).toBe(true);
     const compressedPayload = rewritten.subarray(parsed.entries[0].payloadOffset);
-    expect(await fake.codecs.lz4Decompress(compressedPayload)).toEqual(originalPayload);
+    expect(compressedPayload.readUInt32LE(0)).toBe(originalPayload.length);
+    expect(await fake.codecs.lz4Decompress(compressedPayload.subarray(4))).toEqual(originalPayload);
   });
 
   it("reports an already-compressed/no-eligible destination without changing it", async () => {

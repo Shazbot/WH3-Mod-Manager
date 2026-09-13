@@ -20,6 +20,7 @@ export interface CompressionCodecResult {
   ratioPercent?: number;
   /** Compressed bytes divided by original bytes, expressed as a fraction. */
   ratio?: number;
+  /** Stored compressed payload bytes, including PFH5's four-byte size prefix. */
   compressedBytes?: number;
   error?: string;
 }

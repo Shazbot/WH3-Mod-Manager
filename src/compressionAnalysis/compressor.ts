@@ -3,6 +3,7 @@ import * as nodePath from "node:path";
 import { randomBytes } from "node:crypto";
 import {
   createDefaultCompressionCodecs,
+  PACK_COMPRESSION_HEADER_BYTES,
   parsePFH5Header,
   parsePFH5Index,
   PFH5_HEADER_BYTES,
@@ -51,6 +52,16 @@ const reportProgress = (options: CompressPackOptions, progress: CompressionAnaly
   } catch {
     // Progress reporting must not affect the compression transaction.
   }
+};
+
+const wrapCompressedPayload = (originalSize: number, compressedFrame: Buffer): Buffer => {
+  if (!Number.isSafeInteger(originalSize) || originalSize < 0 || originalSize > 0xffffffff) {
+    throw new Error(`Compressed payload source size is outside the PFH5 u32 range: ${originalSize}`);
+  }
+  const payload = Buffer.allocUnsafe(PACK_COMPRESSION_HEADER_BYTES + compressedFrame.length);
+  payload.writeUInt32LE(originalSize, 0);
+  compressedFrame.copy(payload, PACK_COMPRESSION_HEADER_BYTES);
+  return payload;
 };
 
 const writeAll = async (
@@ -266,18 +277,19 @@ export const compressAnalyzedPack = async (
       }
 
       const original = await readAll(source, entry.fileSize, entry.payloadOffset, options.signal);
-      const compressed = Buffer.from(
+      const compressedFrame = Buffer.from(
         result.selectedCodec === "LZ4" ? await codecs.lz4Compress(original) : await codecs.zstdCompress(original),
       );
       throwIfAborted(options.signal);
       const decompressed = Buffer.from(
         result.selectedCodec === "LZ4"
-          ? await codecs.lz4Decompress(compressed)
-          : await codecs.zstdDecompress(compressed),
+          ? await codecs.lz4Decompress(compressedFrame)
+          : await codecs.zstdDecompress(compressedFrame),
       );
       throwIfAborted(options.signal);
       if (!decompressed.equals(original))
         throw new Error(`${entry.name}: compression round trip was not byte-identical`);
+      const compressed = wrapCompressedPayload(original.length, compressedFrame);
       const stillEligible = result.isRigidModelV2
         ? result.selectedCodec === "LZ4" && passesRigidModelV2CompressionThreshold(original.length, compressed.length)
         : passesCompressionThreshold(original.length, compressed.length);

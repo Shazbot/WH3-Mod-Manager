@@ -27,6 +27,8 @@ import type {
 import type { VanillaCompressionExtensionRecord } from "./vanillaGuardrail";
 
 export const PFH5_HEADER_BYTES = 28;
+/** PFH5 compressed payloads begin with the original file size before the codec frame. */
+export const PACK_COMPRESSION_HEADER_BYTES = 4;
 export const PFH5_FILENAME_HASH_MASK = 0x40;
 export const LZ4_FRAME_MAGIC = Buffer.from([0x04, 0x22, 0x4d, 0x18]);
 export const ZSTD_FRAME_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
@@ -548,7 +550,7 @@ const benchmarkCodec = async (
     if (!Buffer.from(decompressed).equals(data)) {
       throw new Error("round-trip decompression was not byte-identical");
     }
-    const compressedBytes = Buffer.from(compressed).length;
+    const compressedBytes = Buffer.from(compressed).length + PACK_COMPRESSION_HEADER_BYTES;
     return {
       codec,
       compressedBytes,
@@ -823,7 +825,7 @@ const analyzeOnePack = async (
         ];
         const sampled = {} as Partial<Record<CompressionCodec, CompressionCodecResult>>;
         for (const codec of codecList) {
-          let compressedBytes = 0;
+          let compressedFrameBytes = 0;
           let originalBytes = 0;
           let failure: CompressionCodecResult | undefined;
           for (const sampleOffset of sampleOffsets) {
@@ -835,7 +837,9 @@ const analyzeOnePack = async (
                 failure = benchmark;
                 break;
               }
-              compressedBytes += benchmark.compressedBytes;
+              // Each sample benchmark includes the four-byte game header, but the final
+              // large-file payload has only one such header.
+              compressedFrameBytes += benchmark.compressedBytes - PACK_COMPRESSION_HEADER_BYTES;
               originalBytes += sample.length;
             } catch (error) {
               if (error instanceof CompressionAnalysisCanceled) throw error;
@@ -845,9 +849,9 @@ const analyzeOnePack = async (
           }
           sampled[codec] = failure || {
             codec,
-            compressedBytes,
-            ratioPercent: compressionRatioPercent(compressedBytes, originalBytes),
-            ratio: compressionRatio(compressedBytes, originalBytes),
+            compressedBytes: compressedFrameBytes + PACK_COMPRESSION_HEADER_BYTES,
+            ratioPercent: compressionRatioPercent(compressedFrameBytes + PACK_COMPRESSION_HEADER_BYTES, originalBytes),
+            ratio: compressionRatio(compressedFrameBytes + PACK_COMPRESSION_HEADER_BYTES, originalBytes),
           };
         }
         const sampledResults = codecList.map((codec) => sampled[codec]!);
