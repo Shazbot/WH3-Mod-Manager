@@ -176,6 +176,160 @@ const getRowsForPackedFile = (
   return rows;
 };
 
+/**
+ * The logical table a packed DB file belongs to. A DB file's first two path components are the
+ * table name; everything after that is a source-file variant/subname. Keep this comparison
+ * independent of the pack that supplied the file: the effective row is chosen by the packed DB
+ * filename alone.
+ */
+const getCanonicalLogicalTableName = (packedFileName: string): string => {
+  const normalizedName = packedFileName.replace(/[\\/]+/g, "\\").toLowerCase();
+  const [folder, tableName] = normalizedName.split("\\");
+  return folder === "db" && tableName ? `db\\${tableName}` : normalizedName;
+};
+
+const normalizePackedDbFileName = (packedFileName: string): string =>
+  packedFileName.replace(/[\\/]+/g, "\\").toLowerCase();
+
+const cloneEffectiveSchemaField = (field: AmendedSchemaField): AmendedSchemaField => structuredClone(field);
+
+type EffectiveRowCandidate = {
+  tableIndex: number;
+  rowIndex: number;
+  logicalTableName: string;
+  key: string;
+  normalizedFileName: string;
+};
+
+type PreparedEffectiveTable = {
+  tableData: DBTablesNodeTable;
+  rows: AmendedSchemaField[][];
+  keyFields: DBField[];
+  logicalTableName: string;
+  normalizedFileName: string;
+  hasSchemaRows: boolean;
+};
+
+/**
+ * Returns the rows the game would expose from a set of source-pack table entries.
+ *
+ * Rows are identities by the complete schema key tuple, while the source-file variant is the only
+ * winner signal. This is deliberately separate from pack load priority: a flow can receive the
+ * same packed DB file from different packs, and the requested effective-row semantics compare the
+ * file names/subnames rather than the packs carrying them. Equal normalized file names retain the
+ * first row encountered.
+ *
+ * Every output descriptor and schema field is copied. In particular, callers may safely amend the
+ * returned table without changing the PackedFile cached on the source Pack.
+ */
+export const resolveEffectiveTableRows = (
+  tableEntries: readonly DBTablesNodeTable[],
+  executionContext?: FlowExecutionContext,
+): DBTablesNodeTable[] => {
+  const preparedTables: PreparedEffectiveTable[] = tableEntries.map((tableData) => {
+    const table = tableData.table;
+    const keyFields = table.tableSchema?.fields?.filter((field) => field.is_key) ?? [];
+    const hasSchemaRows = !!table.tableSchema && !!table.schemaFields;
+
+    return {
+      tableData,
+      rows: hasSchemaRows ? getRowsForPackedFile(table, executionContext) : [],
+      keyFields,
+      logicalTableName: getCanonicalLogicalTableName(table.name),
+      normalizedFileName: normalizePackedDbFileName(table.name),
+      hasSchemaRows,
+    };
+  });
+
+  const getKeyForRow = (preparedTable: PreparedEffectiveTable, row: AmendedSchemaField[]): string | undefined => {
+    if (preparedTable.keyFields.length === 0) return undefined;
+
+    const keyValues: Array<[string, unknown]> = [];
+    for (const keyField of preparedTable.keyFields) {
+      const keyCell = row.find((cell) => cell.name === keyField.name);
+      if (!keyCell || keyCell.resolvedKeyValue === undefined || keyCell.resolvedKeyValue === null) {
+        return undefined;
+      }
+      keyValues.push([keyField.name, keyCell.resolvedKeyValue]);
+    }
+
+    // JSON array encoding is collision-safe for values containing separators or other delimiters.
+    return JSON.stringify(keyValues);
+  };
+
+  const winnersByLogicalTableAndKey = new Map<string, EffectiveRowCandidate>();
+  for (let tableIndex = 0; tableIndex < preparedTables.length; tableIndex++) {
+    const preparedTable = preparedTables[tableIndex];
+    if (!preparedTable.hasSchemaRows || preparedTable.keyFields.length === 0) continue;
+
+    for (let rowIndex = 0; rowIndex < preparedTable.rows.length; rowIndex++) {
+      const key = getKeyForRow(preparedTable, preparedTable.rows[rowIndex]);
+      // A row without a complete tuple cannot safely participate in deduplication; retain it.
+      if (key === undefined) continue;
+
+      const candidate: EffectiveRowCandidate = {
+        tableIndex,
+        rowIndex,
+        logicalTableName: preparedTable.logicalTableName,
+        key,
+        normalizedFileName: preparedTable.normalizedFileName,
+      };
+      const identity = JSON.stringify([candidate.logicalTableName, candidate.key]);
+      const currentWinner = winnersByLogicalTableAndKey.get(identity);
+
+      // Lower lexical filename wins. Keeping the existing winner on equality gives stable
+      // first-encountered behavior without consulting pack names or load order.
+      if (!currentWinner || candidate.normalizedFileName < currentWinner.normalizedFileName) {
+        winnersByLogicalTableAndKey.set(identity, candidate);
+      }
+    }
+  }
+
+  const cloneTableDataWithRows = (
+    tableData: DBTablesNodeTable,
+    rows: AmendedSchemaField[][] | undefined,
+  ): DBTablesNodeTable => ({
+    ...tableData,
+    table: {
+      ...tableData.table,
+      ...(rows ? { schemaFields: rows.flatMap((row) => row.map(cloneEffectiveSchemaField)) } : {}),
+      ...(rows === undefined && tableData.table.schemaFields
+        ? { schemaFields: tableData.table.schemaFields.map((field) => structuredClone(field)) }
+        : {}),
+    },
+  });
+
+  const effectiveTables: DBTablesNodeTable[] = [];
+  for (let tableIndex = 0; tableIndex < preparedTables.length; tableIndex++) {
+    const preparedTable = preparedTables[tableIndex];
+    if (!preparedTable.hasSchemaRows) {
+      // No schema data means there is no safe row extraction rule. Preserve the entry and clone its
+      // schema fields if present.
+      effectiveTables.push(cloneTableDataWithRows(preparedTable.tableData, undefined));
+      continue;
+    }
+
+    const retainedRows =
+      preparedTable.keyFields.length === 0
+        ? preparedTable.rows
+        : preparedTable.rows.filter((row, rowIndex) => {
+            const key = getKeyForRow(preparedTable, row);
+            if (key === undefined) return true;
+
+            const identity = JSON.stringify([preparedTable.logicalTableName, key]);
+            const winner = winnersByLogicalTableAndKey.get(identity);
+            return winner?.tableIndex === tableIndex && winner.rowIndex === rowIndex;
+          });
+
+    // A table entry that lost all of its rows should not be emitted at all.
+    if (retainedRows.length > 0) {
+      effectiveTables.push(cloneTableDataWithRows(preparedTable.tableData, retainedRows));
+    }
+  }
+
+  return effectiveTables;
+};
+
 type JoinTableLike = {
   table: Pick<PackedFile, "tableSchema">;
 };
@@ -1110,13 +1264,15 @@ async function executeTableSelectionNode(
     }
   }
 
+  const effectiveTables = resolveEffectiveTableRows(selectedTables, executionContext);
+
   return {
     success: true,
     data: {
       type: "TableSelection",
-      tables: selectedTables,
+      tables: effectiveTables,
       sourceFiles: inputData.files,
-      tableCount: selectedTables.length,
+      tableCount: effectiveTables.length,
     } as DBTablesNodeData,
   };
 }
@@ -1203,13 +1359,15 @@ async function executeTableSelectionDropdownNode(
     }
   }
 
+  const effectiveTables = resolveEffectiveTableRows(selectedTables, executionContext);
+
   return {
     success: true,
     data: {
       type: "TableSelection",
-      tables: selectedTables,
+      tables: effectiveTables,
       sourceFiles: inputData.files,
-      tableCount: selectedTables.length,
+      tableCount: effectiveTables.length,
     } as DBTablesNodeData,
   };
 }
@@ -1861,8 +2019,10 @@ async function executeReferenceLookupNode(
     }
   }
 
+  const effectiveReferencedTables = resolveEffectiveTableRows(referencedTables, executionContext);
+
   console.log(
-    `Reference Lookup Node ${nodeId}: Found ${referencedTables.length} table(s) matching "${selectedReferenceTable}"`,
+    `Reference Lookup Node ${nodeId}: Found ${effectiveReferencedTables.length} table(s) matching "${selectedReferenceTable}"`,
   );
 
   // Filter the referenced tables to only include rows with matching key values
@@ -1873,7 +2033,7 @@ async function executeReferenceLookupNode(
     tableCount: 0,
   };
 
-  for (const tableData of referencedTables) {
+  for (const tableData of effectiveReferencedTables) {
     if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
       // No schema, include the whole table
       filteredReferencedTables.tables.push(tableData);
@@ -2213,7 +2373,11 @@ async function executeReverseReferenceLookupNode(
     }
   }
 
-  console.log(`Reverse Reference Lookup Node ${nodeId}: Found ${reverseTables.length} table(s) from pack files`);
+  const effectiveReverseTables = resolveEffectiveTableRows(reverseTables, executionContext);
+
+  console.log(
+    `Reverse Reference Lookup Node ${nodeId}: Found ${effectiveReverseTables.length} table(s) from pack files`,
+  );
 
   const filteredReverseTables: DBTablesNodeData = {
     type: "TableSelection",
@@ -2223,7 +2387,7 @@ async function executeReverseReferenceLookupNode(
   };
 
   // Filter rows in reverse tables that reference the input tables
-  for (const tableData of reverseTables) {
+  for (const tableData of effectiveReverseTables) {
     if (!tableData.table.schemaFields) {
       console.log(`tableData.table.schemaFields is undefined for table "${tableData.name}", skipping`);
       continue;
