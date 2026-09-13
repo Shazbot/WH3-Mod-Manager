@@ -90,6 +90,8 @@ export interface CompressionAnalysisOptions {
   readRange?: (packPath: string, offset: number, length: number) => Promise<Buffer>;
   /** Override stat while using readRange (the default uses fs.stat). */
   getPackSize?: (packPath: string) => Promise<number>;
+  /** Optional reliable source signature for virtual readers that do not have a filesystem path. */
+  getPackSignature?: (packPath: string) => Promise<string | number>;
 }
 
 const asErrorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -288,6 +290,155 @@ const mergeCodecs = (codecs?: Partial<CompressionCodecs>): CompressionCodecs => 
   };
 };
 
+type CachedCompressionFileAnalysis = Pick<
+  CompressionFileAnalysis,
+  | "status"
+  | "selectedCodec"
+  | "selectedRatioPercent"
+  | "selectedRatio"
+  | "lz4"
+  | "zstd"
+  | "savingsBytes"
+  | "warning"
+  | "skipReason"
+  | "error"
+>;
+
+interface CompressionAnalysisCache {
+  sourceSignature: string;
+  results: Map<string, CachedCompressionFileAnalysis>;
+}
+
+const compressionAnalysisCacheByPath = new Map<string, CompressionAnalysisCache>();
+type IdentityFunction = (...args: never[]) => unknown;
+
+const functionIds = new WeakMap<IdentityFunction, number>();
+let nextFunctionId = 1;
+
+const functionIdentity = (value: unknown): string => {
+  if (typeof value !== "function") return "none";
+  const functionValue = value as IdentityFunction;
+  let id = functionIds.get(functionValue);
+  if (id === undefined) {
+    id = nextFunctionId++;
+    functionIds.set(functionValue, id);
+  }
+  return String(id);
+};
+
+const recordsIdentity = (records: Map<string, VanillaCompressionExtensionRecord>): string =>
+  JSON.stringify(
+    [...records.entries()]
+      .sort(([first], [second]) => first.localeCompare(second))
+      .map(([extension, record]) => [extension, record]),
+  );
+
+const compressionConfigurationIdentity = (
+  records: Map<string, VanillaCompressionExtensionRecord>,
+  codecs: CompressionCodecs,
+  options: CompressionAnalysisOptions,
+): string =>
+  [
+    functionIdentity(codecs.lz4Compress),
+    functionIdentity(codecs.lz4Decompress),
+    functionIdentity(codecs.zstdCompress),
+    functionIdentity(codecs.zstdDecompress),
+    functionIdentity(options.readRange),
+    functionIdentity(options.getPackSize),
+    functionIdentity(options.getPackSignature),
+    recordsIdentity(records),
+  ].join("\0");
+
+const getPackSourceSignature = async (
+  packPath: string,
+  options: CompressionAnalysisOptions,
+): Promise<string | undefined> => {
+  if (options.getPackSignature) {
+    try {
+      return `custom:${String(await options.getPackSignature(packPath))}`;
+    } catch {
+      return undefined;
+    }
+  }
+  try {
+    const stat = await fs.promises.stat(packPath, { bigint: true });
+    return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(":");
+  } catch {
+    // A virtual readRange may not have a filesystem path. Without a reliable signature it is
+    // safer to skip caching than to reuse results for a changed source.
+    return undefined;
+  }
+};
+
+const getCompressionAnalysisCache = (packPath: string, sourceSignature: string): CompressionAnalysisCache => {
+  const normalizedPath = normalizePathForDedupe(packPath);
+  const current = compressionAnalysisCacheByPath.get(normalizedPath);
+  if (current?.sourceSignature === sourceSignature) return current;
+  const next = { sourceSignature, results: new Map<string, CachedCompressionFileAnalysis>() };
+  compressionAnalysisCacheByPath.set(normalizedPath, next);
+  return next;
+};
+
+const compressionEntryIdentity = (entry: PFH5IndexEntry, configurationIdentity: string): string =>
+  [
+    configurationIdentity,
+    entry.index,
+    entry.name,
+    entry.fileSize,
+    entry.isCompressed ? 1 : 0,
+    entry.payloadOffset,
+  ].join("\0");
+
+const cloneCodecResult = (result: CompressionCodecResult | undefined): CompressionCodecResult | undefined =>
+  result ? { ...result } : undefined;
+
+const cacheableCompressionResult = (file: CompressionFileAnalysis): CachedCompressionFileAnalysis => ({
+  status: file.status,
+  selectedCodec: file.selectedCodec,
+  selectedRatioPercent: file.selectedRatioPercent,
+  selectedRatio: file.selectedRatio,
+  lz4: cloneCodecResult(file.lz4),
+  zstd: cloneCodecResult(file.zstd),
+  savingsBytes: file.savingsBytes,
+  warning: file.warning,
+  skipReason: file.skipReason,
+  error: file.error,
+});
+
+const applyCachedCompressionResult = (
+  pack: CompressionPackAnalysis,
+  file: CompressionFileAnalysis,
+  cached: CachedCompressionFileAnalysis,
+  warnings: string[],
+): void => {
+  file.status = cached.status;
+  file.selectedCodec = cached.selectedCodec;
+  file.selectedRatioPercent = cached.selectedRatioPercent;
+  file.selectedRatio = cached.selectedRatio;
+  file.lz4 = cloneCodecResult(cached.lz4);
+  file.zstd = cloneCodecResult(cached.zstd);
+  file.savingsBytes = cached.savingsBytes;
+  file.warning = cached.warning;
+  file.skipReason = cached.skipReason;
+  file.error = cached.error;
+  if (file.warning?.startsWith("Codec benchmark failure")) appendUnique(warnings, file.warning);
+  if (file.status === "sampled-rejected") {
+    appendUnique(warnings, "One or more large files were rejected from samples; exact savings were not measured");
+    pack.sampledRejectedCount++;
+    pack.skippedCount++;
+  } else if (file.status === "error") {
+    pack.errorCount++;
+  } else if (file.status === "skipped") {
+    pack.skippedCount++;
+  } else if (file.status === "accepted") {
+    if (file.isRigidModelV2) pack.rigidModelV2Wins.push(file as CompressionWin);
+    else {
+      pack.acceptedCount++;
+      pack.topWins.push(file as CompressionWin);
+    }
+  }
+};
+
 interface PackReader {
   size: number;
   read(offset: number, length: number): Promise<Buffer>;
@@ -483,6 +634,8 @@ interface AnalyzePackContext {
   packCount: number;
   records: Map<string, VanillaCompressionExtensionRecord>;
   codecs: CompressionCodecs;
+  cache?: CompressionAnalysisCache;
+  configurationIdentity: string;
 }
 
 const analyzeOnePack = async (
@@ -618,6 +771,12 @@ const analyzeOnePack = async (
 
       pack.testedCount++;
       const codecList: CompressionCodec[] = isRigidModelV2 ? ["LZ4"] : ["LZ4", "ZSTD"];
+      const cacheKey = compressionEntryIdentity(entry, context.configurationIdentity);
+      const cached = context.cache?.results.get(cacheKey);
+      if (cached) {
+        applyCachedCompressionResult(pack, file, cached, warnings);
+        continue;
+      }
       const benchmarks: Partial<Record<CompressionCodec, CompressionCodecResult>> = {};
       if (entry.fileSize > LARGE_FILE_SAMPLE_THRESHOLD_BYTES) {
         const sampleOffsets = [
@@ -655,6 +814,8 @@ const analyzeOnePack = async (
           };
         }
         const sampledResults = codecList.map((codec) => sampled[codec]!);
+        file.lz4 = sampled.LZ4;
+        file.zstd = sampled.ZSTD;
         const hasSamplePass = sampledResults.some((result) => {
           if (result.error || result.ratioPercent === undefined || result.compressedBytes === undefined) return false;
           return isRigidModelV2
@@ -678,13 +839,12 @@ const analyzeOnePack = async (
             );
             pack.sampledRejectedCount++;
             pack.skippedCount++;
+            context.cache?.results.set(cacheKey, cacheableCompressionResult(file));
           } else {
             file.status = "error";
             file.error = "All available codec samples failed";
             pack.errorCount++;
           }
-          file.lz4 = sampled.LZ4;
-          file.zstd = sampled.ZSTD;
           continue;
         }
         let data: Buffer;
@@ -734,6 +894,7 @@ const analyzeOnePack = async (
           file.status = "skipped";
           file.skipReason = "compressionThresholdNotMet";
           pack.skippedCount++;
+          context.cache?.results.set(cacheKey, cacheableCompressionResult(file));
         }
         continue;
       }
@@ -749,6 +910,7 @@ const analyzeOnePack = async (
         pack.acceptedCount++;
         pack.topWins.push(file as CompressionWin);
       }
+      context.cache?.results.set(cacheKey, cacheableCompressionResult(file));
     }
 
     pack.topWins.sort(
@@ -806,6 +968,7 @@ export const analyzeCompressionPacks = async (
   const packs: CompressionPackAnalysis[] = [];
   const records = loadVanillaRecords(options);
   const codecs = mergeCodecs(options.codecs);
+  const configurationIdentity = compressionConfigurationIdentity(records, codecs, options);
   report(options, { phase: "starting", packIndex: 0, packCount: uniquePackPaths.length });
   for (let packIndex = 0; packIndex < uniquePackPaths.length; packIndex++) {
     const packPath = uniquePackPaths[packIndex];
@@ -841,11 +1004,14 @@ export const analyzeCompressionPacks = async (
       } catch {
         knownSize = 0;
       }
+      const sourceSignature = await getPackSourceSignature(packPath, options);
       const pack = await analyzeOnePack(packPath, options, {
         packIndex,
         packCount: uniquePackPaths.length,
         records,
         codecs,
+        cache: sourceSignature ? getCompressionAnalysisCache(packPath, sourceSignature) : undefined,
+        configurationIdentity,
       });
       packs.push(pack);
     } catch (error) {

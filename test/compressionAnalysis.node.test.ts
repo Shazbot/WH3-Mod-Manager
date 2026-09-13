@@ -192,6 +192,31 @@ describe("PFH5 compression analysis", () => {
     expect(result.packs[1].topWins[0].warning).toContain("ZSTD");
   });
 
+  it("reuses completed file benchmarks and invalidates them when the source pack changes", async () => {
+    const directory = await mkdtemp(nodePath.join(tmpdir(), "whmm-compression-"));
+    tempDirectories.push(directory);
+    const packPath = await writeTempPack(
+      directory,
+      "cached.pack",
+      makePFH5Pack([{ name: "cached.foo", data: Buffer.alloc(8192, 1) }]),
+    );
+    const fake = makeFakeCodecs(0.8, 0.7);
+    const first = await analyzeCompressionPacks([packPath], { codecs: fake.codecs, vanillaRecords: new Map() });
+    const second = await analyzeCompressionPacks([packPath], { codecs: fake.codecs, vanillaRecords: new Map() });
+
+    expect(second.packs[0]).toEqual(first.packs[0]);
+    expect(fake.calls.lz4.compress).toHaveBeenCalledTimes(1);
+    expect(fake.calls.zstd.compress).toHaveBeenCalledTimes(1);
+
+    await writeFile(packPath, makePFH5Pack([{ name: "cached.foo", data: Buffer.alloc(8192, 2) }]));
+    const changed = await analyzeCompressionPacks([packPath], { codecs: fake.codecs, vanillaRecords: new Map() });
+
+    expect(changed.packs[0].currentSize).toBe(first.packs[0].currentSize);
+    expect(changed.packs[0].fileResults[0]).toEqual(first.packs[0].fileResults[0]);
+    expect(fake.calls.lz4.compress).toHaveBeenCalledTimes(2);
+    expect(fake.calls.zstd.compress).toHaveBeenCalledTimes(2);
+  });
+
   it("counts threshold misses as skipped", async () => {
     const directory = await mkdtemp(nodePath.join(tmpdir(), "whmm-compression-"));
     tempDirectories.push(directory);
@@ -362,6 +387,11 @@ describe("PFH5 compression analysis", () => {
     expect(file.status).toBe("sampled-rejected");
     expect(file.savingsBytes).toBeUndefined();
     expect(result.packs[0].sampledRejectedCount).toBe(1);
+    expect(fake.calls.lz4.compress).toHaveBeenCalledTimes(3);
+    expect(fake.calls.zstd.compress).toHaveBeenCalledTimes(3);
+
+    const repeated = await analyzeCompressionPacks([packPath], { codecs: fake.codecs, vanillaRecords: new Map() });
+    expect(repeated.packs[0]).toEqual(result.packs[0]);
     expect(fake.calls.lz4.compress).toHaveBeenCalledTimes(3);
     expect(fake.calls.zstd.compress).toHaveBeenCalledTimes(3);
   }, 30000);
