@@ -245,8 +245,12 @@ const unavailableCodec =
     throw new Error(`${name} codec is unavailable`);
   };
 
+let defaultCompressionCodecs: CompressionCodecs | undefined;
+
 /** Loads the native frame codecs only when an analysis actually benchmarks a file. */
 export const createDefaultCompressionCodecs = (): CompressionCodecs => {
+  if (defaultCompressionCodecs) return defaultCompressionCodecs;
+
   let lz4:
     | {
         compressFrame: CompressionTransform;
@@ -270,12 +274,13 @@ export const createDefaultCompressionCodecs = (): CompressionCodecs => {
   } catch {
     zstd = undefined;
   }
-  return {
+  defaultCompressionCodecs = {
     lz4Compress: lz4?.compressFrame ?? unavailableCodec("LZ4"),
     lz4Decompress: lz4?.decompressFrame ?? unavailableCodec("LZ4"),
     zstdCompress: zstd ? (data) => zstd.compress(data, ZSTD_COMPRESSION_LEVEL) : unavailableCodec("ZSTD"),
     zstdDecompress: zstd?.decompress ?? unavailableCodec("ZSTD"),
   };
+  return defaultCompressionCodecs;
 };
 
 const mergeCodecs = (codecs?: Partial<CompressionCodecs>): CompressionCodecs => {
@@ -307,6 +312,10 @@ type CachedCompressionFileAnalysis = Pick<
 interface CompressionAnalysisCache {
   sourceSignature: string;
   results: Map<string, CachedCompressionFileAnalysis>;
+  completedPack?: {
+    configurationIdentity: string;
+    pack: CompressionPackAnalysis;
+  };
 }
 
 const compressionAnalysisCacheByPath = new Map<string, CompressionAnalysisCache>();
@@ -391,6 +400,34 @@ const compressionEntryIdentity = (entry: PFH5IndexEntry, configurationIdentity: 
 
 const cloneCodecResult = (result: CompressionCodecResult | undefined): CompressionCodecResult | undefined =>
   result ? { ...result } : undefined;
+
+const cloneCompressionFileAnalysis = (file: CompressionFileAnalysis): CompressionFileAnalysis => ({
+  ...file,
+  lz4: cloneCodecResult(file.lz4),
+  zstd: cloneCodecResult(file.zstd),
+});
+
+const cloneCompressionPackAnalysis = (
+  pack: CompressionPackAnalysis,
+  packPath = pack.packPath,
+): CompressionPackAnalysis => ({
+  ...pack,
+  packPath,
+  packName: nodePath.basename(packPath),
+  existing: {
+    NONE: { ...pack.existing.NONE },
+    LZ4: { ...pack.existing.LZ4 },
+    ZSTD: { ...pack.existing.ZSTD },
+    UNKNOWN: { ...pack.existing.UNKNOWN },
+  },
+  existingCounts: { ...pack.existingCounts },
+  existingStoredBytes: { ...pack.existingStoredBytes },
+  topWins: pack.topWins.map((file) => cloneCompressionFileAnalysis(file) as CompressionWin),
+  rigidModelV2Wins: pack.rigidModelV2Wins.map((file) => cloneCompressionFileAnalysis(file) as CompressionWin),
+  fileResults: pack.fileResults.map(cloneCompressionFileAnalysis),
+  warnings: [...pack.warnings],
+  errors: [...pack.errors],
+});
 
 const cacheableCompressionResult = (file: CompressionFileAnalysis): CachedCompressionFileAnalysis => ({
   status: file.status,
@@ -1005,14 +1042,43 @@ export const analyzeCompressionPacks = async (
         knownSize = 0;
       }
       const sourceSignature = await getPackSourceSignature(packPath, options);
+      const cache = sourceSignature ? getCompressionAnalysisCache(packPath, sourceSignature) : undefined;
+      const cachedPack =
+        cache?.completedPack?.configurationIdentity === configurationIdentity ? cache.completedPack.pack : undefined;
+      if (cachedPack) {
+        checkCanceled(options);
+        const reusedPack = cloneCompressionPackAnalysis(cachedPack, packPath);
+        report(options, {
+          phase: "pack",
+          packIndex,
+          packCount: uniquePackPaths.length,
+          fileIndex: reusedPack.fileCount,
+          fileCount: reusedPack.fileCount,
+          packPath,
+          packName: reusedPack.packName,
+          testedCount: reusedPack.testedCount,
+          skippedCount: reusedPack.skippedCount,
+          errorCount: reusedPack.errorCount,
+          acceptedCount: reusedPack.acceptedCount,
+          message: `Using cached analysis for ${reusedPack.packName}`,
+        });
+        packs.push(reusedPack);
+        continue;
+      }
       const pack = await analyzeOnePack(packPath, options, {
         packIndex,
         packCount: uniquePackPaths.length,
         records,
         codecs,
-        cache: sourceSignature ? getCompressionAnalysisCache(packPath, sourceSignature) : undefined,
+        cache,
         configurationIdentity,
       });
+      if (cache && pack.success && pack.errorCount === 0) {
+        cache.completedPack = {
+          configurationIdentity,
+          pack: cloneCompressionPackAnalysis(pack),
+        };
+      }
       packs.push(pack);
     } catch (error) {
       if (error instanceof CompressionAnalysisCanceled) {

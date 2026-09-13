@@ -201,18 +201,36 @@ describe("PFH5 compression analysis", () => {
       makePFH5Pack([{ name: "cached.foo", data: Buffer.alloc(8192, 1) }]),
     );
     const fake = makeFakeCodecs(0.8, 0.7);
-    const first = await analyzeCompressionPacks([packPath], { codecs: fake.codecs, vanillaRecords: new Map() });
-    const second = await analyzeCompressionPacks([packPath], { codecs: fake.codecs, vanillaRecords: new Map() });
+    const firstProgress: string[] = [];
+    const first = await analyzeCompressionPacks([packPath], {
+      codecs: fake.codecs,
+      vanillaRecords: new Map(),
+      onProgress: (progress) => firstProgress.push(progress.phase),
+    });
+    const secondProgress: string[] = [];
+    const second = await analyzeCompressionPacks([packPath], {
+      codecs: fake.codecs,
+      vanillaRecords: new Map(),
+      onProgress: (progress) => secondProgress.push(progress.phase),
+    });
 
     expect(second.packs[0]).toEqual(first.packs[0]);
+    expect(firstProgress).toContain("file");
+    expect(secondProgress).not.toContain("file");
     expect(fake.calls.lz4.compress).toHaveBeenCalledTimes(1);
     expect(fake.calls.zstd.compress).toHaveBeenCalledTimes(1);
 
     await writeFile(packPath, makePFH5Pack([{ name: "cached.foo", data: Buffer.alloc(8192, 2) }]));
-    const changed = await analyzeCompressionPacks([packPath], { codecs: fake.codecs, vanillaRecords: new Map() });
+    const changedProgress: string[] = [];
+    const changed = await analyzeCompressionPacks([packPath], {
+      codecs: fake.codecs,
+      vanillaRecords: new Map(),
+      onProgress: (progress) => changedProgress.push(progress.phase),
+    });
 
     expect(changed.packs[0].currentSize).toBe(first.packs[0].currentSize);
     expect(changed.packs[0].fileResults[0]).toEqual(first.packs[0].fileResults[0]);
+    expect(changedProgress).toContain("file");
     expect(fake.calls.lz4.compress).toHaveBeenCalledTimes(2);
     expect(fake.calls.zstd.compress).toHaveBeenCalledTimes(2);
   });
