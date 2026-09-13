@@ -2,27 +2,23 @@
 
 Be concise and token-conscious. Avoid unnecessary repository exploration, repeated file reads, and unrelated changes.
 
-## Model Routing
+## Delegation
 
-Use the root agent primarily for orchestration, architectural decisions, ambiguity resolution, and review.
+When acting as an orchestrator, delegate implementation to Luna Max when Luna is capable of completing the task reliably.
 
-For non-trivial implementation work:
+Keep difficult architectural decisions, ambiguity resolution, and unusually complex or high-risk work with the orchestrating agent when that is likely to produce a better result.
 
-If the root agent is not already Luna Max, delegate implementation to Luna Max.
-Use fork_turns="none" by default.
-Give the worker a compact, self-contained task with the goal, constraints, acceptance criteria, and relevant file hints.
-Avoid duplicate repository exploration between the root agent and worker.
-Normally use one implementation worker.
+When delegating:
 
-If the root agent is already Luna Max:
+* Use `fork_turns="none"` by default.
+* Give the worker a compact, self-contained task with the goal, constraints, acceptance criteria, and relevant file hints.
+* Avoid duplicate repository exploration between the parent and worker.
+* Normally use one implementation worker.
+* Keep delegation and worker summaries concise.
 
-Implement the task directly.
-Do not spawn another Luna agent merely to perform the same implementation.
-Spawn subagents only when independent or parallel work would clearly help.
+When given an implementation task directly, implement it yourself by default. Do not spawn another agent merely because the task is non-trivial.
 
-Trivial changes may be implemented directly when delegation would cost more than it saves.
-
-After delegated implementation, review the worker summary, diff, and test results. If corrections are needed, give the worker a narrow follow-up task rather than restarting the work.
+Spawn additional agents only when the user explicitly requests orchestration or independent parallel work clearly provides a benefit.
 
 ## UI and UX
 
@@ -40,7 +36,8 @@ For non-UI work, do not read `docs/DESIGN.md` unless relevant.
 
 * Follow existing project patterns and conventions.
 * Make the smallest clean change that solves the task.
+* Prefer targeted repository exploration over broad exploration.
 * Avoid unrelated refactors, unnecessary abstractions, and new dependencies.
 * Preserve existing behavior unless the task requires changing it.
-* Run targeted tests/checks appropriate to the change.
+* Run targeted tests or checks appropriate to the change.
 * Prefer targeted validation over expensive full-project checks when sufficient.
