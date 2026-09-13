@@ -697,4 +697,59 @@ describe("pack table tree interactions", () => {
       window.api = previousApi;
     }
   });
+
+  it("searches unloaded vanilla files through the index cache", async () => {
+    const packPath = "K:\\game\\data\\db.pack";
+    const getVanillaPackFileTree = vi.fn().mockResolvedValue({ success: true, children: [] });
+    const searchVanillaPackFiles = vi.fn().mockResolvedValue({
+      success: true,
+      filePaths: ["audio\\wwise\\dragon.anim"],
+      folderPaths: [],
+      truncated: false,
+    });
+    const previousApi = window.api;
+    window.api = { getVanillaPackFileTree, searchVanillaPackFiles } as unknown as NonNullable<Window["api"]>;
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          currentGame: "wh3",
+          packsData: {
+            [packPath]: {
+              packName: "db.pack",
+              packPath,
+              tables: ["db\\units_tables\\data__"],
+              packedFiles: {},
+            },
+          },
+        },
+      },
+    });
+
+    const view = render(
+      <Provider store={store}>
+        <PackTablesTreeView
+          packPath={packPath}
+          preferredTab="files"
+          tableFilter="dragon"
+          showDialog={vi.fn()}
+          onOpenDBTable={vi.fn()}
+          onOpenFlowFile={vi.fn()}
+          onOpenPackedFile={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    try {
+      await waitFor(() => expect(searchVanillaPackFiles).toHaveBeenCalledWith(packPath, "dragon"));
+      await waitFor(() => expect(screen.getByText("dragon.anim")).toBeInTheDocument());
+      expect(screen.getByText("audio")).toBeInTheDocument();
+      expect(screen.getByText("wwise")).toBeInTheDocument();
+    } finally {
+      view.unmount();
+      window.api = previousApi;
+    }
+  });
 });

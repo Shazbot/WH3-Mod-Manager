@@ -60,6 +60,12 @@ type PackTablesTreeViewProps = {
 
 type VanillaLoadMoreTreeChild = { parentPath: string; offset: number; label: string };
 type VanillaFileTreeMorePage = { nextOffset: number; totalChildren?: number };
+type VanillaFileSearch = {
+  query: string;
+  filePaths: string[];
+  folderPaths: string[];
+  truncated: boolean;
+};
 type TreeData = {
   id?: string | number;
   name: string;
@@ -338,9 +344,16 @@ const PackTablesTreeView = React.memo(
     const [vanillaFileTreeMorePages, setVanillaFileTreeMorePages] = React.useState<
       Record<string, VanillaFileTreeMorePage>
     >({});
+    const [vanillaFileSearch, setVanillaFileSearch] = React.useState<VanillaFileSearch>({
+      query: "",
+      filePaths: [],
+      folderPaths: [],
+      truncated: false,
+    });
     const vanillaFileTreeLoadedPageKeysRef = React.useRef(new Set<string>());
     const vanillaFileTreeRequestsRef = React.useRef(new Map<string, Promise<void>>());
     const vanillaFileTreeGenerationRef = React.useRef(0);
+    const vanillaFileSearchGenerationRef = React.useRef(0);
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
     const clearLabelSelectionModeTimeoutRef = React.useRef<number | null>(null);
     const contextMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -381,6 +394,7 @@ const PackTablesTreeView = React.memo(
     const isVanillaPackOpen = packData ? vanillaPackNames.includes(packData.packName) : false;
     const isVanillaDBPackOpen =
       packData?.packName.toLowerCase() === (gameToPackWithDBTablesName[currentGame] || "db.pack").toLowerCase();
+    const normalizedFilter = props.tableFilter.toLowerCase().trim();
 
     const loadVanillaFileTreeFolder = React.useCallback(
       async (prefix: string, offset = 0): Promise<void> => {
@@ -459,6 +473,36 @@ const PackTablesTreeView = React.memo(
       if (isVanillaDBPackOpen) void loadVanillaFileTreeFolder("");
     }, [isVanillaDBPackOpen, loadVanillaFileTreeFolder, packPath]);
 
+    useEffect(() => {
+      const searchVanillaPackFiles = window.api?.searchVanillaPackFiles;
+      const searchGeneration = ++vanillaFileSearchGenerationRef.current;
+      setVanillaFileSearch({ query: "", filePaths: [], folderPaths: [], truncated: false });
+      if (!isVanillaDBPackOpen || normalizedFilter === "" || !searchVanillaPackFiles) return;
+
+      let isCurrent = true;
+      void (async () => {
+        try {
+          const result = await searchVanillaPackFiles(packPath, normalizedFilter);
+          if (!isCurrent || searchGeneration !== vanillaFileSearchGenerationRef.current || !result?.success) return;
+
+          setVanillaFileSearch({
+            query: normalizedFilter,
+            filePaths: result.filePaths ?? [],
+            folderPaths: result.folderPaths ?? [],
+            truncated: result.truncated ?? false,
+          });
+        } catch (error) {
+          if (isCurrent && searchGeneration === vanillaFileSearchGenerationRef.current) {
+            console.error(`Could not search vanilla files for ${normalizedFilter}:`, error);
+          }
+        }
+      })();
+
+      return () => {
+        isCurrent = false;
+      };
+    }, [isVanillaDBPackOpen, normalizedFilter, packPath]);
+
     const packFileNames = useMemo(() => {
       if (!packData) return [];
 
@@ -473,7 +517,14 @@ const PackTablesTreeView = React.memo(
         ]),
       );
     }, [deletedPackFilePaths, packData, unsavedFiles]);
-    const normalizedFilter = props.tableFilter.toLowerCase().trim();
+    const vanillaSearchFilePaths = useMemo(
+      () => (vanillaFileSearch.query === normalizedFilter ? vanillaFileSearch.filePaths : []),
+      [normalizedFilter, vanillaFileSearch],
+    );
+    const vanillaSearchFolderPaths = useMemo(
+      () => (vanillaFileSearch.query === normalizedFilter ? vanillaFileSearch.folderPaths : []),
+      [normalizedFilter, vanillaFileSearch],
+    );
     const vanillaFilePaths = useMemo(
       () => vanillaFileTreeChildren.filter((child) => !child.isBranch).map((child) => child.path),
       [vanillaFileTreeChildren],
@@ -558,16 +609,45 @@ const PackTablesTreeView = React.memo(
 
       return flattenTree(
         buildPathTree(
-          filePackFileNames,
-          [...(createdFoldersByPack[packPath] ?? []), ...vanillaFolderPaths],
+          [...filePackFileNames, ...vanillaSearchFilePaths],
+          [...(createdFoldersByPack[packPath] ?? []), ...vanillaFolderPaths, ...vanillaSearchFolderPaths],
           vanillaLoadMoreChildren,
         ),
       );
-    }, [createdFoldersByPack, filePackFileNames, vanillaFolderPaths, vanillaLoadMoreChildren, packData, packPath]);
+    }, [
+      createdFoldersByPack,
+      filePackFileNames,
+      vanillaFolderPaths,
+      vanillaLoadMoreChildren,
+      vanillaSearchFilePaths,
+      vanillaSearchFolderPaths,
+      packData,
+      packPath,
+    ]);
 
     const dbNodeById = useMemo(() => buildNodeById(dbData), [dbData]);
     const dbDefaultExpandedIds = useMemo(() => getAutoExpandedDBGroupIds(dbData), [dbData]);
     const fileNodeById = useMemo(() => buildNodeById(fileData), [fileData]);
+    const vanillaSearchExpandedFileNodeIds = useMemo(() => {
+      if (vanillaSearchFilePaths.length === 0 && vanillaSearchFolderPaths.length === 0) return [];
+
+      const expandedIds = new Set<INode["id"]>();
+      for (const searchPath of [...vanillaSearchFilePaths, ...vanillaSearchFolderPaths]) {
+        const segments = searchPath.split(/[\\/]/).filter(Boolean);
+        let folderPath = "";
+        for (let segmentIndex = 0; segmentIndex < segments.length - 1; segmentIndex++) {
+          folderPath = folderPath ? `${folderPath}\\${segments[segmentIndex]}` : segments[segmentIndex];
+          const nodeId = getStableTreeNodeId("files", folderPath, "path");
+          if (fileNodeById.has(nodeId)) expandedIds.add(nodeId);
+        }
+      }
+      return [...expandedIds];
+    }, [fileNodeById, vanillaSearchFilePaths, vanillaSearchFolderPaths]);
+    const expandedFileNodeIds = useMemo(() => {
+      const expandedIds = new Set(expandedIdsByPack[packPath]?.files ?? []);
+      vanillaSearchExpandedFileNodeIds.forEach((id) => expandedIds.add(id));
+      return [...expandedIds].filter((id) => fileNodeById.has(id));
+    }, [expandedIdsByPack, fileNodeById, packPath, vanillaSearchExpandedFileNodeIds]);
     const hasDBTables = dbData.some((node) => node.id !== 0);
     // The root request is asynchronous. Keep the tab present while it is loading so a large
     // vanilla pack never looks as though it has no files, even before its first folder arrives.
@@ -1725,7 +1805,11 @@ const PackTablesTreeView = React.memo(
             : localized.viewerPackedFilesTree || "Packed files tree"
         }
         defaultExpandedIds={defaultExpandedIds}
-        expandedIds={expandedIdsByPack[packPath]?.[treeTab]?.filter((id) => nodeById.has(id))}
+        expandedIds={
+          treeTab === "files"
+            ? expandedFileNodeIds
+            : expandedIdsByPack[packPath]?.[treeTab]?.filter((id) => nodeById.has(id))
+        }
         onExpand={(expansionProps) => handleTreeExpand(treeTab, expansionProps, nodeById)}
         multiSelect={true}
         clickAction="EXCLUSIVE_SELECT"

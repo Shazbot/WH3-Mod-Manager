@@ -13,6 +13,7 @@ import {
   findVanillaPacksUnderPrefix,
   isVanillaPackIndexCurrent,
   normalizeVanillaPackPath,
+  searchVanillaPackFileTree,
 } from "../../src/vanillaPackIndex/format";
 
 const identity: VanillaPackIndexIdentity = {
@@ -151,6 +152,36 @@ describe("vanilla pack index", () => {
         { path: "audio\\wwise\\english", isBranch: true },
       ],
       hasMore: false,
+    });
+  });
+
+  it("searches file names and folders without returning every descendant of a matching folder", () => {
+    const searchIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: [
+          "audio\\wwise\\dragon.anim",
+          "audio\\wwise\\english\\voice.wem",
+          "db\\units_tables\\data__",
+          "ui\\dragon_icon.png",
+        ],
+      },
+    ]);
+
+    expect(searchVanillaPackFileTree(searchIndex, "dragon", 10, (filePath) => !filePath.startsWith("db\\"))).toEqual({
+      filePaths: ["audio\\wwise\\dragon.anim", "ui\\dragon_icon.png"],
+      folderPaths: [],
+      truncated: false,
+    });
+    expect(searchVanillaPackFileTree(searchIndex, "audio", 10, (filePath) => !filePath.startsWith("db\\"))).toEqual({
+      filePaths: [],
+      folderPaths: ["audio"],
+      truncated: false,
+    });
+    expect(searchVanillaPackFileTree(searchIndex, "dragon", 1, (filePath) => !filePath.startsWith("db\\"))).toEqual({
+      filePaths: ["audio\\wwise\\dragon.anim"],
+      folderPaths: [],
+      truncated: true,
     });
   });
 

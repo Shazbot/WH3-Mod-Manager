@@ -308,6 +308,7 @@ import {
   collectVanillaPackTreeChildrenPageFromFlat,
   collectVanillaFilesUnderPrefix,
   findVanillaPackContaining,
+  searchVanillaPackFileTree,
   type VanillaPackTreeChildrenPage,
 } from "./vanillaPackIndex/format";
 import {
@@ -11676,6 +11677,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const getPackDataDestination = (sender: Electron.WebContents): PackDataDestination =>
     getLiveViewerWindow()?.webContents === sender ? "viewer" : "main";
   const VANILLA_FILE_TREE_PAGE_SIZE = 1000;
+  const VANILLA_FILE_SEARCH_MAX_RESULTS = 1000;
 
   ipcMain.on("getPackData", (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table, undefined, getPackDataDestination(event.sender));
@@ -11723,6 +11725,43 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         return {
           success: false,
           error: error instanceof Error ? error.message : "Could not load vanilla pack file tree",
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    "searchVanillaPackFiles",
+    async (
+      _event,
+      packPath: string,
+      query: string,
+    ): Promise<{
+      success: boolean;
+      filePaths?: string[];
+      folderPaths?: string[];
+      truncated?: boolean;
+      error?: string;
+    }> => {
+      try {
+        if (!canUseVanillaDbCacheForPack(packPath)) return { success: false, error: "Not the current DB pack" };
+
+        const vanillaIndex = await getVanillaPackIndex();
+        if (!vanillaIndex) return { success: true, filePaths: [], folderPaths: [], truncated: false };
+
+        return {
+          success: true,
+          ...searchVanillaPackFileTree(
+            vanillaIndex,
+            query,
+            VANILLA_FILE_SEARCH_MAX_RESULTS,
+            (filePath) => parseDBTablePath(filePath) == undefined,
+          ),
+        };
+      } catch (error) {
+        console.error("Could not search vanilla pack files:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Could not search vanilla pack files",
         };
       }
     },

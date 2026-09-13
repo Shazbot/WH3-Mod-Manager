@@ -77,6 +77,15 @@ export interface VanillaPackTreeChildrenPage {
   nextOffset?: number;
 }
 
+export interface VanillaPackFileSearchResult {
+  /** Files whose displayed leaf name matches the query. */
+  filePaths: string[];
+  /** Folders whose displayed segment name matches the query. */
+  folderPaths: string[];
+  /** True when the result cap stopped the scan before the block ended. */
+  truncated: boolean;
+}
+
 /**
  * Paths are compared lowercased with backslashes, matching `matchesTextFileTarget`, so a target
  * written either way finds the same file.
@@ -345,6 +354,60 @@ export const collectVanillaPackTreeChildrenPageFromFlat = (
     hasMore,
     ...(hasMore ? { nextOffset: safeOffset + children.length } : {}),
   };
+};
+
+/**
+ * Finds vanilla tree paths that should be materialized for a filter.
+ *
+ * The ordinary tree filter works on displayed node names, not full paths. Keep that behavior here:
+ * a matching file contributes its full path, while a matching folder contributes only that folder.
+ * Returning every descendant of a matching folder would turn a query such as "audio" into another
+ * full-tree transfer. Ancestors are created by the renderer when it builds the returned paths.
+ */
+export const searchVanillaPackFileTree = (
+  index: VanillaPackIndex,
+  query: string,
+  maxResults = 1000,
+  includeFile: (filePath: string) => boolean = () => true,
+): VanillaPackFileSearchResult => {
+  const normalizedQuery = normalizeVanillaPackPath(query).trim();
+  if (normalizedQuery === "") return { filePaths: [], folderPaths: [], truncated: false };
+
+  const safeMaxResults = Math.max(1, Math.floor(Number.isFinite(maxResults) ? maxResults : 1000));
+  const filePaths: string[] = [];
+  const folderPaths: string[] = [];
+  const resultKeys = new Set<string>();
+  let truncated = false;
+
+  const addResult = (path: string, kind: "file" | "folder"): boolean => {
+    const resultKey = `${kind}\u0000${path}`;
+    if (resultKeys.has(resultKey)) return true;
+    if (resultKeys.size >= safeMaxResults) {
+      truncated = true;
+      return false;
+    }
+
+    resultKeys.add(resultKey);
+    if (kind === "file") filePaths.push(path);
+    else folderPaths.push(path);
+    return true;
+  };
+
+  forEachFrontCodedEntry(index.block, (filePath) => {
+    if (!includeFile(filePath)) return;
+
+    const segments = filePath.split("\\");
+    const fileName = segments.at(-1) ?? filePath;
+    if (fileName.includes(normalizedQuery) && !addResult(filePath, "file")) return false;
+
+    let folderPath = "";
+    for (let segmentIndex = 0; segmentIndex < segments.length - 1; segmentIndex++) {
+      folderPath = folderPath ? `${folderPath}\\${segments[segmentIndex]}` : segments[segmentIndex];
+      if (segments[segmentIndex].includes(normalizedQuery) && !addResult(folderPath, "folder")) return false;
+    }
+  });
+
+  return { filePaths, folderPaths, truncated };
 };
 
 /**

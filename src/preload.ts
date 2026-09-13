@@ -182,6 +182,16 @@ const api = {
     nextOffset?: number;
     error?: string;
   }> => ipcRenderer.invoke("getVanillaPackFileTree", packPath, prefix, offset),
+  searchVanillaPackFiles: (
+    packPath: string,
+    query: string,
+  ): Promise<{
+    success: boolean;
+    filePaths?: string[];
+    folderPaths?: string[];
+    truncated?: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("searchVanillaPackFiles", packPath, query),
   saveConfig: (payload: ConfigSavePayload) => ipcRenderer.send("saveConfig", payload),
   readMods: debounce(
     (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>
