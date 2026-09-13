@@ -211,6 +211,54 @@ describe("CompressionAnalysis", () => {
     );
   });
 
+  it("forwards Ctrl-click as a request for a compressed data-folder copy", async () => {
+    const compressPack = vi.fn(async () => ({
+      success: true,
+      packPath: "/game/data/example.pack",
+      compressedFileCount: 1,
+    }));
+    window.api = {
+      startCompressionAnalysis: vi.fn(async () => ({ accepted: true, result: makeResult() })),
+      compressPack,
+      cancelCompressionAnalysis: vi.fn(),
+      onCompressionAnalysisProgress: vi.fn(() => () => undefined),
+    } as unknown as NonNullable<Window["api"]>;
+
+    render(
+      <LocalizationContext.Provider value={{}}>
+        <CompressionAnalysis
+          isOpen
+          onClose={vi.fn()}
+          currentGame="wh3"
+          enabledModPaths={["/mods/example.pack"]}
+          isFeaturesForModdersEnabled
+        />
+      </LocalizationContext.Provider>,
+    );
+
+    await screen.findByText("Overall");
+    const button = screen.getByRole("button", { name: "Compress this pack" });
+    fireEvent.mouseEnter(button);
+    const compressionTooltip = await waitFor(() => {
+      const tooltip = screen.getAllByRole("tooltip").find((element) => element.textContent?.includes("Hold Ctrl"));
+      expect(tooltip).toBeDefined();
+      return tooltip;
+    });
+    expect(compressionTooltip).toHaveTextContent(/Hold Ctrl/i);
+    fireEvent.mouseLeave(button);
+    fireEvent.click(button, { ctrlKey: true });
+    await waitFor(() =>
+      expect(compressPack).toHaveBeenCalledWith({
+        packPath: "/mods/example.pack",
+        includeRigidModelV2: true,
+        copyToDataFolder: true,
+      }),
+    );
+    expect(
+      await screen.findByText("1 file(s) compressed. Compressed copy: /game/data/example.pack"),
+    ).toBeInTheDocument();
+  });
+
   it("hides the rigid-model checkbox while packs are being read", async () => {
     let resolveStart!: (value: { accepted: true; result: CompressionAnalysisResult }) => void;
     const start = vi.fn(

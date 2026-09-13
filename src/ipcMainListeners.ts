@@ -8192,8 +8192,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (vanillaPaths.has(normalizedRequestedPath)) {
       return { success: false, error: "Vanilla packs cannot be compressed." };
     }
+    const copyToDataFolder = request.copyToDataFolder === true;
+    const isInDataFolder = !!dataFolder && isPathInsideFolder(enabledMod.path, dataFolder);
+    const dataPackPath = dataFolder ? nodePath.join(dataFolder, nodePath.basename(enabledMod.path)) : undefined;
+    const dataAlreadyContainsPack = !!dataPackPath && fs.existsSync(dataPackPath);
+    if (copyToDataFolder && (isInDataFolder || dataAlreadyContainsPack)) {
+      return { success: false, error: "This pack already exists in the data folder; Ctrl-click did nothing." };
+    }
     const gameFolder = appData.gamesToGameFolderPaths.wh3?.gamePath;
     if (!gameFolder) return { success: false, error: "Set the Warhammer 3 game folder before compressing packs." };
+    if (copyToDataFolder && !dataFolder) {
+      return { success: false, error: "Set the Warhammer 3 data folder before copying compressed packs." };
+    }
     if (compressionPackPathsInProgress.has(normalizedRequestedPath)) {
       return { success: false, error: "This pack is already being compressed." };
     }
@@ -8208,7 +8218,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!analysis || !analysis.success) {
         return { success: false, error: analysis?.errors[0] || analysisResult.error || "Pack analysis failed." };
       }
-      return await compressAnalyzedPack(enabledMod.path, analysis, gameFolder, request.includeRigidModelV2 === true);
+      const outputPath = copyToDataFolder ? nodePath.join(dataFolder!, nodePath.basename(enabledMod.path)) : undefined;
+      return await compressAnalyzedPack(enabledMod.path, analysis, gameFolder, request.includeRigidModelV2 === true, {
+        outputPath,
+      });
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     } finally {

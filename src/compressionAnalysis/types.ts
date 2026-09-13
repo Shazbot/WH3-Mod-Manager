@@ -152,6 +152,8 @@ export interface CompressionAnalysisStartResponse {
 export interface CompressPackRequest {
   packPath: string;
   includeRigidModelV2: boolean;
+  /** When true, copy compression output to the game's data folder when the source is elsewhere. */
+  copyToDataFolder?: boolean;
 }
 
 export interface CompressPackResponse {

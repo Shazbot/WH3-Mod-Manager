@@ -16,6 +16,8 @@ const COPY_CHUNK_BYTES = 8 * 1024 * 1024;
 export interface CompressPackOptions {
   codecs?: Partial<CompressionCodecs>;
   now?: () => Date;
+  /** Write the compressed result here instead of replacing the analyzed pack. No persistent backup is made. */
+  outputPath?: string;
   /** Abort before or during a rewrite. The original pack remains untouched until replacement. */
   signal?: AbortSignal;
   /** Reports per-file rewrite progress. Consumer errors are ignored. */
@@ -105,6 +107,14 @@ const copyRange = async (
 
 const timestampForFileName = (date: Date): string => date.toISOString().replace(/[:.]/g, "-");
 
+const comparablePath = (filePath: string): string => {
+  const resolvedPath = nodePath.resolve(filePath);
+  return process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
+};
+
+const areSamePath = (firstPath: string, secondPath: string): boolean =>
+  comparablePath(firstPath) === comparablePath(secondPath);
+
 const reserveBackupPath = async (backupFolder: string, packName: string, now: Date): Promise<string> => {
   const extension = nodePath.extname(packName);
   const stem = extension ? packName.slice(0, -extension.length) : packName;
@@ -119,6 +129,57 @@ const reserveBackupPath = async (backupFolder: string, packName: string, now: Da
     }
   }
   throw new Error("Could not allocate a unique backup file name");
+};
+
+const replaceWithoutPersistentBackup = async (
+  tempPath: string,
+  targetPath: string,
+  signal: AbortSignal | undefined,
+  rollbackLabel: string,
+): Promise<void> => {
+  const rollbackPath = nodePath.join(
+    nodePath.dirname(targetPath),
+    `.${nodePath.basename(targetPath)}.${rollbackLabel}-${process.pid}-${randomBytes(6).toString("hex")}.tmp`,
+  );
+  let targetWasMoved = false;
+  let preserveRollback = false;
+
+  try {
+    throwIfAborted(signal);
+    try {
+      await fs.promises.rename(targetPath, rollbackPath);
+      targetWasMoved = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    try {
+      // Once the existing target has moved, a cancellation must still restore it below.
+      throwIfAborted(signal);
+      await fs.promises.rename(tempPath, targetPath);
+    } catch (error) {
+      if (targetWasMoved) {
+        try {
+          await fs.promises.rename(rollbackPath, targetPath);
+          targetWasMoved = false;
+        } catch (restoreError) {
+          try {
+            await fs.promises.copyFile(rollbackPath, targetPath);
+            targetWasMoved = false;
+            await fs.promises.unlink(rollbackPath).catch(() => undefined);
+          } catch (copyError) {
+            preserveRollback = true;
+            throw new Error(
+              `Failed to replace ${targetPath} and restore the original: ${errorMessage(copyError)}; rename restoration error: ${errorMessage(restoreError)}; replacement error: ${errorMessage(error)}`,
+            );
+          }
+        }
+      }
+      throw error;
+    }
+  } finally {
+    if (!preserveRollback) await fs.promises.unlink(rollbackPath).catch(() => undefined);
+  }
 };
 
 /**
@@ -151,17 +212,17 @@ export const compressAnalyzedPack = async (
     return { success: false, error: "The pack changed after it was analyzed. Run the analysis again." };
   }
 
+  const outputPath = options.outputPath ?? packPath;
+  const isInPlace = areSamePath(packPath, outputPath);
+  if (!isInPlace) await fs.promises.mkdir(nodePath.dirname(outputPath), { recursive: true });
+
   const tempPath = nodePath.join(
-    nodePath.dirname(packPath),
-    `.${nodePath.basename(packPath)}.whmm-compress-${process.pid}-${randomBytes(6).toString("hex")}.tmp`,
+    nodePath.dirname(outputPath),
+    `.${nodePath.basename(outputPath)}.whmm-compress-${process.pid}-${randomBytes(6).toString("hex")}.tmp`,
   );
   let source: fs.promises.FileHandle | undefined;
   let destination: fs.promises.FileHandle | undefined;
   let backupPath: string | undefined;
-  let rollbackPath: string | undefined;
-  // If both replacement and restoration fail, keep this path so the only remaining copy of the
-  // original staged pack is not deleted by the cleanup below.
-  let preserveRollback = false;
   try {
     throwIfAborted(options.signal);
     source = await fs.promises.open(packPath, "r");
@@ -251,67 +312,13 @@ export const compressAnalyzedPack = async (
     await source.close();
     source = undefined;
 
-    if (options.createBackup === false) {
+    if (!isInPlace) {
+      await replaceWithoutPersistentBackup(tempPath, outputPath, options.signal, "whmm-copy-rollback");
+    } else if (options.createBackup === false) {
       // Keep a same-directory rollback entry until the replacement has committed. Renaming the
       // original away first makes a failed replacement unable to leave a partially copied pack;
-      // the catch restores the exact uncompressed bytes before returning the failure.
-      rollbackPath = nodePath.join(
-        nodePath.dirname(packPath),
-        `.${nodePath.basename(packPath)}.whmm-staging-rollback-${process.pid}-${randomBytes(6).toString("hex")}.tmp`,
-      );
-      const originalRollbackPath = rollbackPath;
-      // Do not move the only staged copy away after cancellation. Once this rename starts, the
-      // replacement transaction is allowed to finish (or restore through the existing rollback).
-      throwIfAborted(options.signal);
-      await fs.promises.rename(packPath, originalRollbackPath);
-      try {
-        throwIfAborted(options.signal);
-        await fs.promises.rename(tempPath, packPath);
-      } catch (error) {
-        let restored = false;
-        try {
-          await fs.promises.rename(originalRollbackPath, packPath);
-          restored = true;
-          rollbackPath = undefined;
-        } catch (restoreError) {
-          // A rename can fail on a filesystem that temporarily refuses replacement. If the
-          // destination was recreated or partially written, copy the rollback bytes over it as a
-          // second restoration attempt. Keep rollbackPath when this also fails so cleanup cannot
-          // discard the only recoverable original.
-          try {
-            await fs.promises.copyFile(originalRollbackPath, packPath);
-            restored = true;
-            await fs.promises.unlink(originalRollbackPath).then(
-              () => {
-                rollbackPath = undefined;
-              },
-              () => undefined,
-            );
-          } catch (copyError) {
-            preserveRollback = true;
-            throw new Error(
-              `Failed to replace ${packPath} and restore the original staged pack: ${errorMessage(
-                copyError,
-              )}; rename restoration error: ${errorMessage(restoreError)}; replacement error: ${errorMessage(error)}`,
-            );
-          }
-        }
-        if (!restored) {
-          preserveRollback = true;
-          throw new Error(
-            `Failed to replace ${packPath} and restore the original staged pack; replacement error: ${errorMessage(
-              error,
-            )}`,
-          );
-        }
-        throw error;
-      }
-      await fs.promises.unlink(originalRollbackPath).then(
-        () => {
-          rollbackPath = undefined;
-        },
-        () => undefined,
-      );
+      // the helper restores the exact original bytes before returning the failure.
+      await replaceWithoutPersistentBackup(tempPath, packPath, options.signal, "whmm-staging-rollback");
     } else {
       throwIfAborted(options.signal);
       const backupFolder = nodePath.join(gameFolder, "whmm_backups");
@@ -325,10 +332,10 @@ export const compressAnalyzedPack = async (
         throw error;
       }
     }
-    const compressedSize = (await fs.promises.stat(packPath)).size;
+    const compressedSize = (await fs.promises.stat(outputPath)).size;
     return {
       success: true,
-      packPath,
+      packPath: outputPath,
       backupPath,
       originalSize: sourceStat.size,
       compressedSize,
@@ -341,6 +348,5 @@ export const compressAnalyzedPack = async (
     await destination?.close().catch(() => undefined);
     await source?.close().catch(() => undefined);
     await fs.promises.unlink(tempPath).catch(() => undefined);
-    if (!preserveRollback && rollbackPath) await fs.promises.unlink(rollbackPath).catch(() => undefined);
   }
 };

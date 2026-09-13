@@ -1238,7 +1238,7 @@ const OptionsDrawer = memo(() => {
                 <div className="mt-2 border-t border-gray-600 px-2 pt-2">
                   <button
                     type="button"
-                    className="rounded bg-red-700 px-3 py-1.5 text-xs font-medium uppercase text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isClearingWorkshopStaging}
                     onClick={clearWorkshopStagingFolder}
                   >

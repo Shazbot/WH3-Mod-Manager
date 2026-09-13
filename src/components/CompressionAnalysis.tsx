@@ -227,7 +227,7 @@ const CompressionAnalysis = ({
     : 0;
 
   const compressPack = useCallback(
-    (pack: CompressionPackAnalysis) => {
+    (pack: CompressionPackAnalysis, copyToDataFolder = false) => {
       if (!isFeaturesForModdersEnabled || compressingPackPath) return;
       setCompressingPackPath(pack.packPath);
       setCompressionMessages((messages) => {
@@ -235,11 +235,18 @@ const CompressionAnalysis = ({
         delete next[pack.packPath];
         return next;
       });
+      const request = {
+        packPath: pack.packPath,
+        includeRigidModelV2,
+        ...(copyToDataFolder ? { copyToDataFolder: true } : {}),
+      };
       void window.api
-        ?.compressPack({ packPath: pack.packPath, includeRigidModelV2 })
+        ?.compressPack(request)
         .then((response) => {
           const message = response.success
-            ? `${response.compressedFileCount ?? 0} file(s) compressed. Backup: ${response.backupPath}`
+            ? response.backupPath
+              ? `${response.compressedFileCount ?? 0} file(s) compressed. Backup: ${response.backupPath}`
+              : `${response.compressedFileCount ?? 0} file(s) compressed. Compressed copy: ${response.packPath}`
             : response.error || "Pack compression failed.";
           setCompressionMessages((messages) => ({
             ...messages,
@@ -438,24 +445,35 @@ const CompressionAnalysis = ({
                     )}
                     {isFeaturesForModdersEnabled && pack.success && (
                       <div className="mt-3 border-t border-gray-700 pt-3">
-                        <button
-                          type="button"
-                          disabled={
-                            !!compressingPackPath ||
-                            (pack.acceptedCount === 0 &&
-                              (!includeRigidModelV2 || pack.rigidModelV2Wins.length === 0)) ||
-                            compressionMessages[pack.packPath]?.success
+                        <Tooltip
+                          placement="top"
+                          style="light"
+                          content={
+                            <div className="max-w-sm">
+                              {localized.compressionAnalysisCompressTooltip ||
+                                "Click to replace this pack after creating a backup. Hold Ctrl while clicking to create a compressed copy in the game's data folder instead; Ctrl-click does nothing when the pack is already in or already present in data."}
+                            </div>
                           }
-                          onClick={() => compressPack(pack)}
-                          className="rounded bg-purple-600 px-3 py-1.5 text-xs text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          {compressingPackPath === pack.packPath
-                            ? localized.compressionAnalysisCompressing || "Compressing…"
-                            : localized.compressionAnalysisCompressPack || "Compress this pack"}
-                        </button>
+                          <button
+                            type="button"
+                            disabled={
+                              !!compressingPackPath ||
+                              (pack.acceptedCount === 0 &&
+                                (!includeRigidModelV2 || pack.rigidModelV2Wins.length === 0)) ||
+                              compressionMessages[pack.packPath]?.success
+                            }
+                            onClick={(event) => compressPack(pack, event.ctrlKey)}
+                            className="rounded bg-purple-600 px-3 py-1.5 text-xs text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {compressingPackPath === pack.packPath
+                              ? localized.compressionAnalysisCompressing || "Compressing…"
+                              : localized.compressionAnalysisCompressPack || "Compress this pack"}
+                          </button>
+                        </Tooltip>
                         <p className="mt-2 text-xs text-gray-400">
                           {localized.compressionAnalysisBackupNotice ||
-                            "A timestamped backup will be saved in the game's whmm_backups folder first."}
+                            "Normal click creates a timestamped backup. Hold Ctrl while clicking to create a compressed copy in the game's data folder when this pack is not already there; Ctrl-click does nothing when data already contains it."}
                         </p>
                         {compressionMessages[pack.packPath] && (
                           <p

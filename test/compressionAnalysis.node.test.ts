@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as nodePath from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -296,6 +296,38 @@ describe("PFH5 compression analysis", () => {
     expect(parsed.entries[0].fileSize).toBe(Math.ceil(originalPayload.length * 0.5));
     const compressedPayload = rewritten.subarray(parsed.entries[0].payloadOffset);
     expect(await fake.codecs.zstdDecompress(compressedPayload)).toEqual(originalPayload);
+  });
+
+  it("writes a compressed copy to the output path without changing the source or creating a backup", async () => {
+    const root = await mkdtemp(nodePath.join(tmpdir(), "whmm-compression-copy-"));
+    tempDirectories.push(root);
+    const sourceDirectory = nodePath.join(root, "mods");
+    const dataDirectory = nodePath.join(root, "game", "data");
+    await mkdir(sourceDirectory, { recursive: true });
+    await mkdir(dataDirectory, { recursive: true });
+    const originalPayload = Buffer.alloc(8192, 9);
+    const originalPack = makePFH5Pack([{ name: "db\\compressible.foo", data: originalPayload }], true);
+    const sourcePath = await writeTempPack(sourceDirectory, "copy.pack", originalPack);
+    const outputPath = nodePath.join(dataDirectory, "copy.pack");
+    const fake = makeFakeCodecs(0.8, 0.5);
+    const analysis = await analyzeCompressionPacks([sourcePath], {
+      codecs: fake.codecs,
+      vanillaRecords: new Map(),
+    });
+
+    const response = await compressAnalyzedPack(sourcePath, analysis.packs[0], nodePath.join(root, "game"), true, {
+      codecs: fake.codecs,
+      outputPath,
+    });
+
+    expect(response).toMatchObject({ success: true, packPath: outputPath, compressedFileCount: 1 });
+    expect(response.backupPath).toBeUndefined();
+    expect(await readFile(sourcePath)).toEqual(originalPack);
+    expect(await readFile(nodePath.join(root, "game", "whmm_backups")).catch(() => undefined)).toBeUndefined();
+    const copied = await readFile(outputPath);
+    const parsed = parsePFH5PackBuffer(copied, outputPath);
+    expect(parsed.entries[0].isCompressed).toBe(true);
+    expect(await fake.codecs.zstdDecompress(copied.subarray(parsed.entries[0].payloadOffset))).toEqual(originalPayload);
   });
 
   it("limits displayed wins to ten without dropping additional savings from totals", async () => {
