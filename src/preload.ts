@@ -170,6 +170,14 @@ const api = {
   }> => ipcRenderer.invoke("clearWorkshopModStaging"),
   getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
   getPackDataWithLocs: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackDataWithLocs", packPath, table),
+  getVanillaPackFileTree: (
+    packPath: string,
+    prefix: string,
+  ): Promise<{
+    success: boolean;
+    children?: { path: string; isBranch: boolean }[];
+    error?: string;
+  }> => ipcRenderer.invoke("getVanillaPackFileTree", packPath, prefix),
   saveConfig: (payload: ConfigSavePayload) => ipcRenderer.send("saveConfig", payload),
   readMods: debounce(
     (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>

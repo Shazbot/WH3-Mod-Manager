@@ -610,4 +610,67 @@ describe("pack table tree interactions", () => {
     expect(screen.queryByRole("button", { name: /Rename/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Move/ })).not.toBeInTheDocument();
   });
+
+  it("shows the DB pack Files tab and loads vanilla folders on demand", async () => {
+    const packPath = "K:\\game\\data\\db.pack";
+    const getVanillaPackFileTree = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true, children: [{ path: "animation", isBranch: true }] })
+      .mockResolvedValueOnce({
+        success: true,
+        children: [
+          { path: "animation\\campaign", isBranch: true },
+          { path: "animation\\campaign\\dragon.anim", isBranch: false },
+        ],
+      });
+    const previousApi = window.api;
+    window.api = { getVanillaPackFileTree } as unknown as NonNullable<Window["api"]>;
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          currentGame: "wh3",
+          packsData: {
+            [packPath]: {
+              packName: "db.pack",
+              packPath,
+              tables: ["db\\units_tables\\data__"],
+              packedFiles: {},
+            },
+          },
+        },
+      },
+    });
+
+    const view = render(
+      <Provider store={store}>
+        <PackTablesTreeView
+          packPath={packPath}
+          preferredTab="files"
+          tableFilter=""
+          showDialog={vi.fn()}
+          onOpenDBTable={vi.fn()}
+          onOpenFlowFile={vi.fn()}
+          onOpenPackedFile={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    try {
+      expect(screen.getByRole("button", { name: "Files", exact: true })).toBeInTheDocument();
+      await waitFor(() => expect(getVanillaPackFileTree).toHaveBeenCalledWith(packPath, ""));
+      expect(screen.getByText("animation")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("animation"));
+
+      await waitFor(() => expect(getVanillaPackFileTree).toHaveBeenCalledWith(packPath, "animation"));
+      expect(screen.getByText("campaign")).toBeInTheDocument();
+      expect(screen.getByText("dragon.anim")).toBeInTheDocument();
+    } finally {
+      view.unmount();
+      window.api = previousApi;
+    }
+  });
 });

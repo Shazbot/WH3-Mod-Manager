@@ -20,6 +20,7 @@ import {
   buildFrontCodedBlock,
   findFrontCodedPrefixRange,
   findFrontCodedRank,
+  forEachFrontCodedEntryInRange,
   forEachFrontCodedEntry,
   readFrontCodedEntry,
 } from "../vanillaDbCache/frontCodedBlock";
@@ -61,6 +62,11 @@ export interface VanillaPackIndex {
 export interface VanillaPackFileNames {
   packName: string;
   fileNames: readonly string[];
+}
+
+export interface VanillaPackTreeChild {
+  path: string;
+  isBranch: boolean;
 }
 
 /**
@@ -213,6 +219,41 @@ export const collectVanillaFilesUnderPrefix = (index: VanillaPackIndex, prefix: 
     if (packFilePath !== undefined && packName !== undefined) filesByPath.set(packFilePath, packName);
   }
   return filesByPath;
+};
+
+/**
+ * Lists only the immediate children of a folder. The index stays in the main process and the
+ * renderer asks for another level when a branch is expanded, so a db.pack open never transfers the
+ * hundreds of thousands of vanilla names at once.
+ */
+export const collectVanillaPackTreeChildren = (
+  index: VanillaPackIndex,
+  prefix: string,
+  includeFile: (filePath: string) => boolean = () => true,
+): VanillaPackTreeChild[] => {
+  const normalizedPrefix = normalizeVanillaPackPath(prefix).replace(/\\+$/, "");
+  const rangePrefix = normalizedPrefix ? `${normalizedPrefix}\\` : "";
+  const { start, end } = findFrontCodedPrefixRange(index.block, rangePrefix);
+  const childrenByPath = new Map<string, VanillaPackTreeChild>();
+
+  forEachFrontCodedEntryInRange(index.block, start, end, (filePath) => {
+    if (filePath === undefined || !filePath.startsWith(rangePrefix) || !includeFile(filePath)) return;
+
+    const relativePath = rangePrefix ? filePath.slice(rangePrefix.length) : filePath;
+    const separator = relativePath.indexOf("\\");
+    const childPath = separator < 0 ? filePath : `${rangePrefix}${relativePath.slice(0, separator)}`;
+    const childKey = childPath.toLowerCase();
+    const existingChild = childrenByPath.get(childKey);
+
+    if (existingChild) {
+      if (separator >= 0) existingChild.isBranch = true;
+      return;
+    }
+
+    childrenByPath.set(childKey, { path: childPath, isBranch: separator >= 0 });
+  });
+
+  return [...childrenByPath.values()];
 };
 
 /**

@@ -305,9 +305,9 @@ import {
 import { normalizeAssetPath } from "./assetUrls";
 import { forkSteamWorker as fork, terminateSteamWorker } from "./steamWorker";
 import {
+  collectVanillaPackTreeChildren,
   collectVanillaFilesUnderPrefix,
   findVanillaPackContaining,
-  type VanillaPackIndex,
 } from "./vanillaPackIndex/format";
 import {
   selectPackPathsToSearch,
@@ -11213,12 +11213,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       return { success: false, error: error?.message || String(error) };
     }
   });
-  ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
-    getPackData(packPath, table);
-  });
-  ipcMain.on("getPackDataWithLocs", async (event, packPath: string, table?: DBTable) => {
-    getPackData(packPath, table, true);
-  });
   const getLiveViewerWindow = () => {
     if (!windows.viewerWindow) return undefined;
     if (windows.viewerWindow.isDestroyed()) {
@@ -11396,7 +11390,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // Runs before the window exists on a cold start, so sendPackViewData can find no viewer to send
       // or queue to. The viewerIsReady replay below re-requests every open pack, which is what covers
       // that case - do not drop it.
-      getPackData(modPath);
+      getPackData(modPath, undefined, undefined, "viewer");
     }
     appData.activeViewerPackPath = modPath;
     let viewerWindow = getLiveViewerWindow();
@@ -11540,50 +11534,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return getDBPackedFilePath(dbTable as DBTableSelection);
   };
   const viewerTableRequests = createInFlightTableRequests();
-  /**
-   * The database pack is the viewer's base-game entry point, but its own index does not contain
-   * files shipped by the other vanilla packs. Keep the large name list out of the main renderer's
-   * pack data and add it only to the copy sent to the viewer. Payloads remain lazy: the list has
-   * names only, and `readFileFromPack` resolves the winning source pack when a file is opened.
-   */
-  const vanillaViewerFileNamesByIndex = new WeakMap<VanillaPackIndex, string[]>();
-  const getVanillaViewerFileNames = async (packPath: string): Promise<readonly string[] | undefined> => {
-    if (!canUseVanillaDbCacheForPack(packPath)) return undefined;
-
-    const vanillaIndex = await getVanillaPackIndex();
-    if (!vanillaIndex) return undefined;
-
-    const cachedNames = vanillaViewerFileNamesByIndex.get(vanillaIndex);
-    if (cachedNames) return cachedNames;
-
-    // DB table paths already belong in the DB Tables tree. The aggregate here is specifically for
-    // the Files tab; keeping DB paths out also avoids presenting a table from another vanilla pack
-    // as though it were physically inside db.pack.
-    const names = [...collectVanillaFilesUnderPrefix(vanillaIndex, "").keys()].filter(
-      (fileName) => parseDBTablePath(fileName) == undefined,
-    );
-    vanillaViewerFileNamesByIndex.set(vanillaIndex, names);
-    return names;
-  };
-  const addVanillaFilesToViewerData = async (
-    packViewData: PackViewData | undefined,
-  ): Promise<PackViewData | undefined> => {
-    if (!packViewData) return undefined;
-
-    const vanillaFileNames = await getVanillaViewerFileNames(packViewData.packPath);
-    if (!vanillaFileNames || vanillaFileNames.length === 0) return packViewData;
-
-    const tables = [...packViewData.tables];
-    const knownNames = new Set(tables.map(normalizePackFilePathKey));
-    for (const fileName of vanillaFileNames) {
-      const fileKey = normalizePackFilePathKey(fileName);
-      if (knownNames.has(fileKey)) continue;
-      knownNames.add(fileKey);
-      tables.push(fileName);
-    }
-
-    return tables.length === packViewData.tables.length ? packViewData : { ...packViewData, tables };
-  };
   const resolveVanillaViewerFilePackPath = async (packPath: string, fileName: string): Promise<string> => {
     if (!canUseVanillaDbCacheForPack(packPath)) return packPath;
 
@@ -11592,24 +11542,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const vanillaPackName = vanillaIndex ? findVanillaPackContaining(vanillaIndex, fileName) : undefined;
     return dataFolder && vanillaPackName ? nodePath.join(dataFolder, vanillaPackName) : packPath;
   };
-  const sendPackViewData = async (packViewData: PackViewData | undefined) => {
+  type PackDataDestination = "main" | "viewer";
+  const sendPackViewData = (packViewData: PackViewData | undefined, destination: PackDataDestination) => {
     if (!packViewData) return;
-    const mainToSend = [packViewData];
+    if (destination === "main") {
+      mainWindow?.webContents.send("setPacksData", [packViewData]);
+      return;
+    }
+
     const viewerWindow = getLiveViewerWindow();
-    mainWindow?.webContents.send("setPacksData", mainToSend);
-    // There is no viewer-side consumer until the window exists. In particular, opening the viewer
-    // for the first time starts this read before creating the window; replayOpenPacksToViewer will
-    // request it again once the renderer is ready.
     if (!viewerWindow) return;
 
-    const viewerPackViewData = await addVanillaFilesToViewerData(packViewData);
-    const viewerToSend = [viewerPackViewData ?? packViewData];
-    viewerWindow.webContents.send("setPacksData", viewerToSend);
-    // Main-window consumers also request pack data. Queue it only when a viewer window actually
-    // exists and is still starting; otherwise a future viewer would receive an unrelated stale pack.
-    if (viewerWindow && !appData.isViewerReady) {
+    viewerWindow.webContents.send("setPacksData", [packViewData]);
+    if (!appData.isViewerReady) {
       console.log("VIEWER NOT READY, QUEUEING");
-      appData.queuedViewerData = viewerToSend;
+      appData.queuedViewerData = [packViewData];
     }
   };
 
@@ -11631,7 +11578,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     };
   };
 
-  const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
+  const getPackData = async (
+    packPath: string,
+    table?: DBTable,
+    getLocs?: boolean,
+    destination: PackDataDestination = "viewer",
+  ) => {
     console.log(`getPackData ${packPath}`);
     // A loc is parsed by the loc reader, not the db one, so asking for it has to turn that on.
     if (table && isLocPackedFilePath(dbTableToString(table))) getLocs = true;
@@ -11644,7 +11596,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           console.log("WAIT FOR DATAFOLDER TO BE SET");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           console.log("DONE WAITING FOR DATAFOLDER");
-          getPackData(packPath, table, getLocs);
+          getPackData(packPath, table, getLocs, destination);
           return;
         }
         if (packPath == baseVanillaPackName) {
@@ -11660,18 +11612,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         console.log("WAIT FOR DATAFOLDER TO BE SET");
         await new Promise((resolve) => setTimeout(resolve, 1000));
         console.log("DONE WAITING FOR DATAFOLDER");
-        getPackData(packPath, table, getLocs);
+        getPackData(packPath, table, getLocs, destination);
         return;
       }
       packPath = nodePath.join(dataFolder as string, packPath);
     }
     const packedFilePath = table ? dbTableToString(table) : "";
-    const requestKey = JSON.stringify([packPath, packedFilePath, Boolean(getLocs)]);
+    const requestKey = JSON.stringify([destination, packPath, packedFilePath, Boolean(getLocs)]);
     await viewerTableRequests.run(requestKey, async () => {
       const packData = appData.packsData.find((pack) => pack.path === packPath);
 
       if (packData && !table) {
-        await sendPackViewData(getPackViewData(packData, undefined, getLocs));
+        sendPackViewData(getPackViewData(packData, undefined, getLocs), destination);
         return;
       }
 
@@ -11680,7 +11632,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (packData && table && !getLocs) {
         const loaded = getLoadedPackViewData(packData, table);
         if (loaded) {
-          await sendPackViewData(loaded);
+          sendPackViewData(loaded, destination);
           return;
         }
       }
@@ -11717,9 +11669,48 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         console.log("APPENDING packsData", packPath);
         appendPacksData(newPack);
       }
-      await sendPackViewData(getPackViewData(newPack, table, getLocs));
+      sendPackViewData(getPackViewData(newPack, table, getLocs), destination);
     });
   };
+  const getPackDataDestination = (sender: Electron.WebContents): PackDataDestination =>
+    getLiveViewerWindow()?.webContents === sender ? "viewer" : "main";
+
+  ipcMain.on("getPackData", (event, packPath: string, table?: DBTable) => {
+    getPackData(packPath, table, undefined, getPackDataDestination(event.sender));
+  });
+  ipcMain.on("getPackDataWithLocs", (event, packPath: string, table?: DBTable) => {
+    getPackData(packPath, table, true, getPackDataDestination(event.sender));
+  });
+  ipcMain.handle(
+    "getVanillaPackFileTree",
+    async (
+      _event,
+      packPath: string,
+      prefix: string,
+    ): Promise<{ success: boolean; children?: { path: string; isBranch: boolean }[]; error?: string }> => {
+      try {
+        if (!canUseVanillaDbCacheForPack(packPath)) return { success: false, error: "Not the current DB pack" };
+
+        const vanillaIndex = await getVanillaPackIndex();
+        if (!vanillaIndex) return { success: true, children: [] };
+
+        return {
+          success: true,
+          children: collectVanillaPackTreeChildren(
+            vanillaIndex,
+            prefix,
+            (filePath) => parseDBTablePath(filePath) == undefined,
+          ),
+        };
+      } catch (error) {
+        console.error("Could not load vanilla pack file tree:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Could not load vanilla pack file tree",
+        };
+      }
+    },
+  );
   const readMods = async (
     mods: Mod[],
     skipParsingTables = true,
@@ -11812,7 +11803,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       ...appData.openViewerPackPaths.filter((packPath) => packPath === activePackPath),
     ];
     for (const packPath of packPathsInSendOrder) {
-      if (!skipReadFor?.has(packPath)) getPackData(packPath);
+      if (!skipReadFor?.has(packPath)) getPackData(packPath, undefined, undefined, "viewer");
       windows.viewerWindow?.webContents.send("openModInViewer", packPath);
       windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, appData.unsavedPacksData[packPath] ?? []);
       windows.viewerWindow?.webContents.send(

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   VanillaPackIndexIdentity,
   buildVanillaPackIndex,
+  collectVanillaPackTreeChildren,
   collectVanillaFilesMatching,
   collectVanillaFilesUnderPrefix,
   decodeVanillaPackIndex,
@@ -82,6 +83,37 @@ describe("vanilla pack index", () => {
     expect(found.get("variantmeshes\\variantmeshdefinitions\\shared.variantmeshdefinition")).toBe("variants_bl.pack");
     // The sibling folder under variantmeshes\ must not be swept in by the prefix.
     expect(found.has("variantmeshes\\wh_variantmodels\\hu1\\emp\\emp_props\\shield.wsmodel")).toBe(false);
+  });
+
+  it("lists only immediate tree children and can omit DB paths", () => {
+    const treeIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: [
+          "db\\units_tables\\data__",
+          "scripts\\campaign\\main.lua",
+          "scripts\\campaign\\sub\\helpers.lua",
+          "ui\\menu.png",
+        ],
+      },
+    ]);
+
+    expect(collectVanillaPackTreeChildren(treeIndex, "")).toEqual([
+      { path: "db", isBranch: true },
+      { path: "scripts", isBranch: true },
+      { path: "ui", isBranch: true },
+    ]);
+    expect(collectVanillaPackTreeChildren(treeIndex, "scripts")).toEqual([
+      { path: "scripts\\campaign", isBranch: true },
+    ]);
+    expect(collectVanillaPackTreeChildren(treeIndex, "scripts\\campaign")).toEqual([
+      { path: "scripts\\campaign\\main.lua", isBranch: false },
+      { path: "scripts\\campaign\\sub", isBranch: true },
+    ]);
+    expect(collectVanillaPackTreeChildren(treeIndex, "", (filePath) => !filePath.startsWith("db\\"))).toEqual([
+      { path: "scripts", isBranch: true },
+      { path: "ui", isBranch: true },
+    ]);
   });
 
   it("names the packs that win a file under a folder, in load order", () => {

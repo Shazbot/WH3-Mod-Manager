@@ -163,6 +163,30 @@ export const forEachFrontCodedEntry = (
   }
 };
 
+/** Visits a contiguous rank range without restarting decoding at every entry. */
+export const forEachFrontCodedEntryInRange = (
+  block: FrontCodedBlock,
+  start: number,
+  end: number,
+  visit: (value: string, rank: number) => boolean | void,
+): void => {
+  const boundedStart = Math.max(0, start);
+  const boundedEnd = Math.min(block.count, Math.max(boundedStart, end));
+  if (boundedStart >= boundedEnd) return;
+
+  const chunkStart = Math.floor(boundedStart / FRONT_CODED_CHECKPOINT_INTERVAL) * FRONT_CODED_CHECKPOINT_INTERVAL;
+  let offset = block.checkpoints[chunkStart / FRONT_CODED_CHECKPOINT_INTERVAL];
+  let value = "";
+
+  for (let rank = chunkStart; rank < boundedEnd; rank++) {
+    const [shared, afterShared] = readVarint(block.bytes, offset);
+    const [suffixLength, afterLength] = readVarint(block.bytes, afterShared);
+    value = value.slice(0, shared) + decodeSuffix(block.bytes, afterLength, afterLength + suffixLength);
+    offset = afterLength + suffixLength;
+    if (rank >= boundedStart && visit(value, rank) === false) return;
+  }
+};
+
 /** Forward iterator for consumers that need to coordinate decoded keys with another stream. */
 export function* iterateFrontCodedEntries(block: FrontCodedBlock): Generator<{ value: string; rank: number }> {
   let offset = 0;
