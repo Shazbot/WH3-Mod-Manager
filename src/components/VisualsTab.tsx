@@ -732,7 +732,7 @@ const VisualsTab = memo(() => {
   }
 
   return (
-    <div className="text-white max-w-[140rem] mx-auto pr-4">
+    <div className="flex explicit-height-without-topbar-and-padding min-h-0 flex-col text-white max-w-[140rem] mx-auto pr-4">
       <div className="flex items-center gap-4 mb-2 text-sm bg-gray-800/60 border border-gray-700 rounded px-3 py-2">
         <div className="flex items-center gap-2">
           <label htmlFor="visuals-unit-filter" className="text-gray-300">
@@ -831,10 +831,10 @@ const VisualsTab = memo(() => {
         </div>
       )}
 
-      <div style={{ width: "100%", display: "flex", height: "87vh" }}>
+      <div className="flex min-h-0 min-w-0 flex-1">
         {isLeftOpen && (
-          <Resizable defaultSize={{ width: "26%", height: "87vh" }} minWidth="220px" maxWidth="50%">
-            <div className="h-[87vh] border border-gray-700 bg-gray-800 rounded overflow-auto">
+          <Resizable defaultSize={{ width: "26%", height: "100%" }} minWidth="220px" maxWidth="50%">
+            <div className="h-full min-h-0 border border-gray-700 bg-gray-800 rounded overflow-auto">
               {isLoadingUnits && units.length === 0 ? (
                 <div className="p-3 text-gray-300">Loading unit list...</div>
               ) : isSortByCultureEnabled ? (
@@ -880,7 +880,7 @@ const VisualsTab = memo(() => {
           </Resizable>
         )}
 
-        <div style={{ flex: 1, minWidth: "1px", display: "flex", flexDirection: "column" }} className="ml-3">
+        <div style={{ flex: 1, minWidth: "1px", display: "flex", flexDirection: "column" }} className="ml-3 min-h-0">
           <div className="flex bg-gray-800 border border-gray-700 rounded-t overflow-x-auto min-h-[36px]">
             {tabs.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-400">Open a unit to view its variantmeshdefinition</div>
@@ -914,7 +914,7 @@ const VisualsTab = memo(() => {
             )}
           </div>
 
-          <div className="flex-1 border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-auto h-[87vh]">
+          <div className="min-h-0 flex-1 border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-auto">
             {!activeTab && (
               <div className="p-4 text-gray-400">
                 Single-click opens in the current tab. Double-click opens in a new tab.
@@ -939,8 +939,8 @@ const VisualsTab = memo(() => {
         </div>
 
         {isFilePanelOpen && (
-          <Resizable defaultSize={{ width: "25%", height: "87vh" }} minWidth="220px" maxWidth="45%" className="ml-3">
-            <div className="h-[87vh] border border-gray-700 bg-gray-800 rounded flex flex-col min-w-0">
+          <Resizable defaultSize={{ width: "25%", height: "100%" }} minWidth="220px" maxWidth="45%" className="ml-3">
+            <div className="h-full min-h-0 border border-gray-700 bg-gray-800 rounded flex flex-col min-w-0">
               <div className="p-2 border-b border-gray-700">
                 <input
                   type="text"

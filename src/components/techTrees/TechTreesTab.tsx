@@ -208,7 +208,7 @@ const TechTreesTab = memo(() => {
   const activeSetKey = tabs.find((t) => t.id === activeTabId)?.setKey;
 
   return (
-    <div className="flex h-[86vh] text-gray-200">
+    <div className="flex explicit-height-without-topbar-and-padding min-h-0 text-gray-200">
       {/* Left sidebar */}
       <Resizable
         defaultSize={{ width: 300, height: "100%" }}

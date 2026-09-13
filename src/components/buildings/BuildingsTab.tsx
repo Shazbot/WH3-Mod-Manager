@@ -521,7 +521,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const contextMenuCanAddBelow = contextMenu?.tile ? canAddBuildingBelow(contextMenu.tile, view) : false;
 
   return (
-    <div className="relative flex h-[86vh] flex-col text-gray-200">
+    <div className="relative flex explicit-height-without-topbar-and-padding min-h-0 flex-col text-gray-200">
       {isRebuildingData && (
         <Modal show popup size="sm" position="center">
           <Modal.Body>

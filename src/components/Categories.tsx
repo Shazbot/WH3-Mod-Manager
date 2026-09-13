@@ -1135,171 +1135,173 @@ const Categories = memo(() => {
         </div>
       </FloatingOverlay>
 
-      <div className="-mt-6 mr-10">
-        <div className="mt-5 flex">
-          <span className="relative ml-4">
-            <input
-              id="categoryFilterInput"
-              type="text"
-              value={categoryFilterInput}
-              placeholder={localized.categoryFilter}
-              onChange={(event) => {
-                setCategoryFilterInput(event.target.value);
-                setNewCategoryFilter(event.target.value);
-              }}
-              className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            />
-
-            <span className="absolute right-2 top-2 text-gray-400">
-              <button
-                onClick={() => {
-                  cancelDebounced(setNewCategoryFilter);
-                  setCategoryFilterInput("");
-                  setCategoryFilter("");
+      <div className="flex explicit-height-without-topbar-and-padding min-h-0 flex-col">
+        <div className="-mt-6 mr-10 shrink-0">
+          <div className="mt-5 flex">
+            <span className="relative ml-4">
+              <input
+                id="categoryFilterInput"
+                type="text"
+                value={categoryFilterInput}
+                placeholder={localized.categoryFilter}
+                onChange={(event) => {
+                  setCategoryFilterInput(event.target.value);
+                  setNewCategoryFilter(event.target.value);
                 }}
+                className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              />
+
+              <span className="absolute right-2 top-2 text-gray-400">
+                <button
+                  onClick={() => {
+                    cancelDebounced(setNewCategoryFilter);
+                    setCategoryFilterInput("");
+                    setCategoryFilter("");
+                  }}
+                  type="button"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              </span>
+            </span>
+
+            <span className="relative ml-8">
+              <input
+                id="nameFilterInput"
+                type="text"
+                value={nameFilterInput}
+                placeholder={localized.nameFilter}
+                onChange={(event) => {
+                  setNameFilterInput(event.target.value);
+                  setNewNameFilter(event.target.value);
+                }}
+                className="bg-gray-50 w-72 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              />
+
+              <span className="absolute right-2 top-2 text-gray-400">
+                <button
+                  onClick={() => {
+                    cancelDebounced(setNewNameFilter);
+                    setNameFilterInput("");
+                    setNameFilter("");
+                  }}
+                  type="button"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              </span>
+            </span>
+
+            <span className="relative ml-10">
+              <input
+                id="categoriesFilterInput"
+                type="text"
+                value={categoriesFilterInput}
+                placeholder={localized.categoriesFilter}
+                onChange={(event) => {
+                  setCategoriesFilterInput(event.target.value);
+                  setNewCategoriesFilter(event.target.value);
+                }}
+                className="bg-gray-50 w-80 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              />
+
+              <span className="absolute right-2 top-2 text-gray-400">
+                <button
+                  onClick={() => {
+                    cancelDebounced(setNewCategoriesFilter);
+                    setCategoriesFilterInput("");
+                    setCategoriesFilter("");
+                  }}
+                  type="button"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              </span>
+            </span>
+
+            <div className="text-center ml-auto flex gap-2">
+              <div className="relative" ref={optionsMenuRef}>
+                <button
+                  onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
+                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                  type="button"
+                >
+                  {localized.options || "Options"}
+                </button>
+                {isOptionsMenuOpen && (
+                  <div className="absolute left-0 z-[250] w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                      onClick={() => dispatch(toggleIsCategoryAuthorEnabled())}
+                    >
+                      <input type="checkbox" readOnly checked={isAuthorShown} className="pointer-events-none" />
+                      {localized.showAuthor || "Show author"}
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                      onClick={() => dispatch(toggleAreCategoryThumbnailsEnabled())}
+                    >
+                      <input type="checkbox" readOnly checked={isThumbnailShown} className="pointer-events-none" />
+                      {localized.showThumbnail || "Show thumbnail"}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setIsEditCategoriesModalOpen(true)}
+                className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
                 type="button"
               >
-                <FontAwesomeIcon icon={faXmark} />
+                {localized.editCategories}
               </button>
-            </span>
-          </span>
-
-          <span className="relative ml-8">
-            <input
-              id="nameFilterInput"
-              type="text"
-              value={nameFilterInput}
-              placeholder={localized.nameFilter}
-              onChange={(event) => {
-                setNameFilterInput(event.target.value);
-                setNewNameFilter(event.target.value);
-              }}
-              className="bg-gray-50 w-72 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            />
-
-            <span className="absolute right-2 top-2 text-gray-400">
               <button
-                onClick={() => {
-                  cancelDebounced(setNewNameFilter);
-                  setNameFilterInput("");
-                  setNameFilter("");
-                }}
-                type="button"
-              >
-                <FontAwesomeIcon icon={faXmark} />
-              </button>
-            </span>
-          </span>
-
-          <span className="relative ml-10">
-            <input
-              id="categoriesFilterInput"
-              type="text"
-              value={categoriesFilterInput}
-              placeholder={localized.categoriesFilter}
-              onChange={(event) => {
-                setCategoriesFilterInput(event.target.value);
-                setNewCategoriesFilter(event.target.value);
-              }}
-              className="bg-gray-50 w-80 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            />
-
-            <span className="absolute right-2 top-2 text-gray-400">
-              <button
-                onClick={() => {
-                  cancelDebounced(setNewCategoriesFilter);
-                  setCategoriesFilterInput("");
-                  setCategoriesFilter("");
-                }}
-                type="button"
-              >
-                <FontAwesomeIcon icon={faXmark} />
-              </button>
-            </span>
-          </span>
-
-          <div className="text-center ml-auto flex gap-2">
-            <div className="relative" ref={optionsMenuRef}>
-              <button
-                onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
+                onClick={collapseOrExpandAllCategories}
                 className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
                 type="button"
               >
-                {localized.options || "Options"}
+                {hiddenCategories.length === 0 ? localized.collapseAll : localized.expandAll}
               </button>
-              {isOptionsMenuOpen && (
-                <div className="absolute left-0 z-[250] w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
-                    onClick={() => dispatch(toggleIsCategoryAuthorEnabled())}
-                  >
-                    <input type="checkbox" readOnly checked={isAuthorShown} className="pointer-events-none" />
-                    {localized.showAuthor || "Show author"}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
-                    onClick={() => dispatch(toggleAreCategoryThumbnailsEnabled())}
-                  >
-                    <input type="checkbox" readOnly checked={isThumbnailShown} className="pointer-events-none" />
-                    {localized.showThumbnail || "Show thumbnail"}
-                  </button>
-                </div>
-              )}
             </div>
-            <button
-              onClick={() => setIsEditCategoriesModalOpen(true)}
-              className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
-              type="button"
-            >
-              {localized.editCategories}
-            </button>
-            <button
-              onClick={collapseOrExpandAllCategories}
-              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
-              type="button"
-            >
-              {hiddenCategories.length === 0 ? localized.collapseAll : localized.expandAll}
-            </button>
           </div>
         </div>
-      </div>
 
-      <div
-        id="categoriesTableContainer"
-        className="overflow-hidden mr-10"
-        onMouseDownCapture={(event) => {
-          if (event.button === 1) event.stopPropagation();
-        }}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <div className="ag-theme-material-dark" style={{ height: "87vh", width: "100%" }}>
-          <AgGridReact<CategoriesGridRow>
-            ref={gridRef}
-            theme="legacy"
-            rowData={displayedRows}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            rowSelection={rowSelection}
-            rowHeight={rowHeight}
-            headerHeight={35}
-            animateRows={false}
-            suppressRowHoverHighlight={true}
-            suppressContextMenu={true}
-            preventDefaultOnContextMenu={true}
-            getRowId={(params) => params.data.id}
-            resetRowDataOnUpdate={true}
-            suppressScrollOnNewData={true}
-            onCellClicked={onCellClicked}
-            onCellContextMenu={onCellContextMenu}
-            onColumnResized={onColumnResized}
-            getRowStyle={(params) =>
-              params.data && isCategoryRow(params.data)
-                ? { backgroundColor: "oklch(38.1% 0.176 304.987 / .5)" }
-                : undefined
-            }
-          />
+        <div
+          id="categoriesTableContainer"
+          className="min-h-0 flex-1 overflow-hidden mr-10"
+          onMouseDownCapture={(event) => {
+            if (event.button === 1) event.stopPropagation();
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div className="ag-theme-material-dark h-full" style={{ width: "100%" }}>
+            <AgGridReact<CategoriesGridRow>
+              ref={gridRef}
+              theme="legacy"
+              rowData={displayedRows}
+              columnDefs={columnDefs}
+              defaultColDef={defaultColDef}
+              rowSelection={rowSelection}
+              rowHeight={rowHeight}
+              headerHeight={35}
+              animateRows={false}
+              suppressRowHoverHighlight={true}
+              suppressContextMenu={true}
+              preventDefaultOnContextMenu={true}
+              getRowId={(params) => params.data.id}
+              resetRowDataOnUpdate={true}
+              suppressScrollOnNewData={true}
+              onCellClicked={onCellClicked}
+              onCellContextMenu={onCellContextMenu}
+              onColumnResized={onColumnResized}
+              getRowStyle={(params) =>
+                params.data && isCategoryRow(params.data)
+                  ? { backgroundColor: "oklch(38.1% 0.176 304.987 / .5)" }
+                  : undefined
+              }
+            />
+          </div>
         </div>
       </div>
 
