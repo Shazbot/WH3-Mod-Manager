@@ -1246,10 +1246,12 @@ const OptionsDrawer = memo(() => {
                       ? localized.automaticWorkshopStagingClearing || "Clearing…"
                       : localized.automaticWorkshopStagingClearFolder || "Clear copied mods"}
                   </button>
-                  <p className="mt-2 text-xs text-amber-300">
-                    {localized.automaticWorkshopStagingClearHelp ||
-                      "Clearing these copied packs will fail while the game is running. Close the game before clearing this folder."}
-                  </p>
+                  {isWH3Running && (
+                    <p className="mt-2 text-xs text-amber-300">
+                      {localized.automaticWorkshopStagingClearHelp ||
+                        "Clearing these copied packs will fail while the game is running. Close the game before clearing this folder."}
+                    </p>
+                  )}
                 </div>
               )}
               {workshopStagingFolderMessage && (
