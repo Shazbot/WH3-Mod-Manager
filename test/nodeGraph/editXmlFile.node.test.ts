@@ -113,6 +113,53 @@ describe("Edit XML File structural runtime", () => {
     expect(result.text).toBe('<root><target expression="left &amp;&amp; right" new="value" /></root>');
   });
 
+  it("edits attribute substrings, regex captures, and numeric formulas", () => {
+    const result = applyEditXmlFile('<root><target text="prefix-abc-abc" code="foo-123" count="4" /></root>', {
+      ignoreHierarchy: false,
+      locatorSteps: locator("target") as any,
+      action: "editAttributes",
+      attributeEdits: [
+        { id: "blank", name: "", operation: "replace", match: "", newValue: "" },
+        { id: "literal", name: "text", operation: "replace", match: "abc", newValue: "X" },
+        {
+          id: "regex",
+          name: "code",
+          operation: "regexReplace",
+          match: "(?<prefix>foo)-(\\d+)",
+          newValue: "$<prefix>-$2-$2",
+        },
+        { id: "formula", name: "count", operation: "formula", newValue: "x * 2 + 1" },
+      ],
+      replacementXml: "",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toBe('<root><target text="prefix-X-X" code="foo-123-123" count="9" /></root>');
+  });
+
+  it("rejects invalid edit-attribute operations without changing the source", () => {
+    const source = '<root><target text="value" count="not-a-number" /></root>';
+    const invalidRegex = applyEditXmlFile(source, {
+      ignoreHierarchy: false,
+      locatorSteps: locator("target") as any,
+      action: "editAttributes",
+      attributeEdits: [{ id: "edit", name: "text", operation: "regexReplace", match: "[", newValue: "x" }],
+      replacementXml: "",
+    });
+    expect(invalidRegex.success).toBe(false);
+    expect(invalidRegex.text).toBeUndefined();
+
+    const invalidFormula = applyEditXmlFile(source, {
+      ignoreHierarchy: false,
+      locatorSteps: locator("target") as any,
+      action: "editAttributes",
+      attributeEdits: [{ id: "edit", name: "count", operation: "formula", newValue: "x * 2" }],
+      replacementXml: "",
+    });
+    expect(invalidFormula.success).toBe(false);
+    expect(invalidFormula.text).toBeUndefined();
+  });
+
   it("adds missing attributes on a matching-indented line for multiline tags", () => {
     const normal = setAttributes('<root>\n  <target\n    old="1">value</target>\n</root>', {
       attributeEdits: [{ id: "edit", name: "added", newValue: "2" }],

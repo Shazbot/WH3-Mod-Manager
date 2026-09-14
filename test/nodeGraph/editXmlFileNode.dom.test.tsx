@@ -201,6 +201,67 @@ describe("Edit XML File node", () => {
     await waitFor(() => expect(view.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  it("shows edit-attribute operations and commits a partial replacement", async () => {
+    const onUpdateNodeData = vi.fn();
+    const view = renderNode(makeNode(onUpdateNodeData));
+
+    fireEvent.click(await view.findByText("Edit", { selector: "button" }));
+    const dialog = await view.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Exact XML path"), {
+      target: { value: "ui/test.xml" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("XML action"), {
+      target: { value: "editAttributes" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Attribute name 1"), {
+      target: { value: "dock_offset" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Match text 1"), {
+      target: { value: "old" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("New value 1"), {
+      target: { value: "new" },
+    });
+
+    const done = within(dialog).getByRole("button", { name: "Done" });
+    await waitFor(() => expect(done).toBeEnabled());
+    fireEvent.click(done);
+
+    expect(onUpdateNodeData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "editAttributes",
+        attributeEdits: [
+          expect.objectContaining({
+            name: "dock_offset",
+            operation: "replace",
+            match: "old",
+            newValue: "new",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("switches edit-attribute fields for regex and formula operations", async () => {
+    const view = renderNode();
+
+    fireEvent.click(await view.findByText("Edit", { selector: "button" }));
+    const dialog = await view.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("XML action"), {
+      target: { value: "editAttributes" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Edit operation 1"), {
+      target: { value: "regexReplace" },
+    });
+    expect(within(dialog).getByLabelText("Regex pattern 1")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Replacement 1")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Edit operation 1"), {
+      target: { value: "formula" },
+    });
+    expect(within(dialog).getByLabelText("Formula 1")).toBeInTheDocument();
+    expect(within(dialog).getByText("x is the original numeric attribute value.")).toBeInTheDocument();
+  });
+
   it("asks before discarding a dirty modal draft", async () => {
     const view = renderNode();
 

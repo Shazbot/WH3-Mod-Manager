@@ -217,7 +217,7 @@ export interface SerializedNode {
     filePath?: string;
     ignoreHierarchy?: boolean;
     locatorSteps?: Array<Record<string, unknown>>;
-    action?: "setAttributes" | "replaceElement";
+    action?: "setAttributes" | "editAttributes" | "replaceElement";
     attributeEdits?: Array<Record<string, unknown>>;
     replacementXml?: string;
   };

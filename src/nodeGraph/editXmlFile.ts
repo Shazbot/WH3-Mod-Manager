@@ -1,4 +1,5 @@
-import type { XmlAttributeEdit, XmlLocatorStep } from "./nodes/types";
+import { evaluateFormula } from "../utility/formulaEvaluation";
+import type { XmlAttributeEdit, XmlAttributeEditOperation, XmlLocatorStep } from "./nodes/types";
 
 /** A source range for an XML attribute value, retaining the quote used by the source. */
 export interface XmlAttributeOffset {
@@ -41,7 +42,7 @@ export interface XmlEditResult {
 export interface EditXmlFileConfig {
   ignoreHierarchy: boolean;
   locatorSteps: XmlLocatorStep[];
-  action: "setAttributes" | "replaceElement";
+  action: "setAttributes" | "editAttributes" | "replaceElement";
   attributeEdits: XmlAttributeEdit[];
   replacementXml: string;
 }
@@ -467,6 +468,41 @@ const validateActionConfig = (config: EditXmlFileConfig): string | undefined => 
     }
     return undefined;
   }
+  if (config.action === "editAttributes") {
+    if (!Array.isArray(config.attributeEdits) || config.attributeEdits.length === 0) {
+      return "Edit attributes requires at least one attribute edit";
+    }
+    const names = new Set<string>();
+    let hasCompleteEdit = false;
+    for (const edit of config.attributeEdits) {
+      if (!edit || typeof edit.name !== "string" || typeof edit.newValue !== "string") {
+        return "Incomplete XML attribute edit";
+      }
+
+      const name = edit.name.trim();
+      const operation: XmlAttributeEditOperation = edit.operation || "replace";
+      const match = typeof edit.match === "string" ? edit.match : "";
+      const operationInput = operation === "formula" ? edit.newValue : match;
+      const hasAnyInput = Boolean(name || match || edit.newValue);
+      if (!hasAnyInput) continue;
+      if (!name || !operationInput.trim()) return "Incomplete XML attribute edit";
+      if (!isValidXmlName(name)) return `Invalid XML mutation attribute name '${edit.name}'`;
+      if (names.has(name)) return `Duplicate XML mutation attribute '${name}'`;
+      names.add(name);
+
+      if (operation === "regexReplace") {
+        try {
+          new RegExp(match, "g");
+        } catch (error) {
+          return `Invalid XML attribute regular expression '${match}': ${error instanceof Error ? error.message : "Invalid regular expression"}`;
+        }
+      } else if (operation !== "replace" && operation !== "formula") {
+        return `Invalid XML attribute edit operation '${String(edit.operation)}'`;
+      }
+      hasCompleteEdit = true;
+    }
+    return hasCompleteEdit ? undefined : "Edit attributes requires at least one complete attribute edit";
+  }
   if (config.action !== "replaceElement") return "Invalid XML action";
   if (typeof config.replacementXml !== "string" || !config.replacementXml.trim()) {
     return "Replacement XML is required";
@@ -560,6 +596,63 @@ const applySetAttributes = (text: string, element: XmlElementOffset, edits: XmlA
   return edited;
 };
 
+const applyEditAttributes = (
+  text: string,
+  element: XmlElementOffset,
+  edits: XmlAttributeEdit[],
+): { text?: string; error?: string } => {
+  const replacements: Array<{ start: number; end: number; value: string }> = [];
+
+  for (const edit of edits) {
+    if (!edit.name.trim() && !(edit.match || "") && !edit.newValue) continue;
+    const name = edit.name.trim();
+    const existing = element.attributes.find((attribute) => attribute.name === name);
+    if (!existing) {
+      return { error: `XML attribute '${name}' was not found on the matched element` };
+    }
+
+    const operation: XmlAttributeEditOperation = edit.operation || "replace";
+    const match = typeof edit.match === "string" ? edit.match : "";
+    let nextValue: string;
+    try {
+      if (operation === "replace") {
+        nextValue = existing.value.split(match).join(edit.newValue);
+      } else if (operation === "regexReplace") {
+        nextValue = existing.value.replace(new RegExp(match, "g"), edit.newValue);
+      } else if (operation === "formula") {
+        const originalNumber = Number(existing.value);
+        if (!Number.isFinite(originalNumber)) {
+          return {
+            error: `XML attribute '${name}' must contain a finite number for formula edits`,
+          };
+        }
+        nextValue = String(evaluateFormula(edit.newValue, originalNumber));
+      } else {
+        return { error: `Invalid XML attribute edit operation '${String(edit.operation)}'` };
+      }
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? `Could not edit XML attribute '${name}': ${error.message}`
+            : `Could not edit XML attribute '${name}'`,
+      };
+    }
+
+    replacements.push({
+      start: existing.valueStart,
+      end: existing.valueEnd,
+      value: escapeAttributeValue(nextValue, existing.quote),
+    });
+  }
+
+  let edited = text;
+  for (const replacement of replacements.sort((first, second) => second.start - first.start)) {
+    edited = edited.slice(0, replacement.start) + replacement.value + edited.slice(replacement.end);
+  }
+  return { text: edited };
+};
+
 /** Checks that replacement text is a valid XML document with exactly one element root. */
 export const isSingleXmlElement = (replacementXml: string): boolean => {
   try {
@@ -577,7 +670,7 @@ export const applyEditXmlFile = (sourceText: string, config: EditXmlFileConfig):
     typeof config.ignoreHierarchy !== "boolean" ||
     !Array.isArray(config.locatorSteps) ||
     !Array.isArray(config.attributeEdits) ||
-    (config.action !== "setAttributes" && config.action !== "replaceElement") ||
+    (config.action !== "setAttributes" && config.action !== "editAttributes" && config.action !== "replaceElement") ||
     typeof config.replacementXml !== "string"
   ) {
     return { success: false, error: "Invalid XML node configuration" };
@@ -637,6 +730,10 @@ export const applyEditXmlFile = (sourceText: string, config: EditXmlFileConfig):
   let edited = document.text;
   if (config.action === "setAttributes") {
     edited = applySetAttributes(document.text, target, config.attributeEdits);
+  } else if (config.action === "editAttributes") {
+    const result = applyEditAttributes(document.text, target, config.attributeEdits);
+    if (result.error || result.text === undefined) return { success: false, error: result.error };
+    edited = result.text;
   } else {
     let replacementDocument: ParsedXmlDocument;
     try {

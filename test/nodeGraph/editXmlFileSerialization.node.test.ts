@@ -32,7 +32,9 @@ const makeNode = () => ({
       },
     ],
     action: "replaceElement",
-    attributeEdits: [{ id: "mutation", name: "{{mutationName}}", newValue: "{{mutationValue}}" }],
+    attributeEdits: [
+      { id: "mutation", name: "{{mutationName}}", match: "{{mutationMatch}}", newValue: "{{mutationValue}}" },
+    ],
     replacementXml: "<{{replacementTag}}>{{replacementText}}</{{replacementTag}}>",
   },
 });
@@ -43,6 +45,7 @@ const options = [
   { id: "locatorName", name: "Locator name", type: "textbox", value: "id" },
   { id: "locatorValue", name: "Locator value", type: "textbox", value: "management" },
   { id: "mutationName", name: "Mutation name", type: "textbox", value: "dock_offset" },
+  { id: "mutationMatch", name: "Mutation match", type: "textbox", value: "old" },
   { id: "mutationValue", name: "Mutation value", type: "textbox", value: "-180.00,-190.00" },
   { id: "replacementTag", name: "Replacement tag", type: "textbox", value: "LayoutEngine" },
   { id: "replacementText", name: "Replacement text", type: "textbox", value: "replacement" },
@@ -53,6 +56,7 @@ const optionValues = {
   locatorName: "id",
   locatorValue: "management",
   mutationName: "dock_offset",
+  mutationMatch: "old",
   mutationValue: "-180.00,-190.00",
   replacementTag: "LayoutEngine",
   replacementText: "replacement",
@@ -74,7 +78,9 @@ describe("Edit XML File flow-option substitution", () => {
         attributes: [{ id: "locator-attribute", name: "id", value: "management" }],
       },
     ]);
-    expect(node.data.attributeEdits).toEqual([{ id: "mutation", name: "dock_offset", newValue: "-180.00,-190.00" }]);
+    expect(node.data.attributeEdits).toEqual([
+      { id: "mutation", name: "dock_offset", match: "old", newValue: "-180.00,-190.00" },
+    ]);
     expect(node.data.replacementXml).toBe("<LayoutEngine>replacement</LayoutEngine>");
     expect(JSON.parse(serializeNodeConfigForExecution(node as any))).toMatchObject({
       filePath: "ui/campaign/hud.xml",
@@ -103,7 +109,7 @@ describe("Edit XML File flow-option substitution", () => {
       attributes: [{ name: "id", value: "management" }],
     });
     expect(prepared.nodes[0].data.attributeEdits).toEqual([
-      { id: "mutation", name: "dock_offset", newValue: "-180.00,-190.00" },
+      { id: "mutation", name: "dock_offset", match: "old", newValue: "-180.00,-190.00" },
     ]);
     expect(prepared.nodes[0].data.replacementXml).toBe("<LayoutEngine>replacement</LayoutEngine>");
     expect(prepared.nodeConfigs.xml).toMatchObject({

@@ -230,6 +230,7 @@ export const substituteEditXmlOptionValues = (
       if (!edit || typeof edit !== "object") return edit;
       const nextEdit = { ...(edit as Record<string, unknown>) };
       replaceField(nextEdit, "name");
+      replaceField(nextEdit, "match");
       replaceField(nextEdit, "newValue");
       return nextEdit;
     });

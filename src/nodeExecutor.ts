@@ -8308,7 +8308,7 @@ async function executeEditXmlFileNode(
   if (!Array.isArray(parsed.locatorSteps) || !Array.isArray(parsed.attributeEdits)) {
     return { success: false, error: "Invalid XML node configuration" };
   }
-  if (parsed.action !== "setAttributes" && parsed.action !== "replaceElement") {
+  if (parsed.action !== "setAttributes" && parsed.action !== "editAttributes" && parsed.action !== "replaceElement") {
     return { success: false, error: "Invalid XML action" };
   }
   if (typeof parsed.replacementXml !== "string") {

@@ -83,6 +83,7 @@ import type {
   TextJoinNodeData,
   TextSurroundNodeData,
   XmlAttributeEdit,
+  XmlAttributeEditOperation,
   XmlLocatorAttribute,
   XmlLocatorStep,
 } from "./types";
@@ -7235,6 +7236,10 @@ type EditXmlFileValidationCode =
   | "setAttributeRequired"
   | "setAttributeInvalidName"
   | "setAttributeDuplicateName"
+  | "editAttributeRequired"
+  | "editAttributeInvalidName"
+  | "editAttributeDuplicateName"
+  | "editAttributeInvalidRegex"
   | "replacementRequired"
   | "replacementInvalid";
 
@@ -7257,6 +7262,8 @@ const defaultXmlAttributeEdit = (id = "attribute_1"): XmlAttributeEdit => ({
   id,
   name: "",
   newValue: "",
+  match: "",
+  operation: "replace",
 });
 
 const normalizeXmlLocatorAttribute = (value: unknown, index: number): XmlLocatorAttribute => {
@@ -7284,6 +7291,11 @@ const normalizeXmlAttributeEdit = (value: unknown, index: number): XmlAttributeE
     id: typeof candidate.id === "string" && candidate.id ? candidate.id : `attribute_${index + 1}`,
     name: typeof candidate.name === "string" ? candidate.name : "",
     newValue: typeof candidate.newValue === "string" ? candidate.newValue : "",
+    match: typeof candidate.match === "string" ? candidate.match : "",
+    operation:
+      candidate.operation === "regexReplace" || candidate.operation === "formula" || candidate.operation === "replace"
+        ? candidate.operation
+        : "replace",
   };
 };
 
@@ -7300,7 +7312,12 @@ const normalizeEditXmlFileDraft = (data: Partial<EditXmlFileNodeData>): EditXmlF
     filePath: typeof data.filePath === "string" ? data.filePath : "",
     ignoreHierarchy: data.ignoreHierarchy !== false,
     locatorSteps: locatorSteps.length > 0 ? locatorSteps : [defaultXmlLocatorStep()],
-    action: data.action === "replaceElement" ? "replaceElement" : "setAttributes",
+    action:
+      data.action === "replaceElement"
+        ? "replaceElement"
+        : data.action === "editAttributes"
+          ? "editAttributes"
+          : "setAttributes",
     attributeEdits,
     replacementXml: typeof data.replacementXml === "string" ? data.replacementXml : "",
   };
@@ -7365,6 +7382,42 @@ export const getEditXmlFileValidationErrors = (
       }
     });
   }
+  if (draft.action === "editAttributes") {
+    const hasCompleteEdit = draft.attributeEdits.some((edit) => {
+      const operation = edit.operation || "replace";
+      const operationInput = operation === "formula" ? edit.newValue : edit.match || "";
+      return edit.name.trim() && operationInput.trim();
+    });
+    if (!hasCompleteEdit) {
+      errors.push({ code: "editAttributeRequired" });
+    }
+    const mutationNames = new Set<string>();
+    draft.attributeEdits.forEach((edit, editIndex) => {
+      const operation = edit.operation || "replace";
+      const match = edit.match || "";
+      const operationInput = operation === "formula" ? edit.newValue : match;
+      const hasAnyInput = Boolean(edit.name.trim() || match || edit.newValue);
+      if (!hasAnyInput) return;
+      if (!edit.name.trim() || !operationInput.trim()) {
+        errors.push({ code: "editAttributeRequired", editIndex });
+        return;
+      }
+      if (!isValidXmlNameTemplate(edit.name.trim())) {
+        errors.push({ code: "editAttributeInvalidName", editIndex });
+      } else if (mutationNames.has(edit.name.trim())) {
+        errors.push({ code: "editAttributeDuplicateName", editIndex });
+      } else {
+        mutationNames.add(edit.name.trim());
+      }
+      if (operation === "regexReplace") {
+        try {
+          new RegExp(match, "g");
+        } catch {
+          errors.push({ code: "editAttributeInvalidRegex", editIndex });
+        }
+      }
+    });
+  }
   if (draft.action === "replaceElement") {
     if (!draft.replacementXml.trim()) {
       errors.push({ code: "replacementRequired" });
@@ -7412,6 +7465,17 @@ const getEditXmlValidationMessage = (
       return localized.nodeEditorEditXmlFileAttributeNameInvalid || "Enter a valid XML attribute name.";
     case "setAttributeDuplicateName":
       return localized.nodeEditorEditXmlFileAttributeDuplicate || "Use each attribute name only once per edit.";
+    case "editAttributeRequired":
+      return (
+        localized.nodeEditorEditXmlFileEditAttributeRequired ||
+        "Complete each edit with an attribute and match or formula."
+      );
+    case "editAttributeInvalidName":
+      return localized.nodeEditorEditXmlFileAttributeNameInvalid || "Enter a valid XML attribute name.";
+    case "editAttributeDuplicateName":
+      return localized.nodeEditorEditXmlFileAttributeDuplicate || "Use each attribute name only once per edit.";
+    case "editAttributeInvalidRegex":
+      return localized.nodeEditorEditXmlFileInvalidRegex || "Enter a valid regular expression.";
     case "replacementRequired":
       return localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML.";
     case "replacementInvalid":
@@ -7596,7 +7660,16 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
           localized.nodeEditorEditXmlFileNoAttributeEdits ||
           "no attribute edits"
         }`
-      : localized.nodeEditorEditXmlFileReplaceElement || "Replace element";
+      : displayedDraft.action === "editAttributes"
+        ? `${localized.nodeEditorEditXmlFileEditAttributes || "Edit attributes"}: ${
+            displayedDraft.attributeEdits
+              .filter((edit) => edit.name || edit.match || edit.newValue)
+              .map((edit) => `${edit.name} (${edit.operation || "replace"})`)
+              .join(", ") ||
+            localized.nodeEditorEditXmlFileNoAttributeEdits ||
+            "no attribute edits"
+          }`
+        : localized.nodeEditorEditXmlFileReplaceElement || "Replace element";
 
   return (
     <>
@@ -7999,6 +8072,9 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                       <option value="setAttributes">
                         {localized.nodeEditorEditXmlFileSetAttributes || "Set attributes"}
                       </option>
+                      <option value="editAttributes">
+                        {localized.nodeEditorEditXmlFileEditAttributes || "Edit attributes"}
+                      </option>
                       <option value="replaceElement">
                         {localized.nodeEditorEditXmlFileReplaceElement || "Replace element"}
                       </option>
@@ -8068,6 +8144,162 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                       "Use each attribute name only once per edit."
                                     : localized.nodeEditorEditXmlFileSetAttributeRequired ||
                                       "Complete the attribute name and new value."}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : draft.action === "editAttributes" ? (
+                    <div className="space-y-2 rounded-lg border border-gray-600 bg-gray-800 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs text-gray-300">
+                            {localized.nodeEditorEditXmlFileAttributeEdits || "Attribute edits"}
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            {localized.nodeEditorEditXmlFileEditAttributesHelp ||
+                              "Edit an existing attribute. Literal and regex replacements keep all unmatched text; formulas use x as the original numeric value."}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addAttributeEdit}
+                          className="shrink-0 rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        >
+                          + {localized.nodeEditorEditXmlFileAddAttributeEdit || "Add attribute edit"}
+                        </button>
+                      </div>
+                      {draft.attributeEdits.map((edit, editIndex) => {
+                        const operation: XmlAttributeEditOperation = edit.operation || "replace";
+                        const editError = validationErrors.some(
+                          (error) =>
+                            (error.code === "editAttributeRequired" ||
+                              error.code === "editAttributeInvalidName" ||
+                              error.code === "editAttributeDuplicateName" ||
+                              error.code === "editAttributeInvalidRegex") &&
+                            error.editIndex === editIndex,
+                        );
+                        const matchLabel =
+                          operation === "regexReplace"
+                            ? localized.nodeEditorEditXmlFileRegexPattern || "Regex pattern"
+                            : localized.nodeEditorEditXmlFileMatchText || "Match text";
+                        const valueLabel =
+                          operation === "formula"
+                            ? localized.nodeEditorEditXmlFileFormula || "Formula"
+                            : operation === "regexReplace"
+                              ? localized.nodeEditorEditXmlFileReplacementValue || "Replacement"
+                              : localized.nodeEditorEditXmlFileNewValue || "New value";
+                        return (
+                          <div key={edit.id} className="space-y-2 rounded border border-gray-600 bg-gray-700 p-2">
+                            <div className="grid grid-cols-[1fr_10rem_auto] items-start gap-2">
+                              <input
+                                aria-label={`${localized.nodeEditorEditXmlFileAttributeName || "Attribute name"} ${editIndex + 1}`}
+                                aria-invalid={editError}
+                                value={edit.name}
+                                onChange={(event) => updateAttributeEdit(edit.id, { name: event.target.value })}
+                                placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
+                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              />
+                              <select
+                                aria-label={`${localized.nodeEditorEditXmlFileAttributeOperation || "Edit operation"} ${editIndex + 1}`}
+                                value={operation}
+                                onChange={(event) =>
+                                  updateAttributeEdit(edit.id, {
+                                    operation: event.target.value as XmlAttributeEditOperation,
+                                  })
+                                }
+                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-xs text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              >
+                                <option value="replace">
+                                  {localized.nodeEditorEditXmlFileReplaceText || "replace"}
+                                </option>
+                                <option value="regexReplace">
+                                  {localized.nodeEditorEditXmlFileRegexReplace || "regex replace"}
+                                </option>
+                                <option value="formula">{localized.nodeEditorEditXmlFileFormula || "formula"}</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeAttributeEdit(edit.id)}
+                                aria-label={`${localized.nodeEditorEditXmlFileRemoveAttributeEdit || "Remove attribute edit"} ${editIndex + 1}`}
+                                className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-600 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {operation === "formula" ? (
+                              <label className="flex flex-col gap-1 text-xs text-gray-300">
+                                <span>{valueLabel}</span>
+                                <input
+                                  aria-label={`${valueLabel} ${editIndex + 1}`}
+                                  aria-invalid={editError}
+                                  value={edit.newValue}
+                                  onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
+                                  placeholder={localized.nodeEditorEditXmlFileFormulaPlaceholder || "x * 2"}
+                                  className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                />
+                                <span className="text-[11px] text-gray-400">
+                                  {localized.nodeEditorEditXmlFileFormulaHelp ||
+                                    "x is the original numeric attribute value."}
+                                </span>
+                              </label>
+                            ) : (
+                              <div className="grid grid-cols-[1fr_1fr] items-start gap-2">
+                                <label className="flex flex-col gap-1 text-xs text-gray-300">
+                                  <span>{matchLabel}</span>
+                                  <input
+                                    aria-label={`${matchLabel} ${editIndex + 1}`}
+                                    aria-invalid={editError}
+                                    value={edit.match || ""}
+                                    onChange={(event) => updateAttributeEdit(edit.id, { match: event.target.value })}
+                                    placeholder={
+                                      operation === "regexReplace"
+                                        ? localized.nodeEditorEditXmlFileRegexPatternPlaceholder || "(capture)-(group)"
+                                        : localized.nodeEditorEditXmlFileMatchTextPlaceholder || "text to replace"
+                                    }
+                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                </label>
+                                <label className="flex flex-col gap-1 text-xs text-gray-300">
+                                  <span>{valueLabel}</span>
+                                  <input
+                                    aria-label={`${valueLabel} ${editIndex + 1}`}
+                                    value={edit.newValue}
+                                    onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
+                                    placeholder={
+                                      operation === "regexReplace"
+                                        ? localized.nodeEditorEditXmlFileRegexReplacementPlaceholder ||
+                                          "new text using $1 or $<name>..."
+                                        : localized.nodeEditorEditXmlFileNewValuePlaceholder || "new value"
+                                    }
+                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                </label>
+                              </div>
+                            )}
+                            {editError && (
+                              <p className="text-xs text-red-300">
+                                {validationErrors.some(
+                                  (error) =>
+                                    error.code === "editAttributeInvalidRegex" && error.editIndex === editIndex,
+                                )
+                                  ? localized.nodeEditorEditXmlFileInvalidRegex || "Enter a valid regular expression."
+                                  : validationErrors.some(
+                                        (error) =>
+                                          error.code === "editAttributeInvalidName" && error.editIndex === editIndex,
+                                      )
+                                    ? localized.nodeEditorEditXmlFileAttributeNameInvalid ||
+                                      "Enter a valid XML attribute name."
+                                    : validationErrors.some(
+                                          (error) =>
+                                            error.code === "editAttributeDuplicateName" &&
+                                            error.editIndex === editIndex,
+                                        )
+                                      ? localized.nodeEditorEditXmlFileAttributeDuplicate ||
+                                        "Use each attribute name only once per edit."
+                                      : localized.nodeEditorEditXmlFileEditAttributeRequired ||
+                                        "Complete the attribute name and match or formula."}
                               </p>
                             )}
                           </div>

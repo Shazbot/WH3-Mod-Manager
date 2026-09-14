@@ -459,11 +459,18 @@ export interface XmlLocatorStep {
   attributes: XmlLocatorAttribute[];
 }
 
-/** One attribute mutation used by the setAttributes action. */
+/** How an existing XML attribute is transformed by the editAttributes action. */
+export type XmlAttributeEditOperation = "replace" | "regexReplace" | "formula";
+
+/** One attribute mutation used by the setAttributes and editAttributes actions. */
 export interface XmlAttributeEdit {
   id: string;
   name: string;
   newValue: string;
+  /** Literal text or regular expression to replace. Unused by formula edits. */
+  match?: string;
+  /** Defaults to literal replace for authoring/backwards compatibility. */
+  operation?: XmlAttributeEditOperation;
 }
 
 /** Authoring-only shape for the UI-only XML editing node. Runtime support is intentionally separate. */
@@ -474,7 +481,7 @@ export interface EditXmlFileNodeData extends NodeData {
   filePath: string;
   ignoreHierarchy: boolean;
   locatorSteps: XmlLocatorStep[];
-  action: "setAttributes" | "replaceElement";
+  action: "setAttributes" | "editAttributes" | "replaceElement";
   attributeEdits: XmlAttributeEdit[];
   replacementXml: string;
 }
