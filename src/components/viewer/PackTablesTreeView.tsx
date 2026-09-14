@@ -84,6 +84,7 @@ type TreeContextTarget =
 
 const EMPTY_DELETED_PACK_FILE_PATHS: string[] = [];
 const normalizeVanillaTreePath = (path: string) => path.replaceAll("/", "\\").replace(/\\+$/, "").toLowerCase();
+const packPathKey = (value: string) => value.replaceAll("/", "\\").toLowerCase();
 
 export type ViewerPackTarget = { packPath: string; label: string };
 export type CopyIntoSource = {
@@ -917,75 +918,110 @@ const PackTablesTreeView = React.memo(
       [fileData, fileNodeById, normalizedFilter],
     );
 
-    const getDBSelectionForElement = (element: INode) => {
-      if (element.children && element.children.length > 0) return;
+    const getDBSelectionForElement = React.useCallback(
+      (element: INode) => {
+        if (element.children && element.children.length > 0) return;
 
-      // Root-level DB entries (e.g. unsaved files) may contain the full path in the node name.
-      const rootLevelTable = parseDBTablePath(element.name);
-      if (rootLevelTable) {
+        // Root-level DB entries (e.g. unsaved files) may contain the full path in the node name.
+        const rootLevelTable = parseDBTablePath(element.name);
+        if (rootLevelTable) {
+          return {
+            packPath: packData!.packPath,
+            dbFolder: rootLevelTable.dbFolder,
+            dbName: rootLevelTable.dbName,
+            dbSubname: rootLevelTable.dbSubname,
+          } as DBTableSelection;
+        }
+
+        if (!element.parent) return;
+        const parentLeaf = dbNodeById.get(element.parent);
+        if (!parentLeaf || !parentLeaf.name) return;
+        const { dbFolder, dbName } = parseDBGroupName(parentLeaf.name);
         return {
           packPath: packData!.packPath,
-          dbFolder: rootLevelTable.dbFolder,
-          dbName: rootLevelTable.dbName,
-          dbSubname: rootLevelTable.dbSubname,
+          dbFolder,
+          dbName,
+          dbSubname: element.name,
         } as DBTableSelection;
-      }
-
-      if (!element.parent) return;
-      const parentLeaf = dbNodeById.get(element.parent);
-      if (!parentLeaf || !parentLeaf.name) return;
-      const { dbFolder, dbName } = parseDBGroupName(parentLeaf.name);
-      return {
-        packPath: packData!.packPath,
-        dbFolder,
-        dbName,
-        dbSubname: element.name,
-      } as DBTableSelection;
-    };
+      },
+      [dbNodeById, packData],
+    );
 
     const getPackedFilePathForElement = (element: INode) => {
       if ((element.children && element.children.length > 0) || element.isBranch) return;
       return getNodeFullPath(element, fileNodeById);
     };
 
+    const selectedDBExportPaths = useMemo(() => {
+      if (!packData) return [];
+
+      const pathsByKey = new Map<string, string>();
+      const addPath = (path: string | undefined) => {
+        if (!path) return;
+        const key = packPathKey(path);
+        if (!pathsByKey.has(key)) pathsByKey.set(key, path);
+      };
+
+      for (const selectedId of dbSelectedNodeIds) {
+        const node = dbNodeById.get(selectedId);
+        if (!node) continue;
+        const leafIds = node.children && node.children.length > 0 ? getDescendantLeafIds(node, dbNodeById) : [node.id];
+        for (const leafId of leafIds) {
+          const leaf = dbNodeById.get(leafId);
+          const selection = leaf ? getDBSelectionForElement(leaf) : undefined;
+          addPath(selection ? getDBPackedFilePath(selection) : undefined);
+        }
+      }
+
+      return [...pathsByKey.values()];
+    }, [dbNodeById, dbSelectedNodeIds, getDBSelectionForElement, packData]);
+
+    const selectedFileExportPaths = useMemo(() => {
+      const pathsByKey = new Map<string, string>();
+      const addPath = (path: string | undefined) => {
+        if (!path) return;
+        const key = packPathKey(path);
+        if (!pathsByKey.has(key)) pathsByKey.set(key, path);
+      };
+
+      for (const selectedId of fileSelectedNodeIds) {
+        const node = fileNodeById.get(selectedId);
+        if (!node) continue;
+        const leafIds =
+          node.children && node.children.length > 0 ? getDescendantLeafIds(node, fileNodeById) : [node.id];
+        for (const leafId of leafIds) {
+          const leaf = fileNodeById.get(leafId);
+          addPath(leaf ? getNodeFullPath(leaf, fileNodeById) : undefined);
+        }
+      }
+
+      return [...pathsByKey.values()];
+    }, [fileNodeById, fileSelectedNodeIds]);
+
+    // Folder context menus used to scan every packed path while opening. Build only descendant
+    // counts when pack data changes so right-clicking a large folder only does a map lookup.
+    const packFileDescendantCountsByFolderKey = useMemo(() => {
+      const descendantCountsByFolderKey = new Map<string, number>();
+
+      for (const filePath of packFileNames) {
+        const segments = filePath.replaceAll("/", "\\").split("\\").filter(Boolean);
+        let folderPath = "";
+        for (let index = 0; index < segments.length - 1; index += 1) {
+          folderPath = folderPath ? `${folderPath}\\${segments[index]}` : segments[index];
+          const key = packPathKey(folderPath);
+          descendantCountsByFolderKey.set(key, (descendantCountsByFolderKey.get(key) ?? 0) + 1);
+        }
+      }
+
+      return descendantCountsByFolderKey;
+    }, [packFileNames]);
+
     const getContextTargetPaths = () => {
       if (!packData) return [];
 
       const treeTab =
         contextMenu?.treeTab === "db" || contextMenu?.treeTab === "files" ? contextMenu.treeTab : visibleActiveTreeTab;
-      const pathsByKey = new Map<string, string>();
-      const addPath = (path: string | undefined) => {
-        if (!path) return;
-        const key = path.replaceAll("/", "\\").toLowerCase();
-        if (!pathsByKey.has(key)) pathsByKey.set(key, path);
-      };
-
-      if (treeTab === "db") {
-        for (const selectedId of dbSelectedNodeIds) {
-          const node = dbNodeById.get(selectedId);
-          if (!node) continue;
-          const leafIds =
-            node.children && node.children.length > 0 ? getDescendantLeafIds(node, dbNodeById) : [node.id];
-          for (const leafId of leafIds) {
-            const leaf = dbNodeById.get(leafId);
-            const selection = leaf ? getDBSelectionForElement(leaf) : undefined;
-            addPath(selection ? getDBPackedFilePath(selection) : undefined);
-          }
-        }
-      } else if (treeTab === "files") {
-        for (const selectedId of fileSelectedNodeIds) {
-          const node = fileNodeById.get(selectedId);
-          if (!node) continue;
-          const leafIds =
-            node.children && node.children.length > 0 ? getDescendantLeafIds(node, fileNodeById) : [node.id];
-          for (const leafId of leafIds) {
-            const leaf = fileNodeById.get(leafId);
-            addPath(leaf ? getNodeFullPath(leaf, fileNodeById) : undefined);
-          }
-        }
-      }
-
-      const selectedPaths = [...pathsByKey.values()];
+      const selectedPaths = treeTab === "db" ? selectedDBExportPaths : selectedFileExportPaths;
       const clickedPath =
         contextMenu?.target?.kind === "folder"
           ? contextMenu.target.folderPath
@@ -1005,38 +1041,51 @@ const PackTablesTreeView = React.memo(
         clickedTargetIsSelected && selectedPaths.length > 0 ? selectedPaths : clickedPath ? [clickedPath] : [];
       const expandedPaths = new Map<string, string>();
       for (const path of pathsToUse) {
-        const key = path.replaceAll("/", "\\").toLowerCase();
+        const key = packPathKey(path);
         const isClickedFolder = contextMenu?.target?.kind === "folder" && key === clickedPathKey;
         const descendants = isClickedFolder
-          ? packFileNames.filter((candidate) => {
-              const candidateKey = candidate.replaceAll("/", "\\").toLowerCase();
-              return candidateKey.startsWith(`${key}\\`);
-            })
+          ? packFileNames.filter((candidate) => packPathKey(candidate).startsWith(`${key}\\`))
           : [];
         if (isClickedFolder && descendants.length === 0) continue;
         for (const expandedPath of descendants.length > 0 ? descendants : [path]) {
-          const expandedKey = expandedPath.replaceAll("/", "\\").toLowerCase();
+          const expandedKey = packPathKey(expandedPath);
           if (!expandedPaths.has(expandedKey)) expandedPaths.set(expandedKey, expandedPath);
         }
       }
       return [...expandedPaths.values()];
     };
 
-    const selectedExportPaths = useMemo(
-      () => getContextTargetPaths(),
-      // The selection expansion intentionally follows the context-menu tab and clicked target.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [
-        contextMenu,
-        dbNodeById,
-        dbSelectedNodeIds,
-        fileNodeById,
-        fileSelectedNodeIds,
-        packData,
-        packFileNames,
-        visibleActiveTreeTab,
-      ],
-    );
+    const contextTargetPathCount = useMemo(() => {
+      if (!contextMenu || !packData) return 0;
+
+      const treeTab =
+        contextMenu.treeTab === "db" || contextMenu.treeTab === "files" ? contextMenu.treeTab : visibleActiveTreeTab;
+      const selectedPaths = treeTab === "db" ? selectedDBExportPaths : selectedFileExportPaths;
+      const clickedTarget = contextMenu.target;
+      const clickedPath =
+        clickedTarget?.kind === "folder"
+          ? clickedTarget.folderPath
+          : clickedTarget
+            ? clickedTarget.filePath
+            : undefined;
+      if (!clickedPath) return selectedPaths.length;
+
+      const clickedPathKey = packPathKey(clickedPath);
+      const clickedTargetIsSelected = selectedPaths.some((path) => {
+        const key = packPathKey(path);
+        return key === clickedPathKey || (clickedTarget?.kind === "folder" && key.startsWith(`${clickedPathKey}\\`));
+      });
+      if (clickedTargetIsSelected && selectedPaths.length > 0) return selectedPaths.length;
+      if (clickedTarget?.kind === "folder") return packFileDescendantCountsByFolderKey.get(clickedPathKey) ?? 0;
+      return 1;
+    }, [
+      contextMenu,
+      packData,
+      packFileDescendantCountsByFolderKey,
+      selectedDBExportPaths,
+      selectedFileExportPaths,
+      visibleActiveTreeTab,
+    ]);
 
     const cancelPendingOpen = () => {
       if (pendingOpenTimeoutRef.current == null) return;
@@ -1220,7 +1269,6 @@ const PackTablesTreeView = React.memo(
       };
     }, []);
 
-    const packPathKey = (value: string) => value.replaceAll("/", "\\").toLowerCase();
     const folderPathKeys = useMemo(
       () =>
         new Set([...getPackFolderPaths(filePackFileNames), ...(createdFoldersByPack[packPath] ?? [])].map(packPathKey)),
@@ -1267,7 +1315,7 @@ const PackTablesTreeView = React.memo(
 
     const handleCopyPath = async () => {
       const pathToCopy =
-        contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : selectedExportPaths.join("\n");
+        contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : getContextTargetPaths().join("\n");
       if (!pathToCopy) return;
       await copyTextToClipboard(pathToCopy);
       setContextMenu(null);
@@ -1311,6 +1359,7 @@ const PackTablesTreeView = React.memo(
     };
 
     const handleDeleteRequest = () => {
+      const selectedExportPaths = getContextTargetPaths();
       if (selectedExportPaths.length === 0 || isVanillaPackOpen) return;
       setContextMenu(null);
       setDeleteConfirm(selectedExportPaths);
@@ -1364,6 +1413,7 @@ const PackTablesTreeView = React.memo(
     }, [deleteConfirm]);
 
     const handleRenameRequest = (mode: "rename" | "move") => {
+      const selectedExportPaths = getContextTargetPaths();
       if (selectedExportPaths.length === 0 || isVanillaPackOpen) return;
       setContextMenu(null);
       setRenameRequest({ mode, paths: selectedExportPaths });
@@ -1582,6 +1632,7 @@ const PackTablesTreeView = React.memo(
     };
 
     const handleExportSelection = async () => {
+      const selectedExportPaths = getContextTargetPaths();
       if (selectedExportPaths.length === 0 || isExportingSelection || isExportingWholePack) return;
 
       setContextMenu(null);
@@ -2057,29 +2108,26 @@ const PackTablesTreeView = React.memo(
       contextMenu && !isVanillaPackOpen && (contextMenu.treeTab === "files" || contextMenu.treeTab === "empty"),
     );
     const showImportInContext = Boolean(contextMenu && !isVanillaPackOpen);
-    const showPackFileActionsInContext = Boolean(contextMenu && !isVanillaPackOpen && selectedExportPaths.length > 0);
-    const showCopyPathInContext = Boolean(contextMenu && selectedExportPaths.length > 0);
+    const showPackFileActionsInContext = Boolean(contextMenu && !isVanillaPackOpen && contextTargetPathCount > 0);
+    const showCopyPathInContext = Boolean(contextMenu && contextTargetPathCount > 0);
     const deleteLabel =
-      selectedExportPaths.length === 1
+      contextTargetPathCount === 1
         ? localized.viewerDeleteFile || "Delete file"
         : (localized.viewerDeleteFiles || "Delete {{count}} files").replace(
             "{{count}}",
-            String(selectedExportPaths.length),
+            String(contextTargetPathCount),
           );
     const renameLabel =
-      selectedExportPaths.length === 1
+      contextTargetPathCount === 1
         ? localized.viewerRenameFile || "Rename file…"
         : (localized.viewerRenameFiles || "Rename {{count}} files…").replace(
             "{{count}}",
-            String(selectedExportPaths.length),
+            String(contextTargetPathCount),
           );
     const moveLabel =
-      selectedExportPaths.length === 1
+      contextTargetPathCount === 1
         ? localized.viewerMoveFile || "Move file…"
-        : (localized.viewerMoveFiles || "Move {{count}} files…").replace(
-            "{{count}}",
-            String(selectedExportPaths.length),
-          );
+        : (localized.viewerMoveFiles || "Move {{count}} files…").replace("{{count}}", String(contextTargetPathCount));
     const importAnchor = contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : "";
     const importLabel = (kind: "file" | "folder") => {
       const label =
@@ -2269,7 +2317,7 @@ const PackTablesTreeView = React.memo(
               </ContextMenuSubmenu>
             )}
             <ContextMenuSubmenu label={localized.export || "Export"}>
-              {selectedExportPaths.length > 0 && (
+              {contextTargetPathCount > 0 && (
                 <button
                   type="button"
                   onClick={() => void handleExportSelection()}
