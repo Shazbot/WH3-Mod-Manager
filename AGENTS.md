@@ -4,21 +4,24 @@ Be concise and token-conscious. Avoid unnecessary repository exploration, repeat
 
 ## Delegation
 
-When acting as an orchestrator, delegate implementation to Luna Max when Luna is capable of completing the task reliably.
+Only delegate implementation work when operating in Plan mode.
 
-Keep difficult architectural decisions, ambiguity resolution, and unusually complex or high-risk work with the orchestrating agent when that is likely to produce a better result.
+When in Plan mode:
 
-When delegating:
-
+* Keep planning, architectural decisions, and ambiguity resolution with the parent agent.
+* Delegate implementation to Luna Max when Luna is capable of completing the task reliably.
 * Use `fork_turns="none"` by default.
-* Give the worker a compact, self-contained task with the goal, constraints, acceptance criteria, and relevant file hints.
-* Avoid duplicate repository exploration between the parent and worker.
-* Normally use one implementation worker.
+* Give Luna a compact, self-contained task with the goal, constraints, acceptance criteria, and relevant file hints.
+* Avoid duplicate repository exploration between the parent and Luna.
+* Normally use one Luna Max implementation worker.
 * Keep delegation and worker summaries concise.
 
-When given an implementation task directly, implement it yourself by default. Do not spawn another agent merely because the task is non-trivial.
+When not in Plan mode:
 
-Spawn additional agents only when the user explicitly requests orchestration or independent parallel work clearly provides a benefit.
+* Implement the task directly.
+* Do not spawn implementation subagents.
+
+Only use additional subagents for genuinely independent parallel work when the user explicitly requests it.
 
 ## UI and UX
 

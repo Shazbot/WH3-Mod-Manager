@@ -209,6 +209,8 @@
     "@fortawesome/free-solid-svg-icons": "^6.2.0",
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@handsontable/react-wrapper": "^16.0.1",
+    "@headless-tree/core": "^1.7.0",
+    "@headless-tree/react": "^1.7.0",
     "@heroicons/react": "^2.0.13",
     "@mongodb-js/zstd": "^2.0.1",
     "@napi-rs/lzma": "^1.5.1",

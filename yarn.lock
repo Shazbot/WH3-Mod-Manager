@@ -1334,6 +1334,16 @@
   resolved "https://registry.yarnpkg.com/@handsontable/react-wrapper/-/react-wrapper-16.0.1.tgz#c7892dc6b41da45eb0f17a7fb8196efa2b720fde"
   integrity sha512-ss5OAKIyHPPd88g/q15zAGusRjYQ06ZqHplwpv4NiafxCJnGZc/jyAGgnqhhXC39EYZdIlFehgVTET6bIW2azg==
 
+"@headless-tree/core@^1.7.0":
+  version "1.7.0"
+  resolved "https://registry.yarnpkg.com/@headless-tree/core/-/core-1.7.0.tgz#545be71d2b018a32576ab221855e83472ed32717"
+  integrity sha512-LxcX7LNepwfOPrZcs4PNfDwCzbi326uCAX5jYBfw94jI+pZQA7ANaE/No3LW0XFgcBcQtK/G2bInbVEhLF1C/Q==
+
+"@headless-tree/react@^1.7.0":
+  version "1.7.0"
+  resolved "https://registry.yarnpkg.com/@headless-tree/react/-/react-1.7.0.tgz#cc1de56020496f7f7687e8a648e84b388b06371e"
+  integrity sha512-hcnG4mpTP98KVWZYqKsXNOoiv7ZQqZVM2jWwzEWtF+VDSz+1O/juMI+/Q0G4lZM+ez07/tmBBWjvZub/mLAUXQ==
+
 "@heroicons/react@^2.0.13":
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/@heroicons/react/-/react-2.2.0.tgz#0c05124af50434a800773abec8d3af6a297d904b"
