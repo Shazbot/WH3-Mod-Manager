@@ -991,12 +991,9 @@ const resolveVisualsFileInSession = async (
   if (!requestedPath) return undefined;
   if (options?.variantMeshDefinitionFallback) {
     const lowerRequested = requestedPath.toLowerCase();
-    const looksExplicitPath = lowerRequested.includes("\\") || lowerRequested.startsWith("variantmeshes");
-    if (
-      lowerRequested.endsWith(".variantmeshdefinition") ||
-      !looksExplicitPath ||
-      !(/\.[a-z0-9_]+$/i.test(lowerRequested) && !lowerRequested.endsWith(".variantmeshdefinition"))
-    ) {
+    const hasNonVariantMeshDefinitionExtension =
+      /\.[a-z0-9_]+$/i.test(lowerRequested) && !lowerRequested.endsWith(".variantmeshdefinition");
+    if (!hasNonVariantMeshDefinitionExtension) {
       requestedPath = toVariantMeshDefinitionPath(requestedPath);
     }
   }

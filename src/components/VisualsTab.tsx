@@ -90,6 +90,15 @@ const getCasteSortOrder = (caste: string) => {
 
 const getVariantFileKey = (path: string) => path.replace(/\//g, "\\").replace(/\\+/g, "\\").trim().toLowerCase();
 
+const getVisualsFileKey = (path: string) => {
+  const normalizedPath = getVariantFileKey(path);
+  if (!normalizedPath.endsWith(".variantmeshdefinition")) return normalizedPath;
+  return `variantmeshes\\variantmeshdefinitions\\${getBaseName(normalizedPath)}`;
+};
+
+const isOpenableVisualsFile = (file: VisualsFileResult) =>
+  file.ext === "variantmeshdefinition" || file.ext === "wsmodel";
+
 const formatCasteLabel = (caste: string) =>
   caste.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unknown caste";
 
@@ -374,11 +383,24 @@ const VisualsTab = memo(() => {
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
 
-  const openVariantMeshTab = async (filePath: string, mode: "current" | "new") => {
+  const openVisualsFileTab = async (filePath: string, mode: "current" | "new") => {
     if (!filePath) {
-      setViewerMessage("No variantmeshdefinition path is available for this entry.");
+      setViewerMessage("No visual file path is available for this entry.");
       return;
     }
+
+    const fileKey = getVisualsFileKey(filePath);
+    const existingTab = tabs.find((tab) =>
+      [tab.filePath, tab.resolvedFileName]
+        .filter(Boolean)
+        .some((tabFilePath) => getVisualsFileKey(tabFilePath!) === fileKey),
+    );
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      setViewerMessage(null);
+      return;
+    }
+
     if (!sessionId) {
       setViewerMessage("Visuals session is not ready yet.");
       return;
@@ -431,7 +453,7 @@ const VisualsTab = memo(() => {
           return {
             ...tab,
             status: "error",
-            error: result?.error || "Failed to read variantmeshdefinition",
+            error: result?.error || "Failed to read visual file",
           };
         }
         return {
@@ -495,7 +517,7 @@ const VisualsTab = memo(() => {
       );
       return;
     }
-    openVariantMeshTab(unit.variantMeshPath, "current");
+    openVisualsFileTab(unit.variantMeshPath, "current");
   };
 
   const onUnitDoubleClick = (unit: VisualsUnitEntry) => {
@@ -505,17 +527,17 @@ const VisualsTab = memo(() => {
       );
       return;
     }
-    openVariantMeshTab(unit.variantMeshPath, "new");
+    openVisualsFileTab(unit.variantMeshPath, "new");
   };
 
   const onFileSingleClick = (file: VisualsFileResult) => {
-    if (file.ext !== "variantmeshdefinition") return;
-    openVariantMeshTab(file.path, "current");
+    if (!isOpenableVisualsFile(file)) return;
+    openVisualsFileTab(file.path, "current");
   };
 
   const onFileDoubleClick = (file: VisualsFileResult) => {
-    if (file.ext !== "variantmeshdefinition") return;
-    openVariantMeshTab(file.path, "new");
+    if (!isOpenableVisualsFile(file)) return;
+    openVisualsFileTab(file.path, "new");
   };
 
   const openAssetEditorContextMenu = (event: React.MouseEvent, targetPath?: string, preferredPackPath?: string) => {
@@ -602,10 +624,13 @@ const VisualsTab = memo(() => {
             const pathEnd = matchStart + fullMatch.length;
             const pathExt = pathValue.toLowerCase();
             const isVariantMeshDefinition = pathExt.endsWith(".variantmeshdefinition");
+            const isWsmodel = pathExt.endsWith(".wsmodel");
+            const pathPrefix = line.slice(Math.max(0, matchStart - 32), matchStart);
             const isClickableInVisuals =
-              isVariantMeshDefinition &&
-              line.includes("VARIANT_MESH_REFERENCE") &&
-              line.slice(Math.max(0, matchStart - 32), matchStart).includes('definition="');
+              (isVariantMeshDefinition &&
+                line.includes("VARIANT_MESH_REFERENCE") &&
+                pathPrefix.includes('definition="')) ||
+              (isWsmodel && pathPrefix.includes('model="'));
 
             if (matchStart > lastIndex) parts.push(line.slice(lastIndex, matchStart));
             if (isClickableInVisuals) {
@@ -613,9 +638,9 @@ const VisualsTab = memo(() => {
                 <button
                   key={`ref-${lineIndex}-${matchStart}`}
                   className="text-blue-300 underline hover:text-blue-200"
-                  onClick={() => openVariantMeshTab(pathValue, "new")}
+                  onClick={() => openVisualsFileTab(pathValue, "new")}
                   onContextMenu={(event) => openAssetEditorContextMenu(event, pathValue, preferredPackPath)}
-                  title="Open referenced variantmeshdefinition in a new tab (right-click for AssetEditor)"
+                  title={`Open referenced ${isVariantMeshDefinition ? "variantmeshdefinition" : "wsmodel"} in a new tab (right-click for AssetEditor)`}
                   type="button"
                 >
                   {pathValue}
@@ -890,7 +915,7 @@ const VisualsTab = memo(() => {
         <div style={{ flex: 1, minWidth: "1px", display: "flex", flexDirection: "column" }} className="ml-3 min-h-0">
           <div className="flex bg-gray-800 border border-gray-700 rounded-t overflow-x-auto min-h-[36px]">
             {tabs.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-400">Open a unit to view its variantmeshdefinition</div>
+              <div className="px-3 py-2 text-sm text-gray-400">Open a unit or model file to view it</div>
             ) : (
               tabs.map((tab) => (
                 <div
@@ -924,7 +949,7 @@ const VisualsTab = memo(() => {
           <div className="min-h-0 flex-1 border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-auto">
             {!activeTab && (
               <div className="p-4 text-gray-400">
-                Single-click opens in the current tab. Double-click opens in a new tab.
+                Single-click opens in the current tab. Double-click opens in a new tab. Links open in a new tab.
               </div>
             )}
             {activeTab && (
@@ -964,7 +989,7 @@ const VisualsTab = memo(() => {
 
               <div className="flex-1 overflow-auto">
                 {fileResults.map((file) => {
-                  const isOpenableInVisuals = file.ext === "variantmeshdefinition";
+                  const isOpenableInVisuals = isOpenableVisualsFile(file);
                   return (
                     <div
                       key={file.path}
