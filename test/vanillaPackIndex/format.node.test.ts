@@ -132,6 +132,27 @@ describe("vanilla pack index", () => {
     expect(children.at(-1)).toEqual({ path: "audio\\wwise\\1000.wem", isBranch: false });
   });
 
+  it("skips a child folder's descendants while listing all immediate children", () => {
+    const nestedIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: Array.from(
+          { length: 1001 },
+          (_, index) => `animation\\campaign\\${String(index).padStart(4, "0")}.anim`,
+        ),
+      },
+    ]);
+    let checkedFiles = 0;
+
+    expect(
+      collectVanillaPackTreeChildren(nestedIndex, "animation", () => {
+        checkedFiles++;
+        return true;
+      }),
+    ).toEqual([{ path: "animation\\campaign", isBranch: true }]);
+    expect(checkedFiles).toBe(1);
+  });
+
   it("pages a large flat folder without decoding its whole descendant range", () => {
     const pagedIndex = buildVanillaPackIndex(identity, [
       {

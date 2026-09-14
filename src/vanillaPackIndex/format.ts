@@ -251,26 +251,48 @@ export const collectVanillaPackTreeChildren = (
 ): VanillaPackTreeChild[] => {
   const normalizedPrefix = normalizeVanillaPackPath(prefix).replace(/\\+$/, "");
   const rangePrefix = normalizedPrefix ? `${normalizedPrefix}\\` : "";
-  const { start, end } = findFrontCodedPrefixRange(index.block, rangePrefix);
+  // Use binary-search bounds rather than findFrontCodedPrefixRange here. The latter has to decode
+  // every descendant to discover the end of the range. Once the first path identifies a child
+  // folder, the child folder's own upper bound lets us jump over all of its descendants while still
+  // returning every immediate child.
+  const start = findFrontCodedLowerBound(index.block, rangePrefix);
+  const end = findFrontCodedLowerBound(index.block, normalizedPrefix ? `${normalizedPrefix}\uffff` : "\uffff");
   const childrenByPath = new Map<string, VanillaPackTreeChild>();
 
-  forEachFrontCodedEntryInRange(index.block, start, end, (filePath) => {
-    if (filePath === undefined || !filePath.startsWith(rangePrefix) || !includeFile(filePath)) return;
+  let rank = start;
+  while (rank < end) {
+    const filePath = readFrontCodedEntry(index.block, rank);
+    if (filePath === undefined || !filePath.startsWith(rangePrefix)) break;
 
     const relativePath = rangePrefix ? filePath.slice(rangePrefix.length) : filePath;
     const separator = relativePath.indexOf("\\");
-    const childPath = separator < 0 ? filePath : `${rangePrefix}${relativePath.slice(0, separator)}`;
-    if (separator >= 0 && !includeBranch(childPath)) return;
-    const childKey = childPath.toLowerCase();
-    const existingChild = childrenByPath.get(childKey);
-
-    if (existingChild) {
-      if (separator >= 0) existingChild.isBranch = true;
-      return;
+    if (separator < 0) {
+      if (includeFile(filePath)) childrenByPath.set(filePath.toLowerCase(), { path: filePath, isBranch: false });
+      rank++;
+      continue;
     }
 
-    childrenByPath.set(childKey, { path: childPath, isBranch: separator >= 0 });
-  });
+    const childPath = `${rangePrefix}${relativePath.slice(0, separator)}`;
+    const childEnd = findFrontCodedLowerBound(index.block, `${childPath}\\\uffff`);
+    if (includeBranch(childPath)) {
+      // In the normal viewer path the first file is enough: all files in a branch are accepted,
+      // except for filtered roots such as db\\. If the first file is rejected, preserve the generic
+      // predicate's semantics by looking for another accepted descendant within this one branch.
+      let hasIncludedFile = includeFile(filePath);
+      if (!hasIncludedFile) {
+        forEachFrontCodedEntryInRange(index.block, rank + 1, childEnd, (candidatePath) => {
+          if (!candidatePath.startsWith(`${childPath}\\`)) return;
+          if (includeFile(candidatePath)) {
+            hasIncludedFile = true;
+            return false;
+          }
+        });
+      }
+      if (hasIncludedFile) childrenByPath.set(childPath.toLowerCase(), { path: childPath, isBranch: true });
+    }
+
+    rank = Math.max(rank + 1, childEnd);
+  }
 
   return [...childrenByPath.values()];
 };
