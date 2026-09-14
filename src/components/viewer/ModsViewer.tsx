@@ -1936,10 +1936,15 @@ const ModsViewer = memo(() => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "f") {
-        document.getElementById("dbTableFilter")?.focus();
-        e.stopImmediatePropagation();
-      }
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "f") return;
+
+      // CodeMirror owns Ctrl/Cmd+F inside its editor and search panel. The viewer filter should
+      // only handle the shortcut when focus is elsewhere in the viewer.
+      if (e.target instanceof Element && e.target.closest(".cm-editor")) return;
+
+      e.preventDefault();
+      document.getElementById("dbTableFilter")?.focus();
+      e.stopImmediatePropagation();
     };
 
     document.addEventListener("keydown", onKeyDown);

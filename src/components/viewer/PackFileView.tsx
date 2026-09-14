@@ -321,7 +321,9 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
           height="100%"
           theme={vscodeDark}
           extensions={editorExtensions}
-          editable={canEditTextFile}
+          // Keep the editor surface focusable so its search panel works for read-only files too.
+          // `readOnly` prevents document changes without disabling CodeMirror's keymaps.
+          readOnly={!canEditTextFile}
           onChange={handleTextChange}
           basicSetup={{
             foldGutter: true,
