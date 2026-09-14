@@ -20,6 +20,7 @@ import { buildImportedPackedFile } from "./utility/packImportStaging";
 import { applyTextPackedFileEdit } from "./utility/textPackStaging";
 import { compareFilesByteForByte } from "./utility/fileComparison";
 import { invalidateCustomizableModPath } from "./utility/customizableModsState";
+import { encodeDdsAsPng } from "./esfMap/dds";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
@@ -336,7 +337,12 @@ import {
 import { tryOpenFile } from "./utility/fileHelpers";
 import getPackTableData from "./utility/frontend/packDataHandling";
 import { findLatestScriptLog } from "./utility/logPaths";
-import { decodePackedTextBuffer, getPackedFileMimeType, getPackedFileViewerKind } from "./utility/packFileViewing";
+import {
+  decodePackedTextBuffer,
+  getPackedFileMimeType,
+  getPackedFileViewerKind,
+  isDdsPackedFilePath,
+} from "./utility/packFileViewing";
 import { refreshMainLoadOrderRules } from "./mainLoadOrderRules";
 import { replaceModLoadOrderRules } from "./loadOrderRules";
 import {
@@ -883,6 +889,12 @@ const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
 const findPackedFileInList = (packedFiles: PackedFile[], fileName: string) => {
   const normalizedTarget = normalizePackFilePathKey(fileName);
   return packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget);
+};
+const getPackedFileImageData = (buffer: Buffer, fileName: string): { buffer: Buffer; mimeType?: string } => {
+  if (isDdsPackedFilePath(fileName)) {
+    return { buffer: encodeDdsAsPng(buffer), mimeType: "image/png" };
+  }
+  return { buffer, mimeType: getPackedFileMimeType(fileName) };
 };
 const getOrLoadPackFromAppData = async (packPath: string) => {
   let stat: { size: number; mtimeMs: number } | undefined;
@@ -7905,10 +7917,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           };
         }
         if (viewerKind === "image") {
+          const image = getPackedFileImageData(unsavedBuffer, fileName);
           return {
             success: true,
-            base64: unsavedBuffer.toString("base64"),
-            mimeType: getPackedFileMimeType(fileName),
+            base64: image.buffer.toString("base64"),
+            mimeType: image.mimeType,
           };
         }
         return { success: true, text: decodePackedFileText(unsavedFile) };
@@ -7946,10 +7959,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             error: "Image data is unavailable",
           };
         }
+        const image = getPackedFileImageData(file.buffer, fileName);
         return {
           success: true,
-          base64: file.buffer.toString("base64"),
-          mimeType: getPackedFileMimeType(fileName),
+          base64: image.buffer.toString("base64"),
+          mimeType: image.mimeType,
         };
       }
       if (file.text != null) {

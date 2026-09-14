@@ -2,6 +2,8 @@ import { isLoadOrderRulesPackedFilePath } from "./loadOrderRulesFile";
 
 export type PackedFileViewerKind = "text" | "image";
 
+export const DDS_FILE_EXTENSION = ".dds";
+
 export const TEXT_FILE_EXTENSIONS = new Set([
   ".css",
   ".htm",
@@ -60,11 +62,14 @@ export const getPackedFileViewerKind = (filePath: string): PackedFileViewerKind 
     return "text";
   }
   const extension = getPackedFileLowerExtension(filePath);
-  if (IMAGE_FILE_MIME_TYPES[extension]) {
+  if (IMAGE_FILE_MIME_TYPES[extension] || extension === DDS_FILE_EXTENSION) {
     return "image";
   }
   return undefined;
 };
+
+export const isDdsPackedFilePath = (filePath: string): boolean =>
+  getPackedFileLowerExtension(filePath) === DDS_FILE_EXTENSION;
 
 export const isOpenablePackedFilePath = (filePath: string): boolean => getPackedFileViewerKind(filePath) != null;
 
