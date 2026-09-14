@@ -305,11 +305,10 @@ import {
 import { normalizeAssetPath } from "./assetUrls";
 import { forkSteamWorker as fork, terminateSteamWorker } from "./steamWorker";
 import {
-  collectVanillaPackTreeChildrenPageFromFlat,
+  collectVanillaPackTreeChildren,
   collectVanillaFilesUnderPrefix,
   findVanillaPackContaining,
   searchVanillaPackFileTree,
-  type VanillaPackTreeChildrenPage,
 } from "./vanillaPackIndex/format";
 import {
   selectPackPathsToSearch,
@@ -11676,7 +11675,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
   const getPackDataDestination = (sender: Electron.WebContents): PackDataDestination =>
     getLiveViewerWindow()?.webContents === sender ? "viewer" : "main";
-  const VANILLA_FILE_TREE_PAGE_SIZE = 1000;
   const VANILLA_FILE_SEARCH_MAX_RESULTS = 1000;
 
   ipcMain.on("getPackData", (event, packPath: string, table?: DBTable) => {
@@ -11691,34 +11689,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       _event,
       packPath: string,
       prefix: string,
-      offset = 0,
-    ): Promise<{
-      success: boolean;
-      children?: VanillaPackTreeChildrenPage["children"];
-      totalChildren?: number;
-      hasMore?: boolean;
-      nextOffset?: number;
-      error?: string;
-    }> => {
+    ): Promise<{ success: boolean; children?: { path: string; isBranch: boolean }[]; error?: string }> => {
       try {
         if (!canUseVanillaDbCacheForPack(packPath)) return { success: false, error: "Not the current DB pack" };
 
         const vanillaIndex = await getVanillaPackIndex();
-        if (!vanillaIndex) return { success: true, children: [], totalChildren: 0, hasMore: false };
+        if (!vanillaIndex) return { success: true, children: [] };
 
-        // The tree component is not virtualized, so never hand it a 170,000-file Wwise folder in a
-        // single IPC message. Subsequent pages are explicit and keep both renderers responsive.
-        const page = collectVanillaPackTreeChildrenPageFromFlat(
-          vanillaIndex,
-          prefix,
-          offset,
-          VANILLA_FILE_TREE_PAGE_SIZE,
-          (filePath) => parseDBTablePath(filePath) == undefined,
-          (folderPath) => folderPath !== "db" && folderPath !== "unusedtables",
-        );
         return {
           success: true,
-          ...page,
+          children: collectVanillaPackTreeChildren(
+            vanillaIndex,
+            prefix,
+            (filePath) => parseDBTablePath(filePath) == undefined,
+            (folderPath) => folderPath !== "db" && folderPath !== "unusedtables",
+          ),
         };
       } catch (error) {
         console.error("Could not load vanilla pack file tree:", error);

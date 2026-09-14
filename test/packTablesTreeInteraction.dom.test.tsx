@@ -772,7 +772,7 @@ describe("pack table tree interactions", () => {
     expect(screen.queryByRole("button", { name: /Move/ })).not.toBeInTheDocument();
   });
 
-  it("shows the DB pack Files tab and loads vanilla folders on demand", async () => {
+  it("shows the DB pack Files tab and loads every vanilla folder child at once", async () => {
     const packPath = "K:\\game\\data\\db.pack";
     const getVanillaPackFileTree = vi
       .fn()
@@ -782,10 +782,8 @@ describe("pack table tree interactions", () => {
         children: [
           { path: "animation\\campaign", isBranch: true },
           { path: "animation\\campaign\\dragon.anim", isBranch: false },
+          { path: "animation\\campaign\\phoenix.anim", isBranch: false },
         ],
-        totalChildren: 1002,
-        hasMore: true,
-        nextOffset: 2,
       });
     const previousApi = window.api;
     window.api = { getVanillaPackFileTree } as unknown as NonNullable<Window["api"]>;
@@ -834,7 +832,8 @@ describe("pack table tree interactions", () => {
       const campaignNode = screen.getByText("campaign").closest('[role="treeitem"]');
       if (campaignNode?.getAttribute("aria-expanded") !== "true") fireEvent.click(screen.getByText("campaign"));
       expect(screen.getByText("dragon.anim")).toBeInTheDocument();
-      expect(screen.getByText("Load more files… (1,000 remaining)")).toBeInTheDocument();
+      expect(screen.getByText("phoenix.anim")).toBeInTheDocument();
+      expect(screen.queryByText(/Load more files/)).not.toBeInTheDocument();
     } finally {
       view.unmount();
       window.api = previousApi;

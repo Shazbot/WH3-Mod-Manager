@@ -239,14 +239,15 @@ export const collectVanillaFilesUnderPrefix = (index: VanillaPackIndex, prefix: 
 };
 
 /**
- * Lists only the immediate children of a folder. The index stays in the main process and the
- * renderer asks for another level when a branch is expanded, so a db.pack open never transfers the
- * hundreds of thousands of vanilla names at once.
+ * Lists every immediate child of a folder. The index stays in the main process and the renderer
+ * asks for another level when a branch is expanded; the virtualized tree can still present a large
+ * child list without making the page itself render every row.
  */
 export const collectVanillaPackTreeChildren = (
   index: VanillaPackIndex,
   prefix: string,
   includeFile: (filePath: string) => boolean = () => true,
+  includeBranch: (folderPath: string) => boolean = () => true,
 ): VanillaPackTreeChild[] => {
   const normalizedPrefix = normalizeVanillaPackPath(prefix).replace(/\\+$/, "");
   const rangePrefix = normalizedPrefix ? `${normalizedPrefix}\\` : "";
@@ -259,6 +260,7 @@ export const collectVanillaPackTreeChildren = (
     const relativePath = rangePrefix ? filePath.slice(rangePrefix.length) : filePath;
     const separator = relativePath.indexOf("\\");
     const childPath = separator < 0 ? filePath : `${rangePrefix}${relativePath.slice(0, separator)}`;
+    if (separator >= 0 && !includeBranch(childPath)) return;
     const childKey = childPath.toLowerCase();
     const existingChild = childrenByPath.get(childKey);
 

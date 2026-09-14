@@ -118,6 +118,20 @@ describe("vanilla pack index", () => {
     ]);
   });
 
+  it("returns every immediate child when a folder has more than 1000 files", () => {
+    const largeFolderIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: Array.from({ length: 1001 }, (_, index) => `audio\\wwise\\${String(index).padStart(4, "0")}.wem`),
+      },
+    ]);
+
+    const children = collectVanillaPackTreeChildren(largeFolderIndex, "audio\\wwise");
+
+    expect(children).toHaveLength(1001);
+    expect(children.at(-1)).toEqual({ path: "audio\\wwise\\1000.wem", isBranch: false });
+  });
+
   it("pages a large flat folder without decoding its whole descendant range", () => {
     const pagedIndex = buildVanillaPackIndex(identity, [
       {
