@@ -15,7 +15,7 @@ import {
   getSelectedCloneTables,
 } from "../deepCloneTree";
 import { validateLookupSchemaReference } from "../lookupSchemaValidation";
-import { isSingleXmlElement, isValidXmlName } from "../editXmlFileValidation";
+import { isSingleXmlElementTemplate, isValidXmlNameTemplate } from "../editXmlFileValidation";
 import {
   dispatchNodeDataUpdate,
   nodeEditorDebugLog,
@@ -7325,7 +7325,7 @@ export const getEditXmlFileValidationErrors = (
   draft.locatorSteps.forEach((step, stepIndex) => {
     if (!step.elementName.trim()) {
       errors.push({ code: "elementNameRequired", stepIndex });
-    } else if (step.elementName.trim() !== "*" && !isValidXmlName(step.elementName.trim())) {
+    } else if (step.elementName.trim() !== "*" && !isValidXmlNameTemplate(step.elementName.trim())) {
       errors.push({ code: "elementNameInvalid", stepIndex });
     }
     const locatorAttributeNames = new Set<string>();
@@ -7334,7 +7334,7 @@ export const getEditXmlFileValidationErrors = (
         errors.push({ code: "locatorAttributeIncomplete", stepIndex, attributeIndex });
         return;
       }
-      if (!isValidXmlName(attribute.name.trim())) {
+      if (!isValidXmlNameTemplate(attribute.name.trim())) {
         errors.push({ code: "locatorAttributeInvalidName", stepIndex, attributeIndex });
       } else if (locatorAttributeNames.has(attribute.name.trim())) {
         errors.push({ code: "locatorAttributeDuplicateName", stepIndex, attributeIndex });
@@ -7356,7 +7356,7 @@ export const getEditXmlFileValidationErrors = (
         return;
       }
       if (!edit.name.trim() || !edit.newValue.trim()) return;
-      if (!isValidXmlName(edit.name.trim())) {
+      if (!isValidXmlNameTemplate(edit.name.trim())) {
         errors.push({ code: "setAttributeInvalidName", editIndex });
       } else if (mutationNames.has(edit.name.trim())) {
         errors.push({ code: "setAttributeDuplicateName", editIndex });
@@ -7368,7 +7368,7 @@ export const getEditXmlFileValidationErrors = (
   if (draft.action === "replaceElement") {
     if (!draft.replacementXml.trim()) {
       errors.push({ code: "replacementRequired" });
-    } else if (!isSingleXmlElement(draft.replacementXml)) {
+    } else if (!isSingleXmlElementTemplate(draft.replacementXml)) {
       errors.push({ code: "replacementInvalid" });
     }
   }
@@ -7615,7 +7615,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
               <DeepCloneHelp
                 text={
                   localized.nodeEditorEditXmlFileHelp ||
-                  "An exact path resolves to the highest-priority pack copy. Previous output must contain one file. The locator must select exactly one XML element to edit."
+                  "An exact path resolves to the highest-priority pack copy. Previous output must contain one file. The locator must select exactly one XML element to edit. Text fields accept flow option placeholders such as {{optionId}}, including element and attribute names and values in the locator and action, and replacement XML."
                 }
               />
             </div>

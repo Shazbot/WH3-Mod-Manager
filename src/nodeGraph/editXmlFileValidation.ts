@@ -42,6 +42,17 @@ export const isValidXmlName = (value: string): boolean => {
   return codePoints.length > 0 && inXmlNameStartRange(codePoints[0]) && codePoints.slice(1).every(inXmlNameRange);
 };
 
+// Flow option placeholders are resolved before the XML node reaches the runtime validator. For
+// authoring, replace them with a valid name token so fields such as `{{elementName}}` can be used
+// wherever an XML element or attribute name is required.
+const FLOW_OPTION_PLACEHOLDER = /\{\{[^{}]+\}\}/g;
+const replaceFlowOptionPlaceholdersForValidation = (value: string): string =>
+  value.replace(FLOW_OPTION_PLACEHOLDER, "flowOption");
+
+/** XML Name validation for fields that may contain a flow option placeholder. */
+export const isValidXmlNameTemplate = (value: string): boolean =>
+  isValidXmlName(value) || isValidXmlName(replaceFlowOptionPlaceholdersForValidation(value));
+
 const parseWithDomParser = (value: string): boolean | undefined => {
   if (typeof DOMParser === "undefined") return undefined;
   try {
@@ -74,3 +85,11 @@ export const isSingleXmlElement = (value: string): boolean => {
   const paired = new RegExp(String.raw`^<(${name})(?:\s[^<>]*?)?>(?:.|\s)*</\1>$`, "s");
   return selfClosing.test(trimmed) || paired.test(trimmed);
 };
+
+/**
+ * Checks a replacement XML template. Flow option placeholders are allowed in element/attribute names
+ * while authoring and are replaced with a valid XML name before this check; the resolved XML is
+ * validated again by the runtime parser.
+ */
+export const isSingleXmlElementTemplate = (value: string): boolean =>
+  isSingleXmlElement(value) || isSingleXmlElement(replaceFlowOptionPlaceholdersForValidation(value));

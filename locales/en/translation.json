@@ -1429,7 +1429,7 @@
   "nodeEditorNodeEditXmlFileLabel": "Edit XML File",
   "nodeEditorNodeEditXmlFileDescription": "Edits one exact XML element selected by a structural locator",
   "nodeEditorEditXmlFileTitle": "Edit XML File",
-  "nodeEditorEditXmlFileHelp": "An exact path resolves to the highest-priority pack copy. Previous output must contain one file. The locator must select exactly one XML element to edit.",
+  "nodeEditorEditXmlFileHelp": "An exact path resolves to the highest-priority pack copy. Previous output must contain one file. The locator must select exactly one XML element to edit. Text fields accept flow option placeholders such as {{optionId}}, including element and attribute names and values in the locator and action, and replacement XML.",
   "nodeEditorEditXmlFileTargetLabel": "Target",
   "nodeEditorEditXmlFileTargetMode": "File target",
   "nodeEditorEditXmlFileTargetPath": "Exact path",

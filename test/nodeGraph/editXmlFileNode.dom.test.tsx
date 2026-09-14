@@ -77,6 +77,45 @@ describe("Edit XML File node", () => {
     ).toContain("replacementInvalid");
   });
 
+  it("allows flow-option placeholders in locator and action text fields", () => {
+    const common = {
+      targetMode: "path",
+      filePath: "ui/{{path}}.xml",
+      ignoreHierarchy: true,
+      locatorSteps: [
+        {
+          id: "locator",
+          elementName: "{{element}}",
+          attributes: [{ id: "locator-attribute", name: "{{locatorName}}", value: "{{locatorValue}}" }],
+        },
+      ],
+    } as const;
+
+    expect(
+      getEditXmlFileValidationErrors(
+        {
+          ...common,
+          action: "setAttributes",
+          attributeEdits: [{ id: "edit", name: "{{mutationName}}", newValue: "{{mutationValue}}" }],
+          replacementXml: "",
+        },
+        "PackFiles",
+      ),
+    ).toEqual([]);
+
+    expect(
+      getEditXmlFileValidationErrors(
+        {
+          ...common,
+          action: "replaceElement",
+          attributeEdits: [],
+          replacementXml: "<{{replacementTag}}>{{replacementText}}</{{replacementTag}}>",
+        },
+        "PackFiles",
+      ),
+    ).toEqual([]);
+  });
+
   it("opens with the safe authoring defaults", async () => {
     const view = renderNode();
 
