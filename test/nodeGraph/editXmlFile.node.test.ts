@@ -105,6 +105,14 @@ describe("Edit XML File structural runtime", () => {
     expect(result.text).toBe("\uFEFF<root>\n  <target old='2'\n    keep=\"yes\"\n    added='3'\n  />\n</root>");
   });
 
+  it("accepts encoded ampersands when parsing XML attributes", () => {
+    const result = setAttributes('<root><target expression="left &amp;&amp; right" /></root>', {
+      locatorSteps: locator("target", [{ name: "expression", value: "left && right" }]),
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe('<root><target expression="left &amp;&amp; right" new="value" /></root>');
+  });
+
   it("adds missing attributes on a matching-indented line for multiline tags", () => {
     const normal = setAttributes('<root>\n  <target\n    old="1">value</target>\n</root>', {
       attributeEdits: [{ id: "edit", name: "added", newValue: "2" }],

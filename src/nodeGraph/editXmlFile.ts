@@ -121,28 +121,25 @@ const readName = (text: string, at: number): { name: string; next: number } => {
 };
 
 const decodeXmlEntities = (value: string): string => {
-  return value
-    .replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/g, (entity, body: string) => {
-      if (body === "amp") return "&";
-      if (body === "lt") return "<";
-      if (body === "gt") return ">";
-      if (body === "quot") return '"';
-      if (body === "apos") return "'";
-      const codePoint = body.toLowerCase().startsWith("#x")
-        ? Number.parseInt(body.slice(2), 16)
-        : Number.parseInt(body.slice(1), 10);
-      if (!Number.isInteger(codePoint) || !isValidXmlCharacter(codePoint)) {
-        throw new XmlParseError(`Invalid XML character reference '&${body};'`);
-      }
-      try {
-        return String.fromCodePoint(codePoint);
-      } catch {
-        throw new XmlParseError(`Invalid XML character reference '&${body};'`);
-      }
-    })
-    .replace(/&[^;\s<]+;|&/g, (entity) => {
-      throw new XmlParseError(`Invalid XML entity '${entity}'`);
-    });
+  return value.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);|&[^;\s<]+;|&/g, (entity, body?: string) => {
+    if (!body) throw new XmlParseError(`Invalid XML entity '${entity}'`);
+    if (body === "amp") return "&";
+    if (body === "lt") return "<";
+    if (body === "gt") return ">";
+    if (body === "quot") return '"';
+    if (body === "apos") return "'";
+    const codePoint = body.toLowerCase().startsWith("#x")
+      ? Number.parseInt(body.slice(2), 16)
+      : Number.parseInt(body.slice(1), 10);
+    if (!Number.isInteger(codePoint) || !isValidXmlCharacter(codePoint)) {
+      throw new XmlParseError(`Invalid XML character reference '&${body};'`);
+    }
+    try {
+      return String.fromCodePoint(codePoint);
+    } catch {
+      throw new XmlParseError(`Invalid XML character reference '&${body};'`);
+    }
+  });
 };
 
 const findMarkupEnd = (text: string, start: number, terminator: string): number => {
