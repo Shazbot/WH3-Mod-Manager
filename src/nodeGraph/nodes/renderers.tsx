@@ -7819,13 +7819,6 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                           "The locator must match exactly one element. Each later step searches inside the previous match."}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={addLocatorStep}
-                      className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      + {localized.nodeEditorEditXmlFileAddStep || "Add step"}
-                    </button>
                   </div>
 
                   <div className="space-y-3">
@@ -7869,6 +7862,10 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                               placeholder={localized.nodeEditorEditXmlFileElementNamePlaceholder || "*"}
                               className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                             />
+                            <span className="text-[11px] text-gray-400">
+                              {localized.nodeEditorEditXmlFileElementNameWildcardHelp ||
+                                "Wildcard: * matches any element."}
+                            </span>
                           </label>
                           {stepElementError && (
                             <p className="mt-1 text-xs text-red-300">
@@ -7882,9 +7879,18 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
 
                           <div className="mt-3 space-y-2">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs text-gray-300">
-                                {localized.nodeEditorEditXmlFileLocatorAttributes || "Exact attributes (AND)"}
-                              </span>
+                              {step.attributes.length > 0 && (
+                                <span className="text-xs text-gray-300">
+                                  {localized.nodeEditorEditXmlFileLocatorAttributes ||
+                                    "Match attributes (all must match)"}
+                                  <DeepCloneHelp
+                                    text={
+                                      localized.nodeEditorEditXmlFileLocatorAttributesTooltip ||
+                                      "Each listed name/value pair must match; other attributes are allowed."
+                                    }
+                                  />
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => addLocatorAttribute(step.id)}
@@ -7961,6 +7967,15 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                         </div>
                       );
                     })}
+                  </div>
+                  <div className="flex justify-center pt-1">
+                    <button
+                      type="button"
+                      onClick={addLocatorStep}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      + {localized.nodeEditorEditXmlFileAddStep || "Add step"}
+                    </button>
                   </div>
                 </section>
 

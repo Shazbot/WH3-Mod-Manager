@@ -85,6 +85,13 @@ describe("Edit XML File node", () => {
     const dialog = await view.findByRole("dialog");
     expect(within(dialog).getByLabelText("Exact XML path")).toHaveValue("");
     expect(within(dialog).getByLabelText("Element name 1")).toHaveValue("*");
+    expect(within(dialog).getByText("Wildcard: * matches any element.")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Match attributes (all must match)")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "+ Add attribute" }));
+    expect(within(dialog).getByText("Match attributes (all must match)")).toBeInTheDocument();
+    expect(
+      within(dialog).getByTitle("Each listed name/value pair must match; other attributes are allowed."),
+    ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Ignore hierarchy (start in <components>)")).toBeChecked();
     expect(within(dialog).getByRole("button", { name: "Done" })).toBeDisabled();
     expect(within(dialog).getByText(/must match exactly one element/i)).toBeInTheDocument();
