@@ -719,6 +719,7 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
         const tile: BuildingsTile = {
           levelKey,
           chainKey,
+          superChainKey: chain?.superChain || undefined,
           setKey,
           level: level.level,
           // Horde chains are numbered from 0 throughout, so their first tier is already `I`.

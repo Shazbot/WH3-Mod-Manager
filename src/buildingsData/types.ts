@@ -410,6 +410,8 @@ export interface BuildingsRegionQuery {
 export interface BuildingsTile {
   levelKey: string;
   chainKey: string;
+  /** The `building_chains_tables.building_superchain` key for this level's chain. */
+  superChainKey?: string;
   setKey: string;
   /** Pack containing the effective culture-variant row used by this tile. */
   cloneSourcePackPath?: string;
