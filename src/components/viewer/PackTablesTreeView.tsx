@@ -587,7 +587,9 @@ const HeadlessVirtualTree = React.memo(
               rowHeight={PACK_TREE_ROW_HEIGHT}
               rowRenderer={rowRenderer}
               overscanRowCount={PACK_TREE_OVERSCAN_ROWS}
-              scrollTop={scrollTopRef.current}
+              // Keep scrolling uncontrolled. Passing the ref value as `scrollTop` makes
+              // react-virtualized treat its own scroll updates as stale controlled values and
+              // snap back to the last value React rendered (usually zero).
               className="scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
               onScroll={({ scrollTop }) => {
                 scrollTopRef.current = scrollTop;
