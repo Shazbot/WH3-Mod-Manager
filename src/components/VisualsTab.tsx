@@ -555,6 +555,13 @@ const VisualsTab = memo(() => {
     await sendToAssetEditor(targetPath, mode, preferredPackPath);
   };
 
+  const onCopyAssetPathContextAction = (copyName: boolean) => {
+    if (!assetEditorContextMenu) return;
+    const { targetPath } = assetEditorContextMenu;
+    setAssetEditorContextMenu(null);
+    window.api?.putPathInClipboard(copyName ? getBaseName(targetPath) : targetPath);
+  };
+
   const closeTab = (tabId: string) => {
     setTabs((prev) => {
       const index = prev.findIndex((tab) => tab.id === tabId);
@@ -1047,6 +1054,21 @@ const VisualsTab = memo(() => {
             }}
           >
             Open In Existing AssetEd Tab
+          </button>
+          <div className="my-1 border-t border-gray-700" />
+          <button
+            type="button"
+            className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+            onClick={() => onCopyAssetPathContextAction(true)}
+          >
+            Copy Name to Clipboard
+          </button>
+          <button
+            type="button"
+            className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+            onClick={() => onCopyAssetPathContextAction(false)}
+          >
+            Copy Full Path to Clipboard
           </button>
         </div>
       )}
