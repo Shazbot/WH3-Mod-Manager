@@ -492,7 +492,7 @@ const HeadlessVirtualTree = React.memo(
               className="flex h-full items-center cursor-pointer rounded text-blue-300 hover:text-white hover:underline"
             >
               <span aria-hidden="true" className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0`} />
-              <span className="relative select-none">{node.name}</span>
+              <span className="relative select-none whitespace-nowrap">{node.name}</span>
             </div>
           </div>
         );
@@ -560,7 +560,7 @@ const HeadlessVirtualTree = React.memo(
                 event.stopPropagation();
                 onOpenInNewTab(node);
               }}
-              className="relative select-none"
+              className="relative select-none whitespace-nowrap"
               title={getNodeFullPath(node, nodeById as Map<INode["id"], INode>).replaceAll("\\", "/")}
             >
               {node.name}

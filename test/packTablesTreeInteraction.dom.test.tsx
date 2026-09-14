@@ -217,6 +217,12 @@ describe("pack table tree interactions", () => {
     await waitFor(() => expect(screen.getByText("file-09999.lua")).toBeInTheDocument());
   });
 
+  it("keeps long tree labels on a single virtualized row", () => {
+    renderPackTree(["script_workspace.code-workspace"], "files");
+
+    expect(screen.getByText("script_workspace.code-workspace")).toHaveClass("whitespace-nowrap");
+  });
+
   it("Ctrl-clicking a folder toggles each descendant leaf independently", () => {
     renderPackTree(["scripts\\first.lua", "scripts\\second.lua"], "files");
     fireEvent.click(screen.getByText("scripts"));
