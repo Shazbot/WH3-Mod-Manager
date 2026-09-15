@@ -6,6 +6,7 @@ import {
   getModsSortedByEnabled,
   getModsSortedByAuthor,
   getModsSortedByHumanName,
+  getModsSortedByName,
   getModSortName,
   getSparseLoadOrderByModName,
   sortModsAsInEntries,
@@ -110,6 +111,14 @@ describe("getFilteredMods", () => {
       "enabled-first.pack",
       "enabled-second.pack",
     ]);
+  });
+});
+
+describe("sorting by pack name", () => {
+  it("keeps the natural alphanumeric case ordering", () => {
+    const mods = [createMod({ name: "aaa.pack" }), createMod({ name: "AAA.pack" })];
+
+    expect(getModsSortedByName(mods).map((mod) => mod.name)).toEqual(["AAA.pack", "aaa.pack"]);
   });
 });
 
