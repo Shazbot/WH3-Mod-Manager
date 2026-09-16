@@ -14,10 +14,11 @@ module.exports = {
   },
   stats: isVerbose ? "verbose" : "errors-warnings",
   /**
-   * This is the main entry point for your application, it's the first file
-   * that runs in the main process.
+   * These are the main-process entry points for the application. The asset-host IPC module is a
+   * side-effect entry that registers its narrowly scoped handlers before the window can request a
+   * preview; index.ts remains the normal application bootstrap.
    */
-  entry: "./src/index.ts",
+  entry: ["./src/wh3AssetHostIpc.ts", "./src/index.ts"],
   // Put your normal webpack config below here
   module: {
     rules: require("./webpack.rules"),
@@ -34,7 +35,7 @@ module.exports = {
       chunks: "async", // Only split async chunks to avoid conflicts
       cacheGroups: {
         default: false, // Disable default cache group
-        vendors: false, // Disable vendor cache group for main process
+        vendors: false, // Disable vendor cache group
       },
     },
     // Enable tree shaking
