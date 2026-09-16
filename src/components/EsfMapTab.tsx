@@ -95,20 +95,20 @@ const loadMapImage = (src: string | undefined): Promise<HTMLImageElement | undef
   });
 };
 
-const drawAreaPath = (context: CanvasRenderingContext2D, area: EsfMapArea, height: number, displayFlipY: boolean) => {
-  context.beginPath();
+const areaGeometryKey = (area: EsfMapArea) => `${area.areaId}:${area.componentId}`;
+
+const createAreaPath = (area: EsfMapArea, height: number, displayFlipY: boolean): Path2D => {
+  const path = new Path2D();
   for (const loop of area.loops) {
     if (loop.length < 6) continue;
-    context.moveTo(loop[0], displayYFromVertex(height, loop[1], displayFlipY));
+    path.moveTo(loop[0], displayYFromVertex(height, loop[1], displayFlipY));
     for (let index = 2; index < loop.length; index += 2) {
-      context.lineTo(loop[index], displayYFromVertex(height, loop[index + 1], displayFlipY));
+      path.lineTo(loop[index], displayYFromVertex(height, loop[index + 1], displayFlipY));
     }
-    context.closePath();
+    path.closePath();
   }
+  return path;
 };
-
-const getMarkerForArea = (map: EsfMapPayload, area: EsfMapArea): EsfMapMarker | undefined =>
-  area.regionKey ? map.markers.find((marker) => marker.key === area.regionKey) : undefined;
 
 const factionKey = (value: string | null | undefined) => value?.trim().toLowerCase();
 
@@ -570,6 +570,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const mapScaleY = map && map.height > 0 ? mapDisplayHeightPx / map.height : 1;
 
   const regionGeometricCenters = useMemo(() => (map ? computeRegionGeometricCenters(map.areas) : new Map()), [map]);
+  // Geometry does not change when ownership or other map edits do. Build browser-native paths once
+  // for the loaded campaign and reuse them for drawing and hit testing.
+  const areaPaths = useMemo(() => {
+    const paths = new Map<string, Path2D>();
+    if (!baseMap) return paths;
+    for (const area of baseMap.areas) {
+      paths.set(areaGeometryKey(area), createAreaPath(area, baseMap.height, baseMap.displayFlipY));
+    }
+    return paths;
+  }, [baseMap]);
+  const markersByRegion = useMemo(
+    () => new Map((map?.markers ?? []).map((marker) => [marker.key, marker] as const)),
+    [map],
+  );
 
   useEffect(() => {
     if (!isEditingFactions) return;
@@ -1455,9 +1469,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       if (mapView === "regions") {
         for (const area of map.areas) {
           if (!regionMatchesSettlementType(area.regionKey)) continue;
-          drawAreaPath(context, area, map.height, map.displayFlipY);
+          const areaPath = areaPaths.get(areaGeometryKey(area));
+          if (!areaPath) continue;
           context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
-          context.fill("evenodd");
+          context.fill(areaPath, "evenodd");
         }
       }
 
@@ -1473,9 +1488,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             continue;
           const climate = climateByKey.get(climateKey);
           if (!climate) continue;
-          drawAreaPath(context, area, map.height, map.displayFlipY);
+          const areaPath = areaPaths.get(areaGeometryKey(area));
+          if (!areaPath) continue;
           context.fillStyle = `rgba(${climate.colour[0]}, ${climate.colour[1]}, ${climate.colour[2]}, ${MAP_AREA_OPACITY})`;
-          context.fill("evenodd");
+          context.fill(areaPath, "evenodd");
         }
       }
 
@@ -1484,28 +1500,31 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         for (const area of map.areas) {
           const ownerKey = factionKey(area.ownerFaction);
           if (!ownerKey || !regionMatchesSettlementType(area.regionKey)) continue;
-          drawAreaPath(context, area, map.height, map.displayFlipY);
+          const areaPath = areaPaths.get(areaGeometryKey(area));
+          if (!areaPath) continue;
           context.fillStyle = factionColour(ownerKey);
-          context.fill("evenodd");
+          context.fill(areaPath, "evenodd");
         }
         for (const area of brushFactionKey ? map.areas : []) {
           if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== brushFactionKey)
             continue;
-          drawAreaPath(context, area, map.height, map.displayFlipY);
+          const areaPath = areaPaths.get(areaGeometryKey(area));
+          if (!areaPath) continue;
           context.strokeStyle = "rgba(255, 255, 255, 0.9)";
           context.lineWidth = 1.2;
-          context.stroke();
+          context.stroke(areaPath);
         }
       } else if (mapView === "factions" && selectedFactionForMap) {
         for (const area of map.areas) {
           if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== selectedFactionForMap)
             continue;
-          drawAreaPath(context, area, map.height, map.displayFlipY);
+          const areaPath = areaPaths.get(areaGeometryKey(area));
+          if (!areaPath) continue;
           context.fillStyle = factionColour(selectedFactionForMap);
           context.strokeStyle = "rgba(255, 255, 255, 0.9)";
           context.lineWidth = 1.2;
-          context.fill("evenodd");
-          context.stroke();
+          context.fill(areaPath, "evenodd");
+          context.stroke(areaPath);
         }
       } else if (
         (mapView === "regions" || mapView === "climate") &&
@@ -1517,12 +1536,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         );
         for (const area of map.areas) {
           if (!selectedAreaIds.has(area.componentId)) continue;
-          drawAreaPath(context, area, map.height, map.displayFlipY);
+          const areaPath = areaPaths.get(areaGeometryKey(area));
+          if (!areaPath) continue;
           context.fillStyle = "rgba(255, 255, 255, 0.18)";
           context.strokeStyle = "rgba(255, 255, 255, 0.95)";
           context.lineWidth = 1.2;
-          context.fill("evenodd");
-          context.stroke();
+          context.fill(areaPath, "evenodd");
+          context.stroke(areaPath);
         }
       }
 
@@ -1591,6 +1611,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       cancelled = true;
     };
   }, [
+    areaPaths,
     brushFactionKey,
     climateByKey,
     climateSelectionKey,
@@ -2069,11 +2090,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
     let areaMarker: EsfMapMarker | undefined;
     for (const area of map.areas) {
-      drawAreaPath(context, area, map.height, map.displayFlipY);
-      if (context.isPointInPath(x, y, "evenodd")) {
-        areaMarker = getMarkerForArea(map, area);
-        if (areaMarker) break;
-      }
+      const areaPath = areaPaths.get(areaGeometryKey(area));
+      if (!areaPath || !context.isPointInPath(areaPath, x, y, "evenodd")) continue;
+      areaMarker = area.regionKey ? markersByRegion.get(area.regionKey) : undefined;
+      if (areaMarker) break;
     }
 
     if (!areaMarker) {

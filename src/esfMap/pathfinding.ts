@@ -20,6 +20,7 @@ type DecodedCharacterPathfinding = {
 };
 
 type CharacterTerrain = keyof typeof CHARACTER_TERRAIN_COLOURS;
+type TerrainCanvas = HTMLCanvasElement | OffscreenCanvas;
 
 export const CHARACTER_TERRAIN_COLOURS = {
   unusable: "rgba(255, 0, 0, 0.42)",
@@ -29,6 +30,7 @@ export const CHARACTER_TERRAIN_COLOURS = {
 } as const;
 
 const decodedBitsets = new Map<string, Uint8Array>();
+const terrainCanvasCache = new WeakMap<EsfMapCharacterPathfinding, Map<string, TerrainCanvas>>();
 
 const decodeBase64 = (encoded: string): Uint8Array => {
   if (typeof globalThis.atob === "function") {
@@ -162,16 +164,30 @@ export const snapCharacterPointToUsable = (
   };
 };
 
-/** Paints PPD terrain classes over the map surface while leaving the character layer interactive. */
-export const drawCharacterTerrainAreas = (context: CanvasRenderingContext2D, map: CharacterPathfindingMap) => {
-  const pathfinding = map.characterPathfinding;
-  if (!pathfinding) return;
+const createTerrainCanvas = (width: number, height: number): TerrainCanvas | undefined => {
+  if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(width, height);
+  if (typeof document === "undefined") return undefined;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+};
+
+const terrainCanvasKey = (map: CharacterPathfindingMap) =>
+  `${map.width}x${map.height}:${map.characterCoordinateGrid.displayFlipY ? "flip" : "normal"}`;
+
+const renderCharacterTerrainCanvas = (
+  map: CharacterPathfindingMap,
+  pathfinding: EsfMapCharacterPathfinding,
+): TerrainCanvas | undefined => {
+  const canvas = createTerrainCanvas(map.width, map.height);
+  const context = canvas?.getContext("2d");
+  if (!canvas || !context) return undefined;
 
   const decoded = decodedPathfinding(pathfinding);
   const scaleX = map.width / pathfinding.width;
   const scaleY = map.height / pathfinding.height;
   const flipY = map.characterCoordinateGrid.displayFlipY;
-  context.save();
 
   for (let sourceY = 0; sourceY < pathfinding.height; sourceY += 1) {
     let runStart = -1;
@@ -209,5 +225,31 @@ export const drawCharacterTerrainAreas = (context: CanvasRenderingContext2D, map
     }
     if (runStart >= 0) paintRun(pathfinding.width - 1);
   }
-  context.restore();
+
+  return canvas;
+};
+
+const cachedCharacterTerrainCanvas = (map: CharacterPathfindingMap): TerrainCanvas | undefined => {
+  const pathfinding = map.characterPathfinding;
+  if (!pathfinding) return undefined;
+
+  let canvases = terrainCanvasCache.get(pathfinding);
+  if (!canvases) {
+    canvases = new Map();
+    terrainCanvasCache.set(pathfinding, canvases);
+  }
+  const key = terrainCanvasKey(map);
+  const cached = canvases.get(key);
+  if (cached) return cached;
+
+  const canvas = renderCharacterTerrainCanvas(map, pathfinding);
+  if (canvas) canvases.set(key, canvas);
+  return canvas;
+};
+
+/** Paints PPD terrain classes over the map surface while leaving the character layer interactive. */
+export const drawCharacterTerrainAreas = (context: CanvasRenderingContext2D, map: CharacterPathfindingMap) => {
+  const canvas = cachedCharacterTerrainCanvas(map);
+  if (!canvas) return;
+  context.drawImage(canvas, 0, 0);
 };
