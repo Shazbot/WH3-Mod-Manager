@@ -57,6 +57,6 @@ export const unitAssetUrl = (sessionId: string, assetPath: string) =>
 export const modThumbnailUrl = (imgPath: string) =>
   `${ASSET_SCHEME}://${MOD_THUMBNAIL_HOST}/${encodeURIComponent(imgPath)}`;
 
-/** A PNG externalised from the campaign-map disk cache. */
-export const mapCacheImageUrl = (signature: string, imageName: string) =>
-  `${ASSET_SCHEME}://${MAP_CACHE_HOST}/${encodeURIComponent(signature)}/${encodeURIComponent(imageName)}.png`;
+/** A content-addressed PNG externalised from the campaign-map disk cache. */
+export const mapCacheImageUrl = (contentHash: string, imageName: string) =>
+  `${ASSET_SCHEME}://${MAP_CACHE_HOST}/${encodeURIComponent(contentHash)}/${encodeURIComponent(imageName)}.png`;
