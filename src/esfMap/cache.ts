@@ -9,8 +9,10 @@ import type { EsfMapImage, EsfMapPayload } from "./types";
 const ESF_MAP_CACHE_VERSION = 14;
 const ESF_MAP_CACHE_FILE = "esf-map-data-cache.bin";
 const ESF_MAP_IMAGE_CACHE_DIR = "esf-map-images";
+const ESF_MAP_IMAGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
 const SHA256_HEX = /^[a-f0-9]{64}$/;
+const SHA256_PNG_FILE = /^([a-f0-9]{64})\.png$/;
 
 export type EsfMapCachedImageName = "background" | "background-text";
 
@@ -33,6 +35,24 @@ const cachedImageHash = (image: EsfMapImage | null, imageName: EsfMapCachedImage
   if (!image.src.startsWith(prefix) || !image.src.endsWith(suffix)) return undefined;
   const contentHash = image.src.slice(prefix.length, -suffix.length);
   return SHA256_HEX.test(contentHash) ? contentHash : undefined;
+};
+
+const cachedImageHashes = (data: EsfMapPayload): Set<string> => {
+  const hashes = new Set<string>();
+  const backgroundHash = cachedImageHash(data.backgroundImage, "background");
+  const backgroundTextHash = cachedImageHash(data.backgroundTextImage, "background-text");
+  if (backgroundHash) hashes.add(backgroundHash);
+  if (backgroundTextHash) hashes.add(backgroundTextHash);
+  return hashes;
+};
+
+const markCachedImagesUsed = async (userDataPath: string, data: EsfMapPayload) => {
+  const now = new Date();
+  await Promise.all(
+    [...cachedImageHashes(data)].map((contentHash) =>
+      fs.promises.utimes(imageCachePath(userDataPath, contentHash), now, now).catch(() => undefined),
+    ),
+  );
 };
 
 const externalizeImage = async (
@@ -118,6 +138,7 @@ export const loadEsfMapDiskCache = async (
     const payload = JSON.parse(json.toString("utf8")) as EsfMapDiskPayload;
     if (payload.version !== ESF_MAP_CACHE_VERSION || payload.signature !== signature) return undefined;
     if (!(await cachedImagesExist(userDataPath, payload))) return undefined;
+    await markCachedImagesUsed(userDataPath, payload.data);
     cachedPayload = payload;
     return payload.data;
   } catch {
@@ -125,7 +146,16 @@ export const loadEsfMapDiskCache = async (
   }
 };
 
-const removeLegacyImageDirectories = async (userDataPath: string) => {
+/**
+ * Keeps content-addressed map images around for reuse, but removes ones that have not been used for
+ * 90 days. Hashes referenced by the current cache are always retained. Old signature directories
+ * from the pre-content-addressed cache are also removed.
+ */
+export const cleanupEsfMapImageCache = async (
+  userDataPath: string,
+  currentData: EsfMapPayload,
+  now = Date.now(),
+): Promise<void> => {
   const root = imageCacheRoot(userDataPath);
   let entries: fs.Dirent[];
   try {
@@ -133,12 +163,26 @@ const removeLegacyImageDirectories = async (userDataPath: string) => {
   } catch {
     return;
   }
+
+  const currentHashes = cachedImageHashes(currentData);
   await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) =>
-        fs.promises.rm(nodePath.join(root, entry.name), { recursive: true, force: true }).catch(() => undefined),
-      ),
+    entries.map(async (entry) => {
+      const entryPath = nodePath.join(root, entry.name);
+      if (entry.isDirectory()) {
+        await fs.promises.rm(entryPath, { recursive: true, force: true }).catch(() => undefined);
+        return;
+      }
+      if (!entry.isFile()) return;
+      const match = SHA256_PNG_FILE.exec(entry.name);
+      if (!match || currentHashes.has(match[1])) return;
+      try {
+        const stat = await fs.promises.stat(entryPath);
+        if (now - stat.mtimeMs < ESF_MAP_IMAGE_RETENTION_MS) return;
+        await fs.promises.rm(entryPath, { force: true });
+      } catch {
+        // Best-effort maintenance must never make the map cache fail.
+      }
+    }),
   );
 };
 
@@ -149,12 +193,13 @@ export const saveEsfMapDiskCache = async (
 ): Promise<void> => {
   try {
     await externalizeEsfMapImages(userDataPath, data);
+    await markCachedImagesUsed(userDataPath, data);
     const payload: EsfMapDiskPayload = { version: ESF_MAP_CACHE_VERSION, signature, data };
     const json = Buffer.from(JSON.stringify(payload), "utf8");
     const compressed = await zstdCompress(json, 1);
     await fs.promises.writeFile(nodePath.join(userDataPath, ESF_MAP_CACHE_FILE), compressed);
     cachedPayload = payload;
-    void removeLegacyImageDirectories(userDataPath);
+    void cleanupEsfMapImageCache(userDataPath, data);
   } catch (error) {
     console.error("Failed to save ESF map cache:", error);
   }

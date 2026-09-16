@@ -143,7 +143,10 @@ const respondWith = (asset: AssetBytes, cacheControl = IMMUTABLE_CACHE_CONTROL) 
 };
 
 const resolvePreviewFile = (root: string, relativeSegments: string[]): string | undefined => {
-  if (relativeSegments.length === 0 || relativeSegments.some((segment) => !segment || segment === "." || segment === "..")) {
+  if (
+    relativeSegments.length === 0 ||
+    relativeSegments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
     return undefined;
   }
 
