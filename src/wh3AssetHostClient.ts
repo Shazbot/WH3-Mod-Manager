@@ -5,7 +5,6 @@ import { type Duplex } from "node:stream";
 import {
   WH3_ASSET_HOST_PROTOCOL_VERSION,
   Wh3AssetHostFrameDecoder,
-  Wh3AssetHostProtocolError,
   encodeWh3AssetHostFrame,
 } from "./wh3AssetHostProtocol";
 
@@ -119,7 +118,6 @@ export interface Wh3AssetHostClientOptions {
 }
 
 interface PendingRequest {
-  command: string;
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   timeout: NodeJS.Timeout;
@@ -211,9 +209,7 @@ export class Wh3AssetHostClient {
 
   async start(): Promise<void> {
     if (this.isConnected) return;
-    if (this.childProcess && this.childProcess.exitCode === null) {
-      this.childProcess.kill();
-    }
+    if (this.childProcess && this.childProcess.exitCode === null) this.childProcess.kill();
 
     this.decoder.reset();
     this.processFailure = null;
@@ -316,6 +312,8 @@ export class Wh3AssetHostClient {
       this.connection = null;
       connection?.end();
       this.rejectPending(new Wh3AssetHostClientError("Shutdown", "WH3AssetHost client shut down."));
+      this.childProcess = null;
+      this.decoder.reset();
       this.shuttingDown = false;
     }
   }
@@ -360,7 +358,6 @@ export class Wh3AssetHostClient {
       }, this.options.requestTimeoutMs);
 
       this.pending.set(requestId, {
-        command,
         resolve: resolve as (value: unknown) => void,
         reject,
         timeout,
