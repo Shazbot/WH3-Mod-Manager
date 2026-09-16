@@ -404,6 +404,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const signatureToRequest = useDeferredWhileInactive(isActive, enabledModsSignature);
   const enabledModsRef = useRef(enabledMods);
   enabledModsRef.current = enabledMods;
+  const staticCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSurfaceRef = useRef<HTMLDivElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -1439,9 +1440,18 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (listItem?.scrollIntoView) listItem.scrollIntoView({ behavior: "instant", block: "nearest" });
   }, [brushFactionKey, filter, isEditingFactions, map, mapView, selectedMarkerFactionKey, selectedMarkerId]);
 
+  const staticClimateFilterKey =
+    mapView === "climate"
+      ? climateSelectionKey === null
+        ? undefined
+        : (climateSelectionKey?.toLowerCase() ?? (selectedMarker ? (selectedMarkerClimateKey ?? null) : undefined))
+      : undefined;
+
+  // Expensive background and full-map area shading live on the static canvas. Selection-only
+  // changes are drawn by the transparent overlay below and therefore do not repaint this layer.
   useEffect(() => {
     if (!isActive) return;
-    const canvas = canvasRef.current;
+    const canvas = staticCanvasRef.current;
     if (!canvas || !map) return;
 
     if (canvas.width !== map.width) canvas.width = map.width;
@@ -1449,16 +1459,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    const selected =
-      selectedMarkerId === undefined ? undefined : map.markers.find((marker) => marker.id === selectedMarkerId);
-    const selectedFactionForMap = selectedFactionKey ?? factionKey(selected?.ownerFaction);
-    const selectedRegionClimateKey = selected ? map.climatesByRegion[selected.key]?.toLowerCase() : undefined;
-    const climateFilterKey =
-      climateSelectionKey === null
-        ? undefined
-        : (climateSelectionKey?.toLowerCase() ?? (selected ? (selectedRegionClimateKey ?? null) : undefined));
-
-    const drawMap = (backgroundImage: HTMLImageElement | undefined) => {
+    const drawStaticMap = (backgroundImage: HTMLImageElement | undefined) => {
       context.clearRect(0, 0, map.width, map.height);
       if (backgroundImage) context.drawImage(backgroundImage, 0, 0, map.width, map.height);
 
@@ -1480,12 +1481,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         for (const area of map.areas) {
           if (!regionMatchesSettlementType(area.regionKey)) continue;
           const climateKey = area.regionKey ? map.climatesByRegion[area.regionKey]?.toLowerCase() : undefined;
-          if (
-            !climateKey ||
-            climateFilterKey === null ||
-            (climateFilterKey !== undefined && climateKey !== climateFilterKey)
-          )
-            continue;
+          if (!climateKey || (staticClimateFilterKey !== undefined && climateKey !== staticClimateFilterKey)) continue;
           const climate = climateByKey.get(climateKey);
           if (!climate) continue;
           const areaPath = areaPaths.get(areaGeometryKey(area));
@@ -1505,125 +1501,134 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           context.fillStyle = factionColour(ownerKey);
           context.fill(areaPath, "evenodd");
         }
-        for (const area of brushFactionKey ? map.areas : []) {
-          if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== brushFactionKey)
-            continue;
-          const areaPath = areaPaths.get(areaGeometryKey(area));
-          if (!areaPath) continue;
-          context.strokeStyle = "rgba(255, 255, 255, 0.9)";
-          context.lineWidth = 1.2;
-          context.stroke(areaPath);
-        }
-      } else if (mapView === "factions" && selectedFactionForMap) {
-        for (const area of map.areas) {
-          if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== selectedFactionForMap)
-            continue;
-          const areaPath = areaPaths.get(areaGeometryKey(area));
-          if (!areaPath) continue;
-          context.fillStyle = factionColour(selectedFactionForMap);
-          context.strokeStyle = "rgba(255, 255, 255, 0.9)";
-          context.lineWidth = 1.2;
-          context.fill(areaPath, "evenodd");
-          context.stroke(areaPath);
-        }
-      } else if (
-        (mapView === "regions" || mapView === "climate") &&
-        selected &&
-        regionMatchesSettlementType(selected.key)
-      ) {
-        const selectedAreaIds = new Set(
-          map.areas.filter((area) => area.regionKey === selected.key).map((area) => area.componentId),
-        );
-        for (const area of map.areas) {
-          if (!selectedAreaIds.has(area.componentId)) continue;
-          const areaPath = areaPaths.get(areaGeometryKey(area));
-          if (!areaPath) continue;
-          context.fillStyle = "rgba(255, 255, 255, 0.18)";
-          context.strokeStyle = "rgba(255, 255, 255, 0.95)";
-          context.lineWidth = 1.2;
-          context.fill(areaPath, "evenodd");
-          context.stroke(areaPath);
-        }
-      }
-
-      if (characterMapOverlayActive) {
-        context.save();
-        context.globalAlpha = isEditingOwnership ? OWNERSHIP_EDIT_TERRAIN_OPACITY : 1;
-        drawCharacterTerrainAreas(context, map);
-        context.restore();
-      }
-
-      for (const marker of map.markers) {
-        const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
-        const markerFaction = marker.ownerFaction
-          ? factionsByKey.get(factionKey(marker.ownerFaction) ?? "")
-          : undefined;
-        // Faction flags are rendered in a separate image overlay so zooming can use the original
-        // asset instead of enlarging a 20px copy that was already rasterised into this canvas.
-        if (!(mapView === "factions" && markerFaction?.flagUrl)) {
-          context.fillStyle = "rgba(255, 255, 255, 0.92)";
-          context.fillRect(marker.gx - 1, y - 1, 2, 2);
-        }
-      }
-
-      if (selected) {
-        const y = displayYFromCell(map.height, selected.gy, map.displayFlipY);
-        context.strokeStyle = "#ffffff";
-        context.lineWidth = 2;
-        context.beginPath();
-        context.arc(selected.gx, y, 5, 0, Math.PI * 2);
-        context.stroke();
       }
     };
 
     const backgroundSrc = map.backgroundImage?.src;
-    const imageSources = Array.from(new Set([backgroundSrc, ...characterThumbnailSources].filter(Boolean))) as string[];
-    const cachedImages = new Map(
-      imageSources
-        .map((src) => [src, mapImagesRef.current.get(src)] as const)
-        .filter((entry): entry is readonly [string, HTMLImageElement] => !!entry[1]),
-    );
-    const loadImageOnce = (source: string) => {
-      const pending = mapImageLoadsRef.current.get(source);
-      if (pending) return pending;
-      const load = loadMapImage(source).finally(() => mapImageLoadsRef.current.delete(source));
-      mapImageLoadsRef.current.set(source, load);
-      return load;
-    };
-    drawMap(cachedImages.get(backgroundSrc ?? ""));
+    const cachedBackground = backgroundSrc ? mapImagesRef.current.get(backgroundSrc) : undefined;
+    drawStaticMap(cachedBackground);
+    if (!backgroundSrc || cachedBackground) return;
 
-    const missingSources = imageSources.filter((src) => !cachedImages.has(src));
-    if (missingSources.length === 0) return;
+    const pending = mapImageLoadsRef.current.get(backgroundSrc);
+    const load =
+      pending ??
+      loadMapImage(backgroundSrc).finally(() => {
+        mapImageLoadsRef.current.delete(backgroundSrc);
+      });
+    if (!pending) mapImageLoadsRef.current.set(backgroundSrc, load);
 
     let cancelled = false;
-    void Promise.all(missingSources.map((src) => loadImageOnce(src))).then((images) => {
-      if (cancelled) return;
-      for (const [index, image] of images.entries()) {
-        const src = missingSources[index];
-        if (image) {
-          mapImagesRef.current.set(src, image);
-          cachedImages.set(src, image);
-        }
-      }
-      drawMap(cachedImages.get(backgroundSrc ?? ""));
+    void load.then((image) => {
+      if (cancelled || !image) return;
+      mapImagesRef.current.set(backgroundSrc, image);
+      drawStaticMap(image);
     });
     return () => {
       cancelled = true;
     };
   }, [
     areaPaths,
-    brushFactionKey,
     climateByKey,
-    climateSelectionKey,
-    characterMapOverlayActive,
-    characterThumbnailSources,
-    factionsByKey,
-    isEditingOwnership,
     isActive,
+    isEditingOwnership,
     map,
     mapView,
-    selectedMarkerId,
+    selectedSettlementType,
+    staticClimateFilterKey,
+  ]);
+
+  // Transient interaction state lives on a transparent overlay. Region/faction selection, brush
+  // outlines and the cached terrain bitmap can now update without rebuilding the base map.
+  useEffect(() => {
+    if (!isActive) return;
+    const canvas = canvasRef.current;
+    if (!canvas || !map) return;
+
+    if (canvas.width !== map.width) canvas.width = map.width;
+    if (canvas.height !== map.height) canvas.height = map.height;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, map.width, map.height);
+
+    const regionMatchesSettlementType = (regionKey: string | undefined) =>
+      !selectedSettlementType ||
+      (!!regionKey && map.settlementTypesByRegion[regionKey]?.includes(selectedSettlementType));
+    const selectedFactionForMap = selectedFactionKey ?? factionKey(selectedMarker?.ownerFaction);
+
+    if (mapView === "factions" && isEditingOwnership) {
+      for (const area of brushFactionKey ? map.areas : []) {
+        if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== brushFactionKey) continue;
+        const areaPath = areaPaths.get(areaGeometryKey(area));
+        if (!areaPath) continue;
+        context.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        context.lineWidth = 1.2;
+        context.stroke(areaPath);
+      }
+    } else if (mapView === "factions" && selectedFactionForMap) {
+      for (const area of map.areas) {
+        if (!regionMatchesSettlementType(area.regionKey) || factionKey(area.ownerFaction) !== selectedFactionForMap)
+          continue;
+        const areaPath = areaPaths.get(areaGeometryKey(area));
+        if (!areaPath) continue;
+        context.fillStyle = factionColour(selectedFactionForMap);
+        context.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        context.lineWidth = 1.2;
+        context.fill(areaPath, "evenodd");
+        context.stroke(areaPath);
+      }
+    } else if (
+      (mapView === "regions" || mapView === "climate") &&
+      selectedMarker &&
+      regionMatchesSettlementType(selectedMarker.key)
+    ) {
+      for (const area of map.areas) {
+        if (area.regionKey !== selectedMarker.key) continue;
+        const areaPath = areaPaths.get(areaGeometryKey(area));
+        if (!areaPath) continue;
+        context.fillStyle = "rgba(255, 255, 255, 0.18)";
+        context.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        context.lineWidth = 1.2;
+        context.fill(areaPath, "evenodd");
+        context.stroke(areaPath);
+      }
+    }
+
+    if (characterMapOverlayActive) {
+      context.save();
+      context.globalAlpha = isEditingOwnership ? OWNERSHIP_EDIT_TERRAIN_OPACITY : 1;
+      drawCharacterTerrainAreas(context, map);
+      context.restore();
+    }
+
+    // Keep settlement dots above the terrain overlay, matching the old single-canvas draw order.
+    for (const marker of map.markers) {
+      const y = displayYFromCell(map.height, marker.gy, map.displayFlipY);
+      const markerFaction = marker.ownerFaction ? factionsByKey.get(factionKey(marker.ownerFaction) ?? "") : undefined;
+      if (!(mapView === "factions" && markerFaction?.flagUrl)) {
+        context.fillStyle = "rgba(255, 255, 255, 0.92)";
+        context.fillRect(marker.gx - 1, y - 1, 2, 2);
+      }
+    }
+
+    if (selectedMarker) {
+      const y = displayYFromCell(map.height, selectedMarker.gy, map.displayFlipY);
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(selectedMarker.gx, y, 5, 0, Math.PI * 2);
+      context.stroke();
+    }
+  }, [
+    areaPaths,
+    brushFactionKey,
+    characterMapOverlayActive,
+    factionsByKey,
+    isActive,
+    isEditingOwnership,
+    map,
+    mapView,
     selectedFactionKey,
+    selectedMarker,
     selectedSettlementType,
   ]);
 
@@ -2509,6 +2514,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     }}
                   >
                     <canvas
+                      ref={staticCanvasRef}
+                      aria-hidden="true"
+                      style={{
+                        width: map ? `${map.width}px` : undefined,
+                        height: map ? `${map.height}px` : undefined,
+                      }}
+                      className="pointer-events-none block touch-none select-none rounded border border-gray-700 bg-slate-950"
+                    />
+                    <canvas
                       ref={canvasRef}
                       onPointerDown={beginMapDrag}
                       onPointerMove={moveMapDrag}
@@ -2520,7 +2534,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         width: map ? `${map.width}px` : undefined,
                         height: map ? `${map.height}px` : undefined,
                       }}
-                      className={`block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-gray-700 bg-slate-950`}
+                      className={`absolute left-0 top-0 block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-transparent bg-transparent`}
                     />
                   </div>
                   {map.backgroundTextImage && (
