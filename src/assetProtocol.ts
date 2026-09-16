@@ -1,5 +1,5 @@
 /**
- * Serves images out of the game's packs over a URL instead of handing the renderer the bytes.
+ * Serves images and generated preview assets over a URL instead of handing the renderer the bytes.
  *
  * Every icon and unit card used to travel to the renderer base64 encoded and get rendered as a
  * `data:` URL. That costs three times over: the encoded string is a third larger than the file, it
@@ -35,8 +35,12 @@ export { ASSET_SCHEME, iconAssetUrl, modelPreviewAssetUrl, unitAssetUrl, type As
  */
 const iconAssets = new Map<string, AssetBytes>();
 
-/** GLBs exported by WH3AssetHost and explicitly registered by the preview IPC layer. */
-const modelPreviewFiles = new Map<string, string>();
+/**
+ * Isolated output directories produced by WH3AssetHost. A generated GLB may reference sidecar
+ * textures/buffers, so the protocol exposes files beneath this one registered directory rather than
+ * only the primary GLB. The handler still never accepts an arbitrary filesystem root from a URL.
+ */
+const modelPreviewRoots = new Map<string, string>();
 
 /** Bumped whenever icons are registered, and embedded in the URLs built afterwards. */
 let iconGeneration = 0;
@@ -53,17 +57,17 @@ export const clearIconAssets = () => {
   iconGeneration += 1;
 };
 
-/** Only files produced by the host are registered; arbitrary filesystem paths are never URL-addressable. */
-export const registerModelPreviewFile = (previewId: string, filePath: string) => {
-  modelPreviewFiles.set(previewId, filePath);
+/** Only directories created for host exports are registered; arbitrary filesystem roots are never URL-addressable. */
+export const registerModelPreviewFile = (previewId: string, primaryFilePath: string) => {
+  modelPreviewRoots.set(previewId, nodePath.dirname(primaryFilePath));
 };
 
 export const revokeModelPreviewFile = (previewId: string) => {
-  modelPreviewFiles.delete(previewId);
+  modelPreviewRoots.delete(previewId);
 };
 
 export const clearModelPreviewFiles = () => {
-  modelPreviewFiles.clear();
+  modelPreviewRoots.clear();
 };
 
 /**
@@ -105,6 +109,18 @@ const MOD_THUMBNAIL_MIME_TYPES: Record<string, string> = {
   ".jpeg": "image/jpeg",
 };
 
+const MODEL_PREVIEW_MIME_TYPES: Record<string, string> = {
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".bin": "application/octet-stream",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ktx2": "image/ktx2",
+  ".dds": "image/vnd-ms.dds",
+};
+
 const respondWith = (asset: AssetBytes, cacheControl = IMMUTABLE_CACHE_CONTROL) => {
   // A view over the buffer rather than a copy of it: the bytes are already in memory, and copying
   // them per request would undo the point of not encoding them in the first place. A buffer read out
@@ -123,15 +139,30 @@ const respondWith = (asset: AssetBytes, cacheControl = IMMUTABLE_CACHE_CONTROL) 
   });
 };
 
+const resolvePreviewFile = (root: string, relativeSegments: string[]): string | undefined => {
+  if (relativeSegments.length === 0 || relativeSegments.some((segment) => !segment || segment === "." || segment === "..")) {
+    return undefined;
+  }
+
+  const candidate = nodePath.resolve(root, ...relativeSegments);
+  const relative = nodePath.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || nodePath.isAbsolute(relative)) return undefined;
+  return candidate;
+};
+
 /**
- * A GLB is intentionally read from disk here instead of copied through Electron IPC. The only paths
- * accepted are those registered by the WH3AssetHost integration after a successful export.
+ * GLB payloads stay on disk rather than being copied through Electron IPC. Relative files requested
+ * by GLTFLoader are allowed only beneath the random preview directory registered after a successful
+ * host export, so `..` or absolute-path URL tricks cannot escape into the filesystem.
  */
-const serveModelPreview = async (previewId: string) => {
-  const filePath = modelPreviewFiles.get(previewId);
+const serveModelPreview = async (previewId: string, relativeSegments: string[]) => {
+  const root = modelPreviewRoots.get(previewId);
+  if (!root) return notFound();
+  const filePath = resolvePreviewFile(root, relativeSegments);
   if (!filePath) return notFound();
+  const mimeType = MODEL_PREVIEW_MIME_TYPES[nodePath.extname(filePath).toLowerCase()] || "application/octet-stream";
   try {
-    return respondWith({ buffer: await fs.promises.readFile(filePath), mimeType: "model/gltf-binary" });
+    return respondWith({ buffer: await fs.promises.readFile(filePath), mimeType });
   } catch {
     return notFound();
   }
@@ -155,7 +186,7 @@ const serveModThumbnail = async (imgPath: string) => {
 
 /**
  * A request resolves to bytes already in memory, to a file inside a pack this session has
- * registered, to a host-exported GLB, to a thumbnail some mod was built with, or to nothing.
+ * registered, to a host-exported preview file, to a thumbnail some mod was built with, or to nothing.
  */
 export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
   protocol.handle(ASSET_SCHEME, async (request) => {
@@ -176,9 +207,9 @@ export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
         return asset ? respondWith(asset) : notFound();
       }
       if (url.host === MODEL_PREVIEW_HOST) {
-        // segments: [previewId, model.glb]
-        const previewId = segments[0];
-        return previewId ? await serveModelPreview(previewId) : notFound();
+        // segments: [previewId, ...relative preview file path]
+        const [previewId, ...relativeSegments] = segments;
+        return previewId ? await serveModelPreview(previewId, relativeSegments) : notFound();
       }
       if (url.host === MOD_THUMBNAIL_HOST) {
         // segments: [imgPath]
