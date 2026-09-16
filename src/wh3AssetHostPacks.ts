@@ -4,6 +4,8 @@ import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import type { Wh3AssetHostClient, Wh3AssetHostInitializeResult } from "./wh3AssetHostClient";
 
+export type Wh3AssetHostMod = Pick<Mod, "name" | "path" | "loadOrder">;
+
 export class Wh3AssetHostPackStateError extends Error {
   readonly code: "MissingVanillaPacks" | "MissingPackPaths";
 
@@ -54,7 +56,7 @@ export const deduplicateWh3AssetHostPackPaths = (packPaths: readonly string[]): 
  */
 export const buildWh3AssetHostPackPaths = (
   vanillaPackPaths: readonly string[],
-  enabledMods: readonly Mod[],
+  enabledMods: readonly Wh3AssetHostMod[],
 ): string[] => {
   if (vanillaPackPaths.length === 0) {
     throw new Wh3AssetHostPackStateError(
@@ -77,28 +79,43 @@ export const buildWh3AssetHostPackPaths = (
 export const getCurrentWh3AssetHostPackPaths = (): string[] =>
   buildWh3AssetHostPackPaths(getVanillaPackPathsInLoadOrder(), appData.enabledMods);
 
+/** Builds from an explicit renderer/session snapshot so Visuals and the host resolve the same mod universe. */
+export const getWh3AssetHostPackPathsForMods = (enabledMods: readonly Wh3AssetHostMod[]): string[] =>
+  buildWh3AssetHostPackPaths(getVanillaPackPathsInLoadOrder(), enabledMods);
+
 const packStateKey = (packPaths: readonly string[], outputRoot: string): string =>
   `${packPathKey(outputRoot)}\n${packPaths.map(packPathKey).join("\n")}`;
 
 /**
  * Owns the initialization revision for one running WH3AssetHost client.
- * `ensureInitialized` can be called before every export: it only sends an
- * initialize request when the effective pack universe or output root changed.
- * Create a fresh instance for a fresh/restarted client, or call reset().
+ * Callers may pass either the current main-process state or a Visuals session's
+ * explicit pack list; the host is only reinitialized when that effective state
+ * or the output root actually changes.
  */
 export class Wh3AssetHostPackInitializer {
   private initializedStateKey: string | null = null;
 
   constructor(private readonly client: Pick<Wh3AssetHostClient, "initialize">) {}
 
-  async ensureInitialized(outputRoot: string): Promise<Wh3AssetHostInitializeResult | null> {
-    const packPaths = getCurrentWh3AssetHostPackPaths();
-    const stateKey = packStateKey(packPaths, outputRoot);
+  ensureInitialized(outputRoot: string): Promise<Wh3AssetHostInitializeResult | null> {
+    return this.ensureInitializedForPackPaths(getCurrentWh3AssetHostPackPaths(), outputRoot);
+  }
+
+  async ensureInitializedForPackPaths(
+    packPaths: readonly string[],
+    outputRoot: string,
+  ): Promise<Wh3AssetHostInitializeResult | null> {
+    const deduplicatedPackPaths = deduplicateWh3AssetHostPackPaths(packPaths);
+    if (deduplicatedPackPaths.length === 0) {
+      throw new Wh3AssetHostPackStateError("MissingPackPaths", "No pack paths are available for WH3AssetHost.");
+    }
+
+    const stateKey = packStateKey(deduplicatedPackPaths, outputRoot);
     if (stateKey === this.initializedStateKey) return null;
 
     // Only record the new state after a successful host swap. If initialize
     // fails, the host keeps its previous runtime and the next call retries.
-    const result = await this.client.initialize({ packPaths, outputRoot });
+    const result = await this.client.initialize({ packPaths: deduplicatedPackPaths, outputRoot });
     this.initializedStateKey = stateKey;
     return result;
   }
