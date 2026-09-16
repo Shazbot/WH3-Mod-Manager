@@ -320,9 +320,11 @@ describe("WH3AssetHostClient", () => {
       });
       await assetHost.start();
 
-      const request = assetHost.hello();
+      // Attach the rejection assertion before advancing fake time so Vitest never
+      // observes the intentional timeout as an unhandled rejection.
+      const expectation = expect(assetHost.hello()).rejects.toMatchObject({ code: "RequestTimeout" });
       await vi.advanceTimersByTimeAsync(25);
-      await expect(request).rejects.toMatchObject({ code: "RequestTimeout" });
+      await expectation;
       assetHost.dispose();
     } finally {
       vi.useRealTimers();
