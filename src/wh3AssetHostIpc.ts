@@ -3,11 +3,7 @@ import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
 import appData from "./appData";
-import {
-  modelPreviewAssetUrl,
-  registerModelPreviewFile,
-  revokeModelPreviewFile,
-} from "./assetProtocol";
+import { modelPreviewAssetUrl, registerModelPreviewFile, revokeModelPreviewFile } from "./assetProtocol";
 import { Wh3AssetHostClient } from "./wh3AssetHostClient";
 import {
   Wh3AssetHostPackInitializer,
@@ -30,6 +26,8 @@ type PreviewRecord = {
 
 let runningHost: RunningHost | null = null;
 let startingHost: Promise<RunningHost> | null = null;
+let prepareOutputRootPromise: Promise<void> | null = null;
+let previewExportQueue: Promise<void> = Promise.resolve();
 const previews = new Map<string, PreviewRecord>();
 
 const getOutputRoot = () => nodePath.join(app.getPath("userData"), MODEL_PREVIEW_OUTPUT_DIR);
@@ -111,6 +109,18 @@ const startHost = async (): Promise<RunningHost> => {
   }
 };
 
+/** Clear previews abandoned by a previous app/process crash, once, before this run's first export. */
+const prepareOutputRoot = async () => {
+  if (!prepareOutputRootPromise) {
+    const outputRoot = getOutputRoot();
+    prepareOutputRootPromise = (async () => {
+      await fs.promises.rm(outputRoot, { recursive: true, force: true });
+      await fs.promises.mkdir(outputRoot, { recursive: true });
+    })();
+  }
+  return prepareOutputRootPromise;
+};
+
 const removePreview = async (previewId: string) => {
   const record = previews.get(previewId);
   previews.delete(previewId);
@@ -135,7 +145,7 @@ const sanitizeEnabledMods = (value: unknown): Wh3AssetHostMod[] => {
   });
 };
 
-const exportVisualsModel = async (assetPath: string, enabledModsValue: unknown) => {
+const exportVisualsModelNow = async (assetPath: string, enabledModsValue: unknown) => {
   if (process.platform !== "win32") {
     return { success: false as const, error: "The WH3 model preview host currently requires Windows." };
   }
@@ -149,9 +159,12 @@ const exportVisualsModel = async (assetPath: string, enabledModsValue: unknown) 
   const enabledMods = sanitizeEnabledMods(enabledModsValue);
   const previewId = randomUUID();
   const outputRoot = getOutputRoot();
+  const previewDirectory = nodePath.join(outputRoot, previewId);
   const outputPath = `${previewId}\\model.glb`;
+  let registered = false;
 
   try {
+    await prepareOutputRoot();
     const host = await startHost();
     const packPaths = getWh3AssetHostPackPathsForMods(enabledMods);
     await host.packInitializer.ensureInitializedForPackPaths(packPaths, outputRoot);
@@ -171,6 +184,7 @@ const exportVisualsModel = async (assetPath: string, enabledModsValue: unknown) 
 
     registerModelPreviewFile(previewId, result.primaryFile);
     previews.set(previewId, { directory: nodePath.dirname(result.primaryFile) });
+    registered = true;
     return {
       success: true as const,
       previewId,
@@ -185,12 +199,34 @@ const exportVisualsModel = async (assetPath: string, enabledModsValue: unknown) 
       success: false as const,
       error: error instanceof Error ? error.message : "Failed to export the model preview.",
     };
+  } finally {
+    if (!registered) {
+      try {
+        await fs.promises.rm(previewDirectory, { recursive: true, force: true });
+      } catch {
+        // Failed exports are already surfaced to the caller; leftover temp cleanup is best-effort.
+      }
+    }
   }
+};
+
+/**
+ * Keep initialize + export atomic with respect to the host runtime. Without this queue, a mod-list
+ * change could enqueue initialize(A), initialize(B), export(A), making the first export accidentally
+ * resolve against B after both initialize requests were accepted by the single pipe server.
+ */
+const exportVisualsModel = <T>(operation: () => Promise<T>): Promise<T> => {
+  const result = previewExportQueue.then(operation, operation);
+  previewExportQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
 };
 
 ipcMain.removeHandler("exportVisualsModel");
 ipcMain.handle("exportVisualsModel", async (_event, assetPath: string, enabledMods: unknown) =>
-  exportVisualsModel(assetPath, enabledMods),
+  exportVisualsModel(() => exportVisualsModelNow(assetPath, enabledMods)),
 );
 
 ipcMain.removeHandler("releaseVisualsModelPreview");
