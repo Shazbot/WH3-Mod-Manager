@@ -19,6 +19,7 @@ export interface AssetBytes {
 export const ICON_HOST = "icon";
 export const UNIT_ASSET_HOST = "unit-asset";
 export const MOD_THUMBNAIL_HOST = "mod-thumbnail";
+export const MODEL_PREVIEW_HOST = "model-preview";
 
 /**
  * Pack paths are compared case insensitively everywhere else, and a URL round trip is not
@@ -46,6 +47,13 @@ export const unitAssetUrl = (sessionId: string, assetPath: string) =>
   `${ASSET_SCHEME}://${UNIT_ASSET_HOST}/${encodeURIComponent(sessionId)}/${encodeURIComponent(
     normalizeAssetPath(assetPath),
   )}`;
+
+/**
+ * A GLB exported by WH3AssetHost for the Visuals panel. The id is random per export, so the URL is
+ * immutable for the lifetime of that preview and Chromium can cache it safely while Three.js loads it.
+ */
+export const modelPreviewAssetUrl = (previewId: string) =>
+  `${ASSET_SCHEME}://${MODEL_PREVIEW_HOST}/${encodeURIComponent(previewId)}/model.glb`;
 
 /**
  * A mod's thumbnail, addressed by where it sits on disk.
