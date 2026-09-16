@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  cleanupEsfMapImageCache,
   clearEsfMapMemoryCache,
   loadEsfMapDiskCache,
   resolveEsfMapCachedImage,
@@ -125,5 +126,42 @@ describe("ESF map disk cache", () => {
     await fs.promises.rm(path.join(directory, "esf-map-images", mapHash + ".png"));
     clearEsfMapMemoryCache();
     await expect(loadEsfMapDiskCache(directory, "next")).resolves.toBeUndefined();
+  });
+
+  it("keeps current and recent images while removing unused images older than 90 days", async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-esf-map-"));
+    temporaryDirectories.push(directory);
+    const data = createMapData();
+    await saveEsfMapDiskCache(directory, "current", data);
+
+    const imageDirectory = path.join(directory, "esf-map-images");
+    const mapHash = sha256("map");
+    const textHash = sha256("text");
+    const staleHash = sha256("stale");
+    const recentHash = sha256("recent");
+    const now = Date.now();
+    const olderThanRetention = new Date(now - 91 * 24 * 60 * 60 * 1000);
+    const withinRetention = new Date(now - 89 * 24 * 60 * 60 * 1000);
+
+    await fs.promises.writeFile(path.join(imageDirectory, staleHash + ".png"), "stale");
+    await fs.promises.writeFile(path.join(imageDirectory, recentHash + ".png"), "recent");
+    await fs.promises.writeFile(path.join(imageDirectory, "unrelated-file.png"), "leave me alone");
+    await fs.promises.mkdir(path.join(imageDirectory, "legacy-signature"));
+    await Promise.all([
+      fs.promises.utimes(path.join(imageDirectory, mapHash + ".png"), olderThanRetention, olderThanRetention),
+      fs.promises.utimes(path.join(imageDirectory, textHash + ".png"), olderThanRetention, olderThanRetention),
+      fs.promises.utimes(path.join(imageDirectory, staleHash + ".png"), olderThanRetention, olderThanRetention),
+      fs.promises.utimes(path.join(imageDirectory, recentHash + ".png"), withinRetention, withinRetention),
+    ]);
+
+    await cleanupEsfMapImageCache(directory, data, now);
+
+    const entries = await fs.promises.readdir(imageDirectory);
+    expect(entries).toContain(mapHash + ".png");
+    expect(entries).toContain(textHash + ".png");
+    expect(entries).toContain(recentHash + ".png");
+    expect(entries).toContain("unrelated-file.png");
+    expect(entries).not.toContain(staleHash + ".png");
+    expect(entries).not.toContain("legacy-signature");
   });
 });
