@@ -2,10 +2,15 @@ import React, { memo, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { exportVisualsModel, releaseVisualsModelPreview } from "../visuals/modelPreviewApi";
+import {
+  exportVisualsModel,
+  releaseVisualsModelPreview,
+  type VisualsModelPreviewMod,
+} from "../visuals/modelPreviewApi";
 
 type VisualsModelPreviewProps = {
   assetPath: string;
+  enabledMods: readonly VisualsModelPreviewMod[];
 };
 
 type ThreePreviewContext = {
@@ -58,7 +63,7 @@ const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
   context.grid.position.set(center.x, box.min.y, center.z);
 };
 
-const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
+const VisualsModelPreview = memo(({ assetPath, enabledMods }: VisualsModelPreviewProps) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
@@ -169,7 +174,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       setError(null);
       setWarnings([]);
 
-      const exportResult = await exportVisualsModel(assetPath);
+      const exportResult = await exportVisualsModel(assetPath, enabledMods);
       if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
         if (!isCancelled) {
           setStatus("error");
@@ -223,7 +228,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       isCancelled = true;
       cleanupOwnedPreview();
     };
-  }, [assetPath]);
+  }, [assetPath, enabledMods]);
 
   return (
     <div className="border-b border-gray-700 bg-gray-950">
