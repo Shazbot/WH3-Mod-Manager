@@ -84,7 +84,7 @@
           "name": "@electron-forge/plugin-webpack",
           "config": {
             "mainConfig": "./webpack.main.config.js",
-            "devContentSecurityPolicy": "default-src 'self' 'unsafe-inline' data:; img-src 'self' data: whmm:; connect-src 'self' whmm:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:",
+            "devContentSecurityPolicy": "default-src 'self' 'unsafe-inline' data:; img-src 'self' data: blob: whmm:; connect-src 'self' blob: whmm:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:",
             "renderer": {
               "config": "./webpack.renderer.config.js",
               "entryPoints": [
@@ -249,7 +249,7 @@
     "i18next": "^23.4.6",
     "i18next-fs-backend": "^1.3.5",
     "iso-639-1": "^3.1.0",
-    "just-clone": "^6.1.1",
+    "just-clone": "^1.1.1",
     "just-debounce-it": "^3.1.1",
     "luaparse": "^0.3.1",
     "lz4-napi": "^2.9.0",
@@ -272,7 +272,7 @@
     "react-tabs": "^6.0.1",
     "react-virtualized": "^9.22.5",
     "react-window": "^1.8.6",
-    "react-windowed-select": "^5.2.0",
+    "react-windowed-select": "^1.2.0",
     "reactflow": "^11.11.4",
     "semver": "^7.6.3",
     "stream-http": "^3.2.0",
