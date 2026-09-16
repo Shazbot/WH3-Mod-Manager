@@ -1,7 +1,6 @@
 import * as nodePath from "node:path";
 import appData from "./appData";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
-import type { Mod } from "./packFileTypes";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import type { Wh3AssetHostClient, Wh3AssetHostInitializeResult } from "./wh3AssetHostClient";
 
@@ -78,11 +77,38 @@ export const buildWh3AssetHostPackPaths = (
 export const getCurrentWh3AssetHostPackPaths = (): string[] =>
   buildWh3AssetHostPackPaths(getVanillaPackPathsInLoadOrder(), appData.enabledMods);
 
+const packStateKey = (packPaths: readonly string[], outputRoot: string): string =>
+  `${packPathKey(outputRoot)}\n${packPaths.map(packPathKey).join("\n")}`;
+
 /**
- * Initializes an already-connected host from the manager's current effective
- * asset universe. Re-call this when enabled mods, load order, or game changes;
- * unit selection itself does not require reinitialization.
+ * Owns the initialization revision for one running WH3AssetHost client.
+ * `ensureInitialized` can be called before every export: it only sends an
+ * initialize request when the effective pack universe or output root changed.
+ * Create a fresh instance for a fresh/restarted client, or call reset().
  */
+export class Wh3AssetHostPackInitializer {
+  private initializedStateKey: string | null = null;
+
+  constructor(private readonly client: Pick<Wh3AssetHostClient, "initialize">) {}
+
+  async ensureInitialized(outputRoot: string): Promise<Wh3AssetHostInitializeResult | null> {
+    const packPaths = getCurrentWh3AssetHostPackPaths();
+    const stateKey = packStateKey(packPaths, outputRoot);
+    if (stateKey === this.initializedStateKey) return null;
+
+    // Only record the new state after a successful host swap. If initialize
+    // fails, the host keeps its previous runtime and the next call retries.
+    const result = await this.client.initialize({ packPaths, outputRoot });
+    this.initializedStateKey = stateKey;
+    return result;
+  }
+
+  reset(): void {
+    this.initializedStateKey = null;
+  }
+}
+
+/** One-shot helper for callers that intentionally want to force initialization. */
 export const initializeWh3AssetHostForCurrentPackState = (
   client: Pick<Wh3AssetHostClient, "initialize">,
   outputRoot: string,
