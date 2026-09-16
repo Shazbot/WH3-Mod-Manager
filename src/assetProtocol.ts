@@ -8,7 +8,7 @@
  *
  * With a URL the renderer holds forty copies of a sixty character string, Chromium fetches each
  * distinct image once, and its image cache owns the decoded bitmaps and can evict them under
- * pressure - which JS strings in a Redux store can never be.
+ * pressure - which JS strings in a Redux store can never do.
  */
 import { protocol } from "electron";
 import * as fs from "fs";
@@ -16,6 +16,7 @@ import * as nodePath from "path";
 import {
   ASSET_SCHEME,
   ICON_HOST,
+  MODEL_PREVIEW_HOST,
   MOD_THUMBNAIL_HOST,
   UNIT_ASSET_HOST,
   normalizeAssetPath,
@@ -23,7 +24,7 @@ import {
 } from "./assetUrls";
 import { isRegisteredModThumbnailPath } from "./modThumbnailAssets";
 
-export { ASSET_SCHEME, iconAssetUrl, unitAssetUrl, type AssetBytes } from "./assetUrls";
+export { ASSET_SCHEME, iconAssetUrl, modelPreviewAssetUrl, unitAssetUrl, type AssetBytes } from "./assetUrls";
 
 /**
  * Icons a feature has already read out of its packs, keyed by their path inside the pack.
@@ -33,6 +34,9 @@ export { ASSET_SCHEME, iconAssetUrl, unitAssetUrl, type AssetBytes } from "./ass
  * each arrived at separately before.
  */
 const iconAssets = new Map<string, AssetBytes>();
+
+/** GLBs exported by WH3AssetHost and explicitly registered by the preview IPC layer. */
+const modelPreviewFiles = new Map<string, string>();
 
 /** Bumped whenever icons are registered, and embedded in the URLs built afterwards. */
 let iconGeneration = 0;
@@ -47,6 +51,19 @@ export const registerIconAssets = (icons: Record<string, AssetBytes>) => {
 export const clearIconAssets = () => {
   iconAssets.clear();
   iconGeneration += 1;
+};
+
+/** Only files produced by the host are registered; arbitrary filesystem paths are never URL-addressable. */
+export const registerModelPreviewFile = (previewId: string, filePath: string) => {
+  modelPreviewFiles.set(previewId, filePath);
+};
+
+export const revokeModelPreviewFile = (previewId: string) => {
+  modelPreviewFiles.delete(previewId);
+};
+
+export const clearModelPreviewFiles = () => {
+  modelPreviewFiles.clear();
 };
 
 /**
@@ -107,6 +124,20 @@ const respondWith = (asset: AssetBytes, cacheControl = IMMUTABLE_CACHE_CONTROL) 
 };
 
 /**
+ * A GLB is intentionally read from disk here instead of copied through Electron IPC. The only paths
+ * accepted are those registered by the WH3AssetHost integration after a successful export.
+ */
+const serveModelPreview = async (previewId: string) => {
+  const filePath = modelPreviewFiles.get(previewId);
+  if (!filePath) return notFound();
+  try {
+    return respondWith({ buffer: await fs.promises.readFile(filePath), mimeType: "model/gltf-binary" });
+  } catch {
+    return notFound();
+  }
+};
+
+/**
  * The one asset read off the filesystem rather than out of a pack, and so the one that has to prove
  * it is allowed: only a path some mod was built with is served, and only if it names an image.
  */
@@ -124,9 +155,7 @@ const serveModThumbnail = async (imgPath: string) => {
 
 /**
  * A request resolves to bytes already in memory, to a file inside a pack this session has
- * registered, to a thumbnail some mod was built with, or to nothing. Only that last case touches the
- * filesystem, and it is checked against `modThumbnailAssets.ts` first, so a path in the URL cannot
- * escape into anything the app was not already serving.
+ * registered, to a host-exported GLB, to a thumbnail some mod was built with, or to nothing.
  */
 export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
   protocol.handle(ASSET_SCHEME, async (request) => {
@@ -145,6 +174,11 @@ export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
         if (!sessionId || !assetPath) return notFound();
         const asset = await resolvers.resolveUnitViewerAsset(sessionId, assetPath);
         return asset ? respondWith(asset) : notFound();
+      }
+      if (url.host === MODEL_PREVIEW_HOST) {
+        // segments: [previewId, model.glb]
+        const previewId = segments[0];
+        return previewId ? await serveModelPreview(previewId) : notFound();
       }
       if (url.host === MOD_THUMBNAIL_HOST) {
         // segments: [imgPath]
