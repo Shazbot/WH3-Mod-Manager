@@ -6,6 +6,7 @@ import { compileVisualsUnitFilter } from "../visuals/unitFilter";
 import { Resizable } from "re-resizable";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronRight } from "@fortawesome/free-solid-svg-icons";
+import VisualsModelPreview from "./VisualsModelPreview";
 
 type VisualsUnitEntry = {
   unitKey: string;
@@ -958,13 +959,21 @@ const VisualsTab = memo(() => {
                   <div>{activeTab.filePath}</div>
                   {activeTab.resolvedPackPath && <div>pack: {activeTab.resolvedPackPath}</div>}
                 </div>
-                {activeTab.status === "loading" && <div className="p-4 text-gray-300">Loading file...</div>}
-                {activeTab.status === "error" && (
-                  <div className="p-4 text-red-300">{activeTab.error || "Failed to load file"}</div>
-                )}
-                {activeTab.status === "ready" &&
-                  activeTab.text != null &&
-                  renderVariantMeshText(activeTab.text, activeTab.resolvedPackPath)}
+                <VisualsModelPreview assetPath={activeTab.filePath} />
+                <details className="border-t border-gray-700 bg-gray-900">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400 hover:bg-gray-800">
+                    Variant mesh definition source
+                  </summary>
+                  <div className="border-t border-gray-800">
+                    {activeTab.status === "loading" && <div className="p-4 text-gray-300">Loading file...</div>}
+                    {activeTab.status === "error" && (
+                      <div className="p-4 text-red-300">{activeTab.error || "Failed to load file"}</div>
+                    )}
+                    {activeTab.status === "ready" &&
+                      activeTab.text != null &&
+                      renderVariantMeshText(activeTab.text, activeTab.resolvedPackPath)}
+                  </div>
+                </details>
               </>
             )}
           </div>
