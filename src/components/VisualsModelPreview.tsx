@@ -1,16 +1,12 @@
-import React, { memo, useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import {
-  exportVisualsModel,
-  releaseVisualsModelPreview,
-  type VisualsModelPreviewMod,
-} from "../visuals/modelPreviewApi";
+import { useAppSelector } from "../hooks";
+import { exportVisualsModel, releaseVisualsModelPreview } from "../visuals/modelPreviewApi";
 
 type VisualsModelPreviewProps = {
   assetPath: string;
-  enabledMods: readonly VisualsModelPreviewMod[];
 };
 
 type ThreePreviewContext = {
@@ -63,7 +59,12 @@ const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
   context.grid.position.set(center.x, box.min.y, center.z);
 };
 
-const VisualsModelPreview = memo(({ assetPath, enabledMods }: VisualsModelPreviewProps) => {
+const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
+  const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const enabledMods = useMemo(
+    () => currentPresetMods.filter((mod) => mod.isEnabled).map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
+    [currentPresetMods],
+  );
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
