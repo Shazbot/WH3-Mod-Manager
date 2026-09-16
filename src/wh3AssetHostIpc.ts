@@ -9,7 +9,11 @@ import {
   revokeModelPreviewFile,
 } from "./assetProtocol";
 import { Wh3AssetHostClient } from "./wh3AssetHostClient";
-import { Wh3AssetHostPackInitializer } from "./wh3AssetHostPacks";
+import {
+  Wh3AssetHostPackInitializer,
+  getWh3AssetHostPackPathsForMods,
+  type Wh3AssetHostMod,
+} from "./wh3AssetHostPacks";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
 const HOST_EXECUTABLE_NAME = "WH3AssetHost.exe";
@@ -119,7 +123,19 @@ const removePreview = async (previewId: string) => {
   }
 };
 
-const exportVisualsModel = async (assetPath: string) => {
+const sanitizeEnabledMods = (value: unknown): Wh3AssetHostMod[] => {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const candidate = entry as Partial<Wh3AssetHostMod>;
+    if (typeof candidate.name !== "string" || typeof candidate.path !== "string") return [];
+    const loadOrder = candidate.loadOrder;
+    if (loadOrder != null && (!Number.isInteger(loadOrder) || loadOrder < 0)) return [];
+    return [{ name: candidate.name, path: candidate.path, loadOrder }];
+  });
+};
+
+const exportVisualsModel = async (assetPath: string, enabledModsValue: unknown) => {
   if (process.platform !== "win32") {
     return { success: false as const, error: "The WH3 model preview host currently requires Windows." };
   }
@@ -130,13 +146,15 @@ const exportVisualsModel = async (assetPath: string) => {
   const normalizedAssetPath = assetPath?.trim();
   if (!normalizedAssetPath) return { success: false as const, error: "No model asset path was provided." };
 
+  const enabledMods = sanitizeEnabledMods(enabledModsValue);
   const previewId = randomUUID();
   const outputRoot = getOutputRoot();
   const outputPath = `${previewId}\\model.glb`;
 
   try {
     const host = await startHost();
-    await host.packInitializer.ensureInitialized(outputRoot);
+    const packPaths = getWh3AssetHostPackPathsForMods(enabledMods);
+    await host.packInitializer.ensureInitializedForPackPaths(packPaths, outputRoot);
     const result = await host.client.exportModel({
       assetPath: normalizedAssetPath,
       outputPath,
@@ -171,7 +189,9 @@ const exportVisualsModel = async (assetPath: string) => {
 };
 
 ipcMain.removeHandler("exportVisualsModel");
-ipcMain.handle("exportVisualsModel", async (_event, assetPath: string) => exportVisualsModel(assetPath));
+ipcMain.handle("exportVisualsModel", async (_event, assetPath: string, enabledMods: unknown) =>
+  exportVisualsModel(assetPath, enabledMods),
+);
 
 ipcMain.removeHandler("releaseVisualsModelPreview");
 ipcMain.handle("releaseVisualsModelPreview", async (_event, previewId: string) => {
