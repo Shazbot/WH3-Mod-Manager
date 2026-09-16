@@ -20,6 +20,7 @@ export const ICON_HOST = "icon";
 export const UNIT_ASSET_HOST = "unit-asset";
 export const MOD_THUMBNAIL_HOST = "mod-thumbnail";
 export const MODEL_PREVIEW_HOST = "model-preview";
+export const MAP_CACHE_HOST = "map-cache";
 
 /**
  * Pack paths are compared case insensitively everywhere else, and a URL round trip is not
@@ -63,3 +64,7 @@ export const modelPreviewAssetUrl = (previewId: string) =>
  */
 export const modThumbnailUrl = (imgPath: string) =>
   `${ASSET_SCHEME}://${MOD_THUMBNAIL_HOST}/${encodeURIComponent(imgPath)}`;
+
+/** A PNG externalised from the campaign-map disk cache. */
+export const mapCacheImageUrl = (signature: string, imageName: string) =>
+  `${ASSET_SCHEME}://${MAP_CACHE_HOST}/${encodeURIComponent(signature)}/${encodeURIComponent(imageName)}.png`;

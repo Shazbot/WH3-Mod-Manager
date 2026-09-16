@@ -3,7 +3,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { clearEsfMapMemoryCache, loadEsfMapDiskCache, saveEsfMapDiskCache } from "../src/esfMap/cache";
+import {
+  clearEsfMapMemoryCache,
+  loadEsfMapDiskCache,
+  resolveEsfMapCachedImage,
+  saveEsfMapDiskCache,
+} from "../src/esfMap/cache";
 import type { EsfMapPayload } from "../src/esfMap/types";
 
 vi.mock("@mongodb-js/zstd", () => ({
@@ -34,8 +39,12 @@ describe("ESF map disk cache", () => {
       mapDataPath: "campaign_maps\\wh3_main_combi_map_1\\map_data.esf",
       startposPath: "campaigns\\wh3_main_combi\\startpos.esf",
       lookupPath: "campaign_maps\\wh3_main_combi_map_1\\wh3_main_combi_lookup.tga",
-      backgroundImage: { width: 2, height: 2, src: "data:image/png;base64,map" },
-      backgroundTextImage: { width: 2, height: 2, src: "data:image/png;base64,text" },
+      backgroundImage: { width: 2, height: 2, src: `data:image/png;base64,${Buffer.from("map").toString("base64")}` },
+      backgroundTextImage: {
+        width: 2,
+        height: 2,
+        src: `data:image/png;base64,${Buffer.from("text").toString("base64")}`,
+      },
       startposWasCompressed: true,
       gridSource: "lookup",
       displayFlipY: false,
@@ -84,9 +93,23 @@ describe("ESF map disk cache", () => {
     };
 
     await saveEsfMapDiskCache(directory, "current", data);
-    clearEsfMapMemoryCache();
+    expect(data.backgroundImage?.src).toBe("whmm://map-cache/current/background.png");
+    expect(data.backgroundTextImage?.src).toBe("whmm://map-cache/current/background-text.png");
+    await expect(resolveEsfMapCachedImage(directory, "current", "background")).resolves.toMatchObject({
+      mimeType: "image/png",
+      buffer: Buffer.from("map"),
+    });
+    await expect(resolveEsfMapCachedImage(directory, "current", "background-text")).resolves.toMatchObject({
+      mimeType: "image/png",
+      buffer: Buffer.from("text"),
+    });
 
+    clearEsfMapMemoryCache();
     await expect(loadEsfMapDiskCache(directory, "current")).resolves.toEqual(data);
     await expect(loadEsfMapDiskCache(directory, "stale")).resolves.toBeUndefined();
+
+    await fs.promises.rm(path.join(directory, "esf-map-images", "current", "background.png"));
+    clearEsfMapMemoryCache();
+    await expect(loadEsfMapDiskCache(directory, "current")).resolves.toBeUndefined();
   });
 });

@@ -126,7 +126,12 @@ import type {
   AncillaryEffectRow,
   BuiltAncillariesData,
 } from "./ancillariesData/types";
-import { clearEsfMapMemoryCache, loadEsfMapDiskCache, saveEsfMapDiskCache } from "./esfMap/cache";
+import {
+  clearEsfMapMemoryCache,
+  loadEsfMapDiskCache,
+  resolveEsfMapCachedImage,
+  saveEsfMapDiskCache,
+} from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import { addClimateDataToEsfMap } from "./esfMap/climates";
 import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
@@ -3441,6 +3446,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    * prewarm below is what keeps a whole roster to one read per pack instead of one per card.
    */
   registerAssetProtocol({
+    resolveMapCacheImage: (signature, imageName) =>
+      resolveEsfMapCachedImage(app.getPath("userData"), signature, imageName),
     resolveUnitViewerAsset: async (sessionId, assetPath) => {
       const session = unitViewerSessions.get(sessionId);
       if (!session) return undefined;
@@ -3957,6 +3964,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         factions: data.factions.map(({ flagUrl: _flagUrl, ...faction }) => faction),
       };
       await saveEsfMapDiskCache(app.getPath("userData"), signature, cacheData);
+      // saveEsfMapDiskCache replaces the cached copy's data URLs with whmm:// URLs. Copy those
+      // lightweight refs onto the decorated response too, so the first cold IPC response does not
+      // send the large base64 strings that were just externalised.
+      data.backgroundImage = cacheData.backgroundImage;
+      data.backgroundTextImage = cacheData.backgroundTextImage;
       cachedEsfMapData = { signature, data: cacheData };
       return { success: true, map: data };
     } catch (error) {
