@@ -1,5 +1,3 @@
-import { ipcRenderer } from "electron";
-
 export type VisualsModelPreviewMod = Pick<Mod, "name" | "path" | "loadOrder">;
 
 export interface VisualsModelPreviewExportResult {
@@ -10,16 +8,35 @@ export interface VisualsModelPreviewExportResult {
   error?: string;
 }
 
+type RendererIpc = {
+  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+};
+
+/**
+ * The app currently runs the main renderer with nodeIntegration enabled and contextIsolation disabled.
+ * Resolve Electron at runtime through the renderer's Node require instead of statically importing it:
+ * a static `import "electron"` makes Webpack try to bundle Electron itself and its Node-only `fs`
+ * dependency into the renderer bundle.
+ */
+const getRendererIpc = (): RendererIpc => {
+  const rendererWindow = window as typeof window & {
+    require?: (moduleName: string) => { ipcRenderer?: RendererIpc };
+  };
+  const ipcRenderer = rendererWindow.require?.("electron")?.ipcRenderer;
+  if (!ipcRenderer) throw new Error("Electron ipcRenderer is not available in this renderer.");
+  return ipcRenderer;
+};
+
 /** Renderer-facing surface for the model preview integration. Model bytes stay on disk. */
-export const exportVisualsModel = (
+export const exportVisualsModel = async (
   assetPath: string,
   enabledMods: readonly VisualsModelPreviewMod[],
 ): Promise<VisualsModelPreviewExportResult> =>
-  ipcRenderer.invoke(
+  (await getRendererIpc().invoke(
     "exportVisualsModel",
     assetPath,
     enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
-  );
+  )) as VisualsModelPreviewExportResult;
 
-export const releaseVisualsModelPreview = (previewId: string): Promise<{ success: boolean }> =>
-  ipcRenderer.invoke("releaseVisualsModelPreview", previewId);
+export const releaseVisualsModelPreview = async (previewId: string): Promise<{ success: boolean }> =>
+  (await getRendererIpc().invoke("releaseVisualsModelPreview", previewId)) as { success: boolean };
