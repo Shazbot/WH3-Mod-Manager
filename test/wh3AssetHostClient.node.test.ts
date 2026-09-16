@@ -1,4 +1,4 @@
-import { PassThrough } from "node:stream";
+import { Duplex, PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import {
   Wh3AssetHostClient,
@@ -6,7 +6,11 @@ import {
   Wh3AssetHostRemoteError,
   wh3AssetHostPipePath,
 } from "../src/wh3AssetHostClient";
-import { Wh3AssetHostFrameDecoder, encodeWh3AssetHostFrame } from "../src/wh3AssetHostProtocol";
+import {
+  Wh3AssetHostFrameDecoder,
+  Wh3AssetHostProtocolError,
+  encodeWh3AssetHostFrame,
+} from "../src/wh3AssetHostProtocol";
 
 const createMockChild = () => {
   const stderr = new PassThrough();
@@ -28,15 +32,36 @@ const createMockChild = () => {
   return child;
 };
 
+class MemoryDuplex extends Duplex {
+  peer: MemoryDuplex | null = null;
+
+  _read() {}
+
+  _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
+    this.peer?.push(Buffer.from(chunk));
+    callback();
+  }
+
+  _final(callback: (error?: Error | null) => void) {
+    this.peer?.push(null);
+    callback();
+  }
+
+  _destroy(error: Error | null, callback: (error?: Error | null) => void) {
+    this.peer?.push(null);
+    callback(error);
+  }
+}
+
 const createDuplexPair = () => {
-  const client = new PassThrough();
-  const server = new PassThrough();
-  client.on("data", (chunk) => server.write(chunk));
-  server.on("data", (chunk) => client.write(chunk));
+  const client = new MemoryDuplex();
+  const server = new MemoryDuplex();
+  client.peer = server;
+  server.peer = client;
   return { client, server };
 };
 
-const installServerResponder = (server: PassThrough, handle: (request: any) => any) => {
+const installServerResponder = (server: Duplex, handle: (request: any) => any) => {
   const decoder = new Wh3AssetHostFrameDecoder();
   server.on("data", (chunk) => {
     for (const request of decoder.push(chunk)) {
@@ -304,7 +329,7 @@ describe("WH3AssetHostClient", () => {
     }
   });
 
-  it("sends shutdown and then closes the client transport", async () => {
+  it("sends shutdown and ignores the host's expected process exit afterwards", async () => {
     const child = createMockChild();
     const { client, server } = createDuplexPair();
     installServerResponder(server, (request) => ({
@@ -323,7 +348,10 @@ describe("WH3AssetHostClient", () => {
     });
     await assetHost.start();
     await assetHost.shutdown();
+    child.emit("exit", 0, null);
+
     expect(assetHost.isConnected).toBe(false);
+    expect(assetHost.capturedStderr).toBe("");
   });
 
   it("reports protocol framing failures as client failures", async () => {
