@@ -17,6 +17,7 @@ import {
   ASSET_SCHEME,
   ICON_HOST,
   MOD_THUMBNAIL_HOST,
+  MAP_CACHE_HOST,
   UNIT_ASSET_HOST,
   normalizeAssetPath,
   type AssetBytes,
@@ -68,6 +69,8 @@ export const registerAssetSchemeAsPrivileged = () => {
 export interface AssetProtocolResolvers {
   /** The unit viewer's session-scoped assets, which are resolved out of that session's packs. */
   resolveUnitViewerAsset: (sessionId: string, assetPath: string) => Promise<AssetBytes | undefined>;
+  /** PNGs externalised from the campaign-map disk cache. */
+  resolveMapCacheImage: (signature: string, imageName: string) => Promise<AssetBytes | undefined>;
 }
 
 const notFound = () => new Response(undefined, { status: 404 });
@@ -144,6 +147,14 @@ export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
         const [sessionId, assetPath] = segments;
         if (!sessionId || !assetPath) return notFound();
         const asset = await resolvers.resolveUnitViewerAsset(sessionId, assetPath);
+        return asset ? respondWith(asset) : notFound();
+      }
+      if (url.host === MAP_CACHE_HOST) {
+        // segments: [map signature, image name with .png suffix]
+        const [signature, encodedImageName] = segments;
+        const imageName = encodedImageName?.replace(/\.png$/i, "");
+        if (!signature || !imageName) return notFound();
+        const asset = await resolvers.resolveMapCacheImage(signature, imageName);
         return asset ? respondWith(asset) : notFound();
       }
       if (url.host === MOD_THUMBNAIL_HOST) {
