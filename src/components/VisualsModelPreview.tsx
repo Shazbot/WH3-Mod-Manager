@@ -33,6 +33,12 @@ const disposeObject = (object: THREE.Object3D) => {
   });
 };
 
+const disposeGrid = (grid: THREE.GridHelper) => {
+  grid.geometry.dispose();
+  if (Array.isArray(grid.material)) grid.material.forEach(disposeMaterial);
+  else disposeMaterial(grid.material);
+};
+
 const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
   const box = new THREE.Box3().setFromObject(object);
   if (box.isEmpty()) return;
@@ -41,7 +47,7 @@ const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
   const size = box.getSize(new THREE.Vector3());
   const maxDimension = Math.max(size.x, size.y, size.z, 0.01);
   const halfFovRadians = THREE.MathUtils.degToRad(context.camera.fov * 0.5);
-  const distance = (maxDimension * 0.5) / Math.tan(halfFovRadians) * 1.45;
+  const distance = ((maxDimension * 0.5) / Math.tan(halfFovRadians)) * 1.45;
   const direction = new THREE.Vector3(1, 0.55, 1).normalize();
 
   context.camera.position.copy(center).addScaledVector(direction, distance);
@@ -142,6 +148,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       resizeObserver.disconnect();
       renderer.setAnimationLoop(null);
       controls.dispose();
+      disposeGrid(grid);
       renderer.dispose();
       renderer.forceContextLoss();
       if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
@@ -158,6 +165,10 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     let ownedModel: THREE.Object3D | undefined;
     let previewCanBeReleasedImmediately = false;
 
+    const releasePreview = (previewId: string) => {
+      void releaseVisualsModelPreview(previewId).catch(() => undefined);
+    };
+
     const cleanupOwnedPreview = () => {
       if (ownedModel) {
         context.scene.remove(ownedModel);
@@ -165,7 +176,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
         ownedModel = undefined;
       }
       if (ownedPreviewId && previewCanBeReleasedImmediately) {
-        void releaseVisualsModelPreview(ownedPreviewId);
+        releasePreview(ownedPreviewId);
         ownedPreviewId = undefined;
       }
     };
@@ -175,50 +186,58 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       setError(null);
       setWarnings([]);
 
-      const exportResult = await exportVisualsModel(assetPath, enabledMods);
-      if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
-        if (!isCancelled) {
-          setStatus("error");
-          setError(exportResult.error || "Failed to export this model.");
-          setWarnings(exportResult.warnings || []);
-        }
-        return;
-      }
-
-      ownedPreviewId = exportResult.previewId;
-      if (isCancelled) {
-        previewCanBeReleasedImmediately = true;
-        cleanupOwnedPreview();
-        return;
-      }
-
-      setWarnings(exportResult.warnings || []);
-      setStatus("loading");
-
       try {
-        const gltf = await new GLTFLoader().loadAsync(exportResult.url);
-        previewCanBeReleasedImmediately = true;
+        const exportResult = await exportVisualsModel(assetPath, enabledMods);
+        if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
+          if (!isCancelled) {
+            setStatus("error");
+            setError(exportResult.error || "Failed to export this model.");
+            setWarnings(exportResult.warnings || []);
+          }
+          return;
+        }
+
+        ownedPreviewId = exportResult.previewId;
         if (isCancelled) {
-          disposeObject(gltf.scene);
+          previewCanBeReleasedImmediately = true;
           cleanupOwnedPreview();
           return;
         }
 
-        ownedModel = gltf.scene;
-        ownedModel.traverse((child) => {
-          if (!(child instanceof THREE.Mesh)) return;
-          child.castShadow = true;
-          child.receiveShadow = true;
-        });
-        context.scene.add(ownedModel);
-        frameObject(context, ownedModel);
-        setStatus("ready");
-      } catch (loadError) {
-        previewCanBeReleasedImmediately = true;
+        setWarnings(exportResult.warnings || []);
+        setStatus("loading");
+
+        try {
+          const gltf = await new GLTFLoader().loadAsync(exportResult.url);
+          previewCanBeReleasedImmediately = true;
+          if (isCancelled) {
+            disposeObject(gltf.scene);
+            cleanupOwnedPreview();
+            return;
+          }
+
+          ownedModel = gltf.scene;
+          ownedModel.traverse((child) => {
+            if (!(child instanceof THREE.Mesh)) return;
+            child.castShadow = true;
+            child.receiveShadow = true;
+          });
+          context.scene.add(ownedModel);
+          frameObject(context, ownedModel);
+          setStatus("ready");
+        } catch (loadError) {
+          previewCanBeReleasedImmediately = true;
+          cleanupOwnedPreview();
+          if (!isCancelled) {
+            setStatus("error");
+            setError(loadError instanceof Error ? loadError.message : "Failed to load the exported GLB.");
+          }
+        }
+      } catch (exportError) {
         cleanupOwnedPreview();
         if (!isCancelled) {
           setStatus("error");
-          setError(loadError instanceof Error ? loadError.message : "Failed to load the exported GLB.");
+          setError(exportError instanceof Error ? exportError.message : "Failed to request the model export.");
         }
       }
     };
