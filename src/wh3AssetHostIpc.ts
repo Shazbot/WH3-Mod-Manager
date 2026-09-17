@@ -13,6 +13,7 @@ import {
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
 const HOST_EXECUTABLE_NAME = "WH3AssetHost.exe";
+const HOST_REPOSITORY_RELATIVE_PATH = nodePath.join("tools", "WH3AssetHost", HOST_EXECUTABLE_NAME);
 const HOST_PROJECT_RELATIVE_PATH = nodePath.join("Tools", "WH3AssetHost");
 
 type RunningHost = {
@@ -37,6 +38,7 @@ const getOutputRoot = () => nodePath.join(app.getPath("userData"), MODEL_PREVIEW
 const getDevelopmentHostCandidates = (): string[] => {
   const assetEditorRoot = nodePath.resolve(app.getAppPath(), "..", "assedFork");
   return [
+    nodePath.resolve(app.getAppPath(), HOST_REPOSITORY_RELATIVE_PATH),
     nodePath.join(assetEditorRoot, HOST_PROJECT_RELATIVE_PATH, "bin", "Debug", "net10.0-windows", HOST_EXECUTABLE_NAME),
     nodePath.join(
       assetEditorRoot,
@@ -69,9 +71,9 @@ const getDevelopmentHostCandidates = (): string[] => {
 };
 
 /**
- * Development prefers WH3_ASSET_HOST_PATH, then a sibling `assedFork` checkout (the normal local
- * layout for this integration). Packaged builds will use the self-contained host copied beside the
- * app's resources in the packaging milestone.
+ * Development prefers WH3_ASSET_HOST_PATH, then the repository host under `tools/WH3AssetHost`,
+ * followed by a sibling `assedFork` checkout. Packaged builds use the self-contained host copied
+ * beside the app's resources.
  */
 export const resolveWh3AssetHostExecutablePath = (): string => {
   const configuredPath = process.env.WH3_ASSET_HOST_PATH?.trim();
@@ -88,7 +90,7 @@ export const resolveWh3AssetHostExecutablePath = (): string => {
   throw new Error(
     [
       "WH3AssetHost.exe was not found.",
-      "Build Tools/WH3AssetHost/WH3AssetHost.csproj in the AssetEditor checkout or set WH3_ASSET_HOST_PATH.",
+      "Provide tools/WH3AssetHost/WH3AssetHost.exe or set WH3_ASSET_HOST_PATH.",
       candidates.length > 0 ? `Checked: ${candidates.join(" | ")}` : "No executable candidates were available.",
     ].join(" "),
   );
