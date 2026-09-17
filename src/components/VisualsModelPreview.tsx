@@ -242,7 +242,14 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
           .map((animation) => ({ path: animation.path, label: getAnimationLabel(animation.path) }))
           .filter((animation, index, all) => all.findIndex((candidate) => candidate.path === animation.path) === index)
           .sort((first, second) => first.label.localeCompare(second.label) || first.path.localeCompare(second.path));
-        const defaultAnimation = options.find((animation) => /stand[_-]idle/i.test(animation.path)) || options[0];
+        const defaultAnimation =
+          options.find(
+            (animation) =>
+              /stand[_-]idle/i.test(animation.path) &&
+              !/^cam(?:\s|[_-]|$)/i.test(getAnimationLabel(animation.path)),
+          ) ||
+          options.find((animation) => /stand[_-]idle/i.test(animation.path)) ||
+          options[0];
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.path || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
