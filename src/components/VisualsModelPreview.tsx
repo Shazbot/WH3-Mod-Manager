@@ -35,6 +35,8 @@ type PreviewAnimation = {
   label: string;
 };
 
+const NONE_ANIMATION: PreviewAnimation = { path: "", label: "None" };
+
 const disposeMaterial = (material: THREE.Material) => {
   for (const value of Object.values(material)) {
     if (value instanceof THREE.Texture) value.dispose();
@@ -248,24 +250,24 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       try {
         const result = await getVisualsModelAnimationCatalog(assetPath, enabledMods);
         if (isCancelled) return;
-        const options = (result.animations || [])
+        const animations = (result.animations || [])
           .filter((animation) => animation.path?.trim())
           .map((animation) => ({ path: animation.path, label: getAnimationLabel(animation.path) }))
           .filter((animation, index, all) => all.findIndex((candidate) => candidate.path === animation.path) === index)
           .sort((first, second) => first.label.localeCompare(second.label) || first.path.localeCompare(second.path));
+        const options = [NONE_ANIMATION, ...animations];
         const defaultAnimation =
-          options.find(
+          animations.find(
             (animation) =>
               /stand[_-]idle/i.test(animation.path) && !/^cam(?:\s|[_-]|$)/i.test(getAnimationLabel(animation.path)),
           ) ||
-          options.find((animation) => /stand[_-]idle/i.test(animation.path)) ||
-          options[0];
+          animations.find((animation) => /stand[_-]idle/i.test(animation.path));
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.path || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
       } catch (catalogError) {
         if (!isCancelled) {
-          setAnimationOptions([]);
+          setAnimationOptions([NONE_ANIMATION]);
           setSelectedAnimationPath("");
           setCatalogDiagnostics([
             catalogError instanceof Error ? catalogError.message : "Unable to resolve model animations.",
@@ -418,7 +420,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
           ownedModel = gltf.scene;
           context.scene.add(ownedModel);
-          if (gltf.animations.length > 0) {
+          if (selectedAnimationPath && gltf.animations.length > 0) {
             ownedMixer = new THREE.AnimationMixer(ownedModel);
             const action = ownedMixer.clipAction(gltf.animations[0]);
             action.setLoop(THREE.LoopRepeat, Infinity);
