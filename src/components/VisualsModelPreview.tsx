@@ -251,8 +251,8 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   }, [assetPath, enabledMods]);
 
   return (
-    <div className="border-b border-gray-700 bg-gray-950">
-      <div className="relative h-[48vh] min-h-[360px] w-full overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col bg-gray-950">
+      <div className="relative min-h-0 flex-1 w-full overflow-hidden">
         <div ref={mountRef} className="absolute inset-0" />
         {status !== "ready" && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-gray-950/70 text-sm text-gray-200">
@@ -266,7 +266,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
         </div>
       </div>
       {warnings.length > 0 && (
-        <div className="border-t border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+        <div className="shrink-0 border-t border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
           {warnings.join(" | ")}
         </div>
       )}
