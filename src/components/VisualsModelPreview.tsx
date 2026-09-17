@@ -88,6 +88,8 @@ const formatAnimationTime = (seconds: number) => {
   return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, "0")}`;
 };
 
+const ANIMATION_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
 const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = useMemo(
@@ -107,8 +109,10 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   const [clipDuration, setClipDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [animationSpeed, setAnimationSpeed] = useState(1);
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
+  const animationSpeedRef = useRef(1);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -212,6 +216,12 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     context.isPlaying = isPlaying;
     if (context.action) context.action.paused = !isPlaying;
   }, [isPlaying]);
+
+  useEffect(() => {
+    animationSpeedRef.current = animationSpeed;
+    const action = contextRef.current?.action;
+    if (action) action.timeScale = animationSpeed;
+  }, [animationSpeed]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -337,6 +347,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
             ownedMixer = new THREE.AnimationMixer(ownedModel);
             const action = ownedMixer.clipAction(gltf.animations[0]);
             action.setLoop(THREE.LoopRepeat, Infinity);
+            action.timeScale = animationSpeedRef.current;
             action.play();
             action.paused = !isPlayingRef.current;
             context.mixer = ownedMixer;
@@ -447,6 +458,20 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
         ) : (
           <span className="min-w-0 flex-1 truncate text-gray-500">No animations available</span>
         )}
+        <select
+          value={animationSpeed}
+          onChange={(event) => setAnimationSpeed(Number(event.target.value))}
+          aria-label="Animation speed"
+          title="Animation speed"
+          disabled={!clipDuration}
+          className="w-[4.5rem] shrink-0 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {ANIMATION_SPEEDS.map((speed) => (
+            <option key={speed} value={speed}>
+              {Math.round(speed * 100)}%
+            </option>
+          ))}
+        </select>
         <input
           type="range"
           min={0}
