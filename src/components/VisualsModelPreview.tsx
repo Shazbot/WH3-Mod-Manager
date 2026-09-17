@@ -2,8 +2,13 @@ import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { IoPause, IoPlay, IoRefresh } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
-import { exportVisualsModel, releaseVisualsModelPreview } from "../visuals/modelPreviewApi";
+import {
+  exportVisualsModel,
+  getVisualsModelAnimationCatalog,
+  releaseVisualsModelPreview,
+} from "../visuals/modelPreviewApi";
 
 type VisualsModelPreviewProps = {
   assetPath: string;
@@ -15,6 +20,14 @@ type ThreePreviewContext = {
   renderer: THREE.WebGLRenderer;
   controls: OrbitControls;
   grid: THREE.GridHelper;
+  mixer: THREE.AnimationMixer | null;
+  action: THREE.AnimationAction | null;
+  isPlaying: boolean;
+};
+
+type PreviewAnimation = {
+  path: string;
+  label: string;
 };
 
 const disposeMaterial = (material: THREE.Material) => {
@@ -65,10 +78,21 @@ const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
   context.grid.position.set(center.x, box.min.y, center.z);
 };
 
+const getAnimationLabel = (path: string) => {
+  const fileName = path.split(/[\\/]/).pop() || path;
+  return fileName.replace(/\.anim$/i, "").replace(/[_-]+/g, " ");
+};
+
+const formatAnimationTime = (seconds: number) => {
+  const wholeSeconds = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, "0")}`;
+};
+
 const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = useMemo(
-    () => currentPresetMods.filter((mod) => mod.isEnabled).map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
+    () =>
+      currentPresetMods.filter((mod) => mod.isEnabled).map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
     [currentPresetMods],
   );
   const mountRef = useRef<HTMLDivElement>(null);
@@ -76,6 +100,15 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [animationOptions, setAnimationOptions] = useState<PreviewAnimation[]>([]);
+  const [selectedAnimationPath, setSelectedAnimationPath] = useState("");
+  const [animationCatalogReady, setAnimationCatalogReady] = useState(false);
+  const [catalogDiagnostics, setCatalogDiagnostics] = useState<string[]>([]);
+  const [clipDuration, setClipDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const catalogLoadingRef = useRef(true);
+  const isPlayingRef = useRef(true);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -116,7 +149,16 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     const grid = new THREE.GridHelper(10, 20, 0x4b5563, 0x273244);
     scene.add(grid);
 
-    const context = { scene, camera, renderer, controls, grid };
+    const context: ThreePreviewContext = {
+      scene,
+      camera,
+      renderer,
+      controls,
+      grid,
+      mixer: null,
+      action: null,
+      isPlaying: true,
+    };
     contextRef.current = context;
 
     const resize = () => {
@@ -136,8 +178,13 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     });
     intersectionObserver.observe(mount);
 
-    renderer.setAnimationLoop(() => {
+    let previousFrameTime = performance.now();
+    renderer.setAnimationLoop((timestamp) => {
+      const now = typeof timestamp === "number" ? timestamp : performance.now();
+      const delta = Math.min(Math.max((now - previousFrameTime) / 1000, 0), 0.1);
+      previousFrameTime = now;
       if (!isVisible) return;
+      if (context.mixer && context.isPlaying) context.mixer.update(delta);
       controls.update();
       renderer.render(scene, camera);
     });
@@ -146,6 +193,9 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       intersectionObserver.disconnect();
       resizeObserver.disconnect();
       renderer.setAnimationLoop(null);
+      context.mixer?.stopAllAction();
+      context.mixer = null;
+      context.action = null;
       controls.dispose();
       disposeGrid(grid);
       renderer.dispose();
@@ -156,12 +206,67 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   }, []);
 
   useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    const context = contextRef.current;
+    if (!context) return;
+    context.isPlaying = isPlaying;
+    if (context.action) context.action.paused = !isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    catalogLoadingRef.current = true;
+    setAnimationCatalogReady(false);
+    setAnimationOptions([]);
+    setSelectedAnimationPath("");
+    setCatalogDiagnostics([]);
+    setClipDuration(0);
+    setCurrentTime(0);
+
+    const loadCatalog = async () => {
+      try {
+        const result = await getVisualsModelAnimationCatalog(assetPath, enabledMods);
+        if (isCancelled) return;
+        const options = (result.animations || [])
+          .filter((animation) => animation.path?.trim())
+          .map((animation) => ({ path: animation.path, label: getAnimationLabel(animation.path) }))
+          .filter((animation, index, all) => all.findIndex((candidate) => candidate.path === animation.path) === index)
+          .sort((first, second) => first.label.localeCompare(second.label) || first.path.localeCompare(second.path));
+        const defaultAnimation = options.find((animation) => /stand[_-]idle/i.test(animation.path)) || options[0];
+        setAnimationOptions(options);
+        setSelectedAnimationPath(defaultAnimation?.path || "");
+        setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
+      } catch (catalogError) {
+        if (!isCancelled) {
+          setAnimationOptions([]);
+          setSelectedAnimationPath("");
+          setCatalogDiagnostics([
+            catalogError instanceof Error ? catalogError.message : "Unable to resolve model animations.",
+          ]);
+        }
+      } finally {
+        if (!isCancelled) {
+          catalogLoadingRef.current = false;
+          setAnimationCatalogReady(true);
+        }
+      }
+    };
+
+    void loadCatalog();
+    return () => {
+      isCancelled = true;
+    };
+  }, [assetPath, enabledMods]);
+
+  useEffect(() => {
+    if (!animationCatalogReady || catalogLoadingRef.current) return;
     const context = contextRef.current;
     if (!context || !assetPath) return;
 
     let isCancelled = false;
     let ownedPreviewId: string | undefined;
     let ownedModel: THREE.Object3D | undefined;
+    let ownedMixer: THREE.AnimationMixer | undefined;
     let previewCanBeReleasedImmediately = false;
 
     const releasePreview = (previewId: string) => {
@@ -171,9 +276,14 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     const cleanupOwnedPreview = () => {
       if (ownedModel) {
         context.scene.remove(ownedModel);
+        ownedMixer?.stopAllAction();
+        ownedMixer?.uncacheRoot(ownedModel);
         disposeObject(ownedModel);
         ownedModel = undefined;
       }
+      ownedMixer = undefined;
+      context.mixer = null;
+      context.action = null;
       if (ownedPreviewId && previewCanBeReleasedImmediately) {
         releasePreview(ownedPreviewId);
         ownedPreviewId = undefined;
@@ -183,10 +293,16 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     const run = async () => {
       setStatus("exporting");
       setError(null);
-      setWarnings([]);
+      setClipDuration(0);
+      setCurrentTime(0);
+      setWarnings(catalogDiagnostics);
 
       try {
-        const exportResult = await exportVisualsModel(assetPath, enabledMods);
+        const exportResult = await exportVisualsModel(
+          assetPath,
+          enabledMods,
+          selectedAnimationPath ? [selectedAnimationPath] : [],
+        );
         if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
           if (!isCancelled) {
             setStatus("error");
@@ -203,7 +319,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
           return;
         }
 
-        setWarnings(exportResult.warnings || []);
+        setWarnings([...catalogDiagnostics, ...(exportResult.warnings || [])]);
         setStatus("loading");
 
         try {
@@ -217,6 +333,17 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
 
           ownedModel = gltf.scene;
           context.scene.add(ownedModel);
+          if (gltf.animations.length > 0) {
+            ownedMixer = new THREE.AnimationMixer(ownedModel);
+            const action = ownedMixer.clipAction(gltf.animations[0]);
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.play();
+            action.paused = !isPlayingRef.current;
+            context.mixer = ownedMixer;
+            context.action = action;
+            setClipDuration(gltf.animations[0].duration);
+            setCurrentTime(0);
+          }
           frameObject(context, ownedModel);
           setStatus("ready");
         } catch (loadError) {
@@ -242,7 +369,23 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       isCancelled = true;
       cleanupOwnedPreview();
     };
-  }, [assetPath, enabledMods]);
+  }, [animationCatalogReady, assetPath, catalogDiagnostics, enabledMods, selectedAnimationPath]);
+
+  useEffect(() => {
+    if (status !== "ready" || clipDuration <= 0) return;
+    const timer = window.setInterval(() => {
+      const action = contextRef.current?.action;
+      if (action) setCurrentTime(Math.min(action.time, clipDuration));
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [clipDuration, status]);
+
+  const seekAnimation = (value: number) => {
+    const action = contextRef.current?.action;
+    if (!action) return;
+    action.time = Math.max(0, Math.min(value, clipDuration));
+    setCurrentTime(action.time);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-950">
@@ -258,6 +401,66 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           Left drag: orbit · Right drag: pan · Wheel: zoom
         </div>
+      </div>
+      <div className="flex min-h-9 shrink-0 items-center gap-2 border-t border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300">
+        <button
+          type="button"
+          disabled={!clipDuration}
+          onClick={() => setIsPlaying((playing) => !playing)}
+          aria-label={isPlaying ? "Pause animation" : "Play animation"}
+          title={isPlaying ? "Pause animation" : "Play animation"}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-gray-600 bg-gray-800 text-gray-200 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isPlaying ? <IoPause size={14} /> : <IoPlay size={14} />}
+        </button>
+        <button
+          type="button"
+          disabled={!clipDuration}
+          onClick={() => {
+            seekAnimation(0);
+            setIsPlaying(true);
+          }}
+          aria-label="Restart animation"
+          title="Restart animation"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-gray-600 bg-gray-800 text-gray-200 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <IoRefresh size={14} />
+        </button>
+        {animationOptions.length > 0 ? (
+          <select
+            value={selectedAnimationPath}
+            onChange={(event) => {
+              setCurrentTime(0);
+              setIsPlaying(true);
+              setSelectedAnimationPath(event.target.value);
+            }}
+            aria-label="Animation"
+            title={selectedAnimationPath}
+            className="min-w-0 max-w-[18rem] flex-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+          >
+            {animationOptions.map((animation) => (
+              <option key={animation.path} value={animation.path}>
+                {animation.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-gray-500">No animations available</span>
+        )}
+        <input
+          type="range"
+          min={0}
+          max={clipDuration || 1}
+          step={0.01}
+          value={Math.min(currentTime, clipDuration || 1)}
+          onChange={(event) => seekAnimation(Number(event.target.value))}
+          aria-label="Animation timeline"
+          disabled={!clipDuration}
+          className="hidden min-w-24 flex-[2] accent-blue-500 sm:block"
+        />
+        <span className="w-16 shrink-0 text-right tabular-nums text-gray-500">
+          {clipDuration ? `${formatAnimationTime(currentTime)} / ${formatAnimationTime(clipDuration)}` : "—"}
+        </span>
       </div>
       {warnings.length > 0 && (
         <div className="shrink-0 border-t border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">

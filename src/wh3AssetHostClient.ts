@@ -8,6 +8,8 @@ import {
   encodeWh3AssetHostFrame,
 } from "./wh3AssetHostProtocol";
 
+// Animation catalog lookup is additive. Keeping it optional lets an older bundled host continue to
+// render static previews while the new host is being installed.
 const REQUIRED_CAPABILITIES = ["hello", "initialize", "exportModel", "shutdown"] as const;
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000;
 const DEFAULT_CONNECT_RETRY_DELAY_MS = 50;
@@ -72,6 +74,15 @@ export interface Wh3AssetHostExportModelRequest {
   exportMaterials?: boolean;
   includeSkeleton?: boolean;
   mirrorMesh?: boolean;
+}
+
+export interface Wh3AssetHostAnimationCatalog {
+  success: boolean;
+  assetPath: string;
+  skeletonName?: string | null;
+  hasSkeletonFile: boolean;
+  animations: Array<{ path: string }>;
+  diagnostics: string[];
 }
 
 export class Wh3AssetHostRemoteError extends Error {
@@ -158,7 +169,12 @@ export class Wh3AssetHostClient {
   private readonly options: Required<
     Pick<
       Wh3AssetHostClientOptions,
-      "executablePath" | "parentProcessId" | "pipeName" | "connectTimeoutMs" | "connectRetryDelayMs" | "requestTimeoutMs"
+      | "executablePath"
+      | "parentProcessId"
+      | "pipeName"
+      | "connectTimeoutMs"
+      | "connectRetryDelayMs"
+      | "requestTimeoutMs"
     >
   >;
   private readonly spawnProcess: SpawnAssetHostProcess;
@@ -216,13 +232,7 @@ export class Wh3AssetHostClient {
     this.stderrTail = "";
     this.shuttingDown = false;
 
-    const args = [
-      "serve",
-      "--pipe",
-      this.options.pipeName,
-      "--parent-pid",
-      String(this.options.parentProcessId),
-    ];
+    const args = ["serve", "--pipe", this.options.pipeName, "--parent-pid", String(this.options.parentProcessId)];
     const child = this.spawnProcess(this.options.executablePath, args);
     this.childProcess = child;
     this.bindChildProcess(child);
@@ -296,6 +306,10 @@ export class Wh3AssetHostClient {
       includeSkeleton: request.includeSkeleton ?? true,
       mirrorMesh: request.mirrorMesh ?? true,
     });
+  }
+
+  getAnimationCatalog(assetPath: string): Promise<Wh3AssetHostAnimationCatalog> {
+    return this.request<Wh3AssetHostAnimationCatalog>("getAnimationCatalog", { assetPath });
   }
 
   async shutdown(): Promise<void> {

@@ -80,10 +80,7 @@ describe("WH3AssetHostClient", () => {
     const child = createMockChild();
     const { client, server } = createDuplexPair();
     const spawnProcess = vi.fn(() => child as never);
-    const connectPipe = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("ENOENT"))
-      .mockResolvedValueOnce(client);
+    const connectPipe = vi.fn().mockRejectedValueOnce(new Error("ENOENT")).mockResolvedValueOnce(client);
     installServerResponder(server, (request) => ({
       protocolVersion: 1,
       requestId: request.requestId,
@@ -92,7 +89,7 @@ describe("WH3AssetHostClient", () => {
       result: {
         hostVersion: "test-host",
         protocolVersion: 1,
-        capabilities: ["hello", "initialize", "exportModel", "shutdown"],
+        capabilities: ["hello", "initialize", "getAnimationCatalog", "exportModel", "shutdown"],
         maxFrameBytes: 1024 * 1024,
       },
       error: null,
@@ -174,13 +171,22 @@ describe("WH3AssetHostClient", () => {
         result:
           request.command === "initialize"
             ? { outputRoot: request.outputRoot, packPaths: request.packPaths }
-            : {
-                success: true,
-                primaryFile: "C:\\cache\\preview\\model.glb",
-                auxiliaryFiles: [],
-                warnings: [],
-                errors: [],
-              },
+            : request.command === "getAnimationCatalog"
+              ? {
+                  success: true,
+                  assetPath: request.assetPath,
+                  skeletonName: "human",
+                  hasSkeletonFile: true,
+                  animations: [{ path: "animations\\battle\\human\\stand_idle.anim" }],
+                  diagnostics: [],
+                }
+              : {
+                  success: true,
+                  primaryFile: "C:\\cache\\preview\\model.glb",
+                  auxiliaryFiles: [],
+                  warnings: [],
+                  errors: [],
+                },
         error: null,
       };
     });
@@ -193,6 +199,10 @@ describe("WH3AssetHostClient", () => {
     await assetHost.start();
 
     await assetHost.initialize({ packPaths: ["a.pack", "b.pack"], outputRoot: "C:\\cache" });
+    await expect(assetHost.getAnimationCatalog("variantmeshes\\foo.variantmeshdefinition")).resolves.toMatchObject({
+      skeletonName: "human",
+      animations: [{ path: "animations\\battle\\human\\stand_idle.anim" }],
+    });
     await assetHost.exportModel({ assetPath: "variantmeshes\\foo.variantmeshdefinition", outputPath: "p\\model.glb" });
 
     expect(seen[0]).toMatchObject({
@@ -202,6 +212,11 @@ describe("WH3AssetHostClient", () => {
       outputRoot: "C:\\cache",
     });
     expect(seen[1]).toMatchObject({
+      protocolVersion: 1,
+      command: "getAnimationCatalog",
+      assetPath: "variantmeshes\\foo.variantmeshdefinition",
+    });
+    expect(seen[2]).toMatchObject({
       protocolVersion: 1,
       command: "exportModel",
       assetPath: "variantmeshes\\foo.variantmeshdefinition",
@@ -253,7 +268,7 @@ describe("WH3AssetHostClient", () => {
       result: {
         hostVersion: "wrong",
         protocolVersion: 2,
-        capabilities: ["hello", "initialize", "exportModel", "shutdown"],
+        capabilities: ["hello", "initialize", "getAnimationCatalog", "exportModel", "shutdown"],
         maxFrameBytes: 1024 * 1024,
       },
       error: null,

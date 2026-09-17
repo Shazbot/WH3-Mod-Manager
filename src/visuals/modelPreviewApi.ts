@@ -8,6 +8,14 @@ export interface VisualsModelPreviewExportResult {
   error?: string;
 }
 
+export interface VisualsModelPreviewAnimationCatalogResult {
+  success: boolean;
+  skeletonName?: string | null;
+  animations?: Array<{ path: string }>;
+  diagnostics?: string[];
+  error?: string;
+}
+
 type RendererIpc = {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
 };
@@ -31,12 +39,24 @@ const getRendererIpc = (): RendererIpc => {
 export const exportVisualsModel = async (
   assetPath: string,
   enabledMods: readonly VisualsModelPreviewMod[],
+  animationPaths: readonly string[] = [],
 ): Promise<VisualsModelPreviewExportResult> =>
   (await getRendererIpc().invoke(
     "exportVisualsModel",
     assetPath,
     enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
+    [...animationPaths],
   )) as VisualsModelPreviewExportResult;
+
+export const getVisualsModelAnimationCatalog = async (
+  assetPath: string,
+  enabledMods: readonly VisualsModelPreviewMod[],
+): Promise<VisualsModelPreviewAnimationCatalogResult> =>
+  (await getRendererIpc().invoke(
+    "getVisualsModelAnimationCatalog",
+    assetPath,
+    enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
+  )) as VisualsModelPreviewAnimationCatalogResult;
 
 export const releaseVisualsModelPreview = async (previewId: string): Promise<{ success: boolean }> =>
   (await getRendererIpc().invoke("releaseVisualsModelPreview", previewId)) as { success: boolean };

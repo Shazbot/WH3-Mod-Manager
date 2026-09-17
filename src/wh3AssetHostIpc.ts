@@ -36,7 +36,14 @@ const getDevelopmentHostCandidates = (): string[] => {
   const assetEditorRoot = nodePath.resolve(app.getAppPath(), "..", "assedFork");
   return [
     nodePath.join(assetEditorRoot, HOST_PROJECT_RELATIVE_PATH, "bin", "Debug", "net10.0-windows", HOST_EXECUTABLE_NAME),
-    nodePath.join(assetEditorRoot, HOST_PROJECT_RELATIVE_PATH, "bin", "Release", "net10.0-windows", HOST_EXECUTABLE_NAME),
+    nodePath.join(
+      assetEditorRoot,
+      HOST_PROJECT_RELATIVE_PATH,
+      "bin",
+      "Release",
+      "net10.0-windows",
+      HOST_EXECUTABLE_NAME,
+    ),
     nodePath.join(
       assetEditorRoot,
       HOST_PROJECT_RELATIVE_PATH,
@@ -44,6 +51,16 @@ const getDevelopmentHostCandidates = (): string[] => {
       "Release",
       "net10.0-windows",
       "win-x64",
+      HOST_EXECUTABLE_NAME,
+    ),
+    nodePath.join(
+      assetEditorRoot,
+      HOST_PROJECT_RELATIVE_PATH,
+      "bin",
+      "Release",
+      "net10.0-windows",
+      "win-x64",
+      "publish",
       HOST_EXECUTABLE_NAME,
     ),
   ];
@@ -145,7 +162,18 @@ const sanitizeEnabledMods = (value: unknown): Wh3AssetHostMod[] => {
   });
 };
 
-const exportVisualsModelNow = async (assetPath: string, enabledModsValue: unknown) => {
+const sanitizeAnimationPaths = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const paths = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const path = entry.trim();
+    if (path) paths.add(path);
+  }
+  return [...paths];
+};
+
+const normalizeVisualsModelAssetPath = (assetPath: string) => {
   if (process.platform !== "win32") {
     return { success: false as const, error: "The WH3 model preview host currently requires Windows." };
   }
@@ -155,8 +183,40 @@ const exportVisualsModelNow = async (assetPath: string, enabledModsValue: unknow
 
   const normalizedAssetPath = assetPath?.trim();
   if (!normalizedAssetPath) return { success: false as const, error: "No model asset path was provided." };
+  return { success: true as const, assetPath: normalizedAssetPath };
+};
+
+const prepareVisualsModelHost = async (enabledModsValue: unknown) => {
+  await prepareOutputRoot();
+  const host = await startHost();
+  const enabledMods = sanitizeEnabledMods(enabledModsValue);
+  const packPaths = getWh3AssetHostPackPathsForMods(enabledMods);
+  await host.packInitializer.ensureInitializedForPackPaths(packPaths, getOutputRoot());
+  return host;
+};
+
+const getVisualsModelAnimationCatalogNow = async (assetPath: string, enabledModsValue: unknown) => {
+  const normalized = normalizeVisualsModelAssetPath(assetPath);
+  if (!normalized.success) return normalized;
+
+  try {
+    const host = await prepareVisualsModelHost(enabledModsValue);
+    return await host.client.getAnimationCatalog(normalized.assetPath);
+  } catch (error) {
+    disposeRunningHost();
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : "Failed to resolve model animations.",
+    };
+  }
+};
+
+const exportVisualsModelNow = async (assetPath: string, enabledModsValue: unknown, animationPathsValue: unknown) => {
+  const normalized = normalizeVisualsModelAssetPath(assetPath);
+  if (!normalized.success) return normalized;
 
   const enabledMods = sanitizeEnabledMods(enabledModsValue);
+  const animationPaths = sanitizeAnimationPaths(animationPathsValue);
   const previewId = randomUUID();
   const outputRoot = getOutputRoot();
   const previewDirectory = nodePath.join(outputRoot, previewId);
@@ -164,17 +224,18 @@ const exportVisualsModelNow = async (assetPath: string, enabledModsValue: unknow
   let registered = false;
 
   try {
-    await prepareOutputRoot();
-    const host = await startHost();
-    const packPaths = getWh3AssetHostPackPathsForMods(enabledMods);
-    await host.packInitializer.ensureInitializedForPackPaths(packPaths, outputRoot);
+    const host = await prepareVisualsModelHost(enabledMods);
     const result = await host.client.exportModel({
-      assetPath: normalizedAssetPath,
+      assetPath: normalized.assetPath,
       outputPath,
+      animationPaths,
     });
 
     if (!result.success || !result.primaryFile) {
-      const hostErrors = result.errors?.map((error) => error.message).filter(Boolean).join(" | ");
+      const hostErrors = result.errors
+        ?.map((error) => error.message)
+        .filter(Boolean)
+        .join(" | ");
       return {
         success: false as const,
         error: hostErrors || "WH3AssetHost did not produce a GLB for this model.",
@@ -225,8 +286,13 @@ const exportVisualsModel = <T>(operation: () => Promise<T>): Promise<T> => {
 };
 
 ipcMain.removeHandler("exportVisualsModel");
-ipcMain.handle("exportVisualsModel", async (_event, assetPath: string, enabledMods: unknown) =>
-  exportVisualsModel(() => exportVisualsModelNow(assetPath, enabledMods)),
+ipcMain.handle("exportVisualsModel", async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown) =>
+  exportVisualsModel(() => exportVisualsModelNow(assetPath, enabledMods, animationPaths)),
+);
+
+ipcMain.removeHandler("getVisualsModelAnimationCatalog");
+ipcMain.handle("getVisualsModelAnimationCatalog", async (_event, assetPath: string, enabledMods: unknown) =>
+  exportVisualsModel(() => getVisualsModelAnimationCatalogNow(assetPath, enabledMods)),
 );
 
 ipcMain.removeHandler("releaseVisualsModelPreview");
