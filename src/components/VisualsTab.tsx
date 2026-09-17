@@ -1192,7 +1192,11 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 </div>
                 <div className="relative min-h-0 flex-1">
                   <div className={`absolute inset-0 ${viewerMode === "preview" ? "" : "hidden"}`}>
-                    <VisualsModelPreview assetPath={activeTab.filePath} />
+                    <VisualsModelPreview
+                      assetPath={activeTab.filePath}
+                      variantMeshSessionId={sessionId ?? undefined}
+                      variantMeshSessionType="visuals"
+                    />
                   </div>
                   <div
                     className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}

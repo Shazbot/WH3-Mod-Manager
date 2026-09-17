@@ -651,6 +651,9 @@ const api = {
   getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
     ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
 
+  getVisualsVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
+    ipcRenderer.invoke("getVisualsVariantMeshCatalog", sessionId, assetPath),
+
   prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),
 

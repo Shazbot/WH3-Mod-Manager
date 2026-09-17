@@ -14,8 +14,9 @@ import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSel
 
 type VisualsModelPreviewProps = {
   assetPath: string;
-  /** Set by the Unit Viewer so VMD slots can be inspected and selected. */
+  /** Session used to inspect VMD slots and select appearances. */
   variantMeshSessionId?: string;
+  variantMeshSessionType?: "unitViewer" | "visuals";
 };
 
 type ThreePreviewContext = {
@@ -94,7 +95,8 @@ const formatAnimationTime = (seconds: number) => {
 
 const ANIMATION_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
-const VisualsModelPreview = memo(({ assetPath, variantMeshSessionId }: VisualsModelPreviewProps) => {
+const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
+  const { assetPath, variantMeshSessionId, variantMeshSessionType = "unitViewer" } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = useMemo(
@@ -293,7 +295,10 @@ const VisualsModelPreview = memo(({ assetPath, variantMeshSessionId }: VisualsMo
 
     const loadVariantCatalog = async () => {
       try {
-        const result = await window.api?.getUnitViewerVariantMeshCatalog(variantMeshSessionId, assetPath);
+        const result =
+          variantMeshSessionType === "visuals"
+            ? await window.api?.getVisualsVariantMeshCatalog(variantMeshSessionId, assetPath)
+            : await window.api?.getUnitViewerVariantMeshCatalog(variantMeshSessionId, assetPath);
         if (isCancelled) return;
         if (!result?.success || !result.catalog) {
           throw new Error(result?.error || "Unable to resolve unit appearances.");
@@ -319,7 +324,7 @@ const VisualsModelPreview = memo(({ assetPath, variantMeshSessionId }: VisualsMo
     return () => {
       isCancelled = true;
     };
-  }, [assetPath, variantMeshSessionId]);
+  }, [assetPath, variantMeshSessionId, variantMeshSessionType]);
 
   const activeVariantSlots = useMemo(
     () =>

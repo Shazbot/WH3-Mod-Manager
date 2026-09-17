@@ -536,6 +536,8 @@ type VisualsSession = {
   fileSearchPackPaths: string[];
   visualFiles?: VisualsFileResult[];
   visualFilesPromise?: Promise<VisualsFileResult[]>;
+  /** Parsed VMD catalogs shared by the Visuals tab preview. */
+  variantMeshCatalogs: Map<string, Promise<VariantMeshCatalog>>;
   createdAt: number;
 };
 type UnitViewerSession = {
@@ -7679,6 +7681,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         dbPriorityPackPaths: [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)],
         fileSearchPackPaths,
         visualFiles: areAllFileContributionsCached ? mergeVisualsFileContributions(cachedFileContributions) : undefined,
+        variantMeshCatalogs: new Map(),
         createdAt: Date.now(),
       });
       return {
@@ -7733,6 +7736,42 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       return {
         success: false,
         error: error instanceof Error ? error.message : "Failed to read variantmeshdefinition",
+      };
+    }
+  });
+  ipcMain.handle("getVisualsVariantMeshCatalog", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = visualsSessions.get(sessionId);
+      if (!session) return { success: false, error: "Visuals session expired or missing" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!normalizedPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const cacheKey = normalizedPath.toLowerCase();
+      const cached = session.variantMeshCatalogs.get(cacheKey);
+      const catalogPromise =
+        cached ||
+        buildVariantMeshCatalog(normalizedPath, async (definitionPath) => {
+          const resolved = await resolveVisualsFileInSession(session, definitionPath, {
+            variantMeshDefinitionFallback: true,
+          });
+          if (!resolved?.pack || !resolved.fileName) return undefined;
+          await readFromExistingPack(resolved.pack, {
+            filesToRead: [resolved.fileName],
+            skipParsingTables: true,
+          });
+          const refreshedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+          return refreshedFile ? decodePackedFileText(refreshedFile) : undefined;
+        });
+      if (!cached) session.variantMeshCatalogs.set(cacheKey, catalogPromise);
+      try {
+        return { success: true, catalog: await catalogPromise };
+      } catch (error) {
+        if (session.variantMeshCatalogs.get(cacheKey) === catalogPromise) session.variantMeshCatalogs.delete(cacheKey);
+        throw error;
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve Visuals appearances",
       };
     }
   });
