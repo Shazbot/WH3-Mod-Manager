@@ -167,6 +167,7 @@ import {
   type VisualsTableContribution,
   type VisualsVanillaSignatureInputs,
 } from "./visuals/cache";
+import { toVariantMeshDefinitionPath } from "./visuals/paths";
 import {
   canUseVanillaDbCacheForPack,
   closeVanillaDbCacheReaders,
@@ -858,21 +859,6 @@ const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContex
   reverseRefTtlMs: 5 * 60 * 1000,
   maxReverseRefEntries: 32,
 });
-const toVariantMeshDefinitionPath = (value: string) => {
-  let path = normalizePackFilePath(value);
-  if (!path) return path;
-  if (!path.toLowerCase().endsWith(".variantmeshdefinition")) {
-    path = `${path}.variantmeshdefinition`;
-  }
-  const lower = path.toLowerCase();
-  if (!lower.startsWith("variantmeshes\\")) {
-    path = `variantmeshes\\variantmeshdefinitions\\${path}`;
-  } else if (!lower.startsWith("variantmeshes\\variantmeshdefinitions\\")) {
-    const baseName = nodePath.basename(path);
-    path = `variantmeshes\\variantmeshdefinitions\\${baseName}`;
-  }
-  return normalizePackFilePath(path);
-};
 const decodePackedFileText = (packedFile: PackedFile) => {
   if (packedFile.text != null) return packedFile.text;
   if (!packedFile.buffer) return undefined;
@@ -3256,7 +3242,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 17,
+          feature: 18,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),

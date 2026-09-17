@@ -635,6 +635,27 @@ describe("Unit Viewer catalog", () => {
     expect(built.groups[0].units[0].originPackPath).toBe("/mods/example.pack");
   });
 
+  it("resolves the selected unit's variant mesh definition path", () => {
+    const built = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "unit", land_unit: "land", num_men: "1" }],
+        land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "land", faction: "", variant: "unit_variant" }],
+        variants_tables: [{ variant_name: "unit_variant", variant_filename: "units\\human" }],
+      },
+      () => undefined,
+    );
+
+    expect(built.units.get("unit")?.variantMeshPath).toBe(
+      "variantmeshes\\variantmeshdefinitions\\units\\human.variantmeshdefinition",
+    );
+    expect(built.groups[0].units[0].variantMeshPath).toBe(
+      "variantmeshes\\variantmeshdefinitions\\units\\human.variantmeshdefinition",
+    );
+  });
+
   it("resolves character XP with campaign and agent-specific rows taking precedence", () => {
     const built = buildUnitViewerData(
       {

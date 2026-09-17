@@ -16,6 +16,7 @@ import type {
   UnitViewerLordOption,
 } from "./types";
 import { resolveTextReplacements } from "../skills";
+import { toVariantMeshDefinitionPath } from "../visuals/paths";
 
 export type UnitViewerTableRows = Record<string, Array<Record<string, string>>>;
 
@@ -87,6 +88,7 @@ export const UNIT_VIEWER_TABLES = [
   "ui_unit_group_parents_tables",
   "ground_type_to_stat_effects_tables",
   "_kv_morale_tables",
+  "variants_tables",
 ] as const;
 
 /** Bucket that collects units the game does not assign to a roster group. */
@@ -530,6 +532,7 @@ export const buildUnitViewerData = (
   const mounts = indexRows(tables.mounts_tables, "key");
   const engines = indexRows(tables.battlefield_engines_tables, "key");
   const articulated = indexRows(tables.land_unit_articulated_vehicles_tables, "key");
+  const variants = indexRows(tables.variants_tables, "variant_name");
   const armour = indexRows(tables.unit_armour_types_tables, "key");
   const shields = indexRows(tables.unit_shield_types_tables, "key");
   const meleeWeapons = indexRows(tables.melee_weapons_tables, "key");
@@ -709,6 +712,8 @@ export const buildUnitViewerData = (
     const variantRows = (unitVariants.get(landUnitKey) || []).toReversed();
     const variant = variantRows.find((row) => !asString(row.faction)) || variantRows[0];
     const unitCardName = asString(variant?.unit_card) || key;
+    const variantMeshPath =
+      toVariantMeshDefinitionPath(asString(variants.get(asString(variant?.variant))?.variant_filename)) || undefined;
     const generalPortrait = (permissions.get(key) || [])
       .toReversed()
       .map((permission) => asString(permission.general_portrait))
@@ -784,6 +789,7 @@ export const buildUnitViewerData = (
       primaryMissileWeapon,
       secondaryMissileWeapon,
       unitCardPath,
+      variantMeshPath,
       attributes: unitAttributes,
       abilities: unitAbilities,
     };
@@ -860,6 +866,7 @@ export const buildUnitViewerData = (
             .map(([subculture]) => subculture),
           uiGroupKey: uiGroupKeyByUnit.get(unit.key) || EXTENDED_ROSTER_GROUP_KEY,
           unitCardPath: unit.unitCardPath,
+          variantMeshPath: unit.variantMeshPath,
           originPackPath: originPackPathByUnit.get(unit.key),
         }))
         .sort(
