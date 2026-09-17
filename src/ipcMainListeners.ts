@@ -325,6 +325,15 @@ import {
 } from "./vanillaPackIndex/select";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
+import {
+  getPackedFileNamesFromCacheEntry,
+  getCurrentPackFilesCacheEntry,
+  getVanillaPackFilesCacheEntry,
+  getCachedVanillaPackIndexFromEntry,
+  loadVanillaPackFilesCache,
+  rememberPackFileNames,
+  saveVanillaPackFilesCache,
+} from "./vanillaPackFilesCache";
 import { addRecentPackPath, recentPackPathsEqual, sanitizeRecentPackPaths } from "./utility/recentPackPaths";
 import {
   gameToGameName,
@@ -591,68 +600,29 @@ type CachedAncillariesData = {
 };
 let cachedAncillariesData: CachedAncillariesData | undefined;
 let cachedEsfMapData: { signature: string; data: import("./esfMap/types").EsfMapPayload } | undefined;
-// Cache for vanilla pack file name lists, keyed by pack path.
-// Allows skipping readPack() on startup when the pack hasn't changed. Module scope rather than
-// inside registerIpcMainListeners so anything that only needs a pack's file names - the buildings
-// icon scan, for one - can reuse it instead of reading the pack again.
-interface VanillaPackFilesCacheEntry {
-  size: number;
-  lastChangedLocal: number;
-  packedFileNames: string[];
-}
-type VanillaPackFilesCache = Record<string, VanillaPackFilesCacheEntry>;
-const VANILLA_PACK_FILES_CACHE_FILE = "vanilla-pack-files-cache.bin";
-let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
-const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache> => {
-  if (vanillaPackFilesCache !== null) return vanillaPackFilesCache;
-  try {
-    const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-    const compressed = await fs.promises.readFile(cacheFilePath);
-    const json = await zstdDecompress(compressed);
-    vanillaPackFilesCache = JSON.parse(json.toString("utf8")) as VanillaPackFilesCache;
-    return vanillaPackFilesCache!;
-  } catch {
-    vanillaPackFilesCache = {};
-    return vanillaPackFilesCache;
-  }
-};
-const saveVanillaPackFilesCache = async (): Promise<void> => {
-  if (!vanillaPackFilesCache) return;
-  try {
-    const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-    const json = Buffer.from(JSON.stringify(vanillaPackFilesCache), "utf8");
-    const compressed = await zstdCompress(json, 1);
-    await fs.promises.writeFile(cacheFilePath, compressed);
-  } catch (err) {
-    console.error("Failed to save vanilla pack files cache:", err);
-  }
-};
-
 /**
- * A pack's file names, from the cache when its size and mtime still match.
+ * A pack's file names, from the expanded vanilla cache or names-only v2 entries for mods when its
+ * size and mtime still match.
  *
  * The names are all an icon lookup needs, and reading a pack just to list them costs a full index
  * parse per pack - about 260 of them for wh3. Populates the cache for packs the startup path never
  * touched, so the second call in a session is free.
  */
 const getVanillaPackedFileNames = async (packPath: string): Promise<string[]> => {
-  const cache = await loadVanillaPackFilesCache();
-  let stat: fs.Stats | undefined;
-  try {
-    stat = await fs.promises.stat(packPath);
-  } catch {
-    return [];
-  }
-  const entry = cache[packPath];
-  if (entry && entry.size === stat.size && entry.lastChangedLocal === stat.mtimeMs) return entry.packedFileNames;
+  const cachedEntry = await getCurrentPackFilesCacheEntry(packPath);
+  if (cachedEntry) return getPackedFileNamesFromCacheEntry(cachedEntry);
 
   const alreadyRead = appData.packsData.find((pack) => pack.path == packPath);
   const packedFileNames = alreadyRead
     ? alreadyRead.packedFiles.map((packedFile) => packedFile.name)
     : (await readPack(packPath, { skipParsingTables: true })).packedFiles.map((packedFile) => packedFile.name);
-
-  cache[packPath] = { size: stat.size, lastChangedLocal: stat.mtimeMs, packedFileNames };
-  await saveVanillaPackFilesCache();
+  try {
+    const stat = await fs.promises.stat(packPath);
+    rememberPackFileNames(packPath, stat.size, stat.mtimeMs, packedFileNames);
+    await saveVanillaPackFilesCache();
+  } catch {
+    // The caller already has the names; a disappearing pack only prevents persistence.
+  }
   return packedFileNames;
 };
 
@@ -5653,15 +5623,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             } catch {
               // pack doesn't exist, skip
             }
-            const cacheEntry = vanillaStat && vanillaCache[dataPackPath];
+            const cacheEntry = vanillaStat ? getVanillaPackFilesCacheEntry(vanillaCache, dataPackPath) : undefined;
+            const cachedPackIndex = cacheEntry ? getCachedVanillaPackIndexFromEntry(cacheEntry) : undefined;
             const cacheHit =
-              cacheEntry &&
-              cacheEntry.size === vanillaStat!.size &&
-              cacheEntry.lastChangedLocal === vanillaStat!.mtimeMs;
+              !!cachedPackIndex &&
+              cacheEntry!.size === vanillaStat!.size &&
+              cacheEntry!.lastChangedLocal === vanillaStat!.mtimeMs;
             let packedFileNames: string[];
             if (cacheHit) {
               console.log("VANILLA PACK CACHE HIT:", dataPackPath);
-              packedFileNames = cacheEntry.packedFileNames;
+              packedFileNames = cachedPackIndex.packedFiles.map((packedFile) => packedFile.name);
             } else {
               console.log("READING DATA PACK");
               const dataPackData = await readPackRegistered(dataMod.path, {
@@ -5673,28 +5644,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                   appendPacksData(dataPackData);
                 }
                 packedFileNames = dataPackData.packedFiles.map((pf) => pf.name);
-                if (vanillaStat) {
-                  vanillaCache[dataPackPath] = {
-                    size: vanillaStat.size,
-                    lastChangedLocal: vanillaStat.mtimeMs,
-                    packedFileNames,
-                  };
-                  await saveVanillaPackFilesCache();
-                }
               } else {
                 packedFileNames = [];
               }
             }
             if (cacheHit) {
-              // Reconstruct a minimal Pack for vanillaPacks and appendPacksData from cached file names
+              // Reconstruct the pack from cached index metadata without reopening or reparsing it.
               const reconstructedPack: Pack = {
                 name: baseVanillaPackName,
                 path: dataPackPath,
-                packedFiles: packedFileNames.map((name) => ({ name, file_size: 0, start_pos: 0 })),
-                packHeader: {} as PackHeader,
+                packedFiles: cachedPackIndex.packedFiles,
+                packHeader: cachedPackIndex.packHeader,
                 lastChangedLocal: vanillaStat!.mtimeMs,
                 size: vanillaStat!.size,
                 readTables: [],
+                dependencyPacks: cachedPackIndex.dependencyPacks,
               };
               appData.vanillaPacks.push(reconstructedPack);
               if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
@@ -5712,6 +5676,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
           }
         }
+        await saveVanillaPackFilesCache();
         appData.vanillaPacksDBFileNames.sort((a, b) => collator.compare(a, b));
         await fetchGameUpdates();
       }
