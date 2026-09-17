@@ -7,6 +7,7 @@ import {
   Wh3AssetHostFrameDecoder,
   encodeWh3AssetHostFrame,
 } from "./wh3AssetHostProtocol";
+import type { VariantMeshSelection } from "./visuals/variantMesh";
 
 // Animation catalog lookup is additive. Keeping it optional lets an older bundled host continue to
 // render static previews while the new host is being installed.
@@ -71,6 +72,8 @@ export interface Wh3AssetHostExportModelRequest {
   assetPath: string;
   outputPath: string;
   animationPaths?: string[];
+  /** Explicit choices for VMD slots; interpreted by the host when supported. */
+  variantSelections?: readonly VariantMeshSelection[];
   exportMaterials?: boolean;
   includeSkeleton?: boolean;
   mirrorMesh?: boolean;
@@ -302,6 +305,7 @@ export class Wh3AssetHostClient {
       assetPath: request.assetPath,
       outputPath: request.outputPath,
       animationPaths: request.animationPaths ?? [],
+      variantSelections: request.variantSelections ?? [],
       exportMaterials: request.exportMaterials ?? true,
       includeSkeleton: request.includeSkeleton ?? true,
       mirrorMesh: request.mirrorMesh ?? true,

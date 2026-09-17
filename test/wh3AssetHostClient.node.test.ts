@@ -204,7 +204,11 @@ describe("WH3AssetHostClient", () => {
       skeletonName: "human",
       animations: [{ path: "animations\\battle\\human\\stand_idle.anim" }],
     });
-    await assetHost.exportModel({ assetPath: "variantmeshes\\foo.variantmeshdefinition", outputPath: "p\\model.glb" });
+    await assetHost.exportModel({
+      assetPath: "variantmeshes\\foo.variantmeshdefinition",
+      outputPath: "p\\model.glb",
+      variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 1 }],
+    });
 
     expect(seen[0]).toMatchObject({
       protocolVersion: 1,
@@ -223,6 +227,7 @@ describe("WH3AssetHostClient", () => {
       assetPath: "variantmeshes\\foo.variantmeshdefinition",
       outputPath: "p\\model.glb",
       animationPaths: [],
+      variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 1 }],
       exportMaterials: true,
       includeSkeleton: true,
       mirrorMesh: true,

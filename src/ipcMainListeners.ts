@@ -49,6 +49,7 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
 import {
   buildBuildingsData,
   buildVariantNameLocKey,
@@ -547,6 +548,8 @@ type UnitViewerSession = {
   pendingAssets: Map<string, Promise<AssetBytes | undefined>>;
   /** A batch read in flight, which single asset requests wait behind rather than race. */
   pendingPrewarm?: Promise<unknown>;
+  /** Parsed VMD catalogs, shared by animation/export requests for this unit-viewer session. */
+  variantMeshCatalogs: Map<string, Promise<VariantMeshCatalog>>;
   createdAt: number;
 };
 const unitViewerSessions = new Map<string, UnitViewerSession>();
@@ -863,6 +866,15 @@ const decodePackedFileText = (packedFile: PackedFile) => {
   if (packedFile.text != null) return packedFile.text;
   if (!packedFile.buffer) return undefined;
   const buffer = packedFile.buffer;
+  if (buffer.length >= 2 && buffer.subarray(0, 2).toString("hex") === "fffe") {
+    return buffer.subarray(2).toString("utf16le");
+  }
+  if (buffer.length >= 3 && buffer.subarray(0, 3).toString("hex") === "efbbbf") {
+    return buffer.subarray(3).toString("utf8");
+  }
+  return buffer.toString("utf8");
+};
+const decodePackedAssetText = (buffer: Buffer) => {
   if (buffer.length >= 2 && buffer.subarray(0, 2).toString("hex") === "fffe") {
     return buffer.subarray(2).toString("utf16le");
   }
@@ -3333,6 +3345,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       assetCache: new Map(),
       assetCacheBytes: 0,
       pendingAssets: new Map(),
+      variantMeshCatalogs: new Map(),
       createdAt: Date.now(),
     };
     const { assets: statIcons } = await loadUnitViewerAssets(
@@ -3365,6 +3378,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         assetCache: new Map(),
         assetCacheBytes: 0,
         pendingAssets: new Map(),
+        variantMeshCatalogs: new Map(),
         createdAt: Date.now(),
       });
       // The one being replaced is kept, and nothing older.
@@ -3422,6 +3436,35 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       return { success: true, unit, icons };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to load unit" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerVariantMeshCatalog", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!normalizedPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const cacheKey = normalizedPath.toLowerCase();
+      const cached = session.variantMeshCatalogs.get(cacheKey);
+      const catalogPromise =
+        cached ||
+        buildVariantMeshCatalog(normalizedPath, async (definitionPath) => {
+          const asset = await getUnitViewerAsset(session, definitionPath);
+          return asset ? decodePackedAssetText(asset.buffer) : undefined;
+        });
+      if (!cached) session.variantMeshCatalogs.set(cacheKey, catalogPromise);
+      try {
+        return { success: true, catalog: await catalogPromise };
+      } catch (error) {
+        if (session.variantMeshCatalogs.get(cacheKey) === catalogPromise) session.variantMeshCatalogs.delete(cacheKey);
+        throw error;
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve unit appearances",
+      };
     }
   });
 

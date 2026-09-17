@@ -9,6 +9,7 @@ import type {
   UnitViewerCatalogResponse,
   UnitViewerDetailsResponse,
 } from "./unitViewer/types";
+import type { VariantMeshCatalogResponse } from "./visuals/variantMesh";
 import type {
   BuildingsCaiRowsResponse,
   BuildingsCatalogResponse,
@@ -646,6 +647,9 @@ const api = {
 
   getUnitViewerDetails: (sessionId: string, unitKey: string): Promise<UnitViewerDetailsResponse> =>
     ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
+
+  getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
+    ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
 
   prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),

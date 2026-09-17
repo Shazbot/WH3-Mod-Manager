@@ -10,6 +10,7 @@ import {
   getWh3AssetHostPackPathsForMods,
   type Wh3AssetHostMod,
 } from "./wh3AssetHostPacks";
+import type { VariantMeshSelection } from "./visuals/variantMesh";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
 const HOST_EXECUTABLE_NAME = "WH3AssetHost.exe";
@@ -184,6 +185,19 @@ const sanitizeAnimationPaths = (value: unknown): string[] => {
   return [...paths];
 };
 
+const sanitizeVariantSelections = (value: unknown): VariantMeshSelection[] => {
+  if (!Array.isArray(value)) return [];
+  const selections = new Map<string, VariantMeshSelection>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const candidate = entry as Partial<VariantMeshSelection>;
+    const slotPath = typeof candidate.slotPath === "string" ? candidate.slotPath.trim() : "";
+    if (!slotPath || !Number.isInteger(candidate.choiceIndex) || candidate.choiceIndex! < 0) continue;
+    selections.set(slotPath, { slotPath, choiceIndex: candidate.choiceIndex! });
+  }
+  return [...selections.values()];
+};
+
 const normalizeVisualsModelAssetPath = (assetPath: string) => {
   if (process.platform !== "win32") {
     return { success: false as const, error: "The WH3 model preview host currently requires Windows." };
@@ -222,12 +236,18 @@ const getVisualsModelAnimationCatalogNow = async (assetPath: string, enabledMods
   }
 };
 
-const exportVisualsModelNow = async (assetPath: string, enabledModsValue: unknown, animationPathsValue: unknown) => {
+const exportVisualsModelNow = async (
+  assetPath: string,
+  enabledModsValue: unknown,
+  animationPathsValue: unknown,
+  variantSelectionsValue: unknown,
+) => {
   const normalized = normalizeVisualsModelAssetPath(assetPath);
   if (!normalized.success) return normalized;
 
   const enabledMods = sanitizeEnabledMods(enabledModsValue);
   const animationPaths = sanitizeAnimationPaths(animationPathsValue);
+  const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
   const previewId = randomUUID();
   const outputRoot = getOutputRoot();
   const previewDirectory = nodePath.join(outputRoot, previewId);
@@ -240,6 +260,7 @@ const exportVisualsModelNow = async (assetPath: string, enabledModsValue: unknow
       assetPath: normalized.assetPath,
       outputPath,
       animationPaths,
+      variantSelections,
     });
 
     if (!result.success || !result.primaryFile) {
@@ -297,8 +318,10 @@ const exportVisualsModel = <T>(operation: () => Promise<T>): Promise<T> => {
 };
 
 ipcMain.removeHandler("exportVisualsModel");
-ipcMain.handle("exportVisualsModel", async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown) =>
-  exportVisualsModel(() => exportVisualsModelNow(assetPath, enabledMods, animationPaths)),
+ipcMain.handle(
+  "exportVisualsModel",
+  async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown, variantSelections: unknown) =>
+    exportVisualsModel(() => exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections)),
 );
 
 ipcMain.removeHandler("getVisualsModelAnimationCatalog");

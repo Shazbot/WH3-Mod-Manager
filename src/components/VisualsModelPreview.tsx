@@ -4,14 +4,18 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { IoPause, IoPlay, IoRefresh } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
+import { useLocalizations } from "../localizationContext";
 import {
   exportVisualsModel,
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
 } from "../visuals/modelPreviewApi";
+import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 
 type VisualsModelPreviewProps = {
   assetPath: string;
+  /** Set by the Unit Viewer so VMD slots can be inspected and selected. */
+  variantMeshSessionId?: string;
 };
 
 type ThreePreviewContext = {
@@ -90,7 +94,8 @@ const formatAnimationTime = (seconds: number) => {
 
 const ANIMATION_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
-const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
+const VisualsModelPreview = memo(({ assetPath, variantMeshSessionId }: VisualsModelPreviewProps) => {
+  const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = useMemo(
     () =>
@@ -106,6 +111,10 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   const [selectedAnimationPath, setSelectedAnimationPath] = useState("");
   const [animationCatalogReady, setAnimationCatalogReady] = useState(false);
   const [catalogDiagnostics, setCatalogDiagnostics] = useState<string[]>([]);
+  const [variantCatalog, setVariantCatalog] = useState<VariantMeshCatalog>();
+  const [variantCatalogReady, setVariantCatalogReady] = useState(!variantMeshSessionId);
+  const [variantCatalogDiagnostics, setVariantCatalogDiagnostics] = useState<string[]>([]);
+  const [variantSelections, setVariantSelections] = useState<Record<string, number>>({});
   const [clipDuration, setClipDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -245,8 +254,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
         const defaultAnimation =
           options.find(
             (animation) =>
-              /stand[_-]idle/i.test(animation.path) &&
-              !/^cam(?:\s|[_-]|$)/i.test(getAnimationLabel(animation.path)),
+              /stand[_-]idle/i.test(animation.path) && !/^cam(?:\s|[_-]|$)/i.test(getAnimationLabel(animation.path)),
           ) ||
           options.find((animation) => /stand[_-]idle/i.test(animation.path)) ||
           options[0];
@@ -276,7 +284,61 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
   }, [assetPath, enabledMods]);
 
   useEffect(() => {
-    if (!animationCatalogReady || catalogLoadingRef.current) return;
+    let isCancelled = false;
+    setVariantCatalog(undefined);
+    setVariantCatalogDiagnostics([]);
+    setVariantSelections({});
+    setVariantCatalogReady(!variantMeshSessionId);
+    if (!variantMeshSessionId) return;
+
+    const loadVariantCatalog = async () => {
+      try {
+        const result = await window.api?.getUnitViewerVariantMeshCatalog(variantMeshSessionId, assetPath);
+        if (isCancelled) return;
+        if (!result?.success || !result.catalog) {
+          throw new Error(result?.error || "Unable to resolve unit appearances.");
+        }
+        setVariantCatalog(result.catalog);
+        setVariantCatalogDiagnostics(result.catalog.diagnostics);
+        setVariantSelections(
+          Object.fromEntries(result.catalog.slots.map((slot) => [slot.slotPath, slot.defaultChoiceIndex] as const)),
+        );
+      } catch (catalogError) {
+        if (!isCancelled) {
+          setVariantCatalog(undefined);
+          setVariantCatalogDiagnostics([
+            catalogError instanceof Error ? catalogError.message : "Unable to resolve unit appearances.",
+          ]);
+        }
+      } finally {
+        if (!isCancelled) setVariantCatalogReady(true);
+      }
+    };
+
+    void loadVariantCatalog();
+    return () => {
+      isCancelled = true;
+    };
+  }, [assetPath, variantMeshSessionId]);
+
+  const activeVariantSlots = useMemo(
+    () =>
+      variantCatalog
+        ? getActiveVariantMeshSlots(variantCatalog, variantSelections).filter((slot) => slot.choices.length > 1)
+        : [],
+    [variantCatalog, variantSelections],
+  );
+  const selectedVariantSelections = useMemo<VariantMeshSelection[]>(
+    () =>
+      activeVariantSlots.map((slot) => ({
+        slotPath: slot.slotPath,
+        choiceIndex: variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex,
+      })),
+    [activeVariantSlots, variantSelections],
+  );
+
+  useEffect(() => {
+    if (!animationCatalogReady || !variantCatalogReady || catalogLoadingRef.current) return;
     const context = contextRef.current;
     if (!context || !assetPath) return;
 
@@ -312,19 +374,20 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       setError(null);
       setClipDuration(0);
       setCurrentTime(0);
-      setWarnings(catalogDiagnostics);
+      setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics]);
 
       try {
         const exportResult = await exportVisualsModel(
           assetPath,
           enabledMods,
           selectedAnimationPath ? [selectedAnimationPath] : [],
+          selectedVariantSelections,
         );
         if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
           if (!isCancelled) {
             setStatus("error");
             setError(exportResult.error || "Failed to export this model.");
-            setWarnings(exportResult.warnings || []);
+            setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics, ...(exportResult.warnings || [])]);
           }
           return;
         }
@@ -336,7 +399,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
           return;
         }
 
-        setWarnings([...catalogDiagnostics, ...(exportResult.warnings || [])]);
+        setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics, ...(exportResult.warnings || [])]);
         setStatus("loading");
 
         try {
@@ -387,7 +450,16 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
       isCancelled = true;
       cleanupOwnedPreview();
     };
-  }, [animationCatalogReady, assetPath, catalogDiagnostics, enabledMods, selectedAnimationPath]);
+  }, [
+    animationCatalogReady,
+    assetPath,
+    catalogDiagnostics,
+    enabledMods,
+    selectedAnimationPath,
+    selectedVariantSelections,
+    variantCatalogDiagnostics,
+    variantCatalogReady,
+  ]);
 
   useEffect(() => {
     if (status !== "ready" || clipDuration <= 0) return;
@@ -420,6 +492,50 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
           Left drag: orbit · Right drag: pan · Wheel: zoom
         </div>
       </div>
+      {variantMeshSessionId && !variantCatalogReady && (
+        <div className="shrink-0 border-t border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-400">
+          {localized.unitViewerLoadingAppearances || "Loading unit appearances…"}
+        </div>
+      )}
+      {variantMeshSessionId && variantCatalog && activeVariantSlots.length > 0 && (
+        <div className="shrink-0 border-t border-gray-700 bg-gray-900 px-3 py-2">
+          <div className="mb-1 flex items-baseline gap-2 text-xs">
+            <span className="font-semibold text-gray-200">{localized.unitViewerAppearance || "Appearance"}</span>
+            <span className="text-gray-500">
+              {(localized.unitViewerAppearanceCombinations || "{{count}} combinations").replace(
+                "{{count}}",
+                `${variantCatalog.combinationCount.toLocaleString()}${variantCatalog.combinationCountCapped ? "+" : ""}`,
+              )}
+            </span>
+          </div>
+          <div className="flex max-h-20 flex-wrap gap-x-3 gap-y-1 overflow-auto">
+            {activeVariantSlots.map((slot) => (
+              <label key={slot.slotPath} className="flex min-w-36 flex-1 items-center gap-1 text-[11px] text-gray-400">
+                <span className="max-w-28 shrink-0 truncate" title={slot.slotPath}>
+                  {slot.label}
+                </span>
+                <select
+                  aria-label={`Appearance: ${slot.label}`}
+                  value={variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex}
+                  onChange={(event) =>
+                    setVariantSelections((current) => ({
+                      ...current,
+                      [slot.slotPath]: Number(event.target.value),
+                    }))
+                  }
+                  className="min-w-0 flex-1 rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                >
+                  {slot.choices.map((choice) => (
+                    <option key={choice.key} value={choice.index}>
+                      {choice.index + 1} · {choice.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex min-h-9 shrink-0 items-center gap-2 border-t border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300">
         <button
           type="button"

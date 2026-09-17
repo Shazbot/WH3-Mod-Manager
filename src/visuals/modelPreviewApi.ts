@@ -1,3 +1,5 @@
+import type { VariantMeshSelection } from "./variantMesh";
+
 export type VisualsModelPreviewMod = Pick<Mod, "name" | "path" | "loadOrder">;
 
 export interface VisualsModelPreviewExportResult {
@@ -40,12 +42,14 @@ export const exportVisualsModel = async (
   assetPath: string,
   enabledMods: readonly VisualsModelPreviewMod[],
   animationPaths: readonly string[] = [],
+  variantSelections: readonly VariantMeshSelection[] = [],
 ): Promise<VisualsModelPreviewExportResult> =>
   (await getRendererIpc().invoke(
     "exportVisualsModel",
     assetPath,
     enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
     [...animationPaths],
+    [...variantSelections],
   )) as VisualsModelPreviewExportResult;
 
 export const getVisualsModelAnimationCatalog = async (
