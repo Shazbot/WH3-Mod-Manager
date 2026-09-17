@@ -83,8 +83,10 @@ export const getCurrentWh3AssetHostPackPaths = (): string[] =>
 export const getWh3AssetHostPackPathsForMods = (enabledMods: readonly Wh3AssetHostMod[]): string[] =>
   buildWh3AssetHostPackPaths(getVanillaPackPathsInLoadOrder(), enabledMods);
 
-const packStateKey = (packPaths: readonly string[], outputRoot: string): string =>
-  `${packPathKey(outputRoot)}\n${packPaths.map(packPathKey).join("\n")}`;
+const packStateKey = (packPaths: readonly string[], outputRoot: string, vanillaPackFilesCachePath?: string): string =>
+  `${packPathKey(outputRoot)}\n${vanillaPackFilesCachePath ? packPathKey(vanillaPackFilesCachePath) : ""}\n${packPaths
+    .map(packPathKey)
+    .join("\n")}`;
 
 /**
  * Owns the initialization revision for one running WH3AssetHost client.
@@ -95,7 +97,10 @@ const packStateKey = (packPaths: readonly string[], outputRoot: string): string 
 export class Wh3AssetHostPackInitializer {
   private initializedStateKey: string | null = null;
 
-  constructor(private readonly client: Pick<Wh3AssetHostClient, "initialize">) {}
+  constructor(
+    private readonly client: Pick<Wh3AssetHostClient, "initialize">,
+    private readonly vanillaPackFilesCachePath?: string,
+  ) {}
 
   ensureInitialized(outputRoot: string): Promise<Wh3AssetHostInitializeResult | null> {
     return this.ensureInitializedForPackPaths(getCurrentWh3AssetHostPackPaths(), outputRoot);
@@ -110,12 +115,16 @@ export class Wh3AssetHostPackInitializer {
       throw new Wh3AssetHostPackStateError("MissingPackPaths", "No pack paths are available for WH3AssetHost.");
     }
 
-    const stateKey = packStateKey(deduplicatedPackPaths, outputRoot);
+    const stateKey = packStateKey(deduplicatedPackPaths, outputRoot, this.vanillaPackFilesCachePath);
     if (stateKey === this.initializedStateKey) return null;
 
     // Only record the new state after a successful host swap. If initialize
     // fails, the host keeps its previous runtime and the next call retries.
-    const result = await this.client.initialize({ packPaths: deduplicatedPackPaths, outputRoot });
+    const result = await this.client.initialize({
+      packPaths: deduplicatedPackPaths,
+      outputRoot,
+      ...(this.vanillaPackFilesCachePath ? { vanillaPackFilesCachePath: this.vanillaPackFilesCachePath } : {}),
+    });
     this.initializedStateKey = stateKey;
     return result;
   }
@@ -129,8 +138,10 @@ export class Wh3AssetHostPackInitializer {
 export const initializeWh3AssetHostForCurrentPackState = (
   client: Pick<Wh3AssetHostClient, "initialize">,
   outputRoot: string,
+  vanillaPackFilesCachePath?: string,
 ): Promise<Wh3AssetHostInitializeResult> =>
   client.initialize({
     packPaths: getCurrentWh3AssetHostPackPaths(),
     outputRoot,
+    ...(vanillaPackFilesCachePath ? { vanillaPackFilesCachePath } : {}),
   });

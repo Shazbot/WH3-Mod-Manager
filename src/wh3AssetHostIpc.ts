@@ -10,6 +10,7 @@ import {
   getWh3AssetHostPackPathsForMods,
   type Wh3AssetHostMod,
 } from "./wh3AssetHostPacks";
+import { getVanillaPackFilesCachePath } from "./vanillaPackFilesCache";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
@@ -119,7 +120,7 @@ const startHost = async (): Promise<RunningHost> => {
       if (hostShutdownRequested) throw new Error("WH3AssetHost is shutting down.");
       const host = {
         client,
-        packInitializer: new Wh3AssetHostPackInitializer(client),
+        packInitializer: new Wh3AssetHostPackInitializer(client, getVanillaPackFilesCachePath()),
       };
       runningHost = host;
       return host;

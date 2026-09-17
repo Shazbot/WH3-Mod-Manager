@@ -64,6 +64,9 @@ const getCacheFilePath = (): string | undefined => {
   }
 };
 
+/** The path is passed to the out-of-process asset host so it can share this cache. */
+export const getVanillaPackFilesCachePath = (): string | undefined => getCacheFilePath();
+
 const normalizeCachePath = (packPath: string): string => {
   try {
     return nodePath.resolve(packPath).toLowerCase();

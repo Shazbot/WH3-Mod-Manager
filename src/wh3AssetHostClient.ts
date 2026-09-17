@@ -42,6 +42,8 @@ export interface Wh3AssetHostHelloResult {
 export interface Wh3AssetHostInitializeRequest {
   packPaths: string[];
   outputRoot: string;
+  /** Manager-owned expanded vanilla pack index cache, if available. */
+  vanillaPackFilesCachePath?: string;
 }
 
 export interface Wh3AssetHostInitializeResult {
@@ -297,6 +299,7 @@ export class Wh3AssetHostClient {
     return this.request<Wh3AssetHostInitializeResult>("initialize", {
       packPaths: request.packPaths,
       outputRoot: request.outputRoot,
+      ...(request.vanillaPackFilesCachePath ? { vanillaPackFilesCachePath: request.vanillaPackFilesCachePath } : {}),
     });
   }
 
