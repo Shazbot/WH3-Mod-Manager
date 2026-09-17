@@ -92,8 +92,8 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    // Imported game meshes often contain thin/double-sided surfaces. With no ground receiver in
+    // this preview, shadow maps only add self-shadow artifacts that are not present in-game.
     renderer.domElement.className = "block h-full w-full";
     mount.appendChild(renderer.domElement);
 
@@ -107,7 +107,6 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
 
     const keyLight = new THREE.DirectionalLight(0xffffff, 3.5);
     keyLight.position.set(4, 7, 5);
-    keyLight.castShadow = true;
     scene.add(keyLight);
 
     const fillLight = new THREE.DirectionalLight(0xbfd7ff, 1.4);
@@ -217,11 +216,6 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
           }
 
           ownedModel = gltf.scene;
-          ownedModel.traverse((child) => {
-            if (!(child instanceof THREE.Mesh)) return;
-            child.castShadow = true;
-            child.receiveShadow = true;
-          });
           context.scene.add(ownedModel);
           frameObject(context, ownedModel);
           setStatus("ready");
