@@ -27,6 +27,8 @@ type EsfMapDiskPayload = {
 };
 
 let cachedPayload: EsfMapDiskPayload | undefined;
+/** Serializes cache writes with image cleanup so maintenance cannot remove a later save's images. */
+let cacheSaveQueue = Promise.resolve();
 
 const cachedImageHash = (image: EsfMapImage | null, imageName: EsfMapCachedImageName): string | undefined => {
   if (!image) return undefined;
@@ -186,23 +188,27 @@ export const cleanupEsfMapImageCache = async (
   );
 };
 
-export const saveEsfMapDiskCache = async (
+export const saveEsfMapDiskCache = (
   userDataPath: string,
   signature: string,
   data: EsfMapPayload,
 ): Promise<void> => {
-  try {
-    await externalizeEsfMapImages(userDataPath, data);
-    await markCachedImagesUsed(userDataPath, data);
-    const payload: EsfMapDiskPayload = { version: ESF_MAP_CACHE_VERSION, signature, data };
-    const json = Buffer.from(JSON.stringify(payload), "utf8");
-    const compressed = await zstdCompress(json, 1);
-    await fs.promises.writeFile(nodePath.join(userDataPath, ESF_MAP_CACHE_FILE), compressed);
-    cachedPayload = payload;
-    void cleanupEsfMapImageCache(userDataPath, data);
-  } catch (error) {
-    console.error("Failed to save ESF map cache:", error);
-  }
+  const save = cacheSaveQueue.then(async () => {
+    try {
+      await externalizeEsfMapImages(userDataPath, data);
+      await markCachedImagesUsed(userDataPath, data);
+      const payload: EsfMapDiskPayload = { version: ESF_MAP_CACHE_VERSION, signature, data };
+      const json = Buffer.from(JSON.stringify(payload), "utf8");
+      const compressed = await zstdCompress(json, 1);
+      await fs.promises.writeFile(nodePath.join(userDataPath, ESF_MAP_CACHE_FILE), compressed);
+      cachedPayload = payload;
+      await cleanupEsfMapImageCache(userDataPath, data);
+    } catch (error) {
+      console.error("Failed to save ESF map cache:", error);
+    }
+  });
+  cacheSaveQueue = save;
+  return save;
 };
 
 export const clearEsfMapMemoryCache = () => {

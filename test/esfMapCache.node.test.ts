@@ -21,7 +21,7 @@ vi.mock("@mongodb-js/zstd", () => ({
 const temporaryDirectories: string[] = [];
 const sha256 = (value: string) => createHash("sha256").update(Buffer.from(value)).digest("hex");
 
-const createMapData = (): EsfMapPayload => ({
+const createMapData = (backgroundContent = "map", backgroundTextContent = "text"): EsfMapPayload => ({
   campaignKey: "wh3_main_combi",
   availableCampaigns: [{ key: "wh3_main_combi", label: "Main Combi" }],
   settlementTypes: [],
@@ -31,11 +31,15 @@ const createMapData = (): EsfMapPayload => ({
   mapDataPath: "campaign_maps\\wh3_main_combi_map_1\\map_data.esf",
   startposPath: "campaigns\\wh3_main_combi\\startpos.esf",
   lookupPath: "campaign_maps\\wh3_main_combi_map_1\\wh3_main_combi_lookup.tga",
-  backgroundImage: { width: 2, height: 2, src: `data:image/png;base64,${Buffer.from("map").toString("base64")}` },
+  backgroundImage: {
+    width: 2,
+    height: 2,
+    src: `data:image/png;base64,${Buffer.from(backgroundContent).toString("base64")}`,
+  },
   backgroundTextImage: {
     width: 2,
     height: 2,
-    src: `data:image/png;base64,${Buffer.from("text").toString("base64")}`,
+    src: `data:image/png;base64,${Buffer.from(backgroundTextContent).toString("base64")}`,
   },
   startposWasCompressed: true,
   gridSource: "lookup",
@@ -163,5 +167,20 @@ describe("ESF map disk cache", () => {
     expect(entries).toContain("unrelated-file.png");
     expect(entries).not.toContain(staleHash + ".png");
     expect(entries).not.toContain("legacy-signature");
+  });
+
+  it("serializes concurrent saves with image cleanup", async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-esf-map-"));
+    temporaryDirectories.push(directory);
+    const firstData = createMapData("first-map", "first-text");
+    const secondData = createMapData("second-map", "second-text");
+
+    await Promise.all([
+      saveEsfMapDiskCache(directory, "first", firstData),
+      saveEsfMapDiskCache(directory, "second", secondData),
+    ]);
+
+    clearEsfMapMemoryCache();
+    await expect(loadEsfMapDiskCache(directory, "second")).resolves.toEqual(secondData);
   });
 });
