@@ -26,6 +26,8 @@ type PreviewRecord = {
 
 let runningHost: RunningHost | null = null;
 let startingHost: Promise<RunningHost> | null = null;
+let startingHostClient: Wh3AssetHostClient | null = null;
+let hostShutdownRequested = false;
 let prepareOutputRootPromise: Promise<void> | null = null;
 let previewExportQueue: Promise<void> = Promise.resolve();
 const previews = new Map<string, PreviewRecord>();
@@ -95,18 +97,23 @@ export const resolveWh3AssetHostExecutablePath = (): string => {
 const disposeRunningHost = () => {
   runningHost?.client.dispose();
   runningHost = null;
+  startingHostClient?.dispose();
+  startingHostClient = null;
 };
 
 const startHost = async (): Promise<RunningHost> => {
+  if (hostShutdownRequested) throw new Error("WH3AssetHost is shutting down.");
   if (runningHost?.client.isConnected) return runningHost;
   if (startingHost) return startingHost;
 
   disposeRunningHost();
   startingHost = (async () => {
     const client = new Wh3AssetHostClient({ executablePath: resolveWh3AssetHostExecutablePath() });
+    startingHostClient = client;
     try {
       await client.start();
       await client.hello();
+      if (hostShutdownRequested) throw new Error("WH3AssetHost is shutting down.");
       const host = {
         client,
         packInitializer: new Wh3AssetHostPackInitializer(client),
@@ -116,6 +123,8 @@ const startHost = async (): Promise<RunningHost> => {
     } catch (error) {
       client.dispose();
       throw error;
+    } finally {
+      if (startingHostClient === client) startingHostClient = null;
     }
   })();
 
@@ -301,10 +310,14 @@ ipcMain.handle("releaseVisualsModelPreview", async (_event, previewId: string) =
   return { success: true };
 });
 
-app.once("before-quit", () => {
+const stopHostForAppExit = () => {
+  hostShutdownRequested = true;
   for (const previewId of previews.keys()) {
     revokeModelPreviewFile(previewId);
   }
   previews.clear();
   disposeRunningHost();
-});
+};
+
+app.once("before-quit", stopHostForAppExit);
+process.once("exit", stopHostForAppExit);

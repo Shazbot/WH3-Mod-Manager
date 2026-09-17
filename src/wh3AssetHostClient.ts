@@ -337,7 +337,9 @@ export class Wh3AssetHostClient {
     const connection = this.connection;
     this.connection = null;
     connection?.destroy();
-    this.rejectPending(new Wh3AssetHostClientError("Disposed", "WH3AssetHost client was disposed."));
+    const disposalError = new Wh3AssetHostClientError("Disposed", "WH3AssetHost client was disposed.");
+    this.processFailure = disposalError;
+    this.rejectPending(disposalError);
 
     const child = this.childProcess;
     this.childProcess = null;

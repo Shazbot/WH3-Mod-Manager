@@ -116,6 +116,7 @@ describe("WH3AssetHostClient", () => {
     expect(connectPipe).toHaveBeenCalledWith("\\\\.\\pipe\\wh3mm-test");
     expect(await assetHost.hello()).toMatchObject({ hostVersion: "test-host", protocolVersion: 1 });
     assetHost.dispose();
+    expect(child.kill).toHaveBeenCalled();
   });
 
   it("correlates concurrent responses by requestId even when they arrive out of order", async () => {
