@@ -267,6 +267,8 @@ const VisualsTab = memo(() => {
     });
   }, [compiledUnitFilter.regex, packFilteredUnits]);
 
+  const hasActiveVisualsFilter = unitFilter.length > 0 || packFilter !== ALL_VISUALS_PACKS_VALUE;
+
   const unitComparator = useMemo(() => {
     return (first: VisualsUnitEntry, second: VisualsUnitEntry) => {
       const nameDiff = collator.compare(first.localizedName, second.localizedName);
@@ -716,7 +718,7 @@ const VisualsTab = memo(() => {
   const renderCultureGroupedUnits = () =>
     cultureGroupedUnits.flatMap((culture) => {
       const cultureUnitCount = culture.castes.reduce((count, caste) => count + caste.units.length, 0);
-      const isCultureCollapsed = collapsedCultureGroups[culture.key] ?? true;
+      const isCultureCollapsed = !hasActiveVisualsFilter && (collapsedCultureGroups[culture.key] ?? true);
       const rows: React.ReactNode[] = [
         <button
           key={`culture:${culture.key}`}
@@ -736,7 +738,7 @@ const VisualsTab = memo(() => {
 
       for (const caste of culture.castes) {
         const casteGroupKey = `${culture.key}|${caste.key}`;
-        const isCasteCollapsed = collapsedCasteGroups[casteGroupKey] ?? true;
+        const isCasteCollapsed = !hasActiveVisualsFilter && (collapsedCasteGroups[casteGroupKey] ?? true);
         rows.push(
           <button
             key={`culture:${culture.key}|caste:${caste.key}`}
@@ -881,7 +883,7 @@ const VisualsTab = memo(() => {
                 )
               ) : (
                 groupedUnits.flatMap((group) => {
-                  const isCollapsed = !!collapsedOriginGroups[group.label];
+                  const isCollapsed = hasActiveVisualsFilter ? false : !!collapsedOriginGroups[group.label];
                   const headerKey = `header:${group.label}`;
                   const header = (
                     <button
