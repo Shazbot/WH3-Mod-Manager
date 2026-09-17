@@ -995,7 +995,9 @@ const VisualsTab = memo(() => {
                   <div className={`absolute inset-0 ${viewerMode === "preview" ? "" : "hidden"}`}>
                     <VisualsModelPreview assetPath={activeTab.filePath} />
                   </div>
-                  <div className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}>
+                  <div
+                    className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}
+                  >
                     {activeTab.status === "loading" && <div className="p-4 text-gray-300">Loading file...</div>}
                     {activeTab.status === "error" && (
                       <div className="p-4 text-red-300">{activeTab.error || "Failed to load file"}</div>
