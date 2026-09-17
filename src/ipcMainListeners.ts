@@ -7693,7 +7693,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       };
     }
   });
-  ipcMain.handle("searchVisualsFiles", async (event, sessionId: string, query: string, offset = 0, limit = 200) => {
+  ipcMain.handle("searchVisualsFiles", async (event, sessionId: string, query: string, offset = 0, limit = 1000) => {
     try {
       const session = visualsSessions.get(sessionId);
       if (!session) return { success: false, error: "Visuals session expired or missing" };
@@ -7703,7 +7703,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         ? cachedFiles.filter((file) => normalizePackFilePathKey(file.path).includes(normalizedQuery))
         : cachedFiles;
       const safeOffset = Math.max(0, offset || 0);
-      const safeLimit = Math.max(1, Math.min(1000, limit || 200));
+      const safeLimit = Math.max(1, Math.min(1000, limit || 1000));
       return {
         success: true,
         total: allResults.length,

@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { compileVisualsUnitFilter } from "../visuals/unitFilter";
 import { Resizable } from "re-resizable";
+import { AutoSizer, CellMeasurer, CellMeasurerCache, List, type ListRowProps } from "react-virtualized";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import VisualsModelPreview from "./VisualsModelPreview";
@@ -51,6 +52,20 @@ type VisualsFileResult = {
   ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2";
 };
 
+type VisualsListRow =
+  | { kind: "unit"; key: string; unit: VisualsUnitEntry }
+  | { kind: "culture"; key: string; cultureKey: string; label: string; count: number; isCollapsed: boolean }
+  | {
+      kind: "caste";
+      key: string;
+      cultureKey: string;
+      casteKey: string;
+      label: string;
+      count: number;
+      isCollapsed: boolean;
+    }
+  | { kind: "origin"; key: string; label: string; count: number; isCollapsed: boolean };
+
 type VisualsAssetEditorContextMenu = {
   x: number;
   y: number;
@@ -62,6 +77,7 @@ const ALL_VISUALS_PACKS_VALUE = "all";
 const VANILLA_VISUALS_PACK_VALUE = "vanilla";
 const UNASSIGNED_CULTURE_KEY = "__unassigned";
 const UNKNOWN_CASTE_KEY = "__unknown";
+const VISUALS_FILE_PAGE_SIZE = 1000;
 
 type VisualsPackOption = {
   value: string;
@@ -145,6 +161,18 @@ const VisualsTab = memo(() => {
   const unitClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
+  const unitListRef = useRef<List | null>(null);
+  const fileListRef = useRef<List | null>(null);
+  const unitListWidthRef = useRef(0);
+  const fileListWidthRef = useRef(0);
+  const unitListCache = useMemo(
+    () => new CellMeasurerCache({ fixedWidth: true, defaultHeight: 56, minHeight: 28 }),
+    [],
+  );
+  const fileListCache = useMemo(
+    () => new CellMeasurerCache({ fixedWidth: true, defaultHeight: 48, minHeight: 28 }),
+    [],
+  );
 
   useEffect(() => {
     if (!isOptionsMenuOpen) return;
@@ -374,6 +402,97 @@ const VisualsTab = memo(() => {
       });
   }, [filteredUnits, isHideDuplicatesEnabled, unitComparator]);
 
+  const visualsListRows = useMemo<VisualsListRow[]>(() => {
+    if (isSortByCultureEnabled) {
+      const rows: VisualsListRow[] = [];
+      for (const culture of cultureGroupedUnits) {
+        const cultureUnitCount = culture.castes.reduce((count, caste) => count + caste.units.length, 0);
+        const isCultureCollapsed = !hasActiveVisualsFilter && (collapsedCultureGroups[culture.key] ?? true);
+        rows.push({
+          kind: "culture",
+          key: `culture:${culture.key}`,
+          cultureKey: culture.key,
+          label: culture.label,
+          count: cultureUnitCount,
+          isCollapsed: isCultureCollapsed,
+        });
+        if (isCultureCollapsed) continue;
+
+        for (const caste of culture.castes) {
+          const isCasteCollapsed =
+            !hasActiveVisualsFilter && (collapsedCasteGroups[`${culture.key}|${caste.key}`] ?? true);
+          rows.push({
+            kind: "caste",
+            key: `culture:${culture.key}|caste:${caste.key}`,
+            cultureKey: culture.key,
+            casteKey: caste.key,
+            label: caste.label,
+            count: caste.units.length,
+            isCollapsed: isCasteCollapsed,
+          });
+          if (isCasteCollapsed) continue;
+
+          rows.push(
+            ...caste.units.map((unit) => ({
+              kind: "unit" as const,
+              key: `culture:${culture.key}|caste:${caste.key}|${unit.unitKey}|${unit.faction}`,
+              unit,
+            })),
+          );
+        }
+      }
+      return rows;
+    }
+
+    if (!isGroupedByOrigin || !groupedUnits) {
+      return filteredUnits.map((unit) => ({
+        kind: "unit",
+        key: `unit:${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`,
+        unit,
+      }));
+    }
+
+    return groupedUnits.flatMap((group) => {
+      const isCollapsed = hasActiveVisualsFilter ? false : !!collapsedOriginGroups[group.label];
+      return [
+        {
+          kind: "origin" as const,
+          key: `origin:${group.label}`,
+          label: group.label,
+          count: group.units.length,
+          isCollapsed,
+        },
+        ...(isCollapsed
+          ? []
+          : group.units.map((unit) => ({
+              kind: "unit" as const,
+              key: `origin:${group.label}|${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`,
+              unit,
+            }))),
+      ];
+    });
+  }, [
+    collapsedCasteGroups,
+    collapsedCultureGroups,
+    collapsedOriginGroups,
+    cultureGroupedUnits,
+    filteredUnits,
+    groupedUnits,
+    hasActiveVisualsFilter,
+    isGroupedByOrigin,
+    isSortByCultureEnabled,
+  ]);
+
+  useEffect(() => {
+    unitListCache.clearAll();
+    unitListRef.current?.recomputeRowHeights();
+  }, [unitListCache, visualsListRows]);
+
+  useEffect(() => {
+    fileListCache.clearAll();
+    fileListRef.current?.recomputeRowHeights();
+  }, [fileListCache, fileResults]);
+
   const toggleOriginGroupCollapsed = (label: string) => {
     setCollapsedOriginGroups((prev) => ({ ...prev, [label]: !prev[label] }));
   };
@@ -479,7 +598,7 @@ const VisualsTab = memo(() => {
 
     setIsFileSearchLoading(true);
     setFileSearchError(null);
-    const result = await window.api?.searchVisualsFiles(sessionId, fileQuery, nextOffset, 200);
+    const result = await window.api?.searchVisualsFiles(sessionId, fileQuery, nextOffset, VISUALS_FILE_PAGE_SIZE);
     if (!result?.success || !result.results) {
       setIsFileSearchLoading(false);
       setFileSearchError(result?.error || "Failed to search files");
@@ -544,6 +663,65 @@ const VisualsTab = memo(() => {
   const onFileDoubleClick = (file: VisualsFileResult) => {
     if (!isOpenableVisualsFile(file)) return;
     openVisualsFileTab(file.path, "new");
+  };
+
+  const renderFileListRow = ({ index, key, parent, style }: ListRowProps) => {
+    const file = fileResults[index];
+    if (!file) return null;
+
+    const isOpenableInVisuals = isOpenableVisualsFile(file);
+    return (
+      <CellMeasurer cache={fileListCache} columnIndex={0} index={index} key={key} parent={parent}>
+        {({ registerChild }) => (
+          <div
+            ref={registerChild}
+            style={{ ...style, width: "100%" }}
+            className={`px-3 py-2 border-b border-gray-700 ${
+              isOpenableInVisuals ? "cursor-pointer hover:bg-gray-700" : "cursor-default opacity-80"
+            }`}
+            onClick={(e) => {
+              if (!isOpenableInVisuals) return;
+              e.preventDefault();
+              if (fileClickTimer.current) clearTimeout(fileClickTimer.current);
+              fileClickTimer.current = setTimeout(() => {
+                fileClickTimer.current = null;
+                onFileSingleClick(file);
+              }, 220);
+            }}
+            onDoubleClick={(e) => {
+              if (!isOpenableInVisuals) return;
+              e.preventDefault();
+              if (fileClickTimer.current) {
+                clearTimeout(fileClickTimer.current);
+                fileClickTimer.current = null;
+              }
+              onFileDoubleClick(file);
+            }}
+            onContextMenu={(event) => openAssetEditorContextMenu(event, file.path)}
+            title={
+              isOpenableInVisuals
+                ? "Click to open, double-click for new tab, right-click for AssetEditor"
+                : "Right-click to open in AssetEditor"
+            }
+          >
+            <div
+              className={`text-xs uppercase ${
+                file.ext === "variantmeshdefinition"
+                  ? "text-green-400"
+                  : file.ext === "wsmodel"
+                    ? "text-sky-400"
+                    : file.ext === "rigid_model_v2"
+                      ? "text-violet-400"
+                      : "text-gray-400"
+              }`}
+            >
+              {file.ext}
+            </div>
+            <div className="text-sm break-all">{file.path}</div>
+          </div>
+        )}
+      </CellMeasurer>
+    );
   };
 
   const openAssetEditorContextMenu = (event: React.MouseEvent, targetPath?: string, preferredPackPath?: string) => {
@@ -677,11 +855,10 @@ const VisualsTab = memo(() => {
     );
   };
 
-  const renderUnitRow = (unit: VisualsUnitEntry, rowKey: string) => {
+  const renderUnitRow = (unit: VisualsUnitEntry) => {
     const hasPath = !!unit.variantMeshPath;
     return (
       <div
-        key={rowKey}
         className={`px-3 py-2 border-b border-gray-700 cursor-pointer hover:bg-gray-700 ${
           !hasPath ? "opacity-70" : ""
         }`}
@@ -715,55 +892,63 @@ const VisualsTab = memo(() => {
     );
   };
 
-  const renderCultureGroupedUnits = () =>
-    cultureGroupedUnits.flatMap((culture) => {
-      const cultureUnitCount = culture.castes.reduce((count, caste) => count + caste.units.length, 0);
-      const isCultureCollapsed = !hasActiveVisualsFilter && (collapsedCultureGroups[culture.key] ?? true);
-      const rows: React.ReactNode[] = [
-        <button
-          key={`culture:${culture.key}`}
-          type="button"
-          aria-expanded={!isCultureCollapsed}
-          className="flex w-full items-center border-b border-gray-700 bg-gray-850 px-3 py-2 text-left text-xs uppercase tracking-wide text-gray-300 hover:bg-gray-700"
-          onClick={() => toggleCultureGroupCollapsed(culture.key)}
-        >
-          <FontAwesomeIcon
-            icon={faChevronRight}
-            className={`mr-2 transition-transform duration-150 ${isCultureCollapsed ? "" : "rotate-90"}`}
-          />
-          {culture.label} ({cultureUnitCount})
-        </button>,
-      ];
-      if (isCultureCollapsed) return rows;
+  const renderUnitListRow = ({ index, key, parent, style }: ListRowProps) => {
+    const row = visualsListRows[index];
+    if (!row) return null;
 
-      for (const caste of culture.castes) {
-        const casteGroupKey = `${culture.key}|${caste.key}`;
-        const isCasteCollapsed = !hasActiveVisualsFilter && (collapsedCasteGroups[casteGroupKey] ?? true);
-        rows.push(
-          <button
-            key={`culture:${culture.key}|caste:${caste.key}`}
-            type="button"
-            aria-expanded={!isCasteCollapsed}
-            className="flex w-full items-center border-b border-gray-700 bg-gray-900/60 px-5 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hover:bg-gray-700"
-            onClick={() => toggleCasteGroupCollapsed(culture.key, caste.key)}
-          >
-            <FontAwesomeIcon
-              icon={faChevronRight}
-              className={`mr-2 transition-transform duration-150 ${isCasteCollapsed ? "" : "rotate-90"}`}
-            />
-            {caste.label} ({caste.units.length})
-          </button>,
-        );
-        if (!isCasteCollapsed) {
-          rows.push(
-            ...caste.units.map((unit) =>
-              renderUnitRow(unit, `culture:${culture.key}|caste:${caste.key}|${unit.unitKey}|${unit.faction}`),
-            ),
-          );
-        }
-      }
-      return rows;
-    });
+    const measuredStyle = { ...style, width: "100%" };
+    return (
+      <CellMeasurer cache={unitListCache} columnIndex={0} index={index} key={key} parent={parent}>
+        {({ registerChild }) => (
+          <div ref={registerChild} style={measuredStyle}>
+            {row.kind === "unit" && renderUnitRow(row.unit)}
+            {row.kind === "culture" && (
+              <button
+                type="button"
+                aria-expanded={!row.isCollapsed}
+                className="flex h-full w-full items-center border-b border-gray-700 bg-gray-850 px-3 py-2 text-left text-xs uppercase tracking-wide text-gray-300 hover:bg-gray-700"
+                onClick={() => toggleCultureGroupCollapsed(row.cultureKey)}
+              >
+                <FontAwesomeIcon
+                  icon={faChevronRight}
+                  className={`mr-2 transition-transform duration-150 ${row.isCollapsed ? "" : "rotate-90"}`}
+                />
+                {row.label} ({row.count})
+              </button>
+            )}
+            {row.kind === "caste" && (
+              <button
+                type="button"
+                aria-expanded={!row.isCollapsed}
+                className="flex h-full w-full items-center border-b border-gray-700 bg-gray-900/60 px-5 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hover:bg-gray-700"
+                onClick={() => toggleCasteGroupCollapsed(row.cultureKey, row.casteKey)}
+              >
+                <FontAwesomeIcon
+                  icon={faChevronRight}
+                  className={`mr-2 transition-transform duration-150 ${row.isCollapsed ? "" : "rotate-90"}`}
+                />
+                {row.label} ({row.count})
+              </button>
+            )}
+            {row.kind === "origin" && (
+              <button
+                type="button"
+                className="h-full w-full border-b border-gray-700 bg-gray-850 px-3 py-2 text-left text-xs uppercase tracking-wide text-gray-300 hover:bg-gray-700"
+                title={row.label}
+                onClick={() => toggleOriginGroupCollapsed(row.label)}
+              >
+                <FontAwesomeIcon
+                  icon={faChevronRight}
+                  className={`mr-2 transition-transform duration-150 ${row.isCollapsed ? "" : "rotate-90"}`}
+                />
+                {row.label} ({row.count})
+              </button>
+            )}
+          </div>
+        )}
+      </CellMeasurer>
+    );
+  };
 
   if (!isFeaturesForModdersEnabled) {
     return <div className="text-gray-300 p-4">Visuals tab is available only when Modders features are enabled.</div>;
@@ -872,47 +1057,32 @@ const VisualsTab = memo(() => {
       <div className="flex min-h-0 min-w-0 flex-1">
         {isLeftOpen && (
           <Resizable defaultSize={{ width: "26%", height: "100%" }} minWidth="220px" maxWidth="50%">
-            <div className="h-full min-h-0 border border-gray-700 bg-gray-800 rounded overflow-auto">
+            <div className="h-full min-h-0 overflow-hidden rounded border border-gray-700 bg-gray-800">
               {isLoadingUnits && units.length === 0 ? (
                 <div className="p-3 text-gray-300">Loading unit list...</div>
-              ) : isSortByCultureEnabled ? (
-                renderCultureGroupedUnits()
-              ) : !isGroupedByOrigin || !groupedUnits ? (
-                filteredUnits.map((unit) =>
-                  renderUnitRow(unit, `${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`),
-                )
               ) : (
-                groupedUnits.flatMap((group) => {
-                  const isCollapsed = hasActiveVisualsFilter ? false : !!collapsedOriginGroups[group.label];
-                  const headerKey = `header:${group.label}`;
-                  const header = (
-                    <button
-                      key={headerKey}
-                      type="button"
-                      className="w-full text-left px-3 py-2 border-b border-gray-700 bg-gray-850 text-xs uppercase tracking-wide text-gray-300 hover:bg-gray-700"
-                      title={group.label}
-                      onClick={() => toggleOriginGroupCollapsed(group.label)}
-                    >
-                      <FontAwesomeIcon
-                        icon={faChevronRight}
-                        className={`mr-2 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
-                      />
-                      {group.label} ({group.units.length})
-                    </button>
-                  );
-
-                  return [
-                    header,
-                    ...(isCollapsed
-                      ? []
-                      : group.units.map((unit) =>
-                          renderUnitRow(
-                            unit,
-                            `${group.label}|${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`,
-                          ),
-                        )),
-                  ];
-                })
+                <AutoSizer
+                  onResize={({ width }) => {
+                    if (unitListWidthRef.current === width) return;
+                    unitListWidthRef.current = width;
+                    unitListCache.clearAll();
+                    unitListRef.current?.recomputeRowHeights();
+                  }}
+                >
+                  {({ height, width }) => (
+                    <List
+                      ref={unitListRef}
+                      width={width}
+                      height={height}
+                      rowCount={visualsListRows.length}
+                      rowHeight={unitListCache.rowHeight}
+                      rowRenderer={renderUnitListRow}
+                      estimatedRowSize={56}
+                      overscanRowCount={12}
+                      deferredMeasurementCache={unitListCache}
+                    />
+                  )}
+                </AutoSizer>
               )}
             </div>
           </Resizable>
@@ -1031,57 +1201,31 @@ const VisualsTab = memo(() => {
                 {fileSearchError && <div className="text-xs text-red-300 mt-1">{fileSearchError}</div>}
               </div>
 
-              <div className="flex-1 overflow-auto">
-                {fileResults.map((file) => {
-                  const isOpenableInVisuals = isOpenableVisualsFile(file);
-                  return (
-                    <div
-                      key={file.path}
-                      className={`px-3 py-2 border-b border-gray-700 ${
-                        isOpenableInVisuals ? "cursor-pointer hover:bg-gray-700" : "cursor-default opacity-80"
-                      }`}
-                      onClick={(e) => {
-                        if (!isOpenableInVisuals) return;
-                        e.preventDefault();
-                        if (fileClickTimer.current) clearTimeout(fileClickTimer.current);
-                        fileClickTimer.current = setTimeout(() => {
-                          fileClickTimer.current = null;
-                          onFileSingleClick(file);
-                        }, 220);
-                      }}
-                      onDoubleClick={(e) => {
-                        if (!isOpenableInVisuals) return;
-                        e.preventDefault();
-                        if (fileClickTimer.current) {
-                          clearTimeout(fileClickTimer.current);
-                          fileClickTimer.current = null;
-                        }
-                        onFileDoubleClick(file);
-                      }}
-                      onContextMenu={(event) => openAssetEditorContextMenu(event, file.path)}
-                      title={
-                        isOpenableInVisuals
-                          ? "Click to open, double-click for new tab, right-click for AssetEditor"
-                          : "Right-click to open in AssetEditor"
-                      }
-                    >
-                      <div
-                        className={`text-xs uppercase ${
-                          file.ext === "variantmeshdefinition"
-                            ? "text-green-400"
-                            : file.ext === "wsmodel"
-                              ? "text-sky-400"
-                              : file.ext === "rigid_model_v2"
-                                ? "text-violet-400"
-                                : "text-gray-400"
-                        }`}
-                      >
-                        {file.ext}
-                      </div>
-                      <div className="text-sm break-all">{file.path}</div>
-                    </div>
-                  );
-                })}
+              <div className="min-h-0 flex-1">
+                {fileResults.length > 0 && (
+                  <AutoSizer
+                    onResize={({ width }) => {
+                      if (fileListWidthRef.current === width) return;
+                      fileListWidthRef.current = width;
+                      fileListCache.clearAll();
+                      fileListRef.current?.recomputeRowHeights();
+                    }}
+                  >
+                    {({ height, width }) => (
+                      <List
+                        ref={fileListRef}
+                        width={width}
+                        height={height}
+                        rowCount={fileResults.length}
+                        rowHeight={fileListCache.rowHeight}
+                        rowRenderer={renderFileListRow}
+                        estimatedRowSize={48}
+                        overscanRowCount={12}
+                        deferredMeasurementCache={fileListCache}
+                      />
+                    )}
+                  </AutoSizer>
+                )}
               </div>
 
               {fileResults.length < fileResultsTotal && (
