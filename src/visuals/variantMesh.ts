@@ -206,8 +206,11 @@ export const buildVariantMeshCatalog = async (
     }
 
     for (const rawSlot of asArray<RawSlot>(raw.SLOT)) {
+      const slotName = asString(rawSlot["@_name"]);
+      if (slotName.toLowerCase().startsWith("stump_")) continue;
+
       const slot: ResolvedVariantMeshSlot = {
-        name: asString(rawSlot["@_name"]),
+        name: slotName,
         attachmentPoint: asString(rawSlot["@_attach_point"]) || undefined,
         candidates: [],
       };

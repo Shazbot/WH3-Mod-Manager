@@ -23,6 +23,9 @@ describe("variant mesh appearance catalogs", () => {
             <VARIANT_MESH model="body_02.rigid_model_v2" />
             <VARIANT_MESH model="body_03.rigid_model_v2" />
           </SLOT>
+          <SLOT name="stump_neck">
+            <VARIANT_MESH model="stump_neck.rigid_model_v2" />
+          </SLOT>
           <SLOT name="weapon_1">
             <VARIANT_MESH_REFERENCE definition="weapon_1.variantmeshdefinition" />
           </SLOT>
@@ -44,6 +47,7 @@ describe("variant mesh appearance catalogs", () => {
     expect(catalog.diagnostics).toEqual([]);
     expect(catalog.combinationCount).toBe(30);
     expect(catalog.slots.map((slot) => slot.name)).toEqual(["head", "body", "weapon_1", "weapon"]);
+    expect(catalog.slots.some((slot) => slot.name.startsWith("stump_"))).toBe(false);
     expect(catalog.slots.find((slot) => slot.name === "head")?.choices).toHaveLength(5);
     expect(catalog.slots.find((slot) => slot.name === "body")?.choices).toHaveLength(3);
     expect(catalog.slots.find((slot) => slot.name === "weapon")?.choices).toHaveLength(2);
