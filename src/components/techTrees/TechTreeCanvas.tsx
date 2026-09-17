@@ -8,6 +8,7 @@ import {
   MarkerType,
   Node,
   NodeTypes,
+  OnNodeDrag,
   Panel,
   ReactFlow,
   useEdgesState,
@@ -1100,8 +1101,8 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     );
   }, []);
 
-  const onNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+  const onNodeDragStop = useCallback<OnNodeDrag>(
+    (_event, node) => {
       if (!isEditMode) return;
       captureHistory();
       const baseNode = technologyTree?.nodes.find((n) => n.nodeKey === node.id);
