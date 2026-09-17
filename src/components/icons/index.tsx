@@ -13,7 +13,45 @@ import { AiOutlineQuestionCircle } from "react-icons/ai";
 import { GiSettingsKnobs } from "react-icons/gi";
 
 // Create lazy-loaded icon components for heavy icons
-import React, { Suspense } from "react";
+import React from "react";
+
+// Keep these imports explicit. A template-literal import creates a Webpack context rooted at
+// `react-icons`, which package exports do not expose as a directory and which breaks the renderer
+// build before the requested icon set can be loaded.
+type LazyIconModule = Record<string, React.ComponentType<{ size?: number; className?: string }>>;
+const iconSetLoaders: Record<string, () => Promise<unknown>> = {
+  ai: () => import("react-icons/ai"),
+  bi: () => import("react-icons/bi"),
+  bs: () => import("react-icons/bs"),
+  cg: () => import("react-icons/cg"),
+  ci: () => import("react-icons/ci"),
+  di: () => import("react-icons/di"),
+  fa: () => import("react-icons/fa"),
+  fa6: () => import("react-icons/fa6"),
+  fc: () => import("react-icons/fc"),
+  fi: () => import("react-icons/fi"),
+  gi: () => import("react-icons/gi"),
+  go: () => import("react-icons/go"),
+  gr: () => import("react-icons/gr"),
+  hi: () => import("react-icons/hi"),
+  hi2: () => import("react-icons/hi2"),
+  im: () => import("react-icons/im"),
+  io: () => import("react-icons/io"),
+  io5: () => import("react-icons/io5"),
+  lia: () => import("react-icons/lia"),
+  lu: () => import("react-icons/lu"),
+  md: () => import("react-icons/md"),
+  pi: () => import("react-icons/pi"),
+  ri: () => import("react-icons/ri"),
+  rx: () => import("react-icons/rx"),
+  si: () => import("react-icons/si"),
+  sl: () => import("react-icons/sl"),
+  tb: () => import("react-icons/tb"),
+  tfi: () => import("react-icons/tfi"),
+  ti: () => import("react-icons/ti"),
+  vsc: () => import("react-icons/vsc"),
+  wi: () => import("react-icons/wi"),
+};
 
 // Icon loading fallback
 const IconFallback = ({ size = 16 }: { size?: number }) => (
@@ -39,7 +77,9 @@ export const LazyIcon = ({
   React.useEffect(() => {
     const loadIcon = async () => {
       try {
-        const iconModule = await import(`react-icons/${iconSet}`);
+        const loadIconSet = iconSetLoaders[iconSet];
+        if (!loadIconSet) throw new Error(`Unknown icon set: ${iconSet}`);
+        const iconModule = (await loadIconSet()) as LazyIconModule;
         const Icon = iconModule[iconName];
         if (Icon) {
           setIconComponent(() => Icon);
