@@ -93,7 +93,7 @@ const VisualsModelPreview = memo(({ assetPath }: VisualsModelPreviewProps) => {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.domElement.className = "block h-full w-full";
     mount.appendChild(renderer.domElement);
 
