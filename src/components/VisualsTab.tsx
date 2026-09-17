@@ -44,6 +44,8 @@ type VisualsViewerTab = {
   requestId?: number;
 };
 
+type VisualsViewerMode = "preview" | "source";
+
 type VisualsFileResult = {
   path: string;
   ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2";
@@ -120,6 +122,7 @@ const VisualsTab = memo(() => {
 
   const [tabs, setTabs] = useState<VisualsViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [viewerMode, setViewerMode] = useState<VisualsViewerMode>("preview");
 
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [fileQueryInput, setFileQueryInput] = useState("");
@@ -881,7 +884,10 @@ const VisualsTab = memo(() => {
           </Resizable>
         )}
 
-        <div style={{ flex: 1, minWidth: "1px", display: "flex", flexDirection: "column" }} className="ml-3">
+        <div
+          style={{ flex: 1, minWidth: "1px", minHeight: 0, display: "flex", flexDirection: "column" }}
+          className="ml-3"
+        >
           <div className="flex bg-gray-800 border border-gray-700 rounded-t overflow-x-auto min-h-[36px]">
             {tabs.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-400">Open a unit to view its model</div>
@@ -915,7 +921,7 @@ const VisualsTab = memo(() => {
             )}
           </div>
 
-          <div className="flex-1 border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-auto h-[87vh]">
+          <div className="flex min-h-0 flex-1 flex-col border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-hidden">
             {!activeTab && (
               <div className="p-4 text-gray-400">
                 Single-click opens in the current tab. Double-click opens in a new tab.
@@ -923,16 +929,41 @@ const VisualsTab = memo(() => {
             )}
             {activeTab && (
               <>
-                <div className="px-3 py-2 border-b border-gray-700 text-xs text-gray-400 break-all">
+                <div className="shrink-0 px-3 py-2 border-b border-gray-700 text-xs text-gray-400 break-all">
                   <div>{activeTab.filePath}</div>
                   {activeTab.resolvedPackPath && <div>pack: {activeTab.resolvedPackPath}</div>}
                 </div>
-                <VisualsModelPreview assetPath={activeTab.filePath} />
-                <details className="border-t border-gray-700 bg-gray-900">
-                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400 hover:bg-gray-800">
-                    Variant mesh definition source
-                  </summary>
-                  <div className="border-t border-gray-800">
+                <div className="flex shrink-0 border-b border-gray-700 bg-gray-800">
+                  <button
+                    type="button"
+                    aria-pressed={viewerMode === "preview"}
+                    className={`border-r border-gray-700 px-3 py-1.5 text-xs font-medium ${
+                      viewerMode === "preview"
+                        ? "bg-gray-700 text-white border-b-2 border-blue-400"
+                        : "text-gray-400 hover:bg-gray-700 hover:text-white"
+                    }`}
+                    onClick={() => setViewerMode("preview")}
+                  >
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={viewerMode === "source"}
+                    className={`border-r border-gray-700 px-3 py-1.5 text-xs font-medium ${
+                      viewerMode === "source"
+                        ? "bg-gray-700 text-white border-b-2 border-blue-400"
+                        : "text-gray-400 hover:bg-gray-700 hover:text-white"
+                    }`}
+                    onClick={() => setViewerMode("source")}
+                  >
+                    Source
+                  </button>
+                </div>
+                <div className="relative min-h-0 flex-1">
+                  <div className={`absolute inset-0 ${viewerMode === "preview" ? "" : "hidden"}`}>
+                    <VisualsModelPreview assetPath={activeTab.filePath} />
+                  </div>
+                  <div className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}>
                     {activeTab.status === "loading" && <div className="p-4 text-gray-300">Loading file...</div>}
                     {activeTab.status === "error" && (
                       <div className="p-4 text-red-300">{activeTab.error || "Failed to load file"}</div>
@@ -941,7 +972,7 @@ const VisualsTab = memo(() => {
                       activeTab.text != null &&
                       renderVariantMeshText(activeTab.text, activeTab.resolvedPackPath)}
                   </div>
-                </details>
+                </div>
               </>
             )}
           </div>
