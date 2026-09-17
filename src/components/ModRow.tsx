@@ -1,13 +1,12 @@
 import { faCamera, faEraser, faFileArchive } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { CSSProperties, memo, useContext, useMemo } from "react";
+import React, { CSSProperties, forwardRef, memo, useContext, useMemo } from "react";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
 import { formatDistanceToNow } from "date-fns";
 import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
 import { Icons } from "./icons";
-import { CellMeasurerChildProps } from "react-virtualized/dist/es/CellMeasurer";
 import CustomModFolderIcon from "./CustomModFolderIcon";
 import { BsArrowDownUp } from "react-icons/bs";
 import { ModListLayout } from "../utility/frontend/modListLayout";
@@ -58,7 +57,6 @@ type ModRowProps = {
   isRecentlyReordered: boolean;
   style: CSSProperties;
   gridClass: string;
-  registerChild: CellMeasurerChildProps["registerChild"];
 };
 
 const formatLastChanged = (lastChanged: number) => {
@@ -197,49 +195,51 @@ const ConfigIcons = ({
   </>
 );
 
-const ModRow = memo(
-  ({
-    loadOrderIndex,
-    mod,
-    style,
-    onRowHoverStart,
-    onRowHoverEnd,
-    onSetLoadOrderMode,
-    onSelectLoadOrderPosition,
-    onModToggled,
-    onModOpenInViewer,
-    onModRightClick,
-    onRemoveModOrder,
-    isAlwaysEnabled,
-    isEnabledInMergedMod,
-    areThumbnailsEnabled,
-    isAuthorEnabled,
-    ghostClass,
-    thumbnailSrc,
-    decodedHumanName,
-    decodedAuthor,
-    customFolderPath,
-    hasDbCustomization,
-    hasFlowCustomization,
-    hasPackDataOverwrite,
-    isLast,
-    rowIndex,
-    domIdSuffix,
-    activeLoadOrderPosition,
-    isLoadOrderPlacementMode,
-    isLoadOrderPlacementSource,
-    isRecentlyReordered,
-    sortingType,
-    canReorder,
-    showPositionIndex,
-    layout,
-    showConfigColumn,
-    onCustomizeModClicked,
-    onCustomizeModRightClick,
-    onFlowOptionsClicked,
-    gridClass,
-    registerChild,
-  }: ModRowProps) => {
+const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
+  (
+    {
+      loadOrderIndex,
+      mod,
+      style,
+      onRowHoverStart,
+      onRowHoverEnd,
+      onSetLoadOrderMode,
+      onSelectLoadOrderPosition,
+      onModToggled,
+      onModOpenInViewer,
+      onModRightClick,
+      onRemoveModOrder,
+      isAlwaysEnabled,
+      isEnabledInMergedMod,
+      areThumbnailsEnabled,
+      isAuthorEnabled,
+      ghostClass,
+      thumbnailSrc,
+      decodedHumanName,
+      decodedAuthor,
+      customFolderPath,
+      hasDbCustomization,
+      hasFlowCustomization,
+      hasPackDataOverwrite,
+      isLast,
+      rowIndex,
+      domIdSuffix,
+      activeLoadOrderPosition,
+      isLoadOrderPlacementMode,
+      isLoadOrderPlacementSource,
+      isRecentlyReordered,
+      sortingType,
+      canReorder,
+      showPositionIndex,
+      layout,
+      showConfigColumn,
+      onCustomizeModClicked,
+      onCustomizeModRightClick,
+      onFlowOptionsClicked,
+      gridClass,
+    },
+    ref,
+  ) => {
     const localization: Record<string, string> = useContext(localizationContext);
 
     const timeColumnValue = useMemo(
@@ -332,7 +332,7 @@ const ModRow = memo(
         id={rowId}
         data-load-order={mod.loadOrder}
         style={style}
-        ref={registerChild}
+        ref={ref}
       >
         {isLoadOrderPlacementMode && placementGhost(rowIndex)}
 
@@ -544,4 +544,4 @@ const ModRow = memo(
     );
   },
 );
-export default ModRow;
+export default memo(ModRow);
