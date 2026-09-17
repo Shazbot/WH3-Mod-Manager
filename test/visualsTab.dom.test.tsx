@@ -1,10 +1,10 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer from "../src/appSlice";
+import appReducer, { setIsModEnabled } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import localizationContext from "../src/localizationContext";
 import enTranslation from "../locales/en/translation.json";
@@ -43,9 +43,15 @@ const units = [
 ];
 
 const searchVisualsFiles = vi.fn();
+const getVisualsUnitsData = vi.fn();
 
 describe("VisualsTab filtering", () => {
   beforeEach(() => {
+    getVisualsUnitsData.mockReset().mockResolvedValue({
+      success: true,
+      sessionId: "visuals-session",
+      units,
+    });
     searchVisualsFiles.mockReset().mockResolvedValue({
       success: true,
       total: 1,
@@ -53,11 +59,7 @@ describe("VisualsTab filtering", () => {
     });
     window.api = {
       ...window.api,
-      getVisualsUnitsData: vi.fn().mockResolvedValue({
-        success: true,
-        sessionId: "visuals-session",
-        units,
-      }),
+      getVisualsUnitsData,
       searchVisualsFiles,
     } as NonNullable<Window["api"]>;
   });
@@ -115,5 +117,61 @@ describe("VisualsTab filtering", () => {
 
     await waitFor(() => expect(searchVisualsFiles).toHaveBeenCalledWith("visuals-session", "", 0, 1000));
     expect(screen.getByText("models\\example.wsmodel")).toBeInTheDocument();
+  });
+
+  it("defers hidden mod-data refreshes and remeasures when the tab becomes visible", async () => {
+    const refreshedUnits = [{ ...units[0], localizedName: "Refreshed Lord" }];
+    getVisualsUnitsData
+      .mockReset()
+      .mockResolvedValueOnce({ success: true, sessionId: "visuals-session", units })
+      .mockResolvedValueOnce({ success: true, sessionId: "visuals-session", units: refreshedUnits });
+    const mod = { name: "example.pack", path: "/mods/example.pack", isEnabled: true } as Mod;
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          isVisualsSortByCultureEnabled: false,
+          currentPreset: { ...initialState.currentPreset, mods: [mod] },
+        },
+      },
+    });
+
+    const rendered = render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <div>
+            <VisualsTab isActive />
+          </div>
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    await waitFor(() => expect(getVisualsUnitsData).toHaveBeenCalledTimes(1));
+    rendered.rerender(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <div className="hidden">
+            <VisualsTab isActive={false} />
+          </div>
+        </localizationContext.Provider>
+      </Provider>,
+    );
+    act(() => store.dispatch(setIsModEnabled({ mod, isEnabled: false })));
+    expect(getVisualsUnitsData).toHaveBeenCalledTimes(1);
+
+    rendered.rerender(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <div>
+            <VisualsTab isActive />
+          </div>
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    await waitFor(() => expect(getVisualsUnitsData).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("Refreshed Lord")).toBeInTheDocument());
   });
 });

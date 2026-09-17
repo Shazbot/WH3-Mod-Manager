@@ -1,8 +1,9 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toggleIsVisualsHideDuplicatesEnabled, toggleIsVisualsSortByCultureEnabled } from "../appSlice";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { compileVisualsUnitFilter } from "../visuals/unitFilter";
+import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
 import { Resizable } from "re-resizable";
 import { AutoSizer, CellMeasurer, CellMeasurerCache, List, type ListRowProps } from "react-virtualized";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -121,7 +122,12 @@ const isOpenableVisualsFile = (file: VisualsFileResult) =>
 const formatCasteLabel = (caste: string) =>
   caste.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unknown caste";
 
-const VisualsTab = memo(() => {
+export type VisualsTabProps = {
+  /** False while the tab is mounted but hidden, so data refreshes and measurements wait for visibility. */
+  isActive?: boolean;
+};
+
+const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const dispatch = useAppDispatch();
   const localized = useLocalizations();
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -194,6 +200,9 @@ const VisualsTab = memo(() => {
         .join("||"),
     [enabledMods],
   );
+  const enabledModsKeyToRequest = useDeferredWhileInactive(isActive, enabledModsKey);
+  const enabledModsRef = useRef(enabledMods);
+  enabledModsRef.current = enabledMods;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -210,7 +219,7 @@ const VisualsTab = memo(() => {
   }, [fileQueryInput]);
 
   useEffect(() => {
-    if (!isFeaturesForModdersEnabled) return;
+    if (!isFeaturesForModdersEnabled || !isActive) return;
 
     let isCancelled = false;
 
@@ -219,7 +228,7 @@ const VisualsTab = memo(() => {
       setUnitsError(null);
       setViewerMessage(null);
       try {
-        const result = await window.api?.getVisualsUnitsData(enabledMods);
+        const result = await window.api?.getVisualsUnitsData(enabledModsRef.current);
         if (isCancelled) return;
         if (!result?.success || !result.sessionId || !result.units) {
           setUnits([]);
@@ -253,7 +262,7 @@ const VisualsTab = memo(() => {
     return () => {
       isCancelled = true;
     };
-  }, [enabledModsKey, isFeaturesForModdersEnabled]);
+  }, [enabledModsKeyToRequest, isActive, isFeaturesForModdersEnabled]);
 
   const compiledUnitFilter = useMemo(() => compileVisualsUnitFilter(unitFilter), [unitFilter]);
 
@@ -492,6 +501,24 @@ const VisualsTab = memo(() => {
     fileListCache.clearAll();
     fileListRef.current?.recomputeRowHeights();
   }, [fileListCache, fileResults]);
+
+  useLayoutEffect(() => {
+    if (!isActive) return;
+
+    const refreshVisibleLists = () => {
+      unitListWidthRef.current = 0;
+      fileListWidthRef.current = 0;
+      unitListCache.clearAll();
+      fileListCache.clearAll();
+      unitListRef.current?.recomputeRowHeights();
+      fileListRef.current?.recomputeRowHeights();
+    };
+
+    refreshVisibleLists();
+    if (typeof window.requestAnimationFrame !== "function") return;
+    const frameId = window.requestAnimationFrame(refreshVisibleLists);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [fileListCache, isActive, unitListCache]);
 
   const toggleOriginGroupCollapsed = (label: string) => {
     setCollapsedOriginGroups((prev) => ({ ...prev, [label]: !prev[label] }));

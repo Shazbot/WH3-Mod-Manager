@@ -101,7 +101,7 @@ const Main = (props: MainProps) => {
 
       {isVisualsMounted && (
         <div className={isVisualsTab ? undefined : "hidden"}>
-          <VisualsTab />
+          <VisualsTab isActive={isVisualsTab} />
         </div>
       )}
 
