@@ -20,6 +20,8 @@
   "subscriptionTime": "Subscription Time",
   "subbedTimeShort": "sub",
   "lastUpdated": "Last Updated",
+  "lastSubscribed": "Last Subscribed",
+  "lastSubscribedColumn": "Last Subscribed Column",
   "movieModOne": "Mod is of a movie mod type.",
   "movieModTwo": "Movie mods always have high priority!",
   "movieModThree": "Always enabled since it's located in the WH3/data folder!",

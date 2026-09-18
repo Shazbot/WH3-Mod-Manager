@@ -216,7 +216,11 @@ body {
 .grid-mods,
 .grid-mods-thumbs,
 .grid-mods-author,
-.grid-mods-thumbs-author {
+.grid-mods-thumbs-author,
+.grid-mods-subbed,
+.grid-mods-thumbs-subbed,
+.grid-mods-author-subbed,
+.grid-mods-thumbs-author-subbed {
   grid-template-columns: 57px 80px 1fr 1fr 80px;
 }
 
@@ -224,7 +228,8 @@ body {
 .grid-column-5,
 .grid-column-6,
 .grid-column-7,
-.grid-column-8 {
+.grid-column-8,
+.grid-column-9 {
   grid-column: span 5 / span 5;
 }
 
@@ -343,11 +348,19 @@ body {
   .grid-mods-thumbs {
     grid-template-columns: 57px 80px max-content 1fr 1fr 0.5fr 80px;
   }
-  .grid-mods-author {
+  .grid-mods-author,
+  .grid-mods-subbed {
     grid-template-columns: 57px 80px 1fr 1fr 0.5fr 0.5fr 80px;
   }
-  .grid-mods-thumbs-author {
+  .grid-mods-thumbs-author,
+  .grid-mods-thumbs-subbed {
     grid-template-columns: 57px 80px max-content 1fr 1fr 0.5fr 0.5fr 80px;
+  }
+  .grid-mods-author-subbed {
+    grid-template-columns: 57px 80px 1fr 1fr 0.5fr 0.5fr 0.5fr 80px;
+  }
+  .grid-mods-thumbs-author-subbed {
+    grid-template-columns: 57px 80px max-content 1fr 1fr 0.5fr 0.5fr 0.5fr 80px;
   }
 
   .grid-column-4 {
@@ -364,6 +377,9 @@ body {
   }
   .grid-column-8 {
     grid-column: span 8 / span 8;
+  }
+  .grid-column-9 {
+    grid-column: span 9 / span 9;
   }
 
   .bigger-checkbox {

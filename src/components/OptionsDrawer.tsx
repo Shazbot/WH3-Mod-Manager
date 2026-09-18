@@ -10,6 +10,7 @@ import {
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
+  toggleIsSubbedTimeEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
   setModListDensity,
@@ -156,6 +157,7 @@ const OptionsDrawer = memo(() => {
   const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+  const isSubbedTimeEnabled = useAppSelector((state) => state.app.isSubbedTimeEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
   const modListDensity = useAppSelector((state) => state.app.modListDensity);
@@ -939,6 +941,19 @@ const OptionsDrawer = memo(() => {
               ></input>
               <label className="ml-2 mt-1" htmlFor="enable-mod-author">
                 {localized.modAuthorColumn}
+              </label>
+            </div>
+
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="enable-subbed-time"
+                checked={!!isSubbedTimeEnabled}
+                onChange={() => dispatch(toggleIsSubbedTimeEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="enable-subbed-time">
+                {localized.lastSubscribedColumn}
               </label>
             </div>
 

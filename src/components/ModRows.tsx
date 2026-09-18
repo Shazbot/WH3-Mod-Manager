@@ -151,6 +151,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const hiddenModNamesList = useAppSelector((state) => state.app.hiddenModNames);
   const alwaysEnabledModNamesList = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+  const isSubbedTimeEnabled = useAppSelector((state) => state.app.isSubbedTimeEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
@@ -889,6 +890,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const sharedPaneProps = {
     areThumbnailsEnabled,
     isAuthorEnabled,
+    isSubbedTimeEnabled,
     onOrderRightClick,
     onEnabledRightClick,
     density: modListDensity,
@@ -898,7 +900,7 @@ const ModRows = memo((props: ModRowsProps) => {
     callbacks,
   };
 
-  const compactGridOptions = { isAuthorEnabled, areThumbnailsEnabled };
+  const compactGridOptions = { isAuthorEnabled, areThumbnailsEnabled, isSubbedTimeEnabled };
 
   return (
     <>

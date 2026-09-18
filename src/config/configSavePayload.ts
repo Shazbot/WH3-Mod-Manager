@@ -91,6 +91,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       ignoredMissingReqModNames: appState.ignoredMissingReqModNames,
       wasOnboardingEverRun: appState.wasOnboardingEverRun,
       isAuthorEnabled: appState.isAuthorEnabled,
+      isSubbedTimeEnabled: appState.isSubbedTimeEnabled,
       areThumbnailsEnabled: appState.areThumbnailsEnabled,
       isDualModListLayoutEnabled: appState.isDualModListLayoutEnabled,
       modListDensity: appState.modListDensity,

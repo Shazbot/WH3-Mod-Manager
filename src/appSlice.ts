@@ -1207,6 +1207,7 @@ const appSlice = createSlice({
       state.isCompatCheckingVanillaPacks =
         !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
+      state.isSubbedTimeEnabled = !!fromConfigAppState.isSubbedTimeEnabled;
       state.isDualModListLayoutEnabled = !!fromConfigAppState.isDualModListLayoutEnabled;
       state.modListDensity = fromConfigAppState.modListDensity ?? state.modListDensity;
       state.isShowingDisabledModsLoadOrder =
@@ -1627,6 +1628,9 @@ const appSlice = createSlice({
     },
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
+    },
+    toggleIsSubbedTimeEnabled: (state: AppState) => {
+      state.isSubbedTimeEnabled = !state.isSubbedTimeEnabled;
     },
     toggleIsDualModListLayoutEnabled: (state: AppState) => {
       state.isDualModListLayoutEnabled = !state.isDualModListLayoutEnabled;
@@ -2066,6 +2070,7 @@ export const {
   setIsOnboardingToRun,
   setWasOnboardingEverRun,
   toggleIsAuthorEnabled,
+  toggleIsSubbedTimeEnabled,
   toggleAreThumbnailsEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
