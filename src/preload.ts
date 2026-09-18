@@ -35,6 +35,7 @@ import type {
   CompressPackRequest,
   CompressPackResponse,
 } from "./compressionAnalysis";
+import type { Wh3AssetHostDecisionAction, Wh3AssetHostDecisionRequest } from "./wh3AssetHostClient";
 
 console.log("IN PRELOAD");
 
@@ -653,6 +654,19 @@ const api = {
 
   getVisualsVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
     ipcRenderer.invoke("getVisualsVariantMeshCatalog", sessionId, assetPath),
+
+  onWh3AssetHostDecisionRequest: (
+    callback: (event: Electron.IpcRendererEvent, request: Wh3AssetHostDecisionRequest) => void,
+  ) => {
+    ipcRenderer.on("wh3AssetHostDecisionRequest", callback);
+    return () => ipcRenderer.removeListener("wh3AssetHostDecisionRequest", callback);
+  },
+
+  respondWh3AssetHostDecision: (
+    requestId: string,
+    action: Wh3AssetHostDecisionAction,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("respondWh3AssetHostDecision", requestId, action),
 
   prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),

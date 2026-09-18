@@ -89,7 +89,14 @@ describe("WH3AssetHostClient", () => {
       result: {
         hostVersion: "test-host",
         protocolVersion: 1,
-        capabilities: ["hello", "initialize", "getAnimationCatalog", "exportModel", "shutdown"],
+        capabilities: [
+          "hello",
+          "initialize",
+          "getAnimationCatalog",
+          "exportModel",
+          "missingSkeletonDecision",
+          "shutdown",
+        ],
         maxFrameBytes: 1024 * 1024,
       },
       error: null,
@@ -235,6 +242,81 @@ describe("WH3AssetHostClient", () => {
     assetHost.dispose();
   });
 
+  it("handles a manager decision request while an export is in flight", async () => {
+    const child = createMockChild();
+    const { client, server } = createDuplexPair();
+    const decoder = new Wh3AssetHostFrameDecoder();
+    const onDecisionRequest = vi.fn(async () => "continueWithoutSkeleton" as const);
+    let exportRequest: any;
+    let decisionResponse: any;
+
+    server.on("data", (chunk) => {
+      for (const request of decoder.push(chunk)) {
+        if (request.command === "exportModel") {
+          exportRequest = request;
+          server.write(
+            encodeWh3AssetHostFrame({
+              protocolVersion: 1,
+              requestId: "decision-1",
+              command: "decisionRequest",
+              decisionType: "missingSkeleton",
+              skeletonName: "missing_skeleton",
+              message: "A skeleton is not present.",
+            }),
+          );
+        } else if (request.command === "decisionResponse") {
+          decisionResponse = request;
+          server.write(
+            encodeWh3AssetHostFrame({
+              protocolVersion: 1,
+              requestId: exportRequest.requestId,
+              success: true,
+              command: "exportModel",
+              result: {
+                success: true,
+                primaryFile: "C:\\cache\\preview\\model.glb",
+                auxiliaryFiles: [],
+                warnings: [],
+                errors: [],
+              },
+              error: null,
+            }),
+          );
+        }
+      }
+    });
+
+    const assetHost = new Wh3AssetHostClient({
+      executablePath: "host.exe",
+      spawnProcess: () => child as never,
+      connectPipe: async () => client,
+      onDecisionRequest,
+    });
+    await assetHost.start();
+
+    await expect(
+      assetHost.exportModel({ assetPath: "model.rigid_model_v2", outputPath: "model.glb" }),
+    ).resolves.toMatchObject({
+      success: true,
+      primaryFile: "C:\\cache\\preview\\model.glb",
+    });
+    expect(onDecisionRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "decision-1",
+        decisionType: "missingSkeleton",
+        skeletonName: "missing_skeleton",
+      }),
+    );
+    expect(decisionResponse).toMatchObject({
+      protocolVersion: 1,
+      requestId: "decision-1",
+      command: "decisionResponse",
+      success: true,
+      action: "continueWithoutSkeleton",
+    });
+    assetHost.dispose();
+  });
+
   it("preserves host error code, details, and result", async () => {
     const child = createMockChild();
     const { client, server } = createDuplexPair();
@@ -274,7 +356,14 @@ describe("WH3AssetHostClient", () => {
       result: {
         hostVersion: "wrong",
         protocolVersion: 2,
-        capabilities: ["hello", "initialize", "getAnimationCatalog", "exportModel", "shutdown"],
+        capabilities: [
+          "hello",
+          "initialize",
+          "getAnimationCatalog",
+          "exportModel",
+          "missingSkeletonDecision",
+          "shutdown",
+        ],
         maxFrameBytes: 1024 * 1024,
       },
       error: null,

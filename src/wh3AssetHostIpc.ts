@@ -4,7 +4,12 @@ import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
 import appData from "./appData";
 import { modelPreviewAssetUrl, registerModelPreviewFile, revokeModelPreviewFile } from "./assetProtocol";
-import { Wh3AssetHostClient } from "./wh3AssetHostClient";
+import {
+  Wh3AssetHostClient,
+  type Wh3AssetHostDecisionAction,
+  type Wh3AssetHostDecisionRequest,
+} from "./wh3AssetHostClient";
+import { windows } from "./ipcMainListeners";
 import {
   Wh3AssetHostPackInitializer,
   getWh3AssetHostPackPathsForMods,
@@ -17,6 +22,7 @@ const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
 const HOST_EXECUTABLE_NAME = "WH3AssetHost.exe";
 const HOST_REPOSITORY_RELATIVE_PATH = nodePath.join("tools", "WH3AssetHost", HOST_EXECUTABLE_NAME);
 const HOST_PROJECT_RELATIVE_PATH = nodePath.join("Tools", "WH3AssetHost");
+const DECISION_RESPONSE_TIMEOUT_MS = 110_000;
 
 type RunningHost = {
   client: Wh3AssetHostClient;
@@ -34,6 +40,60 @@ let hostShutdownRequested = false;
 let prepareOutputRootPromise: Promise<void> | null = null;
 let previewExportQueue: Promise<void> = Promise.resolve();
 const previews = new Map<string, PreviewRecord>();
+const pendingDecisionResponses = new Map<
+  string,
+  { resolve: (action: Wh3AssetHostDecisionAction) => void; timeout: NodeJS.Timeout }
+>();
+
+const settleDecisionResponse = (requestId: string, action: Wh3AssetHostDecisionAction) => {
+  const pending = pendingDecisionResponses.get(requestId);
+  if (!pending) return false;
+  pendingDecisionResponses.delete(requestId);
+  clearTimeout(pending.timeout);
+  pending.resolve(action);
+  return true;
+};
+
+const cancelPendingDecisionResponses = () => {
+  for (const requestId of pendingDecisionResponses.keys()) settleDecisionResponse(requestId, "cancelExport");
+};
+
+const requestDecisionFromManager = (request: Wh3AssetHostDecisionRequest) =>
+  new Promise<Wh3AssetHostDecisionAction>((resolve) => {
+    const timeout = setTimeout(
+      () => settleDecisionResponse(request.requestId, "cancelExport"),
+      DECISION_RESPONSE_TIMEOUT_MS,
+    );
+    pendingDecisionResponses.set(request.requestId, { resolve, timeout });
+    const mainWindow = windows.mainWindow;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      settleDecisionResponse(request.requestId, "cancelExport");
+      return;
+    }
+    try {
+      mainWindow.webContents.send("wh3AssetHostDecisionRequest", request);
+    } catch {
+      settleDecisionResponse(request.requestId, "cancelExport");
+    }
+  });
+
+ipcMain.removeHandler("respondWh3AssetHostDecision");
+ipcMain.handle(
+  "respondWh3AssetHostDecision",
+  async (_event, requestId: unknown, action: unknown): Promise<{ success: boolean; error?: string }> => {
+    if (typeof requestId !== "string" || !requestId) {
+      return { success: false, error: "A decision request id is required." };
+    }
+    if (action !== "continueWithoutSkeleton" && action !== "cancelExport") {
+      return { success: false, error: "Unsupported asset-host decision." };
+    }
+
+    if (!settleDecisionResponse(requestId, action)) {
+      return { success: false, error: "The asset-host decision is no longer pending." };
+    }
+    return { success: true };
+  },
+);
 
 const getOutputRoot = () => nodePath.join(app.getPath("userData"), MODEL_PREVIEW_OUTPUT_DIR);
 
@@ -99,6 +159,7 @@ export const resolveWh3AssetHostExecutablePath = (): string => {
 };
 
 const disposeRunningHost = () => {
+  cancelPendingDecisionResponses();
   runningHost?.client.dispose();
   runningHost = null;
   startingHostClient?.dispose();
@@ -112,7 +173,10 @@ const startHost = async (): Promise<RunningHost> => {
 
   disposeRunningHost();
   startingHost = (async () => {
-    const client = new Wh3AssetHostClient({ executablePath: resolveWh3AssetHostExecutablePath() });
+    const client = new Wh3AssetHostClient({
+      executablePath: resolveWh3AssetHostExecutablePath(),
+      onDecisionRequest: requestDecisionFromManager,
+    });
     startingHostClient = client;
     try {
       await client.start();
@@ -125,6 +189,7 @@ const startHost = async (): Promise<RunningHost> => {
       runningHost = host;
       return host;
     } catch (error) {
+      cancelPendingDecisionResponses();
       client.dispose();
       throw error;
     } finally {

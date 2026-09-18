@@ -10,8 +10,9 @@ import {
 import type { VariantMeshSelection } from "./visuals/variantMesh";
 
 // Animation catalog lookup is additive. Keeping it optional lets an older bundled host continue to
-// render static previews while the new host is being installed.
-const REQUIRED_CAPABILITIES = ["hello", "initialize", "exportModel", "shutdown"] as const;
+// render static previews while the new host is being installed. Interactive export decisions are
+// required so a missing skeleton is never handled by an implicit host-side default.
+const REQUIRED_CAPABILITIES = ["hello", "initialize", "exportModel", "missingSkeletonDecision", "shutdown"] as const;
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000;
 const DEFAULT_CONNECT_RETRY_DELAY_MS = 50;
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
@@ -37,6 +38,17 @@ export interface Wh3AssetHostHelloResult {
   protocolVersion: number;
   capabilities: string[];
   maxFrameBytes: number;
+}
+
+export type Wh3AssetHostDecisionAction = "continueWithoutSkeleton" | "cancelExport";
+
+export interface Wh3AssetHostDecisionRequest {
+  protocolVersion: number;
+  requestId: string;
+  command: "decisionRequest";
+  decisionType: "missingSkeleton";
+  skeletonName: string;
+  message?: string | null;
 }
 
 export interface Wh3AssetHostInitializeRequest {
@@ -129,6 +141,9 @@ export interface Wh3AssetHostClientOptions {
   connectTimeoutMs?: number;
   connectRetryDelayMs?: number;
   requestTimeoutMs?: number;
+  onDecisionRequest?: (
+    request: Wh3AssetHostDecisionRequest,
+  ) => Wh3AssetHostDecisionAction | Promise<Wh3AssetHostDecisionAction>;
   spawnProcess?: SpawnAssetHostProcess;
   connectPipe?: ConnectAssetHostPipe;
 }
@@ -184,6 +199,7 @@ export class Wh3AssetHostClient {
   >;
   private readonly spawnProcess: SpawnAssetHostProcess;
   private readonly connectPipe: ConnectAssetHostPipe;
+  private readonly onDecisionRequest?: Wh3AssetHostClientOptions["onDecisionRequest"];
   private readonly decoder = new Wh3AssetHostFrameDecoder();
   private readonly pending = new Map<string, PendingRequest>();
   private childProcess: ChildProcess | null = null;
@@ -210,6 +226,7 @@ export class Wh3AssetHostClient {
     };
     this.spawnProcess = options.spawnProcess ?? defaultSpawnProcess;
     this.connectPipe = options.connectPipe ?? defaultConnectPipe;
+    this.onDecisionRequest = options.onDecisionRequest;
   }
 
   get pipeName(): string {
@@ -472,6 +489,11 @@ export class Wh3AssetHostClient {
       return;
     }
 
+    if (message.command === "decisionRequest") {
+      this.handleDecisionRequest(message);
+      return;
+    }
+
     const { protocolVersion, requestId, success } = message;
     if (typeof protocolVersion !== "number" || typeof requestId !== "string" || typeof success !== "boolean") {
       this.failConnection(
@@ -499,6 +521,59 @@ export class Wh3AssetHostClient {
       return;
     }
     pending.resolve(response.result);
+  }
+
+  private handleDecisionRequest(message: Record<string, unknown>): void {
+    const { protocolVersion, requestId, decisionType, skeletonName } = message;
+    if (
+      protocolVersion !== WH3_ASSET_HOST_PROTOCOL_VERSION ||
+      typeof requestId !== "string" ||
+      !requestId ||
+      decisionType !== "missingSkeleton" ||
+      typeof skeletonName !== "string"
+    ) {
+      this.failConnection(
+        new Wh3AssetHostClientError("MalformedDecisionRequest", "WH3AssetHost decision request was malformed."),
+      );
+      return;
+    }
+
+    const request: Wh3AssetHostDecisionRequest = {
+      protocolVersion,
+      requestId,
+      command: "decisionRequest",
+      decisionType,
+      skeletonName,
+      ...(typeof message.message === "string" ? { message: message.message } : {}),
+    };
+
+    Promise.resolve()
+      .then(() => this.onDecisionRequest?.(request) ?? "cancelExport")
+      .catch(() => "cancelExport" as const)
+      .then((action) => this.sendDecisionResponse(requestId, action));
+  }
+
+  private sendDecisionResponse(requestId: string, action: unknown): void {
+    const connection = this.connection;
+    if (!connection || connection.destroyed) return;
+
+    const normalizedAction: Wh3AssetHostDecisionAction = action === "continueWithoutSkeleton" ? action : "cancelExport";
+    const frame = encodeWh3AssetHostFrame({
+      protocolVersion: WH3_ASSET_HOST_PROTOCOL_VERSION,
+      requestId,
+      command: "decisionResponse",
+      success: true,
+      action: normalizedAction,
+    });
+
+    connection.write(frame, (error?: Error | null) => {
+      if (!error) return;
+      this.failConnection(
+        new Wh3AssetHostClientError("WriteFailed", "Failed to send WH3AssetHost decision response.", {
+          cause: error,
+        }),
+      );
+    });
   }
 
   private takePending(requestId: string): PendingRequest | undefined {
