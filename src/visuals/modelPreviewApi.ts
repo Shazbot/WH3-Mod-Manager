@@ -43,6 +43,24 @@ export interface VisualsModelPreviewExportResult {
   timings?: VisualsModelPreviewMainTiming;
 }
 
+export interface VisualsModelPreviewBatchItem {
+  variantSelections: readonly VariantMeshSelection[];
+}
+
+export interface VisualsModelPreviewBatchExportItemResult {
+  previewId: string;
+  url: string;
+  warnings?: string[];
+}
+
+export interface VisualsModelPreviewBatchExportResult {
+  success: boolean;
+  items?: VisualsModelPreviewBatchExportItemResult[];
+  warnings?: string[];
+  error?: string;
+  timings?: VisualsModelPreviewMainTiming;
+}
+
 export interface VisualsModelPreviewAnimationCatalogResult {
   success: boolean;
   skeletonName?: string | null;
@@ -84,6 +102,20 @@ export const exportVisualsModel = async (
     [...animationPaths],
     [...variantSelections],
   )) as VisualsModelPreviewExportResult;
+
+export const exportVisualsModelBatch = async (
+  assetPath: string,
+  enabledMods: readonly VisualsModelPreviewMod[],
+  animationPaths: readonly string[] = [],
+  items: readonly VisualsModelPreviewBatchItem[] = [],
+): Promise<VisualsModelPreviewBatchExportResult> =>
+  (await getRendererIpc().invoke(
+    "exportVisualsModelBatch",
+    assetPath,
+    enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
+    [...animationPaths],
+    items.map((item) => ({ variantSelections: [...item.variantSelections] })),
+  )) as VisualsModelPreviewBatchExportResult;
 
 export const getVisualsModelAnimationCatalog = async (
   assetPath: string,
