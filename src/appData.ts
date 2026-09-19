@@ -163,6 +163,8 @@ interface AppData {
   moddersPrefix: string;
   /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
   isRigidModelV2CompressionEnabled: boolean;
+  /** Compress mod packs in place before updating them on the Steam Workshop. */
+  compressModsOnUpload: boolean;
   isShowingSkillNodeSetNames: boolean;
   hideRepeatedKeyPrefixes: boolean;
   isShowingHiddenSkills: boolean;
@@ -244,6 +246,7 @@ const appData = {
   isFeaturesForModdersEnabled: false,
   moddersPrefix: "",
   isRigidModelV2CompressionEnabled: true,
+  compressModsOnUpload: false,
   isShowingSkillNodeSetNames: false,
   hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,

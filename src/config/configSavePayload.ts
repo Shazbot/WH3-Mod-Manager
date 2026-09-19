@@ -107,6 +107,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,
       moddersPrefix: appState.moddersPrefix,
       isRigidModelV2CompressionEnabled: appState.isRigidModelV2CompressionEnabled,
+      compressModsOnUpload: appState.compressModsOnUpload,
       isClosedOnPlay: appState.isClosedOnPlay,
       workshopModStagingMode: appState.workshopModStagingMode,
       compressWorkshopModsOnStart: appState.compressWorkshopModsOnStart,

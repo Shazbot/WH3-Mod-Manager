@@ -1227,6 +1227,7 @@ const appSlice = createSlice({
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
       state.isRigidModelV2CompressionEnabled =
         fromConfigAppState.isRigidModelV2CompressionEnabled ?? state.isRigidModelV2CompressionEnabled;
+      state.compressModsOnUpload = !!fromConfigAppState.compressModsOnUpload;
       state.nodeEditorFavorites = fromConfigAppState.nodeEditorFavorites || [];
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
       state.enabledModsPaneSortingType =
@@ -1688,6 +1689,9 @@ const appSlice = createSlice({
     setIsRigidModelV2CompressionEnabled: (state: AppState, action: PayloadAction<boolean>) => {
       state.isRigidModelV2CompressionEnabled = action.payload;
     },
+    toggleCompressModsOnUpload: (state: AppState) => {
+      state.compressModsOnUpload = !state.compressModsOnUpload;
+    },
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
@@ -2077,6 +2081,7 @@ export const {
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
   setIsRigidModelV2CompressionEnabled,
+  toggleCompressModsOnUpload,
   setNodeEditorFavorites,
   orderImportedMods,
   addMod,

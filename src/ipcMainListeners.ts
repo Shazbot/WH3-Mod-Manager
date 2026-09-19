@@ -5905,6 +5905,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.moddersPrefix = appState.moddersPrefix || "";
       appData.isRigidModelV2CompressionEnabled =
         appState.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
+      appData.compressModsOnUpload = !!appState.compressModsOnUpload;
       appData.isShowingSkillNodeSetNames = appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
@@ -8241,6 +8242,50 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  const compressPackWithAnalysis = async (
+    packPath: string,
+    includeRigidModelV2: boolean,
+    options: { outputPath?: string; allowNoEligible?: boolean } = {},
+  ): Promise<CompressPackResponse> => {
+    const gameFolder = appData.gamesToGameFolderPaths.wh3?.gamePath;
+    if (!gameFolder) return { success: false, error: "Set the Warhammer 3 game folder before compressing packs." };
+
+    const normalizedPackPath = nodePath.resolve(packPath).toLowerCase();
+    if (compressionPackPathsInProgress.has(normalizedPackPath)) {
+      return { success: false, error: "This pack is already being compressed." };
+    }
+    compressionPackPathsInProgress.add(normalizedPackPath);
+
+    try {
+      // Analyze again in the main process so renderer data can never choose unsafe files/codecs.
+      const analysisResult = await analyzeCompressionPacks([packPath], {
+        vanillaCsv: getVanillaCompressionCsv(),
+      });
+      const analysis = analysisResult.packs[0];
+      if (!analysis || !analysis.success) {
+        return { success: false, error: analysis?.errors[0] || analysisResult.error || "Pack analysis failed." };
+      }
+      const hasEligibleFiles =
+        analysis.acceptedCount > 0 || (includeRigidModelV2 && analysis.rigidModelV2Wins.length > 0);
+      if (!hasEligibleFiles && options.allowNoEligible) {
+        return {
+          success: true,
+          packPath: options.outputPath ?? packPath,
+          originalSize: analysis.currentSize,
+          compressedSize: analysis.currentSize,
+          compressedFileCount: 0,
+        };
+      }
+      return await compressAnalyzedPack(packPath, analysis, gameFolder, includeRigidModelV2, {
+        outputPath: options.outputPath,
+      });
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      compressionPackPathsInProgress.delete(normalizedPackPath);
+    }
+  };
+
   ipcMain.handle("compressPack", async (_event, request: CompressPackRequest): Promise<CompressPackResponse> => {
     if (!appData.isFeaturesForModdersEnabled) {
       return { success: false, error: "Enable Features For Modders before compressing packs." };
@@ -8277,34 +8322,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (copyToDataFolder && (isInDataFolder || dataAlreadyContainsPack)) {
       return { success: false, error: "This pack already exists in the data folder; Ctrl-click did nothing." };
     }
-    const gameFolder = appData.gamesToGameFolderPaths.wh3?.gamePath;
-    if (!gameFolder) return { success: false, error: "Set the Warhammer 3 game folder before compressing packs." };
     if (copyToDataFolder && !dataFolder) {
       return { success: false, error: "Set the Warhammer 3 data folder before copying compressed packs." };
     }
-    if (compressionPackPathsInProgress.has(normalizedRequestedPath)) {
-      return { success: false, error: "This pack is already being compressed." };
-    }
-    compressionPackPathsInProgress.add(normalizedRequestedPath);
-
-    try {
-      // Analyze again in the main process so renderer data can never choose unsafe files/codecs.
-      const analysisResult = await analyzeCompressionPacks([enabledMod.path], {
-        vanillaCsv: getVanillaCompressionCsv(),
-      });
-      const analysis = analysisResult.packs[0];
-      if (!analysis || !analysis.success) {
-        return { success: false, error: analysis?.errors[0] || analysisResult.error || "Pack analysis failed." };
-      }
-      const outputPath = copyToDataFolder ? nodePath.join(dataFolder!, nodePath.basename(enabledMod.path)) : undefined;
-      return await compressAnalyzedPack(enabledMod.path, analysis, gameFolder, request.includeRigidModelV2 === true, {
-        outputPath,
-      });
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    } finally {
-      compressionPackPathsInProgress.delete(normalizedRequestedPath);
-    }
+    const outputPath = copyToDataFolder ? nodePath.join(dataFolder!, nodePath.basename(enabledMod.path)) : undefined;
+    return await compressPackWithAnalysis(enabledMod.path, request.includeRigidModelV2 === true, { outputPath });
   });
   ipcMain.on("cancelGlobalSearch", (event) => {
     const state = globalSearchCancelStateByWebContentsId.get(event.sender.id);
@@ -12148,7 +12170,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 startTime: Date.now(),
               } as Toast);
             }
-            updateMod(mod, response.workshopId, mod.tags, mod.name, true);
+            void updateMod(mod, response.workshopId, mod.tags, mod.name, true);
             break;
           case "error":
             mainWindow?.webContents.send("addToast", {
@@ -12168,9 +12190,30 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     modTitle?: string,
     openInSteamAfterUpdate = false,
   ) => {
+    if (!checkIsModThumbnailValid(mod.imgPath)) return;
+
+    if (appData.compressModsOnUpload && appData.isFeaturesForModdersEnabled && appData.currentGame === "wh3") {
+      const compressionResponse = await compressPackWithAnalysis(mod.path, appData.isRigidModelV2CompressionEnabled, {
+        allowNoEligible: true,
+      });
+      if (!compressionResponse.success) {
+        const message = i18n.t("compressModsOnUploadFailed", {
+          mod: mod.name,
+          error: compressionResponse.error || "Unknown compression error.",
+        });
+        console.error(message);
+        mainWindow?.webContents.send("handleLog", message);
+        mainWindow?.webContents.send("addToast", {
+          type: "warning",
+          messages: [message],
+          startTime: Date.now(),
+        } as Toast);
+        return;
+      }
+    }
+
     const uploadFolderName = workshopId;
     const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_uploads_" + uploadFolderName);
-    if (!checkIsModThumbnailValid(mod.imgPath)) return;
     await fs.rmSync(uploadFolderPath, { recursive: true, force: true });
     await fs.mkdirSync(uploadFolderPath, { recursive: true });
     await fs.linkSync(mod.path, nodePath.join(uploadFolderPath, mod.name));
@@ -12243,7 +12286,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     });
   };
   ipcMain.on("updateMod", async (event, mod: Mod, contentMod: Mod) => {
-    updateMod(mod, contentMod.workshopId, contentMod.tags);
+    void updateMod(mod, contentMod.workshopId, contentMod.tags);
   });
   ipcMain.on("fakeUpdatePack", async (event, mod: Mod) => {
     try {

@@ -169,6 +169,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     unitViewerMode: config.unitViewerMode === "compare" ? "compare" : "visualize",
     moddersPrefix: config.moddersPrefix ?? "",
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
+    compressModsOnUpload: !!config.compressModsOnUpload,
     workshopModStagingMode,
     compressWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.compressWorkshopModsOnStart,
     cleanUpWorkshopModStagingAfterGameExit:

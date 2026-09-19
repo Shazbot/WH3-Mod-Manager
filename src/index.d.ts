@@ -278,6 +278,8 @@ declare global {
     moddersPrefix: string;
     /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
     isRigidModelV2CompressionEnabled: boolean;
+    /** Compress mod packs in place before updating them on the Steam Workshop. */
+    compressModsOnUpload: boolean;
     allMods: Mod[];
     workshopInstallStatuses: Record<string, WorkshopInstallStatus>;
     workshopUpdateCheckResults: Record<string, WorkshopUpdateCheckItem>;
@@ -419,6 +421,7 @@ declare global {
     | "isFeaturesForModdersEnabled"
     | "moddersPrefix"
     | "isRigidModelV2CompressionEnabled"
+    | "compressModsOnUpload"
     | "isClosedOnPlay"
     | "workshopModStagingMode"
     | "compressWorkshopModsOnStart"
