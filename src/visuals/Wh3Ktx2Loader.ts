@@ -12,6 +12,7 @@ export type Wh3Ktx2Timing = {
   rawTextureWallMs: number;
   zstdDecodeMs: number;
   textureCreateMs: number;
+  textureUploadMs: number;
 };
 
 const emptyTiming = (): Omit<Wh3Ktx2Timing, "rawTextureWallMs"> => ({
@@ -20,6 +21,7 @@ const emptyTiming = (): Omit<Wh3Ktx2Timing, "rawTextureWallMs"> => ({
   decodedBytes: 0,
   zstdDecodeMs: 0,
   textureCreateMs: 0,
+  textureUploadMs: 0,
 });
 
 const getZstdDecoder = () => {
@@ -43,6 +45,10 @@ export class Wh3Ktx2Loader extends KTX2Loader {
   private timing = emptyTiming();
   private rawWallStartMs: number | undefined;
   private rawWallEndMs: number | undefined;
+
+  constructor(private readonly renderer: THREE.WebGLRenderer) {
+    super();
+  }
 
   resetTiming() {
     this.timingGeneration += 1;
@@ -99,16 +105,26 @@ export class Wh3Ktx2Loader extends KTX2Loader {
 
         void this.createWh3RawTexture(buffer, header, timingGeneration)
           .then((texture) => {
+            // GLTFLoader is typed against KTX2Loader<CompressedTexture>, but it
+            // accepts any Texture at runtime. This is deliberately a DataTexture.
+            //
+            // Invoke GLTFLoader's callback first: it synchronously applies the
+            // glTF sampler (filters/wrapping). Then preload the finalized texture
+            // before GLTFLoader's promise continuation resumes, so GPU upload is
+            // distributed across texture loading instead of deferred to the first
+            // scene render.
+            onLoad(texture as unknown as THREE.CompressedTexture);
+
+            const uploadStartedAt = performance.now();
+            this.renderer.initTexture(texture);
+            const uploadMs = performance.now() - uploadStartedAt;
+
             if (timingGeneration === this.timingGeneration) {
+              this.timing.textureUploadMs += uploadMs;
               const completedAt = performance.now();
               this.rawWallEndMs =
                 this.rawWallEndMs == null ? completedAt : Math.max(this.rawWallEndMs, completedAt);
             }
-
-            // GLTFLoader is typed against KTX2Loader<CompressedTexture>, but it
-            // accepts any Texture at runtime. This is deliberately a DataTexture
-            // so GLTFLoader can apply the glTF sampler and generate mipmaps.
-            onLoad(texture as unknown as THREE.CompressedTexture);
           })
           .catch((error) => onError?.(error));
       },

@@ -154,7 +154,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     // WH3AssetHost uses a low-latency raw RGBA + Zstd KTX2 flavor for
     // previews. The compatibility loader handles that format directly and
     // delegates standards-compliant Basis/UASTC KTX2 to Three's KTX2Loader.
-    const ktx2Loader = new Wh3Ktx2Loader();
+    const ktx2Loader = new Wh3Ktx2Loader(renderer);
     ktx2Loader.detectSupport(renderer);
 
     const controls = new OrbitControls(camera, renderer.domElement);
