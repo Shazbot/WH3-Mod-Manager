@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { IoPause, IoPlay, IoRefresh } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
@@ -23,6 +24,7 @@ type ThreePreviewContext = {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
+  ktx2Loader: KTX2Loader;
   controls: OrbitControls;
   grid: THREE.GridHelper;
   mixer: THREE.AnimationMixer | null;
@@ -147,6 +149,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     renderer.domElement.className = "block h-full w-full";
     mount.appendChild(renderer.domElement);
 
+    // WH3AssetHost embeds lossless raw-RGBA KTX2 textures with Zstd
+    // supercompression. Raw KTX2 does not need the Basis transcoder path,
+    // but KTX2Loader still needs renderer capability detection.
+    const ktx2Loader = new KTX2Loader();
+    ktx2Loader.detectSupport(renderer);
+
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
@@ -170,6 +178,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       scene,
       camera,
       renderer,
+      ktx2Loader,
       controls,
       grid,
       mixer: null,
@@ -215,6 +224,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.action = null;
       controls.dispose();
       disposeGrid(grid);
+      ktx2Loader.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
@@ -410,7 +420,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         setStatus("loading");
 
         try {
-          const gltf = await new GLTFLoader().loadAsync(exportResult.url);
+          const gltfLoader = new GLTFLoader();
+          gltfLoader.setKTX2Loader(context.ktx2Loader);
+          const gltf = await gltfLoader.loadAsync(exportResult.url);
           previewCanBeReleasedImmediately = true;
           if (isCancelled) {
             disposeObject(gltf.scene);
