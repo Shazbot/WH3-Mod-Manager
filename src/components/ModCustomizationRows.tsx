@@ -165,15 +165,12 @@ const ModCustomizationRows = memo(
         columnIndexForEnabled: number | null,
         operation?: PackDataOverwriteOperation,
       ) => {
-        console.log("onModCustomized for:", rowData);
-        console.log("currentPackDataOverwrites are:", currentPackDataOverwrites);
         for (let i = 0; i < data.length; i++) {
           const isMatch = columnIndices.reduce((acc, currentIndex) => {
             return acc && data[i][currentIndex] == rowData[currentIndex];
           }, true);
           if (isMatch) {
             const columnsId = getRowKey(rowData);
-            console.log("currentPackDataOverwrites", currentPackDataOverwrites);
             const existingOverwrite =
               currentPackDataOverwrites &&
               currentPackDataOverwrites.find(
@@ -188,8 +185,6 @@ const ModCustomizationRows = memo(
                   ? !existingOverwrite.overwriteData
                   : !data[i][columnIndexForEnabled];
 
-            console.log("modPath:", packPath);
-
             const dataOverwrite: PackDataOverwritePayload = {
               packName: packPath,
               packFilePath,
@@ -201,12 +196,10 @@ const ModCustomizationRows = memo(
               overwriteData: newOverwriteData,
             };
             if (existingOverwrite) {
-              console.log("REMOVING pack data overwrite:", dataOverwrite);
               dispatch(removePackDataOverwrite(dataOverwrite));
               break;
             }
 
-            console.log("dispatching setPackDataOverwrites:", dataOverwrite);
             dispatch(setPackDataOverwrites(dataOverwrite));
             break;
           }
@@ -325,10 +318,6 @@ const ModCustomizationRows = memo(
                   const existingOverwrite = currentPackDataOverwrites.find(
                     (iterOverwrite) => iterOverwrite.columnsId == key,
                   );
-
-                  // console.log("firstColumnLocId", firstColumnLocId);
-                  // console.log("firstColumnTableLoc", firstColumnTableLoc);
-                  // console.log("firstColumnLocalized", firstColumnLocalized);
 
                   const [firstColumnLocalized, secondColumnLocalized] = rowLocalizations.get(rowData) ?? ["", ""];
 
