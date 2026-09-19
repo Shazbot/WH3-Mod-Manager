@@ -37,7 +37,6 @@ import type {
 } from "./compressionAnalysis";
 import type { Wh3AssetHostDecisionAction, Wh3AssetHostDecisionRequest } from "./wh3AssetHostClient";
 
-console.log("IN PRELOAD");
 
 const createWorkshopStagingRunId = (): string => {
   try {
