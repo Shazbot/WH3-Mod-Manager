@@ -16,6 +16,7 @@ import {
   type Wh3AssetHostMod,
 } from "./wh3AssetHostPacks";
 import { getVanillaPackFilesCachePath } from "./vanillaPackFilesCache";
+import { ensureWh3AssetHostVanillaCache } from "./wh3AssetHostVanillaCache";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
@@ -173,6 +174,8 @@ const startHost = async (): Promise<RunningHost> => {
 
   disposeRunningHost();
   startingHost = (async () => {
+    await ensureWh3AssetHostVanillaCache();
+
     const client = new Wh3AssetHostClient({
       executablePath: resolveWh3AssetHostExecutablePath(),
       onDecisionRequest: requestDecisionFromManager,

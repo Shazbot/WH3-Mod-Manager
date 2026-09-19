@@ -278,6 +278,34 @@ export const getCurrentVanillaPackFilesCacheEntry = async (
   return getCachedVanillaPackIndexFromEntry(entry) ? entry : undefined;
 };
 
+/**
+ * Lightweight freshness check used before starting WH3AssetHost. Unlike
+ * getCurrentVanillaPackIndex(), this does not clone every packed-file entry
+ * merely to determine whether a current expanded index is already cached.
+ */
+export const hasCurrentVanillaPackIndex = async (packPath: string): Promise<boolean> => {
+  if (!isCurrentGameVanillaPackPath(packPath)) return false;
+
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.stat(packPath);
+  } catch {
+    return false;
+  }
+
+  const cache = await loadVanillaPackFilesCache();
+  const entry = getVanillaPackFilesCacheEntry(cache, packPath);
+  return (
+    !!entry &&
+    entry.size === stat.size &&
+    entry.lastChangedLocal === stat.mtimeMs &&
+    Array.isArray(entry.packedFiles) &&
+    !!entry.packHeader &&
+    typeof entry.packHeader === "object" &&
+    Array.isArray(entry.dependencyPacks)
+  );
+};
+
 /** Returns a current names-only entry for callers that also inspect non-vanilla packs. */
 export const getCurrentPackFilesCacheEntry = async (
   packPath: string,
