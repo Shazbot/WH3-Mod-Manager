@@ -123,7 +123,12 @@ describe("modding folder pack generation", () => {
   it("replaces an enabled source mod with the generated pack and keeps standalone packs enabled", () => {
     const original = enabledMod("/game/data/modding/base.pack");
     const generated = { ...original, path: "/game/whmm_modding/base.pack", modDirectory: "/game/whmm_modding" };
-    const standalone = { ...original, name: "LooseMod.pack", path: "/game/whmm_modding/LooseMod.pack" };
+    const standalone = {
+      ...original,
+      name: "LooseMod.pack",
+      path: "/game/whmm_modding/LooseMod.pack",
+      loadOrder: undefined,
+    };
 
     expect(replaceEnabledModsWithGeneratedPacks([original], [generated, standalone])).toEqual([generated, standalone]);
   });
