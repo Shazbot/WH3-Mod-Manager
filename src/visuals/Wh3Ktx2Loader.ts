@@ -5,6 +5,23 @@ import { parseWh3RawKtx2Header, type Wh3RawKtx2Header } from "./wh3RawKtx2";
 
 let zstdDecoderPromise: Promise<ZSTDDecoder> | undefined;
 
+export type Wh3Ktx2Timing = {
+  rawTextureCount: number;
+  compressedBytes: number;
+  decodedBytes: number;
+  rawTextureWallMs: number;
+  zstdDecodeMs: number;
+  textureCreateMs: number;
+};
+
+const emptyTiming = (): Omit<Wh3Ktx2Timing, "rawTextureWallMs"> => ({
+  rawTextureCount: 0,
+  compressedBytes: 0,
+  decodedBytes: 0,
+  zstdDecodeMs: 0,
+  textureCreateMs: 0,
+});
+
 const getZstdDecoder = () => {
   if (!zstdDecoderPromise) {
     const decoder = new ZSTDDecoder();
@@ -22,12 +39,34 @@ const getZstdDecoder = () => {
  * avoiding Three r186's generic raw-KTX2 texture construction path.
  */
 export class Wh3Ktx2Loader extends KTX2Loader {
+  private timingGeneration = 0;
+  private timing = emptyTiming();
+  private rawWallStartMs: number | undefined;
+  private rawWallEndMs: number | undefined;
+
+  resetTiming() {
+    this.timingGeneration += 1;
+    this.timing = emptyTiming();
+    this.rawWallStartMs = undefined;
+    this.rawWallEndMs = undefined;
+  }
+
+  getTiming(): Wh3Ktx2Timing {
+    return {
+      ...this.timing,
+      rawTextureWallMs:
+        this.rawWallStartMs == null || this.rawWallEndMs == null ? 0 : this.rawWallEndMs - this.rawWallStartMs,
+    };
+  }
+
   load(
     url: string,
     onLoad: (texture: THREE.CompressedTexture) => void,
     onProgress?: (event: ProgressEvent) => void,
     onError?: (error: unknown) => void,
   ): void {
+    const timingGeneration = this.timingGeneration;
+    const loadStartedAt = performance.now();
     const loader = new THREE.FileLoader<ArrayBuffer>(this.manager);
     loader.setPath(this.path);
     loader.setCrossOrigin(this.crossOrigin);
@@ -51,8 +90,21 @@ export class Wh3Ktx2Loader extends KTX2Loader {
           return;
         }
 
-        void this.createWh3RawTexture(buffer, header)
+        if (timingGeneration === this.timingGeneration) {
+          this.timing.rawTextureCount += 1;
+          this.timing.compressedBytes += header.levelLength;
+          this.rawWallStartMs =
+            this.rawWallStartMs == null ? loadStartedAt : Math.min(this.rawWallStartMs, loadStartedAt);
+        }
+
+        void this.createWh3RawTexture(buffer, header, timingGeneration)
           .then((texture) => {
+            if (timingGeneration === this.timingGeneration) {
+              const completedAt = performance.now();
+              this.rawWallEndMs =
+                this.rawWallEndMs == null ? completedAt : Math.max(this.rawWallEndMs, completedAt);
+            }
+
             // GLTFLoader is typed against KTX2Loader<CompressedTexture>, but it
             // accepts any Texture at runtime. This is deliberately a DataTexture
             // so GLTFLoader can apply the glTF sampler and generate mipmaps.
@@ -65,10 +117,17 @@ export class Wh3Ktx2Loader extends KTX2Loader {
     );
   }
 
-  private async createWh3RawTexture(buffer: ArrayBuffer, header: Wh3RawKtx2Header) {
+  private async createWh3RawTexture(
+    buffer: ArrayBuffer,
+    header: Wh3RawKtx2Header,
+    timingGeneration: number,
+  ) {
     const decoder = await getZstdDecoder();
     const compressed = new Uint8Array(buffer, header.levelOffset, header.levelLength);
+
+    const decodeStartedAt = performance.now();
     const rgba = decoder.decode(compressed, header.uncompressedLength);
+    const decodeMs = performance.now() - decodeStartedAt;
 
     if (rgba.byteLength !== header.uncompressedLength) {
       throw new Error(
@@ -76,6 +135,7 @@ export class Wh3Ktx2Loader extends KTX2Loader {
       );
     }
 
+    const textureStartedAt = performance.now();
     const texture = new THREE.DataTexture(
       rgba,
       header.width,
@@ -90,6 +150,14 @@ export class Wh3Ktx2Loader extends KTX2Loader {
     texture.magFilter = THREE.LinearFilter;
     texture.generateMipmaps = false;
     texture.needsUpdate = true;
+    const textureCreateMs = performance.now() - textureStartedAt;
+
+    if (timingGeneration === this.timingGeneration) {
+      this.timing.decodedBytes += rgba.byteLength;
+      this.timing.zstdDecodeMs += decodeMs;
+      this.timing.textureCreateMs += textureCreateMs;
+    }
+
     return texture;
   }
 }

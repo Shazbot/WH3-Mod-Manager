@@ -43,6 +43,16 @@ const iconAssets = new Map<string, AssetBytes>();
  */
 const modelPreviewRoots = new Map<string, string>();
 
+export type ModelPreviewServeTiming = {
+  requestCount: number;
+  bytesRead: number;
+  fileReadMs: number;
+  firstRequestStartMs?: number;
+  lastResponseReadyMs?: number;
+};
+
+const modelPreviewServeTimings = new Map<string, ModelPreviewServeTiming>();
+
 /** Bumped whenever icons are registered, and embedded in the URLs built afterwards. */
 let iconGeneration = 0;
 
@@ -61,14 +71,26 @@ export const clearIconAssets = () => {
 /** Only directories created for host exports are registered; arbitrary filesystem roots are never URL-addressable. */
 export const registerModelPreviewFile = (previewId: string, primaryFilePath: string) => {
   modelPreviewRoots.set(previewId, nodePath.dirname(primaryFilePath));
+  modelPreviewServeTimings.set(previewId, {
+    requestCount: 0,
+    bytesRead: 0,
+    fileReadMs: 0,
+  });
+};
+
+export const getModelPreviewServeTiming = (previewId: string): ModelPreviewServeTiming | undefined => {
+  const timing = modelPreviewServeTimings.get(previewId);
+  return timing ? { ...timing } : undefined;
 };
 
 export const revokeModelPreviewFile = (previewId: string) => {
   modelPreviewRoots.delete(previewId);
+  modelPreviewServeTimings.delete(previewId);
 };
 
 export const clearModelPreviewFiles = () => {
   modelPreviewRoots.clear();
+  modelPreviewServeTimings.clear();
 };
 
 /**
@@ -167,8 +189,19 @@ const serveModelPreview = async (previewId: string, relativeSegments: string[]) 
   const filePath = resolvePreviewFile(root, relativeSegments);
   if (!filePath) return notFound();
   const mimeType = MODEL_PREVIEW_MIME_TYPES[nodePath.extname(filePath).toLowerCase()] || "application/octet-stream";
+  const requestStart = performance.now();
   try {
-    return respondWith({ buffer: await fs.promises.readFile(filePath), mimeType });
+    const buffer = await fs.promises.readFile(filePath);
+    const responseReady = performance.now();
+    const timing = modelPreviewServeTimings.get(previewId);
+    if (timing) {
+      timing.requestCount += 1;
+      timing.bytesRead += buffer.byteLength;
+      timing.fileReadMs += responseReady - requestStart;
+      timing.firstRequestStartMs ??= requestStart;
+      timing.lastResponseReadyMs = responseReady;
+    }
+    return respondWith({ buffer, mimeType });
   } catch {
     return notFound();
   }
