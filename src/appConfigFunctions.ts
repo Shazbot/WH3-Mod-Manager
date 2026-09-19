@@ -71,9 +71,8 @@ const processConfigWriteQueue = () => {
 
       try {
         await persistConfigSnapshot(stringifiedData);
-        console.log("done writing config file");
       } catch (error) {
-        console.log(error);
+        console.error("Failed to write app config:", error);
       }
 
       completedWriteRevision = revisionToWrite;
