@@ -13,6 +13,7 @@ import {
   saveVanillaPackFilesCache,
 } from "../src/vanillaPackFilesCache";
 import type { PackHeader } from "../src/packFileTypes";
+import { decodeVanillaPackFilesCache } from "../src/vanillaPackFilesCacheFormat";
 import { readPack } from "../src/packFileSerializer";
 
 const electronState = vi.hoisted(() => ({ userDataPath: "" }));
@@ -55,7 +56,7 @@ describe("vanilla pack files cache", () => {
       Buffer.from(JSON.stringify({ [packPath]: { size: 4, lastChangedLocal: 1, packedFileNames: ["old.bin"] } })),
     );
 
-    await expect(loadVanillaPackFilesCache()).resolves.toMatchObject({ version: 2, entries: {} });
+    await expect(loadVanillaPackFilesCache()).resolves.toMatchObject({ version: 3, entries: {} });
 
     const packStats = await stat(packPath);
     const packHeader: PackHeader = {
@@ -78,12 +79,9 @@ describe("vanilla pack files cache", () => {
     rememberPackFileNames(modPath, modStats.size, modStats.mtimeMs, ["mod.bin"]);
     await saveVanillaPackFilesCache();
 
-    const written = JSON.parse((await readFile(path.join(root, "vanilla-pack-files-cache.bin"))).toString("utf8")) as {
-      version: number;
-      entries: Record<string, unknown>;
-    };
-    expect(written.version).toBe(2);
-    expect(Object.keys(written.entries)).toEqual([path.resolve(packPath), path.resolve(modPath)]);
+    const written = decodeVanillaPackFilesCache(await readFile(path.join(root, "vanilla-pack-files-cache.bin")));
+    expect(written?.version).toBe(3);
+    expect(Object.keys(written?.entries ?? {})).toEqual([path.resolve(packPath), path.resolve(modPath)]);
     await expect(getCurrentVanillaPackIndex(packPath)).resolves.toMatchObject({
       packedFiles: [{ name: "animations\\stand_idle.anim", file_size: 12, start_pos: 36, is_compressed: false }],
       packHeader: { byteMask: 0x41, pack_file_count: 1 },

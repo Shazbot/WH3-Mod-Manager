@@ -4,50 +4,28 @@ import * as fs from "fs";
 import * as nodePath from "path";
 
 import type { PackHeader, PackedFile } from "./packFileTypes";
+import {
+  decodeVanillaPackFilesCache,
+  encodeVanillaPackFilesCache,
+  VANILLA_PACK_FILES_CACHE_VERSION,
+  type CachedVanillaPackIndex,
+  type VanillaCachedPackHeader,
+  type VanillaPackFilesCache,
+  type VanillaPackFilesCacheEntry,
+} from "./vanillaPackFilesCacheFormat";
+
+export type {
+  CachedVanillaPackIndex,
+  VanillaCachedPackedFile,
+  VanillaPackFilesCache,
+  VanillaPackFilesCacheEntry,
+} from "./vanillaPackFilesCacheFormat";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 
 /** Bumped when the on-disk representation changes. Older cache files are disposable and ignored. */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = VANILLA_PACK_FILES_CACHE_VERSION;
 const CACHE_FILE_NAME = "vanilla-pack-files-cache.bin";
 const CACHE_COMPRESSION_LEVEL = 1;
-
-export interface VanillaCachedPackedFile {
-  name: string;
-  file_size: number;
-  start_pos: number;
-  is_compressed: boolean;
-}
-
-interface VanillaCachedPackHeader {
-  header: string;
-  byteMask: number;
-  refFileCount: number;
-  pack_file_index_size: number;
-  pack_file_count: number;
-  header_buffer: string;
-}
-
-export interface VanillaPackFilesCacheEntry {
-  size: number;
-  lastChangedLocal: number;
-  /** Expanded index data for current-game vanilla packs. */
-  packedFiles?: VanillaCachedPackedFile[];
-  packHeader?: VanillaCachedPackHeader;
-  dependencyPacks?: string[];
-  /** Kept for non-vanilla callers of the manager's old names-only helper. */
-  packedFileNames?: string[];
-}
-
-export interface VanillaPackFilesCache {
-  version: typeof CACHE_VERSION;
-  entries: Record<string, VanillaPackFilesCacheEntry>;
-}
-
-export interface CachedVanillaPackIndex {
-  packedFiles: PackedFile[];
-  packHeader: PackHeader;
-  dependencyPacks: string[];
-}
 
 let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
 let cacheLoadPromise: Promise<VanillaPackFilesCache> | undefined;
@@ -120,8 +98,9 @@ export const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache
 
     try {
       const compressed = await fs.promises.readFile(cacheFilePath);
-      const parsed = JSON.parse((await zstdDecompress(compressed)).toString("utf8")) as Partial<VanillaPackFilesCache>;
-      if (parsed.version !== CACHE_VERSION || !parsed.entries || typeof parsed.entries !== "object") {
+      const decompressed = Buffer.from(await zstdDecompress(compressed));
+      const parsed = decodeVanillaPackFilesCache(decompressed);
+      if (!parsed) {
         vanillaPackFilesCache = emptyCache();
         return vanillaPackFilesCache;
       }
@@ -151,8 +130,8 @@ const writeCacheNow = async (): Promise<void> => {
   const temporaryPath = `${cacheFilePath}.building`;
   try {
     await fs.promises.mkdir(nodePath.dirname(cacheFilePath), { recursive: true });
-    const json = Buffer.from(JSON.stringify(vanillaPackFilesCache), "utf8");
-    const compressed = await zstdCompress(json, CACHE_COMPRESSION_LEVEL);
+    const binary = encodeVanillaPackFilesCache(vanillaPackFilesCache);
+    const compressed = await zstdCompress(binary, CACHE_COMPRESSION_LEVEL);
     await fs.promises.writeFile(temporaryPath, compressed);
     await fs.promises.rename(temporaryPath, cacheFilePath);
   } catch (error) {
@@ -192,18 +171,18 @@ export const isCurrentGameVanillaPackPath = (packPath: string): boolean => {
 };
 
 const encodeHeader = (packHeader: PackHeader): VanillaCachedPackHeader => ({
-  header: packHeader.header.toString("base64"),
+  header: Buffer.from(packHeader.header),
   byteMask: packHeader.byteMask,
   refFileCount: packHeader.refFileCount,
   pack_file_index_size: packHeader.pack_file_index_size,
   pack_file_count: packHeader.pack_file_count,
-  header_buffer: packHeader.header_buffer.toString("base64"),
+  header_buffer: Buffer.from(packHeader.header_buffer),
 });
 
 const decodeHeader = (packHeader: VanillaCachedPackHeader): PackHeader | undefined => {
   if (
-    typeof packHeader.header !== "string" ||
-    typeof packHeader.header_buffer !== "string" ||
+    !Buffer.isBuffer(packHeader.header) ||
+    !Buffer.isBuffer(packHeader.header_buffer) ||
     typeof packHeader.byteMask !== "number" ||
     typeof packHeader.refFileCount !== "number" ||
     typeof packHeader.pack_file_index_size !== "number" ||
@@ -213,12 +192,12 @@ const decodeHeader = (packHeader: VanillaCachedPackHeader): PackHeader | undefin
   }
 
   return {
-    header: Buffer.from(packHeader.header, "base64"),
+    header: Buffer.from(packHeader.header),
     byteMask: packHeader.byteMask,
     refFileCount: packHeader.refFileCount,
     pack_file_index_size: packHeader.pack_file_index_size,
     pack_file_count: packHeader.pack_file_count,
-    header_buffer: Buffer.from(packHeader.header_buffer, "base64"),
+    header_buffer: Buffer.from(packHeader.header_buffer),
   };
 };
 
