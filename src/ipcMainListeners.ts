@@ -12192,7 +12192,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ) => {
     if (!checkIsModThumbnailValid(mod.imgPath)) return;
 
-    if (appData.compressModsOnUpload && appData.isFeaturesForModdersEnabled && appData.currentGame === "wh3") {
+    if (appData.compressModsOnUpload && appData.currentGame === "wh3") {
       const compressionResponse = await compressPackWithAnalysis(mod.path, appData.isRigidModelV2CompressionEnabled, {
         allowNoEligible: true,
       });

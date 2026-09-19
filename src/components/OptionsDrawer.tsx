@@ -1513,10 +1513,8 @@ const OptionsDrawer = memo(() => {
             </div>
             <label
               className={
-                "ml-7 mt-3 flex items-start " +
-                (isFeaturesForModdersEnabled && currentGame === "wh3"
-                  ? "cursor-pointer"
-                  : "cursor-not-allowed opacity-50")
+                "ml-1 mt-3 flex items-start " +
+                (currentGame === "wh3" ? "cursor-pointer" : "cursor-not-allowed opacity-50")
               }
               htmlFor="compress-mods-on-upload"
             >
@@ -1525,7 +1523,7 @@ const OptionsDrawer = memo(() => {
                 type="checkbox"
                 id="compress-mods-on-upload"
                 checked={!!compressModsOnUpload}
-                disabled={!isFeaturesForModdersEnabled || currentGame !== "wh3"}
+                disabled={currentGame !== "wh3"}
                 onChange={() => dispatch(toggleCompressModsOnUpload())}
               />
               <span className="ml-3">
