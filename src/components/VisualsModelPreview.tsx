@@ -863,17 +863,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   useEffect(() => {
     if (status !== "ready" || clipDuration <= 0) return;
     const timer = window.setInterval(() => {
-      const action = contextRef.current?.action;
+      const action = contextRef.current?.actions[0];
       if (action) setCurrentTime(Math.min(action.time, clipDuration));
     }, 100);
     return () => window.clearInterval(timer);
   }, [clipDuration, status]);
 
   const seekAnimation = (value: number) => {
-    const action = contextRef.current?.action;
-    if (!action) return;
-    action.time = Math.max(0, Math.min(value, clipDuration));
-    setCurrentTime(action.time);
+    const actions = contextRef.current?.actions ?? [];
+    if (actions.length === 0) return;
+    const nextTime = Math.max(0, Math.min(value, clipDuration));
+    for (const action of actions) action.time = nextTime;
+    setCurrentTime(nextTime);
   };
 
   return (
