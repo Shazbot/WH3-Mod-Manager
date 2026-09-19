@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "Ключи базы данных и ссылки на это здание. Используйте кнопки копирования, чтобы скопировать значение.",
   "buildingsInfoCopied": "Скопировано {{label}} в буфер обмена.",
   "buildingsInfoCopyFailed": "Не удалось скопировать {{label}}.",
+  "unitViewerShowUnitCard": "Показать карточку юнита",
   "unitViewerShowWireframe": "Показать каркас"
 }

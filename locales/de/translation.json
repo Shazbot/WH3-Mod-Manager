@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "Datenbankschlüssel und Referenzen für dieses Gebäude. Verwenden Sie die Kopierschaltflächen, um einen Wert zu kopieren.",
   "buildingsInfoCopied": "{{label}} in die Zwischenablage kopiert.",
   "buildingsInfoCopyFailed": "{{label}} konnte nicht kopiert werden.",
+  "unitViewerShowUnitCard": "Einheitenkarte anzeigen",
   "unitViewerShowWireframe": "Wireframe anzeigen"
 }

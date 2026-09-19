@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "Klucze bazy danych i referencje dla tego budynku. Użyj przycisków kopiowania, aby skopiować wartość.",
   "buildingsInfoCopied": "Skopiowano {{label}} do schowka.",
   "buildingsInfoCopyFailed": "Nie można skopiować {{label}}.",
+  "unitViewerShowUnitCard": "Pokaż kartę jednostki",
   "unitViewerShowWireframe": "Pokaż model szkieletowy"
 }

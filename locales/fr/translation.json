@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "Clés et références de la base de données pour ce bâtiment. Utilisez les boutons de copie pour copier une valeur.",
   "buildingsInfoCopied": "Copié {{label}} dans le presse-papiers.",
   "buildingsInfoCopyFailed": "Impossible de copier {{label}}.",
+  "unitViewerShowUnitCard": "Afficher la carte d'unité",
   "unitViewerShowWireframe": "Afficher le filaire"
 }

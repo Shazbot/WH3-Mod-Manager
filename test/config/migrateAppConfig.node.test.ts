@@ -144,6 +144,7 @@ describe("migrateAppConfig", () => {
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
     expect(config.unitViewerMode).toBe("visualize");
     expect(config.unitViewerShowWireframe).toBe(true);
+    expect(config.unitViewerShowUnitCard).toBe(true);
     expect(config.hideRepeatedKeyPrefixes).toBe(true);
     expect(config.recentPackPaths).toEqual([]);
     expect(config.games.rome2).toEqual({
@@ -196,6 +197,15 @@ describe("migrateAppConfig", () => {
     });
 
     expect(config.unitViewerShowWireframe).toBe(false);
+  });
+
+  it("preserves the Unit Viewer card option", () => {
+    const config = migrateAppConfig({
+      ...createLegacyConfig(),
+      unitViewerShowUnitCard: false,
+    });
+
+    expect(config.unitViewerShowUnitCard).toBe(false);
   });
 
   it("is idempotent and leaves an already-migrated config alone", () => {

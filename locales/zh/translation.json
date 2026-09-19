@@ -2231,5 +2231,6 @@
   "buildingsInfoHelp": "该建筑物的数据库密钥和参考。使用复制按钮复制值。",
   "buildingsInfoCopied": "已将 {{label}} 复制到剪贴板。",
   "buildingsInfoCopyFailed": "无法复制 {{label}}。",
+  "unitViewerShowUnitCard": "显示单位卡",
   "unitViewerShowWireframe": "显示线框"
 }

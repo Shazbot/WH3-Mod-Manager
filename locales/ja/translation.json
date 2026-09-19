@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "この建物のデータベース キーと参照。値をコピーするには、コピー ボタンを使用します。",
   "buildingsInfoCopied": "{{label}} をクリップボードにコピーしました。",
   "buildingsInfoCopyFailed": "{{label}} をコピーできませんでした。",
+  "unitViewerShowUnitCard": "ユニットカードを表示",
   "unitViewerShowWireframe": "ワイヤーフレームを表示"
 }

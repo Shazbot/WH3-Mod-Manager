@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "이 건물에 대한 데이터베이스 키 및 참조입니다. 값을 복사하려면 복사 버튼을 사용하세요.",
   "buildingsInfoCopied": "{{label}}을(를) 클립보드에 복사했습니다.",
   "buildingsInfoCopyFailed": "{{label}}을(를) 복사할 수 없습니다.",
+  "unitViewerShowUnitCard": "유닛 카드 표시",
   "unitViewerShowWireframe": "와이어프레임 표시"
 }

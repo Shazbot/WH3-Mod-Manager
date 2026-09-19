@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "Bu bina için veritabanı anahtarları ve referanslar. Bir değeri kopyalamak için kopyala düğmelerini kullanın.",
   "buildingsInfoCopied": "{{label}} panoya kopyalandı.",
   "buildingsInfoCopyFailed": "{{label}} kopyalanamadı.",
+  "unitViewerShowUnitCard": "Birim kartını göster",
   "unitViewerShowWireframe": "Tel çerçeveyi göster"
 }

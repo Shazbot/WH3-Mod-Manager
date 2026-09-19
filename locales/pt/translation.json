@@ -2229,5 +2229,6 @@
   "buildingsInfoHelp": "Chaves e referências do banco de dados para este edifício. Use os botões de cópia para copiar um valor.",
   "buildingsInfoCopied": "Copiado {{label}} para a área de transferência.",
   "buildingsInfoCopyFailed": "Não foi possível copiar {{label}}.",
+  "unitViewerShowUnitCard": "Mostrar cartão de unidade",
   "unitViewerShowWireframe": "Mostrar estrutura de arame"
 }

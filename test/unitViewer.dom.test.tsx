@@ -298,6 +298,27 @@ describe("Unit Viewer UI", () => {
     expect(screen.getByRole("checkbox", { name: "Show wireframe" })).not.toBeChecked();
   });
 
+  it("hides the unit card in visualize mode and persists its choice", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+
+    const cardCheckbox = screen.getByRole("checkbox", { name: "Show unit card" });
+    expect(cardCheckbox).toBeChecked();
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    await waitFor(() => expect(document.querySelector("article")).toBeInTheDocument());
+
+    fireEvent.click(cardCheckbox);
+    expect(cardCheckbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerShowUnitCard).toBe(false);
+    expect(document.querySelector("article")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(screen.queryByRole("checkbox", { name: "Show unit card" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByRole("checkbox", { name: "Show unit card" })).not.toBeChecked();
+  });
+
   it("does not render the model preview in compare mode", async () => {
     window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
       success: true,

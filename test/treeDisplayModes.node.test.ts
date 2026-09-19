@@ -6,6 +6,7 @@ import appReducer, {
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
   setUnitViewerMode,
+  setUnitViewerShowUnitCard,
   setUnitViewerShowWireframe,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
@@ -109,5 +110,11 @@ describe("unit viewer mode", () => {
     const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerShowWireframe: false }));
     expect(restored.unitViewerShowWireframe).toBe(false);
     expect(appReducer(restored, setUnitViewerShowWireframe(true)).unitViewerShowWireframe).toBe(true);
+  });
+
+  it("restores and updates the unit card option", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerShowUnitCard: false }));
+    expect(restored.unitViewerShowUnitCard).toBe(false);
+    expect(appReducer(restored, setUnitViewerShowUnitCard(true)).unitViewerShowUnitCard).toBe(true);
   });
 });
