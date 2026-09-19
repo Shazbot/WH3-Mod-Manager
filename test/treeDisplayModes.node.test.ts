@@ -6,6 +6,7 @@ import appReducer, {
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
   setUnitViewerMode,
+  setUnitViewerShowWireframe,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 
@@ -102,5 +103,11 @@ describe("unit viewer mode", () => {
     const invalid = appReducer(initialState, setFromConfig({ ...initialState, unitViewerMode: "other" } as never));
     expect(invalid.unitViewerMode).toBe("visualize");
     expect(appReducer(restored, setUnitViewerMode("compare")).unitViewerMode).toBe("compare");
+  });
+
+  it("restores and updates the wireframe option", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerShowWireframe: false }));
+    expect(restored.unitViewerShowWireframe).toBe(false);
+    expect(appReducer(restored, setUnitViewerShowWireframe(true)).unitViewerShowWireframe).toBe(true);
   });
 });

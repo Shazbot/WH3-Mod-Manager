@@ -143,6 +143,7 @@ describe("migrateAppConfig", () => {
     expect(config.isVisualsSortByCultureEnabled).toBe(true);
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
     expect(config.unitViewerMode).toBe("visualize");
+    expect(config.unitViewerShowWireframe).toBe(true);
     expect(config.hideRepeatedKeyPrefixes).toBe(true);
     expect(config.recentPackPaths).toEqual([]);
     expect(config.games.rome2).toEqual({
@@ -186,6 +187,15 @@ describe("migrateAppConfig", () => {
     });
 
     expect(config.unitViewerMode).toBe("compare");
+  });
+
+  it("preserves the Unit Viewer wireframe option", () => {
+    const config = migrateAppConfig({
+      ...createLegacyConfig(),
+      unitViewerShowWireframe: false,
+    });
+
+    expect(config.unitViewerShowWireframe).toBe(false);
   });
 
   it("is idempotent and leaves an already-migrated config alone", () => {

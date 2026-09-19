@@ -96,6 +96,7 @@ const initialState = {
   isVisualsHideDuplicatesEnabled: true,
   // New and pre-feature configs start with the single-unit model visualization.
   unitViewerMode: "visualize",
+  unitViewerShowWireframe: true,
   mapCampaignName: "wh3_main_combi",
   mapSelectedRegion: undefined,
   currentFlowFileReloadNonce: 0,

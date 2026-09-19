@@ -42,6 +42,12 @@ describe("selectConfigSavePayload", () => {
     expect(payload.config.unitViewerMode).toBe("visualize");
   });
 
+  it("includes the Unit Viewer wireframe option in the saved config payload", () => {
+    const payload = selectConfigSavePayload({ ...initialState, unitViewerShowWireframe: false } as AppState);
+
+    expect(payload.config.unitViewerShowWireframe).toBe(false);
+  });
+
   it("includes both skills display options in the saved config payload", () => {
     const payload = selectConfigSavePayload({
       ...initialState,

@@ -17,6 +17,8 @@ import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSel
 
 type VisualsModelPreviewProps = {
   assetPath: string;
+  /** Whether to show the ground wireframe beneath the model. */
+  showWireframe?: boolean;
   /** Session used to inspect VMD slots and select appearances. */
   variantMeshSessionId?: string;
   variantMeshSessionType?: "unitViewer" | "visuals";
@@ -103,7 +105,7 @@ const formatAnimationTime = (seconds: number) => {
 const ANIMATION_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
 const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
-  const { assetPath, variantMeshSessionId, variantMeshSessionType = "unitViewer" } = props;
+  const { assetPath, showWireframe = true, variantMeshSessionId, variantMeshSessionType = "unitViewer" } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -114,6 +116,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   );
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
+  const showWireframeRef = useRef(showWireframe);
+  showWireframeRef.current = showWireframe;
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -177,6 +181,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     scene.add(fillLight);
 
     const grid = new THREE.GridHelper(10, 20, 0x4b5563, 0x273244);
+    grid.visible = showWireframeRef.current;
     scene.add(grid);
 
     const context: ThreePreviewContext = {
@@ -245,6 +250,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       contextRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const grid = contextRef.current?.grid;
+    if (grid) grid.visible = showWireframe;
+  }, [showWireframe]);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;

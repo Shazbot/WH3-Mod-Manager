@@ -282,6 +282,22 @@ describe("Unit Viewer UI", () => {
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
   });
 
+  it("shows the wireframe option only in visualize mode and persists its choice", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+
+    const checkbox = screen.getByRole("checkbox", { name: "Show wireframe" });
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerShowWireframe).toBe(false);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(screen.queryByRole("checkbox", { name: "Show wireframe" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByRole("checkbox", { name: "Show wireframe" })).not.toBeChecked();
+  });
+
   it("does not render the model preview in compare mode", async () => {
     window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
       success: true,

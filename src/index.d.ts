@@ -325,6 +325,8 @@ declare global {
     isVisualsHideDuplicatesEnabled: boolean;
     /** Whether the Unit Viewer shows one unit for visualization or multiple units for comparison. */
     unitViewerMode: UnitViewerMode;
+    /** Whether the Unit Viewer shows the render wireframe beneath the unit visualization. */
+    unitViewerShowWireframe: boolean;
     mapCampaignName: string;
     mapSelectedRegion?: MapRegionSelection;
     isCreateSteamCollectionOpen: boolean;
@@ -448,6 +450,7 @@ declare global {
     | "isVisualsSortByCultureEnabled"
     | "isVisualsHideDuplicatesEnabled"
     | "unitViewerMode"
+    | "unitViewerShowWireframe"
     | "recentPackPaths"
   >;
 

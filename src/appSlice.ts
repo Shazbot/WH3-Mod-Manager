@@ -1256,6 +1256,7 @@ const appSlice = createSlice({
         fromConfigAppState.unitViewerMode === "visualize" || fromConfigAppState.unitViewerMode === "compare"
           ? fromConfigAppState.unitViewerMode
           : "visualize";
+      state.unitViewerShowWireframe = fromConfigAppState.unitViewerShowWireframe ?? true;
       state.recentPackPaths = sanitizeRecentPackPaths(fromConfigAppState.recentPackPaths, vanillaPackNames);
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
@@ -1641,6 +1642,9 @@ const appSlice = createSlice({
     },
     setUnitViewerMode: (state: AppState, action: PayloadAction<UnitViewerMode>) => {
       state.unitViewerMode = action.payload;
+    },
+    setUnitViewerShowWireframe: (state: AppState, action: PayloadAction<boolean>) => {
+      state.unitViewerShowWireframe = action.payload;
     },
     toggleIsPresetAuthorEnabled: (state: AppState) => {
       state.isPresetAuthorEnabled = !state.isPresetAuthorEnabled;
@@ -2056,6 +2060,7 @@ export const {
   toggleIsVisualsSortByCultureEnabled,
   toggleIsVisualsHideDuplicatesEnabled,
   setUnitViewerMode,
+  setUnitViewerShowWireframe,
   setModListDensity,
   toggleIsPresetAuthorEnabled,
   toggleArePresetThumbnailsEnabled,

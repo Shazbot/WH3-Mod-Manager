@@ -167,6 +167,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     isVisualsSortByCultureEnabled: config.isVisualsSortByCultureEnabled ?? true,
     isVisualsHideDuplicatesEnabled: config.isVisualsHideDuplicatesEnabled ?? true,
     unitViewerMode: config.unitViewerMode === "compare" ? "compare" : "visualize",
+    unitViewerShowWireframe: config.unitViewerShowWireframe ?? true,
     moddersPrefix: config.moddersPrefix ?? "",
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
     compressModsOnUpload: config.compressModsOnUpload ?? true,
