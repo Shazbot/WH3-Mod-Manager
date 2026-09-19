@@ -581,18 +581,56 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const activeVariantSlots = useMemo(
     () =>
       variantCatalog
-        ? getActiveVariantMeshSlots(variantCatalog, variantSelections).filter((slot) => slot.choices.length > 1)
+        ? getComparisonActiveVariantMeshSlots(variantCatalog, variantSelections).filter((slot) => slot.choices.length > 1)
         : [],
     [variantCatalog, variantSelections],
   );
-  const selectedVariantSelections = useMemo<VariantMeshSelection[]>(
-    () =>
-      activeVariantSlots.map((slot) => ({
-        slotPath: slot.slotPath,
-        choiceIndex: variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex,
-      })),
+  const allVariantSlots = useMemo(
+    () => activeVariantSlots.filter((slot) => variantSelections[slot.slotPath] === ALL_VARIANTS),
     [activeVariantSlots, variantSelections],
   );
+  const allVariantSlotPaths = useMemo(
+    () => new Set(allVariantSlots.map((slot) => slot.slotPath)),
+    [allVariantSlots],
+  );
+  const comparisonColumnSlot = allVariantSlots[0];
+  const comparisonRowSlot = allVariantSlots[1];
+  const comparisonColumnCount = comparisonColumnSlot?.choices.length ?? 1;
+  const comparisonRowCount = comparisonRowSlot?.choices.length ?? 1;
+  const comparisonVariants = useMemo<ComparisonVariant[]>(() => {
+    if (!variantCatalog) return [{ rowIndex: 0, columnIndex: 0, selections: [] }];
+
+    const columnChoices = comparisonColumnSlot?.choices ?? [undefined];
+    const rowChoices = comparisonRowSlot?.choices ?? [undefined];
+    const variants: ComparisonVariant[] = [];
+
+    rowChoices.forEach((rowChoice, rowIndex) => {
+      columnChoices.forEach((columnChoice, columnIndex) => {
+        const concreteSelections = Object.fromEntries(
+          variantCatalog.slots.map((slot) => {
+            const selected = variantSelections[slot.slotPath];
+            return [slot.slotPath, selected == null || selected === ALL_VARIANTS ? slot.defaultChoiceIndex : selected];
+          }),
+        ) as Record<string, number>;
+        if (comparisonColumnSlot && columnChoice) {
+          concreteSelections[comparisonColumnSlot.slotPath] = columnChoice.index;
+        }
+        if (comparisonRowSlot && rowChoice) {
+          concreteSelections[comparisonRowSlot.slotPath] = rowChoice.index;
+        }
+
+        const selections = getActiveVariantMeshSlots(variantCatalog, concreteSelections).map((slot) => ({
+          slotPath: slot.slotPath,
+          choiceIndex: concreteSelections[slot.slotPath] ?? slot.defaultChoiceIndex,
+        }));
+        variants.push({ rowIndex, columnIndex, selections });
+      });
+    });
+
+    return variants;
+  }, [comparisonColumnSlot, comparisonRowSlot, variantCatalog, variantSelections]);
+  const comparisonModelCount = comparisonVariants.length;
+  const comparisonTooLarge = comparisonModelCount > MAX_COMPARISON_MODELS;
 
   useEffect(() => {
     if (isActive || status !== "ready") return;
@@ -608,10 +646,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (pendingCameraViewRef.current?.assetPath !== assetPath) pendingCameraViewRef.current = null;
 
     let isCancelled = false;
-    let ownedPreviewId: string | undefined;
-    let ownedModel: THREE.Object3D | undefined;
-    let ownedMixer: THREE.AnimationMixer | undefined;
-    let previewCanBeReleasedImmediately = false;
+    const ownedGroup = new THREE.Group();
+    const ownedModels: THREE.Object3D[] = [];
+    const ownedMixers: THREE.AnimationMixer[] = [];
+    const ownedActions: THREE.AnimationAction[] = [];
+    const ownedPreviewIds = new Set<string>();
+    const releasablePreviewIds = new Set<string>();
+    const resourcePool: PreviewResourcePool = {
+      geometries: new Map(),
+      textures: new Map(),
+    };
 
     const releasePreview = (previewId: string) => {
       void releaseVisualsModelPreview(previewId).catch(() => undefined);
@@ -619,20 +663,24 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const cleanupOwnedPreview = () => {
       context.afterNextRender = null;
-      if (ownedModel) {
-        context.scene.remove(ownedModel);
-        ownedMixer?.stopAllAction();
-        ownedMixer?.uncacheRoot(ownedModel);
-        disposeObject(ownedModel);
-        ownedModel = undefined;
+      for (const mixer of ownedMixers) mixer.stopAllAction();
+      ownedMixers.forEach((mixer, index) => {
+        const model = ownedModels[index];
+        if (model) mixer.uncacheRoot(model);
+      });
+      context.mixers = [];
+      context.actions = [];
+      context.scene.remove(ownedGroup);
+      disposeObject(ownedGroup);
+      ownedModels.length = 0;
+      ownedMixers.length = 0;
+      ownedActions.length = 0;
+      for (const previewId of releasablePreviewIds) {
+        if (!ownedPreviewIds.has(previewId)) continue;
+        releasePreview(previewId);
+        ownedPreviewIds.delete(previewId);
       }
-      ownedMixer = undefined;
-      context.mixer = null;
-      context.action = null;
-      if (ownedPreviewId && previewCanBeReleasedImmediately) {
-        releasePreview(ownedPreviewId);
-        ownedPreviewId = undefined;
-      }
+      releasablePreviewIds.clear();
     };
 
     const run = async () => {
@@ -642,106 +690,149 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setClipDuration(0);
       setCurrentTime(0);
       setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics]);
+      context.ktx2Loader.clearRawTextureDataCache();
+      context.ktx2Loader.resetTiming();
+
+      if (comparisonTooLarge) {
+        setStatus("error");
+        setError(
+          `This comparison would render ${comparisonModelCount} models. Reduce the number of All selections or choices (maximum ${MAX_COMPARISON_MODELS}).`,
+        );
+        return;
+      }
 
       try {
-        const exportStartedAt = performance.now();
-        const exportResult = await exportVisualsModel(
-          assetPath,
-          enabledMods,
-          selectedAnimationPath ? [selectedAnimationPath] : [],
-          selectedVariantSelections,
-        );
-        const exportRoundTripMs = performance.now() - exportStartedAt;
-        if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
-          if (!isCancelled) {
-            setStatus("error");
-            setError(exportResult.error || "Failed to export this model.");
-            setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics, ...(exportResult.warnings || [])]);
+        const warningSet = new Set([...catalogDiagnostics, ...variantCatalogDiagnostics]);
+        let singleExportResult: Awaited<ReturnType<typeof exportVisualsModel>> | undefined;
+        let singleExportRoundTripMs = 0;
+        let singleGltfLoadMs = 0;
+        let maxClipDuration = 0;
+
+        for (const variant of comparisonVariants) {
+          if (isCancelled) return;
+
+          const exportStartedAt = performance.now();
+          const exportResult = await exportVisualsModel(
+            assetPath,
+            enabledMods,
+            selectedAnimationPath ? [selectedAnimationPath] : [],
+            variant.selections,
+          );
+          const exportRoundTripMs = performance.now() - exportStartedAt;
+          for (const warning of exportResult.warnings ?? []) warningSet.add(warning);
+
+          if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
+            throw new Error(exportResult.error || "Failed to export a comparison model.");
           }
-          return;
-        }
 
-        ownedPreviewId = exportResult.previewId;
-        if (isCancelled) {
-          previewCanBeReleasedImmediately = true;
-          cleanupOwnedPreview();
-          return;
-        }
-
-        setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics, ...(exportResult.warnings || [])]);
-        setStatus("loading");
-
-        try {
-          const gltfLoader = new GLTFLoader();
-          gltfLoader.setKTX2Loader(context.ktx2Loader);
-          context.ktx2Loader.resetTiming();
-          const gltfLoadStartedAt = performance.now();
-          const gltf = await gltfLoader.loadAsync(exportResult.url);
-          const gltfLoadMs = performance.now() - gltfLoadStartedAt;
-          previewCanBeReleasedImmediately = true;
+          const previewId = exportResult.previewId;
+          ownedPreviewIds.add(previewId);
           if (isCancelled) {
-            disposeObject(gltf.scene);
-            cleanupOwnedPreview();
+            releasePreview(previewId);
+            ownedPreviewIds.delete(previewId);
             return;
           }
 
-          const sceneSetupStartedAt = performance.now();
-          ownedModel = gltf.scene;
-          // GLTFLoader has now finalized sampler wrapping/filtering, so eager GPU
-          // upload is safe and still keeps the first visible render lightweight.
-          preloadObjectTextures(context, ownedModel);
-          context.scene.add(ownedModel);
+          if (comparisonVariants.length === 1) {
+            singleExportResult = exportResult;
+            singleExportRoundTripMs = exportRoundTripMs;
+          }
+          setStatus("loading");
+
+          const gltfLoader = new GLTFLoader();
+          gltfLoader.setKTX2Loader(context.ktx2Loader);
+          const gltfLoadStartedAt = performance.now();
+          let gltf: Awaited<ReturnType<typeof gltfLoader.loadAsync>>;
+          try {
+            gltf = await gltfLoader.loadAsync(exportResult.url);
+          } catch (loadError) {
+            releasablePreviewIds.add(previewId);
+            throw loadError;
+          }
+          const gltfLoadMs = performance.now() - gltfLoadStartedAt;
+          releasablePreviewIds.add(previewId);
+          if (comparisonVariants.length === 1) singleGltfLoadMs = gltfLoadMs;
+
+          if (isCancelled) {
+            disposeObject(gltf.scene);
+            if (ownedPreviewIds.has(previewId)) {
+              releasePreview(previewId);
+              ownedPreviewIds.delete(previewId);
+            }
+            return;
+          }
+
+          internObjectResources(gltf.scene, resourcePool);
+          preloadObjectTextures(context, gltf.scene);
+          ownedModels.push(gltf.scene);
+          ownedGroup.add(gltf.scene);
+
           if (selectedAnimationPath && gltf.animations.length > 0) {
-            ownedMixer = new THREE.AnimationMixer(ownedModel);
-            const action = ownedMixer.clipAction(gltf.animations[0]);
+            const mixer = new THREE.AnimationMixer(gltf.scene);
+            const action = mixer.clipAction(gltf.animations[0]);
             action.setLoop(THREE.LoopRepeat, Infinity);
             action.timeScale = animationSpeedRef.current;
             action.play();
             action.paused = !isPlayingRef.current;
-            context.mixer = ownedMixer;
-            context.action = action;
-            setClipDuration(gltf.animations[0].duration);
-            setCurrentTime(0);
+            ownedMixers.push(mixer);
+            ownedActions.push(action);
+            maxClipDuration = Math.max(maxClipDuration, gltf.animations[0].duration);
           }
-          frameObject(context, ownedModel);
-          const pendingCameraView = pendingCameraViewRef.current;
-          if (pendingCameraView?.assetPath === assetPath) {
-            restoreCameraView(context, pendingCameraView.view);
-            pendingCameraViewRef.current = null;
-          }
-          const sceneSetupMs = performance.now() - sceneSetupStartedAt;
-          const sceneReadyAt = performance.now();
+        }
 
+        if (isCancelled) return;
+
+        const sceneSetupStartedAt = performance.now();
+        layoutComparisonModels(ownedModels, comparisonColumnCount, comparisonRowCount);
+        context.scene.add(ownedGroup);
+        context.mixers = ownedMixers;
+        context.actions = ownedActions;
+        if (maxClipDuration > 0) {
+          setClipDuration(maxClipDuration);
+          setCurrentTime(0);
+        }
+
+        frameObject(context, ownedGroup);
+        const pendingCameraView = pendingCameraViewRef.current;
+        if (pendingCameraView?.assetPath === assetPath) {
+          restoreCameraView(context, pendingCameraView.view);
+          pendingCameraViewRef.current = null;
+        }
+        const sceneSetupMs = performance.now() - sceneSetupStartedAt;
+        const sceneReadyAt = performance.now();
+        setWarnings([...warningSet]);
+
+        if (
+          comparisonVariants.length === 1 &&
+          singleExportResult?.previewId &&
+          singleExportResult.timings
+        ) {
+          const timingPreviewId = singleExportResult.previewId;
           context.afterNextRender = ({ renderMs, completedAt }) => {
-            if (isCancelled || !ownedPreviewId) return;
+            if (isCancelled || !ownedPreviewIds.has(timingPreviewId)) return;
             void reportVisualsModelPreviewTiming({
               assetPath,
-              previewId: ownedPreviewId,
+              previewId: timingPreviewId,
               totalMs: completedAt - previewStartedAt,
-              exportRoundTripMs,
-              gltfLoadMs,
+              exportRoundTripMs: singleExportRoundTripMs,
+              gltfLoadMs: singleGltfLoadMs,
               sceneSetupMs,
               firstFrameWaitMs: completedAt - sceneReadyAt,
               firstRenderMs: renderMs,
-              main: exportResult.timings,
+              main: singleExportResult?.timings,
               ktx2: context.ktx2Loader.getTiming(),
             }).catch(() => undefined);
           };
-
-          setStatus("ready");
-        } catch (loadError) {
-          previewCanBeReleasedImmediately = true;
-          cleanupOwnedPreview();
-          if (!isCancelled) {
-            setStatus("error");
-            setError(loadError instanceof Error ? loadError.message : "Failed to load the exported GLB.");
-          }
         }
-      } catch (exportError) {
+
+        context.ktx2Loader.clearRawTextureDataCache();
+        setStatus("ready");
+      } catch (previewError) {
         cleanupOwnedPreview();
+        context.ktx2Loader.clearRawTextureDataCache();
         if (!isCancelled) {
           setStatus("error");
-          setError(exportError instanceof Error ? exportError.message : "Failed to request the model export.");
+          setError(previewError instanceof Error ? previewError.message : "Failed to render the model comparison.");
         }
       }
     };
@@ -751,15 +842,20 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
       cleanupOwnedPreview();
+      context.ktx2Loader.clearRawTextureDataCache();
     };
   }, [
     animationCatalogReady,
     assetPath,
     catalogDiagnostics,
+    comparisonColumnCount,
+    comparisonModelCount,
+    comparisonRowCount,
+    comparisonTooLarge,
+    comparisonVariants,
     enabledMods,
     isActive,
     selectedAnimationPath,
-    selectedVariantSelections,
     variantCatalogDiagnostics,
     variantCatalogReady,
   ]);
