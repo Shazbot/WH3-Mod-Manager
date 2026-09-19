@@ -1009,6 +1009,22 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               </label>
             ))}
           </div>
+          {comparisonColumnSlot && (
+            <div
+              className="mt-1 truncate text-[10px] text-gray-500"
+              title={comparisonColumnSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
+            >
+              Columns: {comparisonColumnSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
+            </div>
+          )}
+          {comparisonRowSlot && (
+            <div
+              className="truncate text-[10px] text-gray-500"
+              title={comparisonRowSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
+            >
+              Rows: {comparisonRowSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
+            </div>
+          )}
         </div>
       )}
       <div className="flex min-h-9 shrink-0 items-center gap-2 border-t border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300">
