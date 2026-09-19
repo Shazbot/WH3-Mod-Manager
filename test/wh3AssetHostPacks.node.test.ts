@@ -1,36 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import appData from "../src/appData";
+import { describe, expect, it, vi } from "vitest";
 import {
   Wh3AssetHostPackInitializer,
   Wh3AssetHostPackStateError,
   buildWh3AssetHostPackPaths,
   deduplicateWh3AssetHostPackPaths,
-  initializeWh3AssetHostForCurrentPackState,
+  getWh3AssetHostPackPathsForMods,
 } from "../src/wh3AssetHostPacks";
 
 vi.mock("../src/utility/vanillaPackPaths", () => ({
   getVanillaPackPathsInLoadOrder: vi.fn(() => ["C:\\game\\data\\data.pack", "C:\\game\\data\\variants.pack"]),
 }));
 
-vi.mock("../src/appData", () => ({
-  default: {
-    enabledMods: [
-      { name: "b.pack", path: "C:\\mods\\b.pack" },
-      { name: "a.pack", path: "C:\\mods\\a.pack" },
-    ],
-  },
-}));
-
-const initialEnabledMods = [
-  { name: "b.pack", path: "C:\\mods\\b.pack" },
-  { name: "a.pack", path: "C:\\mods\\a.pack" },
-] as Mod[];
-
 const mod = (name: string, path: string, loadOrder?: number): Mod => ({ name, path, loadOrder }) as Mod;
-
-afterEach(() => {
-  appData.enabledMods = initialEnabledMods.map((entry) => ({ ...entry })) as Mod[];
-});
 
 describe("WH3AssetHost pack state", () => {
   it("keeps vanilla manifest order below enabled mods sorted by the manager's effective order", () => {
@@ -91,47 +72,56 @@ describe("WH3AssetHost pack state", () => {
     );
   });
 
-  it("initializes a connected host with the current vanilla plus enabled-mod pack state", async () => {
-    const initialize = vi.fn(async (request) => ({ ...request }));
-
-    const result = await initializeWh3AssetHostForCurrentPackState({ initialize }, "C:\\cache\\model-previews");
-
-    expect(initialize).toHaveBeenCalledWith({
-      packPaths: [
-        "C:\\game\\data\\data.pack",
-        "C:\\game\\data\\variants.pack",
-        "C:\\mods\\a.pack",
-        "C:\\mods\\b.pack",
-      ],
-      outputRoot: "C:\\cache\\model-previews",
-    });
-    expect(result.outputRoot).toBe("C:\\cache\\model-previews");
+  it("builds the host pack snapshot from the manifest and explicit enabled mods", () => {
+    expect(
+      getWh3AssetHostPackPathsForMods([
+        mod("b.pack", "C:\\mods\\b.pack"),
+        mod("a.pack", "C:\\mods\\a.pack"),
+      ]),
+    ).toEqual([
+      "C:\\game\\data\\data.pack",
+      "C:\\game\\data\\variants.pack",
+      "C:\\mods\\a.pack",
+      "C:\\mods\\b.pack",
+    ]);
   });
 
   it("does not reinitialize for repeated exports while the effective pack state is unchanged", async () => {
     const initialize = vi.fn(async (request) => ({ ...request }));
     const initializer = new Wh3AssetHostPackInitializer({ initialize });
+    const packPaths = [
+      "C:\\game\\data\\data.pack",
+      "C:\\game\\data\\variants.pack",
+      "C:\\mods\\a.pack",
+    ];
 
-    const first = await initializer.ensureInitialized("C:\\cache\\model-previews");
-    const second = await initializer.ensureInitialized("c:/CACHE/model-previews");
+    const first = await initializer.ensureInitializedForPackPaths(packPaths, "C:\\cache\\model-previews");
+    const second = await initializer.ensureInitializedForPackPaths(
+      packPaths.map((packPath) => packPath.toLowerCase()),
+      "c:/CACHE/model-previews",
+    );
 
     expect(first).not.toBeNull();
     expect(second).toBeNull();
     expect(initialize).toHaveBeenCalledTimes(1);
   });
 
-  it("reinitializes after the enabled-mod universe changes", async () => {
+  it("reinitializes after the explicit pack universe changes", async () => {
     const initialize = vi.fn(async (request) => ({ ...request }));
     const initializer = new Wh3AssetHostPackInitializer({ initialize });
 
-    await initializer.ensureInitialized("C:\\cache\\model-previews");
-    appData.enabledMods = [mod("c.pack", "C:\\mods\\c.pack")];
-    await initializer.ensureInitialized("C:\\cache\\model-previews");
+    await initializer.ensureInitializedForPackPaths(
+      ["C:\\game\\data\\data.pack", "C:\\mods\\a.pack"],
+      "C:\\cache\\model-previews",
+    );
+    await initializer.ensureInitializedForPackPaths(
+      ["C:\\game\\data\\data.pack", "C:\\mods\\c.pack"],
+      "C:\\cache\\model-previews",
+    );
 
     expect(initialize).toHaveBeenCalledTimes(2);
     expect(initialize.mock.calls[1][0].packPaths).toEqual([
       "C:\\game\\data\\data.pack",
-      "C:\\game\\data\\variants.pack",
       "C:\\mods\\c.pack",
     ]);
   });
@@ -142,20 +132,15 @@ describe("WH3AssetHost pack state", () => {
       .mockRejectedValueOnce(new Error("bad pack"))
       .mockImplementationOnce(async (request) => ({ ...request }));
     const initializer = new Wh3AssetHostPackInitializer({ initialize });
+    const packPaths = ["C:\\game\\data\\data.pack", "C:\\mods\\a.pack"];
 
-    await expect(initializer.ensureInitialized("C:\\cache\\model-previews")).rejects.toThrow("bad pack");
-    await expect(initializer.ensureInitialized("C:\\cache\\model-previews")).resolves.not.toBeNull();
+    await expect(
+      initializer.ensureInitializedForPackPaths(packPaths, "C:\\cache\\model-previews"),
+    ).rejects.toThrow("bad pack");
+    await expect(
+      initializer.ensureInitializedForPackPaths(packPaths, "C:\\cache\\model-previews"),
+    ).resolves.not.toBeNull();
     expect(initialize).toHaveBeenCalledTimes(2);
   });
 
-  it("can be reset after a host restart so an unchanged universe is initialized again", async () => {
-    const initialize = vi.fn(async (request) => ({ ...request }));
-    const initializer = new Wh3AssetHostPackInitializer({ initialize });
-
-    await initializer.ensureInitialized("C:\\cache\\model-previews");
-    initializer.reset();
-    await initializer.ensureInitialized("C:\\cache\\model-previews");
-
-    expect(initialize).toHaveBeenCalledTimes(2);
-  });
 });
