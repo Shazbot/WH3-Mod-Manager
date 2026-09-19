@@ -282,6 +282,23 @@ describe("Unit Viewer UI", () => {
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
   });
 
+  it("does not render the model preview in compare mode", async () => {
+    window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
+      success: true,
+      unit: { ...built.units.get("unit_a")!, variantMeshPath: "variant.unit.variantmeshdefinition" },
+      icons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    await screen.findByText("Alpha");
+    expect(screen.queryByRole("region", { name: "Unit render preview" })).not.toBeInTheDocument();
+  });
+
   it("hides missile weapon sections when a unit has no missile weapons", async () => {
     renderViewer();
     await screen.findByText("Culture");
