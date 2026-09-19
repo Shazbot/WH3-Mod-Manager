@@ -12,6 +12,7 @@ import {
   releaseVisualsModelPreview,
   reportVisualsModelPreviewTiming,
 } from "../visuals/modelPreviewApi";
+import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 
 type VisualsModelPreviewProps = {
@@ -105,6 +106,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const { assetPath, variantMeshSessionId, variantMeshSessionType = "unitViewer" } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const enabledMods = useMemo(
     () =>
       currentPresetMods.filter((mod) => mod.isEnabled).map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
@@ -130,6 +132,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
+  const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -667,9 +670,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           {clipDuration ? `${formatAnimationTime(currentTime)} / ${formatAnimationTime(clipDuration)}` : "—"}
         </span>
       </div>
-      {warnings.length > 0 && (
+      {visibleWarnings.length > 0 && (
         <div className="shrink-0 border-t border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
-          {warnings.join(" | ")}
+          {visibleWarnings.join(" | ")}
         </div>
       )}
     </div>
