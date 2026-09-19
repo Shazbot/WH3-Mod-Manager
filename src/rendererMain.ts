@@ -65,7 +65,6 @@ import { SupportedGames } from "./supportedGames";
 
 setupRendererLogging();
 
-console.log("IN RENDERER (main_window)");
 
 window.api?.subscribedToMods((event, ids: string[]) => {
   console.log("subbed to mods: ", ids);
