@@ -10,7 +10,7 @@ import {
 describe("vanilla pack files compact binary format", () => {
   it("round-trips complete expanded and names-only entries", () => {
     const cache: VanillaPackFilesCache = {
-      version: 3,
+      version: 4,
       entries: {
         "C:\\game\\data\\release.pack": {
           size: 123456,
@@ -55,15 +55,42 @@ describe("vanilla pack files compact binary format", () => {
   it("rejects old or corrupt data", () => {
     expect(decodeVanillaPackFilesCache(Buffer.from('{"version":2}', "utf8"))).toBeUndefined();
 
-    const cache: VanillaPackFilesCache = { version: 3, entries: {} };
+    const cache: VanillaPackFilesCache = { version: 4, entries: {} };
     const encoded = encodeVanillaPackFilesCache(cache);
     encoded.writeUInt32LE(99, 4);
     expect(decodeVanillaPackFilesCache(encoded)).toBeUndefined();
   });
 
+  it("tracks all-WEM packs without dropping their files from the complete cache", () => {
+    const cache: VanillaPackFilesCache = {
+      version: 4,
+      entries: {
+        "C:\\audio.pack": {
+          size: 1000,
+          lastChangedLocal: 1,
+          packedFiles: [
+            { name: "audio\\a.wem", file_size: 5, start_pos: 100, is_compressed: false },
+            { name: "audio\\b.WEM", file_size: 7, start_pos: 105, is_compressed: true },
+          ],
+          packHeader: {
+            header: Buffer.from("PFH5"),
+            byteMask: 1,
+            refFileCount: 0,
+            pack_file_index_size: 0,
+            pack_file_count: 2,
+            header_buffer: Buffer.from([0, 0, 0, 0]),
+          },
+          dependencyPacks: [],
+        },
+      },
+    };
+
+    expect(decodeVanillaPackFilesCache(encodeVanillaPackFilesCache(cache))).toEqual(cache);
+  });
+
   it("rejects non-contiguous expanded offsets instead of silently changing them", () => {
     const cache: VanillaPackFilesCache = {
-      version: 3,
+      version: 4,
       entries: {
         "C:\\release.pack": {
           size: 1000,
