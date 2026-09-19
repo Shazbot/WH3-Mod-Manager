@@ -135,20 +135,23 @@ const getDevelopmentHostCandidates = (): string[] => {
 
 /**
  * Development prefers WH3_ASSET_HOST_PATH, then the repository host under `tools/WH3AssetHost`,
- * followed by a sibling `assedFork` checkout. Packaged builds use the self-contained host copied
- * beside the app's resources.
+ * followed by a sibling `assedFork` checkout. Packaged builds always use the bundled host.
  */
 export const resolveWh3AssetHostExecutablePath = (): string => {
+  const bundledPath = nodePath.join(process.resourcesPath, "WH3AssetHost", HOST_EXECUTABLE_NAME);
   const configuredPath = process.env.WH3_ASSET_HOST_PATH?.trim();
-  const candidates = [
-    configuredPath,
-    ...(app.isPackaged
-      ? [nodePath.join(process.resourcesPath, "WH3AssetHost", HOST_EXECUTABLE_NAME)]
-      : getDevelopmentHostCandidates()),
-  ].filter((candidate): candidate is string => !!candidate);
+  const candidates = app.isPackaged
+    ? [bundledPath]
+    : [configuredPath, ...getDevelopmentHostCandidates()].filter(
+        (candidate): candidate is string => !!candidate,
+      );
 
   const executablePath = candidates.find((candidate) => fs.existsSync(candidate));
   if (executablePath) return executablePath;
+
+  if (app.isPackaged) {
+    throw new Error(`Bundled WH3AssetHost.exe was not found at '${bundledPath}'.`);
+  }
 
   throw new Error(
     [
