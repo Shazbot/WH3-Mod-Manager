@@ -14,6 +14,7 @@ const REQUIRED_CAPABILITIES = [
   "initialize",
   "getAnimationCatalog",
   "exportModel",
+  "exportModelBatch",
   "missingSkeletonDecision",
   "shutdown",
 ] as const;
@@ -95,6 +96,24 @@ export interface Wh3AssetHostExportModelRequest {
   exportMaterials?: boolean;
   includeSkeleton?: boolean;
   mirrorMesh?: boolean;
+}
+
+export interface Wh3AssetHostExportModelBatchItem {
+  outputPath: string;
+  variantSelections?: readonly VariantMeshSelection[];
+}
+
+export interface Wh3AssetHostExportModelBatchRequest {
+  assetPath: string;
+  items: readonly Wh3AssetHostExportModelBatchItem[];
+  animationPaths?: string[];
+  exportMaterials?: boolean;
+  includeSkeleton?: boolean;
+  mirrorMesh?: boolean;
+}
+
+export interface Wh3AssetHostExportModelBatchResult {
+  exports: Wh3AssetHostExportResult[];
 }
 
 export interface Wh3AssetHostAnimationCatalog {
@@ -330,6 +349,20 @@ export class Wh3AssetHostClient {
       outputPath: request.outputPath,
       animationPaths: request.animationPaths ?? [],
       variantSelections: request.variantSelections ?? [],
+      exportMaterials: request.exportMaterials ?? true,
+      includeSkeleton: request.includeSkeleton ?? true,
+      mirrorMesh: request.mirrorMesh ?? true,
+    });
+  }
+
+  exportModels(request: Wh3AssetHostExportModelBatchRequest): Promise<Wh3AssetHostExportModelBatchResult> {
+    return this.request<Wh3AssetHostExportModelBatchResult>("exportModelBatch", {
+      assetPath: request.assetPath,
+      items: request.items.map((item) => ({
+        outputPath: item.outputPath,
+        variantSelections: item.variantSelections ?? [],
+      })),
+      animationPaths: request.animationPaths ?? [],
       exportMaterials: request.exportMaterials ?? true,
       includeSkeleton: request.includeSkeleton ?? true,
       mirrorMesh: request.mirrorMesh ?? true,
