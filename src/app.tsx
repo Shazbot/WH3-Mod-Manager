@@ -11,23 +11,10 @@ import Main from "./components/Main";
 import { StrictMode, useRef, Suspense, useEffect } from "react";
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
-import { perfMonitor, startTiming, endTiming } from "./utility/performanceMonitor";
 
-// Lazy load heavy components with performance tracking
-const ModsViewer = React.lazy(() => {
-  const startTime = performance.now();
-  return import("./components/viewer/ModsViewer").then((module) => {
-    perfMonitor.trackComponentLoad("ModsViewer", startTime);
-    return module;
-  });
-});
-const SkillsViewer = React.lazy(() => {
-  const startTime = performance.now();
-  return import("./components/skillsViewer/SkillsViewer").then((module) => {
-    perfMonitor.trackComponentLoad("SkillsViewer", startTime);
-    return module;
-  });
-});
+// Lazy load heavy components.
+const ModsViewer = React.lazy(() => import("./components/viewer/ModsViewer"));
+const SkillsViewer = React.lazy(() => import("./components/skillsViewer/SkillsViewer"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -48,20 +35,12 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 const App = React.memo(() => {
-  React.useEffect(() => {
-    startTiming("app_component_mount");
-    return () => {
-      endTiming("app_component_mount");
-    };
-  }, []);
-
   const [localization, setLocalization] = React.useState<Record<string, string>>({});
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
 
   useEffect(() => {
     if (!currentLanguage) return;
     window.api?.translateAllStatic(staticTextIds).then((translated) => {
-      console.log("translateAllStatic", currentLanguage);
       setLocalization(translated);
     });
   }, [currentLanguage]);
@@ -108,7 +87,6 @@ const App = React.memo(() => {
 });
 
 function render() {
-  startTiming("react_render");
   const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <StrictMode>
@@ -117,7 +95,6 @@ function render() {
       </Provider>
     </StrictMode>,
   );
-  endTiming("react_render");
 }
 
 render();
