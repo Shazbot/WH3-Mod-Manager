@@ -37,6 +37,11 @@ type ThreePreviewContext = {
   afterNextRender: ((timing: { renderMs: number; completedAt: number }) => void) | null;
 };
 
+type CameraView = {
+  position: THREE.Vector3;
+  target: THREE.Vector3;
+};
+
 type PreviewAnimation = {
   path: string;
   label: string;
@@ -92,6 +97,17 @@ const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
   context.grid.position.set(center.x, box.min.y, center.z);
 };
 
+const captureCameraView = (context: ThreePreviewContext): CameraView => ({
+  position: context.camera.position.clone(),
+  target: context.controls.target.clone(),
+});
+
+const restoreCameraView = (context: ThreePreviewContext, view: CameraView) => {
+  context.camera.position.copy(view.position);
+  context.controls.target.copy(view.target);
+  context.controls.update();
+};
+
 const getAnimationLabel = (path: string) => {
   const fileName = path.split(/[\\/]/).pop() || path;
   return fileName.replace(/\.anim$/i, "").replace(/[_-]+/g, " ");
@@ -136,6 +152,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
+  const pendingCameraViewRef = useRef<{ assetPath: string; view: CameraView } | null>(null);
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
 
   useEffect(() => {
@@ -382,6 +399,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (!animationCatalogReady || !variantCatalogReady || catalogLoadingRef.current) return;
     const context = contextRef.current;
     if (!context || !assetPath) return;
+    if (pendingCameraViewRef.current?.assetPath !== assetPath) pendingCameraViewRef.current = null;
 
     let isCancelled = false;
     let ownedPreviewId: string | undefined;
@@ -477,6 +495,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             setCurrentTime(0);
           }
           frameObject(context, ownedModel);
+          const pendingCameraView = pendingCameraViewRef.current;
+          if (pendingCameraView?.assetPath === assetPath) {
+            restoreCameraView(context, pendingCameraView.view);
+            pendingCameraViewRef.current = null;
+          }
           const sceneSetupMs = performance.now() - sceneSetupStartedAt;
           const sceneReadyAt = performance.now();
 
@@ -587,12 +610,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 <select
                   aria-label={`Appearance: ${slot.label}`}
                   value={variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const context = contextRef.current;
+                    if (status === "ready" && context) {
+                      pendingCameraViewRef.current = { assetPath, view: captureCameraView(context) };
+                    }
                     setVariantSelections((current) => ({
                       ...current,
                       [slot.slotPath]: Number(event.target.value),
-                    }))
-                  }
+                    }));
+                  }}
                   className="min-w-0 flex-1 rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                 >
                   {slot.choices.map((choice) => (
