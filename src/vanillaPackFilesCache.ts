@@ -7,11 +7,13 @@ import type { PackHeader, PackedFile } from "./packFileTypes";
 import {
   decodeVanillaPackFilesCache,
   encodeVanillaPackFilesCache,
+  inspectVanillaPackFilesCache,
   VANILLA_PACK_FILES_CACHE_VERSION,
   type CachedVanillaPackIndex,
   type VanillaCachedPackHeader,
   type VanillaPackFilesCache,
   type VanillaPackFilesCacheEntry,
+  type VanillaPackFilesCacheMetadataEntry,
 } from "./vanillaPackFilesCacheFormat";
 
 export type {
@@ -28,7 +30,9 @@ const CACHE_FILE_NAME = "vanilla-pack-files-cache.bin";
 const CACHE_COMPRESSION_LEVEL = 1;
 
 let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
+let vanillaPackFilesCacheMetadata: Map<string, VanillaPackFilesCacheMetadataEntry> | null = null;
 let cacheLoadPromise: Promise<VanillaPackFilesCache> | undefined;
+let cacheMetadataLoadPromise: Promise<Map<string, VanillaPackFilesCacheMetadataEntry>> | undefined;
 let cacheWriteTimer: ReturnType<typeof setTimeout> | undefined;
 let cacheWritePromise: Promise<void> = Promise.resolve();
 
@@ -50,6 +54,53 @@ const normalizeCachePath = (packPath: string): string => {
     return nodePath.resolve(packPath).toLowerCase();
   } catch {
     return packPath.replaceAll("/", "\\").toLowerCase();
+  }
+};
+
+const metadataFromCache = (cache: VanillaPackFilesCache): Map<string, VanillaPackFilesCacheMetadataEntry> =>
+  new Map(
+    Object.entries(cache.entries).map(([packPath, entry]) => [
+      normalizeCachePath(packPath),
+      {
+        size: entry.size,
+        lastChangedLocal: entry.lastChangedLocal,
+        hasExpandedIndex:
+          Array.isArray(entry.packedFiles) && !!entry.packHeader && Array.isArray(entry.dependencyPacks),
+      },
+    ]),
+  );
+
+const loadVanillaPackFilesCacheMetadata = async (): Promise<Map<string, VanillaPackFilesCacheMetadataEntry>> => {
+  if (vanillaPackFilesCache) {
+    vanillaPackFilesCacheMetadata ??= metadataFromCache(vanillaPackFilesCache);
+    return vanillaPackFilesCacheMetadata;
+  }
+  if (vanillaPackFilesCacheMetadata) return vanillaPackFilesCacheMetadata;
+  if (cacheMetadataLoadPromise) return cacheMetadataLoadPromise;
+
+  cacheMetadataLoadPromise = (async () => {
+    const cacheFilePath = getCacheFilePath();
+    if (!cacheFilePath) return new Map<string, VanillaPackFilesCacheMetadataEntry>();
+
+    try {
+      const compressed = await fs.promises.readFile(cacheFilePath);
+      const decompressed = Buffer.from(await zstdDecompress(compressed));
+      const inspected = inspectVanillaPackFilesCache(decompressed);
+      if (!inspected) return new Map<string, VanillaPackFilesCacheMetadataEntry>();
+
+      return new Map(
+        [...inspected.entries()].map(([packPath, metadata]) => [normalizeCachePath(packPath), metadata]),
+      );
+    } catch {
+      return new Map<string, VanillaPackFilesCacheMetadataEntry>();
+    }
+  })();
+
+  try {
+    vanillaPackFilesCacheMetadata = await cacheMetadataLoadPromise;
+    return vanillaPackFilesCacheMetadata;
+  } finally {
+    cacheMetadataLoadPromise = undefined;
   }
 };
 
@@ -109,6 +160,7 @@ export const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache
         Object.entries(parsed.entries).filter(([, entry]) => isCacheEntry(entry)),
       ) as Record<string, VanillaPackFilesCacheEntry>;
       vanillaPackFilesCache = { version: CACHE_VERSION, entries };
+      vanillaPackFilesCacheMetadata = metadataFromCache(vanillaPackFilesCache);
     } catch {
       vanillaPackFilesCache = emptyCache();
     }
@@ -272,16 +324,13 @@ export const hasCurrentVanillaPackIndex = async (packPath: string): Promise<bool
     return false;
   }
 
-  const cache = await loadVanillaPackFilesCache();
-  const entry = getVanillaPackFilesCacheEntry(cache, packPath);
+  const metadata = await loadVanillaPackFilesCacheMetadata();
+  const entry = metadata.get(normalizeCachePath(packPath));
   return (
     !!entry &&
     entry.size === stat.size &&
     entry.lastChangedLocal === stat.mtimeMs &&
-    Array.isArray(entry.packedFiles) &&
-    !!entry.packHeader &&
-    typeof entry.packHeader === "object" &&
-    Array.isArray(entry.dependencyPacks)
+    entry.hasExpandedIndex
   );
 };
 
@@ -342,6 +391,11 @@ export const rememberVanillaPackIndex = (
 
   const apply = (cache: VanillaPackFilesCache): void => {
     cache.entries[cacheKey] = cacheEntry;
+    vanillaPackFilesCacheMetadata?.set(normalizeCachePath(cacheKey), {
+      size,
+      lastChangedLocal,
+      hasExpandedIndex: true,
+    });
     queueCacheWrite();
   };
 
@@ -374,6 +428,11 @@ export const rememberPackFileNames = (
 
   const apply = (cache: VanillaPackFilesCache): void => {
     cache.entries[cacheKey] = cacheEntry;
+    vanillaPackFilesCacheMetadata?.set(normalizeCachePath(cacheKey), {
+      size,
+      lastChangedLocal,
+      hasExpandedIndex: false,
+    });
     queueCacheWrite();
   };
 
