@@ -13,11 +13,12 @@
     "handsontable/styles/*.css"
   ],
   "scripts": {
-    "start": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start -- --mode development",
-    "dbclone": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start -- --mode development -testDBClone",
-    "package": "electron-forge package",
-    "make": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge make -- --mode production",
-    "publish": "electron-forge publish",
+    "build:sub": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp",
+    "start": "yarn build:sub && electron-forge start -- --mode development",
+    "dbclone": "yarn build:sub && electron-forge start -- --mode development -testDBClone",
+    "package": "yarn build:sub && electron-forge package",
+    "make": "yarn build:sub && electron-forge make -- --mode production",
+    "publish": "yarn build:sub && electron-forge publish",
     "lint": "eslint --cache --cache-strategy content --cache-location .eslintcache \"src/**/*.{ts,tsx}\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
