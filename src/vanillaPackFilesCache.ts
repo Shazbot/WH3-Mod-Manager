@@ -11,6 +11,7 @@ import {
   VANILLA_PACK_FILES_CACHE_VERSION,
   type CachedVanillaPackIndex,
   type VanillaCachedPackHeader,
+  type VanillaCachedPackedFile,
   type VanillaPackFilesCache,
   type VanillaPackFilesCacheEntry,
   type VanillaPackFilesCacheMetadataEntry,
