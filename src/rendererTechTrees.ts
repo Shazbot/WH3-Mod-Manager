@@ -7,7 +7,6 @@ import { setCurrentLanguage, setIsFeaturesForModdersEnabled, setModdersPrefix, s
 
 setupRendererLogging();
 
-console.log("IN RENDERER (tech_trees)");
 
 window.api?.techTreesAreReady();
 
