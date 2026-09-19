@@ -16,6 +16,7 @@ import {
   type VanillaPackFilesCacheEntry,
   type VanillaPackFilesCacheMetadataEntry,
 } from "./vanillaPackFilesCacheFormat";
+import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 
 export type {
   CachedVanillaPackIndex,
@@ -23,7 +24,6 @@ export type {
   VanillaPackFilesCache,
   VanillaPackFilesCacheEntry,
 } from "./vanillaPackFilesCacheFormat";
-import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 
 /** Bumped when the on-disk representation changes. Older cache files are disposable and ignored. */
 const CACHE_VERSION = VANILLA_PACK_FILES_CACHE_VERSION;
@@ -89,9 +89,7 @@ const loadVanillaPackFilesCacheMetadata = async (): Promise<Map<string, VanillaP
       const inspected = inspectVanillaPackFilesCache(decompressed);
       if (!inspected) return new Map<string, VanillaPackFilesCacheMetadataEntry>();
 
-      return new Map(
-        [...inspected.entries()].map(([packPath, metadata]) => [normalizeCachePath(packPath), metadata]),
-      );
+      return new Map([...inspected.entries()].map(([packPath, metadata]) => [normalizeCachePath(packPath), metadata]));
     } catch {
       return new Map<string, VanillaPackFilesCacheMetadataEntry>();
     }
@@ -327,12 +325,7 @@ export const hasCurrentVanillaPackIndex = async (packPath: string): Promise<bool
 
   const metadata = await loadVanillaPackFilesCacheMetadata();
   const entry = metadata.get(normalizeCachePath(packPath));
-  return (
-    !!entry &&
-    entry.size === stat.size &&
-    entry.lastChangedLocal === stat.mtimeMs &&
-    entry.hasExpandedIndex
-  );
+  return !!entry && entry.size === stat.size && entry.lastChangedLocal === stat.mtimeMs && entry.hasExpandedIndex;
 };
 
 /** Returns a current names-only entry for callers that also inspect non-vanilla packs. */
