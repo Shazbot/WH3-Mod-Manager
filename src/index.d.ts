@@ -278,6 +278,8 @@ declare global {
     moddersPrefix: string;
     /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
     isRigidModelV2CompressionEnabled: boolean;
+    /** Compress mod packs in place before updating them on the Steam Workshop. */
+    compressModsOnUpload: boolean;
     allMods: Mod[];
     workshopInstallStatuses: Record<string, WorkshopInstallStatus>;
     workshopUpdateCheckResults: Record<string, WorkshopUpdateCheckItem>;
@@ -321,6 +323,14 @@ declare global {
     isVisualsSortByCultureEnabled: boolean;
     /** Hide repeated variant files in the Visuals Lord and Hero culture groups. */
     isVisualsHideDuplicatesEnabled: boolean;
+    /** Whether the Unit Viewer shows one unit for visualization or multiple units for comparison. */
+    unitViewerMode: UnitViewerMode;
+    /** Whether the Unit Viewer shows the render wireframe beneath the unit visualization. */
+    unitViewerShowWireframe: boolean;
+    /** Whether the Unit Viewer starts comparison animations at independent points in their cycles. */
+    unitViewerUnsyncedAnimations: boolean;
+    /** Whether the Unit Viewer shows the unit card alongside the visualization. */
+    unitViewerShowUnitCard: boolean;
     mapCampaignName: string;
     mapSelectedRegion?: MapRegionSelection;
     isCreateSteamCollectionOpen: boolean;
@@ -382,6 +392,8 @@ declare global {
 
   type ModListDensity = "compact" | "comfortable" | "roomy";
 
+  type UnitViewerMode = "visualize" | "compare";
+
   type WorkshopModStagingMode = import("./utility/workshopModStaging").WorkshopModStagingMode;
 
   type SkillsViewOptions = Pick<
@@ -415,6 +427,7 @@ declare global {
     | "isFeaturesForModdersEnabled"
     | "moddersPrefix"
     | "isRigidModelV2CompressionEnabled"
+    | "compressModsOnUpload"
     | "isClosedOnPlay"
     | "workshopModStagingMode"
     | "compressWorkshopModsOnStart"
@@ -440,6 +453,10 @@ declare global {
     | "hiddenMainWindowTabs"
     | "isVisualsSortByCultureEnabled"
     | "isVisualsHideDuplicatesEnabled"
+    | "unitViewerMode"
+    | "unitViewerShowWireframe"
+    | "unitViewerUnsyncedAnimations"
+    | "unitViewerShowUnitCard"
     | "recentPackPaths"
   >;
 
@@ -1528,6 +1545,7 @@ declare global {
     | "removetables"
     | "editloctext"
     | "edittextfile"
+    | "editxmlfile"
     | "packfileoperations";
 
   // FlowNodeData = "string"|

@@ -128,6 +128,8 @@ export interface UnitViewerUnitModel {
   primaryMissileWeapon?: UnitViewerMissileWeapon;
   secondaryMissileWeapon?: UnitViewerMissileWeapon;
   unitCardPath?: string;
+  /** Resolved variantmeshdefinition used by the 3D unit preview. */
+  variantMeshPath?: string;
   attributes: UnitViewerAttribute[];
   abilities: UnitViewerAbility[];
 }
@@ -216,6 +218,8 @@ export interface UnitViewerCatalogUnit {
   subcultureKeys: string[];
   uiGroupKey: string;
   unitCardPath?: string;
+  /** Resolved variantmeshdefinition used by the 3D unit preview. */
+  variantMeshPath?: string;
   /** Pack path that introduced or overrides this unit; absent means the vanilla database pack. */
   originPackPath?: string;
 }

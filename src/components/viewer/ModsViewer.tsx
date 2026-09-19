@@ -335,8 +335,6 @@ const ModsViewer = memo(() => {
 
   const treeViewRefs = useRef<Record<string, PackTablesTreeViewHandle | null>>({});
   const treeViewRefCallbacksRef = useRef<Record<string, React.RefCallback<PackTablesTreeViewHandle>>>({});
-  const treeScrollTopsRef = useRef<Record<string, number>>({});
-  const treeScrollElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const viewerRootRef = useRef<HTMLDivElement>(null);
   const sidebarResizableRef = useRef<Resizable>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
@@ -1894,8 +1892,6 @@ const ModsViewer = memo(() => {
       clearPreparedTableForPack(packPath);
       // referencesHash is global to the renderer and is refreshed by the next pack data-store update.
       delete preferredTreeTabCacheRef.current[packPath];
-      delete treeScrollTopsRef.current[packPath];
-      delete treeScrollElementsRef.current[packPath];
       delete treeViewRefs.current[packPath];
       delete treeViewRefCallbacksRef.current[packPath];
       suppressDefaultTableOpenForPackPathsRef.current.delete(packPath);
@@ -1915,12 +1911,6 @@ const ModsViewer = memo(() => {
     },
     [closePackTab, deletedPackFilePathsByPath, unsavedPacksDataByPath],
   );
-
-  useLayoutEffect(() => {
-    if (!activePackPath) return;
-    const scrollElement = treeScrollElementsRef.current[activePackPath];
-    if (scrollElement) scrollElement.scrollTop = treeScrollTopsRef.current[activePackPath] ?? 0;
-  }, [activePackPath]);
 
   useLayoutEffect(() => {
     const sidebarElement = sidebarResizableRef.current?.resizable;
@@ -1946,10 +1936,15 @@ const ModsViewer = memo(() => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "f") {
-        document.getElementById("dbTableFilter")?.focus();
-        e.stopImmediatePropagation();
-      }
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "f") return;
+
+      // CodeMirror owns Ctrl/Cmd+F inside its editor and search panel. The viewer filter should
+      // only handle the shortcut when focus is elsewhere in the viewer.
+      if (e.target instanceof Element && e.target.closest(".cm-editor")) return;
+
+      e.preventDefault();
+      document.getElementById("dbTableFilter")?.focus();
+      e.stopImmediatePropagation();
     };
 
     document.addEventListener("keydown", onKeyDown);
@@ -2597,14 +2592,8 @@ const ModsViewer = memo(() => {
                     {packTabs.map((packTab) => (
                       <div
                         key={packTab.packPath}
-                        ref={(element) => {
-                          treeScrollElementsRef.current[packTab.packPath] = element;
-                        }}
-                        onScroll={(event) => {
-                          treeScrollTopsRef.current[packTab.packPath] = event.currentTarget.scrollTop;
-                        }}
                         className={
-                          "absolute inset-0 overflow-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700 " +
+                          "absolute inset-0 overflow-hidden scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700 " +
                           (packTab.packPath === activePackPath ? "" : "hidden")
                         }
                       >

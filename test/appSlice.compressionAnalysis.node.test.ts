@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import appData from "../src/appData";
-import appReducer, { setFromConfig, setIsRigidModelV2CompressionEnabled } from "../src/appSlice";
+import appReducer, {
+  setFromConfig,
+  setIsRigidModelV2CompressionEnabled,
+  toggleCompressModsOnUpload,
+} from "../src/appSlice";
 import { applyConfigSavePayloadToAppData } from "../src/config/applyConfigSavePayload";
 import { selectConfigSavePayload, resetConfigSavePayloadCache } from "../src/config/configSavePayload";
 import { migrateAppConfig } from "../src/config/migrateAppConfig";
@@ -11,6 +15,7 @@ describe("rigid-model compression option", () => {
   beforeEach(() => {
     resetConfigSavePayloadCache();
     appData.isRigidModelV2CompressionEnabled = true;
+    appData.compressModsOnUpload = true;
   });
 
   it("defaults on and can be changed in app state", () => {
@@ -45,5 +50,25 @@ describe("rigid-model compression option", () => {
 
     applyConfigSavePayloadToAppData(payload);
     expect(appData.isRigidModelV2CompressionEnabled).toBe(false);
+  });
+
+  it("persists the automatic upload compression preference", () => {
+    expect(initialState.compressModsOnUpload).toBe(true);
+    expect(appReducer(initialState, toggleCompressModsOnUpload()).compressModsOnUpload).toBe(false);
+
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, compressModsOnUpload: true }));
+    expect(restored.compressModsOnUpload).toBe(true);
+
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.compressModsOnUpload;
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).compressModsOnUpload).toBe(true);
+
+    expect(migrateAppConfig({}).compressModsOnUpload).toBe(true);
+    expect(migrateAppConfig({ compressModsOnUpload: true }).compressModsOnUpload).toBe(true);
+
+    const payload = selectConfigSavePayload({ ...initialState, compressModsOnUpload: true });
+    expect(payload.config.compressModsOnUpload).toBe(true);
+    applyConfigSavePayloadToAppData(payload);
+    expect(appData.compressModsOnUpload).toBe(true);
   });
 });

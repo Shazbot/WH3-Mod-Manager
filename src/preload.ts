@@ -9,6 +9,7 @@ import type {
   UnitViewerCatalogResponse,
   UnitViewerDetailsResponse,
 } from "./unitViewer/types";
+import type { VariantMeshCatalogResponse } from "./visuals/variantMesh";
 import type {
   BuildingsCaiRowsResponse,
   BuildingsCatalogResponse,
@@ -34,8 +35,8 @@ import type {
   CompressPackRequest,
   CompressPackResponse,
 } from "./compressionAnalysis";
+import type { Wh3AssetHostDecisionAction, Wh3AssetHostDecisionRequest } from "./wh3AssetHostClient";
 
-console.log("IN PRELOAD");
 
 const createWorkshopStagingRunId = (): string => {
   try {
@@ -170,6 +171,24 @@ const api = {
   }> => ipcRenderer.invoke("clearWorkshopModStaging"),
   getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
   getPackDataWithLocs: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackDataWithLocs", packPath, table),
+  getVanillaPackFileTree: (
+    packPath: string,
+    prefix: string,
+  ): Promise<{
+    success: boolean;
+    children?: { path: string; isBranch: boolean }[];
+    error?: string;
+  }> => ipcRenderer.invoke("getVanillaPackFileTree", packPath, prefix),
+  searchVanillaPackFiles: (
+    packPath: string,
+    query: string,
+  ): Promise<{
+    success: boolean;
+    filePaths?: string[];
+    folderPaths?: string[];
+    truncated?: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("searchVanillaPackFiles", packPath, query),
   saveConfig: (payload: ConfigSavePayload) => ipcRenderer.send("saveConfig", payload),
   readMods: debounce(
     (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>
@@ -628,6 +647,28 @@ const api = {
 
   getUnitViewerDetails: (sessionId: string, unitKey: string): Promise<UnitViewerDetailsResponse> =>
     ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
+
+  getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
+    ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
+
+  getVisualsVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
+    ipcRenderer.invoke("getVisualsVariantMeshCatalog", sessionId, assetPath),
+
+  onWh3AssetHostDecisionRequest: (
+    callback: (event: Electron.IpcRendererEvent, request: Wh3AssetHostDecisionRequest) => void,
+  ) => {
+    ipcRenderer.on("wh3AssetHostDecisionRequest", callback);
+    return () => ipcRenderer.removeListener("wh3AssetHostDecisionRequest", callback);
+  },
+
+  respondWh3AssetHostDecision: (
+    requestId: string,
+    action: Wh3AssetHostDecisionAction,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("respondWh3AssetHostDecision", requestId, action),
+
+  startWh3AssetHost: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke("startWh3AssetHost"),
+  stopWh3AssetHost: (): Promise<{ success: boolean }> => ipcRenderer.invoke("stopWh3AssetHost"),
 
   prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),

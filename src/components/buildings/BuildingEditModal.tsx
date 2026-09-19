@@ -40,7 +40,14 @@ export type BuildingEditModalProps = {
 type SelectOption = { value: string; label: string };
 /** The label is the effect's description, so the key is shown alongside rather than folded in. */
 type EffectOption = SelectOption & { preferredScope?: string };
-type Tab = "recruitment" | "garrison" | "effects" | "cai";
+type Tab = "info" | "recruitment" | "garrison" | "effects" | "cai";
+
+type BuildingInfoEntry = {
+  label: string;
+  field: string;
+  /** An empty value is meaningful for variant scopes: it means "any". */
+  value?: string;
+};
 
 const WINDOW_THRESHOLD = 60;
 /**
@@ -59,6 +66,68 @@ const toKeyOptions = (keys: string[]): SelectOption[] => keys.map((key) => ({ va
 
 const toOptions = (options: BuildingsOption[]): SelectOption[] =>
   options.map((option) => ({ value: option.key, label: option.localizedName }));
+
+const copyTextToClipboard = async (text: string): Promise<void> => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Fall back to the document command when the Clipboard API is unavailable or blocked.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+};
+
+const BuildingInfoRow = ({
+  entry,
+  anyLabel,
+  unavailableLabel,
+  copyLabel,
+  onCopy,
+}: {
+  entry: BuildingInfoEntry;
+  anyLabel: string;
+  unavailableLabel: string;
+  copyLabel: string;
+  onCopy: (entry: BuildingInfoEntry) => void;
+}) => {
+  const hasValue = entry.value !== undefined && entry.value !== "";
+  const displayValue = entry.value === undefined ? unavailableLabel : entry.value || anyLabel;
+
+  return (
+    <div className="grid grid-cols-[minmax(8rem,auto)_minmax(0,1fr)_auto] items-center gap-2 border-t border-gray-700 px-2 py-1.5 first:border-t-0">
+      <div className="min-w-0">
+        <div className="text-xs text-gray-200">{entry.label}</div>
+        <div className="truncate text-[0.65rem] text-gray-500" title={entry.field}>
+          {entry.field}
+        </div>
+      </div>
+      <code className={`min-w-0 break-all text-sm ${hasValue ? "text-sky-300" : "text-gray-500"}`}>{displayValue}</code>
+      <button
+        type="button"
+        onClick={() => onCopy(entry)}
+        disabled={!hasValue}
+        aria-label={`${copyLabel} ${entry.label}`}
+        className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {copyLabel}
+      </button>
+    </div>
+  );
+};
 
 /**
  * One row of any picker in this modal: the localised name, and under it the key that gets written.
@@ -104,6 +173,95 @@ const BuildingEditModal = memo(
     const localized = useLocalizations();
     const [tab, setTab] = useState<Tab>("recruitment");
     const [note, setNote] = useState<string | undefined>();
+
+    const infoEntries = useMemo<BuildingInfoEntry[]>(() => {
+      const optionalLevelValue = (column: string) => {
+        const value = tile.levelRowValues?.[column]?.trim();
+        return value || undefined;
+      };
+      const entries: BuildingInfoEntry[] = [
+        {
+          label: localized.buildingsLevelKey || "Level key",
+          field: "building_levels_tables.level_name",
+          value: tile.levelKey,
+        },
+        {
+          label: localized.buildingsChainKey || "Chain key",
+          field: "building_levels_tables.chain",
+          value: tile.chainKey,
+        },
+        {
+          label: localized.buildingsSuperchainKey || "Superchain key",
+          field: "building_chains_tables.building_superchain",
+          value: tile.superChainKey,
+        },
+        {
+          label: localized.buildingsSetKey || "Building set key",
+          field: "building_set_to_building_junctions_tables.building_set",
+          value: tile.setKey,
+        },
+        {
+          label: localized.buildingsCultureKey || "Culture key",
+          field: "building_culture_variants_tables.culture",
+          value: tile.variant?.culture,
+        },
+        {
+          label: localized.buildingsSubcultureKey || "Subculture key",
+          field: "building_culture_variants_tables.subculture",
+          value: tile.variant?.subculture,
+        },
+        {
+          label: localized.buildingsFactionKey || "Faction key",
+          field: "building_culture_variants_tables.faction",
+          value: tile.variant?.faction,
+        },
+      ];
+
+      const optionalEntries: BuildingInfoEntry[] = [
+        {
+          label: localized.buildingsInstanceKey || "Instance key",
+          field: "building_levels_tables.building_instance_key",
+          value: tile.instanceKey,
+        },
+        {
+          label: localized.buildingsCommodity || "Commodity",
+          field: "building_levels_tables.commodity",
+          value: optionalLevelValue("commodity"),
+        },
+        {
+          label: localized.buildingsResourceRequirement || "Resource requirement",
+          field: "building_levels_tables.resource_requirement",
+          value: optionalLevelValue("resource_requirement"),
+        },
+        {
+          label: localized.buildingsReligionRequirement || "Religion requirement",
+          field: "building_levels_tables.religion_requirement",
+          value: optionalLevelValue("religion_requirement"),
+        },
+        {
+          label: localized.buildingsIconKey || "Icon key",
+          field: "building_culture_variants_tables.icon",
+          value: tile.iconPath,
+        },
+      ];
+
+      return [...entries, ...optionalEntries.filter((entry) => entry.value !== undefined)];
+    }, [localized, tile]);
+
+    const copyInfoEntry = useCallback(
+      async (entry: BuildingInfoEntry) => {
+        if (entry.value === undefined || entry.value === "") return;
+        try {
+          await copyTextToClipboard(entry.value);
+          setNote(
+            (localized.buildingsInfoCopied || "Copied {{label}} to the clipboard.").replace("{{label}}", entry.label),
+          );
+        } catch {
+          setNote((localized.buildingsInfoCopyFailed || "Could not copy {{label}}.").replace("{{label}}", entry.label));
+        }
+      },
+      [localized.buildingsInfoCopied, localized.buildingsInfoCopyFailed],
+    );
 
     const unitOptions = useMemo(() => toOptions(catalog.units), [catalog.units]);
     const unitGroupOptions = useMemo(() => toOptions(catalog.unitGroups), [catalog.unitGroups]);
@@ -283,6 +441,7 @@ const BuildingEditModal = memo(
             <div className="flex gap-1 border-b border-gray-700">
               {(
                 [
+                  ["info", localized.buildingsInfo || "Info"],
                   ["recruitment", localized.buildingsRecruitment || "Recruitment"],
                   ["garrison", localized.buildingsGarrison || "Garrison"],
                   ["effects", localized.buildingsEffects || "Effects"],
@@ -301,6 +460,27 @@ const BuildingEditModal = memo(
                 </button>
               ))}
             </div>
+
+            {tab === "info" && (
+              <div className="space-y-3">
+                <p className="text-xs text-gray-400">
+                  {localized.buildingsInfoHelp ||
+                    "Database keys and references for this building. Use the copy buttons to copy a value. Empty culture scopes mean any culture, subculture, or faction."}
+                </p>
+                <div className="overflow-hidden rounded border border-gray-700">
+                  {infoEntries.map((entry) => (
+                    <BuildingInfoRow
+                      key={entry.field}
+                      entry={entry}
+                      anyLabel={localized.buildingsAny || "(any)"}
+                      unavailableLabel={localized.buildingsUnavailable || "(not available)"}
+                      copyLabel={localized.copy || "Copy"}
+                      onCopy={copyInfoEntry}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {tab === "recruitment" && (
               <div className="space-y-3">

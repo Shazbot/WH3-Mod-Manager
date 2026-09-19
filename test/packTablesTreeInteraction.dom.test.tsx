@@ -1,6 +1,6 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { describe, expect, it, vi } from "vitest";
@@ -9,6 +9,61 @@ import appReducer, { setDeletedPackFilePaths, setUnsavedPacksData } from "../src
 import PackTablesTreeView from "../src/components/viewer/PackTablesTreeView";
 import initialState from "../src/initialAppState";
 import type { PackedFile } from "../src/packFileTypes";
+
+// jsdom has no layout engine. Keep the test viewport deterministic while retaining the important
+// virtualization contract: only a bounded number of rows are handed to the DOM.
+vi.mock("react-virtualized", () => {
+  const AutoSizer = ({ children }: { children: (size: { height: number; width: number }) => React.ReactNode }) =>
+    children({ height: 360, width: 640 });
+  const List = React.forwardRef<
+    { scrollToPosition: (scrollTop?: number) => void; scrollToRow: (index?: number) => void },
+    {
+      height: number;
+      width: number;
+      rowCount: number;
+      rowHeight: number;
+      overscanRowCount?: number;
+      rowRenderer: (props: { index: number; key: string; parent: null; style: React.CSSProperties }) => React.ReactNode;
+      onScroll?: (event: { scrollTop: number }) => void;
+      scrollTop?: number;
+    }
+  >(({ height, width, rowCount, rowHeight, overscanRowCount = 0, rowRenderer, onScroll, scrollTop = 0 }, ref) => {
+    const scrollElementRef = React.useRef<HTMLDivElement | null>(null);
+    const [startIndex, setStartIndex] = React.useState(Math.floor(scrollTop / rowHeight));
+    React.useImperativeHandle(ref, () => ({
+      scrollToPosition: (nextScrollTop = 0) => {
+        if (scrollElementRef.current) scrollElementRef.current.scrollTop = nextScrollTop;
+        setStartIndex(Math.floor(nextScrollTop / rowHeight));
+      },
+      scrollToRow: (index = 0) => {
+        setStartIndex(Math.max(0, Math.min(index, rowCount - 1)));
+      },
+    }));
+    const visibleRows = Math.min(rowCount - startIndex, Math.ceil(height / rowHeight) + overscanRowCount * 2);
+    return (
+      <div
+        data-testid="virtualized-list"
+        ref={scrollElementRef}
+        onScroll={(event) => {
+          setStartIndex(Math.floor(event.currentTarget.scrollTop / rowHeight));
+          onScroll?.({ scrollTop: event.currentTarget.scrollTop });
+        }}
+        style={{ height, width, overflowY: "auto" }}
+      >
+        {Array.from({ length: visibleRows }, (_, offset) => {
+          const index = startIndex + offset;
+          return rowRenderer({
+            index,
+            key: String(index),
+            parent: null,
+            style: { position: "relative", height: rowHeight, top: index * rowHeight },
+          });
+        })}
+      </div>
+    );
+  });
+  return { AutoSizer, List };
+});
 
 describe("pack table tree interactions", () => {
   const renderPackTree = (
@@ -128,6 +183,112 @@ describe("pack table tree interactions", () => {
 
     expect(screen.getByText("nested")).toBeInTheDocument();
     expect(screen.getByText("hello.lua")).toBeInTheDocument();
+  });
+
+  it("shows folders before files at each tree level", () => {
+    const tree = renderPackTree(
+      ["root-file.lua", "folder\\z-file.lua", "folder\\a-folder\\nested.lua", "folder\\a-file.lua"],
+      "files",
+    );
+
+    const labelsAtLevel = (level: string) =>
+      Array.from(tree.querySelectorAll(`[role="treeitem"][aria-level="${level}"]`)).map((node) =>
+        node.textContent?.trim(),
+      );
+
+    expect(labelsAtLevel("1")).toEqual(["folder", "root-file.lua"]);
+
+    fireEvent.click(screen.getByText("folder"));
+
+    expect(labelsAtLevel("2")).toEqual(["a-folder", "a-file.lua", "z-file.lua"]);
+  });
+
+  it("keeps the DOM bounded for a very large files tree", async () => {
+    const files = Array.from({ length: 10_000 }, (_, index) => `file-${String(index).padStart(5, "0")}.lua`);
+    renderPackTree(files, "files");
+
+    expect(screen.getAllByRole("treeitem").length).toBeLessThan(40);
+    expect(screen.getByText("file-00000.lua")).toBeInTheDocument();
+    expect(screen.queryByText("file-09999.lua")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("file-00000.lua"));
+    fireEvent.keyDown(screen.getByText("file-00000.lua").closest("[role='treeitem']")!, { key: "End" });
+
+    await waitFor(() => expect(screen.getByText("file-09999.lua")).toBeInTheDocument());
+  });
+
+  it("keeps long tree labels on a single virtualized row", () => {
+    renderPackTree(["script_workspace.code-workspace"], "files");
+
+    expect(screen.getByText("script_workspace.code-workspace")).toHaveClass("whitespace-nowrap");
+  });
+
+  it("Ctrl-clicking a folder toggles each descendant leaf independently", () => {
+    renderPackTree(["scripts\\first.lua", "scripts\\second.lua"], "files");
+    fireEvent.click(screen.getByText("scripts"));
+    fireEvent.click(screen.getByText("first.lua"));
+
+    fireEvent.click(screen.getByText("scripts"), { ctrlKey: true });
+
+    expect(screen.getByText("first.lua").closest("[role='treeitem']")).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByText("second.lua").closest("[role='treeitem']")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps each hidden pack tree's scroll position in its own virtualized list", () => {
+    const packA = "K:\\mods\\a.pack";
+    const packB = "K:\\mods\\b.pack";
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          packsData: {
+            [packA]: { packName: "a.pack", packPath: packA, tables: ["a.lua"], packedFiles: {} },
+            [packB]: { packName: "b.pack", packPath: packB, tables: ["b.lua"], packedFiles: {} },
+          },
+        },
+      },
+    });
+    const treeProps = (packPath: string) => ({
+      packPath,
+      preferredTab: "files" as const,
+      tableFilter: "",
+      showDialog: vi.fn(),
+      onOpenDBTable: vi.fn(),
+      onOpenFlowFile: vi.fn(),
+      onOpenPackedFile: vi.fn(),
+    });
+    const { rerender } = render(
+      <Provider store={store}>
+        <div data-testid="pack-a">
+          <PackTablesTreeView {...treeProps(packA)} />
+        </div>
+        <div data-testid="pack-b" className="hidden">
+          <PackTablesTreeView {...treeProps(packB)} />
+        </div>
+      </Provider>,
+    );
+
+    const listA = within(screen.getAllByTestId("pack-tree-scroll-files")[0]).getByTestId("virtualized-list");
+    const listB = within(screen.getAllByTestId("pack-tree-scroll-files")[1]).getByTestId("virtualized-list");
+    Object.defineProperty(listA, "scrollTop", { configurable: true, value: 123, writable: true });
+    Object.defineProperty(listB, "scrollTop", { configurable: true, value: 47, writable: true });
+    fireEvent.scroll(listA);
+    fireEvent.scroll(listB);
+
+    rerender(
+      <Provider store={store}>
+        <div data-testid="pack-a" className="hidden">
+          <PackTablesTreeView {...treeProps(packA)} />
+        </div>
+        <div data-testid="pack-b">
+          <PackTablesTreeView {...treeProps(packB)} />
+        </div>
+      </Provider>,
+    );
+
+    expect(listA).toHaveProperty("scrollTop", 123);
+    expect(listB).toHaveProperty("scrollTop", 47);
   });
 
   it("keeps collapsed DB groups collapsed after deleting a file", async () => {
@@ -609,5 +770,128 @@ describe("pack table tree interactions", () => {
     expect(screen.queryByRole("button", { name: /Delete/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Rename/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Move/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the DB pack Files tab and loads every vanilla folder child at once", async () => {
+    const packPath = "K:\\game\\data\\db.pack";
+    const getVanillaPackFileTree = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true, children: [{ path: "animation", isBranch: true }] })
+      .mockResolvedValueOnce({
+        success: true,
+        children: [
+          { path: "animation\\campaign", isBranch: true },
+          { path: "animation\\campaign\\dragon.anim", isBranch: false },
+          { path: "animation\\campaign\\phoenix.anim", isBranch: false },
+        ],
+      });
+    const previousApi = window.api;
+    window.api = { getVanillaPackFileTree } as unknown as NonNullable<Window["api"]>;
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          currentGame: "wh3",
+          packsData: {
+            [packPath]: {
+              packName: "db.pack",
+              packPath,
+              tables: ["db\\units_tables\\data__"],
+              packedFiles: {},
+            },
+          },
+        },
+      },
+    });
+
+    const view = render(
+      <Provider store={store}>
+        <PackTablesTreeView
+          packPath={packPath}
+          preferredTab="files"
+          tableFilter=""
+          showDialog={vi.fn()}
+          onOpenDBTable={vi.fn()}
+          onOpenFlowFile={vi.fn()}
+          onOpenPackedFile={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    try {
+      expect(screen.getByRole("button", { name: "Files", exact: true })).toBeInTheDocument();
+      await waitFor(() => expect(getVanillaPackFileTree).toHaveBeenCalledWith(packPath, ""));
+      expect(screen.getByText("animation")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("animation"));
+
+      await waitFor(() => expect(getVanillaPackFileTree).toHaveBeenCalledWith(packPath, "animation"));
+      expect(screen.getByText("campaign")).toBeInTheDocument();
+      const campaignNode = screen.getByText("campaign").closest('[role="treeitem"]');
+      if (campaignNode?.getAttribute("aria-expanded") !== "true") fireEvent.click(screen.getByText("campaign"));
+      expect(screen.getByText("dragon.anim")).toBeInTheDocument();
+      expect(screen.getByText("phoenix.anim")).toBeInTheDocument();
+      expect(screen.queryByText(/Load more files/)).not.toBeInTheDocument();
+    } finally {
+      view.unmount();
+      window.api = previousApi;
+    }
+  });
+
+  it("searches unloaded vanilla files through the index cache", async () => {
+    const packPath = "K:\\game\\data\\db.pack";
+    const getVanillaPackFileTree = vi.fn().mockResolvedValue({ success: true, children: [] });
+    const searchVanillaPackFiles = vi.fn().mockResolvedValue({
+      success: true,
+      filePaths: ["audio\\wwise\\dragon.anim"],
+      folderPaths: [],
+      truncated: false,
+    });
+    const previousApi = window.api;
+    window.api = { getVanillaPackFileTree, searchVanillaPackFiles } as unknown as NonNullable<Window["api"]>;
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          currentGame: "wh3",
+          packsData: {
+            [packPath]: {
+              packName: "db.pack",
+              packPath,
+              tables: ["db\\units_tables\\data__"],
+              packedFiles: {},
+            },
+          },
+        },
+      },
+    });
+
+    const view = render(
+      <Provider store={store}>
+        <PackTablesTreeView
+          packPath={packPath}
+          preferredTab="files"
+          tableFilter="dragon"
+          showDialog={vi.fn()}
+          onOpenDBTable={vi.fn()}
+          onOpenFlowFile={vi.fn()}
+          onOpenPackedFile={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    try {
+      await waitFor(() => expect(searchVanillaPackFiles).toHaveBeenCalledWith(packPath, "dragon"));
+      await waitFor(() => expect(screen.getByText("dragon.anim")).toBeInTheDocument());
+      expect(screen.getByText("audio")).toBeInTheDocument();
+      expect(screen.getByText("wwise")).toBeInTheDocument();
+    } finally {
+      view.unmount();
+      window.api = previousApi;
+    }
   });
 });

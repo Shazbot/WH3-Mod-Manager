@@ -62,6 +62,8 @@ import { buildDefaultCellValue } from "./utility/dbRowCells";
 import { TextFileEditRule, applyTextFileEdits, matchesTextFileTarget } from "./nodeGraph/textFileEdits";
 import type { TextFileFormatter } from "./nodeGraph/textFileFormatting";
 import { PackFileOperationRule, planPackCopy, planPackFileOperations } from "./nodeGraph/packFileOperations";
+import { applyEditXmlFile } from "./nodeGraph/editXmlFile";
+import type { EditXmlFileConfig } from "./nodeGraph/editXmlFile";
 import {
   DeepClonePlan,
   LoadedTableFile,
@@ -1011,6 +1013,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "edittextfile":
         return await executeEditTextFileNode(nodeId, textValue, inputData, config, executionContext);
+
+      case "editxmlfile":
+        return await executeEditXmlFileNode(nodeId, textValue, inputData, config, executionContext);
 
       case "editloctext":
         return await executeEditLocTextNode(nodeId, textValue, inputData, config, executionContext);
@@ -8267,6 +8272,214 @@ async function executeEditTextFileNode(
     } as DBTablesNodeData,
     warnings: warnings.length > 0 ? warnings : undefined,
   };
+}
+
+const normalizeXmlFilePath = (filePath: string): string => filePath.replace(/[\\/]+/g, "\\").toLowerCase();
+
+const fileNameOfPack = (packPath: string): string => packPath.replace(/^.*[\\/]/, "");
+
+/**
+ * Edits one XML payload selected by a structural locator. File lookup intentionally follows the
+ * same exact-path/winning-pack rules as Edit Text File, but the XML operation itself is delegated
+ * to the dedicated offset-preserving helper rather than the CSS-selector editor.
+ */
+async function executeEditXmlFileNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData | DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || (inputData.type !== "PackFiles" && inputData.type !== "TableSelection")) {
+    return { success: false, error: "Invalid input: Expected PackFiles or TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<Partial<EditXmlFileConfig> & { targetMode?: string; filePath?: string }>(
+    config,
+    textValue,
+  );
+  if (!parsed) return { success: false, error: "Invalid XML node configuration" };
+  if (parsed.targetMode !== "path" && parsed.targetMode !== "input") {
+    return { success: false, error: "Invalid XML file target mode" };
+  }
+  if (typeof parsed.filePath !== "string" || typeof parsed.ignoreHierarchy !== "boolean") {
+    return { success: false, error: "Invalid XML node configuration" };
+  }
+  if (!Array.isArray(parsed.locatorSteps) || !Array.isArray(parsed.attributeEdits)) {
+    return { success: false, error: "Invalid XML node configuration" };
+  }
+  if (parsed.action !== "setAttributes" && parsed.action !== "editAttributes" && parsed.action !== "replaceElement") {
+    return { success: false, error: "Invalid XML action" };
+  }
+  if (typeof parsed.replacementXml !== "string") {
+    return { success: false, error: "Invalid XML replacement configuration" };
+  }
+  if (parsed.targetMode === "path" && !parsed.filePath.trim()) {
+    return { success: false, error: "XML file path is required" };
+  }
+  if (parsed.targetMode === "input" && inputData.type !== "TableSelection") {
+    return { success: false, error: "Previous output requires a TableSelection input" };
+  }
+  if (inputData.type === "PackFiles" && parsed.targetMode !== "path") {
+    return { success: false, error: "PackFiles input requires an exact XML file path" };
+  }
+
+  const xmlConfig: EditXmlFileConfig = {
+    ignoreHierarchy: parsed.ignoreHierarchy,
+    locatorSteps: parsed.locatorSteps as EditXmlFileConfig["locatorSteps"],
+    action: parsed.action,
+    attributeEdits: parsed.attributeEdits as EditXmlFileConfig["attributeEdits"],
+    replacementXml: parsed.replacementXml,
+  };
+
+  const editTable = (inputTable: DBTablesNodeTable): NodeExecutionResult => {
+    const fileName = inputTable.outputFileName || inputTable.name;
+    const inputBuffer = inputTable.table?.buffer;
+    if (!inputBuffer) return { success: false, error: `XML file '${fileName}' has no readable content` };
+    const sourceText = Buffer.from(inputBuffer).toString("utf8");
+    const result = applyEditXmlFile(sourceText, xmlConfig);
+    if (!result.success || result.text === undefined) {
+      return { success: false, error: result.error || `Could not edit XML file '${fileName}'` };
+    }
+    if (result.text === sourceText) {
+      return {
+        success: true,
+        data: {
+          type: "TableSelection",
+          tables: [inputTable],
+          sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+          tableCount: 1,
+        } as DBTablesNodeData,
+      };
+    }
+    const editedBuffer = Buffer.from(result.text, "utf8");
+    const editedTable: DBTablesNodeTable = {
+      ...inputTable,
+      table: {
+        ...inputTable.table,
+        file_size: editedBuffer.length,
+        buffer: editedBuffer,
+      } as PackedFile,
+      outputFileName: inputTable.outputFileName || fileName,
+    };
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [editedTable],
+        sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+        tableCount: 1,
+      } as DBTablesNodeData,
+    };
+  };
+
+  if (inputData.type === "TableSelection") {
+    const tables = inputData.tables || [];
+    const requestedPath = normalizeXmlFilePath(parsed.filePath);
+    const selectedTables =
+      parsed.targetMode === "input"
+        ? tables
+        : tables.filter((table) => normalizeXmlFilePath(table.outputFileName || table.name) === requestedPath);
+    if (selectedTables.length !== 1) {
+      return {
+        success: false,
+        error:
+          parsed.targetMode === "input"
+            ? `Previous output must contain exactly one XML file (found ${selectedTables.length})`
+            : `XML path must match exactly one previous-output file (found ${selectedTables.length})`,
+      };
+    }
+    return editTable(selectedTables[0]);
+  }
+
+  const requestedPath = normalizeXmlFilePath(parsed.filePath);
+  const sourcePackFiles = (inputData.files || []).filter((packFile) => packFile.loaded);
+  if (sourcePackFiles.length === 0) {
+    return { success: false, error: "PackFiles input contains no loaded packs" };
+  }
+
+  const priority = buildFlowPackPriority();
+  const vanillaPackFiles = sourcePackFiles.filter((packFile) => appData.allVanillaPackNames.has(packFile.name));
+  let vanillaIndex: VanillaPackIndex | undefined;
+  if (vanillaPackFiles.length > 0) {
+    try {
+      vanillaIndex = await getVanillaPackIndex();
+    } catch (error) {
+      console.warn(`Edit XML File Node ${nodeId}: could not read vanilla file index:`, error);
+    }
+  }
+
+  const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
+  const originalNamesByPack = new Map<string, string>();
+  const addCandidate = (packPath: string, fileName: string) => {
+    if (!originalNamesByPack.has(packPath)) originalNamesByPack.set(packPath, fileName);
+    else if (normalizeXmlFilePath(originalNamesByPack.get(packPath) as string) !== requestedPath) return;
+    targetedNamesByPack.push({ packPath, fileNames: [requestedPath] });
+  };
+
+  const packWithVanillaName = (packName: string) =>
+    vanillaPackFiles.find(
+      (packFile) =>
+        packFile.name.toLowerCase() === packName.toLowerCase() ||
+        fileNameOfPack(packFile.path).toLowerCase() === packName.toLowerCase(),
+    );
+
+  if (vanillaIndex) {
+    const vanillaPackName = findVanillaPackContaining(vanillaIndex, requestedPath);
+    const vanillaPack = vanillaPackName ? packWithVanillaName(vanillaPackName) : undefined;
+    if (vanillaPack) addCandidate(vanillaPack.path, requestedPath);
+  }
+
+  for (const packFile of sourcePackFiles) {
+    if (vanillaIndex && appData.allVanillaPackNames.has(packFile.name)) continue;
+    try {
+      const indexedPack = await readPackCached(packFile.path, { skipParsingTables: true }, executionContext);
+      const matchingName = indexedPack.packedFiles.find(
+        (packedFile) => normalizeXmlFilePath(packedFile.name) === requestedPath,
+      )?.name;
+      if (matchingName) addCandidate(packFile.path, matchingName);
+    } catch (error) {
+      console.warn(`Edit XML File Node ${nodeId}: could not index ${packFile.path}:`, error);
+    }
+  }
+
+  const winningPackPath = resolveFileSourcePacks(targetedNamesByPack, priority).get(requestedPath);
+  if (!winningPackPath) {
+    return { success: false, error: `No loaded pack contains XML file '${parsed.filePath}'` };
+  }
+
+  try {
+    const requestedName = originalNamesByPack.get(winningPackPath) || requestedPath;
+    const sourcePack = await readPackCached(
+      winningPackPath,
+      { skipParsingTables: true, filesToRead: [requestedName] },
+      executionContext,
+    );
+    const packedFile = sourcePack.packedFiles.find(
+      (candidate) => normalizeXmlFilePath(candidate.name) === requestedPath && candidate.buffer,
+    );
+    if (!packedFile?.buffer) {
+      return { success: false, error: `XML file '${parsed.filePath}' could not be read from its winning pack` };
+    }
+    const sourcePackFile = sourcePackFiles.find((packFile) => packFile.path === winningPackPath);
+    const fileName = packedFile.name;
+    const inputTable: DBTablesNodeTable = {
+      name: fileName,
+      fileName,
+      sourceFile: {
+        name: sourcePackFile?.name || sourcePack.name,
+        path: sourcePackFile?.path || winningPackPath,
+      },
+      table: packedFile,
+      outputFileName: fileName,
+    };
+    return editTable(inputTable);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : `Could not read XML file '${parsed.filePath}'`,
+    };
+  }
 }
 
 /**

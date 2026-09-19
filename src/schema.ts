@@ -1,7 +1,6 @@
 // Schema files are now loaded lazily on-demand
 import { DBFieldName, DBFileName, DBVersion } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
-import { perfMonitor } from "./utility/performanceMonitor";
 import { decompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as path from "path";
@@ -60,7 +59,6 @@ const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
     return schemaLoadingPromises.get(game);
   }
 
-  const startTime = performance.now();
   const loadingPromise = (async () => {
     try {
       const schemaFileName = getSchemaFileName(game);
@@ -72,10 +70,9 @@ const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
       const schemaData = JSON.parse(Buffer.from(decompressedBuffer).toString("utf8"));
 
       schemaCache.set(game, schemaData);
-      perfMonitor.trackSchemaLoad(game, startTime);
       return schemaData;
     } catch (error) {
-      console.log(`Failed to load schema for game ${game}:`, error);
+      console.error(`Failed to load schema for game ${game}:`, error);
       return { definitions: {} };
     } finally {
       // Clean up the promise from the map once it's resolved

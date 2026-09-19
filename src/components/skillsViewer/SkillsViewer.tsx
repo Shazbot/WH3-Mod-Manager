@@ -292,11 +292,11 @@ const SkillsViewer = memo(() => {
 
   // console.log("SkillsViewer tabs:", tabs);
   return (
-    <div className="dark:text-gray-300">
-      <div style={{ width: "100%", display: "flex" }}>
-        <Resizable defaultSize={{ width: "17%", height: "85vh" }} maxWidth="100%" minWidth="1">
-          <div>
-            <div className="overflow-auto h-[85vh] scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
+    <div className="flex explicit-height-without-topbar-and-padding min-h-0 flex-col dark:text-gray-300">
+      <div className="flex min-h-0 flex-1" style={{ width: "100%" }}>
+        <Resizable defaultSize={{ width: "17%", height: "100%" }} maxWidth="100%" minWidth="1">
+          <div className="h-full min-h-0">
+            <div className="h-full overflow-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
               <SkillsTreeView
                 tableFilter={dbTableFilter}
                 hideRepeatedKeyPrefixes={hideRepeatedKeyPrefixes}
@@ -306,7 +306,7 @@ const SkillsViewer = memo(() => {
             </div>
           </div>
         </Resizable>
-        <div style={{ width: "100%", minWidth: "1px", display: "flex", flexDirection: "column" }}>
+        <div style={{ width: "100%", minWidth: "1px", display: "flex", flexDirection: "column" }} className="min-h-0">
           {tabs.length > 0 && (
             <div className="flex bg-gray-800 overflow-x-auto" style={{ minHeight: "32px" }}>
               {tabs.map((tab) => {
@@ -340,7 +340,7 @@ const SkillsViewer = memo(() => {
               })}
             </div>
           )}
-          <div style={{ flex: 1 }}>
+          <div className="min-h-0 flex-1">
             {activeTab && (
               <SkillsView
                 key={activeTab.id}
@@ -353,7 +353,7 @@ const SkillsViewer = memo(() => {
         </div>
       </div>
 
-      <div className="flex items-center mt-2">
+      <div className="flex shrink-0 items-center mt-2">
         <span className="relative">
           <input
             id="dbTableFilter"

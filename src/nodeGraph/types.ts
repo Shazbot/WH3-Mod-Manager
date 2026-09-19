@@ -213,6 +213,13 @@ export interface SerializedNode {
     /** Runtime-only identity injected while preparing a manual or automatic execution. */
     flowSourcePack?: string;
     fileOperations?: Array<Record<string, unknown>>;
+    targetMode?: "path" | "input";
+    filePath?: string;
+    ignoreHierarchy?: boolean;
+    locatorSteps?: Array<Record<string, unknown>>;
+    action?: "setAttributes" | "editAttributes" | "replaceElement";
+    attributeEdits?: Array<Record<string, unknown>>;
+    replacementXml?: string;
   };
 }
 

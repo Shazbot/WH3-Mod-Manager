@@ -166,8 +166,13 @@ const withDefaults = (config: AppConfig): AppConfig => {
     hiddenMainWindowTabs: config.hiddenMainWindowTabs ?? [],
     isVisualsSortByCultureEnabled: config.isVisualsSortByCultureEnabled ?? true,
     isVisualsHideDuplicatesEnabled: config.isVisualsHideDuplicatesEnabled ?? true,
+    unitViewerMode: config.unitViewerMode === "compare" ? "compare" : "visualize",
+    unitViewerShowWireframe: config.unitViewerShowWireframe ?? true,
+    unitViewerUnsyncedAnimations: config.unitViewerUnsyncedAnimations ?? true,
+    unitViewerShowUnitCard: config.unitViewerShowUnitCard ?? true,
     moddersPrefix: config.moddersPrefix ?? "",
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
+    compressModsOnUpload: config.compressModsOnUpload ?? true,
     workshopModStagingMode,
     compressWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.compressWorkshopModsOnStart,
     cleanUpWorkshopModStagingAfterGameExit:

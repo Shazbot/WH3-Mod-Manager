@@ -8,8 +8,8 @@
  * dwarfs the text.
  *
  * So the names live front-coded instead, the same representation the vanilla DB cache uses for its
- * string pool: 12.5 MB held, an exact lookup in microseconds, and a folder listing as a contiguous
- * rank range. See `../vanillaDbCache/frontCodedBlock` for why that beats a trie.
+ * string pool: 12.5 MB held, an exact lookup in microseconds, and binary-searchable folder ranges.
+ * See `../vanillaDbCache/frontCodedBlock` for why that beats a trie.
  *
  * Everything here is pure so the format can be tested without a game install; `./store` owns the
  * filesystem and the cache file.
@@ -18,8 +18,10 @@
 import {
   FrontCodedBlock,
   buildFrontCodedBlock,
+  findFrontCodedLowerBound,
   findFrontCodedPrefixRange,
   findFrontCodedRank,
+  forEachFrontCodedEntryInRange,
   forEachFrontCodedEntry,
   readFrontCodedEntry,
 } from "../vanillaDbCache/frontCodedBlock";
@@ -61,6 +63,27 @@ export interface VanillaPackIndex {
 export interface VanillaPackFileNames {
   packName: string;
   fileNames: readonly string[];
+}
+
+export interface VanillaPackTreeChild {
+  path: string;
+  isBranch: boolean;
+}
+
+export interface VanillaPackTreeChildrenPage {
+  children: VanillaPackTreeChild[];
+  totalChildren?: number;
+  hasMore: boolean;
+  nextOffset?: number;
+}
+
+export interface VanillaPackFileSearchResult {
+  /** Files whose displayed leaf name matches the query. */
+  filePaths: string[];
+  /** Folders whose displayed segment name matches the query. */
+  folderPaths: string[];
+  /** True when the result cap stopped the scan before the block ended. */
+  truncated: boolean;
 }
 
 /**
@@ -213,6 +236,202 @@ export const collectVanillaFilesUnderPrefix = (index: VanillaPackIndex, prefix: 
     if (packFilePath !== undefined && packName !== undefined) filesByPath.set(packFilePath, packName);
   }
   return filesByPath;
+};
+
+/**
+ * Lists every immediate child of a folder. The index stays in the main process and the renderer
+ * asks for another level when a branch is expanded; the virtualized tree can still present a large
+ * child list without making the page itself render every row.
+ */
+export const collectVanillaPackTreeChildren = (
+  index: VanillaPackIndex,
+  prefix: string,
+  includeFile: (filePath: string) => boolean = () => true,
+  includeBranch: (folderPath: string) => boolean = () => true,
+): VanillaPackTreeChild[] => {
+  const normalizedPrefix = normalizeVanillaPackPath(prefix).replace(/\\+$/, "");
+  const rangePrefix = normalizedPrefix ? `${normalizedPrefix}\\` : "";
+  // Use binary-search bounds rather than findFrontCodedPrefixRange here. The latter has to decode
+  // every descendant to discover the end of the range. Once the first path identifies a child
+  // folder, the child folder's own upper bound lets us jump over all of its descendants while still
+  // returning every immediate child.
+  const start = findFrontCodedLowerBound(index.block, rangePrefix);
+  const end = findFrontCodedLowerBound(index.block, normalizedPrefix ? `${normalizedPrefix}\uffff` : "\uffff");
+  const childrenByPath = new Map<string, VanillaPackTreeChild>();
+
+  let rank = start;
+  while (rank < end) {
+    const filePath = readFrontCodedEntry(index.block, rank);
+    if (filePath === undefined || !filePath.startsWith(rangePrefix)) break;
+
+    const relativePath = rangePrefix ? filePath.slice(rangePrefix.length) : filePath;
+    const separator = relativePath.indexOf("\\");
+    if (separator < 0) {
+      if (includeFile(filePath)) childrenByPath.set(filePath.toLowerCase(), { path: filePath, isBranch: false });
+      rank++;
+      continue;
+    }
+
+    const childPath = `${rangePrefix}${relativePath.slice(0, separator)}`;
+    const childEnd = findFrontCodedLowerBound(index.block, `${childPath}\\\uffff`);
+    if (includeBranch(childPath)) {
+      // In the normal viewer path the first file is enough: all files in a branch are accepted,
+      // except for filtered roots such as db\\. If the first file is rejected, preserve the generic
+      // predicate's semantics by looking for another accepted descendant within this one branch.
+      let hasIncludedFile = includeFile(filePath);
+      if (!hasIncludedFile) {
+        forEachFrontCodedEntryInRange(index.block, rank + 1, childEnd, (candidatePath) => {
+          if (!candidatePath.startsWith(`${childPath}\\`)) return;
+          if (includeFile(candidatePath)) {
+            hasIncludedFile = true;
+            return false;
+          }
+        });
+      }
+      if (hasIncludedFile) childrenByPath.set(childPath.toLowerCase(), { path: childPath, isBranch: true });
+    }
+
+    rank = Math.max(rank + 1, childEnd);
+  }
+
+  return [...childrenByPath.values()];
+};
+
+/**
+ * Lists a page directly from the flat path block. A folder's upper bound is found by binary search,
+ * and each branch jumps to the end of its own range, so a large folder is never fully decoded just
+ * to return its first page. `includeBranch` lets callers discard whole roots such as db\ without
+ * scanning their contents.
+ */
+export const collectVanillaPackTreeChildrenPageFromFlat = (
+  index: VanillaPackIndex,
+  prefix: string,
+  offset: number,
+  limit: number,
+  includeFile: (filePath: string) => boolean = () => true,
+  includeBranch: (folderPath: string) => boolean = () => true,
+): VanillaPackTreeChildrenPage => {
+  const normalizedPrefix = normalizeVanillaPackPath(prefix).replace(/\\+$/, "");
+  const rangePrefix = normalizedPrefix ? `${normalizedPrefix}\\` : "";
+  const rangeEndTarget = normalizedPrefix ? `${normalizedPrefix}\uffff` : "\uffff";
+  const rangeStart = findFrontCodedLowerBound(index.block, rangePrefix);
+  const rangeEnd = findFrontCodedLowerBound(index.block, rangeEndTarget);
+  const safeOffset = Math.max(0, Math.floor(Number.isFinite(offset) ? offset : 0));
+  const safeLimit = Math.max(0, Math.floor(Number.isFinite(limit) ? limit : 0));
+  const targetChildCount = safeOffset + safeLimit + 1;
+  const children: VanillaPackTreeChild[] = [];
+  let childCount = 0;
+  let lastChildPath: string | undefined;
+  let lastChild: VanillaPackTreeChild | undefined;
+
+  const addChild = (childPath: string, isBranch: boolean) => {
+    if (lastChildPath === childPath) {
+      if (lastChild && isBranch) lastChild.isBranch = true;
+      return;
+    }
+
+    lastChildPath = childPath;
+    lastChild = undefined;
+    if (childCount >= safeOffset && children.length < safeLimit) {
+      lastChild = { path: childPath, isBranch };
+      children.push(lastChild);
+    }
+    childCount++;
+  };
+
+  let rank = rangeStart;
+  while (rank < rangeEnd && childCount < targetChildCount) {
+    const filePath = readFrontCodedEntry(index.block, rank);
+    if (filePath === undefined || !filePath.startsWith(rangePrefix)) break;
+
+    const relativePath = rangePrefix ? filePath.slice(rangePrefix.length) : filePath;
+    const separator = relativePath.indexOf("\\");
+    if (separator < 0) {
+      if (includeFile(filePath)) addChild(filePath, false);
+      rank++;
+      continue;
+    }
+
+    const childPath = `${rangePrefix}${relativePath.slice(0, separator)}`;
+    const branchEnd = findFrontCodedLowerBound(index.block, `${childPath}\\\uffff`);
+    if (includeBranch(childPath)) {
+      let hasIncludedFile = includeFile(filePath);
+      if (!hasIncludedFile) {
+        const branchStart = findFrontCodedLowerBound(index.block, childPath);
+        forEachFrontCodedEntryInRange(index.block, branchStart, branchEnd, (candidatePath) => {
+          if (candidatePath !== childPath && !candidatePath.startsWith(`${childPath}\\`)) return;
+          if (includeFile(candidatePath)) {
+            hasIncludedFile = true;
+            return false;
+          }
+        });
+      }
+      if (hasIncludedFile) addChild(childPath, true);
+    }
+
+    rank = Math.max(rank + 1, branchEnd);
+  }
+
+  const hasMore = childCount > safeOffset + safeLimit;
+  return {
+    children,
+    hasMore,
+    ...(hasMore ? { nextOffset: safeOffset + children.length } : {}),
+  };
+};
+
+/**
+ * Finds vanilla tree paths that should be materialized for a filter.
+ *
+ * The ordinary tree filter works on displayed node names, not full paths. Keep that behavior here:
+ * a matching file contributes its full path, while a matching folder contributes only that folder.
+ * Returning every descendant of a matching folder would turn a query such as "audio" into another
+ * full-tree transfer. Ancestors are created by the renderer when it builds the returned paths.
+ */
+export const searchVanillaPackFileTree = (
+  index: VanillaPackIndex,
+  query: string,
+  maxResults = 1000,
+  includeFile: (filePath: string) => boolean = () => true,
+): VanillaPackFileSearchResult => {
+  const normalizedQuery = normalizeVanillaPackPath(query).trim();
+  if (normalizedQuery === "") return { filePaths: [], folderPaths: [], truncated: false };
+
+  const safeMaxResults = Math.max(1, Math.floor(Number.isFinite(maxResults) ? maxResults : 1000));
+  const filePaths: string[] = [];
+  const folderPaths: string[] = [];
+  const resultKeys = new Set<string>();
+  let truncated = false;
+
+  const addResult = (path: string, kind: "file" | "folder"): boolean => {
+    const resultKey = `${kind}\u0000${path}`;
+    if (resultKeys.has(resultKey)) return true;
+    if (resultKeys.size >= safeMaxResults) {
+      truncated = true;
+      return false;
+    }
+
+    resultKeys.add(resultKey);
+    if (kind === "file") filePaths.push(path);
+    else folderPaths.push(path);
+    return true;
+  };
+
+  forEachFrontCodedEntry(index.block, (filePath) => {
+    if (!includeFile(filePath)) return;
+
+    const segments = filePath.split("\\");
+    const fileName = segments.at(-1) ?? filePath;
+    if (fileName.includes(normalizedQuery) && !addResult(filePath, "file")) return false;
+
+    let folderPath = "";
+    for (let segmentIndex = 0; segmentIndex < segments.length - 1; segmentIndex++) {
+      folderPath = folderPath ? `${folderPath}\\${segments[segmentIndex]}` : segments[segmentIndex];
+      if (segments[segmentIndex].includes(normalizedQuery) && !addResult(folderPath, "folder")) return false;
+    }
+  });
+
+  return { filePaths, folderPaths, truncated };
 };
 
 /**

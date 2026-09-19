@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "2.26.1",
+  "version": "2.27.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "sideEffects": [
@@ -13,11 +13,13 @@
     "handsontable/styles/*.css"
   ],
   "scripts": {
-    "start": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start -- --mode development",
-    "dbclone": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start -- --mode development -testDBClone",
-    "package": "electron-forge package",
-    "make": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge make -- --mode production",
-    "publish": "electron-forge publish",
+    "build:sub": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp",
+    "verify:asset-host": "node scripts/verify-wh3-asset-host.cjs",
+    "start": "yarn build:sub && electron-forge start -- --mode development",
+    "dbclone": "yarn build:sub && electron-forge start -- --mode development -testDBClone",
+    "package": "yarn build:sub && yarn verify:asset-host && electron-forge package",
+    "make": "yarn build:sub && yarn verify:asset-host && electron-forge make -- --mode production",
+    "publish": "yarn build:sub && yarn verify:asset-host && electron-forge publish",
     "lint": "eslint --cache --cache-strategy content --cache-location .eslintcache \"src/**/*.{ts,tsx}\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -48,7 +50,8 @@
         "postMake": "require:./scripts/normalize-zip-paths.cjs"
       },
       "packagerConfig": {
-        "icon": "./src/assets/modmanager.ico"
+        "icon": "./src/assets/modmanager.ico",
+        "extraResource": "./tools/WH3AssetHost"
       },
       "publishers": [
         {
@@ -95,7 +98,7 @@
           "name": "@electron-forge/plugin-webpack",
           "config": {
             "mainConfig": "./webpack.main.config.js",
-            "devContentSecurityPolicy": "default-src 'self' 'unsafe-inline' data:; img-src 'self' data: whmm:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:",
+            "devContentSecurityPolicy": "default-src 'self' 'unsafe-inline' data:; img-src 'self' data: blob: whmm:; connect-src 'self' blob: whmm:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:",
             "renderer": {
               "config": "./webpack.renderer.config.js",
               "entryPoints": [
@@ -168,6 +171,7 @@
     "@types/react": "^18.0.14",
     "@types/react-dom": "^18.0.5",
     "@types/react-virtualized": "^9.22.0",
+    "@types/three": "^0.186.0",
     "@types/unzipper": "^0.10.11",
     "@types/winreg": "^1.2.31",
     "@typescript-eslint/eslint-plugin": "^8",
@@ -208,6 +212,7 @@
     "yauzl": "^2.10.0"
   },
   "resolutions": {
+    "@types/react": "18.3.31",
     "node-abi": "^4.26.0",
     "rollup": "npm:@rollup/wasm-node@4.59.0"
   },
@@ -221,6 +226,8 @@
     "@fortawesome/free-solid-svg-icons": "^6.2.0",
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@handsontable/react-wrapper": "^16.0.1",
+    "@headless-tree/core": "^1.7.0",
+    "@headless-tree/react": "^1.7.0",
     "@heroicons/react": "^2.0.13",
     "@mongodb-js/zstd": "^2.0.1",
     "@napi-rs/lzma": "^1.5.1",
@@ -287,6 +294,7 @@
     "reactflow": "^11.11.4",
     "semver": "^7.6.3",
     "stream-http": "^3.2.0",
+    "three": "^0.186.0",
     "tailwind-merge": "^2.2.2",
     "tailwindcss-animate": "^1.0.7",
     "unzipper": "^0.12.3",

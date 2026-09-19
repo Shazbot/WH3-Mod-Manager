@@ -3,6 +3,7 @@ import { Edge, Node } from "@xyflow/react";
 import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph, resolveRadioChoiceId } from "./types";
 import {
   substituteDeepCloneOptionValues,
+  substituteEditXmlOptionValues,
   substituteFilterOptionValues,
   substituteLocRuleValues,
   substituteTextFileRuleValues,
@@ -135,6 +136,13 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         textFileFormatter: data.textFileFormatter as SerializedNode["data"]["textFileFormatter"],
         ignoreFlowSourcePack: data.ignoreFlowSourcePack as boolean | undefined,
         fileOperations: (data.fileOperations || []) as SerializedNode["data"]["fileOperations"],
+        targetMode: data.targetMode as SerializedNode["data"]["targetMode"],
+        filePath: maybeString(data.filePath),
+        ignoreHierarchy: data.ignoreHierarchy as boolean | undefined,
+        locatorSteps: (data.locatorSteps || []) as SerializedNode["data"]["locatorSteps"],
+        action: data.action as SerializedNode["data"]["action"],
+        attributeEdits: (data.attributeEdits || []) as SerializedNode["data"]["attributeEdits"],
+        replacementXml: maybeString(data.replacementXml),
         selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
         flowOptionChecked: data.flowOptionChecked as boolean | undefined,
         flowOptionKind: data.flowOptionKind as SerializedNode["data"]["flowOptionKind"],
@@ -251,6 +259,8 @@ export const prepareGraphForExecution = ({
         "joinSeparator",
         "packName",
         "packedFileName",
+        "filePath",
+        "replacementXml",
       ];
 
       for (const fieldName of textFields) {
@@ -267,6 +277,13 @@ export const prepareGraphForExecution = ({
       if (
         node.type === "edittextfile" &&
         substituteTextFileRuleValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
+      }
+
+      if (
+        node.type === "editxmlfile" &&
+        substituteEditXmlOptionValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
       ) {
         modified = true;
       }

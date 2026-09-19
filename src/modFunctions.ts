@@ -20,28 +20,52 @@ const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s
 
 const wh3mmWorkshopId = "2845454582";
 
+export const WORKSHOP_METADATA_RETRY_DELAYS_MS = [5_000, 30_000] as const;
+
+export const getWorkshopMetadataRetryDelay = (retryIndex: number) => WORKSHOP_METADATA_RETRY_DELAYS_MS[retryIndex];
+
 export function fetchModData(
   ids: string[],
   cb: (modData: ModData) => void,
   log: (msg: string) => void,
   retryIndex = 0,
+  workerRetryIndex = 0,
 ) {
-  const joinedIds = ids.filter((id) => !isNaN(parseFloat(id))).join(",");
-  let hasTriggeredBatchFallback = false;
-  const fallbackToIndividualFetch = () => {
-    if (hasTriggeredBatchFallback) {
+  const workshopIds = ids.filter((id) => !isNaN(parseFloat(id)));
+  if (workshopIds.length === 0) return;
+
+  const joinedIds = workshopIds.join(",");
+  let gotModsData = false;
+  let hasHandledWorkerFailure = false;
+
+  const scheduleBatchRetry = (reason: string) => {
+    const retryDelay = getWorkshopMetadataRetryDelay(workerRetryIndex);
+    const attemptNumber = workerRetryIndex + 1;
+    const totalAttempts = WORKSHOP_METADATA_RETRY_DELAYS_MS.length + 1;
+
+    if (retryDelay === undefined) {
+      log(
+        `Workshop metadata unavailable for ${workshopIds.length} mod(s) after ${attemptNumber} attempt(s) ` +
+          `(${reason}); keeping local metadata.`,
+      );
       return;
     }
-    hasTriggeredBatchFallback = true;
 
-    if (ids.length <= 1 || retryIndex >= 3) {
-      return;
-    }
+    const nextAttemptNumber = attemptNumber + 1;
+    log(
+      `Workshop metadata unavailable for ${workshopIds.length} mod(s) (${reason}); ` +
+        `retrying in ${retryDelay / 1000}s (attempt ${nextAttemptNumber}/${totalAttempts}).`,
+    );
+    const retryTimer = setTimeout(() => {
+      fetchModData(workshopIds, cb, log, retryIndex, workerRetryIndex + 1);
+    }, retryDelay);
+    retryTimer.unref?.();
+  };
 
-    log(`Retrying workshop metadata fetch one item at a time for ids: ${joinedIds}`);
-    for (const workshopId of ids) {
-      fetchModData([workshopId], cb, log, retryIndex + 1);
-    }
+  const handleWorkerFailure = (reason: string) => {
+    if (hasHandledWorkerFailure || gotModsData) return;
+    hasHandledWorkerFailure = true;
+    scheduleBatchRetry(reason);
   };
 
   const emitWorkshopData = (
@@ -94,7 +118,6 @@ export function fetchModData(
     [gameToSteamId[appData.currentGame], "getModsData", joinedIds],
     {},
   );
-  let gotModsData = false;
   child.once("message", (modsData: ModsData) => {
     gotModsData = true;
     const workshopData = modsData.mods;
@@ -132,14 +155,10 @@ export function fetchModData(
     });
   });
   child.once("error", (error) => {
-    log(`Workshop metadata child process error for ids ${joinedIds}: ${error.message}`);
-    fallbackToIndividualFetch();
+    handleWorkerFailure(`process error: ${error.message}`);
   });
   child.once("exit", (code, signal) => {
-    if (!gotModsData) {
-      log(`Workshop metadata child exited before returning data for ids ${joinedIds} (code=${code}, signal=${signal})`);
-      fallbackToIndividualFetch();
-    }
+    if (!gotModsData) handleWorkerFailure(`worker exited with code=${code}, signal=${signal}`);
   });
 
   for (let i = 0; i < ids.length; i++) {
@@ -274,7 +293,7 @@ export function fetchModData(
           if (retryIndex < 3) {
             log(`Retrying fetching mod data for mod with id ${workshopId}, retry number ${retryIndex}`);
             await new Promise((resolve) => setTimeout(resolve, 1000));
-            fetchModData([workshopId], cb, log, retryIndex + 1);
+            fetchModData([workshopId], cb, log, retryIndex + 1, workerRetryIndex);
           }
         });
     }, i * 50);
@@ -312,7 +331,6 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   try {
     await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
     doesThumbnailExist = true;
-    // eslint-disable-next-line no-empty
   } catch {
     try {
       thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".jpg"));

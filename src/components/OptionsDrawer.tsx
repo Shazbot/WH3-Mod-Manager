@@ -22,6 +22,7 @@ import {
   setModdersPrefix,
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,
+  toggleCompressModsOnUpload,
   queueDataModsToEnableByName,
   createBisectedModListPresets,
   toggleIsCompatCheckingVanillaPacks,
@@ -152,6 +153,7 @@ const OptionsDrawer = memo(() => {
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const isRigidModelV2CompressionEnabled = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
+  const compressModsOnUpload = useAppSelector((state) => state.app.compressModsOnUpload);
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
   const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
@@ -1363,7 +1365,7 @@ const OptionsDrawer = memo(() => {
 
             {gameToSupportedGameOptions[currentGame].length > 0 && (
               <>
-                <h6 className="mt-10">{localized.forModders}</h6>
+                <h6 className="mt-10">{localized.gameStartParameters || "Game Start Parameters"}</h6>
                 <p className="mb-1 text-sm text-gray-500 dark:text-red-500">{localized.keepInSync}</p>
                 {gameToSupportedGameOptions[currentGame].includes("MakeUnitsGenerals") && (
                   <div className="flex items-center ml-1 mt-2">
@@ -1476,60 +1478,82 @@ const OptionsDrawer = memo(() => {
                     </Tooltip>
                   </label>
                 </div>
-                <div className="flex items-center ml-1 mt-2">
-                  <input
-                    className=""
-                    type="checkbox"
-                    id="toggleIsFeaturesForModdersEnabled"
-                    checked={!!isFeaturesForModdersEnabled}
-                    onChange={() => {
-                      dispatch(toggleIsFeaturesForModdersEnabled());
-                      const newValue = !isFeaturesForModdersEnabled;
-                      window.api?.syncIsFeaturesForModdersEnabled(newValue);
-                    }}
-                  ></input>
-                  <label className="ml-2" htmlFor="toggleIsFeaturesForModdersEnabled">
-                    <Tooltip
-                      placement="bottom"
-                      style="light"
-                      content={
-                        <>
-                          <div>
-                            {localized.featuresForModdersHelp ||
-                              "Enables features inside the Mod Manager intended for modders."}
-                          </div>
-                        </>
-                      }
-                    >
-                      {localized.featuresForModders || "Features For Modders"}
-                    </Tooltip>
-                  </label>
-                </div>
-                {isFeaturesForModdersEnabled && (
-                  <div className="ml-7 mt-3">
-                    <label
-                      className="block text-sm font-medium text-gray-900 dark:text-gray-100"
-                      htmlFor="moddersPrefix"
-                    >
-                      {localized.prefixForModders || "Prefix For Modders"}
-                    </label>
-                    <input
-                      id="moddersPrefix"
-                      type="text"
-                      value={moddersPrefix}
-                      onChange={(event) => {
-                        dispatch(setModdersPrefix(event.target.value));
-                        window.api?.syncModdersPrefix(event.target.value);
-                      }}
-                      className="mt-2 block w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    />
-                    <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
-                      {localized.prefixForModdersDescription ||
-                        "Use this prefix as default when auto-generating database keys and table names."}
-                    </p>
-                  </div>
-                )}
               </>
+            )}
+
+            <h6 className="mt-10">{localized.forModders}</h6>
+            <div className="flex items-center ml-1 mt-2">
+              <input
+                className=""
+                type="checkbox"
+                id="toggleIsFeaturesForModdersEnabled"
+                checked={!!isFeaturesForModdersEnabled}
+                onChange={() => {
+                  dispatch(toggleIsFeaturesForModdersEnabled());
+                  const newValue = !isFeaturesForModdersEnabled;
+                  window.api?.syncIsFeaturesForModdersEnabled(newValue);
+                }}
+              ></input>
+              <label className="ml-2" htmlFor="toggleIsFeaturesForModdersEnabled">
+                <Tooltip
+                  placement="bottom"
+                  style="light"
+                  content={
+                    <>
+                      <div>
+                        {localized.featuresForModdersHelp ||
+                          "Enables features inside the Mod Manager intended for modders."}
+                      </div>
+                    </>
+                  }
+                >
+                  {localized.featuresForModders || "Features For Modders"}
+                </Tooltip>
+              </label>
+            </div>
+            <label
+              className={
+                "ml-1 mt-3 flex items-start " +
+                (currentGame === "wh3" ? "cursor-pointer" : "cursor-not-allowed opacity-50")
+              }
+              htmlFor="compress-mods-on-upload"
+            >
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="compress-mods-on-upload"
+                checked={!!compressModsOnUpload}
+                disabled={currentGame !== "wh3"}
+                onChange={() => dispatch(toggleCompressModsOnUpload())}
+              />
+              <span className="ml-3">
+                <span className="block">{localized.compressModsOnUpload || "Compress mod on upload"}</span>
+                <span className="mt-1 block text-xs text-gray-400">
+                  {localized.compressModsOnUploadDescription ||
+                    "Compresses the pack before updating it on the Steam Workshop and backs up the original in whmm_backups."}
+                </span>
+              </span>
+            </label>
+            {isFeaturesForModdersEnabled && (
+              <div className="ml-7 mt-3">
+                <label className="block text-sm font-medium text-gray-900 dark:text-gray-100" htmlFor="moddersPrefix">
+                  {localized.prefixForModders || "Prefix For Modders"}
+                </label>
+                <input
+                  id="moddersPrefix"
+                  type="text"
+                  value={moddersPrefix}
+                  onChange={(event) => {
+                    dispatch(setModdersPrefix(event.target.value));
+                    window.api?.syncModdersPrefix(event.target.value);
+                  }}
+                  className="mt-2 block w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+                <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+                  {localized.prefixForModdersDescription ||
+                    "Use this prefix as default when auto-generating database keys and table names."}
+                </p>
+              </div>
             )}
 
             <div className="mt-4 max-w-md">

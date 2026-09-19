@@ -124,8 +124,6 @@ export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
 }
 
 export function compareModNames(firstName: string, secondName: string): number {
-  firstName = firstName.toLowerCase();
-  secondName = secondName.toLowerCase();
   const len = Math.max(firstName.length, secondName.length);
   for (let i = 0; i < len; i++) {
     if (i === firstName.length) return 1;

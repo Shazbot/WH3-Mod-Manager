@@ -229,6 +229,7 @@ describe("Unit Viewer UI", () => {
     await screen.findByText("Culture");
     expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
     expect(screen.getByTitle("Lord")).toHaveTextContent("L");
     expect(screen.getByTitle("Hero")).toHaveTextContent("H");
     const rosterButtons = screen.getAllByRole("button").filter((button) => button.title.startsWith("unit_"));
@@ -262,6 +263,85 @@ describe("Unit Viewer UI", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+  });
+
+  it("limits selection to one unit in visualize mode", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    expect(screen.getByText(/2 selected/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Comparison")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+  });
+
+  it("shows the wireframe option only in visualize mode and persists its choice", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+
+    const checkbox = screen.getByRole("checkbox", { name: "Show wireframe" });
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerShowWireframe).toBe(false);
+
+    const unsyncedAnimationsCheckbox = screen.getByRole("checkbox", { name: "Unsynced Anims" });
+    expect(unsyncedAnimationsCheckbox).toBeChecked();
+    fireEvent.click(unsyncedAnimationsCheckbox);
+    expect(unsyncedAnimationsCheckbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerUnsyncedAnimations).toBe(false);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(screen.queryByRole("checkbox", { name: "Show wireframe" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Unsynced Anims" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByRole("checkbox", { name: "Show wireframe" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Unsynced Anims" })).not.toBeChecked();
+  });
+
+  it("hides the unit card in visualize mode and persists its choice", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+
+    const cardCheckbox = screen.getByRole("checkbox", { name: "Show unit card" });
+    expect(cardCheckbox).toBeChecked();
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    await waitFor(() => expect(document.querySelector("article")).toBeInTheDocument());
+
+    fireEvent.click(cardCheckbox);
+    expect(cardCheckbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerShowUnitCard).toBe(false);
+    expect(document.querySelector("article")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(screen.queryByRole("checkbox", { name: "Show unit card" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByRole("checkbox", { name: "Show unit card" })).not.toBeChecked();
+  });
+
+  it("does not render the model preview in compare mode", async () => {
+    window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
+      success: true,
+      unit: { ...built.units.get("unit_a")!, variantMeshPath: "variant.unit.variantmeshdefinition" },
+      icons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    await screen.findByText("Alpha");
+    expect(screen.queryByRole("region", { name: "Unit render preview" })).not.toBeInTheDocument();
   });
 
   it("hides missile weapon sections when a unit has no missile weapons", async () => {
@@ -328,6 +408,7 @@ describe("Unit Viewer UI", () => {
   it("browses unit cards grouped by roster category and adds them to the comparison", async () => {
     renderViewer();
     await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
     const browser = await screen.findByRole("dialog", { name: "Unit card browser" });

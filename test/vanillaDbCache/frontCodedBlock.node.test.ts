@@ -5,6 +5,7 @@ import {
   buildFrontCodedBlock,
   findFrontCodedPrefixRange,
   findFrontCodedRank,
+  forEachFrontCodedEntryInRange,
   readAllFrontCodedEntries,
   readFrontCodedEntry,
   sharedPrefixLength,
@@ -92,6 +93,23 @@ describe("front coded block", () => {
     const block = blockOf(["alpha", "beta"]);
 
     expect(findFrontCodedPrefixRange(block, "gamma")).toEqual({ start: 2, end: 2 });
+  });
+
+  it("visits a rank range without losing the chunk prefix", () => {
+    const values = manyKeys();
+    const block = buildFrontCodedBlock(values);
+    const visited: string[] = [];
+
+    forEachFrontCodedEntryInRange(
+      block,
+      FRONT_CODED_CHECKPOINT_INTERVAL - 3,
+      FRONT_CODED_CHECKPOINT_INTERVAL + 3,
+      (value) => {
+        visited.push(value);
+      },
+    );
+
+    expect(visited).toEqual(values.slice(FRONT_CODED_CHECKPOINT_INTERVAL - 3, FRONT_CODED_CHECKPOINT_INTERVAL + 3));
   });
 
   it("handles an empty block", () => {

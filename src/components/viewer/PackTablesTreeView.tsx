@@ -1,14 +1,18 @@
 import React, { useContext, useEffect, useImperativeHandle, useMemo } from "react";
+import {
+  buildProxiedInstance,
+  hotkeysCoreFeature,
+  selectionFeature,
+  syncDataLoaderFeature,
+  type ItemInstance,
+} from "@headless-tree/core";
+import { useTree } from "@headless-tree/react";
 import { Modal } from "../../flowbite";
 import { setUnsavedPacksData } from "../../appSlice";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
-import TreeView, {
-  INode,
-  ITreeViewOnExpandProps,
-  ITreeViewOnSelectProps,
-  flattenTree,
-} from "react-accessible-treeview";
+import type { INode } from "react-accessible-treeview";
+import { AutoSizer, List, type ListRowProps } from "react-virtualized";
 import Select, { SingleValue } from "react-select";
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
@@ -42,6 +46,7 @@ import {
   LOAD_ORDER_RULES_PACKED_FILE_PATH,
   serializeLoadOrderRuleRows,
 } from "../../utility/loadOrderRulesFile";
+import type { VanillaPackTreeChild } from "../../vanillaPackIndex/format";
 
 type PackTablesTreeViewProps = {
   packPath: string;
@@ -57,6 +62,12 @@ type PackTablesTreeViewProps = {
   onOpenPackedFile: (selection: { filePath: string; packPath: string }, options?: { forceNewTab?: boolean }) => void;
 };
 
+type VanillaFileSearch = {
+  query: string;
+  filePaths: string[];
+  folderPaths: string[];
+  truncated: boolean;
+};
 type TreeData = { id?: string | number; name: string; children?: TreeData[]; isBranch?: boolean };
 type TableOption = { value: string; label: string };
 type TreeTab = "db" | "files";
@@ -64,12 +75,16 @@ type ExpandedIdsByTreeTab = Partial<Record<TreeTab, Array<INode["id"]>>>;
 type ContextMenuTreeTab = TreeTab | "empty";
 const PACK_TREE_INDENT_PX = 20;
 const PACK_TREE_MARKER_SIZE_CLASS = "w-4 h-4";
+const PACK_TREE_ROW_HEIGHT = 28;
+const PACK_TREE_OVERSCAN_ROWS = 8;
 type TreeContextTarget =
   | { kind: "db"; packPath: string; filePath: string; selection: DBTableSelection }
   | { kind: "file"; packPath: string; filePath: string }
   | { kind: "folder"; packPath: string; folderPath: string };
 
 const EMPTY_DELETED_PACK_FILE_PATHS: string[] = [];
+const normalizeVanillaTreePath = (path: string) => path.replaceAll("/", "\\").replace(/\\+$/, "").toLowerCase();
+const packPathKey = (value: string) => value.replaceAll("/", "\\").toLowerCase();
 
 export type ViewerPackTarget = { packPath: string; label: string };
 export type CopyIntoSource = {
@@ -136,30 +151,70 @@ const buildPathTree = (filePaths: string[], extraFolders: string[] = []): TreeDa
 
   const addPath = (path: string, isFolder: boolean) => {
     const segments = path.split(/[\\/]/).filter(Boolean);
+    if (segments.length === 0) return;
+
     let currentNode = root;
     let currentPath = "";
-    segments.forEach((segment, index) => {
+    for (const [index, segment] of segments.entries()) {
       currentPath = currentPath ? `${currentPath}\\${segment}` : segment;
+      const isLastSegment = index === segments.length - 1;
       let nextNode = currentNode.children?.find((child) => child.name === segment);
       if (!nextNode) {
         nextNode = { id: getStableTreeNodeId("files", currentPath, "path"), name: segment, children: [] };
         currentNode.children?.push(nextNode);
       }
-      if (isFolder && index === segments.length - 1) nextNode.isBranch = true;
+      if (isFolder && isLastSegment) nextNode.isBranch = true;
       currentNode = nextNode;
-    });
+    }
   };
 
   for (const filePath of filePaths) addPath(filePath, false);
   for (const folderPath of extraFolders) addPath(folderPath, true);
 
   const sortChildren = (node: TreeData) => {
-    node.children?.sort((first, second) => first.name.localeCompare(second.name));
+    node.children?.sort((first, second) => {
+      const firstIsFolder = first.isBranch || (first.children?.length ?? 0) > 0;
+      const secondIsFolder = second.isBranch || (second.children?.length ?? 0) > 0;
+      if (firstIsFolder !== secondIsFolder) return firstIsFolder ? -1 : 1;
+
+      return first.name.localeCompare(second.name);
+    });
     node.children?.forEach(sortChildren);
   };
 
   sortChildren(root);
   return root;
+};
+
+/**
+ * Headless Tree consumes a synchronous id-based loader. Keep the old flat node shape for the
+ * selection/context-menu code, but build it locally so the renderer no longer depends on the
+ * position-based ids from react-accessible-treeview.
+ */
+const flattenPackTree = (root: TreeData): INode[] => {
+  const flattened: INode[] = [];
+
+  const visit = (node: TreeData, parent: INode["id"] | null) => {
+    const nodeId = node.id ?? flattened.length;
+    const flatNode: INode = {
+      id: nodeId,
+      name: node.name,
+      parent,
+      children: [],
+      ...(node.isBranch ? { isBranch: true } : {}),
+    };
+    flattened.push(flatNode);
+
+    for (const child of node.children ?? []) {
+      const childId = visit(child, nodeId);
+      flatNode.children.push(childId);
+    }
+
+    return nodeId;
+  };
+
+  visit(root, null);
+  return flattened;
 };
 
 const buildNodeById = (data: INode[]) => {
@@ -256,6 +311,255 @@ const getNodeFullPath = (element: INode, nodeById: Map<INode["id"], INode>): str
   return segments.join("\\");
 };
 
+type HeadlessPackTreeItem = { node: INode };
+type HeadlessPackTreeNodeClick = {
+  event: React.MouseEvent<HTMLSpanElement>;
+  item: ItemInstance<HeadlessPackTreeItem>;
+  isBranch: boolean;
+  isExpanded: boolean;
+  setSelectedIds: (ids: Array<string | number>) => void;
+};
+type HeadlessVirtualTreeProps = {
+  treeTab: TreeTab;
+  data: INode[];
+  hiddenNodeIds: Set<INode["id"]>;
+  selectedIds: Array<string | number>;
+  expandedIds: Array<string | number>;
+  initialScrollTop: number;
+  ariaLabel: string;
+  onSelectedIdsChange: (ids: Array<string | number>) => void;
+  onExpandedIdsChange: (ids: Array<string | number>) => void;
+  onNodeClick: (node: INode, click: HeadlessPackTreeNodeClick) => void;
+  onBranchClick: (node: INode, item: ItemInstance<HeadlessPackTreeItem>, willExpand: boolean) => void;
+  onOpenInNewTab: (node: INode) => void;
+  onContextMenu: (event: React.MouseEvent<HTMLDivElement>, node: INode, isBranch: boolean) => void;
+  onScroll: (scrollTop: number) => void;
+  getNodeClassName: (node: INode, item: ItemInstance<HeadlessPackTreeItem>, isBranch: boolean) => string;
+  getNodeStyle: (node: INode, item: ItemInstance<HeadlessPackTreeItem>, isBranch: boolean) => React.CSSProperties;
+};
+
+/** The virtualized presentation layer for one of the pack trees. */
+const HeadlessVirtualTree = React.memo(
+  ({
+    treeTab,
+    data,
+    hiddenNodeIds,
+    selectedIds,
+    expandedIds,
+    initialScrollTop,
+    ariaLabel,
+    onSelectedIdsChange,
+    onExpandedIdsChange,
+    onNodeClick,
+    onBranchClick,
+    onOpenInNewTab,
+    onContextMenu,
+    onScroll,
+    getNodeClassName,
+    getNodeStyle,
+  }: HeadlessVirtualTreeProps) => {
+    const listRef = React.useRef<List | null>(null);
+    const scrollTopRef = React.useRef(initialScrollTop);
+    const nodeById = React.useMemo(() => {
+      const result = new Map<string, INode>();
+      for (const node of data) result.set(String(node.id), node);
+      return result;
+    }, [data]);
+    const visibleNodeIds = React.useMemo(() => {
+      const ids = new Set<string>();
+      for (const node of data) {
+        if (!hiddenNodeIds.has(node.id) || node.parent == null) ids.add(String(node.id));
+      }
+      return ids;
+    }, [data, hiddenNodeIds]);
+    const expandedItemKey = expandedIds.join("\u0001");
+    const selectedItemKey = selectedIds.join("\u0001");
+    // The content key keeps controlled arrays stable across parent renders without feeding the
+    // freshly-created array identity back into Headless Tree's controlled-state reconciliation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const expandedItemIds = React.useMemo(() => expandedIds.map(String), [expandedItemKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const selectedItemIds = React.useMemo(() => selectedIds.map(String), [selectedItemKey]);
+
+    const tree = useTree<HeadlessPackTreeItem>({
+      rootItemId: String(data[0]?.id ?? 0),
+      dataLoader: {
+        getItem: (itemId) => ({ node: nodeById.get(itemId) ?? data[0] }),
+        getChildren: (itemId) =>
+          (nodeById.get(itemId)?.children ?? []).map(String).filter((childId) => visibleNodeIds.has(childId)),
+      },
+      getItemName: (item) => item.getItemData().node.name,
+      isItemFolder: (item) => {
+        const node = item.getItemData().node;
+        return Boolean(node.isBranch || node.children.length > 0);
+      },
+      initialState: {
+        expandedItems: expandedItemIds,
+        selectedItems: selectedItemIds,
+      },
+      state: {
+        expandedItems: expandedItemIds,
+        selectedItems: selectedItemIds,
+      },
+      setExpandedItems: (nextIds) => {
+        const resolvedIds = typeof nextIds === "function" ? nextIds(tree.getState().expandedItems) : nextIds;
+        onExpandedIdsChange(resolvedIds.map((id) => nodeById.get(id)?.id ?? id));
+      },
+      setSelectedItems: (nextIds) => {
+        const resolvedIds = typeof nextIds === "function" ? nextIds(tree.getState().selectedItems) : nextIds;
+        onSelectedIdsChange(resolvedIds.map((id) => nodeById.get(id)?.id ?? id));
+      },
+      scrollToItem: (item) => {
+        const itemIndex = tree.getItems().findIndex((candidate) => candidate.getId() === item.getId());
+        if (itemIndex >= 0) listRef.current?.scrollToRow(itemIndex);
+      },
+      instanceBuilder: buildProxiedInstance,
+      features: [syncDataLoaderFeature, selectionFeature, hotkeysCoreFeature],
+    });
+
+    React.useEffect(() => {
+      tree.rebuildTree();
+    }, [tree, data, visibleNodeIds]);
+
+    React.useEffect(() => {
+      scrollTopRef.current = initialScrollTop;
+      listRef.current?.scrollToPosition(initialScrollTop);
+    }, [initialScrollTop]);
+
+    const items = tree.getItems();
+    const containerProps = tree.getContainerProps(ariaLabel);
+
+    const rowRenderer = ({ index, key, parent, style }: ListRowProps) => {
+      const item = items[index];
+      if (!item) return null;
+      const node = item.getItemData().node;
+      const isBranch = item.isFolder();
+      const itemProps = item.getProps();
+      const nodeStyle = getNodeStyle(node, item, isBranch);
+      const rowStyle = { ...style, ...nodeStyle };
+
+      return (
+        <div key={key} style={rowStyle}>
+          <div
+            {...itemProps}
+            onClick={(event) => {
+              event.stopPropagation();
+              item.setFocused();
+              if (isBranch) onBranchClick(node, item, !item.isExpanded());
+            }}
+            onContextMenu={(event) => {
+              event.stopPropagation();
+              onContextMenu(event, node, isBranch);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              item.setFocused();
+              if (isBranch) {
+                onBranchClick(node, item, !item.isExpanded());
+              } else {
+                onNodeClick(node, {
+                  event: event as unknown as React.MouseEvent<HTMLSpanElement>,
+                  item,
+                  isBranch,
+                  isExpanded: item.isExpanded(),
+                  setSelectedIds: (ids) => tree.setSelectedItems(ids.map(String)),
+                });
+              }
+            }}
+            className={getNodeClassName(node, item, isBranch)}
+          >
+            {isBranch ? (
+              <ArrowIconForHeadlessTree isOpen={item.isExpanded()} />
+            ) : (
+              <span
+                aria-hidden="true"
+                className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0 flex items-center justify-center`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-500/80" />
+              </span>
+            )}
+            <span
+              onClick={(event) => {
+                event.stopPropagation();
+                if (isBranch && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+                  item.setFocused();
+                  onBranchClick(node, item, !item.isExpanded());
+                } else {
+                  onNodeClick(node, {
+                    event,
+                    item,
+                    isBranch,
+                    isExpanded: item.isExpanded(),
+                    setSelectedIds: (ids) => tree.setSelectedItems(ids.map(String)),
+                  });
+                }
+              }}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                onOpenInNewTab(node);
+              }}
+              className="relative select-none whitespace-nowrap"
+              title={getNodeFullPath(node, nodeById as Map<INode["id"], INode>).replaceAll("\\", "/")}
+            >
+              {node.name}
+            </span>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div
+        {...containerProps}
+        className="h-full min-h-0 flex-1 overflow-hidden"
+        data-tree-tab={treeTab}
+        data-testid={`pack-tree-scroll-${treeTab}`}
+      >
+        <AutoSizer>
+          {({ height, width }) => (
+            <List
+              ref={listRef}
+              height={height}
+              width={width}
+              rowCount={items.length}
+              rowHeight={PACK_TREE_ROW_HEIGHT}
+              rowRenderer={rowRenderer}
+              overscanRowCount={PACK_TREE_OVERSCAN_ROWS}
+              // Keep scrolling uncontrolled. Passing the ref value as `scrollTop` makes
+              // react-virtualized treat its own scroll updates as stale controlled values and
+              // snap back to the last value React rendered (usually zero).
+              className="scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+              onScroll={({ scrollTop }) => {
+                scrollTopRef.current = scrollTop;
+                onScroll(scrollTop);
+              }}
+            />
+          )}
+        </AutoSizer>
+      </div>
+    );
+  },
+);
+
+const ArrowIconForHeadlessTree = ({ isOpen }: { isOpen: boolean }) => {
+  const baseClass = "arrow";
+  const classes = cx(
+    baseClass,
+    { [`${baseClass}--closed`]: !isOpen },
+    { [`${baseClass}--open`]: isOpen },
+    { "rotate-90": isOpen },
+    "w-4",
+    "h-4",
+  );
+  return (
+    <span className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0`}>
+      <IoMdArrowDropright size="100%" className={classes} />
+    </span>
+  );
+};
+
 const PackTablesTreeView = React.memo(
   React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
     const dispatch = useAppDispatch();
@@ -284,14 +588,22 @@ const PackTablesTreeView = React.memo(
     const [isLoadingNewTableOptions, setIsLoadingNewTableOptions] = React.useState(false);
     const [isCreatingNewTable, setIsCreatingNewTable] = React.useState(false);
     const pendingOpenTimeoutRef = React.useRef<number | null>(null);
-    /** A node the tree opened by itself, whose selection should not be read as a click on it. */
-    const autoOpenedDbNodeIdRef = React.useRef<INode["id"] | null>(null);
     const [dbSelectedNodeIds, setDbSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const [fileSelectedNodeIds, setFileSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const [createdFoldersByPack, setCreatedFoldersByPack] = React.useState<Record<string, string[]>>({});
     const [expandedIdsByPack, setExpandedIdsByPack] = React.useState<Record<string, ExpandedIdsByTreeTab>>({});
-    const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
-    const clearLabelSelectionModeTimeoutRef = React.useRef<number | null>(null);
+    const [vanillaFileTreeChildren, setVanillaFileTreeChildren] = React.useState<VanillaPackTreeChild[]>([]);
+    const [vanillaFileSearch, setVanillaFileSearch] = React.useState<VanillaFileSearch>({
+      query: "",
+      filePaths: [],
+      folderPaths: [],
+      truncated: false,
+    });
+    const vanillaFileTreeLoadedPrefixesRef = React.useRef(new Set<string>());
+    const vanillaFileTreeRequestsRef = React.useRef(new Map<string, Promise<void>>());
+    const vanillaFileTreeGenerationRef = React.useRef(0);
+    const vanillaFileSearchGenerationRef = React.useRef(0);
+    const treeScrollTopsRef = React.useRef<Partial<Record<TreeTab, number>>>({});
     const contextMenuRef = React.useRef<HTMLDivElement | null>(null);
     const deleteConfirmButtonRef = React.useRef<HTMLButtonElement | null>(null);
     const [isExportingSelection, setIsExportingSelection] = React.useState(false);
@@ -328,6 +640,98 @@ const PackTablesTreeView = React.memo(
       (state) => state.app.deletedPackFilePaths[packPath] ?? EMPTY_DELETED_PACK_FILE_PATHS,
     );
     const isVanillaPackOpen = packData ? vanillaPackNames.includes(packData.packName) : false;
+    const isVanillaDBPackOpen =
+      packData?.packName.toLowerCase() === (gameToPackWithDBTablesName[currentGame] || "db.pack").toLowerCase();
+    const normalizedFilter = props.tableFilter.toLowerCase().trim();
+
+    const loadVanillaFileTreeFolder = React.useCallback(
+      async (prefix: string): Promise<void> => {
+        if (!isVanillaDBPackOpen) return;
+        const getVanillaPackFileTree = window.api?.getVanillaPackFileTree;
+        if (!getVanillaPackFileTree) return;
+
+        const prefixKey = normalizeVanillaTreePath(prefix);
+        const requestGeneration = vanillaFileTreeGenerationRef.current;
+        if (vanillaFileTreeLoadedPrefixesRef.current.has(prefixKey)) return;
+
+        const inFlightRequest = vanillaFileTreeRequestsRef.current.get(prefixKey);
+        if (inFlightRequest) {
+          await inFlightRequest;
+          return;
+        }
+
+        const request = (async () => {
+          try {
+            const result = await getVanillaPackFileTree(packPath, prefixKey);
+            if (requestGeneration !== vanillaFileTreeGenerationRef.current || !result?.success) return;
+
+            vanillaFileTreeLoadedPrefixesRef.current.add(prefixKey);
+            const children = result.children ?? [];
+            setVanillaFileTreeChildren((previousChildren) => {
+              const childrenByPath = new Map(
+                previousChildren.map((child) => [normalizeVanillaTreePath(child.path), child]),
+              );
+              for (const child of children) {
+                const childKey = normalizeVanillaTreePath(child.path);
+                const previousChild = childrenByPath.get(childKey);
+                if (!previousChild || child.isBranch) childrenByPath.set(childKey, child);
+              }
+              return [...childrenByPath.values()];
+            });
+          } catch (error) {
+            console.error(`Could not load vanilla files under ${prefix || "the pack root"}:`, error);
+          }
+        })();
+
+        vanillaFileTreeRequestsRef.current.set(prefixKey, request);
+        try {
+          await request;
+        } finally {
+          if (vanillaFileTreeRequestsRef.current.get(prefixKey) === request) {
+            vanillaFileTreeRequestsRef.current.delete(prefixKey);
+          }
+        }
+      },
+      [isVanillaDBPackOpen, packPath],
+    );
+
+    useEffect(() => {
+      vanillaFileTreeGenerationRef.current += 1;
+      vanillaFileTreeLoadedPrefixesRef.current.clear();
+      vanillaFileTreeRequestsRef.current.clear();
+      setVanillaFileTreeChildren([]);
+      if (isVanillaDBPackOpen) void loadVanillaFileTreeFolder("");
+    }, [isVanillaDBPackOpen, loadVanillaFileTreeFolder, packPath]);
+
+    useEffect(() => {
+      const searchVanillaPackFiles = window.api?.searchVanillaPackFiles;
+      const searchGeneration = ++vanillaFileSearchGenerationRef.current;
+      setVanillaFileSearch({ query: "", filePaths: [], folderPaths: [], truncated: false });
+      if (!isVanillaDBPackOpen || normalizedFilter === "" || !searchVanillaPackFiles) return;
+
+      let isCurrent = true;
+      void (async () => {
+        try {
+          const result = await searchVanillaPackFiles(packPath, normalizedFilter);
+          if (!isCurrent || searchGeneration !== vanillaFileSearchGenerationRef.current || !result?.success) return;
+
+          setVanillaFileSearch({
+            query: normalizedFilter,
+            filePaths: result.filePaths ?? [],
+            folderPaths: result.folderPaths ?? [],
+            truncated: result.truncated ?? false,
+          });
+        } catch (error) {
+          if (isCurrent && searchGeneration === vanillaFileSearchGenerationRef.current) {
+            console.error(`Could not search vanilla files for ${normalizedFilter}:`, error);
+          }
+        }
+      })();
+
+      return () => {
+        isCurrent = false;
+      };
+    }, [isVanillaDBPackOpen, normalizedFilter, packPath]);
 
     const packFileNames = useMemo(() => {
       if (!packData) return [];
@@ -343,6 +747,29 @@ const PackTablesTreeView = React.memo(
         ]),
       );
     }, [deletedPackFilePaths, packData, unsavedFiles]);
+    const vanillaSearchFilePaths = useMemo(
+      () => (vanillaFileSearch.query === normalizedFilter ? vanillaFileSearch.filePaths : []),
+      [normalizedFilter, vanillaFileSearch],
+    );
+    const vanillaSearchFolderPaths = useMemo(
+      () => (vanillaFileSearch.query === normalizedFilter ? vanillaFileSearch.folderPaths : []),
+      [normalizedFilter, vanillaFileSearch],
+    );
+    const vanillaFilePaths = useMemo(
+      () => vanillaFileTreeChildren.filter((child) => !child.isBranch).map((child) => child.path),
+      [vanillaFileTreeChildren],
+    );
+    const vanillaFolderPaths = useMemo(
+      () => vanillaFileTreeChildren.filter((child) => child.isBranch).map((child) => child.path),
+      [vanillaFileTreeChildren],
+    );
+    const filePackFileNames = useMemo(
+      () =>
+        Array.from(
+          new Set([...packFileNames.filter((filePath) => !isDBPackedFileName(filePath)), ...vanillaFilePaths]),
+        ).toSorted((first, second) => first.localeCompare(second)),
+      [packFileNames, vanillaFilePaths],
+    );
 
     const vanillaTableOptions = useMemo<TableOption[]>(
       () =>
@@ -367,7 +794,7 @@ const PackTablesTreeView = React.memo(
 
     const dbData = useMemo(() => {
       if (!packData) {
-        return flattenTree({ name: "", children: [] });
+        return flattenPackTree({ name: "", children: [] });
       }
 
       const root: TreeData = { id: 0, name: "", children: [] };
@@ -388,34 +815,57 @@ const PackTablesTreeView = React.memo(
         });
       }
 
-      return flattenTree(root);
+      return flattenPackTree(root);
     }, [packData, packFileNames]);
 
     const fileData = useMemo(() => {
       if (!packData) {
-        return flattenTree({ name: "", children: [] });
+        return flattenPackTree({ name: "", children: [] });
       }
 
-      const fileNames = new Set<string>();
-      for (const packFileName of packFileNames) {
-        if (!isDBPackedFileName(packFileName)) {
-          fileNames.add(packFileName);
-        }
-      }
-
-      return flattenTree(
+      return flattenPackTree(
         buildPathTree(
-          Array.from(fileNames).toSorted((first, second) => first.localeCompare(second)),
-          createdFoldersByPack[packPath] ?? [],
+          [...filePackFileNames, ...vanillaSearchFilePaths],
+          [...(createdFoldersByPack[packPath] ?? []), ...vanillaFolderPaths, ...vanillaSearchFolderPaths],
         ),
       );
-    }, [createdFoldersByPack, packData, packFileNames, packPath]);
+    }, [
+      createdFoldersByPack,
+      filePackFileNames,
+      vanillaFolderPaths,
+      vanillaSearchFilePaths,
+      vanillaSearchFolderPaths,
+      packData,
+      packPath,
+    ]);
 
     const dbNodeById = useMemo(() => buildNodeById(dbData), [dbData]);
     const dbDefaultExpandedIds = useMemo(() => getAutoExpandedDBGroupIds(dbData), [dbData]);
     const fileNodeById = useMemo(() => buildNodeById(fileData), [fileData]);
+    const vanillaSearchExpandedFileNodeIds = useMemo(() => {
+      if (vanillaSearchFilePaths.length === 0 && vanillaSearchFolderPaths.length === 0) return [];
+
+      const expandedIds = new Set<INode["id"]>();
+      for (const searchPath of [...vanillaSearchFilePaths, ...vanillaSearchFolderPaths]) {
+        const segments = searchPath.split(/[\\/]/).filter(Boolean);
+        let folderPath = "";
+        for (let segmentIndex = 0; segmentIndex < segments.length - 1; segmentIndex++) {
+          folderPath = folderPath ? `${folderPath}\\${segments[segmentIndex]}` : segments[segmentIndex];
+          const nodeId = getStableTreeNodeId("files", folderPath, "path");
+          if (fileNodeById.has(nodeId)) expandedIds.add(nodeId);
+        }
+      }
+      return [...expandedIds];
+    }, [fileNodeById, vanillaSearchFilePaths, vanillaSearchFolderPaths]);
+    const expandedFileNodeIds = useMemo(() => {
+      const expandedIds = new Set(expandedIdsByPack[packPath]?.files ?? []);
+      vanillaSearchExpandedFileNodeIds.forEach((id) => expandedIds.add(id));
+      return [...expandedIds].filter((id) => fileNodeById.has(id));
+    }, [expandedIdsByPack, fileNodeById, packPath, vanillaSearchExpandedFileNodeIds]);
     const hasDBTables = dbData.some((node) => node.id !== 0);
-    const hasFiles = fileData.some((node) => node.id !== 0);
+    // The root request is asynchronous. Keep the tab present while it is loading so a large
+    // vanilla pack never looks as though it has no files, even before its first folder arrives.
+    const hasFiles = fileData.some((node) => node.id !== 0) || isVanillaDBPackOpen;
     const visibleActiveTreeTab: TreeTab | null =
       (activeTreeTab === "db" && hasDBTables) || (activeTreeTab === "files" && hasFiles)
         ? activeTreeTab
@@ -459,8 +909,6 @@ const PackTablesTreeView = React.memo(
       );
     }, [fileData]);
 
-    const normalizedFilter = props.tableFilter.toLowerCase().trim();
-
     const dbHiddenNodeIds = useMemo(
       () => buildHiddenNodeIds(dbData, dbNodeById, normalizedFilter),
       [dbData, dbNodeById, normalizedFilter],
@@ -470,75 +918,110 @@ const PackTablesTreeView = React.memo(
       [fileData, fileNodeById, normalizedFilter],
     );
 
-    const getDBSelectionForElement = (element: INode) => {
-      if (element.children && element.children.length > 0) return;
+    const getDBSelectionForElement = React.useCallback(
+      (element: INode) => {
+        if (element.children && element.children.length > 0) return;
 
-      // Root-level DB entries (e.g. unsaved files) may contain the full path in the node name.
-      const rootLevelTable = parseDBTablePath(element.name);
-      if (rootLevelTable) {
+        // Root-level DB entries (e.g. unsaved files) may contain the full path in the node name.
+        const rootLevelTable = parseDBTablePath(element.name);
+        if (rootLevelTable) {
+          return {
+            packPath: packData!.packPath,
+            dbFolder: rootLevelTable.dbFolder,
+            dbName: rootLevelTable.dbName,
+            dbSubname: rootLevelTable.dbSubname,
+          } as DBTableSelection;
+        }
+
+        if (!element.parent) return;
+        const parentLeaf = dbNodeById.get(element.parent);
+        if (!parentLeaf || !parentLeaf.name) return;
+        const { dbFolder, dbName } = parseDBGroupName(parentLeaf.name);
         return {
           packPath: packData!.packPath,
-          dbFolder: rootLevelTable.dbFolder,
-          dbName: rootLevelTable.dbName,
-          dbSubname: rootLevelTable.dbSubname,
+          dbFolder,
+          dbName,
+          dbSubname: element.name,
         } as DBTableSelection;
-      }
-
-      if (!element.parent) return;
-      const parentLeaf = dbNodeById.get(element.parent);
-      if (!parentLeaf || !parentLeaf.name) return;
-      const { dbFolder, dbName } = parseDBGroupName(parentLeaf.name);
-      return {
-        packPath: packData!.packPath,
-        dbFolder,
-        dbName,
-        dbSubname: element.name,
-      } as DBTableSelection;
-    };
+      },
+      [dbNodeById, packData],
+    );
 
     const getPackedFilePathForElement = (element: INode) => {
       if ((element.children && element.children.length > 0) || element.isBranch) return;
       return getNodeFullPath(element, fileNodeById);
     };
 
+    const selectedDBExportPaths = useMemo(() => {
+      if (!packData) return [];
+
+      const pathsByKey = new Map<string, string>();
+      const addPath = (path: string | undefined) => {
+        if (!path) return;
+        const key = packPathKey(path);
+        if (!pathsByKey.has(key)) pathsByKey.set(key, path);
+      };
+
+      for (const selectedId of dbSelectedNodeIds) {
+        const node = dbNodeById.get(selectedId);
+        if (!node) continue;
+        const leafIds = node.children && node.children.length > 0 ? getDescendantLeafIds(node, dbNodeById) : [node.id];
+        for (const leafId of leafIds) {
+          const leaf = dbNodeById.get(leafId);
+          const selection = leaf ? getDBSelectionForElement(leaf) : undefined;
+          addPath(selection ? getDBPackedFilePath(selection) : undefined);
+        }
+      }
+
+      return [...pathsByKey.values()];
+    }, [dbNodeById, dbSelectedNodeIds, getDBSelectionForElement, packData]);
+
+    const selectedFileExportPaths = useMemo(() => {
+      const pathsByKey = new Map<string, string>();
+      const addPath = (path: string | undefined) => {
+        if (!path) return;
+        const key = packPathKey(path);
+        if (!pathsByKey.has(key)) pathsByKey.set(key, path);
+      };
+
+      for (const selectedId of fileSelectedNodeIds) {
+        const node = fileNodeById.get(selectedId);
+        if (!node) continue;
+        const leafIds =
+          node.children && node.children.length > 0 ? getDescendantLeafIds(node, fileNodeById) : [node.id];
+        for (const leafId of leafIds) {
+          const leaf = fileNodeById.get(leafId);
+          addPath(leaf ? getNodeFullPath(leaf, fileNodeById) : undefined);
+        }
+      }
+
+      return [...pathsByKey.values()];
+    }, [fileNodeById, fileSelectedNodeIds]);
+
+    // Folder context menus used to scan every packed path while opening. Build only descendant
+    // counts when pack data changes so right-clicking a large folder only does a map lookup.
+    const packFileDescendantCountsByFolderKey = useMemo(() => {
+      const descendantCountsByFolderKey = new Map<string, number>();
+
+      for (const filePath of packFileNames) {
+        const segments = filePath.replaceAll("/", "\\").split("\\").filter(Boolean);
+        let folderPath = "";
+        for (let index = 0; index < segments.length - 1; index += 1) {
+          folderPath = folderPath ? `${folderPath}\\${segments[index]}` : segments[index];
+          const key = packPathKey(folderPath);
+          descendantCountsByFolderKey.set(key, (descendantCountsByFolderKey.get(key) ?? 0) + 1);
+        }
+      }
+
+      return descendantCountsByFolderKey;
+    }, [packFileNames]);
+
     const getContextTargetPaths = () => {
       if (!packData) return [];
 
       const treeTab =
         contextMenu?.treeTab === "db" || contextMenu?.treeTab === "files" ? contextMenu.treeTab : visibleActiveTreeTab;
-      const pathsByKey = new Map<string, string>();
-      const addPath = (path: string | undefined) => {
-        if (!path) return;
-        const key = path.replaceAll("/", "\\").toLowerCase();
-        if (!pathsByKey.has(key)) pathsByKey.set(key, path);
-      };
-
-      if (treeTab === "db") {
-        for (const selectedId of dbSelectedNodeIds) {
-          const node = dbNodeById.get(selectedId);
-          if (!node) continue;
-          const leafIds =
-            node.children && node.children.length > 0 ? getDescendantLeafIds(node, dbNodeById) : [node.id];
-          for (const leafId of leafIds) {
-            const leaf = dbNodeById.get(leafId);
-            const selection = leaf ? getDBSelectionForElement(leaf) : undefined;
-            addPath(selection ? getDBPackedFilePath(selection) : undefined);
-          }
-        }
-      } else if (treeTab === "files") {
-        for (const selectedId of fileSelectedNodeIds) {
-          const node = fileNodeById.get(selectedId);
-          if (!node) continue;
-          const leafIds =
-            node.children && node.children.length > 0 ? getDescendantLeafIds(node, fileNodeById) : [node.id];
-          for (const leafId of leafIds) {
-            const leaf = fileNodeById.get(leafId);
-            addPath(leaf ? getNodeFullPath(leaf, fileNodeById) : undefined);
-          }
-        }
-      }
-
-      const selectedPaths = [...pathsByKey.values()];
+      const selectedPaths = treeTab === "db" ? selectedDBExportPaths : selectedFileExportPaths;
       const clickedPath =
         contextMenu?.target?.kind === "folder"
           ? contextMenu.target.folderPath
@@ -558,67 +1041,51 @@ const PackTablesTreeView = React.memo(
         clickedTargetIsSelected && selectedPaths.length > 0 ? selectedPaths : clickedPath ? [clickedPath] : [];
       const expandedPaths = new Map<string, string>();
       for (const path of pathsToUse) {
-        const key = path.replaceAll("/", "\\").toLowerCase();
+        const key = packPathKey(path);
         const isClickedFolder = contextMenu?.target?.kind === "folder" && key === clickedPathKey;
         const descendants = isClickedFolder
-          ? packFileNames.filter((candidate) => {
-              const candidateKey = candidate.replaceAll("/", "\\").toLowerCase();
-              return candidateKey.startsWith(`${key}\\`);
-            })
+          ? packFileNames.filter((candidate) => packPathKey(candidate).startsWith(`${key}\\`))
           : [];
         if (isClickedFolder && descendants.length === 0) continue;
         for (const expandedPath of descendants.length > 0 ? descendants : [path]) {
-          const expandedKey = expandedPath.replaceAll("/", "\\").toLowerCase();
+          const expandedKey = packPathKey(expandedPath);
           if (!expandedPaths.has(expandedKey)) expandedPaths.set(expandedKey, expandedPath);
         }
       }
       return [...expandedPaths.values()];
     };
 
-    const selectedExportPaths = useMemo(
-      () => getContextTargetPaths(),
-      // The selection expansion intentionally follows the context-menu tab and clicked target.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [
-        contextMenu,
-        dbNodeById,
-        dbSelectedNodeIds,
-        fileNodeById,
-        fileSelectedNodeIds,
-        packData,
-        packFileNames,
-        visibleActiveTreeTab,
-      ],
-    );
+    const contextTargetPathCount = useMemo(() => {
+      if (!contextMenu || !packData) return 0;
 
-    const addIdsToSelection = (
-      idsToAdd: Array<string | number>,
-      setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
-    ) => {
-      if (idsToAdd.length === 0) return;
-      setSelectedNodeIds((prevSelectedIds) => {
-        const nextSelectedIds = new Set(prevSelectedIds);
-        idsToAdd.forEach((id) => nextSelectedIds.add(id));
-        return [...nextSelectedIds];
-      });
-    };
+      const treeTab =
+        contextMenu.treeTab === "db" || contextMenu.treeTab === "files" ? contextMenu.treeTab : visibleActiveTreeTab;
+      const selectedPaths = treeTab === "db" ? selectedDBExportPaths : selectedFileExportPaths;
+      const clickedTarget = contextMenu.target;
+      const clickedPath =
+        clickedTarget?.kind === "folder"
+          ? clickedTarget.folderPath
+          : clickedTarget
+            ? clickedTarget.filePath
+            : undefined;
+      if (!clickedPath) return selectedPaths.length;
 
-    const toggleIdsInSelection = (
-      idsToToggle: Array<string | number>,
-      setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
-    ) => {
-      if (idsToToggle.length === 0) return;
-      setSelectedNodeIds((prevSelectedIds) => {
-        const nextSelectedIds = new Set(prevSelectedIds);
-        const allAlreadySelected = idsToToggle.every((id) => nextSelectedIds.has(id));
-        if (allAlreadySelected) {
-          idsToToggle.forEach((id) => nextSelectedIds.delete(id));
-        } else {
-          idsToToggle.forEach((id) => nextSelectedIds.add(id));
-        }
-        return [...nextSelectedIds];
+      const clickedPathKey = packPathKey(clickedPath);
+      const clickedTargetIsSelected = selectedPaths.some((path) => {
+        const key = packPathKey(path);
+        return key === clickedPathKey || (clickedTarget?.kind === "folder" && key.startsWith(`${clickedPathKey}\\`));
       });
-    };
+      if (clickedTargetIsSelected && selectedPaths.length > 0) return selectedPaths.length;
+      if (clickedTarget?.kind === "folder") return packFileDescendantCountsByFolderKey.get(clickedPathKey) ?? 0;
+      return 1;
+    }, [
+      contextMenu,
+      packData,
+      packFileDescendantCountsByFolderKey,
+      selectedDBExportPaths,
+      selectedFileExportPaths,
+      visibleActiveTreeTab,
+    ]);
 
     const cancelPendingOpen = () => {
       if (pendingOpenTimeoutRef.current == null) return;
@@ -633,9 +1100,7 @@ const PackTablesTreeView = React.memo(
      * element with nothing to open - a group - leaves the queue alone, because selecting a group is
      * how expanding one gets here, and that expansion may have just queued its lone table.
      *
-     * `alsoSelect` moves the tree's selection onto the element as it opens. Done here rather than at
-     * the call site because the tree fires its own onSelect from an effect, which lands first and
-     * would put the selection back where the click was.
+     * `alsoSelect` moves the tree's selection onto the element as it opens.
      */
     const scheduleOpenForElement = (
       element: INode,
@@ -649,11 +1114,6 @@ const PackTablesTreeView = React.memo(
         pendingOpenTimeoutRef.current = window.setTimeout(() => {
           pendingOpenTimeoutRef.current = null;
           if (alsoSelect) {
-            // Selecting it feeds back in as another onSelect for this node. It is already opening,
-            // so mark it for onDBTreeSelect to let through without opening it a second time, and
-            // treat the events as one plain selection so they do not pick the group back up.
-            autoOpenedDbNodeIdRef.current = element.id;
-            beginSingleLabelSelection();
             setDbSelectedNodeIds([element.id as string | number]);
           }
           props.onOpenDBTable(dbSelection);
@@ -705,16 +1165,25 @@ const PackTablesTreeView = React.memo(
      */
     const handleTreeExpand = (
       treeTab: TreeTab,
-      expansionProps: ITreeViewOnExpandProps,
+      element: INode,
+      willExpand: boolean,
       nodeById: Map<INode["id"], INode>,
     ) => {
-      const nextExpandedIds = new Set(expansionProps.treeState.expandedIds);
-      if (expansionProps.isExpanded) {
-        for (const branchId of getSingleChildBranchIds(expansionProps.element, nodeById)) {
-          nextExpandedIds.add(branchId);
+      const savedIds = expandedIdsByPack[packPath]?.[treeTab];
+      const nextExpandedIds = new Set(
+        savedIds ?? (treeTab === "db" ? dbDefaultExpandedIds : vanillaSearchExpandedFileNodeIds),
+      );
+      if (willExpand) {
+        nextExpandedIds.add(element.id);
+        if (treeTab === "files" && isVanillaDBPackOpen) {
+          void loadVanillaFileTreeFolder(getNodeFullPath(element, nodeById));
         }
+        for (const branchId of getSingleChildBranchIds(element, nodeById)) nextExpandedIds.add(branchId);
+      } else {
+        nextExpandedIds.delete(element.id);
       }
 
+      openLoneChildOnExpand(element, willExpand, treeTab, nodeById);
       const nextIds = [...nextExpandedIds];
       setExpandedIdsByPack((currentByPack) => {
         const currentPack = currentByPack[packPath];
@@ -733,70 +1202,38 @@ const PackTablesTreeView = React.memo(
       });
     };
 
-    /**
-     * Marks the select events that follow as belonging to one plain click.
-     *
-     * Cleared on a timeout rather than by the handler, because a single click can produce several
-     * select events - one for the node picked up, one for each node put down - and they arrive from
-     * an effect, after this returns. Clearing on the first event left the rest to be treated as if
-     * the tree had selected them on its own.
-     */
-    const beginSingleLabelSelection = () => {
-      lastLabelSelectionModeRef.current = "single";
-      if (clearLabelSelectionModeTimeoutRef.current != null) {
-        window.clearTimeout(clearLabelSelectionModeTimeoutRef.current);
-      }
-      clearLabelSelectionModeTimeoutRef.current = window.setTimeout(() => {
-        clearLabelSelectionModeTimeoutRef.current = null;
-        lastLabelSelectionModeRef.current = null;
-      }, 0);
-    };
-
-    /**
-     * Folds one of the tree's select events into our own selection state.
-     *
-     * A plain click means exactly the clicked node, so it replaces the selection and the deselect
-     * events that come with it are ignored - taking `element.id` from one of those would select the
-     * node being left behind.
-     *
-     * Only when we did not originate the click do we mirror the tree's own set, which is how
-     * keyboard selection arrives. That set is additive: the grid runs with multiSelect on, so the
-     * library's plain select adds rather than replaces, and adopting it wholesale is how rows that
-     * were merely passed through stay highlighted.
-     */
-    const applySelectionFromTree = (
-      selectionProps: ITreeViewOnSelectProps,
+    const handleHeadlessNodeClick = (
+      treeTab: TreeTab,
+      element: INode,
+      click: HeadlessPackTreeNodeClick,
+      selectedIds: Array<string | number>,
       setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
+      nodeById: Map<INode["id"], INode>,
     ) => {
-      if (lastLabelSelectionModeRef.current === "single") {
-        if (selectionProps.isSelected) {
-          setSelectedNodeIds([selectionProps.element.id as string | number]);
+      const { event } = click;
+      if (event.shiftKey || event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        cancelPendingOpen();
+        const ids = click.isBranch ? getDescendantLeafIds(element, nodeById) : [element.id as string | number];
+        const nextIds = new Set(selectedIds);
+        if (event.ctrlKey || event.metaKey) {
+          ids.forEach((id) => (nextIds.has(id) ? nextIds.delete(id) : nextIds.add(id)));
+        } else {
+          ids.forEach((id) => nextIds.add(id));
         }
+        const resolvedIds = [...nextIds];
+        click.setSelectedIds(resolvedIds);
+        setSelectedNodeIds(resolvedIds);
         return;
       }
-      if (lastLabelSelectionModeRef.current != null) return;
 
-      setSelectedNodeIds([...selectionProps.treeState.selectedIds]);
-    };
-
-    const onDBTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
-      applySelectionFromTree(selectionProps, setDbSelectedNodeIds);
-
-      if (!selectionProps.isSelected) return;
-      if (autoOpenedDbNodeIdRef.current === selectionProps.element.id) {
-        // This selection is the auto-open moving the highlight onto the table it just opened, not a
-        // click on it. Opening again here would read as a second click and land in a new tab.
-        autoOpenedDbNodeIdRef.current = null;
-        return;
-      }
-      scheduleOpenForElement(selectionProps.element, "db");
-    };
-
-    const onFileTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
-      applySelectionFromTree(selectionProps, setFileSelectedNodeIds);
-
-      if (!packData || !selectionProps.isSelected) return;
-      scheduleOpenForElement(selectionProps.element, "files");
+      if (click.isBranch) return;
+      const selectedId = element.id as string | number;
+      click.setSelectedIds([selectedId]);
+      setSelectedNodeIds([selectedId]);
+      // Clicking an already selected leaf still opens it again, which is important for flows whose
+      // graph was replaced in the editor between clicks.
+      scheduleOpenForElement(element, treeTab);
     };
 
     const handleOpenInNewTab = (element: INode, treeTab: "db" | "files") => {
@@ -829,40 +1266,9 @@ const PackTablesTreeView = React.memo(
         if (pendingOpenTimeoutRef.current != null) {
           window.clearTimeout(pendingOpenTimeoutRef.current);
         }
-        if (clearLabelSelectionModeTimeoutRef.current != null) {
-          window.clearTimeout(clearLabelSelectionModeTimeoutRef.current);
-        }
       };
     }, []);
 
-    const ArrowIcon = ({ isOpen, className }: { isOpen: boolean; className: string }) => {
-      const baseClass = "arrow";
-      const classes = cx(
-        baseClass,
-        { [`${baseClass}--closed`]: !isOpen },
-        { [`${baseClass}--open`]: isOpen },
-        { [`rotate-90`]: isOpen },
-        className,
-        "w-4",
-        "h-4",
-      );
-      return (
-        <span className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0`}>
-          <IoMdArrowDropright size={"100%"} className={classes} />
-        </span>
-      );
-    };
-
-    const isTreeNodeFiltered = (element: INode, treeTab: "db" | "files"): boolean => {
-      if (normalizedFilter === "") return false;
-      return treeTab === "db" ? dbHiddenNodeIds.has(element.id) : fileHiddenNodeIds.has(element.id);
-    };
-
-    const packPathKey = (value: string) => value.replaceAll("/", "\\").toLowerCase();
-    const filePackFileNames = useMemo(
-      () => packFileNames.filter((filePath) => !isDBPackedFileName(filePath)),
-      [packFileNames],
-    );
     const folderPathKeys = useMemo(
       () =>
         new Set([...getPackFolderPaths(filePackFileNames), ...(createdFoldersByPack[packPath] ?? [])].map(packPathKey)),
@@ -909,7 +1315,7 @@ const PackTablesTreeView = React.memo(
 
     const handleCopyPath = async () => {
       const pathToCopy =
-        contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : selectedExportPaths.join("\n");
+        contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : getContextTargetPaths().join("\n");
       if (!pathToCopy) return;
       await copyTextToClipboard(pathToCopy);
       setContextMenu(null);
@@ -953,6 +1359,7 @@ const PackTablesTreeView = React.memo(
     };
 
     const handleDeleteRequest = () => {
+      const selectedExportPaths = getContextTargetPaths();
       if (selectedExportPaths.length === 0 || isVanillaPackOpen) return;
       setContextMenu(null);
       setDeleteConfirm(selectedExportPaths);
@@ -1006,6 +1413,7 @@ const PackTablesTreeView = React.memo(
     }, [deleteConfirm]);
 
     const handleRenameRequest = (mode: "rename" | "move") => {
+      const selectedExportPaths = getContextTargetPaths();
       if (selectedExportPaths.length === 0 || isVanillaPackOpen) return;
       setContextMenu(null);
       setRenameRequest({ mode, paths: selectedExportPaths });
@@ -1224,6 +1632,7 @@ const PackTablesTreeView = React.memo(
     };
 
     const handleExportSelection = async () => {
+      const selectedExportPaths = getContextTargetPaths();
       if (selectedExportPaths.length === 0 || isExportingSelection || isExportingWholePack) return;
 
       setContextMenu(null);
@@ -1561,179 +1970,121 @@ const PackTablesTreeView = React.memo(
       selectedIds: Array<string | number>,
       setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
       nodeById: Map<INode["id"], INode>,
-      onSelect: (selectionProps: ITreeViewOnSelectProps) => void,
-      defaultExpandedIds?: Array<string | number>,
-    ) => (
-      <TreeView
-        key={`${treeTab}|${packPath}|${JSON.stringify(data.map((node) => node.id))}`}
-        data={data}
-        aria-label={
-          treeTab === "db"
-            ? localized.viewerDbFilesTree || "DB files tree"
-            : localized.viewerPackedFilesTree || "Packed files tree"
+      defaultExpandedIds: Array<string | number> = [],
+    ) => {
+      const savedExpandedIds = expandedIdsByPack[packPath]?.[treeTab];
+      const effectiveExpandedIds =
+        treeTab === "files"
+          ? expandedFileNodeIds
+          : (savedExpandedIds ?? defaultExpandedIds).filter((id) => nodeById.has(id));
+
+      const handleExpandedIdsChange = (nextIds: Array<string | number>) => {
+        const currentIds = savedExpandedIds ?? defaultExpandedIds;
+        const addedId = nextIds.find((id) => !currentIds.includes(id));
+        const removedId = currentIds.find((id) => !nextIds.includes(id));
+        if (addedId != null && nodeById.has(addedId)) {
+          handleTreeExpand(treeTab, nodeById.get(addedId)!, true, nodeById);
+          return;
         }
-        defaultExpandedIds={defaultExpandedIds}
-        expandedIds={expandedIdsByPack[packPath]?.[treeTab]?.filter((id) => nodeById.has(id))}
-        onExpand={(expansionProps) => handleTreeExpand(treeTab, expansionProps, nodeById)}
-        multiSelect={true}
-        clickAction="EXCLUSIVE_SELECT"
-        selectedIds={selectedIds}
-        onSelect={onSelect}
-        nodeRenderer={({
-          element,
-          isBranch,
-          isExpanded,
-          isSelected,
-          isDisabled,
-          getNodeProps,
-          level,
-          handleExpand,
-          handleSelect,
-        }) => {
-          const handleLabelClick = (e: React.MouseEvent<HTMLSpanElement>) => {
-            e.stopPropagation();
-            if (e.shiftKey) {
-              lastLabelSelectionModeRef.current = "shift";
-              e.preventDefault();
-              if (pendingOpenTimeoutRef.current != null) {
-                window.clearTimeout(pendingOpenTimeoutRef.current);
-                pendingOpenTimeoutRef.current = null;
-              }
+        if (removedId != null && nodeById.has(removedId)) {
+          handleTreeExpand(treeTab, nodeById.get(removedId)!, false, nodeById);
+          return;
+        }
+        setExpandedIdsByPack((currentByPack) => ({
+          ...currentByPack,
+          [packPath]: {
+            ...currentByPack[packPath],
+            [treeTab]: nextIds,
+          },
+        }));
+      };
 
-              const idsToSelect = isBranch ? getDescendantLeafIds(element, nodeById) : [element.id as string | number];
-              addIdsToSelection(idsToSelect, setSelectedNodeIds);
-              lastLabelSelectionModeRef.current = null;
-              return;
-            }
-
-            if (e.ctrlKey || e.metaKey) {
-              lastLabelSelectionModeRef.current = "ctrl";
-              e.preventDefault();
-              if (pendingOpenTimeoutRef.current != null) {
-                window.clearTimeout(pendingOpenTimeoutRef.current);
-                pendingOpenTimeoutRef.current = null;
-              }
-
-              const idsToToggle = isBranch ? getDescendantLeafIds(element, nodeById) : [element.id as string | number];
-              toggleIdsInSelection(idsToToggle, setSelectedNodeIds);
-              lastLabelSelectionModeRef.current = null;
-              return;
-            }
-
+      return (
+        <HeadlessVirtualTree
+          key={`${treeTab}|${packPath}`}
+          treeTab={treeTab}
+          data={data}
+          hiddenNodeIds={treeTab === "db" ? dbHiddenNodeIds : fileHiddenNodeIds}
+          selectedIds={selectedIds}
+          expandedIds={effectiveExpandedIds}
+          initialScrollTop={treeScrollTopsRef.current[treeTab] ?? 0}
+          ariaLabel={
+            treeTab === "db"
+              ? localized.viewerDbFilesTree || "DB files tree"
+              : localized.viewerPackedFilesTree || "Packed files tree"
+          }
+          onSelectedIdsChange={(ids) => setSelectedNodeIds(ids)}
+          onExpandedIdsChange={handleExpandedIdsChange}
+          onNodeClick={(node, click) =>
+            handleHeadlessNodeClick(treeTab, node, click, selectedIds, setSelectedNodeIds, nodeById)
+          }
+          onBranchClick={(node, item, willExpand) => {
+            if (willExpand) item.expand();
+            else item.collapse();
+          }}
+          onOpenInNewTab={(node) => handleOpenInNewTab(node, treeTab)}
+          onContextMenu={(event, node, isBranch) => {
             if (isBranch) {
-              handleExpand(e);
-              // A group has nothing useful to select. Matching the arrow's expand-only path avoids
-              // a second full tree reconciliation before the expanded children can paint.
-              openLoneChildOnExpand(element, !isExpanded, treeTab, nodeById);
+              if (treeTab === "files") {
+                handleContextMenu(event, treeTab, {
+                  kind: "folder",
+                  packPath,
+                  folderPath: getNodeFullPath(node, fileNodeById),
+                });
+              } else {
+                const groupPath = getNodeFullPath(node, dbNodeById);
+                const { dbFolder, dbName } = parseDBGroupName(groupPath);
+                handleContextMenu(event, treeTab, {
+                  kind: "folder",
+                  packPath,
+                  folderPath: `${dbFolder}\\${dbName}`,
+                });
+              }
               return;
             }
 
-            // Let the tree update its own selection first so the highlight can paint immediately.
-            // onSelect mirrors it into our state after that paint; writing both states here made the
-            // controlled tree reconcile the entire node set twice for one click.
-            beginSingleLabelSelection();
-            handleSelect(e);
+            if (treeTab === "db") {
+              const selection = getDBSelectionForElement(node);
+              const filePath = selection ? getDBPackedFilePath(selection) : undefined;
+              handleContextMenu(
+                event,
+                treeTab,
+                selection && filePath ? { kind: "db", packPath, filePath, selection } : undefined,
+              );
+              return;
+            }
 
-            // The tree only reports a selection that changed, so clicking the selected node again
-            // never reaches onSelect. Opening it from here is what re-reads a flow whose graph was
-            // replaced in the editor.
-            if (isSelected) scheduleOpenForElement(element, treeTab);
-          };
-
-          const isContextTarget = isContextMenuTarget(element, treeTab, isBranch, nodeById);
-          const nodePath = getNodeFullPath(element, nodeById).replaceAll("\\", "/");
-          const parentNode = element.parent == null ? undefined : nodeById.get(element.parent);
-          const siblingIndex = parentNode?.children.indexOf(element.id) ?? 0;
-          const isStriped = siblingIndex >= 0 && siblingIndex % 2 === 1;
-
-          return (
-            <div
-              {...getNodeProps({
-                onClick: (e) => {
-                  e.stopPropagation();
-                  handleExpand(e);
-                  openLoneChildOnExpand(element, !isExpanded, treeTab, nodeById);
-                },
-              })}
-              onContextMenu={(e) => {
-                e.stopPropagation();
-                if (isBranch) {
-                  if (treeTab === "files") {
-                    handleContextMenu(e, treeTab, {
-                      kind: "folder",
-                      packPath,
-                      folderPath: getNodeFullPath(element, fileNodeById),
-                    });
-                  } else {
-                    const groupPath = getNodeFullPath(element, dbNodeById);
-                    const { dbFolder, dbName } = parseDBGroupName(groupPath);
-                    handleContextMenu(e, treeTab, {
-                      kind: "folder",
-                      packPath,
-                      folderPath: `${dbFolder}\\${dbName}`,
-                    });
-                  }
-                  return;
-                }
-
-                if (treeTab === "db") {
-                  const selection = getDBSelectionForElement(element);
-                  const filePath = selection ? getDBPackedFilePath(selection) : undefined;
-                  handleContextMenu(
-                    e,
-                    treeTab,
-                    selection && filePath ? { kind: "db", packPath, filePath, selection } : undefined,
-                  );
-                  return;
-                }
-
-                const filePath = getPackedFilePathForElement(element);
-                handleContextMenu(e, treeTab, filePath ? { kind: "file", packPath, filePath } : undefined);
-              }}
-              style={{
-                marginLeft: PACK_TREE_INDENT_PX * (level - 1),
-                opacity: isDisabled ? 0.5 : 1,
-              }}
-              className={
-                "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
-                (isBranch ? "font-medium text-gray-200 " : "text-gray-300 ") +
-                (isContextTarget
-                  ? "bg-blue-700/60 "
-                  : isSelected
-                    ? "bg-gray-700/60 "
-                    : isStriped
-                      ? "bg-gray-800/40 "
-                      : "") +
-                "hover:underline " +
-                (isTreeNodeFiltered(element, treeTab) ? "hidden" : "")
-              }
-            >
-              {isBranch ? (
-                <ArrowIcon className="" isOpen={isExpanded} />
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className={`${PACK_TREE_MARKER_SIZE_CLASS} shrink-0 flex items-center justify-center`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-500/80" />
-                </span>
-              )}
-              <span
-                onClick={handleLabelClick}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  handleOpenInNewTab(element, treeTab);
-                }}
-                className="relative select-none"
-                title={nodePath}
-              >
-                {element.name}
-              </span>
-            </div>
-          );
-        }}
-      />
-    );
+            const filePath = getPackedFilePathForElement(node);
+            handleContextMenu(event, treeTab, filePath ? { kind: "file", packPath, filePath } : undefined);
+          }}
+          getNodeClassName={(node, item, isBranch) => {
+            const isContextTarget = isContextMenuTarget(node, treeTab, isBranch, nodeById);
+            const parentNode = node.parent == null ? undefined : nodeById.get(node.parent);
+            const siblingIndex = parentNode?.children.indexOf(node.id) ?? 0;
+            const isStriped = siblingIndex >= 0 && siblingIndex % 2 === 1;
+            return (
+              "flex items-center h-full hover:overflow-visible cursor-pointer rounded " +
+              (isBranch ? "font-medium text-gray-200 " : "text-gray-300 ") +
+              (isContextTarget
+                ? "bg-blue-700/60 "
+                : item.isSelected()
+                  ? "bg-gray-700/60 "
+                  : isStriped
+                    ? "bg-gray-800/40 "
+                    : "") +
+              "hover:underline"
+            );
+          }}
+          getNodeStyle={(node, item) => ({
+            marginLeft: PACK_TREE_INDENT_PX * item.getItemMeta().level,
+            opacity: 1,
+          })}
+          onScroll={(scrollTop) => {
+            treeScrollTopsRef.current[treeTab] = scrollTop;
+          }}
+        />
+      );
+    };
 
     if (!packData) {
       return <></>;
@@ -1757,29 +2108,26 @@ const PackTablesTreeView = React.memo(
       contextMenu && !isVanillaPackOpen && (contextMenu.treeTab === "files" || contextMenu.treeTab === "empty"),
     );
     const showImportInContext = Boolean(contextMenu && !isVanillaPackOpen);
-    const showPackFileActionsInContext = Boolean(contextMenu && !isVanillaPackOpen && selectedExportPaths.length > 0);
-    const showCopyPathInContext = Boolean(contextMenu && selectedExportPaths.length > 0);
+    const showPackFileActionsInContext = Boolean(contextMenu && !isVanillaPackOpen && contextTargetPathCount > 0);
+    const showCopyPathInContext = Boolean(contextMenu && contextTargetPathCount > 0);
     const deleteLabel =
-      selectedExportPaths.length === 1
+      contextTargetPathCount === 1
         ? localized.viewerDeleteFile || "Delete file"
         : (localized.viewerDeleteFiles || "Delete {{count}} files").replace(
             "{{count}}",
-            String(selectedExportPaths.length),
+            String(contextTargetPathCount),
           );
     const renameLabel =
-      selectedExportPaths.length === 1
+      contextTargetPathCount === 1
         ? localized.viewerRenameFile || "Rename file…"
         : (localized.viewerRenameFiles || "Rename {{count}} files…").replace(
             "{{count}}",
-            String(selectedExportPaths.length),
+            String(contextTargetPathCount),
           );
     const moveLabel =
-      selectedExportPaths.length === 1
+      contextTargetPathCount === 1
         ? localized.viewerMoveFile || "Move file…"
-        : (localized.viewerMoveFiles || "Move {{count}} files…").replace(
-            "{{count}}",
-            String(selectedExportPaths.length),
-          );
+        : (localized.viewerMoveFiles || "Move {{count}} files…").replace("{{count}}", String(contextTargetPathCount));
     const importAnchor = contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : "";
     const importLabel = (kind: "file" | "folder") => {
       const label =
@@ -1801,10 +2149,10 @@ const PackTablesTreeView = React.memo(
       <div
         data-testid="pack-tables-tree"
         onContextMenu={(e) => handleContextMenu(e, visibleActiveTreeTab ?? "empty")}
-        className="pack-tables-tree relative select-none h-full min-h-full"
+        className="pack-tables-tree relative select-none h-full min-h-full flex flex-col"
       >
         {(hasDBTables || hasFiles) && (
-          <div className="sticky top-0 z-10 flex border-b border-gray-700 bg-gray-900/95 mb-2">
+          <div className="sticky top-0 z-10 shrink-0 flex border-b border-gray-700 bg-gray-900/95 mb-2">
             {hasDBTables && (
               <button
                 type="button"
@@ -1836,26 +2184,15 @@ const PackTablesTreeView = React.memo(
           </div>
         )}
 
-        {visibleActiveTreeTab === "db"
-          ? renderTree(
-              "db",
-              dbData,
-              safeDbSelectedNodeIds,
-              setDbSelectedNodeIds,
-              dbNodeById,
-              onDBTreeSelect,
-              dbDefaultExpandedIds,
-            )
-          : visibleActiveTreeTab === "files"
-            ? renderTree(
-                "files",
-                fileData,
-                safeFileSelectedNodeIds,
-                setFileSelectedNodeIds,
-                fileNodeById,
-                onFileTreeSelect,
-              )
-            : null}
+        {visibleActiveTreeTab === "db" ? (
+          renderTree("db", dbData, safeDbSelectedNodeIds, setDbSelectedNodeIds, dbNodeById, dbDefaultExpandedIds)
+        ) : visibleActiveTreeTab === "files" ? (
+          isVanillaDBPackOpen && fileData.length === 1 ? (
+            <div className="p-3 text-xs text-gray-400">Loading vanilla files…</div>
+          ) : (
+            renderTree("files", fileData, safeFileSelectedNodeIds, setFileSelectedNodeIds, fileNodeById)
+          )
+        ) : null}
 
         {/* Context Menu */}
         {contextMenu && (
@@ -1980,7 +2317,7 @@ const PackTablesTreeView = React.memo(
               </ContextMenuSubmenu>
             )}
             <ContextMenuSubmenu label={localized.export || "Export"}>
-              {selectedExportPaths.length > 0 && (
+              {contextTargetPathCount > 0 && (
                 <button
                   type="button"
                   onClick={() => void handleExportSelection()}

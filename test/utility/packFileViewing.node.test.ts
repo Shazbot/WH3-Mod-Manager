@@ -12,4 +12,9 @@ describe("pack file viewing", () => {
   it("does not classify unrelated extensionless packed files as text", () => {
     expect(getPackedFileViewerKind("unknown\\binary_file")).toBeUndefined();
   });
+
+  it("treats DDS textures as openable images regardless of path casing", () => {
+    expect(getPackedFileViewerKind("textures/units/hero.DDS")).toBe("image");
+    expect(isOpenablePackedFilePath("textures/units/hero.DDS")).toBe(true);
+  });
 });

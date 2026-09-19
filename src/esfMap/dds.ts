@@ -251,8 +251,8 @@ const decodeBc7 = (buffer: Buffer, width: number, height: number, dataOffset: nu
       for (let y = 0; y < 4; y += 1) {
         for (let x = 0; x < 4; x += 1) {
           const partitionValue =
-            numPartitions === 1 ? (x === 0 && y === 0 ? 0x80 : 0) : partitionValues[partition * 16 + y * 4 + x];
-          const indexBitCount = colorIndexBits - (partitionValue & 0x80 ? 1 : 0);
+            numPartitions === 1 ? (x === 0 && y === 0 ? 0x04 : 0) : partitionValues[partition * 16 + y * 4 + x];
+          const indexBitCount = colorIndexBits - (partitionValue & 0x04 ? 1 : 0);
           indices[y * 4 + x] = reader.readBits(indexBitCount);
         }
       }
@@ -260,7 +260,7 @@ const decodeBc7 = (buffer: Buffer, width: number, height: number, dataOffset: nu
       for (let y = 0; y < 4; y += 1) {
         for (let x = 0; x < 4; x += 1) {
           const partitionValue =
-            numPartitions === 1 ? (x === 0 && y === 0 ? 0x80 : 0) : partitionValues[partition * 16 + y * 4 + x];
+            numPartitions === 1 ? (x === 0 && y === 0 ? 0x04 : 0) : partitionValues[partition * 16 + y * 4 + x];
           const subset = partitionValue & 0x03;
           const endpointIndex = subset * 2 * 4;
           const colorIndex = indices[y * 4 + x];
@@ -330,31 +330,18 @@ const decodeBc7 = (buffer: Buffer, width: number, height: number, dataOffset: nu
   return { width, height, pixels };
 };
 
-const decodeDxt1 = (buffer: Buffer): DdsRgbaImage => {
-  if (buffer.length < DDS_HEADER_BYTES || buffer.subarray(0, 4).toString("ascii") !== "DDS ") {
-    throw new Error("Invalid DDS file: missing header.");
-  }
-
-  const headerSize = readU32LE(buffer, 4);
-  if (headerSize !== 124) throw new Error(`Unsupported DDS header size ${headerSize}.`);
-
-  const height = readU32LE(buffer, 12);
-  const width = readU32LE(buffer, 16);
-  const fourCc = buffer.subarray(84, 88).toString("ascii");
-  if (fourCc !== "DXT1") throw new Error(`Unsupported DDS format ${fourCc || "unknown"}; expected DXT1.`);
-  if (width === 0 || height === 0) throw new Error(`Invalid DDS dimensions ${width}x${height}.`);
-
+const decodeDxt1 = (buffer: Buffer, width: number, height: number, dataOffset = DDS_HEADER_BYTES): DdsRgbaImage => {
   const blocksWide = Math.ceil(width / 4);
   const blocksHigh = Math.ceil(height / 4);
   const dataBytes = blocksWide * blocksHigh * 8;
-  if (DDS_HEADER_BYTES + dataBytes > buffer.length) {
-    throw new Error(`Truncated DDS data: need ${dataBytes} bytes, file has ${buffer.length - DDS_HEADER_BYTES}.`);
+  if (dataOffset + dataBytes > buffer.length) {
+    throw new Error(`Truncated DDS data: need ${dataBytes} bytes, file has ${buffer.length - dataOffset}.`);
   }
 
   const pixels = Buffer.alloc(width * height * 4);
   for (let blockY = 0; blockY < blocksHigh; blockY += 1) {
     for (let blockX = 0; blockX < blocksWide; blockX += 1) {
-      const blockOffset = DDS_HEADER_BYTES + (blockY * blocksWide + blockX) * 8;
+      const blockOffset = dataOffset + (blockY * blocksWide + blockX) * 8;
       const colour0 = readU16LE(buffer, blockOffset);
       const colour1 = readU16LE(buffer, blockOffset + 2);
       const colour0Rgb = colour565(colour0);
@@ -393,31 +380,67 @@ const decodeDxt1 = (buffer: Buffer): DdsRgbaImage => {
   return { width, height, pixels };
 };
 
-const decodeDxt5 = (buffer: Buffer): DdsRgbaImage => {
-  if (buffer.length < DDS_HEADER_BYTES || buffer.subarray(0, 4).toString("ascii") !== "DDS ") {
-    throw new Error("Invalid DDS file: missing header.");
-  }
-
-  const headerSize = readU32LE(buffer, 4);
-  if (headerSize !== 124) throw new Error(`Unsupported DDS header size ${headerSize}.`);
-
-  const height = readU32LE(buffer, 12);
-  const width = readU32LE(buffer, 16);
-  const fourCc = buffer.subarray(84, 88).toString("ascii");
-  if (fourCc !== "DXT5") throw new Error(`Unsupported DDS format ${fourCc || "unknown"}; expected DXT5.`);
-  if (width === 0 || height === 0) throw new Error(`Invalid DDS dimensions ${width}x${height}.`);
-
+const decodeDxt3 = (buffer: Buffer, width: number, height: number, dataOffset = DDS_HEADER_BYTES): DdsRgbaImage => {
   const blocksWide = Math.ceil(width / 4);
   const blocksHigh = Math.ceil(height / 4);
   const dataBytes = blocksWide * blocksHigh * 16;
-  if (DDS_HEADER_BYTES + dataBytes > buffer.length) {
-    throw new Error(`Truncated DDS data: need ${dataBytes} bytes, file has ${buffer.length - DDS_HEADER_BYTES}.`);
+  if (dataOffset + dataBytes > buffer.length) {
+    throw new Error(`Truncated DDS data: need ${dataBytes} bytes, file has ${buffer.length - dataOffset}.`);
   }
 
   const pixels = Buffer.alloc(width * height * 4);
   for (let blockY = 0; blockY < blocksHigh; blockY += 1) {
     for (let blockX = 0; blockX < blocksWide; blockX += 1) {
-      const blockOffset = DDS_HEADER_BYTES + (blockY * blocksWide + blockX) * 16;
+      const blockOffset = dataOffset + (blockY * blocksWide + blockX) * 16;
+      const alphaBitsFirst = readU32LE(buffer, blockOffset);
+      const alphaBitsSecond = readU32LE(buffer, blockOffset + 4);
+      const colour0 = readU16LE(buffer, blockOffset + 8);
+      const colour1 = readU16LE(buffer, blockOffset + 10);
+      const colour0Rgb = colour565(colour0);
+      const colour1Rgb = colour565(colour1);
+      const colourPalette = [
+        colour0Rgb,
+        colour1Rgb,
+        interpolateColour(colour0Rgb, colour1Rgb, 2, 1),
+        interpolateColour(colour0Rgb, colour1Rgb, 1, 2),
+      ];
+      const colourBits = readU32LE(buffer, blockOffset + 12);
+
+      for (let localY = 0; localY < 4; localY += 1) {
+        for (let localX = 0; localX < 4; localX += 1) {
+          const x = blockX * 4 + localX;
+          const y = blockY * 4 + localY;
+          if (x >= width || y >= height) continue;
+
+          const pixelIndex = localY * 4 + localX;
+          const alphaBits = pixelIndex < 8 ? alphaBitsFirst : alphaBitsSecond;
+          const alpha = ((alphaBits >>> ((pixelIndex % 8) * 4)) & 0x0f) * 17;
+          const colour = colourPalette[(colourBits >>> (pixelIndex * 2)) & 0x03];
+          const outputOffset = (y * width + x) * 4;
+          pixels[outputOffset] = colour[0];
+          pixels[outputOffset + 1] = colour[1];
+          pixels[outputOffset + 2] = colour[2];
+          pixels[outputOffset + 3] = alpha;
+        }
+      }
+    }
+  }
+
+  return { width, height, pixels };
+};
+
+const decodeDxt5 = (buffer: Buffer, width: number, height: number, dataOffset = DDS_HEADER_BYTES): DdsRgbaImage => {
+  const blocksWide = Math.ceil(width / 4);
+  const blocksHigh = Math.ceil(height / 4);
+  const dataBytes = blocksWide * blocksHigh * 16;
+  if (dataOffset + dataBytes > buffer.length) {
+    throw new Error(`Truncated DDS data: need ${dataBytes} bytes, file has ${buffer.length - dataOffset}.`);
+  }
+
+  const pixels = Buffer.alloc(width * height * 4);
+  for (let blockY = 0; blockY < blocksHigh; blockY += 1) {
+    for (let blockX = 0; blockX < blocksWide; blockX += 1) {
+      const blockOffset = dataOffset + (blockY * blocksWide + blockX) * 16;
       const alpha0 = buffer[blockOffset];
       const alpha1 = buffer[blockOffset + 1];
       const alphaPalette = [alpha0, alpha1];
@@ -483,12 +506,39 @@ const decodeDds = (buffer: Buffer): DdsRgbaImage => {
   if (width === 0 || height === 0) throw new Error(`Invalid DDS dimensions ${width}x${height}.`);
 
   const fourCc = buffer.subarray(84, 88).toString("ascii");
-  if (fourCc === "DXT1") return decodeDxt1(buffer);
-  if (fourCc === "DXT5") return decodeDxt5(buffer);
+  if (fourCc === "DXT1") return decodeDxt1(buffer, width, height);
+  if (fourCc === "DXT3") return decodeDxt3(buffer, width, height);
+  if (fourCc === "DXT5") return decodeDxt5(buffer, width, height);
   if (fourCc === "DX10") {
+    const dx10HeaderBytes = 20;
     const dx10HeaderOffset = DDS_HEADER_BYTES;
+    if (buffer.length < dx10HeaderOffset + dx10HeaderBytes) {
+      throw new Error(
+        `Truncated DDS DX10 header: need ${dx10HeaderBytes} bytes, file has ${buffer.length - dx10HeaderOffset}.`,
+      );
+    }
     const dxgiFormat = readU32LE(buffer, dx10HeaderOffset);
-    if (dxgiFormat === 98 || dxgiFormat === 99) return decodeBc7(buffer, width, height, dx10HeaderOffset + 20);
+    const dataOffset = dx10HeaderOffset + dx10HeaderBytes;
+    switch (dxgiFormat) {
+      case 70:
+      case 71:
+      case 72:
+        return decodeDxt1(buffer, width, height, dataOffset);
+      case 73:
+      case 74:
+      case 75:
+        return decodeDxt3(buffer, width, height, dataOffset);
+      case 76:
+      case 77:
+      case 78:
+        return decodeDxt5(buffer, width, height, dataOffset);
+      case 97:
+      case 98:
+      case 99:
+        return decodeBc7(buffer, width, height, dataOffset);
+      default:
+        break;
+    }
   }
   throw new Error(`Unsupported DDS format ${fourCc || "unknown"}.`);
 };

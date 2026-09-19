@@ -18,6 +18,21 @@ export const useFlowOptions = () => {
   return React.useContext(FlowOptionsContext);
 };
 
+export interface NodeEditorPanelContextValue {
+  isActive: boolean;
+  modalRoot: HTMLElement | null;
+}
+
+/** Keeps node-owned portals inside the mounted Node Editor panel. */
+export const NodeEditorPanelContext = React.createContext<NodeEditorPanelContextValue>({
+  isActive: true,
+  modalRoot: null,
+});
+
+export const useNodeEditorPanel = () => {
+  return React.useContext(NodeEditorPanelContext);
+};
+
 export const dispatchNodeDataUpdate = (
   data: NodeEditorActionData | undefined,
   detail: FlowNodeDataPatch & { nodeId?: string },

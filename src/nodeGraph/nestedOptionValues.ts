@@ -187,3 +187,54 @@ export const substituteTextFileRuleValues = (
 
   return modified;
 };
+
+/**
+ * Substitutes placeholders in the structural XML node's nested locator and mutation fields.
+ * `filePath` and `replacementXml` live at the node level and are handled by the normal text-field
+ * pass; this helper covers every value nested inside locatorSteps/attributeEdits.
+ */
+export const substituteEditXmlOptionValues = (
+  nodeData: Record<string, unknown>,
+  replace: (value: string) => string,
+): boolean => {
+  let modified = false;
+  const replaceField = (record: Record<string, unknown>, fieldName: string) => {
+    const value = record[fieldName];
+    if (typeof value !== "string" || !value) return;
+    const nextValue = replace(value);
+    if (nextValue === value) return;
+    record[fieldName] = nextValue;
+    modified = true;
+  };
+
+  if (Array.isArray(nodeData.locatorSteps)) {
+    nodeData.locatorSteps = nodeData.locatorSteps.map((step) => {
+      if (!step || typeof step !== "object") return step;
+      const nextStep = { ...(step as Record<string, unknown>) };
+      replaceField(nextStep, "elementName");
+      if (Array.isArray(nextStep.attributes)) {
+        nextStep.attributes = nextStep.attributes.map((attribute) => {
+          if (!attribute || typeof attribute !== "object") return attribute;
+          const nextAttribute = { ...(attribute as Record<string, unknown>) };
+          replaceField(nextAttribute, "name");
+          replaceField(nextAttribute, "value");
+          return nextAttribute;
+        });
+      }
+      return nextStep;
+    });
+  }
+
+  if (Array.isArray(nodeData.attributeEdits)) {
+    nodeData.attributeEdits = nodeData.attributeEdits.map((edit) => {
+      if (!edit || typeof edit !== "object") return edit;
+      const nextEdit = { ...(edit as Record<string, unknown>) };
+      replaceField(nextEdit, "name");
+      replaceField(nextEdit, "match");
+      replaceField(nextEdit, "newValue");
+      return nextEdit;
+    });
+  }
+
+  return modified;
+};

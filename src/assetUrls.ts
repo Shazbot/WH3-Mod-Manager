@@ -19,6 +19,8 @@ export interface AssetBytes {
 export const ICON_HOST = "icon";
 export const UNIT_ASSET_HOST = "unit-asset";
 export const MOD_THUMBNAIL_HOST = "mod-thumbnail";
+export const MODEL_PREVIEW_HOST = "model-preview";
+export const MAP_CACHE_HOST = "map-cache";
 
 /**
  * Pack paths are compared case insensitively everywhere else, and a URL round trip is not
@@ -48,6 +50,13 @@ export const unitAssetUrl = (sessionId: string, assetPath: string) =>
   )}`;
 
 /**
+ * A GLB exported by WH3AssetHost for the Visuals panel. The id is random per export, so the URL is
+ * immutable for the lifetime of that preview and Chromium can cache it safely while Three.js loads it.
+ */
+export const modelPreviewAssetUrl = (previewId: string) =>
+  `${ASSET_SCHEME}://${MODEL_PREVIEW_HOST}/${encodeURIComponent(previewId)}/model.glb`;
+
+/**
  * A mod's thumbnail, addressed by where it sits on disk.
  *
  * Not normalised the way pack paths are: this is a real filesystem path, it is matched against the
@@ -55,3 +64,7 @@ export const unitAssetUrl = (sessionId: string, assetPath: string) =>
  */
 export const modThumbnailUrl = (imgPath: string) =>
   `${ASSET_SCHEME}://${MOD_THUMBNAIL_HOST}/${encodeURIComponent(imgPath)}`;
+
+/** A content-addressed PNG externalised from the campaign-map disk cache. */
+export const mapCacheImageUrl = (contentHash: string, imageName: string) =>
+  `${ASSET_SCHEME}://${MAP_CACHE_HOST}/${encodeURIComponent(contentHash)}/${encodeURIComponent(imageName)}.png`;

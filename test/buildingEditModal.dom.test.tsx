@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import BuildingEditModal from "../src/components/buildings/BuildingEditModal";
@@ -67,8 +67,18 @@ const catalog: BuildingsCatalog = {
 const tile = {
   levelKey: "building_a",
   chainKey: "chain_a",
+  superChainKey: "super_a",
   setKey: "set_a",
   title: "Building A",
+  variant: {
+    building: "building_a",
+    culture: "culture_a",
+    subculture: "subculture_a",
+    faction: "faction_a",
+    disables: false,
+    displayTooltip: true,
+    specificity: 7,
+  },
   garrison: [],
   recruitable: [],
 } as BuildingsTile;
@@ -100,5 +110,40 @@ describe("BuildingEditModal garrison unit filter", () => {
     expect(within(unitGroupSelect).getByRole("option", { name: /Group A/ })).toBeInTheDocument();
     expect(within(unitGroupSelect).getByRole("option", { name: /Shared Group/ })).toBeInTheDocument();
     expect(within(unitGroupSelect).queryByRole("option", { name: /Group B/ })).toBeNull();
+  });
+
+  it("lists database keys and copies a selected key", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <BuildingEditModal
+        tile={tile}
+        catalog={catalog}
+        numericIdCursors={{}}
+        fetchCaiRows={vi.fn()}
+        pendingEffects={{}}
+        onClose={vi.fn()}
+        dispatch={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Info" }));
+
+    expect(screen.getByText("building_a")).toBeInTheDocument();
+    expect(screen.getByText("chain_a")).toBeInTheDocument();
+    expect(screen.getByText("super_a")).toBeInTheDocument();
+    expect(screen.getByText("culture_a")).toBeInTheDocument();
+    expect(screen.getByText("subculture_a")).toBeInTheDocument();
+    expect(screen.getByText("faction_a")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Copy Level key" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("building_a"));
+    expect(screen.getByText("Copied Level key to the clipboard.")).toBeInTheDocument();
   });
 });

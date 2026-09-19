@@ -11,10 +11,10 @@ import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
 import UsedModsLoadOrderModal from "./components/UsedModsLoadOrderModal";
 import WorkshopGameStartProgressCard from "./components/WorkshopGameStartProgress";
+import Wh3AssetHostDecisionModal from "./components/Wh3AssetHostDecisionModal";
 
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
-import { endTiming, startTiming } from "./utility/performanceMonitor";
 
 function ErrorFallback({ error }: { error: Error }) {
   const localized = useLocalizations();
@@ -29,11 +29,7 @@ function ErrorFallback({ error }: { error: Error }) {
 
 const AppMain = React.memo(() => {
   useEffect(() => {
-    startTiming("app_main_mount");
     window.api?.rendererMainMounted();
-    return () => {
-      endTiming("app_main_mount");
-    };
   }, []);
 
   const [localization, setLocalization] = useState<Record<string, string>>({});
@@ -63,6 +59,7 @@ const AppMain = React.memo(() => {
         </div>
         <UsedModsLoadOrderModal />
         <WorkshopGameStartProgressCard />
+        <Wh3AssetHostDecisionModal />
         <Toasts />
       </ErrorBoundary>
     </LocalizationContext.Provider>
@@ -70,7 +67,6 @@ const AppMain = React.memo(() => {
 });
 
 export function renderMainWindow() {
-  startTiming("react_render_main");
   const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <StrictMode>
@@ -79,5 +75,4 @@ export function renderMainWindow() {
       </Provider>
     </StrictMode>,
   );
-  endTiming("react_render_main");
 }

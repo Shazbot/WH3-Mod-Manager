@@ -15,11 +15,9 @@ const ModCustomization = memo(() => {
   const modPath = modBeingCustomized && modBeingCustomized.path;
   const isOpen = !!modBeingCustomized;
 
-  console.log("MODPATH is", modPath);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
-  // console.log("allDependencyPacks", allDependencyPacks);
 
   const closePanel = useCallback(() => {
     dispatch(setModBeingCustomized(undefined));
@@ -31,8 +29,6 @@ const ModCustomization = memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
 
-  // console.log("packsData:");
-  // console.log(packData);
 
   const isPackProcessingDone = true; //!!packCollisions.packFileCollisions;
 

@@ -1,5 +1,5 @@
 /**
- * Serves images out of the game's packs over a URL instead of handing the renderer the bytes.
+ * Serves images and generated preview assets over a URL instead of handing the renderer the bytes.
  *
  * Every icon and unit card used to travel to the renderer base64 encoded and get rendered as a
  * `data:` URL. That costs three times over: the encoded string is a third larger than the file, it
@@ -8,7 +8,7 @@
  *
  * With a URL the renderer holds forty copies of a sixty character string, Chromium fetches each
  * distinct image once, and its image cache owns the decoded bitmaps and can evict them under
- * pressure - which JS strings in a Redux store can never be.
+ * pressure - which JS strings in a Redux store can never do.
  */
 import { protocol } from "electron";
 import * as fs from "fs";
@@ -16,14 +16,16 @@ import * as nodePath from "path";
 import {
   ASSET_SCHEME,
   ICON_HOST,
+  MODEL_PREVIEW_HOST,
   MOD_THUMBNAIL_HOST,
+  MAP_CACHE_HOST,
   UNIT_ASSET_HOST,
   normalizeAssetPath,
   type AssetBytes,
 } from "./assetUrls";
 import { isRegisteredModThumbnailPath } from "./modThumbnailAssets";
 
-export { ASSET_SCHEME, iconAssetUrl, unitAssetUrl, type AssetBytes } from "./assetUrls";
+export { ASSET_SCHEME, iconAssetUrl, modelPreviewAssetUrl, unitAssetUrl, type AssetBytes } from "./assetUrls";
 
 /**
  * Icons a feature has already read out of its packs, keyed by their path inside the pack.
@@ -33,6 +35,23 @@ export { ASSET_SCHEME, iconAssetUrl, unitAssetUrl, type AssetBytes } from "./ass
  * each arrived at separately before.
  */
 const iconAssets = new Map<string, AssetBytes>();
+
+/**
+ * Isolated output directories produced by WH3AssetHost. A generated GLB may reference sidecar
+ * textures/buffers, so the protocol exposes files beneath this one registered directory rather than
+ * only the primary GLB. The handler still never accepts an arbitrary filesystem root from a URL.
+ */
+const modelPreviewRoots = new Map<string, string>();
+
+export type ModelPreviewServeTiming = {
+  requestCount: number;
+  bytesRead: number;
+  fileReadMs: number;
+  firstRequestStartMs?: number;
+  lastResponseReadyMs?: number;
+};
+
+const modelPreviewServeTimings = new Map<string, ModelPreviewServeTiming>();
 
 /** Bumped whenever icons are registered, and embedded in the URLs built afterwards. */
 let iconGeneration = 0;
@@ -47,6 +66,31 @@ export const registerIconAssets = (icons: Record<string, AssetBytes>) => {
 export const clearIconAssets = () => {
   iconAssets.clear();
   iconGeneration += 1;
+};
+
+/** Only directories created for host exports are registered; arbitrary filesystem roots are never URL-addressable. */
+export const registerModelPreviewFile = (previewId: string, primaryFilePath: string) => {
+  modelPreviewRoots.set(previewId, nodePath.dirname(primaryFilePath));
+  modelPreviewServeTimings.set(previewId, {
+    requestCount: 0,
+    bytesRead: 0,
+    fileReadMs: 0,
+  });
+};
+
+export const getModelPreviewServeTiming = (previewId: string): ModelPreviewServeTiming | undefined => {
+  const timing = modelPreviewServeTimings.get(previewId);
+  return timing ? { ...timing } : undefined;
+};
+
+export const revokeModelPreviewFile = (previewId: string) => {
+  modelPreviewRoots.delete(previewId);
+  modelPreviewServeTimings.delete(previewId);
+};
+
+export const clearModelPreviewFiles = () => {
+  modelPreviewRoots.clear();
+  modelPreviewServeTimings.clear();
 };
 
 /**
@@ -68,6 +112,8 @@ export const registerAssetSchemeAsPrivileged = () => {
 export interface AssetProtocolResolvers {
   /** The unit viewer's session-scoped assets, which are resolved out of that session's packs. */
   resolveUnitViewerAsset: (sessionId: string, assetPath: string) => Promise<AssetBytes | undefined>;
+  /** PNGs externalised from the campaign-map disk cache. */
+  resolveMapCacheImage: (signature: string, imageName: string) => Promise<AssetBytes | undefined>;
 }
 
 const notFound = () => new Response(undefined, { status: 404 });
@@ -88,6 +134,18 @@ const MOD_THUMBNAIL_MIME_TYPES: Record<string, string> = {
   ".jpeg": "image/jpeg",
 };
 
+const MODEL_PREVIEW_MIME_TYPES: Record<string, string> = {
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".bin": "application/octet-stream",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ktx2": "image/ktx2",
+  ".dds": "image/vnd-ms.dds",
+};
+
 const respondWith = (asset: AssetBytes, cacheControl = IMMUTABLE_CACHE_CONTROL) => {
   // A view over the buffer rather than a copy of it: the bytes are already in memory, and copying
   // them per request would undo the point of not encoding them in the first place. A buffer read out
@@ -104,6 +162,49 @@ const respondWith = (asset: AssetBytes, cacheControl = IMMUTABLE_CACHE_CONTROL) 
       "cache-control": cacheControl,
     },
   });
+};
+
+const resolvePreviewFile = (root: string, relativeSegments: string[]): string | undefined => {
+  if (
+    relativeSegments.length === 0 ||
+    relativeSegments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return undefined;
+  }
+
+  const candidate = nodePath.resolve(root, ...relativeSegments);
+  const relative = nodePath.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || nodePath.isAbsolute(relative)) return undefined;
+  return candidate;
+};
+
+/**
+ * GLB payloads stay on disk rather than being copied through Electron IPC. Relative files requested
+ * by GLTFLoader are allowed only beneath the random preview directory registered after a successful
+ * host export, so `..` or absolute-path URL tricks cannot escape into the filesystem.
+ */
+const serveModelPreview = async (previewId: string, relativeSegments: string[]) => {
+  const root = modelPreviewRoots.get(previewId);
+  if (!root) return notFound();
+  const filePath = resolvePreviewFile(root, relativeSegments);
+  if (!filePath) return notFound();
+  const mimeType = MODEL_PREVIEW_MIME_TYPES[nodePath.extname(filePath).toLowerCase()] || "application/octet-stream";
+  const requestStart = performance.now();
+  try {
+    const buffer = await fs.promises.readFile(filePath);
+    const responseReady = performance.now();
+    const timing = modelPreviewServeTimings.get(previewId);
+    if (timing) {
+      timing.requestCount += 1;
+      timing.bytesRead += buffer.byteLength;
+      timing.fileReadMs += responseReady - requestStart;
+      timing.firstRequestStartMs ??= requestStart;
+      timing.lastResponseReadyMs = responseReady;
+    }
+    return respondWith({ buffer, mimeType });
+  } catch {
+    return notFound();
+  }
 };
 
 /**
@@ -124,9 +225,7 @@ const serveModThumbnail = async (imgPath: string) => {
 
 /**
  * A request resolves to bytes already in memory, to a file inside a pack this session has
- * registered, to a thumbnail some mod was built with, or to nothing. Only that last case touches the
- * filesystem, and it is checked against `modThumbnailAssets.ts` first, so a path in the URL cannot
- * escape into anything the app was not already serving.
+ * registered, to a host-exported preview file, to a thumbnail some mod was built with, or to nothing.
  */
 export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
   protocol.handle(ASSET_SCHEME, async (request) => {
@@ -144,6 +243,19 @@ export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
         const [sessionId, assetPath] = segments;
         if (!sessionId || !assetPath) return notFound();
         const asset = await resolvers.resolveUnitViewerAsset(sessionId, assetPath);
+        return asset ? respondWith(asset) : notFound();
+      }
+      if (url.host === MODEL_PREVIEW_HOST) {
+        // segments: [previewId, ...relative preview file path]
+        const [previewId, ...relativeSegments] = segments;
+        return previewId ? await serveModelPreview(previewId, relativeSegments) : notFound();
+      }
+      if (url.host === MAP_CACHE_HOST) {
+        // segments: [map signature, image name with .png suffix]
+        const [signature, encodedImageName] = segments;
+        const imageName = encodedImageName?.replace(/\.png$/i, "");
+        if (!signature || !imageName) return notFound();
+        const asset = await resolvers.resolveMapCacheImage(signature, imageName);
         return asset ? respondWith(asset) : notFound();
       }
       if (url.host === MOD_THUMBNAIL_HOST) {

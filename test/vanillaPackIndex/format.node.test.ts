@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   VanillaPackIndexIdentity,
   buildVanillaPackIndex,
+  collectVanillaPackTreeChildrenPageFromFlat,
+  collectVanillaPackTreeChildren,
   collectVanillaFilesMatching,
   collectVanillaFilesUnderPrefix,
   decodeVanillaPackIndex,
@@ -11,6 +13,7 @@ import {
   findVanillaPacksUnderPrefix,
   isVanillaPackIndexCurrent,
   normalizeVanillaPackPath,
+  searchVanillaPackFileTree,
 } from "../../src/vanillaPackIndex/format";
 
 const identity: VanillaPackIndexIdentity = {
@@ -82,6 +85,139 @@ describe("vanilla pack index", () => {
     expect(found.get("variantmeshes\\variantmeshdefinitions\\shared.variantmeshdefinition")).toBe("variants_bl.pack");
     // The sibling folder under variantmeshes\ must not be swept in by the prefix.
     expect(found.has("variantmeshes\\wh_variantmodels\\hu1\\emp\\emp_props\\shield.wsmodel")).toBe(false);
+  });
+
+  it("lists only immediate tree children and can omit DB paths", () => {
+    const treeIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: [
+          "db\\units_tables\\data__",
+          "scripts\\campaign\\main.lua",
+          "scripts\\campaign\\sub\\helpers.lua",
+          "ui\\menu.png",
+        ],
+      },
+    ]);
+
+    expect(collectVanillaPackTreeChildren(treeIndex, "")).toEqual([
+      { path: "db", isBranch: true },
+      { path: "scripts", isBranch: true },
+      { path: "ui", isBranch: true },
+    ]);
+    expect(collectVanillaPackTreeChildren(treeIndex, "scripts")).toEqual([
+      { path: "scripts\\campaign", isBranch: true },
+    ]);
+    expect(collectVanillaPackTreeChildren(treeIndex, "scripts\\campaign")).toEqual([
+      { path: "scripts\\campaign\\main.lua", isBranch: false },
+      { path: "scripts\\campaign\\sub", isBranch: true },
+    ]);
+    expect(collectVanillaPackTreeChildren(treeIndex, "", (filePath) => !filePath.startsWith("db\\"))).toEqual([
+      { path: "scripts", isBranch: true },
+      { path: "ui", isBranch: true },
+    ]);
+  });
+
+  it("returns every immediate child when a folder has more than 1000 files", () => {
+    const largeFolderIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: Array.from({ length: 1001 }, (_, index) => `audio\\wwise\\${String(index).padStart(4, "0")}.wem`),
+      },
+    ]);
+
+    const children = collectVanillaPackTreeChildren(largeFolderIndex, "audio\\wwise");
+
+    expect(children).toHaveLength(1001);
+    expect(children.at(-1)).toEqual({ path: "audio\\wwise\\1000.wem", isBranch: false });
+  });
+
+  it("skips a child folder's descendants while listing all immediate children", () => {
+    const nestedIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: Array.from(
+          { length: 1001 },
+          (_, index) => `animation\\campaign\\${String(index).padStart(4, "0")}.anim`,
+        ),
+      },
+    ]);
+    let checkedFiles = 0;
+
+    expect(
+      collectVanillaPackTreeChildren(nestedIndex, "animation", () => {
+        checkedFiles++;
+        return true;
+      }),
+    ).toEqual([{ path: "animation\\campaign", isBranch: true }]);
+    expect(checkedFiles).toBe(1);
+  });
+
+  it("pages a large flat folder without decoding its whole descendant range", () => {
+    const pagedIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: [
+          "audio\\wwise\\0001.wem",
+          "audio\\wwise\\0002.wem",
+          "audio\\wwise\\0003.wem",
+          "audio\\wwise\\english\\0001.wem",
+          "db\\main_units_tables\\data__",
+        ],
+      },
+    ]);
+    const includeFile = (filePath: string) => !filePath.startsWith("db\\");
+    const includeBranch = (folderPath: string) => folderPath !== "db";
+
+    expect(
+      collectVanillaPackTreeChildrenPageFromFlat(pagedIndex, "audio\\wwise", 0, 2, includeFile, includeBranch),
+    ).toEqual({
+      children: [
+        { path: "audio\\wwise\\0001.wem", isBranch: false },
+        { path: "audio\\wwise\\0002.wem", isBranch: false },
+      ],
+      hasMore: true,
+      nextOffset: 2,
+    });
+    expect(
+      collectVanillaPackTreeChildrenPageFromFlat(pagedIndex, "audio\\wwise", 2, 2, includeFile, includeBranch),
+    ).toEqual({
+      children: [
+        { path: "audio\\wwise\\0003.wem", isBranch: false },
+        { path: "audio\\wwise\\english", isBranch: true },
+      ],
+      hasMore: false,
+    });
+  });
+
+  it("searches file names and folders without returning every descendant of a matching folder", () => {
+    const searchIndex = buildVanillaPackIndex(identity, [
+      {
+        packName: "data.pack",
+        fileNames: [
+          "audio\\wwise\\dragon.anim",
+          "audio\\wwise\\english\\voice.wem",
+          "db\\units_tables\\data__",
+          "ui\\dragon_icon.png",
+        ],
+      },
+    ]);
+
+    expect(searchVanillaPackFileTree(searchIndex, "dragon", 10, (filePath) => !filePath.startsWith("db\\"))).toEqual({
+      filePaths: ["audio\\wwise\\dragon.anim", "ui\\dragon_icon.png"],
+      folderPaths: [],
+      truncated: false,
+    });
+    expect(searchVanillaPackFileTree(searchIndex, "audio", 10, (filePath) => !filePath.startsWith("db\\"))).toEqual({
+      filePaths: [],
+      folderPaths: ["audio"],
+      truncated: false,
+    });
+    expect(searchVanillaPackFileTree(searchIndex, "dragon", 1, (filePath) => !filePath.startsWith("db\\"))).toEqual({
+      filePaths: ["audio\\wwise\\dragon.anim"],
+      folderPaths: [],
+      truncated: true,
+    });
   });
 
   it("names the packs that win a file under a folder, in load order", () => {

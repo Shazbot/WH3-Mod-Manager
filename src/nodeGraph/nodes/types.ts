@@ -445,6 +445,47 @@ export interface EditTextFileNodeData extends NodeData {
   ignoreFlowSourcePack?: boolean;
 }
 
+/** One exact attribute constraint in an Edit XML File locator step. */
+export interface XmlLocatorAttribute {
+  id: string;
+  name: string;
+  value: string;
+}
+
+/** One hop in the structural locator used by Edit XML File. */
+export interface XmlLocatorStep {
+  id: string;
+  elementName: string;
+  attributes: XmlLocatorAttribute[];
+}
+
+/** How an existing XML attribute is transformed by the editAttributes action. */
+export type XmlAttributeEditOperation = "replace" | "regexReplace" | "formula";
+
+/** One attribute mutation used by the setAttributes and editAttributes actions. */
+export interface XmlAttributeEdit {
+  id: string;
+  name: string;
+  newValue: string;
+  /** Literal text or regular expression to replace. Unused by formula edits. */
+  match?: string;
+  /** Defaults to literal replace for authoring/backwards compatibility. */
+  operation?: XmlAttributeEditOperation;
+}
+
+/** Authoring-only shape for the UI-only XML editing node. Runtime support is intentionally separate. */
+export interface EditXmlFileNodeData extends NodeData {
+  inputType: "PackFiles" | "TableSelection";
+  outputType: "TableSelection";
+  targetMode: "path" | "input";
+  filePath: string;
+  ignoreHierarchy: boolean;
+  locatorSteps: XmlLocatorStep[];
+  action: "setAttributes" | "editAttributes" | "replaceElement";
+  attributeEdits: XmlAttributeEdit[];
+  replacementXml: string;
+}
+
 /**
  * Whether a target names a path while the rule only matches on the file name.
  *

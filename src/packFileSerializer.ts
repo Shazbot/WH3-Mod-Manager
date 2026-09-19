@@ -35,6 +35,7 @@ import { resolveRadioChoiceId } from "./nodeGraph/types";
 import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
 import {
   substituteDeepCloneOptionValues,
+  substituteEditXmlOptionValues,
   substituteFilterOptionValues,
   substituteLocRuleValues,
   substituteTextFileRuleValues,
@@ -59,6 +60,7 @@ import {
   flowExecutionDebugLog,
   isFlowExecutionDebugEnabled,
 } from "./flowExecutionSupport";
+import { getCurrentVanillaPackIndex, rememberVanillaPackIndex } from "./vanillaPackFilesCache";
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 const string_schema = `{
     "units_custom_battle_permissions_tables": {
@@ -1169,6 +1171,8 @@ const flowOptionTextFields = [
   "joinSeparator",
   "packName",
   "packedFileName",
+  "filePath",
+  "replacementXml",
 ] as const;
 const schemaAwareFlowNodeTypes = new Set([
   "columnselectiondropdown",
@@ -1324,6 +1328,16 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
         ignoreFlowSourcePack: (node.data as any).ignoreFlowSourcePack === true,
         flowSourcePack: (node.data as any).flowSourcePack || "",
       };
+    case "editxmlfile":
+      return {
+        targetMode: (node.data as any).targetMode || "path",
+        filePath: (node.data as any).filePath || "",
+        ignoreHierarchy: (node.data as any).ignoreHierarchy !== false,
+        locatorSteps: (node.data as any).locatorSteps || [],
+        action: (node.data as any).action || "setAttributes",
+        attributeEdits: (node.data as any).attributeEdits || [],
+        replacementXml: (node.data as any).replacementXml || "",
+      };
     case "editloctext":
       return { locRules: (node.data as any).locRules || [] };
     case "removetables":
@@ -1398,7 +1412,8 @@ export const prepareFlow = (
       (node.type === "deepclone" ||
         node.type === "filter" ||
         node.type === "editloctext" ||
-        node.type === "edittextfile")
+        node.type === "edittextfile" ||
+        node.type === "editxmlfile")
     ) {
       const replace = (value: string) => {
         let modifiedValue = value;
@@ -1412,6 +1427,7 @@ export const prepareFlow = (
       if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
       else if (node.type === "editloctext") substituteLocRuleValues(nestedData, replace);
       else if (node.type === "edittextfile") substituteTextFileRuleValues(nestedData, replace);
+      else if (node.type === "editxmlfile") substituteEditXmlOptionValues(nestedData, replace);
       else substituteDeepCloneOptionValues(nestedData, replace);
     }
     // The manual run substitutes into transformation fields too; without this the same flow behaves
@@ -3097,6 +3113,29 @@ export const readPack = async (
   } catch (e) {
     console.log(e);
   }
+  const cachedVanillaPackIndex = await getCurrentVanillaPackIndex(modPath);
+  const canReturnCachedIndex =
+    cachedVanillaPackIndex &&
+    packReadingOptions.skipParsingTables &&
+    !packReadingOptions.readScripts &&
+    !packReadingOptions.readLocs &&
+    !packReadingOptions.readFlows &&
+    (!packReadingOptions.filesToRead || packReadingOptions.filesToRead.length === 0);
+  if (canReturnCachedIndex) {
+    const packedFiles = cachedVanillaPackIndex.packedFiles;
+    if (!packReadingOptions.skipSorting) packedFiles.sort((a, b) => collator.compare(a.name, b.name));
+    console.log(`[readPack] vanilla index cache hit: ${nodePath.basename(modPath)}`);
+    return {
+      name: nodePath.basename(modPath),
+      path: modPath,
+      packedFiles,
+      packHeader: cachedVanillaPackIndex.packHeader,
+      lastChangedLocal,
+      size,
+      readTables: [],
+      dependencyPacks: cachedVanillaPackIndex.dependencyPacks,
+    } as Pack;
+  }
   // let file: BinaryFile | undefined;
   // eslint-disable-next-line @typescript-eslint/no-inferrable-types
   let fileId: number = -1;
@@ -3105,107 +3144,101 @@ export const readPack = async (
     // console.log(`${modPath} file opened`);
     // if (packReadingOptions.tablesToRead)
     //   console.log(`NUM OF TABLES TO READ:`, packReadingOptions.tablesToRead.length);
-    // header 4
-    // byteMask 4
-    // refFileCount 4
-    // pack_file_index_size 4
-    // pack_file_count 4
-    // packed_file_index_size 4
-    // headerBuffer 4
-    // header_buffer_len 4;
-    const packedFileHeaderSize = 8 * 4;
-    const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
-    fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
-    let packedFileHeaderPosition = 0;
-    const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
-    packedFileHeaderPosition += 4;
-    if (header === null) throw new Error("header missing");
-    if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
-      throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
-    }
-    const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const refFileCount = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const pack_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const pack_file_count = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const packed_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const header_buffer_len = 4;
-    const header_buffer = await packedFileHeader.subarray(
-      packedFileHeaderPosition,
-      packedFileHeaderPosition + header_buffer_len,
-    );
-    packedFileHeaderPosition += header_buffer_len;
-    // const header = await file.read(4);
-    // if (header === null) throw new Error("header missing");
-    // const byteMask = await file.readInt32();
-    // const refFileCount = await file.readInt32();
-    // const pack_file_index_size = await file.readInt32();
-    // const pack_file_count = await file.readInt32();
-    // const packed_file_index_size = await file.readInt32();
-    // console.log(`modPath is ${modPath}`);
-    // console.log(`header is ${header}`);
-    // console.log(`byteMask is ${byteMask}`);
-    // console.log(`refFileCount is ${refFileCount}`);
-    // console.log(`pack_file_index_size is ${pack_file_index_size}`);
-    // console.log(`pack_file_count is ${pack_file_count}`);
-    // console.log(`packed_file_index_size is ${packed_file_index_size}`);
-    // const header_buffer_len = 4;
-    // const header_buffer = await file.read(4); // header_buffer
-    packHeader = {
-      header,
-      byteMask,
-      refFileCount,
-      pack_file_index_size,
-      pack_file_count,
-      header_buffer,
-    } as PackHeader;
-    if (pack_file_index_size > 0) {
-      const packIndexBuffer = Buffer.allocUnsafe(pack_file_index_size);
-      fs.readSync(fileId, packIndexBuffer, 0, pack_file_index_size, packedFileHeaderPosition);
-      packedFileHeaderPosition += pack_file_index_size;
-      // get the dependencyPacks
-      let start = 0;
-      for (let i = 0; i < pack_file_index_size; i++) {
-        if (packIndexBuffer[i] === 0) {
-          if (i > start) {
-            dependencyPacks[dependencyPacks.length] = packIndexBuffer.toString("utf8", start, i);
+    if (cachedVanillaPackIndex) {
+      pack_files.push(...cachedVanillaPackIndex.packedFiles);
+      packHeader = cachedVanillaPackIndex.packHeader;
+      dependencyPacks.push(...cachedVanillaPackIndex.dependencyPacks);
+      console.log(`[readPack] vanilla index cache hit: ${nodePath.basename(modPath)}`);
+    } else {
+      // header 4
+      // byteMask 4
+      // refFileCount 4
+      // pack_file_index_size 4
+      // pack_file_count 4
+      // packed_file_index_size 4
+      // headerBuffer 4
+      // header_buffer_len 4;
+      const packedFileHeaderSize = 8 * 4;
+      const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
+      fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
+      let packedFileHeaderPosition = 0;
+      const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
+      packedFileHeaderPosition += 4;
+      if (header === null) throw new Error("header missing");
+      if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
+        throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
+      }
+      const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const refFileCount = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const pack_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const pack_file_count = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const packed_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const header_buffer_len = 4;
+      const header_buffer = await packedFileHeader.subarray(
+        packedFileHeaderPosition,
+        packedFileHeaderPosition + header_buffer_len,
+      );
+      packedFileHeaderPosition += header_buffer_len;
+      packHeader = {
+        header,
+        byteMask,
+        refFileCount,
+        pack_file_index_size,
+        pack_file_count,
+        header_buffer,
+      } as PackHeader;
+      if (pack_file_index_size > 0) {
+        const packIndexBuffer = Buffer.allocUnsafe(pack_file_index_size);
+        fs.readSync(fileId, packIndexBuffer, 0, pack_file_index_size, packedFileHeaderPosition);
+        packedFileHeaderPosition += pack_file_index_size;
+        // get the dependencyPacks
+        let start = 0;
+        for (let i = 0; i < pack_file_index_size; i++) {
+          if (packIndexBuffer[i] === 0) {
+            if (i > start) {
+              dependencyPacks[dependencyPacks.length] = packIndexBuffer.toString("utf8", start, i);
+            }
+            start = i + 1;
           }
-          start = i + 1;
         }
       }
-    }
-    const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
-    // console.log("data starts at " + dataStart);
-    let file_pos = dataStart;
-    const headerSize = dataStart - packedFileHeaderPosition;
-    // const headerBuffer = await file.read(headerSize);
-    const headerBuffer = Buffer.allocUnsafe(headerSize);
-    fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, packedFileHeaderPosition);
-    // console.log("header size is: " + headerSize);
-    // console.time("1000files");
-    let bufPos = 0;
-    // console.log("pack_file_count is " + pack_file_count);
-    const hasCompressionFlag = supportsCompression[appData.currentGame];
-    const hasFileNameHash = hasPackedFileNameHash(byteMask);
-    for (let i = 0; i < pack_file_count; i++) {
-      const entry = readPackedFileIndexEntry(headerBuffer, bufPos, hasCompressionFlag, hasFileNameHash);
-      if (!entry) throw new Error(`Could not parse packed-file index entry ${i} in ${modPath}`);
-      const { name, file_size, is_compressed } = entry;
-      bufPos = entry.nextPosition;
-      // if (i === 1000) {
-      // console.log(console.timeEnd("1000files"));
-      // }
-      pack_files.push({
-        name,
-        file_size,
-        start_pos: file_pos,
-        is_compressed,
-      });
-      file_pos += file_size;
+      const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
+      // console.log("data starts at " + dataStart);
+      let file_pos = dataStart;
+      const headerSize = dataStart - packedFileHeaderPosition;
+      // const headerBuffer = await file.read(headerSize);
+      const headerBuffer = Buffer.allocUnsafe(headerSize);
+      fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, packedFileHeaderPosition);
+      // console.log("header size is: " + headerSize);
+      // console.time("1000files");
+      let bufPos = 0;
+      // console.log("pack_file_count is " + pack_file_count);
+      const hasCompressionFlag = supportsCompression[appData.currentGame];
+      const hasFileNameHash = hasPackedFileNameHash(byteMask);
+      for (let i = 0; i < pack_file_count; i++) {
+        const entry = readPackedFileIndexEntry(headerBuffer, bufPos, hasCompressionFlag, hasFileNameHash);
+        if (!entry) throw new Error(`Could not parse packed-file index entry ${i} in ${modPath}`);
+        const { name, file_size, is_compressed } = entry;
+        bufPos = entry.nextPosition;
+        // if (i === 1000) {
+        // console.log(console.timeEnd("1000files"));
+        // }
+        pack_files.push({
+          name,
+          file_size,
+          start_pos: file_pos,
+          is_compressed,
+        });
+        file_pos += file_size;
+      }
+      if (packHeader) {
+        rememberVanillaPackIndex(modPath, size, lastChangedLocal, pack_files, packHeader, dependencyPacks);
+      }
     }
     if (!packReadingOptions.skipSorting) pack_files.sort((a, b) => collator.compare(a.name, b.name));
     // Early return if no additional processing needed
@@ -3307,7 +3340,7 @@ export const readPack = async (
       }
     }
     if (packReadingOptions.readFlows) {
-      const flowFiles = pack_files.filter((packFile) => packFile.name.startsWith("whmmflows\\"));
+      const flowFiles = pack_files.filter((packFile) => isPackedFlowName(packFile.name));
       for (const flowFile of flowFiles) {
         let buffer = Buffer.allocUnsafe(flowFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, flowFile.start_pos);

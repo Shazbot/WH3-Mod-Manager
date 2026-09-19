@@ -210,13 +210,18 @@ const ModListPane = memo(
       const row = rowData[index];
       if (!row) return <></>;
 
+      // CellMeasurer may pass either auto or a cached numeric width. The row must always fill the measured
+      // list column or its own CSS grid can shrink-wrap to the order column.
+      const rowStyle = { ...style, width: "100%" };
+
       if (row.kind === "categoryHeader") {
         return (
           <CellMeasurer cache={cache} index={index} key={key} parent={parent}>
             {({ registerChild }) => (
               <ModListCategoryHeader
+                ref={registerChild}
                 {...{
-                  style,
+                  style: rowStyle,
                   category: row.category,
                   modCount: row.modCount,
                   notEnabledCount: row.notEnabledCount,
@@ -224,7 +229,6 @@ const ModListPane = memo(
                   color: categoryColors?.[row.category],
                   onCategoryToggled,
                   onCategoryRightClick,
-                  registerChild,
                 }}
               />
             )}
@@ -237,8 +241,9 @@ const ModListPane = memo(
           {({ registerChild }) => (
             <ModRow
               key={key}
+              ref={registerChild}
               {...{
-                style,
+                style: rowStyle,
                 loadOrderIndex: loadOrderIndexByModName.get(row.mod.name) ?? index,
                 rowIndex: index,
                 gridClass,
@@ -267,7 +272,6 @@ const ModListPane = memo(
                 hasDbCustomization: row.hasDbCustomization,
                 hasFlowCustomization: row.hasFlowCustomization,
                 hasPackDataOverwrite: row.hasPackDataOverwrite,
-                registerChild,
               }}
             ></ModRow>
           )}
@@ -277,7 +281,7 @@ const ModListPane = memo(
 
     return (
       <div
-        className={`grid pt-1.5 ${(isCompact && `mod-list-compact mod-list-${density}`) || ""} ${gridClass}`}
+        className={`w-full min-w-0 pt-1.5 ${(isCompact && `mod-list-compact mod-list-${density}`) || ""}`}
         id={gridId}
         /*
          * Shift clicking a column header sorts both panes by it. Shift is also how the browser extends a
@@ -288,29 +292,30 @@ const ModListPane = memo(
           if (event.shiftKey && (event.target as HTMLElement).closest(".mod-row-header")) event.preventDefault();
         }}
       >
-        <ModListHeader
-          {...{
-            layout,
-            showConfigColumn,
-            isInsidePane,
-            hasDataMods,
-            areThumbnailsEnabled,
-            isAuthorEnabled,
-            sortingType,
-            setSortingType,
-            onOrderRightClick,
-            onEnabledRightClick,
-          }}
-        />
+        <div className={`grid w-full min-w-0 ${gridClass}`}>
+          <ModListHeader
+            {...{
+              layout,
+              showConfigColumn,
+              isInsidePane,
+              hasDataMods,
+              areThumbnailsEnabled,
+              isAuthorEnabled,
+              sortingType,
+              setSortingType,
+              onOrderRightClick,
+              onEnabledRightClick,
+            }}
+          />
+        </div>
 
         {scrollElement && (
           <WindowScroller scrollElement={scrollElement}>
             {({ height, isScrolling, onChildScroll, scrollTop, registerChild }) => (
-              // AutoSizer measures its own parentNode, which is the grid container above, so the list gets
-              // the full grid width instead of the first column's track.
               <AutoSizer disableHeight>
                 {({ width }) => (
                   <div
+                    style={{ width }}
                     ref={(element) => {
                       listWrapperRef.current = element;
                       // react-virtualized calls findDOMNode(this) when registerChild receives null.

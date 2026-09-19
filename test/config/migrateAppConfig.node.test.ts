@@ -142,6 +142,10 @@ describe("migrateAppConfig", () => {
     expect(config.currentGame).toBe("wh3");
     expect(config.isVisualsSortByCultureEnabled).toBe(true);
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
+    expect(config.unitViewerMode).toBe("visualize");
+    expect(config.unitViewerShowWireframe).toBe(true);
+    expect(config.unitViewerUnsyncedAnimations).toBe(true);
+    expect(config.unitViewerShowUnitCard).toBe(true);
     expect(config.hideRepeatedKeyPrefixes).toBe(true);
     expect(config.recentPackPaths).toEqual([]);
     expect(config.games.rome2).toEqual({
@@ -176,6 +180,42 @@ describe("migrateAppConfig", () => {
 
     expect(config.isVisualsSortByCultureEnabled).toBe(true);
     expect(config.isVisualsHideDuplicatesEnabled).toBe(false);
+  });
+
+  it("preserves the Unit Viewer mode", () => {
+    const config = migrateAppConfig({
+      ...createLegacyConfig(),
+      unitViewerMode: "compare",
+    });
+
+    expect(config.unitViewerMode).toBe("compare");
+  });
+
+  it("preserves the Unit Viewer wireframe option", () => {
+    const config = migrateAppConfig({
+      ...createLegacyConfig(),
+      unitViewerShowWireframe: false,
+    });
+
+    expect(config.unitViewerShowWireframe).toBe(false);
+  });
+
+  it("preserves the Unit Viewer unsynced animations option", () => {
+    const config = migrateAppConfig({
+      ...createLegacyConfig(),
+      unitViewerUnsyncedAnimations: false,
+    });
+
+    expect(config.unitViewerUnsyncedAnimations).toBe(false);
+  });
+
+  it("preserves the Unit Viewer card option", () => {
+    const config = migrateAppConfig({
+      ...createLegacyConfig(),
+      unitViewerShowUnitCard: false,
+    });
+
+    expect(config.unitViewerShowUnitCard).toBe(false);
   });
 
   it("is idempotent and leaves an already-migrated config alone", () => {

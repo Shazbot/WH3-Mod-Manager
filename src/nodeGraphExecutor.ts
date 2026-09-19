@@ -219,6 +219,17 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
       flowSourcePack: (node.data as any).flowSourcePack || "",
     });
   }
+  if (node.type === "editxmlfile") {
+    return JSON.stringify({
+      targetMode: (node.data as any).targetMode || "path",
+      filePath: (node.data as any).filePath || "",
+      ignoreHierarchy: (node.data as any).ignoreHierarchy !== false,
+      locatorSteps: (node.data as any).locatorSteps || [],
+      action: (node.data as any).action || "setAttributes",
+      attributeEdits: (node.data as any).attributeEdits || [],
+      replacementXml: (node.data as any).replacementXml || "",
+    });
+  }
   if (node.type === "editloctext") {
     return JSON.stringify({ locRules: (node.data as any).locRules || [] });
   }

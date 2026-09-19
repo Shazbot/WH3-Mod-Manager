@@ -48,7 +48,6 @@ if (!gotTheLock) {
   // Has to happen before the app is ready, so it cannot live beside the handler registered later.
   registerAssetSchemeAsPrivileged();
 
-  console.log("ARGVS:", process.argv);
   appData.startArgs = process.argv.slice(1);
 
   if (process.platform === "win32") {

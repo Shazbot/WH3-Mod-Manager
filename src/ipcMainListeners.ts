@@ -19,6 +19,8 @@ import { buildRpfmTsvContent, getRpfmTsvExportPath } from "./utility/rpfmTsv";
 import { buildImportedPackedFile } from "./utility/packImportStaging";
 import { applyTextPackedFileEdit } from "./utility/textPackStaging";
 import { compareFilesByteForByte } from "./utility/fileComparison";
+import { invalidateCustomizableModPath } from "./utility/customizableModsState";
+import { encodeDdsAsPng } from "./esfMap/dds";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
@@ -47,6 +49,7 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
 import {
   buildBuildingsData,
   buildVariantNameLocKey,
@@ -124,7 +127,12 @@ import type {
   AncillaryEffectRow,
   BuiltAncillariesData,
 } from "./ancillariesData/types";
-import { clearEsfMapMemoryCache, loadEsfMapDiskCache, saveEsfMapDiskCache } from "./esfMap/cache";
+import {
+  clearEsfMapMemoryCache,
+  loadEsfMapDiskCache,
+  resolveEsfMapCachedImage,
+  saveEsfMapDiskCache,
+} from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import { addClimateDataToEsfMap } from "./esfMap/climates";
 import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
@@ -160,6 +168,7 @@ import {
   type VisualsTableContribution,
   type VisualsVanillaSignatureInputs,
 } from "./visuals/cache";
+import { toVariantMeshDefinitionPath } from "./visuals/paths";
 import {
   canUseVanillaDbCacheForPack,
   closeVanillaDbCacheReaders,
@@ -303,7 +312,12 @@ import {
 } from "./assetProtocol";
 import { normalizeAssetPath } from "./assetUrls";
 import { forkSteamWorker as fork, terminateSteamWorker } from "./steamWorker";
-import { collectVanillaFilesUnderPrefix, findVanillaPackContaining } from "./vanillaPackIndex/format";
+import {
+  collectVanillaPackTreeChildren,
+  collectVanillaFilesUnderPrefix,
+  findVanillaPackContaining,
+  searchVanillaPackFileTree,
+} from "./vanillaPackIndex/format";
 import {
   selectPackPathsToSearch,
   selectVanillaPacksHoldingFiles,
@@ -311,6 +325,15 @@ import {
 } from "./vanillaPackIndex/select";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
+import {
+  getPackedFileNamesFromCacheEntry,
+  getCurrentPackFilesCacheEntry,
+  getVanillaPackFilesCacheEntry,
+  getCachedVanillaPackIndexFromEntry,
+  loadVanillaPackFilesCache,
+  rememberPackFileNames,
+  saveVanillaPackFilesCache,
+} from "./vanillaPackFilesCache";
 import { addRecentPackPath, recentPackPathsEqual, sanitizeRecentPackPaths } from "./utility/recentPackPaths";
 import {
   gameToGameName,
@@ -330,7 +353,12 @@ import {
 import { tryOpenFile } from "./utility/fileHelpers";
 import getPackTableData from "./utility/frontend/packDataHandling";
 import { findLatestScriptLog } from "./utility/logPaths";
-import { decodePackedTextBuffer, getPackedFileMimeType, getPackedFileViewerKind } from "./utility/packFileViewing";
+import {
+  decodePackedTextBuffer,
+  getPackedFileMimeType,
+  getPackedFileViewerKind,
+  isDdsPackedFilePath,
+} from "./utility/packFileViewing";
 import { refreshMainLoadOrderRules } from "./mainLoadOrderRules";
 import { replaceModLoadOrderRules } from "./loadOrderRules";
 import {
@@ -517,6 +545,8 @@ type VisualsSession = {
   fileSearchPackPaths: string[];
   visualFiles?: VisualsFileResult[];
   visualFilesPromise?: Promise<VisualsFileResult[]>;
+  /** Parsed VMD catalogs shared by the Visuals tab preview. */
+  variantMeshCatalogs: Map<string, Promise<VariantMeshCatalog>>;
   createdAt: number;
 };
 type UnitViewerSession = {
@@ -529,6 +559,8 @@ type UnitViewerSession = {
   pendingAssets: Map<string, Promise<AssetBytes | undefined>>;
   /** A batch read in flight, which single asset requests wait behind rather than race. */
   pendingPrewarm?: Promise<unknown>;
+  /** Parsed VMD catalogs, shared by animation/export requests for this unit-viewer session. */
+  variantMeshCatalogs: Map<string, Promise<VariantMeshCatalog>>;
   createdAt: number;
 };
 const unitViewerSessions = new Map<string, UnitViewerSession>();
@@ -568,68 +600,29 @@ type CachedAncillariesData = {
 };
 let cachedAncillariesData: CachedAncillariesData | undefined;
 let cachedEsfMapData: { signature: string; data: import("./esfMap/types").EsfMapPayload } | undefined;
-// Cache for vanilla pack file name lists, keyed by pack path.
-// Allows skipping readPack() on startup when the pack hasn't changed. Module scope rather than
-// inside registerIpcMainListeners so anything that only needs a pack's file names - the buildings
-// icon scan, for one - can reuse it instead of reading the pack again.
-interface VanillaPackFilesCacheEntry {
-  size: number;
-  lastChangedLocal: number;
-  packedFileNames: string[];
-}
-type VanillaPackFilesCache = Record<string, VanillaPackFilesCacheEntry>;
-const VANILLA_PACK_FILES_CACHE_FILE = "vanilla-pack-files-cache.bin";
-let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
-const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache> => {
-  if (vanillaPackFilesCache !== null) return vanillaPackFilesCache;
-  try {
-    const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-    const compressed = await fs.promises.readFile(cacheFilePath);
-    const json = await zstdDecompress(compressed);
-    vanillaPackFilesCache = JSON.parse(json.toString("utf8")) as VanillaPackFilesCache;
-    return vanillaPackFilesCache!;
-  } catch {
-    vanillaPackFilesCache = {};
-    return vanillaPackFilesCache;
-  }
-};
-const saveVanillaPackFilesCache = async (): Promise<void> => {
-  if (!vanillaPackFilesCache) return;
-  try {
-    const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-    const json = Buffer.from(JSON.stringify(vanillaPackFilesCache), "utf8");
-    const compressed = await zstdCompress(json, 1);
-    await fs.promises.writeFile(cacheFilePath, compressed);
-  } catch (err) {
-    console.error("Failed to save vanilla pack files cache:", err);
-  }
-};
-
 /**
- * A pack's file names, from the cache when its size and mtime still match.
+ * A pack's file names, from the expanded vanilla cache or names-only v2 entries for mods when its
+ * size and mtime still match.
  *
  * The names are all an icon lookup needs, and reading a pack just to list them costs a full index
  * parse per pack - about 260 of them for wh3. Populates the cache for packs the startup path never
  * touched, so the second call in a session is free.
  */
 const getVanillaPackedFileNames = async (packPath: string): Promise<string[]> => {
-  const cache = await loadVanillaPackFilesCache();
-  let stat: fs.Stats | undefined;
-  try {
-    stat = await fs.promises.stat(packPath);
-  } catch {
-    return [];
-  }
-  const entry = cache[packPath];
-  if (entry && entry.size === stat.size && entry.lastChangedLocal === stat.mtimeMs) return entry.packedFileNames;
+  const cachedEntry = await getCurrentPackFilesCacheEntry(packPath);
+  if (cachedEntry) return getPackedFileNamesFromCacheEntry(cachedEntry);
 
   const alreadyRead = appData.packsData.find((pack) => pack.path == packPath);
   const packedFileNames = alreadyRead
     ? alreadyRead.packedFiles.map((packedFile) => packedFile.name)
     : (await readPack(packPath, { skipParsingTables: true })).packedFiles.map((packedFile) => packedFile.name);
-
-  cache[packPath] = { size: stat.size, lastChangedLocal: stat.mtimeMs, packedFileNames };
-  await saveVanillaPackFilesCache();
+  try {
+    const stat = await fs.promises.stat(packPath);
+    rememberPackFileNames(packPath, stat.size, stat.mtimeMs, packedFileNames);
+    await saveVanillaPackFilesCache();
+  } catch {
+    // The caller already has the names; a disappearing pack only prevents persistence.
+  }
   return packedFileNames;
 };
 
@@ -841,25 +834,19 @@ const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContex
   reverseRefTtlMs: 5 * 60 * 1000,
   maxReverseRefEntries: 32,
 });
-const toVariantMeshDefinitionPath = (value: string) => {
-  let path = normalizePackFilePath(value);
-  if (!path) return path;
-  if (!path.toLowerCase().endsWith(".variantmeshdefinition")) {
-    path = `${path}.variantmeshdefinition`;
-  }
-  const lower = path.toLowerCase();
-  if (!lower.startsWith("variantmeshes\\")) {
-    path = `variantmeshes\\variantmeshdefinitions\\${path}`;
-  } else if (!lower.startsWith("variantmeshes\\variantmeshdefinitions\\")) {
-    const baseName = nodePath.basename(path);
-    path = `variantmeshes\\variantmeshdefinitions\\${baseName}`;
-  }
-  return normalizePackFilePath(path);
-};
 const decodePackedFileText = (packedFile: PackedFile) => {
   if (packedFile.text != null) return packedFile.text;
   if (!packedFile.buffer) return undefined;
   const buffer = packedFile.buffer;
+  if (buffer.length >= 2 && buffer.subarray(0, 2).toString("hex") === "fffe") {
+    return buffer.subarray(2).toString("utf16le");
+  }
+  if (buffer.length >= 3 && buffer.subarray(0, 3).toString("hex") === "efbbbf") {
+    return buffer.subarray(3).toString("utf8");
+  }
+  return buffer.toString("utf8");
+};
+const decodePackedAssetText = (buffer: Buffer) => {
   if (buffer.length >= 2 && buffer.subarray(0, 2).toString("hex") === "fffe") {
     return buffer.subarray(2).toString("utf16le");
   }
@@ -877,6 +864,12 @@ const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
 const findPackedFileInList = (packedFiles: PackedFile[], fileName: string) => {
   const normalizedTarget = normalizePackFilePathKey(fileName);
   return packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget);
+};
+const getPackedFileImageData = (buffer: Buffer, fileName: string): { buffer: Buffer; mimeType?: string } => {
+  if (isDdsPackedFilePath(fileName)) {
+    return { buffer: encodeDdsAsPng(buffer), mimeType: "image/png" };
+  }
+  return { buffer, mimeType: getPackedFileMimeType(fileName) };
 };
 const getOrLoadPackFromAppData = async (packPath: string) => {
   let stat: { size: number; mtimeMs: number } | undefined;
@@ -973,12 +966,9 @@ const resolveVisualsFileInSession = async (
   if (!requestedPath) return undefined;
   if (options?.variantMeshDefinitionFallback) {
     const lowerRequested = requestedPath.toLowerCase();
-    const looksExplicitPath = lowerRequested.includes("\\") || lowerRequested.startsWith("variantmeshes");
-    if (
-      lowerRequested.endsWith(".variantmeshdefinition") ||
-      !looksExplicitPath ||
-      !(/\.[a-z0-9_]+$/i.test(lowerRequested) && !lowerRequested.endsWith(".variantmeshdefinition"))
-    ) {
+    const hasNonVariantMeshDefinitionExtension =
+      /\.[a-z0-9_]+$/i.test(lowerRequested) && !lowerRequested.endsWith(".variantmeshdefinition");
+    if (!hasNonVariantMeshDefinitionExtension) {
       requestedPath = toVariantMeshDefinitionPath(requestedPath);
     }
   }
@@ -1690,8 +1680,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         throw new Error(`The source file "${normalizedFilePath}" has no saved payload`);
       }
 
+      const sourceReadPath = await resolveVanillaViewerFilePackPath(sourcePackPath, normalizedFilePath);
       const sourceRead = await readPack(
-        sourcePackPath,
+        sourceReadPath,
         isDBFile
           ? {
               tablesToRead: [normalizedFilePath],
@@ -3235,7 +3226,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 17,
+          feature: 18,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -3326,6 +3317,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       assetCache: new Map(),
       assetCacheBytes: 0,
       pendingAssets: new Map(),
+      variantMeshCatalogs: new Map(),
       createdAt: Date.now(),
     };
     const { assets: statIcons } = await loadUnitViewerAssets(
@@ -3358,6 +3350,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         assetCache: new Map(),
         assetCacheBytes: 0,
         pendingAssets: new Map(),
+        variantMeshCatalogs: new Map(),
         createdAt: Date.now(),
       });
       // The one being replaced is kept, and nothing older.
@@ -3418,6 +3411,35 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
 
+  ipcMain.handle("getUnitViewerVariantMeshCatalog", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!normalizedPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const cacheKey = normalizedPath.toLowerCase();
+      const cached = session.variantMeshCatalogs.get(cacheKey);
+      const catalogPromise =
+        cached ||
+        buildVariantMeshCatalog(normalizedPath, async (definitionPath) => {
+          const asset = await getUnitViewerAsset(session, definitionPath);
+          return asset ? decodePackedAssetText(asset.buffer) : undefined;
+        });
+      if (!cached) session.variantMeshCatalogs.set(cacheKey, catalogPromise);
+      try {
+        return { success: true, catalog: await catalogPromise };
+      } catch (error) {
+        if (session.variantMeshCatalogs.get(cacheKey) === catalogPromise) session.variantMeshCatalogs.delete(cacheKey);
+        throw error;
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve unit appearances",
+      };
+    }
+  });
+
   /**
    * The unit viewer's images, served to `<img>` rather than sent as payloads.
    *
@@ -3425,6 +3447,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    * prewarm below is what keeps a whole roster to one read per pack instead of one per card.
    */
   registerAssetProtocol({
+    resolveMapCacheImage: (signature, imageName) =>
+      resolveEsfMapCachedImage(app.getPath("userData"), signature, imageName),
     resolveUnitViewerAsset: async (sessionId, assetPath) => {
       const session = unitViewerSessions.get(sessionId);
       if (!session) return undefined;
@@ -3941,6 +3965,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         factions: data.factions.map(({ flagUrl: _flagUrl, ...faction }) => faction),
       };
       await saveEsfMapDiskCache(app.getPath("userData"), signature, cacheData);
+      // saveEsfMapDiskCache replaces the cached copy's data URLs with whmm:// URLs. Copy those
+      // lightweight refs onto the decorated response too, so the first cold IPC response does not
+      // send the large base64 strings that were just externalised.
+      data.backgroundImage = cacheData.backgroundImage;
+      data.backgroundTextImage = cacheData.backgroundTextImage;
       cachedEsfMapData = { signature, data: cacheData };
       return { success: true, map: data };
     } catch (error) {
@@ -5472,13 +5501,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   };
   const onPackDeleted = async (path: string, isDeletedFromContent = false) => {
+    await invalidateCachedPackData(path);
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
     console.log("MOD REMOVED: " + path);
     await removeMod(mainWindow, path);
-    if (appData.packsData && appData.packsData.some((pack) => pack.path == path)) {
-      appData.packsData = appData.packsData.filter((pack) => pack.path != path);
-    }
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (isDeletedFromContent && dataFolder) {
       try {
@@ -5596,15 +5623,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             } catch {
               // pack doesn't exist, skip
             }
-            const cacheEntry = vanillaStat && vanillaCache[dataPackPath];
+            const cacheEntry = vanillaStat ? getVanillaPackFilesCacheEntry(vanillaCache, dataPackPath) : undefined;
+            const cachedPackIndex = cacheEntry ? getCachedVanillaPackIndexFromEntry(cacheEntry) : undefined;
             const cacheHit =
-              cacheEntry &&
-              cacheEntry.size === vanillaStat!.size &&
-              cacheEntry.lastChangedLocal === vanillaStat!.mtimeMs;
+              !!cachedPackIndex &&
+              cacheEntry!.size === vanillaStat!.size &&
+              cacheEntry!.lastChangedLocal === vanillaStat!.mtimeMs;
             let packedFileNames: string[];
             if (cacheHit) {
               console.log("VANILLA PACK CACHE HIT:", dataPackPath);
-              packedFileNames = cacheEntry.packedFileNames;
+              packedFileNames = cachedPackIndex.packedFiles.map((packedFile) => packedFile.name);
             } else {
               console.log("READING DATA PACK");
               const dataPackData = await readPackRegistered(dataMod.path, {
@@ -5616,28 +5644,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                   appendPacksData(dataPackData);
                 }
                 packedFileNames = dataPackData.packedFiles.map((pf) => pf.name);
-                if (vanillaStat) {
-                  vanillaCache[dataPackPath] = {
-                    size: vanillaStat.size,
-                    lastChangedLocal: vanillaStat.mtimeMs,
-                    packedFileNames,
-                  };
-                  await saveVanillaPackFilesCache();
-                }
               } else {
                 packedFileNames = [];
               }
             }
             if (cacheHit) {
-              // Reconstruct a minimal Pack for vanillaPacks and appendPacksData from cached file names
+              // Reconstruct the pack from cached index metadata without reopening or reparsing it.
               const reconstructedPack: Pack = {
                 name: baseVanillaPackName,
                 path: dataPackPath,
-                packedFiles: packedFileNames.map((name) => ({ name, file_size: 0, start_pos: 0 })),
-                packHeader: {} as PackHeader,
+                packedFiles: cachedPackIndex.packedFiles,
+                packHeader: cachedPackIndex.packHeader,
                 lastChangedLocal: vanillaStat!.mtimeMs,
                 size: vanillaStat!.size,
                 readTables: [],
+                dependencyPacks: cachedPackIndex.dependencyPacks,
               };
               appData.vanillaPacks.push(reconstructedPack);
               if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
@@ -5655,6 +5676,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
           }
         }
+        await saveVanillaPackFilesCache();
         appData.vanillaPacksDBFileNames.sort((a, b) => collator.compare(a, b));
         await fetchGameUpdates();
       }
@@ -5751,8 +5773,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("NEW CONTENT CHANGE", path);
-          onPackDeleted(path);
-          onNewPackFound(path);
+          await onPackDeleted(path);
+          await onNewPackFound(path);
         });
     }
     if (!downloadsWatcher) {
@@ -5793,9 +5815,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("data pack changed:", path);
-          onPackDeleted(path);
+          await onPackDeleted(path);
           console.log("dataWatcher change:", path);
-          onNewPackFound(path);
+          await onNewPackFound(path);
         });
     }
     const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
@@ -5841,8 +5863,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("pack changed:", path);
-          onPackDeleted(path);
-          onNewPackFound(path);
+          await onPackDeleted(path);
+          await onNewPackFound(path);
         });
     }
   };
@@ -5883,6 +5905,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.moddersPrefix = appState.moddersPrefix || "";
       appData.isRigidModelV2CompressionEnabled =
         appState.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
+      appData.compressModsOnUpload = appState.compressModsOnUpload ?? appData.compressModsOnUpload;
       appData.isShowingSkillNodeSetNames = appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
@@ -5912,8 +5935,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("getAllModData", (event, ids: string[]) => {
     // if we keep restarting the app in dev steam refuse requests eventually
     if (isDev) return;
+    const workshopIds = ids.filter((id) => id !== "");
+    if (workshopIds.length === 0) return;
     fetchModData(
-      ids.filter((id) => id !== ""),
+      workshopIds,
       (modData) => {
         tempModDatas.push(modData);
         sendModData();
@@ -6546,7 +6571,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         } else {
           // Calculate and update cache
           foundTables = tablesForMatching.filter((tableForMatching) =>
-            currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching)),
+            currentPack.packedFiles.some((packedFile) =>
+              tableForMatching === "whmmflows\\"
+                ? isPackedFlowName(packedFile.name)
+                : packedFile.name.startsWith(tableForMatching),
+            ),
           );
           cache[currentPack.path] = {
             size: currentPack.size,
@@ -7096,12 +7125,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
   /**
-   * Drops everything read from a pack file that has just been written over, so the next read sees
-   * the new contents instead of the old ones.
+   * Drops everything read from a pack file that has just been written over or changed externally,
+   * so the next read sees the new contents instead of the old ones.
    */
   const invalidateCachedPackData = async (packPath: string) => {
     appData.packsData = appData.packsData.filter((packData) => packData.path !== packPath);
-    delete appData.packMetaData[packPath];
+    const hadCustomizableMod = packPath in appData.customizableMods;
+    invalidateCustomizableModPath(appData, packPath);
+    if (hadCustomizableMod) {
+      mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
+    }
+    const customizableModsCache = await loadCustomizableModsCache();
+    if (packPath in customizableModsCache) {
+      delete customizableModsCache[packPath];
+      await saveCustomizableModsCache(customizableModsCache);
+    }
     if (packHeaderCache) {
       delete packHeaderCache[packPath];
       await savePackHeaderCache();
@@ -7611,6 +7649,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         dbPriorityPackPaths: [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)],
         fileSearchPackPaths,
         visualFiles: areAllFileContributionsCached ? mergeVisualsFileContributions(cachedFileContributions) : undefined,
+        variantMeshCatalogs: new Map(),
         createdAt: Date.now(),
       });
       return {
@@ -7668,7 +7707,43 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       };
     }
   });
-  ipcMain.handle("searchVisualsFiles", async (event, sessionId: string, query: string, offset = 0, limit = 200) => {
+  ipcMain.handle("getVisualsVariantMeshCatalog", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = visualsSessions.get(sessionId);
+      if (!session) return { success: false, error: "Visuals session expired or missing" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!normalizedPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const cacheKey = normalizedPath.toLowerCase();
+      const cached = session.variantMeshCatalogs.get(cacheKey);
+      const catalogPromise =
+        cached ||
+        buildVariantMeshCatalog(normalizedPath, async (definitionPath) => {
+          const resolved = await resolveVisualsFileInSession(session, definitionPath, {
+            variantMeshDefinitionFallback: true,
+          });
+          if (!resolved?.pack || !resolved.fileName) return undefined;
+          await readFromExistingPack(resolved.pack, {
+            filesToRead: [resolved.fileName],
+            skipParsingTables: true,
+          });
+          const refreshedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+          return refreshedFile ? decodePackedFileText(refreshedFile) : undefined;
+        });
+      if (!cached) session.variantMeshCatalogs.set(cacheKey, catalogPromise);
+      try {
+        return { success: true, catalog: await catalogPromise };
+      } catch (error) {
+        if (session.variantMeshCatalogs.get(cacheKey) === catalogPromise) session.variantMeshCatalogs.delete(cacheKey);
+        throw error;
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve Visuals appearances",
+      };
+    }
+  });
+  ipcMain.handle("searchVisualsFiles", async (event, sessionId: string, query: string, offset = 0, limit = 1000) => {
     try {
       const session = visualsSessions.get(sessionId);
       if (!session) return { success: false, error: "Visuals session expired or missing" };
@@ -7678,7 +7753,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         ? cachedFiles.filter((file) => normalizePackFilePathKey(file.path).includes(normalizedQuery))
         : cachedFiles;
       const safeOffset = Math.max(0, offset || 0);
-      const safeLimit = Math.max(1, Math.min(1000, limit || 200));
+      const safeLimit = Math.max(1, Math.min(1000, limit || 1000));
       return {
         success: true,
         total: allResults.length,
@@ -7887,10 +7962,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           };
         }
         if (viewerKind === "image") {
+          const image = getPackedFileImageData(unsavedBuffer, fileName);
           return {
             success: true,
-            base64: unsavedBuffer.toString("base64"),
-            mimeType: getPackedFileMimeType(fileName),
+            base64: image.buffer.toString("base64"),
+            mimeType: image.mimeType,
           };
         }
         return { success: true, text: decodePackedFileText(unsavedFile) };
@@ -7902,8 +7978,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           error: `File "${fileName}" was deleted from the pack and has not been saved yet`,
         };
       }
-      // Read the pack with the specific file
-      const pack = await readPack(packPath, { filesToRead: [fileName] });
+      // The viewer's db.pack tree also contains files whose winning bytes live in another vanilla
+      // pack. Resolve that source here, keeping the full payload read lazy until this request.
+      const sourcePackPath = await resolveVanillaViewerFilePackPath(packPath, fileName);
+      const pack = await readPack(sourcePackPath, { filesToRead: [fileName] });
       // Find the file
       const file = findPackedFileCaseInsensitive(pack, fileName);
       if (!file) {
@@ -7926,10 +8004,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             error: "Image data is unavailable",
           };
         }
+        const image = getPackedFileImageData(file.buffer, fileName);
         return {
           success: true,
-          base64: file.buffer.toString("base64"),
-          mimeType: getPackedFileMimeType(fileName),
+          base64: image.buffer.toString("base64"),
+          mimeType: image.mimeType,
         };
       }
       if (file.text != null) {
@@ -8163,6 +8242,50 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  const compressPackWithAnalysis = async (
+    packPath: string,
+    includeRigidModelV2: boolean,
+    options: { outputPath?: string; allowNoEligible?: boolean } = {},
+  ): Promise<CompressPackResponse> => {
+    const gameFolder = appData.gamesToGameFolderPaths.wh3?.gamePath;
+    if (!gameFolder) return { success: false, error: "Set the Warhammer 3 game folder before compressing packs." };
+
+    const normalizedPackPath = nodePath.resolve(packPath).toLowerCase();
+    if (compressionPackPathsInProgress.has(normalizedPackPath)) {
+      return { success: false, error: "This pack is already being compressed." };
+    }
+    compressionPackPathsInProgress.add(normalizedPackPath);
+
+    try {
+      // Analyze again in the main process so renderer data can never choose unsafe files/codecs.
+      const analysisResult = await analyzeCompressionPacks([packPath], {
+        vanillaCsv: getVanillaCompressionCsv(),
+      });
+      const analysis = analysisResult.packs[0];
+      if (!analysis || !analysis.success) {
+        return { success: false, error: analysis?.errors[0] || analysisResult.error || "Pack analysis failed." };
+      }
+      const hasEligibleFiles =
+        analysis.acceptedCount > 0 || (includeRigidModelV2 && analysis.rigidModelV2Wins.length > 0);
+      if (!hasEligibleFiles && options.allowNoEligible) {
+        return {
+          success: true,
+          packPath: options.outputPath ?? packPath,
+          originalSize: analysis.currentSize,
+          compressedSize: analysis.currentSize,
+          compressedFileCount: 0,
+        };
+      }
+      return await compressAnalyzedPack(packPath, analysis, gameFolder, includeRigidModelV2, {
+        outputPath: options.outputPath,
+      });
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      compressionPackPathsInProgress.delete(normalizedPackPath);
+    }
+  };
+
   ipcMain.handle("compressPack", async (_event, request: CompressPackRequest): Promise<CompressPackResponse> => {
     if (!appData.isFeaturesForModdersEnabled) {
       return { success: false, error: "Enable Features For Modders before compressing packs." };
@@ -8199,34 +8322,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (copyToDataFolder && (isInDataFolder || dataAlreadyContainsPack)) {
       return { success: false, error: "This pack already exists in the data folder; Ctrl-click did nothing." };
     }
-    const gameFolder = appData.gamesToGameFolderPaths.wh3?.gamePath;
-    if (!gameFolder) return { success: false, error: "Set the Warhammer 3 game folder before compressing packs." };
     if (copyToDataFolder && !dataFolder) {
       return { success: false, error: "Set the Warhammer 3 data folder before copying compressed packs." };
     }
-    if (compressionPackPathsInProgress.has(normalizedRequestedPath)) {
-      return { success: false, error: "This pack is already being compressed." };
-    }
-    compressionPackPathsInProgress.add(normalizedRequestedPath);
-
-    try {
-      // Analyze again in the main process so renderer data can never choose unsafe files/codecs.
-      const analysisResult = await analyzeCompressionPacks([enabledMod.path], {
-        vanillaCsv: getVanillaCompressionCsv(),
-      });
-      const analysis = analysisResult.packs[0];
-      if (!analysis || !analysis.success) {
-        return { success: false, error: analysis?.errors[0] || analysisResult.error || "Pack analysis failed." };
-      }
-      const outputPath = copyToDataFolder ? nodePath.join(dataFolder!, nodePath.basename(enabledMod.path)) : undefined;
-      return await compressAnalyzedPack(enabledMod.path, analysis, gameFolder, request.includeRigidModelV2 === true, {
-        outputPath,
-      });
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    } finally {
-      compressionPackPathsInProgress.delete(normalizedRequestedPath);
-    }
+    const outputPath = copyToDataFolder ? nodePath.join(dataFolder!, nodePath.basename(enabledMod.path)) : undefined;
+    return await compressPackWithAnalysis(enabledMod.path, request.includeRigidModelV2 === true, { outputPath });
   });
   ipcMain.on("cancelGlobalSearch", (event) => {
     const state = globalSearchCancelStateByWebContentsId.get(event.sender.id);
@@ -11194,12 +11294,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       return { success: false, error: error?.message || String(error) };
     }
   });
-  ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
-    getPackData(packPath, table);
-  });
-  ipcMain.on("getPackDataWithLocs", async (event, packPath: string, table?: DBTable) => {
-    getPackData(packPath, table, true);
-  });
   const getLiveViewerWindow = () => {
     if (!windows.viewerWindow) return undefined;
     if (windows.viewerWindow.isDestroyed()) {
@@ -11377,7 +11471,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // Runs before the window exists on a cold start, so sendPackViewData can find no viewer to send
       // or queue to. The viewerIsReady replay below re-requests every open pack, which is what covers
       // that case - do not drop it.
-      getPackData(modPath);
+      getPackData(modPath, undefined, undefined, "viewer");
     }
     appData.activeViewerPackPath = modPath;
     let viewerWindow = getLiveViewerWindow();
@@ -11521,17 +11615,29 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return getDBPackedFilePath(dbTable as DBTableSelection);
   };
   const viewerTableRequests = createInFlightTableRequests();
-  const sendPackViewData = (packViewData: PackViewData | undefined) => {
+  const resolveVanillaViewerFilePackPath = async (packPath: string, fileName: string): Promise<string> => {
+    if (!canUseVanillaDbCacheForPack(packPath)) return packPath;
+
+    const vanillaIndex = await getVanillaPackIndex();
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+    const vanillaPackName = vanillaIndex ? findVanillaPackContaining(vanillaIndex, fileName) : undefined;
+    return dataFolder && vanillaPackName ? nodePath.join(dataFolder, vanillaPackName) : packPath;
+  };
+  type PackDataDestination = "main" | "viewer";
+  const sendPackViewData = (packViewData: PackViewData | undefined, destination: PackDataDestination) => {
     if (!packViewData) return;
-    const toSend = [packViewData];
+    if (destination === "main") {
+      mainWindow?.webContents.send("setPacksData", [packViewData]);
+      return;
+    }
+
     const viewerWindow = getLiveViewerWindow();
-    mainWindow?.webContents.send("setPacksData", toSend);
-    viewerWindow?.webContents.send("setPacksData", toSend);
-    // Main-window consumers also request pack data. Queue it only when a viewer window actually
-    // exists and is still starting; otherwise a future viewer would receive an unrelated stale pack.
-    if (viewerWindow && !appData.isViewerReady) {
+    if (!viewerWindow) return;
+
+    viewerWindow.webContents.send("setPacksData", [packViewData]);
+    if (!appData.isViewerReady) {
       console.log("VIEWER NOT READY, QUEUEING");
-      appData.queuedViewerData = toSend;
+      appData.queuedViewerData = [packViewData];
     }
   };
 
@@ -11553,7 +11659,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     };
   };
 
-  const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
+  const getPackData = async (
+    packPath: string,
+    table?: DBTable,
+    getLocs?: boolean,
+    destination: PackDataDestination = "viewer",
+  ) => {
     console.log(`getPackData ${packPath}`);
     // A loc is parsed by the loc reader, not the db one, so asking for it has to turn that on.
     if (table && isLocPackedFilePath(dbTableToString(table))) getLocs = true;
@@ -11566,7 +11677,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           console.log("WAIT FOR DATAFOLDER TO BE SET");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           console.log("DONE WAITING FOR DATAFOLDER");
-          getPackData(packPath, table, getLocs);
+          getPackData(packPath, table, getLocs, destination);
           return;
         }
         if (packPath == baseVanillaPackName) {
@@ -11582,18 +11693,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         console.log("WAIT FOR DATAFOLDER TO BE SET");
         await new Promise((resolve) => setTimeout(resolve, 1000));
         console.log("DONE WAITING FOR DATAFOLDER");
-        getPackData(packPath, table, getLocs);
+        getPackData(packPath, table, getLocs, destination);
         return;
       }
       packPath = nodePath.join(dataFolder as string, packPath);
     }
     const packedFilePath = table ? dbTableToString(table) : "";
-    const requestKey = JSON.stringify([packPath, packedFilePath, Boolean(getLocs)]);
+    const requestKey = JSON.stringify([destination, packPath, packedFilePath, Boolean(getLocs)]);
     await viewerTableRequests.run(requestKey, async () => {
       const packData = appData.packsData.find((pack) => pack.path === packPath);
 
       if (packData && !table) {
-        sendPackViewData(getPackViewData(packData, undefined, getLocs));
+        sendPackViewData(getPackViewData(packData, undefined, getLocs), destination);
         return;
       }
 
@@ -11602,7 +11713,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (packData && table && !getLocs) {
         const loaded = getLoadedPackViewData(packData, table);
         if (loaded) {
-          sendPackViewData(loaded);
+          sendPackViewData(loaded, destination);
           return;
         }
       }
@@ -11639,9 +11750,87 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         console.log("APPENDING packsData", packPath);
         appendPacksData(newPack);
       }
-      sendPackViewData(getPackViewData(newPack, table, getLocs));
+      sendPackViewData(getPackViewData(newPack, table, getLocs), destination);
     });
   };
+  const getPackDataDestination = (sender: Electron.WebContents): PackDataDestination =>
+    getLiveViewerWindow()?.webContents === sender ? "viewer" : "main";
+  const VANILLA_FILE_SEARCH_MAX_RESULTS = 1000;
+
+  ipcMain.on("getPackData", (event, packPath: string, table?: DBTable) => {
+    getPackData(packPath, table, undefined, getPackDataDestination(event.sender));
+  });
+  ipcMain.on("getPackDataWithLocs", (event, packPath: string, table?: DBTable) => {
+    getPackData(packPath, table, true, getPackDataDestination(event.sender));
+  });
+  ipcMain.handle(
+    "getVanillaPackFileTree",
+    async (
+      _event,
+      packPath: string,
+      prefix: string,
+    ): Promise<{ success: boolean; children?: { path: string; isBranch: boolean }[]; error?: string }> => {
+      try {
+        if (!canUseVanillaDbCacheForPack(packPath)) return { success: false, error: "Not the current DB pack" };
+
+        const vanillaIndex = await getVanillaPackIndex();
+        if (!vanillaIndex) return { success: true, children: [] };
+
+        return {
+          success: true,
+          children: collectVanillaPackTreeChildren(
+            vanillaIndex,
+            prefix,
+            (filePath) => parseDBTablePath(filePath) == undefined,
+            (folderPath) => folderPath !== "db" && folderPath !== "unusedtables",
+          ),
+        };
+      } catch (error) {
+        console.error("Could not load vanilla pack file tree:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Could not load vanilla pack file tree",
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    "searchVanillaPackFiles",
+    async (
+      _event,
+      packPath: string,
+      query: string,
+    ): Promise<{
+      success: boolean;
+      filePaths?: string[];
+      folderPaths?: string[];
+      truncated?: boolean;
+      error?: string;
+    }> => {
+      try {
+        if (!canUseVanillaDbCacheForPack(packPath)) return { success: false, error: "Not the current DB pack" };
+
+        const vanillaIndex = await getVanillaPackIndex();
+        if (!vanillaIndex) return { success: true, filePaths: [], folderPaths: [], truncated: false };
+
+        return {
+          success: true,
+          ...searchVanillaPackFileTree(
+            vanillaIndex,
+            query,
+            VANILLA_FILE_SEARCH_MAX_RESULTS,
+            (filePath) => parseDBTablePath(filePath) == undefined,
+          ),
+        };
+      } catch (error) {
+        console.error("Could not search vanilla pack files:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Could not search vanilla pack files",
+        };
+      }
+    },
+  );
   const readMods = async (
     mods: Mod[],
     skipParsingTables = true,
@@ -11734,7 +11923,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       ...appData.openViewerPackPaths.filter((packPath) => packPath === activePackPath),
     ];
     for (const packPath of packPathsInSendOrder) {
-      if (!skipReadFor?.has(packPath)) getPackData(packPath);
+      if (!skipReadFor?.has(packPath)) getPackData(packPath, undefined, undefined, "viewer");
       windows.viewerWindow?.webContents.send("openModInViewer", packPath);
       windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, appData.unsavedPacksData[packPath] ?? []);
       windows.viewerWindow?.webContents.send(
@@ -11981,7 +12170,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 startTime: Date.now(),
               } as Toast);
             }
-            updateMod(mod, response.workshopId, mod.tags, mod.name, true);
+            void updateMod(mod, response.workshopId, mod.tags, mod.name, true);
             break;
           case "error":
             mainWindow?.webContents.send("addToast", {
@@ -12001,9 +12190,30 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     modTitle?: string,
     openInSteamAfterUpdate = false,
   ) => {
+    if (!checkIsModThumbnailValid(mod.imgPath)) return;
+
+    if (appData.compressModsOnUpload && appData.currentGame === "wh3") {
+      const compressionResponse = await compressPackWithAnalysis(mod.path, appData.isRigidModelV2CompressionEnabled, {
+        allowNoEligible: true,
+      });
+      if (!compressionResponse.success) {
+        const message = i18n.t("compressModsOnUploadFailed", {
+          mod: mod.name,
+          error: compressionResponse.error || "Unknown compression error.",
+        });
+        console.error(message);
+        mainWindow?.webContents.send("handleLog", message);
+        mainWindow?.webContents.send("addToast", {
+          type: "warning",
+          messages: [message],
+          startTime: Date.now(),
+        } as Toast);
+        return;
+      }
+    }
+
     const uploadFolderName = workshopId;
     const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_uploads_" + uploadFolderName);
-    if (!checkIsModThumbnailValid(mod.imgPath)) return;
     await fs.rmSync(uploadFolderPath, { recursive: true, force: true });
     await fs.mkdirSync(uploadFolderPath, { recursive: true });
     await fs.linkSync(mod.path, nodePath.join(uploadFolderPath, mod.name));
@@ -12076,7 +12286,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     });
   };
   ipcMain.on("updateMod", async (event, mod: Mod, contentMod: Mod) => {
-    updateMod(mod, contentMod.workshopId, contentMod.tags);
+    void updateMod(mod, contentMod.workshopId, contentMod.tags);
   });
   ipcMain.on("fakeUpdatePack", async (event, mod: Mod) => {
     try {

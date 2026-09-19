@@ -36,6 +36,30 @@ describe("selectConfigSavePayload", () => {
     expect(payload.config.isVisualsHideDuplicatesEnabled).toBe(false);
   });
 
+  it("includes the Unit Viewer mode in the saved config payload", () => {
+    const payload = selectConfigSavePayload({ ...initialState, unitViewerMode: "visualize" } as AppState);
+
+    expect(payload.config.unitViewerMode).toBe("visualize");
+  });
+
+  it("includes the Unit Viewer wireframe option in the saved config payload", () => {
+    const payload = selectConfigSavePayload({ ...initialState, unitViewerShowWireframe: false } as AppState);
+
+    expect(payload.config.unitViewerShowWireframe).toBe(false);
+  });
+
+  it("includes the Unit Viewer unsynced animations option in the saved config payload", () => {
+    const payload = selectConfigSavePayload({ ...initialState, unitViewerUnsyncedAnimations: false } as AppState);
+
+    expect(payload.config.unitViewerUnsyncedAnimations).toBe(false);
+  });
+
+  it("includes the Unit Viewer card option in the saved config payload", () => {
+    const payload = selectConfigSavePayload({ ...initialState, unitViewerShowUnitCard: false } as AppState);
+
+    expect(payload.config.unitViewerShowUnitCard).toBe(false);
+  });
+
   it("includes both skills display options in the saved config payload", () => {
     const payload = selectConfigSavePayload({
       ...initialState,

@@ -99,6 +99,36 @@ describe("main tab persistence", () => {
     expectTabKeepsItsState(renderMain(), "ancillaries", "Ancillaries state");
   });
 
+  it("starts the asset host only while Visuals or Unit Viewer is the visible tab", () => {
+    const originalApi = window.api;
+    const startWh3AssetHost = vi.fn().mockResolvedValue({ success: true });
+    const stopWh3AssetHost = vi.fn().mockResolvedValue({ success: true });
+    window.api = { ...window.api, startWh3AssetHost, stopWh3AssetHost } as NonNullable<Window["api"]>;
+
+    try {
+      const store = renderMain();
+
+      act(() => store.dispatch(setCurrentTab("visuals")));
+      expect(startWh3AssetHost).toHaveBeenCalledOnce();
+
+      // Both tabs share the same lifecycle, so moving directly between them keeps the process alive.
+      act(() => store.dispatch(setCurrentTab("unitViewer")));
+      expect(startWh3AssetHost).toHaveBeenCalledOnce();
+      expect(stopWh3AssetHost).not.toHaveBeenCalled();
+
+      act(() => store.dispatch(setCurrentTab("categories")));
+      expect(stopWh3AssetHost).toHaveBeenCalledOnce();
+
+      act(() => store.dispatch(setCurrentTab("visuals")));
+      expect(startWh3AssetHost).toHaveBeenCalledTimes(2);
+
+      act(() => store.dispatch(setCurrentTab("mods")));
+      expect(stopWh3AssetHost).toHaveBeenCalledTimes(2);
+    } finally {
+      window.api = originalApi;
+    }
+  });
+
   it("does not mount Ancillaries for a game that has none", () => {
     const store = renderMain({ currentGame: "wh2" as const });
 

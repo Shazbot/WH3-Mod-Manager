@@ -1,6 +1,5 @@
-import React, { CSSProperties, memo, useContext } from "react";
+import React, { CSSProperties, forwardRef, memo, useContext } from "react";
 import { GoChevronDown, GoChevronRight } from "react-icons/go";
-import { CellMeasurerChildProps } from "react-virtualized/dist/es/CellMeasurer";
 
 import localizationContext from "../localizationContext";
 import { getCategoryColorClasses } from "../utility/frontend/categoryColors";
@@ -18,7 +17,6 @@ type ModListCategoryHeaderProps = {
   onCategoryToggled?: (category: string) => void;
   onCategoryRightClick?: (category: string) => void;
   style: CSSProperties;
-  registerChild: CellMeasurerChildProps["registerChild"];
 };
 
 /**
@@ -30,18 +28,11 @@ type ModListCategoryHeaderProps = {
  * Only the mods that are not enabled yet are listed under it, so the count is what the heading is for: it
  * is the one place a category whose mods are all enabled still shows up.
  */
-const ModListCategoryHeader = memo(
-  ({
-    category,
-    modCount,
-    notEnabledCount,
-    isCollapsed,
-    color,
-    onCategoryToggled,
-    onCategoryRightClick,
-    style,
-    registerChild,
-  }: ModListCategoryHeaderProps) => {
+const ModListCategoryHeader = forwardRef<HTMLDivElement, ModListCategoryHeaderProps>(
+  (
+    { category, modCount, notEnabledCount, isCollapsed, color, onCategoryToggled, onCategoryRightClick, style },
+    ref,
+  ) => {
     const localized: Record<string, string> = useContext(localizationContext);
     const colorClasses = getCategoryColorClasses(color);
     // "Uncategorized" is a stored category name rather than a label, so only its display side is localized.
@@ -49,7 +40,7 @@ const ModListCategoryHeader = memo(
     const isEveryModEnabled = notEnabledCount === 0;
 
     return (
-      <div style={style} ref={registerChild}>
+      <div style={style} ref={ref}>
         <button
           type="button"
           className="flex w-full items-center gap-2 px-2 py-1 border-b border-slate-600/60 text-left cursor-pointer hover:bg-slate-700/40"
@@ -85,4 +76,4 @@ const ModListCategoryHeader = memo(
   },
 );
 
-export default ModListCategoryHeader;
+export default memo(ModListCategoryHeader);
