@@ -65,6 +65,13 @@ type ComparisonVariant = {
   selections: VariantMeshSelection[];
 };
 
+const disposeMaterial = (material: THREE.Material) => {
+  for (const value of Object.values(material)) {
+    if (value instanceof THREE.Texture) value.dispose();
+  }
+  material.dispose();
+};
+
 const disposeObject = (object: THREE.Object3D) => {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
@@ -134,6 +141,15 @@ const texturePoolKey = (texture: THREE.Texture) => {
     texture.magFilter,
     texture.minFilter,
     texture.anisotropy,
+    texture.mapping,
+    texture.channel,
+    texture.offset.x,
+    texture.offset.y,
+    texture.repeat.x,
+    texture.repeat.y,
+    texture.center.x,
+    texture.center.y,
+    texture.rotation,
     texture.flipY ? 1 : 0,
     texture.colorSpace,
   ].join("|");
