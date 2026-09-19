@@ -179,6 +179,16 @@ const disposeRunningHost = () => {
   startingHostClient = null;
 };
 
+/** Dispose only the host used by a failed operation; an older request must never tear down a newer host. */
+const disposeOperationHost = (host: RunningHost | undefined) => {
+  if (!host) return;
+  if (runningHost?.client === host.client) {
+    disposeRunningHost();
+    return;
+  }
+  host.client.dispose();
+};
+
 const assertHostLifecycleActive = (generation: number) => {
   if (!hostLifecycleActive || generation !== hostLifecycleGeneration) {
     throw new Error("WH3AssetHost is no longer needed because its viewer tab is inactive.");
@@ -338,25 +348,40 @@ const normalizeVisualsModelAssetPath = (assetPath: string) => {
   return { success: true as const, assetPath: normalizedAssetPath };
 };
 
-const prepareVisualsModelHost = async (enabledModsValue: unknown) => {
-  assertHostLifecycleActive(hostLifecycleGeneration);
+const prepareVisualsModelHost = async (enabledModsValue: unknown, generation: number) => {
+  assertHostLifecycleActive(generation);
   await prepareOutputRoot();
-  const host = await startHost();
-  const enabledMods = sanitizeEnabledMods(enabledModsValue);
-  const packPaths = getWh3AssetHostPackPathsForMods(enabledMods);
-  await host.packInitializer.ensureInitializedForPackPaths(packPaths, getOutputRoot());
-  return host;
+  assertHostLifecycleActive(generation);
+  const host = await startHost(generation);
+  try {
+    assertHostLifecycleActive(generation);
+    const enabledMods = sanitizeEnabledMods(enabledModsValue);
+    const packPaths = getWh3AssetHostPackPathsForMods(enabledMods);
+    await host.packInitializer.ensureInitializedForPackPaths(packPaths, getOutputRoot());
+    assertHostLifecycleActive(generation);
+    return host;
+  } catch (error) {
+    disposeOperationHost(host);
+    throw error;
+  }
 };
 
-const getVisualsModelAnimationCatalogNow = async (assetPath: string, enabledModsValue: unknown) => {
+const getVisualsModelAnimationCatalogNow = async (
+  assetPath: string,
+  enabledModsValue: unknown,
+  generation: number,
+) => {
   const normalized = normalizeVisualsModelAssetPath(assetPath);
   if (!normalized.success) return normalized;
 
+  let host: RunningHost | undefined;
   try {
-    const host = await prepareVisualsModelHost(enabledModsValue);
-    return await host.client.getAnimationCatalog(normalized.assetPath);
+    host = await prepareVisualsModelHost(enabledModsValue, generation);
+    const result = await host.client.getAnimationCatalog(normalized.assetPath);
+    assertHostLifecycleActive(generation);
+    return result;
   } catch (error) {
-    disposeRunningHost();
+    disposeOperationHost(host);
     return {
       success: false as const,
       error: error instanceof Error ? error.message : "Failed to resolve model animations.",
@@ -370,6 +395,7 @@ const exportVisualsModelNow = async (
   animationPathsValue: unknown,
   variantSelectionsValue: unknown,
   queuedAtMs: number,
+  generation: number,
 ) => {
   const operationStartedAt = performance.now();
   const queueWaitMs = operationStartedAt - queuedAtMs;
@@ -384,10 +410,11 @@ const exportVisualsModelNow = async (
   const previewDirectory = nodePath.join(outputRoot, previewId);
   const outputPath = `${previewId}\\model.glb`;
   let registered = false;
+  let host: RunningHost | undefined;
 
   try {
     const prepareHostStartedAt = performance.now();
-    const host = await prepareVisualsModelHost(enabledMods);
+    host = await prepareVisualsModelHost(enabledMods, generation);
     const prepareHostMs = performance.now() - prepareHostStartedAt;
 
     const hostExportStartedAt = performance.now();
@@ -398,6 +425,7 @@ const exportVisualsModelNow = async (
       variantSelections,
     });
     const hostExportMs = performance.now() - hostExportStartedAt;
+    assertHostLifecycleActive(generation);
 
     if (!result.success || !result.primaryFile) {
       const hostErrors = result.errors
@@ -420,6 +448,7 @@ const exportVisualsModelNow = async (
 
     const registerStartedAt = performance.now();
     const glbBytes = (await fs.promises.stat(result.primaryFile)).size;
+    assertHostLifecycleActive(generation);
     registerModelPreviewFile(previewId, result.primaryFile);
     previews.set(previewId, { directory: nodePath.dirname(result.primaryFile) });
     registered = true;
@@ -440,9 +469,9 @@ const exportVisualsModelNow = async (
       },
     };
   } catch (error) {
-    // A transport/process failure invalidates both the host runtime and the initializer revision.
-    // The next preview request starts a fresh process and reinitializes its pack universe.
-    disposeRunningHost();
+    // A transport/process failure invalidates the host used by this operation. If this request belongs
+    // to an older lifecycle generation, leave the replacement host alone.
+    disposeOperationHost(host);
     return {
       success: false as const,
       error: error instanceof Error ? error.message : "Failed to export the model preview.",
@@ -477,16 +506,18 @@ ipcMain.handle(
   "exportVisualsModel",
   async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown, variantSelections: unknown) => {
     const queuedAtMs = performance.now();
+    const generation = hostLifecycleGeneration;
     return exportVisualsModel(() =>
-      exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections, queuedAtMs),
+      exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections, queuedAtMs, generation),
     );
   },
 );
 
 ipcMain.removeHandler("getVisualsModelAnimationCatalog");
-ipcMain.handle("getVisualsModelAnimationCatalog", async (_event, assetPath: string, enabledMods: unknown) =>
-  exportVisualsModel(() => getVisualsModelAnimationCatalogNow(assetPath, enabledMods)),
-);
+ipcMain.handle("getVisualsModelAnimationCatalog", async (_event, assetPath: string, enabledMods: unknown) => {
+  const generation = hostLifecycleGeneration;
+  return exportVisualsModel(() => getVisualsModelAnimationCatalogNow(assetPath, enabledMods, generation));
+});
 
 const finiteNumber = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 const formatTiming = (value: unknown) => finiteNumber(value).toFixed(1);

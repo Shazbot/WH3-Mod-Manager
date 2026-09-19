@@ -161,6 +161,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
   const pendingCameraViewRef = useRef<{ assetPath: string; view: CameraView } | null>(null);
+  const loadedAnimationCatalogKeyRef = useRef<string>();
+  const loadedVariantCatalogKeyRef = useRef<string>();
+  const animationCatalogKey = useMemo(() => JSON.stringify([assetPath, enabledMods]), [assetPath, enabledMods]);
+  const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
 
   useEffect(() => {
@@ -296,7 +300,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   }, [animationSpeed]);
 
   useEffect(() => {
+    if (!isActive || loadedAnimationCatalogKeyRef.current === animationCatalogKey) return;
+
     let isCancelled = false;
+    loadedAnimationCatalogKeyRef.current = undefined;
     catalogLoadingRef.current = true;
     setAnimationCatalogReady(false);
     setAnimationOptions([]);
@@ -304,8 +311,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setCatalogDiagnostics([]);
     setClipDuration(0);
     setCurrentTime(0);
-
-    if (!isActive) return;
 
     const loadCatalog = async () => {
       try {
@@ -326,6 +331,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.path || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
+        if (result.success) loadedAnimationCatalogKeyRef.current = animationCatalogKey;
       } catch (catalogError) {
         if (!isCancelled) {
           setAnimationOptions([NONE_ANIMATION]);
@@ -346,15 +352,21 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [assetPath, enabledMods, isActive]);
+  }, [animationCatalogKey, assetPath, enabledMods, isActive]);
 
   useEffect(() => {
+    if (!isActive || loadedVariantCatalogKeyRef.current === variantCatalogKey) return;
+
     let isCancelled = false;
+    loadedVariantCatalogKeyRef.current = undefined;
     setVariantCatalog(undefined);
     setVariantCatalogDiagnostics([]);
     setVariantSelections({});
     setVariantCatalogReady(!variantMeshSessionId);
-    if (!isActive || !variantMeshSessionId) return;
+    if (!variantMeshSessionId) {
+      loadedVariantCatalogKeyRef.current = variantCatalogKey;
+      return;
+    }
 
     const loadVariantCatalog = async () => {
       try {
@@ -371,6 +383,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         setVariantSelections(
           Object.fromEntries(result.catalog.slots.map((slot) => [slot.slotPath, slot.defaultChoiceIndex] as const)),
         );
+        loadedVariantCatalogKeyRef.current = variantCatalogKey;
       } catch (catalogError) {
         if (!isCancelled) {
           setVariantCatalog(undefined);
@@ -387,7 +400,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [assetPath, isActive, variantMeshSessionId, variantMeshSessionType]);
+  }, [assetPath, isActive, variantCatalogKey, variantMeshSessionId, variantMeshSessionType]);
 
   const activeVariantSlots = useMemo(
     () =>
@@ -404,6 +417,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       })),
     [activeVariantSlots, variantSelections],
   );
+
+  useEffect(() => {
+    if (isActive || status !== "ready") return;
+    const context = contextRef.current;
+    if (!context || !assetPath) return;
+    pendingCameraViewRef.current = { assetPath, view: captureCameraView(context) };
+  }, [assetPath, isActive, status]);
 
   useEffect(() => {
     if (!isActive || !animationCatalogReady || !variantCatalogReady || catalogLoadingRef.current) return;

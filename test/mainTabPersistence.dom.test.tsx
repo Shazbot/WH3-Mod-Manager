@@ -111,10 +111,15 @@ describe("main tab persistence", () => {
       act(() => store.dispatch(setCurrentTab("visuals")));
       expect(startWh3AssetHost).toHaveBeenCalledOnce();
 
+      // Both tabs share the same lifecycle, so moving directly between them keeps the process alive.
+      act(() => store.dispatch(setCurrentTab("unitViewer")));
+      expect(startWh3AssetHost).toHaveBeenCalledOnce();
+      expect(stopWh3AssetHost).not.toHaveBeenCalled();
+
       act(() => store.dispatch(setCurrentTab("categories")));
       expect(stopWh3AssetHost).toHaveBeenCalledOnce();
 
-      act(() => store.dispatch(setCurrentTab("unitViewer")));
+      act(() => store.dispatch(setCurrentTab("visuals")));
       expect(startWh3AssetHost).toHaveBeenCalledTimes(2);
 
       act(() => store.dispatch(setCurrentTab("mods")));
