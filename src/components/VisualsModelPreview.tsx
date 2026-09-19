@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
+import { Wh3Ktx2Loader } from "../visuals/Wh3Ktx2Loader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { IoPause, IoPlay, IoRefresh } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
@@ -24,7 +24,7 @@ type ThreePreviewContext = {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
-  ktx2Loader: KTX2Loader;
+  ktx2Loader: Wh3Ktx2Loader;
   controls: OrbitControls;
   grid: THREE.GridHelper;
   mixer: THREE.AnimationMixer | null;
@@ -149,10 +149,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     renderer.domElement.className = "block h-full w-full";
     mount.appendChild(renderer.domElement);
 
-    // WH3AssetHost embeds lossless raw-RGBA KTX2 textures with Zstd
-    // supercompression. Raw KTX2 does not need the Basis transcoder path,
-    // but KTX2Loader still needs renderer capability detection.
-    const ktx2Loader = new KTX2Loader();
+    // WH3AssetHost uses a low-latency raw RGBA + Zstd KTX2 flavor for
+    // previews. The compatibility loader handles that format directly and
+    // delegates standards-compliant Basis/UASTC KTX2 to Three's KTX2Loader.
+    const ktx2Loader = new Wh3Ktx2Loader();
     ktx2Loader.detectSupport(renderer);
 
     const controls = new OrbitControls(camera, renderer.domElement);
