@@ -345,6 +345,37 @@ describe("WH3AssetHostClient", () => {
     assetHost.dispose();
   });
 
+  it("rejects hello when the bundled host is missing a required capability", async () => {
+    const child = createMockChild();
+    const { client, server } = createDuplexPair();
+    installServerResponder(server, (request) => ({
+      protocolVersion: 1,
+      requestId: request.requestId,
+      success: true,
+      command: request.command,
+      result: {
+        hostVersion: "old-host",
+        protocolVersion: 1,
+        capabilities: ["hello", "initialize", "exportModel", "missingSkeletonDecision", "shutdown"],
+        maxFrameBytes: 1024 * 1024,
+      },
+      error: null,
+    }));
+
+    const assetHost = new Wh3AssetHostClient({
+      executablePath: "host.exe",
+      spawnProcess: () => child as never,
+      connectPipe: async () => client,
+    });
+    await assetHost.start();
+
+    await expect(assetHost.hello()).rejects.toMatchObject({
+      code: "MissingCapabilities",
+      message: expect.stringContaining("getAnimationCatalog"),
+    });
+    assetHost.dispose();
+  });
+
   it("rejects hello when the host reports an incompatible protocol", async () => {
     const child = createMockChild();
     const { client, server } = createDuplexPair();
