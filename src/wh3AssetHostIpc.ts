@@ -3,7 +3,12 @@ import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
 import appData from "./appData";
-import { modelPreviewAssetUrl, registerModelPreviewFile, revokeModelPreviewFile } from "./assetProtocol";
+import {
+  getModelPreviewServeTiming,
+  modelPreviewAssetUrl,
+  registerModelPreviewFile,
+  revokeModelPreviewFile,
+} from "./assetProtocol";
 import {
   Wh3AssetHostClient,
   type Wh3AssetHostDecisionAction,
@@ -18,6 +23,7 @@ import {
 import { getVanillaPackFilesCachePath } from "./vanillaPackFilesCache";
 import { ensureWh3AssetHostVanillaCache } from "./wh3AssetHostVanillaCache";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
+import type { VisualsModelPreviewTimingReport } from "./visuals/modelPreviewApi";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
 const HOST_EXECUTABLE_NAME = "WH3AssetHost.exe";
@@ -310,7 +316,10 @@ const exportVisualsModelNow = async (
   enabledModsValue: unknown,
   animationPathsValue: unknown,
   variantSelectionsValue: unknown,
+  queuedAtMs: number,
 ) => {
+  const operationStartedAt = performance.now();
+  const queueWaitMs = operationStartedAt - queuedAtMs;
   const normalized = normalizeVisualsModelAssetPath(assetPath);
   if (!normalized.success) return normalized;
 
@@ -324,13 +333,18 @@ const exportVisualsModelNow = async (
   let registered = false;
 
   try {
+    const prepareHostStartedAt = performance.now();
     const host = await prepareVisualsModelHost(enabledMods);
+    const prepareHostMs = performance.now() - prepareHostStartedAt;
+
+    const hostExportStartedAt = performance.now();
     const result = await host.client.exportModel({
       assetPath: normalized.assetPath,
       outputPath,
       animationPaths,
       variantSelections,
     });
+    const hostExportMs = performance.now() - hostExportStartedAt;
 
     if (!result.success || !result.primaryFile) {
       const hostErrors = result.errors
@@ -341,17 +355,36 @@ const exportVisualsModelNow = async (
         success: false as const,
         error: hostErrors || "WH3AssetHost did not produce a GLB for this model.",
         warnings: result.warnings?.map((warning) => warning.message) ?? [],
+        timings: {
+          queueWaitMs,
+          prepareHostMs,
+          hostExportMs,
+          registerMs: 0,
+          totalMs: performance.now() - queuedAtMs,
+        },
       };
     }
 
+    const registerStartedAt = performance.now();
+    const glbBytes = (await fs.promises.stat(result.primaryFile)).size;
     registerModelPreviewFile(previewId, result.primaryFile);
     previews.set(previewId, { directory: nodePath.dirname(result.primaryFile) });
     registered = true;
+    const registerMs = performance.now() - registerStartedAt;
+
     return {
       success: true as const,
       previewId,
       url: modelPreviewAssetUrl(previewId),
       warnings: result.warnings?.map((warning) => warning.message) ?? [],
+      timings: {
+        queueWaitMs,
+        prepareHostMs,
+        hostExportMs,
+        registerMs,
+        totalMs: performance.now() - queuedAtMs,
+        glbBytes,
+      },
     };
   } catch (error) {
     // A transport/process failure invalidates both the host runtime and the initializer revision.
@@ -389,14 +422,63 @@ const exportVisualsModel = <T>(operation: () => Promise<T>): Promise<T> => {
 ipcMain.removeHandler("exportVisualsModel");
 ipcMain.handle(
   "exportVisualsModel",
-  async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown, variantSelections: unknown) =>
-    exportVisualsModel(() => exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections)),
+  async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown, variantSelections: unknown) => {
+    const queuedAtMs = performance.now();
+    return exportVisualsModel(() =>
+      exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections, queuedAtMs),
+    );
+  },
 );
 
 ipcMain.removeHandler("getVisualsModelAnimationCatalog");
 ipcMain.handle("getVisualsModelAnimationCatalog", async (_event, assetPath: string, enabledMods: unknown) =>
   exportVisualsModel(() => getVisualsModelAnimationCatalogNow(assetPath, enabledMods)),
 );
+
+const finiteNumber = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+const formatTiming = (value: unknown) => finiteNumber(value).toFixed(1);
+
+ipcMain.removeHandler("reportVisualsModelPreviewTiming");
+ipcMain.handle("reportVisualsModelPreviewTiming", async (_event, value: unknown) => {
+  if (!value || typeof value !== "object") return { success: false };
+
+  const report = value as Partial<VisualsModelPreviewTimingReport>;
+  const previewId = typeof report.previewId === "string" ? report.previewId : "";
+  const assetPath = typeof report.assetPath === "string" ? report.assetPath : "<unknown>";
+  const main = report.main;
+  const ktx2 = report.ktx2;
+  const protocolTiming = previewId ? getModelPreviewServeTiming(previewId) : undefined;
+  const protocolWindowMs =
+    protocolTiming?.firstRequestStartMs == null || protocolTiming.lastResponseReadyMs == null
+      ? 0
+      : protocolTiming.lastResponseReadyMs - protocolTiming.firstRequestStartMs;
+
+  console.info(
+    [
+      `Visuals model preview timing: asset="${assetPath}"`,
+      `total=${formatTiming(report.totalMs)}ms`,
+      `exportRoundTrip=${formatTiming(report.exportRoundTripMs)}ms`,
+      `main=${formatTiming(main?.totalMs)}ms(queue=${formatTiming(main?.queueWaitMs)},prepareHost=${formatTiming(main?.prepareHostMs)},hostExport=${formatTiming(main?.hostExportMs)},register=${formatTiming(main?.registerMs)})`,
+      `glbBytes=${Math.round(finiteNumber(main?.glbBytes))}`,
+      `glbLoad=${formatTiming(report.gltfLoadMs)}ms`,
+      `protocolRead=${formatTiming(protocolTiming?.fileReadMs)}ms`,
+      `protocolWindow=${protocolWindowMs.toFixed(1)}ms`,
+      `protocolRequests=${protocolTiming?.requestCount ?? 0}`,
+      `protocolBytes=${protocolTiming?.bytesRead ?? 0}`,
+      `rawKtx2=${ktx2?.rawTextureCount ?? 0}`,
+      `rawKtx2Wall=${formatTiming(ktx2?.rawTextureWallMs)}ms`,
+      `zstdDecodeCpu=${formatTiming(ktx2?.zstdDecodeMs)}ms`,
+      `textureCreateCpu=${formatTiming(ktx2?.textureCreateMs)}ms`,
+      `rawCompressedBytes=${Math.round(finiteNumber(ktx2?.compressedBytes))}`,
+      `rawDecodedBytes=${Math.round(finiteNumber(ktx2?.decodedBytes))}`,
+      `sceneSetup=${formatTiming(report.sceneSetupMs)}ms`,
+      `firstFrameWait=${formatTiming(report.firstFrameWaitMs)}ms`,
+      `firstRender=${formatTiming(report.firstRenderMs)}ms`,
+    ].join(", "),
+  );
+
+  return { success: true };
+});
 
 ipcMain.removeHandler("releaseVisualsModelPreview");
 ipcMain.handle("releaseVisualsModelPreview", async (_event, previewId: string) => {

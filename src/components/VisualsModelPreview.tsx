@@ -10,6 +10,7 @@ import {
   exportVisualsModel,
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
+  reportVisualsModelPreviewTiming,
 } from "../visuals/modelPreviewApi";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 
@@ -30,6 +31,7 @@ type ThreePreviewContext = {
   mixer: THREE.AnimationMixer | null;
   action: THREE.AnimationAction | null;
   isPlaying: boolean;
+  afterNextRender: ((timing: { renderMs: number; completedAt: number }) => void) | null;
 };
 
 type PreviewAnimation = {
@@ -184,6 +186,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       mixer: null,
       action: null,
       isPlaying: true,
+      afterNextRender: null,
     };
     contextRef.current = context;
 
@@ -212,7 +215,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (!isVisible) return;
       if (context.mixer && context.isPlaying) context.mixer.update(delta);
       controls.update();
+      const renderStartedAt = performance.now();
       renderer.render(scene, camera);
+      const completedAt = performance.now();
+      const afterNextRender = context.afterNextRender;
+      if (afterNextRender) {
+        context.afterNextRender = null;
+        afterNextRender({ renderMs: completedAt - renderStartedAt, completedAt });
+      }
     });
 
     return () => {
@@ -222,6 +232,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.mixer?.stopAllAction();
       context.mixer = null;
       context.action = null;
+      context.afterNextRender = null;
       controls.dispose();
       disposeGrid(grid);
       ktx2Loader.dispose();
@@ -370,6 +381,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     };
 
     const cleanupOwnedPreview = () => {
+      context.afterNextRender = null;
       if (ownedModel) {
         context.scene.remove(ownedModel);
         ownedMixer?.stopAllAction();
@@ -387,6 +399,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     };
 
     const run = async () => {
+      const previewStartedAt = performance.now();
       setStatus("exporting");
       setError(null);
       setClipDuration(0);
@@ -394,12 +407,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics]);
 
       try {
+        const exportStartedAt = performance.now();
         const exportResult = await exportVisualsModel(
           assetPath,
           enabledMods,
           selectedAnimationPath ? [selectedAnimationPath] : [],
           selectedVariantSelections,
         );
+        const exportRoundTripMs = performance.now() - exportStartedAt;
         if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
           if (!isCancelled) {
             setStatus("error");
@@ -422,7 +437,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         try {
           const gltfLoader = new GLTFLoader();
           gltfLoader.setKTX2Loader(context.ktx2Loader);
+          context.ktx2Loader.resetTiming();
+          const gltfLoadStartedAt = performance.now();
           const gltf = await gltfLoader.loadAsync(exportResult.url);
+          const gltfLoadMs = performance.now() - gltfLoadStartedAt;
           previewCanBeReleasedImmediately = true;
           if (isCancelled) {
             disposeObject(gltf.scene);
@@ -430,6 +448,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             return;
           }
 
+          const sceneSetupStartedAt = performance.now();
           ownedModel = gltf.scene;
           context.scene.add(ownedModel);
           if (selectedAnimationPath && gltf.animations.length > 0) {
@@ -445,6 +464,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             setCurrentTime(0);
           }
           frameObject(context, ownedModel);
+          const sceneSetupMs = performance.now() - sceneSetupStartedAt;
+          const sceneReadyAt = performance.now();
+
+          context.afterNextRender = ({ renderMs, completedAt }) => {
+            if (isCancelled || !ownedPreviewId) return;
+            void reportVisualsModelPreviewTiming({
+              assetPath,
+              previewId: ownedPreviewId,
+              totalMs: completedAt - previewStartedAt,
+              exportRoundTripMs,
+              gltfLoadMs,
+              sceneSetupMs,
+              firstFrameWaitMs: completedAt - sceneReadyAt,
+              firstRenderMs: renderMs,
+              main: exportResult.timings,
+              ktx2: context.ktx2Loader.getTiming(),
+            }).catch(() => undefined);
+          };
+
           setStatus("ready");
         } catch (loadError) {
           previewCanBeReleasedImmediately = true;

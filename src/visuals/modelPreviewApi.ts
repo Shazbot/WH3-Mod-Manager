@@ -2,12 +2,44 @@ import type { VariantMeshSelection } from "./variantMesh";
 
 export type VisualsModelPreviewMod = Pick<Mod, "name" | "path" | "loadOrder">;
 
+export interface VisualsModelPreviewMainTiming {
+  queueWaitMs: number;
+  prepareHostMs: number;
+  hostExportMs: number;
+  registerMs: number;
+  totalMs: number;
+  glbBytes?: number;
+}
+
+export interface VisualsModelPreviewKtx2Timing {
+  rawTextureCount: number;
+  compressedBytes: number;
+  decodedBytes: number;
+  rawTextureWallMs: number;
+  zstdDecodeMs: number;
+  textureCreateMs: number;
+}
+
+export interface VisualsModelPreviewTimingReport {
+  assetPath: string;
+  previewId: string;
+  totalMs: number;
+  exportRoundTripMs: number;
+  gltfLoadMs: number;
+  sceneSetupMs: number;
+  firstFrameWaitMs: number;
+  firstRenderMs: number;
+  main?: VisualsModelPreviewMainTiming;
+  ktx2: VisualsModelPreviewKtx2Timing;
+}
+
 export interface VisualsModelPreviewExportResult {
   success: boolean;
   previewId?: string;
   url?: string;
   warnings?: string[];
   error?: string;
+  timings?: VisualsModelPreviewMainTiming;
 }
 
 export interface VisualsModelPreviewAnimationCatalogResult {
@@ -64,3 +96,8 @@ export const getVisualsModelAnimationCatalog = async (
 
 export const releaseVisualsModelPreview = async (previewId: string): Promise<{ success: boolean }> =>
   (await getRendererIpc().invoke("releaseVisualsModelPreview", previewId)) as { success: boolean };
+
+
+export const reportVisualsModelPreviewTiming = async (report: VisualsModelPreviewTimingReport): Promise<void> => {
+  await getRendererIpc().invoke("reportVisualsModelPreviewTiming", report);
+};
