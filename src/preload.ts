@@ -669,6 +669,11 @@ const api = {
 
   startWh3AssetHost: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke("startWh3AssetHost"),
   stopWh3AssetHost: (): Promise<{ success: boolean }> => ipcRenderer.invoke("stopWh3AssetHost"),
+  onWh3AssetHostReset: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("wh3AssetHostReset", listener);
+    return () => ipcRenderer.removeListener("wh3AssetHostReset", listener);
+  },
 
   prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),

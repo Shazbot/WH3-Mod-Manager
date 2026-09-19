@@ -431,6 +431,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const ktx2Loader = new Wh3Ktx2Loader(renderer);
     ktx2Loader.detectSupport(renderer);
 
+    const clearHostSessionCache = () => {
+      const resourceSession = previewResourceSessionRef.current;
+      if (resourceSession) {
+        disposePreviewResourcePool(resourceSession.pool);
+        previewResourceSessionRef.current = null;
+      }
+      ktx2Loader.clearRawTextureDataCache();
+    };
+    const removeHostResetListener = window.api?.onWh3AssetHostReset?.(clearHostSessionCache);
+
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
@@ -503,6 +513,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     });
 
     return () => {
+      removeHostResetListener?.();
       intersectionObserver.disconnect();
       resizeObserver.disconnect();
       renderer.setAnimationLoop(null);
@@ -512,12 +523,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.afterNextRender = null;
       controls.dispose();
       disposeGrid(grid);
-      const resourceSession = previewResourceSessionRef.current;
-      if (resourceSession) {
-        disposePreviewResourcePool(resourceSession.pool);
-        previewResourceSessionRef.current = null;
-      }
-      ktx2Loader.clearRawTextureDataCache();
+      clearHostSessionCache();
       ktx2Loader.dispose();
       renderer.dispose();
       renderer.forceContextLoss();

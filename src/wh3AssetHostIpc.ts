@@ -171,12 +171,24 @@ export const resolveWh3AssetHostExecutablePath = (): string => {
   );
 };
 
+const notifyWh3AssetHostReset = () => {
+  const mainWindow = windows.mainWindow;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    mainWindow.webContents.send("wh3AssetHostReset");
+  } catch {
+    // The renderer may already be closing while the host is being disposed.
+  }
+};
+
 const disposeRunningHost = () => {
+  const disposedHost = runningHost != null || startingHostClient != null;
   cancelPendingDecisionResponses();
   runningHost?.client.dispose();
   runningHost = null;
   startingHostClient?.dispose();
   startingHostClient = null;
+  if (disposedHost) notifyWh3AssetHostReset();
 };
 
 /** Dispose only the host used by a failed operation; an older request must never tear down a newer host. */
@@ -187,6 +199,7 @@ const disposeOperationHost = (host: RunningHost | undefined) => {
     return;
   }
   host.client.dispose();
+  notifyWh3AssetHostReset();
 };
 
 const assertHostLifecycleActive = (generation: number) => {
@@ -231,6 +244,7 @@ const startHost = async (generation = hostLifecycleGeneration): Promise<RunningH
     } catch (error) {
       cancelPendingDecisionResponses();
       client.dispose();
+      notifyWh3AssetHostReset();
       throw error;
     } finally {
       if (startingHostClient === client) startingHostClient = null;
