@@ -14,7 +14,6 @@ import {
 
 setupRendererLogging();
 
-console.log("IN RENDERER (skills)");
 let hasReceivedSkillsViewOptions = false;
 let lastSentSkillsViewOptions: SkillsViewOptions | undefined;
 
