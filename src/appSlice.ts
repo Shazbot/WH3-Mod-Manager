@@ -1257,6 +1257,7 @@ const appSlice = createSlice({
           ? fromConfigAppState.unitViewerMode
           : "visualize";
       state.unitViewerShowWireframe = fromConfigAppState.unitViewerShowWireframe ?? true;
+      state.unitViewerUnsyncedAnimations = fromConfigAppState.unitViewerUnsyncedAnimations ?? true;
       state.unitViewerShowUnitCard = fromConfigAppState.unitViewerShowUnitCard ?? true;
       state.recentPackPaths = sanitizeRecentPackPaths(fromConfigAppState.recentPackPaths, vanillaPackNames);
 
@@ -1646,6 +1647,9 @@ const appSlice = createSlice({
     },
     setUnitViewerShowWireframe: (state: AppState, action: PayloadAction<boolean>) => {
       state.unitViewerShowWireframe = action.payload;
+    },
+    setUnitViewerUnsyncedAnimations: (state: AppState, action: PayloadAction<boolean>) => {
+      state.unitViewerUnsyncedAnimations = action.payload;
     },
     setUnitViewerShowUnitCard: (state: AppState, action: PayloadAction<boolean>) => {
       state.unitViewerShowUnitCard = action.payload;
@@ -2065,6 +2069,7 @@ export const {
   toggleIsVisualsHideDuplicatesEnabled,
   setUnitViewerMode,
   setUnitViewerShowWireframe,
+  setUnitViewerUnsyncedAnimations,
   setUnitViewerShowUnitCard,
   setModListDensity,
   toggleIsPresetAuthorEnabled,

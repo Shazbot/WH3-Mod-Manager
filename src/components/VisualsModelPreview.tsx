@@ -22,6 +22,8 @@ type VisualsModelPreviewProps = {
   isActive?: boolean;
   /** Whether to show the ground wireframe beneath the model. */
   showWireframe?: boolean;
+  /** Whether comparison models should start at independent points in the selected animation cycle. */
+  unsyncedAnimations?: boolean;
   /** Session used to inspect VMD slots and select appearances. */
   variantMeshSessionId?: string;
   variantMeshSessionType?: "unitViewer" | "visuals";
@@ -361,6 +363,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     assetPath,
     isActive = true,
     showWireframe = true,
+    unsyncedAnimations = true,
     variantMeshSessionId,
     variantMeshSessionType = "unitViewer",
   } = props;
@@ -874,8 +877,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
           if (selectedAnimationPath && gltf.animations.length > 0) {
             const mixer = new THREE.AnimationMixer(gltf.scene);
-            const action = mixer.clipAction(gltf.animations[0]);
+            const animation = gltf.animations[0];
+            const action = mixer.clipAction(animation);
             action.setLoop(THREE.LoopRepeat, Infinity);
+            if (unsyncedAnimations && comparisonVariants.length > 1 && animation.duration > 0) {
+              action.time = Math.random() * animation.duration;
+            }
             action.timeScale = animationSpeedRef.current;
             action.play();
             action.paused = !isPlayingRef.current;
@@ -965,6 +972,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     enabledMods,
     isActive,
     selectedAnimationPath,
+    unsyncedAnimations,
     variantCatalogDiagnostics,
     variantCatalogReady,
   ]);

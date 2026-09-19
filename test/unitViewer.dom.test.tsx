@@ -292,10 +292,18 @@ describe("Unit Viewer UI", () => {
     expect(checkbox).not.toBeChecked();
     expect(store.getState().app.unitViewerShowWireframe).toBe(false);
 
+    const unsyncedAnimationsCheckbox = screen.getByRole("checkbox", { name: "Unsynced Anims" });
+    expect(unsyncedAnimationsCheckbox).toBeChecked();
+    fireEvent.click(unsyncedAnimationsCheckbox);
+    expect(unsyncedAnimationsCheckbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerUnsyncedAnimations).toBe(false);
+
     fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
     expect(screen.queryByRole("checkbox", { name: "Show wireframe" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Unsynced Anims" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
     expect(screen.getByRole("checkbox", { name: "Show wireframe" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Unsynced Anims" })).not.toBeChecked();
   });
 
   it("hides the unit card in visualize mode and persists its choice", async () => {

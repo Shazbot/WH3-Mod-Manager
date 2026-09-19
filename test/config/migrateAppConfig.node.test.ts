@@ -144,6 +144,7 @@ describe("migrateAppConfig", () => {
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
     expect(config.unitViewerMode).toBe("visualize");
     expect(config.unitViewerShowWireframe).toBe(true);
+    expect(config.unitViewerUnsyncedAnimations).toBe(true);
     expect(config.unitViewerShowUnitCard).toBe(true);
     expect(config.hideRepeatedKeyPrefixes).toBe(true);
     expect(config.recentPackPaths).toEqual([]);
@@ -197,6 +198,15 @@ describe("migrateAppConfig", () => {
     });
 
     expect(config.unitViewerShowWireframe).toBe(false);
+  });
+
+  it("preserves the Unit Viewer unsynced animations option", () => {
+    const config = migrateAppConfig({
+      ...createLegacyConfig(),
+      unitViewerUnsyncedAnimations: false,
+    });
+
+    expect(config.unitViewerUnsyncedAnimations).toBe(false);
   });
 
   it("preserves the Unit Viewer card option", () => {

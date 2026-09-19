@@ -327,6 +327,8 @@ declare global {
     unitViewerMode: UnitViewerMode;
     /** Whether the Unit Viewer shows the render wireframe beneath the unit visualization. */
     unitViewerShowWireframe: boolean;
+    /** Whether the Unit Viewer starts comparison animations at independent points in their cycles. */
+    unitViewerUnsyncedAnimations: boolean;
     /** Whether the Unit Viewer shows the unit card alongside the visualization. */
     unitViewerShowUnitCard: boolean;
     mapCampaignName: string;
@@ -453,6 +455,7 @@ declare global {
     | "isVisualsHideDuplicatesEnabled"
     | "unitViewerMode"
     | "unitViewerShowWireframe"
+    | "unitViewerUnsyncedAnimations"
     | "unitViewerShowUnitCard"
     | "recentPackPaths"
   >;

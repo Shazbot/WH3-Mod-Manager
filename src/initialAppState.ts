@@ -97,6 +97,7 @@ const initialState = {
   // New and pre-feature configs start with the single-unit model visualization.
   unitViewerMode: "visualize",
   unitViewerShowWireframe: true,
+  unitViewerUnsyncedAnimations: true,
   unitViewerShowUnitCard: true,
   mapCampaignName: "wh3_main_combi",
   mapSelectedRegion: undefined,

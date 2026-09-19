@@ -135,6 +135,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isVisualsHideDuplicatesEnabled: appState.isVisualsHideDuplicatesEnabled,
       unitViewerMode: appState.unitViewerMode,
       unitViewerShowWireframe: appState.unitViewerShowWireframe,
+      unitViewerUnsyncedAnimations: appState.unitViewerUnsyncedAnimations,
       unitViewerShowUnitCard: appState.unitViewerShowUnitCard,
       recentPackPaths: appState.recentPackPaths,
       loadOrderRules: appState.loadOrderRules,

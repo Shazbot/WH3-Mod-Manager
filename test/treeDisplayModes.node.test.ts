@@ -8,6 +8,7 @@ import appReducer, {
   setUnitViewerMode,
   setUnitViewerShowUnitCard,
   setUnitViewerShowWireframe,
+  setUnitViewerUnsyncedAnimations,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 
@@ -110,6 +111,12 @@ describe("unit viewer mode", () => {
     const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerShowWireframe: false }));
     expect(restored.unitViewerShowWireframe).toBe(false);
     expect(appReducer(restored, setUnitViewerShowWireframe(true)).unitViewerShowWireframe).toBe(true);
+  });
+
+  it("restores and updates the unsynced animations option", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerUnsyncedAnimations: false }));
+    expect(restored.unitViewerUnsyncedAnimations).toBe(false);
+    expect(appReducer(restored, setUnitViewerUnsyncedAnimations(true)).unitViewerUnsyncedAnimations).toBe(true);
   });
 
   it("restores and updates the unit card option", () => {

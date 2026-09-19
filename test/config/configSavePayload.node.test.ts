@@ -48,6 +48,12 @@ describe("selectConfigSavePayload", () => {
     expect(payload.config.unitViewerShowWireframe).toBe(false);
   });
 
+  it("includes the Unit Viewer unsynced animations option in the saved config payload", () => {
+    const payload = selectConfigSavePayload({ ...initialState, unitViewerUnsyncedAnimations: false } as AppState);
+
+    expect(payload.config.unitViewerUnsyncedAnimations).toBe(false);
+  });
+
   it("includes the Unit Viewer card option in the saved config payload", () => {
     const payload = selectConfigSavePayload({ ...initialState, unitViewerShowUnitCard: false } as AppState);
 
