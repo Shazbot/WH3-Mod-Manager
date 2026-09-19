@@ -8,6 +8,7 @@ import { useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import {
   exportVisualsModel,
+  exportVisualsModelBatch,
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
   reportVisualsModelPreviewTiming,
@@ -672,11 +673,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       geometries: new Map(),
       textures: new Map(),
     };
-    type ExportJob = {
-      exportResult: Awaited<ReturnType<typeof exportVisualsModel>>;
-      exportRoundTripMs: number;
-    };
-    let pendingExport: Promise<ExportJob> | undefined;
+    const loadingPreviewIds = new Set<string>();
 
     const releasePreview = (previewId: string) => {
       void releaseVisualsModelPreview(previewId).catch(() => undefined);
@@ -684,15 +681,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const cleanupOwnedPreview = () => {
       context.afterNextRender = null;
-      const abandonedExport = pendingExport;
-      pendingExport = undefined;
-      if (abandonedExport) {
-        void abandonedExport
-          .then(({ exportResult }) => {
-            if (exportResult.previewId) releasePreview(exportResult.previewId);
-          })
-          .catch(() => undefined);
-      }
       for (const mixer of ownedMixers) mixer.stopAllAction();
       ownedMixers.forEach((mixer, index) => {
         const model = ownedModels[index];
@@ -705,11 +693,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       ownedModels.length = 0;
       ownedMixers.length = 0;
       ownedActions.length = 0;
-      for (const previewId of releasablePreviewIds) {
-        if (!ownedPreviewIds.has(previewId)) continue;
+      for (const previewId of ownedPreviewIds) {
+        if (loadingPreviewIds.has(previewId)) continue;
         releasePreview(previewId);
-        ownedPreviewIds.delete(previewId);
       }
+      ownedPreviewIds.clear();
       releasablePreviewIds.clear();
     };
 
@@ -737,62 +725,76 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         let singleExportRoundTripMs = 0;
         let singleGltfLoadMs = 0;
         let maxClipDuration = 0;
+        let exportsToLoad: Array<{ previewId: string; url: string; warnings?: string[] }>;
 
-        const requestExport = async (variant: ComparisonVariant): Promise<ExportJob> => {
+        if (comparisonVariants.length === 1) {
           const exportStartedAt = performance.now();
           const exportResult = await exportVisualsModel(
             assetPath,
             enabledMods,
             selectedAnimationPath ? [selectedAnimationPath] : [],
-            variant.selections,
+            comparisonVariants[0].selections,
           );
-          return {
-            exportResult,
-            exportRoundTripMs: performance.now() - exportStartedAt,
-          };
-        };
-
-        pendingExport = requestExport(comparisonVariants[0]);
-        for (let variantIndex = 0; variantIndex < comparisonVariants.length; variantIndex += 1) {
-          const currentExport = pendingExport;
-          pendingExport = undefined;
-          if (!currentExport) return;
-
-          const { exportResult, exportRoundTripMs } = await currentExport;
-          for (const warning of exportResult.warnings ?? []) warningSet.add(warning);
-
+          singleExportRoundTripMs = performance.now() - exportStartedAt;
           if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
-            throw new Error(exportResult.error || "Failed to export a comparison model.");
+            throw new Error(exportResult.error || "Failed to export this model.");
           }
-
-          const previewId = exportResult.previewId;
-          ownedPreviewIds.add(previewId);
-          if (isCancelled) {
-            releasePreview(previewId);
-            ownedPreviewIds.delete(previewId);
-            return;
+          singleExportResult = exportResult;
+          exportsToLoad = [{
+            previewId: exportResult.previewId,
+            url: exportResult.url,
+            warnings: exportResult.warnings,
+          }];
+        } else {
+          const batchResult = await exportVisualsModelBatch(
+            assetPath,
+            enabledMods,
+            selectedAnimationPath ? [selectedAnimationPath] : [],
+            comparisonVariants.map((variant) => ({ variantSelections: variant.selections })),
+          );
+          if (!batchResult.success || !batchResult.items) {
+            throw new Error(batchResult.error || "Failed to export the slot comparison.");
           }
-
-          const nextVariant = comparisonVariants[variantIndex + 1];
-          if (nextVariant) pendingExport = requestExport(nextVariant);
-
-          if (comparisonVariants.length === 1) {
-            singleExportResult = exportResult;
-            singleExportRoundTripMs = exportRoundTripMs;
+          if (batchResult.items.length !== comparisonVariants.length) {
+            for (const item of batchResult.items) releasePreview(item.previewId);
+            throw new Error(
+              `WH3AssetHost returned ${batchResult.items.length} comparison models; expected ${comparisonVariants.length}.`,
+            );
           }
-          setStatus("loading");
+          exportsToLoad = batchResult.items;
+          for (const warning of batchResult.warnings ?? []) warningSet.add(warning);
+        }
 
+        for (const exportItem of exportsToLoad) {
+          ownedPreviewIds.add(exportItem.previewId);
+          for (const warning of exportItem.warnings ?? []) warningSet.add(warning);
+        }
+
+        if (isCancelled) {
+          for (const previewId of ownedPreviewIds) releasePreview(previewId);
+          ownedPreviewIds.clear();
+          return;
+        }
+
+        setStatus("loading");
+        for (const exportItem of exportsToLoad) {
+          if (isCancelled) return;
+
+          const previewId = exportItem.previewId;
+          loadingPreviewIds.add(previewId);
           const gltfLoader = new GLTFLoader();
           gltfLoader.setKTX2Loader(context.ktx2Loader);
           const gltfLoadStartedAt = performance.now();
           let gltf: Awaited<ReturnType<typeof gltfLoader.loadAsync>>;
           try {
-            gltf = await gltfLoader.loadAsync(exportResult.url);
+            gltf = await gltfLoader.loadAsync(exportItem.url);
           } catch (loadError) {
+            loadingPreviewIds.delete(previewId);
             releasablePreviewIds.add(previewId);
             throw loadError;
           }
           const gltfLoadMs = performance.now() - gltfLoadStartedAt;
+          loadingPreviewIds.delete(previewId);
           releasablePreviewIds.add(previewId);
           if (comparisonVariants.length === 1) singleGltfLoadMs = gltfLoadMs;
 
