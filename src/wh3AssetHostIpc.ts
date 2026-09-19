@@ -456,7 +456,7 @@ ipcMain.handle("reportVisualsModelPreviewTiming", async (_event, value: unknown)
       ? 0
       : protocolTiming.lastResponseReadyMs - protocolTiming.firstRequestStartMs;
 
-  console.info(
+  console.log(
     [
       `Visuals model preview timing: asset="${assetPath}"`,
       `total=${formatTiming(report.totalMs)}ms`,
