@@ -1227,7 +1227,7 @@ const appSlice = createSlice({
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
       state.isRigidModelV2CompressionEnabled =
         fromConfigAppState.isRigidModelV2CompressionEnabled ?? state.isRigidModelV2CompressionEnabled;
-      state.compressModsOnUpload = !!fromConfigAppState.compressModsOnUpload;
+      state.compressModsOnUpload = fromConfigAppState.compressModsOnUpload ?? state.compressModsOnUpload;
       state.nodeEditorFavorites = fromConfigAppState.nodeEditorFavorites || [];
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
       state.enabledModsPaneSortingType =

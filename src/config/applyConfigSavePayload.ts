@@ -23,7 +23,7 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
   appData.isChangingGameProcessPriority = config.isChangingGameProcessPriority;
   appData.isRigidModelV2CompressionEnabled =
     config.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
-  appData.compressModsOnUpload = !!config.compressModsOnUpload;
+  appData.compressModsOnUpload = config.compressModsOnUpload ?? appData.compressModsOnUpload;
   appData.isShowingSkillNodeSetNames = config.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
   appData.hideRepeatedKeyPrefixes = config.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
   appData.recentPackPaths = sanitizeRecentPackPaths(

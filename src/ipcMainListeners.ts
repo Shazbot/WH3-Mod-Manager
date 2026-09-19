@@ -5905,7 +5905,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.moddersPrefix = appState.moddersPrefix || "";
       appData.isRigidModelV2CompressionEnabled =
         appState.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
-      appData.compressModsOnUpload = !!appState.compressModsOnUpload;
+      appData.compressModsOnUpload = appState.compressModsOnUpload ?? appData.compressModsOnUpload;
       appData.isShowingSkillNodeSetNames = appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;

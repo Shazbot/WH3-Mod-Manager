@@ -246,7 +246,7 @@ const appData = {
   isFeaturesForModdersEnabled: false,
   moddersPrefix: "",
   isRigidModelV2CompressionEnabled: true,
-  compressModsOnUpload: false,
+  compressModsOnUpload: true,
   isShowingSkillNodeSetNames: false,
   hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,

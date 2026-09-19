@@ -45,7 +45,7 @@ const initialState = {
   isFeaturesForModdersEnabled: false,
   moddersPrefix: "",
   isRigidModelV2CompressionEnabled: true,
-  compressModsOnUpload: false,
+  compressModsOnUpload: true,
   nodeEditorFavorites: [],
   isCompatCheckingVanillaPacks: false,
   allMods: [],

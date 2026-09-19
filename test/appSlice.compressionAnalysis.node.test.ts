@@ -15,7 +15,7 @@ describe("rigid-model compression option", () => {
   beforeEach(() => {
     resetConfigSavePayloadCache();
     appData.isRigidModelV2CompressionEnabled = true;
-    appData.compressModsOnUpload = false;
+    appData.compressModsOnUpload = true;
   });
 
   it("defaults on and can be changed in app state", () => {
@@ -53,17 +53,17 @@ describe("rigid-model compression option", () => {
   });
 
   it("persists the automatic upload compression preference", () => {
-    expect(initialState.compressModsOnUpload).toBe(false);
-    expect(appReducer(initialState, toggleCompressModsOnUpload()).compressModsOnUpload).toBe(true);
+    expect(initialState.compressModsOnUpload).toBe(true);
+    expect(appReducer(initialState, toggleCompressModsOnUpload()).compressModsOnUpload).toBe(false);
 
     const restored = appReducer(initialState, setFromConfig({ ...initialState, compressModsOnUpload: true }));
     expect(restored.compressModsOnUpload).toBe(true);
 
     const legacyConfig = { ...initialState } as Partial<AppState>;
     delete legacyConfig.compressModsOnUpload;
-    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).compressModsOnUpload).toBe(false);
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).compressModsOnUpload).toBe(true);
 
-    expect(migrateAppConfig({}).compressModsOnUpload).toBe(false);
+    expect(migrateAppConfig({}).compressModsOnUpload).toBe(true);
     expect(migrateAppConfig({ compressModsOnUpload: true }).compressModsOnUpload).toBe(true);
 
     const payload = selectConfigSavePayload({ ...initialState, compressModsOnUpload: true });
