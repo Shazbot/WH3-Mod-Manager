@@ -8,15 +8,8 @@ import TopBar from "./components/TopBar";
 import { Toasts } from "./components/Toasts";
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
-import { endTiming, perfMonitor, startTiming } from "./utility/performanceMonitor";
 
-const ModsViewer = React.lazy(() => {
-  const startTime = performance.now();
-  return import("./components/viewer/ModsViewer").then((module) => {
-    perfMonitor.trackComponentLoad("ModsViewer", startTime);
-    return module;
-  });
-});
+const ModsViewer = React.lazy(() => import("./components/viewer/ModsViewer"));
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center h-64">
@@ -36,13 +29,6 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 const AppViewer = React.memo(() => {
-  useEffect(() => {
-    startTiming("app_viewer_mount");
-    return () => {
-      endTiming("app_viewer_mount");
-    };
-  }, []);
-
   const [localization, setLocalization] = useState<Record<string, string>>({});
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
 
@@ -69,7 +55,6 @@ const AppViewer = React.memo(() => {
 });
 
 export function renderViewerWindow() {
-  startTiming("react_render_viewer");
   const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <StrictMode>
@@ -78,5 +63,4 @@ export function renderViewerWindow() {
       </Provider>
     </StrictMode>,
   );
-  endTiming("react_render_viewer");
 }
