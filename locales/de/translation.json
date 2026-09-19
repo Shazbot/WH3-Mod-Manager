@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "{{label}} in die Zwischenablage kopiert.",
   "buildingsInfoCopyFailed": "{{label}} konnte nicht kopiert werden.",
   "unitViewerShowUnitCard": "Einheitenkarte anzeigen",
-  "unitViewerShowWireframe": "Wireframe anzeigen"
+  "unitViewerShowWireframe": "Wireframe anzeigen",
+  "unitViewerUnsyncedAnimations": "Nicht synchronisierte Animationen"
 }

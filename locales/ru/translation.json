@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "Скопировано {{label}} в буфер обмена.",
   "buildingsInfoCopyFailed": "Не удалось скопировать {{label}}.",
   "unitViewerShowUnitCard": "Показать карточку юнита",
-  "unitViewerShowWireframe": "Показать каркас"
+  "unitViewerShowWireframe": "Показать каркас",
+  "unitViewerUnsyncedAnimations": "Несинхронизированные анимации"
 }

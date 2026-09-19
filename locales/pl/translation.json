@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "Skopiowano {{label}} do schowka.",
   "buildingsInfoCopyFailed": "Nie można skopiować {{label}}.",
   "unitViewerShowUnitCard": "Pokaż kartę jednostki",
-  "unitViewerShowWireframe": "Pokaż model szkieletowy"
+  "unitViewerShowWireframe": "Pokaż model szkieletowy",
+  "unitViewerUnsyncedAnimations": "Niezsynchronizowane animacje"
 }

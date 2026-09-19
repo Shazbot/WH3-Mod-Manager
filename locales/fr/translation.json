@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "Copié {{label}} dans le presse-papiers.",
   "buildingsInfoCopyFailed": "Impossible de copier {{label}}.",
   "unitViewerShowUnitCard": "Afficher la carte d'unité",
-  "unitViewerShowWireframe": "Afficher le filaire"
+  "unitViewerShowWireframe": "Afficher le filaire",
+  "unitViewerUnsyncedAnimations": "Animations non synchronisées"
 }

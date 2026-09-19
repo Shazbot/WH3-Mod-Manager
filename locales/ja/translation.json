@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "{{label}} をクリップボードにコピーしました。",
   "buildingsInfoCopyFailed": "{{label}} をコピーできませんでした。",
   "unitViewerShowUnitCard": "ユニットカードを表示",
-  "unitViewerShowWireframe": "ワイヤーフレームを表示"
+  "unitViewerShowWireframe": "ワイヤーフレームを表示",
+  "unitViewerUnsyncedAnimations": "同期されていないアニメーション"
 }

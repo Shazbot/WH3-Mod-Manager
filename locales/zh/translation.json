@@ -2232,5 +2232,6 @@
   "buildingsInfoCopied": "已将 {{label}} 复制到剪贴板。",
   "buildingsInfoCopyFailed": "无法复制 {{label}}。",
   "unitViewerShowUnitCard": "显示单位卡",
-  "unitViewerShowWireframe": "显示线框"
+  "unitViewerShowWireframe": "显示线框",
+  "unitViewerUnsyncedAnimations": "不同步的动画"
 }

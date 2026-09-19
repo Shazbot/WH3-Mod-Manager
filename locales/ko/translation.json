@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "{{label}}을(를) 클립보드에 복사했습니다.",
   "buildingsInfoCopyFailed": "{{label}}을(를) 복사할 수 없습니다.",
   "unitViewerShowUnitCard": "유닛 카드 표시",
-  "unitViewerShowWireframe": "와이어프레임 표시"
+  "unitViewerShowWireframe": "와이어프레임 표시",
+  "unitViewerUnsyncedAnimations": "동기화되지 않은 애니메이션"
 }

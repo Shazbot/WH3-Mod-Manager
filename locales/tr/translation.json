@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "{{label}} panoya kopyalandı.",
   "buildingsInfoCopyFailed": "{{label}} kopyalanamadı.",
   "unitViewerShowUnitCard": "Birim kartını göster",
-  "unitViewerShowWireframe": "Tel çerçeveyi göster"
+  "unitViewerShowWireframe": "Tel çerçeveyi göster",
+  "unitViewerUnsyncedAnimations": "Senkronize Edilmemiş Animasyonlar"
 }

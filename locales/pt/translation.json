@@ -2230,5 +2230,6 @@
   "buildingsInfoCopied": "Copiado {{label}} para a área de transferência.",
   "buildingsInfoCopyFailed": "Não foi possível copiar {{label}}.",
   "unitViewerShowUnitCard": "Mostrar cartão de unidade",
-  "unitViewerShowWireframe": "Mostrar estrutura de arame"
+  "unitViewerShowWireframe": "Mostrar estrutura de arame",
+  "unitViewerUnsyncedAnimations": "Animações não sincronizadas"
 }
