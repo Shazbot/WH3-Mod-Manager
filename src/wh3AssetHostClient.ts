@@ -9,10 +9,14 @@ import {
 } from "./wh3AssetHostProtocol";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
 
-// Animation catalog lookup is additive. Keeping it optional lets an older bundled host continue to
-// render static previews while the new host is being installed. Interactive export decisions are
-// required so a missing skeleton is never handled by an implicit host-side default.
-const REQUIRED_CAPABILITIES = ["hello", "initialize", "exportModel", "missingSkeletonDecision", "shutdown"] as const;
+const REQUIRED_CAPABILITIES = [
+  "hello",
+  "initialize",
+  "getAnimationCatalog",
+  "exportModel",
+  "missingSkeletonDecision",
+  "shutdown",
+] as const;
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000;
 const DEFAULT_CONNECT_RETRY_DELAY_MS = 50;
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
