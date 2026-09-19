@@ -63,6 +63,7 @@ type PreviewResourcePool = {
 type ComparisonVariant = {
   rowIndex: number;
   columnIndex: number;
+  layerIndex: number;
   selections: VariantMeshSelection[];
 };
 
@@ -220,24 +221,31 @@ const layoutComparisonModels = (
   models: readonly THREE.Object3D[],
   columnCount: number,
   rowCount: number,
+  layerCount: number,
 ) => {
   if (models.length === 0) return;
   const bounds = models.map((model) => new THREE.Box3().setFromObject(model));
   const sizes = bounds.map((box) => box.getSize(new THREE.Vector3()));
   const maxWidth = Math.max(...sizes.map((size) => size.x), 0.25);
+  const maxHeight = Math.max(...sizes.map((size) => size.y), 0.25);
   const maxDepth = Math.max(...sizes.map((size) => size.z), 0.25);
   const columnSpacing = maxWidth * 1.35;
   const rowSpacing = maxDepth * 1.75;
+  const layerSpacing = maxHeight * 1.5;
   const xOrigin = ((columnCount - 1) * columnSpacing) / 2;
+  const yOrigin = ((layerCount - 1) * layerSpacing) / 2;
   const zOrigin = ((rowCount - 1) * rowSpacing) / 2;
+  const modelsPerLayer = columnCount * rowCount;
 
   models.forEach((model, index) => {
-    const rowIndex = Math.floor(index / columnCount);
-    const columnIndex = index % columnCount;
+    const layerIndex = Math.floor(index / modelsPerLayer);
+    const indexWithinLayer = index % modelsPerLayer;
+    const rowIndex = Math.floor(indexWithinLayer / columnCount);
+    const columnIndex = indexWithinLayer % columnCount;
     const box = bounds[index];
     const center = box.getCenter(new THREE.Vector3());
     model.position.x += columnIndex * columnSpacing - xOrigin - center.x;
-    model.position.y += -box.min.y;
+    model.position.y += layerIndex * layerSpacing - yOrigin - center.y;
     model.position.z += rowIndex * rowSpacing - zOrigin - center.z;
   });
 };
@@ -612,40 +620,48 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   );
   const comparisonColumnSlot = allVariantSlots[0];
   const comparisonRowSlot = allVariantSlots[1];
+  const comparisonLayerSlot = allVariantSlots[2];
   const comparisonColumnCount = comparisonColumnSlot?.choices.length ?? 1;
   const comparisonRowCount = comparisonRowSlot?.choices.length ?? 1;
+  const comparisonLayerCount = comparisonLayerSlot?.choices.length ?? 1;
   const comparisonVariants = useMemo<ComparisonVariant[]>(() => {
-    if (!variantCatalog) return [{ rowIndex: 0, columnIndex: 0, selections: [] }];
+    if (!variantCatalog) return [{ rowIndex: 0, columnIndex: 0, layerIndex: 0, selections: [] }];
 
     const columnChoices = comparisonColumnSlot?.choices ?? [undefined];
     const rowChoices = comparisonRowSlot?.choices ?? [undefined];
+    const layerChoices = comparisonLayerSlot?.choices ?? [undefined];
     const variants: ComparisonVariant[] = [];
 
-    rowChoices.forEach((rowChoice, rowIndex) => {
-      columnChoices.forEach((columnChoice, columnIndex) => {
-        const concreteSelections = Object.fromEntries(
-          variantCatalog.slots.map((slot) => {
-            const selected = variantSelections[slot.slotPath];
-            return [slot.slotPath, selected == null || selected === ALL_VARIANTS ? slot.defaultChoiceIndex : selected];
-          }),
-        ) as Record<string, number>;
-        if (comparisonColumnSlot && columnChoice) {
-          concreteSelections[comparisonColumnSlot.slotPath] = columnChoice.index;
-        }
-        if (comparisonRowSlot && rowChoice) {
-          concreteSelections[comparisonRowSlot.slotPath] = rowChoice.index;
-        }
+    layerChoices.forEach((layerChoice, layerIndex) => {
+      rowChoices.forEach((rowChoice, rowIndex) => {
+        columnChoices.forEach((columnChoice, columnIndex) => {
+          const concreteSelections = Object.fromEntries(
+            variantCatalog.slots.map((slot) => {
+              const selected = variantSelections[slot.slotPath];
+              return [slot.slotPath, selected == null || selected === ALL_VARIANTS ? slot.defaultChoiceIndex : selected];
+            }),
+          ) as Record<string, number>;
+          if (comparisonColumnSlot && columnChoice) {
+            concreteSelections[comparisonColumnSlot.slotPath] = columnChoice.index;
+          }
+          if (comparisonRowSlot && rowChoice) {
+            concreteSelections[comparisonRowSlot.slotPath] = rowChoice.index;
+          }
+          if (comparisonLayerSlot && layerChoice) {
+            concreteSelections[comparisonLayerSlot.slotPath] = layerChoice.index;
+          }
 
-        const selections = getActiveVariantMeshSlots(variantCatalog, concreteSelections).map((slot) => ({
-          slotPath: slot.slotPath,
-          choiceIndex: concreteSelections[slot.slotPath] ?? slot.defaultChoiceIndex,
-        }));
-        variants.push({ rowIndex, columnIndex, selections });
+          const selections = getActiveVariantMeshSlots(variantCatalog, concreteSelections).map((slot) => ({
+            slotPath: slot.slotPath,
+            choiceIndex: concreteSelections[slot.slotPath] ?? slot.defaultChoiceIndex,
+          }));
+          variants.push({ rowIndex, columnIndex, layerIndex, selections });
+        });
       });
     });
 
     return variants;
-  }, [comparisonColumnSlot, comparisonRowSlot, variantCatalog, variantSelections]);
+  }, [comparisonColumnSlot, comparisonLayerSlot, comparisonRowSlot, variantCatalog, variantSelections]);
   const comparisonModelCount = comparisonVariants.length;
   const comparisonTooLarge = comparisonModelCount > MAX_COMPARISON_MODELS;
 
@@ -824,7 +840,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         if (isCancelled) return;
 
         const sceneSetupStartedAt = performance.now();
-        layoutComparisonModels(ownedModels, comparisonColumnCount, comparisonRowCount);
+        layoutComparisonModels(
+          ownedModels,
+          comparisonColumnCount,
+          comparisonRowCount,
+          comparisonLayerCount,
+        );
         context.scene.add(ownedGroup);
         context.mixers = ownedMixers;
         context.actions = ownedActions;
@@ -890,6 +911,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     assetPath,
     catalogDiagnostics,
     comparisonColumnCount,
+    comparisonLayerCount,
     comparisonModelCount,
     comparisonRowCount,
     comparisonTooLarge,
@@ -959,6 +981,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 {comparisonModelCount} models
                 {comparisonColumnSlot ? ` · columns: ${comparisonColumnSlot.label}` : ""}
                 {comparisonRowSlot ? ` · rows: ${comparisonRowSlot.label}` : ""}
+                {comparisonLayerSlot ? ` · layers: ${comparisonLayerSlot.label}` : ""}
               </span>
             )}
           </div>
@@ -994,7 +1017,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 >
                   <option
                     value={ALL_VARIANTS}
-                    disabled={!allVariantSlotPaths.has(slot.slotPath) && allVariantSlotPaths.size >= 2}
+                    disabled={!allVariantSlotPaths.has(slot.slotPath) && allVariantSlotPaths.size >= 3}
                   >
                     All
                   </option>
@@ -1021,6 +1044,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               title={comparisonRowSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
             >
               Rows: {comparisonRowSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
+            </div>
+          )}
+          {comparisonLayerSlot && (
+            <div
+              className="truncate text-[10px] text-gray-500"
+              title={comparisonLayerSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
+            >
+              Layers: {comparisonLayerSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
             </div>
           )}
         </div>
