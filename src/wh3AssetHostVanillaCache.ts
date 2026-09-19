@@ -40,13 +40,9 @@ export const ensureWh3AssetHostVanillaCache = async (): Promise<Wh3AssetHostVani
 
   await saveVanillaPackFilesCache();
 
-  const result = {
+  return {
     totalPacks: vanillaPackPaths.length,
     cacheHits,
     rebuiltPacks,
   };
-  console.log(
-    `[WH3AssetHost] vanilla pack cache ready: total=${result.totalPacks}, hits=${result.cacheHits}, rebuilt=${result.rebuiltPacks}`,
-  );
-  return result;
 };
