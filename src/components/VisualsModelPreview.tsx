@@ -33,8 +33,8 @@ type ThreePreviewContext = {
   ktx2Loader: Wh3Ktx2Loader;
   controls: OrbitControls;
   grid: THREE.GridHelper;
-  mixer: THREE.AnimationMixer | null;
-  action: THREE.AnimationAction | null;
+  mixers: THREE.AnimationMixer[];
+  actions: THREE.AnimationAction[];
   isPlaying: boolean;
   afterNextRender: ((timing: { renderMs: number; completedAt: number }) => void) | null;
 };
@@ -50,20 +50,178 @@ type PreviewAnimation = {
 };
 
 const NONE_ANIMATION: PreviewAnimation = { path: "", label: "None" };
+const ALL_VARIANTS = -1;
+const MAX_COMPARISON_MODELS = 100;
+const PREVIEW_GEOMETRY_KEY = "__wh3PreviewGeometryKey";
 
-const disposeMaterial = (material: THREE.Material) => {
-  for (const value of Object.values(material)) {
-    if (value instanceof THREE.Texture) value.dispose();
-  }
-  material.dispose();
+type PreviewResourcePool = {
+  geometries: Map<string, THREE.BufferGeometry>;
+  textures: Map<string, THREE.Texture>;
+};
+
+type ComparisonVariant = {
+  rowIndex: number;
+  columnIndex: number;
+  selections: VariantMeshSelection[];
 };
 
 const disposeObject = (object: THREE.Object3D) => {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
+
   object.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
-    child.geometry?.dispose();
-    if (Array.isArray(child.material)) child.material.forEach(disposeMaterial);
-    else if (child.material) disposeMaterial(child.material);
+    if (child.geometry) geometries.add(child.geometry);
+    const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of childMaterials) {
+      if (!material) continue;
+      materials.add(material);
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) textures.add(value);
+      }
+    }
+  });
+
+  for (const geometry of geometries) geometry.dispose();
+  for (const material of materials) material.dispose();
+  for (const texture of textures) texture.dispose();
+};
+
+const hashGeometry = (geometry: THREE.BufferGeometry) => {
+  const cached = geometry.userData[PREVIEW_GEOMETRY_KEY];
+  if (typeof cached === "string") return cached;
+
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  let totalBytes = 0;
+  const hashArray = (array: { buffer: ArrayBufferLike; byteOffset: number; byteLength: number }) => {
+    const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+    totalBytes += bytes.byteLength;
+    for (let index = 0; index < bytes.length; index += 1) {
+      const value = bytes[index];
+      first = Math.imul(first ^ value, 0x01000193);
+      second = Math.imul(second ^ (value + index), 0x85ebca6b);
+      second = (second << 13) | (second >>> 19);
+    }
+  };
+
+  const attributeMetadata: string[] = [];
+  for (const [name, attribute] of Object.entries(geometry.attributes).sort(([firstName], [secondName]) =>
+    firstName.localeCompare(secondName),
+  )) {
+    attributeMetadata.push(`${name}:${attribute.itemSize}:${attribute.count}:${attribute.normalized ? 1 : 0}`);
+    const array = attribute instanceof THREE.InterleavedBufferAttribute ? attribute.data.array : attribute.array;
+    hashArray(array);
+  }
+  if (geometry.index) {
+    attributeMetadata.push(`index:${geometry.index.itemSize}:${geometry.index.count}`);
+    hashArray(geometry.index.array);
+  }
+
+  const key = `${totalBytes}:${first >>> 0}:${second >>> 0}:${attributeMetadata.join("|")}`;
+  geometry.userData[PREVIEW_GEOMETRY_KEY] = key;
+  return key;
+};
+
+const texturePoolKey = (texture: THREE.Texture) => {
+  const rawKey = texture.userData.wh3RawKtx2CacheKey;
+  if (typeof rawKey !== "string") return undefined;
+  return [
+    rawKey,
+    texture.wrapS,
+    texture.wrapT,
+    texture.magFilter,
+    texture.minFilter,
+    texture.anisotropy,
+    texture.flipY ? 1 : 0,
+    texture.colorSpace,
+  ].join("|");
+};
+
+const internObjectResources = (object: THREE.Object3D, pool: PreviewResourcePool) => {
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+
+    if (child.geometry) {
+      const key = hashGeometry(child.geometry);
+      const shared = pool.geometries.get(key);
+      if (shared && shared !== child.geometry) {
+        child.geometry.dispose();
+        child.geometry = shared;
+      } else {
+        pool.geometries.set(key, child.geometry);
+      }
+    }
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+      const values = material as unknown as Record<string, unknown>;
+      for (const [propertyName, value] of Object.entries(values)) {
+        if (!(value instanceof THREE.Texture)) continue;
+        const key = texturePoolKey(value);
+        if (!key) continue;
+        const shared = pool.textures.get(key);
+        if (shared && shared !== value) {
+          values[propertyName] = shared;
+          value.dispose();
+        } else {
+          pool.textures.set(key, value);
+        }
+      }
+    }
+  });
+};
+
+const getComparisonActiveVariantMeshSlots = (
+  catalog: VariantMeshCatalog,
+  selections: Readonly<Record<string, number>>,
+) => {
+  const slotsByPath = new Map(catalog.slots.map((slot) => [slot.slotPath, slot]));
+  const activeCache = new Map<string, boolean>();
+  const isActive = (slot: VariantMeshCatalog["slots"][number]): boolean => {
+    const cached = activeCache.get(slot.slotPath);
+    if (cached !== undefined) return cached;
+    const parent = slot.parent;
+    const parentSlot = parent ? slotsByPath.get(parent.slotPath) : undefined;
+    const parentSelection = parentSlot
+      ? selections[parentSlot.slotPath] ?? parentSlot.defaultChoiceIndex
+      : undefined;
+    const active =
+      !parent ||
+      (!!parentSlot &&
+        isActive(parentSlot) &&
+        (parentSelection === ALL_VARIANTS || parentSelection === parent.choiceIndex));
+    activeCache.set(slot.slotPath, active);
+    return active;
+  };
+  return catalog.slots.filter(isActive);
+};
+
+const layoutComparisonModels = (
+  models: readonly THREE.Object3D[],
+  columnCount: number,
+  rowCount: number,
+) => {
+  if (models.length === 0) return;
+  const bounds = models.map((model) => new THREE.Box3().setFromObject(model));
+  const sizes = bounds.map((box) => box.getSize(new THREE.Vector3()));
+  const maxWidth = Math.max(...sizes.map((size) => size.x), 0.25);
+  const maxDepth = Math.max(...sizes.map((size) => size.z), 0.25);
+  const columnSpacing = maxWidth * 1.35;
+  const rowSpacing = maxDepth * 1.75;
+  const xOrigin = ((columnCount - 1) * columnSpacing) / 2;
+  const zOrigin = ((rowCount - 1) * rowSpacing) / 2;
+
+  models.forEach((model, index) => {
+    const rowIndex = Math.floor(index / columnCount);
+    const columnIndex = index % columnCount;
+    const box = bounds[index];
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.x += columnIndex * columnSpacing - xOrigin - center.x;
+    model.position.y += -box.min.y;
+    model.position.z += rowIndex * rowSpacing - zOrigin - center.z;
   });
 };
 
@@ -237,8 +395,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       ktx2Loader,
       controls,
       grid,
-      mixer: null,
-      action: null,
+      mixers: [],
+      actions: [],
       isPlaying: true,
       afterNextRender: null,
     };
@@ -267,7 +425,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const delta = Math.min(Math.max((now - previousFrameTime) / 1000, 0), 0.1);
       previousFrameTime = now;
       if (!isVisible) return;
-      if (context.mixer && context.isPlaying) context.mixer.update(delta);
+      if (context.isPlaying) {
+        for (const mixer of context.mixers) mixer.update(delta);
+      }
       controls.update();
       const renderStartedAt = performance.now();
       renderer.render(scene, camera);
@@ -283,9 +443,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       intersectionObserver.disconnect();
       resizeObserver.disconnect();
       renderer.setAnimationLoop(null);
-      context.mixer?.stopAllAction();
-      context.mixer = null;
-      context.action = null;
+      for (const mixer of context.mixers) mixer.stopAllAction();
+      context.mixers = [];
+      context.actions = [];
       context.afterNextRender = null;
       controls.dispose();
       disposeGrid(grid);
@@ -307,13 +467,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const context = contextRef.current;
     if (!context) return;
     context.isPlaying = isPlaying;
-    if (context.action) context.action.paused = !isPlaying;
+    for (const action of context.actions) action.paused = !isPlaying;
   }, [isPlaying]);
 
   useEffect(() => {
     animationSpeedRef.current = animationSpeed;
-    const action = contextRef.current?.action;
-    if (action) action.timeScale = animationSpeed;
+    for (const action of contextRef.current?.actions ?? []) action.timeScale = animationSpeed;
   }, [animationSpeed]);
 
   useEffect(() => {
