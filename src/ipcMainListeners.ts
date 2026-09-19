@@ -5934,8 +5934,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("getAllModData", (event, ids: string[]) => {
     // if we keep restarting the app in dev steam refuse requests eventually
     if (isDev) return;
+    const workshopIds = ids.filter((id) => id !== "");
+    if (workshopIds.length === 0) return;
     fetchModData(
-      ids.filter((id) => id !== ""),
+      workshopIds,
       (modData) => {
         tempModDatas.push(modData);
         sendModData();
