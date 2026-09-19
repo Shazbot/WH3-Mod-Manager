@@ -1231,6 +1231,7 @@
   "unitViewerUnitSize": "Unit Size",
   "unitViewerRank": "Rank",
   "unitViewerVigour": "Vigour",
+  "unitViewerShowWireframe": "Show wireframe",
   "unitViewerFresh": "Fresh",
   "unitViewerActive": "Active",
   "unitViewerWinded": "Winded",
