@@ -335,6 +335,15 @@ const sanitizeVariantSelections = (value: unknown): VariantMeshSelection[] => {
   return [...selections.values()];
 };
 
+const sanitizeVariantSelectionBatch = (value: unknown): Array<{ variantSelections: VariantMeshSelection[] }> => {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 100).flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const candidate = entry as { variantSelections?: unknown };
+    return [{ variantSelections: sanitizeVariantSelections(candidate.variantSelections) }];
+  });
+};
+
 const normalizeVisualsModelAssetPath = (assetPath: string) => {
   if (process.platform !== "win32") {
     return { success: false as const, error: "The WH3 model preview host currently requires Windows." };
@@ -487,6 +496,127 @@ const exportVisualsModelNow = async (
   }
 };
 
+
+const exportVisualsModelBatchNow = async (
+  assetPath: string,
+  enabledModsValue: unknown,
+  animationPathsValue: unknown,
+  itemsValue: unknown,
+  queuedAtMs: number,
+  generation: number,
+) => {
+  const operationStartedAt = performance.now();
+  const queueWaitMs = operationStartedAt - queuedAtMs;
+  const normalized = normalizeVisualsModelAssetPath(assetPath);
+  if (!normalized.success) return normalized;
+
+  const enabledMods = sanitizeEnabledMods(enabledModsValue);
+  const animationPaths = sanitizeAnimationPaths(animationPathsValue);
+  const items = sanitizeVariantSelectionBatch(itemsValue);
+  if (items.length === 0) {
+    return { success: false as const, error: "At least one comparison model is required." };
+  }
+
+  const batchId = randomUUID();
+  const batchDirectory = nodePath.join(getOutputRoot(), batchId);
+  const previewsToCreate = items.map((item) => {
+    const previewId = randomUUID();
+    return {
+      previewId,
+      outputPath: `${batchId}\\${previewId}\\model.glb`,
+      variantSelections: item.variantSelections,
+    };
+  });
+  const registeredPreviewIds: string[] = [];
+  let host: RunningHost | undefined;
+
+  try {
+    const prepareHostStartedAt = performance.now();
+    host = await prepareVisualsModelHost(enabledMods, generation);
+    const prepareHostMs = performance.now() - prepareHostStartedAt;
+
+    const hostExportStartedAt = performance.now();
+    const batchResult = await host.client.exportModels({
+      assetPath: normalized.assetPath,
+      animationPaths,
+      items: previewsToCreate.map(({ outputPath, variantSelections }) => ({ outputPath, variantSelections })),
+    });
+    const hostExportMs = performance.now() - hostExportStartedAt;
+    assertHostLifecycleActive(generation);
+
+    if (batchResult.exports.length !== previewsToCreate.length) {
+      return {
+        success: false as const,
+        error: `WH3AssetHost returned ${batchResult.exports.length} batch results for ${previewsToCreate.length} requests.`,
+      };
+    }
+
+    const failed = batchResult.exports.find((result) => !result.success || !result.primaryFile);
+    if (failed) {
+      const hostErrors = failed.errors
+        ?.map((error) => error.message)
+        .filter(Boolean)
+        .join(" | ");
+      return {
+        success: false as const,
+        error: hostErrors || "WH3AssetHost did not produce every comparison GLB.",
+        warnings: batchResult.exports.flatMap((result) => result.warnings?.map((warning) => warning.message) ?? []),
+      };
+    }
+
+    const glbBytes = (
+      await Promise.all(
+        batchResult.exports.map(async (result) => (await fs.promises.stat(result.primaryFile!)).size),
+      )
+    ).reduce((total, bytes) => total + bytes, 0);
+    assertHostLifecycleActive(generation);
+
+    const resultItems = batchResult.exports.map((result, index) => {
+      const previewId = previewsToCreate[index].previewId;
+      registerModelPreviewFile(previewId, result.primaryFile!);
+      previews.set(previewId, { directory: nodePath.dirname(result.primaryFile!) });
+      registeredPreviewIds.push(previewId);
+      return {
+        previewId,
+        url: modelPreviewAssetUrl(previewId),
+        warnings: result.warnings?.map((warning) => warning.message) ?? [],
+      };
+    });
+
+    return {
+      success: true as const,
+      items: resultItems,
+      warnings: resultItems.flatMap((item) => item.warnings),
+      timings: {
+        queueWaitMs,
+        prepareHostMs,
+        hostExportMs,
+        registerMs: 0,
+        totalMs: performance.now() - queuedAtMs,
+        glbBytes,
+      },
+    };
+  } catch (error) {
+    disposeOperationHost(host);
+    for (const previewId of registeredPreviewIds) {
+      previews.delete(previewId);
+      revokeModelPreviewFile(previewId);
+    }
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : "Failed to export the model comparison.",
+    };
+  } finally {
+    if (registeredPreviewIds.length !== previewsToCreate.length) {
+      try {
+        await fs.promises.rm(batchDirectory, { recursive: true, force: true });
+      } catch {
+        // Failed batch cleanup is best-effort; the output root is cleared next run.
+      }
+    }
+  }
+};
+
 /**
  * Keep initialize + export atomic with respect to the host runtime. Without this queue, a mod-list
  * change could enqueue initialize(A), initialize(B), export(A), making the first export accidentally
@@ -509,6 +639,18 @@ ipcMain.handle(
     const generation = hostLifecycleGeneration;
     return exportVisualsModel(() =>
       exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections, queuedAtMs, generation),
+    );
+  },
+);
+
+ipcMain.removeHandler("exportVisualsModelBatch");
+ipcMain.handle(
+  "exportVisualsModelBatch",
+  async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown, items: unknown) => {
+    const queuedAtMs = performance.now();
+    const generation = hostLifecycleGeneration;
+    return exportVisualsModel(() =>
+      exportVisualsModelBatchNow(assetPath, enabledMods, animationPaths, items, queuedAtMs, generation),
     );
   },
 );
