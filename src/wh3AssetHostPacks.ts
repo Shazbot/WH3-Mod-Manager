@@ -1,5 +1,4 @@
 import * as nodePath from "node:path";
-import appData from "./appData";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import type { Wh3AssetHostClient, Wh3AssetHostInitializeResult } from "./wh3AssetHostClient";
@@ -75,10 +74,6 @@ export const buildWh3AssetHostPackPaths = (
   return packPaths;
 };
 
-/** Uses the same manifest-backed vanilla list and effective enabled-mod order as the main process. */
-export const getCurrentWh3AssetHostPackPaths = (): string[] =>
-  buildWh3AssetHostPackPaths(getVanillaPackPathsInLoadOrder(), appData.enabledMods);
-
 /** Builds from an explicit renderer/session snapshot so Visuals and the host resolve the same mod universe. */
 export const getWh3AssetHostPackPathsForMods = (enabledMods: readonly Wh3AssetHostMod[]): string[] =>
   buildWh3AssetHostPackPaths(getVanillaPackPathsInLoadOrder(), enabledMods);
@@ -101,10 +96,6 @@ export class Wh3AssetHostPackInitializer {
     private readonly client: Pick<Wh3AssetHostClient, "initialize">,
     private readonly vanillaPackFilesCachePath?: string,
   ) {}
-
-  ensureInitialized(outputRoot: string): Promise<Wh3AssetHostInitializeResult | null> {
-    return this.ensureInitializedForPackPaths(getCurrentWh3AssetHostPackPaths(), outputRoot);
-  }
 
   async ensureInitializedForPackPaths(
     packPaths: readonly string[],
@@ -129,19 +120,4 @@ export class Wh3AssetHostPackInitializer {
     return result;
   }
 
-  reset(): void {
-    this.initializedStateKey = null;
-  }
 }
-
-/** One-shot helper for callers that intentionally want to force initialization. */
-export const initializeWh3AssetHostForCurrentPackState = (
-  client: Pick<Wh3AssetHostClient, "initialize">,
-  outputRoot: string,
-  vanillaPackFilesCachePath?: string,
-): Promise<Wh3AssetHostInitializeResult> =>
-  client.initialize({
-    packPaths: getCurrentWh3AssetHostPackPaths(),
-    outputRoot,
-    ...(vanillaPackFilesCachePath ? { vanillaPackFilesCachePath } : {}),
-  });
