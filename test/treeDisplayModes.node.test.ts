@@ -5,6 +5,7 @@ import appReducer, {
   setCurrentTab,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
+  setUnitViewerMode,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 
@@ -82,5 +83,20 @@ describe("tree display modes", () => {
 
     expect(state.skillTreesDisplayMode).toBe("window");
     expect(state.technologyTreesDisplayMode).toBe("window");
+  });
+});
+
+describe("unit viewer mode", () => {
+  it("starts in compare mode to preserve multi-selection", () => {
+    expect(initialState.unitViewerMode).toBe("compare");
+  });
+
+  it("restores, validates, and updates the mode", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerMode: "visualize" }));
+    expect(restored.unitViewerMode).toBe("visualize");
+
+    const invalid = appReducer(initialState, setFromConfig({ ...initialState, unitViewerMode: "other" } as never));
+    expect(invalid.unitViewerMode).toBe("compare");
+    expect(appReducer(restored, setUnitViewerMode("compare")).unitViewerMode).toBe("compare");
   });
 });

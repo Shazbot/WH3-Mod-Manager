@@ -166,6 +166,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     hiddenMainWindowTabs: config.hiddenMainWindowTabs ?? [],
     isVisualsSortByCultureEnabled: config.isVisualsSortByCultureEnabled ?? true,
     isVisualsHideDuplicatesEnabled: config.isVisualsHideDuplicatesEnabled ?? true,
+    unitViewerMode: config.unitViewerMode === "visualize" ? "visualize" : "compare",
     moddersPrefix: config.moddersPrefix ?? "",
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
     workshopModStagingMode,

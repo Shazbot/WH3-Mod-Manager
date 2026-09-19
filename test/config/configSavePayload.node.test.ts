@@ -36,6 +36,12 @@ describe("selectConfigSavePayload", () => {
     expect(payload.config.isVisualsHideDuplicatesEnabled).toBe(false);
   });
 
+  it("includes the Unit Viewer mode in the saved config payload", () => {
+    const payload = selectConfigSavePayload({ ...initialState, unitViewerMode: "visualize" } as AppState);
+
+    expect(payload.config.unitViewerMode).toBe("visualize");
+  });
+
   it("includes both skills display options in the saved config payload", () => {
     const payload = selectConfigSavePayload({
       ...initialState,

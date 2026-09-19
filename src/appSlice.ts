@@ -1251,6 +1251,10 @@ const appSlice = createSlice({
         fromConfigAppState.isVisualsSortByCultureEnabled ?? state.isVisualsSortByCultureEnabled;
       state.isVisualsHideDuplicatesEnabled =
         fromConfigAppState.isVisualsHideDuplicatesEnabled ?? state.isVisualsHideDuplicatesEnabled;
+      state.unitViewerMode =
+        fromConfigAppState.unitViewerMode === "visualize" || fromConfigAppState.unitViewerMode === "compare"
+          ? fromConfigAppState.unitViewerMode
+          : state.unitViewerMode;
       state.recentPackPaths = sanitizeRecentPackPaths(fromConfigAppState.recentPackPaths, vanillaPackNames);
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
@@ -1633,6 +1637,9 @@ const appSlice = createSlice({
     },
     toggleIsVisualsHideDuplicatesEnabled: (state: AppState) => {
       state.isVisualsHideDuplicatesEnabled = !state.isVisualsHideDuplicatesEnabled;
+    },
+    setUnitViewerMode: (state: AppState, action: PayloadAction<UnitViewerMode>) => {
+      state.unitViewerMode = action.payload;
     },
     toggleIsPresetAuthorEnabled: (state: AppState) => {
       state.isPresetAuthorEnabled = !state.isPresetAuthorEnabled;
@@ -2044,6 +2051,7 @@ export const {
   toggleIsModListCategoryViewEnabled,
   toggleIsVisualsSortByCultureEnabled,
   toggleIsVisualsHideDuplicatesEnabled,
+  setUnitViewerMode,
   setModListDensity,
   toggleIsPresetAuthorEnabled,
   toggleArePresetThumbnailsEnabled,

@@ -321,6 +321,8 @@ declare global {
     isVisualsSortByCultureEnabled: boolean;
     /** Hide repeated variant files in the Visuals Lord and Hero culture groups. */
     isVisualsHideDuplicatesEnabled: boolean;
+    /** Whether the Unit Viewer shows one unit for visualization or multiple units for comparison. */
+    unitViewerMode: UnitViewerMode;
     mapCampaignName: string;
     mapSelectedRegion?: MapRegionSelection;
     isCreateSteamCollectionOpen: boolean;
@@ -382,6 +384,8 @@ declare global {
 
   type ModListDensity = "compact" | "comfortable" | "roomy";
 
+  type UnitViewerMode = "visualize" | "compare";
+
   type WorkshopModStagingMode = import("./utility/workshopModStaging").WorkshopModStagingMode;
 
   type SkillsViewOptions = Pick<
@@ -440,6 +444,7 @@ declare global {
     | "hiddenMainWindowTabs"
     | "isVisualsSortByCultureEnabled"
     | "isVisualsHideDuplicatesEnabled"
+    | "unitViewerMode"
     | "recentPackPaths"
   >;
 

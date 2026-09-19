@@ -264,6 +264,22 @@ describe("Unit Viewer UI", () => {
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
   });
 
+  it("limits selection to one unit in visualize mode", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    expect(screen.getByText(/2 selected/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Comparison")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+  });
+
   it("hides missile weapon sections when a unit has no missile weapons", async () => {
     renderViewer();
     await screen.findByText("Culture");
