@@ -1,4 +1,4 @@
-import React, { RefObject, useEffect } from "react";
+import React, { RefObject, useEffect, useLayoutEffect } from "react";
 import { useAppSelector } from "../hooks";
 import Sidebar from "./Sidebar";
 import ModRows from "./ModRows";
@@ -46,6 +46,7 @@ const Main = (props: MainProps) => {
   const isBuildingsMounted = useKeepMountedOnceActive(isBuildingsTab);
   const isAncillariesMounted = useKeepMountedOnceActive(isAncillariesTab);
   const isMapMounted = useKeepMountedOnceActive(isMapTab);
+  const isAssetHostTabActive = isUnitViewerTab || isVisualsTab;
   const isKeptMountedTab =
     isNodeEditorTab ||
     isUnitViewerTab ||
@@ -55,6 +56,17 @@ const Main = (props: MainProps) => {
     isBuildingsTab ||
     isAncillariesTab ||
     isMapTab;
+
+  useLayoutEffect(() => {
+    if (!isAssetHostTabActive) return;
+
+    // The viewer panels stay mounted for state preservation, so their host lifecycle must follow
+    // the visible main tab rather than React mounting/unmounting.
+    void window.api?.startWh3AssetHost?.();
+    return () => {
+      void window.api?.stopWh3AssetHost?.();
+    };
+  }, [isAssetHostTabActive]);
 
   useEffect(() => {
     const focusSidebarFilter = (event: KeyboardEvent) => {

@@ -17,6 +17,8 @@ import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSel
 
 type VisualsModelPreviewProps = {
   assetPath: string;
+  /** False while the owning main-window tab is kept mounted but hidden. */
+  isActive?: boolean;
   /** Whether to show the ground wireframe beneath the model. */
   showWireframe?: boolean;
   /** Session used to inspect VMD slots and select appearances. */
@@ -121,7 +123,13 @@ const formatAnimationTime = (seconds: number) => {
 const ANIMATION_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
 const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
-  const { assetPath, showWireframe = true, variantMeshSessionId, variantMeshSessionType = "unitViewer" } = props;
+  const {
+    assetPath,
+    isActive = true,
+    showWireframe = true,
+    variantMeshSessionId,
+    variantMeshSessionType = "unitViewer",
+  } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -297,6 +305,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setClipDuration(0);
     setCurrentTime(0);
 
+    if (!isActive) return;
+
     const loadCatalog = async () => {
       try {
         const result = await getVisualsModelAnimationCatalog(assetPath, enabledMods);
@@ -336,7 +346,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [assetPath, enabledMods]);
+  }, [assetPath, enabledMods, isActive]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -344,7 +354,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setVariantCatalogDiagnostics([]);
     setVariantSelections({});
     setVariantCatalogReady(!variantMeshSessionId);
-    if (!variantMeshSessionId) return;
+    if (!isActive || !variantMeshSessionId) return;
 
     const loadVariantCatalog = async () => {
       try {
@@ -377,7 +387,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [assetPath, variantMeshSessionId, variantMeshSessionType]);
+  }, [assetPath, isActive, variantMeshSessionId, variantMeshSessionType]);
 
   const activeVariantSlots = useMemo(
     () =>
@@ -396,7 +406,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   );
 
   useEffect(() => {
-    if (!animationCatalogReady || !variantCatalogReady || catalogLoadingRef.current) return;
+    if (!isActive || !animationCatalogReady || !variantCatalogReady || catalogLoadingRef.current) return;
     const context = contextRef.current;
     if (!context || !assetPath) return;
     if (pendingCameraViewRef.current?.assetPath !== assetPath) pendingCameraViewRef.current = null;
@@ -548,6 +558,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     assetPath,
     catalogDiagnostics,
     enabledMods,
+    isActive,
     selectedAnimationPath,
     selectedVariantSelections,
     variantCatalogDiagnostics,

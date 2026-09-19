@@ -42,8 +42,11 @@ type PreviewRecord = {
 
 let runningHost: RunningHost | null = null;
 let startingHost: Promise<RunningHost> | null = null;
+let startingHostGeneration: number | null = null;
 let startingHostClient: Wh3AssetHostClient | null = null;
 let hostShutdownRequested = false;
+let hostLifecycleActive = false;
+let hostLifecycleGeneration = 0;
 let prepareOutputRootPromise: Promise<void> | null = null;
 let previewExportQueue: Promise<void> = Promise.resolve();
 const previews = new Map<string, PreviewRecord>();
@@ -176,15 +179,26 @@ const disposeRunningHost = () => {
   startingHostClient = null;
 };
 
-const startHost = async (): Promise<RunningHost> => {
+const assertHostLifecycleActive = (generation: number) => {
+  if (!hostLifecycleActive || generation !== hostLifecycleGeneration) {
+    throw new Error("WH3AssetHost is no longer needed because its viewer tab is inactive.");
+  }
+};
+
+const startHost = async (generation = hostLifecycleGeneration): Promise<RunningHost> => {
   if (hostShutdownRequested) throw new Error("WH3AssetHost is shutting down.");
+  assertHostLifecycleActive(generation);
   if (runningHost?.client.isConnected) return runningHost;
-  if (startingHost) return startingHost;
+  if (startingHost) {
+    const pendingStart = startingHost;
+    if (startingHostGeneration === generation) return pendingStart;
+    await pendingStart.catch(() => undefined);
+    return startHost(generation);
+  }
 
   disposeRunningHost();
-  startingHost = (async () => {
-    await ensureWh3AssetHostVanillaCache();
-
+  const pendingStart = (async () => {
+    assertHostLifecycleActive(generation);
     const client = new Wh3AssetHostClient({
       executablePath: resolveWh3AssetHostExecutablePath(),
       onDecisionRequest: requestDecisionFromManager,
@@ -193,7 +207,11 @@ const startHost = async (): Promise<RunningHost> => {
     try {
       await client.start();
       await client.hello();
+      // Start the process before warming the manager-owned cache. The host is already alive while
+      // the cache is prepared, so entering a viewer does not wait to launch it until the first model.
+      await ensureWh3AssetHostVanillaCache();
       if (hostShutdownRequested) throw new Error("WH3AssetHost is shutting down.");
+      assertHostLifecycleActive(generation);
       const host = {
         client,
         packInitializer: new Wh3AssetHostPackInitializer(client, getVanillaPackFilesCachePath()),
@@ -208,13 +226,44 @@ const startHost = async (): Promise<RunningHost> => {
       if (startingHostClient === client) startingHostClient = null;
     }
   })();
+  startingHost = pendingStart;
+  startingHostGeneration = generation;
 
   try {
-    return await startingHost;
+    return await pendingStart;
   } finally {
-    startingHost = null;
+    if (startingHost === pendingStart) {
+      startingHost = null;
+      startingHostGeneration = null;
+    }
   }
 };
+
+ipcMain.removeHandler("startWh3AssetHost");
+ipcMain.handle("startWh3AssetHost", async (): Promise<{ success: boolean; error?: string }> => {
+  if (!hostLifecycleActive) {
+    hostLifecycleActive = true;
+    hostLifecycleGeneration += 1;
+  }
+  const generation = hostLifecycleGeneration;
+  try {
+    await startHost(generation);
+    return { success: true };
+  } catch (error) {
+    if (generation === hostLifecycleGeneration && hostLifecycleActive) disposeRunningHost();
+    return { success: false, error: error instanceof Error ? error.message : "Failed to start WH3AssetHost." };
+  }
+});
+
+ipcMain.removeHandler("stopWh3AssetHost");
+ipcMain.handle("stopWh3AssetHost", (): { success: boolean } => {
+  hostLifecycleActive = false;
+  hostLifecycleGeneration += 1;
+  startingHost = null;
+  startingHostGeneration = null;
+  disposeRunningHost();
+  return { success: true };
+});
 
 /** Clear previews abandoned by a previous app/process crash, once, before this run's first export. */
 const prepareOutputRoot = async () => {
@@ -290,6 +339,7 @@ const normalizeVisualsModelAssetPath = (assetPath: string) => {
 };
 
 const prepareVisualsModelHost = async (enabledModsValue: unknown) => {
+  assertHostLifecycleActive(hostLifecycleGeneration);
   await prepareOutputRoot();
   const host = await startHost();
   const enabledMods = sanitizeEnabledMods(enabledModsValue);
@@ -492,6 +542,10 @@ ipcMain.handle("releaseVisualsModelPreview", async (_event, previewId: string) =
 
 const stopHostForAppExit = () => {
   hostShutdownRequested = true;
+  hostLifecycleActive = false;
+  hostLifecycleGeneration += 1;
+  startingHost = null;
+  startingHostGeneration = null;
   for (const previewId of previews.keys()) {
     revokeModelPreviewFile(previewId);
   }

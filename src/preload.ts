@@ -667,6 +667,9 @@ const api = {
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("respondWh3AssetHostDecision", requestId, action),
 
+  startWh3AssetHost: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke("startWh3AssetHost"),
+  stopWh3AssetHost: (): Promise<{ success: boolean }> => ipcRenderer.invoke("stopWh3AssetHost"),
+
   prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),
 

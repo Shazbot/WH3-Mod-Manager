@@ -1194,6 +1194,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   <div className={`absolute inset-0 ${viewerMode === "preview" ? "" : "hidden"}`}>
                     <VisualsModelPreview
                       assetPath={activeTab.filePath}
+                      isActive={isActive}
                       variantMeshSessionId={sessionId ?? undefined}
                       variantMeshSessionType="visuals"
                     />
