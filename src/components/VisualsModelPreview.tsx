@@ -672,6 +672,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       geometries: new Map(),
       textures: new Map(),
     };
+    type ExportJob = {
+      exportResult: Awaited<ReturnType<typeof exportVisualsModel>>;
+      exportRoundTripMs: number;
+    };
+    let pendingExport: Promise<ExportJob> | undefined;
 
     const releasePreview = (previewId: string) => {
       void releaseVisualsModelPreview(previewId).catch(() => undefined);
@@ -679,6 +684,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const cleanupOwnedPreview = () => {
       context.afterNextRender = null;
+      const abandonedExport = pendingExport;
+      pendingExport = undefined;
+      if (abandonedExport) {
+        void abandonedExport
+          .then(({ exportResult }) => {
+            if (exportResult.previewId) releasePreview(exportResult.previewId);
+          })
+          .catch(() => undefined);
+      }
       for (const mixer of ownedMixers) mixer.stopAllAction();
       ownedMixers.forEach((mixer, index) => {
         const model = ownedModels[index];
@@ -724,9 +738,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         let singleGltfLoadMs = 0;
         let maxClipDuration = 0;
 
-        for (const variant of comparisonVariants) {
-          if (isCancelled) return;
-
+        const requestExport = async (variant: ComparisonVariant): Promise<ExportJob> => {
           const exportStartedAt = performance.now();
           const exportResult = await exportVisualsModel(
             assetPath,
@@ -734,7 +746,19 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             selectedAnimationPath ? [selectedAnimationPath] : [],
             variant.selections,
           );
-          const exportRoundTripMs = performance.now() - exportStartedAt;
+          return {
+            exportResult,
+            exportRoundTripMs: performance.now() - exportStartedAt,
+          };
+        };
+
+        pendingExport = requestExport(comparisonVariants[0]);
+        for (let variantIndex = 0; variantIndex < comparisonVariants.length; variantIndex += 1) {
+          const currentExport = pendingExport;
+          pendingExport = undefined;
+          if (!currentExport) return;
+
+          const { exportResult, exportRoundTripMs } = await currentExport;
           for (const warning of exportResult.warnings ?? []) warningSet.add(warning);
 
           if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
@@ -748,6 +772,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             ownedPreviewIds.delete(previewId);
             return;
           }
+
+          const nextVariant = comparisonVariants[variantIndex + 1];
+          if (nextVariant) pendingExport = requestExport(nextVariant);
 
           if (comparisonVariants.length === 1) {
             singleExportResult = exportResult;
