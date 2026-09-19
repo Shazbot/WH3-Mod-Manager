@@ -27,7 +27,6 @@ import { tableNameWithDBPrefix } from "./utility/packFileHelpers";
 
 setupRendererLogging();
 
-console.log("IN RENDERER (viewer)");
 
 const stripUnsavedFileBuffers = (unsavedFileData: PackedFile[]): PackedFile[] =>
   unsavedFileData.map(({ buffer, ...unsavedFile }) => unsavedFile);
