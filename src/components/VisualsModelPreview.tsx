@@ -668,7 +668,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const ownedMixers: THREE.AnimationMixer[] = [];
     const ownedActions: THREE.AnimationAction[] = [];
     const ownedPreviewIds = new Set<string>();
-    const releasablePreviewIds = new Set<string>();
     const resourcePool: PreviewResourcePool = {
       geometries: new Map(),
       textures: new Map(),
@@ -693,12 +692,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       ownedModels.length = 0;
       ownedMixers.length = 0;
       ownedActions.length = 0;
-      for (const previewId of ownedPreviewIds) {
+      for (const previewId of [...ownedPreviewIds]) {
         if (loadingPreviewIds.has(previewId)) continue;
         releasePreview(previewId);
+        ownedPreviewIds.delete(previewId);
       }
-      ownedPreviewIds.clear();
-      releasablePreviewIds.clear();
     };
 
     const run = async () => {
@@ -790,12 +788,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             gltf = await gltfLoader.loadAsync(exportItem.url);
           } catch (loadError) {
             loadingPreviewIds.delete(previewId);
-            releasablePreviewIds.add(previewId);
             throw loadError;
           }
           const gltfLoadMs = performance.now() - gltfLoadStartedAt;
           loadingPreviewIds.delete(previewId);
-          releasablePreviewIds.add(previewId);
           if (comparisonVariants.length === 1) singleGltfLoadMs = gltfLoadMs;
 
           if (isCancelled) {
