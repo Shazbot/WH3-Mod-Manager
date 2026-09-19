@@ -94,6 +94,7 @@ describe("WH3AssetHostClient", () => {
           "initialize",
           "getAnimationCatalog",
           "exportModel",
+          "exportModelBatch",
           "missingSkeletonDecision",
           "shutdown",
         ],
@@ -238,6 +239,62 @@ describe("WH3AssetHostClient", () => {
       exportMaterials: true,
       includeSkeleton: true,
       mirrorMesh: true,
+    });
+    assetHost.dispose();
+  });
+
+  it("sends exportModelBatch with shared options and per-item selections", async () => {
+    const child = createMockChild();
+    const { client, server } = createDuplexPair();
+    const seen: any[] = [];
+    installServerResponder(server, (request) => {
+      seen.push(request);
+      return {
+        protocolVersion: 1,
+        requestId: request.requestId,
+        success: true,
+        command: request.command,
+        result: {
+          exports: request.items.map((item: any) => ({
+            success: true,
+            primaryFile: item.outputPath,
+            auxiliaryFiles: [],
+            warnings: [],
+            errors: [],
+          })),
+        },
+        error: null,
+      };
+    });
+
+    const assetHost = new Wh3AssetHostClient({
+      executablePath: "host.exe",
+      spawnProcess: () => child as never,
+      connectPipe: async () => client,
+    });
+    await assetHost.start();
+
+    await expect(
+      assetHost.exportModels({
+        assetPath: "variantmeshes\\foo.variantmeshdefinition",
+        items: [
+          { outputPath: "batch\\one.glb", variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 0 }] },
+          { outputPath: "batch\\two.glb", variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 1 }] },
+        ],
+      }),
+    ).resolves.toMatchObject({ exports: [{ success: true }, { success: true }] });
+
+    expect(seen[0]).toMatchObject({
+      command: "exportModelBatch",
+      assetPath: "variantmeshes\\foo.variantmeshdefinition",
+      animationPaths: [],
+      exportMaterials: true,
+      includeSkeleton: true,
+      mirrorMesh: true,
+      items: [
+        { outputPath: "batch\\one.glb", variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 0 }] },
+        { outputPath: "batch\\two.glb", variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 1 }] },
+      ],
     });
     assetHost.dispose();
   });
