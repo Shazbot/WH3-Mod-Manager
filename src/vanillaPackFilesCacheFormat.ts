@@ -48,6 +48,10 @@ class BinaryWriter {
   private buffer = Buffer.allocUnsafe(1024 * 1024);
   private offset = 0;
 
+  get position(): number {
+    return this.offset;
+  }
+
   private ensure(additionalBytes: number): void {
     const required = this.offset + additionalBytes;
     if (required <= this.buffer.length) return;
@@ -70,6 +74,12 @@ class BinaryWriter {
     this.ensure(4);
     this.buffer.writeUInt32LE(value, this.offset);
     this.offset += 4;
+  }
+
+  patchUInt32(offset: number, value: number): void {
+    assertUInt32(value);
+    if (!Number.isInteger(offset) || offset < 0 || offset + 4 > this.offset) throw new Error("invalid patch offset");
+    this.buffer.writeUInt32LE(value, offset);
   }
 
   writeInt32(value: number): void {
@@ -115,6 +125,10 @@ class BinaryReader {
   private offset = 0;
 
   constructor(private readonly bytes: Buffer) {}
+
+  get position(): number {
+    return this.offset;
+  }
 
   get remaining(): number {
     return this.bytes.length - this.offset;
@@ -172,6 +186,13 @@ class BinaryReader {
     const length = this.readUInt32();
     if (length > MAX_STRING_BYTES) throw new Error("cache string too large");
     return this.readBytes(length).toString("utf8");
+  }
+
+  skipTo(position: number): void {
+    if (!Number.isSafeInteger(position) || position < this.offset || position > this.bytes.length) {
+      throw new Error("invalid cache record boundary");
+    }
+    this.offset = position;
   }
 }
 
@@ -328,25 +349,73 @@ export const encodeVanillaPackFilesCache = (cache: VanillaPackFilesCache): Buffe
     if (!expanded && !namesOnly) throw new Error(`invalid cache entry for ${packPath}`);
 
     writer.writeUInt8(expanded ? ENTRY_EXPANDED : ENTRY_NAMES_ONLY);
+    const recordLengthOffset = writer.position;
+    writer.writeUInt32(0);
+    const recordStart = writer.position;
+
     writer.writeString(packPath);
     writer.writeUInt64(entry.size);
     writer.writeDouble(entry.lastChangedLocal);
 
     if (expanded) {
       encodeExpandedEntry(writer, entry);
-      continue;
+    } else {
+      const names = entry.packedFileNames!;
+      writer.writeUInt32(names.length);
+      let previousName = "";
+      for (const name of names) {
+        writeFrontCodedString(writer, previousName, name);
+        previousName = name;
+      }
     }
 
-    const names = entry.packedFileNames!;
-    writer.writeUInt32(names.length);
-    let previousName = "";
-    for (const name of names) {
-      writeFrontCodedString(writer, previousName, name);
-      previousName = name;
-    }
+    writer.patchUInt32(recordLengthOffset, writer.position - recordStart);
   }
 
   return writer.finish();
+};
+
+export interface VanillaPackFilesCacheMetadataEntry {
+  size: number;
+  lastChangedLocal: number;
+  hasExpandedIndex: boolean;
+}
+
+/**
+ * Reads only the per-pack metadata directory. Record lengths let this skip every
+ * packed-file block without decoding file names or allocating per-file objects.
+ */
+export const inspectVanillaPackFilesCache = (
+  bytes: Buffer,
+): Map<string, VanillaPackFilesCacheMetadataEntry> | undefined => {
+  try {
+    const reader = new BinaryReader(bytes);
+    if (!reader.readBytes(MAGIC.length).equals(MAGIC)) return undefined;
+    if (reader.readUInt32() !== VANILLA_PACK_FILES_CACHE_VERSION) return undefined;
+
+    const entryCount = reader.readUInt32();
+    if (entryCount > MAX_ENTRY_COUNT) return undefined;
+
+    const metadata = new Map<string, VanillaPackFilesCacheMetadataEntry>();
+    for (let entryIndex = 0; entryIndex < entryCount; entryIndex++) {
+      const kind = reader.readUInt8();
+      if (kind !== ENTRY_EXPANDED && kind !== ENTRY_NAMES_ONLY) return undefined;
+
+      const recordLength = reader.readUInt32();
+      if (recordLength > reader.remaining) return undefined;
+      const recordEnd = reader.position + recordLength;
+
+      const packPath = reader.readString();
+      const size = reader.readUInt64();
+      const lastChangedLocal = reader.readDouble();
+      metadata.set(packPath, { size, lastChangedLocal, hasExpandedIndex: kind === ENTRY_EXPANDED });
+      reader.skipTo(recordEnd);
+    }
+
+    return reader.remaining === 0 ? metadata : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 export const decodeVanillaPackFilesCache = (bytes: Buffer): VanillaPackFilesCache | undefined => {
@@ -363,28 +432,33 @@ export const decodeVanillaPackFilesCache = (bytes: Buffer): VanillaPackFilesCach
 
     for (let entryIndex = 0; entryIndex < entryCount; entryIndex++) {
       const kind = reader.readUInt8();
+      const recordLength = reader.readUInt32();
+      if (recordLength > reader.remaining) return undefined;
+      const recordEnd = reader.position + recordLength;
+
       const packPath = reader.readString();
       const size = reader.readUInt64();
       const lastChangedLocal = reader.readDouble();
 
       if (kind === ENTRY_EXPANDED) {
         entries[packPath] = decodeExpandedEntry(reader, size, lastChangedLocal, totalFileCount);
-        continue;
+      } else {
+        if (kind !== ENTRY_NAMES_ONLY) return undefined;
+        const nameCount = reader.readUInt32();
+        totalFileCount.value += nameCount;
+        if (totalFileCount.value > MAX_TOTAL_FILE_COUNT) return undefined;
+
+        const packedFileNames = new Array<string>(nameCount);
+        let previousName = "";
+        for (let nameIndex = 0; nameIndex < nameCount; nameIndex++) {
+          const name = readFrontCodedString(reader, previousName);
+          packedFileNames[nameIndex] = name;
+          previousName = name;
+        }
+        entries[packPath] = { size, lastChangedLocal, packedFileNames };
       }
 
-      if (kind !== ENTRY_NAMES_ONLY) return undefined;
-      const nameCount = reader.readUInt32();
-      totalFileCount.value += nameCount;
-      if (totalFileCount.value > MAX_TOTAL_FILE_COUNT) return undefined;
-
-      const packedFileNames = new Array<string>(nameCount);
-      let previousName = "";
-      for (let nameIndex = 0; nameIndex < nameCount; nameIndex++) {
-        const name = readFrontCodedString(reader, previousName);
-        packedFileNames[nameIndex] = name;
-        previousName = name;
-      }
-      entries[packPath] = { size, lastChangedLocal, packedFileNames };
+      if (reader.position !== recordEnd) return undefined;
     }
 
     if (reader.remaining !== 0) return undefined;

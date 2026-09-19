@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeVanillaPackFilesCache,
   encodeVanillaPackFilesCache,
+  inspectVanillaPackFilesCache,
   type VanillaPackFilesCache,
 } from "../src/vanillaPackFilesCacheFormat";
 
@@ -38,9 +39,16 @@ describe("vanilla pack files compact binary format", () => {
     };
 
     const encoded = encodeVanillaPackFilesCache(cache);
+    const metadata = inspectVanillaPackFilesCache(encoded);
     const decoded = decodeVanillaPackFilesCache(encoded);
 
     expect(encoded.subarray(0, 4).toString("ascii")).toBe("WVFC");
+    expect(metadata?.get("C:\\game\\data\\release.pack")).toEqual({
+      size: 123456,
+      lastChangedLocal: 1720000000123.5,
+      hasExpandedIndex: true,
+    });
+    expect(metadata?.get("C:\\game\\data\\mod.pack")?.hasExpandedIndex).toBe(false);
     expect(decoded).toEqual(cache);
   });
 
