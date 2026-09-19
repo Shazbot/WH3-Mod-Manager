@@ -87,9 +87,9 @@ export class Wh3Ktx2Loader extends KTX2Loader {
   }
 
   /**
-   * Keeps raw KTX2 decode bytes shared while a comparison grid is being built.
-   * Call between preview generations so browsing many units does not retain old
-   * decoded images indefinitely.
+   * Keeps decoded raw KTX2 bytes shared for the current VMD preview session.
+   * Clear when the root asset/mod context changes or the preview is destroyed
+   * so decoded images from older VMDs are not retained by this loader.
    */
   clearRawTextureDataCache() {
     this.rawTextureDataCache.clear();
