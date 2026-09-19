@@ -93,8 +93,8 @@ const initialState = {
   hiddenMainWindowTabs: [],
   isVisualsSortByCultureEnabled: true,
   isVisualsHideDuplicatesEnabled: true,
-  // Preserve the Unit Viewer's existing multi-selection behavior until the user chooses Visualize.
-  unitViewerMode: "compare",
+  // New and pre-feature configs start with the single-unit model visualization.
+  unitViewerMode: "visualize",
   mapCampaignName: "wh3_main_combi",
   mapSelectedRegion: undefined,
   currentFlowFileReloadNonce: 0,

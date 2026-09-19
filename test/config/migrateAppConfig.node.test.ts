@@ -142,7 +142,7 @@ describe("migrateAppConfig", () => {
     expect(config.currentGame).toBe("wh3");
     expect(config.isVisualsSortByCultureEnabled).toBe(true);
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
-    expect(config.unitViewerMode).toBe("compare");
+    expect(config.unitViewerMode).toBe("visualize");
     expect(config.hideRepeatedKeyPrefixes).toBe(true);
     expect(config.recentPackPaths).toEqual([]);
     expect(config.games.rome2).toEqual({
@@ -182,10 +182,10 @@ describe("migrateAppConfig", () => {
   it("preserves the Unit Viewer mode", () => {
     const config = migrateAppConfig({
       ...createLegacyConfig(),
-      unitViewerMode: "visualize",
+      unitViewerMode: "compare",
     });
 
-    expect(config.unitViewerMode).toBe("visualize");
+    expect(config.unitViewerMode).toBe("compare");
   });
 
   it("is idempotent and leaves an already-migrated config alone", () => {

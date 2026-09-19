@@ -87,8 +87,12 @@ describe("tree display modes", () => {
 });
 
 describe("unit viewer mode", () => {
-  it("starts in compare mode to preserve multi-selection", () => {
-    expect(initialState.unitViewerMode).toBe("compare");
+  it("starts in visualize mode for new and pre-feature configs", () => {
+    expect(initialState.unitViewerMode).toBe("visualize");
+
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.unitViewerMode;
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).unitViewerMode).toBe("visualize");
   });
 
   it("restores, validates, and updates the mode", () => {
@@ -96,7 +100,7 @@ describe("unit viewer mode", () => {
     expect(restored.unitViewerMode).toBe("visualize");
 
     const invalid = appReducer(initialState, setFromConfig({ ...initialState, unitViewerMode: "other" } as never));
-    expect(invalid.unitViewerMode).toBe("compare");
+    expect(invalid.unitViewerMode).toBe("visualize");
     expect(appReducer(restored, setUnitViewerMode("compare")).unitViewerMode).toBe("compare");
   });
 });

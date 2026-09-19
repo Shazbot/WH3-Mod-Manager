@@ -1254,7 +1254,7 @@ const appSlice = createSlice({
       state.unitViewerMode =
         fromConfigAppState.unitViewerMode === "visualize" || fromConfigAppState.unitViewerMode === "compare"
           ? fromConfigAppState.unitViewerMode
-          : state.unitViewerMode;
+          : "visualize";
       state.recentPackPaths = sanitizeRecentPackPaths(fromConfigAppState.recentPackPaths, vanillaPackNames);
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());

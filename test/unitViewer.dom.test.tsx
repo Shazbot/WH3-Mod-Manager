@@ -229,6 +229,7 @@ describe("Unit Viewer UI", () => {
     await screen.findByText("Culture");
     expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
     expect(screen.getByTitle("Lord")).toHaveTextContent("L");
     expect(screen.getByTitle("Hero")).toHaveTextContent("H");
     const rosterButtons = screen.getAllByRole("button").filter((button) => button.title.startsWith("unit_"));
@@ -268,6 +269,7 @@ describe("Unit Viewer UI", () => {
     renderViewer();
     await screen.findByText("Culture");
     fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
     fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
     fireEvent.click(screen.getByRole("button", { name: "Beta" }));
     expect(screen.getByText(/2 selected/)).toBeInTheDocument();
@@ -344,6 +346,7 @@ describe("Unit Viewer UI", () => {
   it("browses unit cards grouped by roster category and adds them to the comparison", async () => {
     renderViewer();
     await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
     const browser = await screen.findByRole("dialog", { name: "Unit card browser" });
