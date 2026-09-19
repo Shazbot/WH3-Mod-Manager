@@ -11,24 +11,13 @@ It is launched automatically by WH3 Mod Manager when needed and is not intended 
 WH3AssetHost is built from The Asset Editor project:
 https://github.com/Shazbot/TheAssetEditor
 
-windows-x64/basisu.exe
-linux-x64/basisu
-----------------
+## Why is this .exe file here?
 
-These are copies of Basis Universal's `basisu` texture conversion tool for Windows and Linux.
+WH3AssetHost.exe is bundled with WH3 Mod Manager because the 3D model preview feature needs a native helper to process Total War game assets.
 
-Basis Universal is an open-source texture compression/encoding project. These executables are used for texture processing where required by the asset/model export pipeline.
+It is not a standalone installer, background service, advertisement, or telemetry program.
 
-Basis Universal project:
-https://github.com/BinomialLLC/basis_universal
-
-## Why are these .exe files here?
-
-They are bundled with WH3 Mod Manager because some features need external helper programs to process Total War game assets.
-
-They are not standalone installers, background services, advertisements, or telemetry programs.
-
-If you downloaded WH3 Mod Manager from its official release page, these files are expected components of the application.
+If you downloaded WH3 Mod Manager from its official release page, this file is an expected component of the application.
 
 WH3 Mod Manager:
 https://github.com/Shazbot/WH3-Mod-Manager
