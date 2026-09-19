@@ -63,6 +63,23 @@ const disposeGrid = (grid: THREE.GridHelper) => {
   else disposeMaterial(grid.material);
 };
 
+const preloadObjectTextures = (context: ThreePreviewContext, object: THREE.Object3D) => {
+  const textures = new Set<THREE.Texture>();
+
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) textures.add(value);
+      }
+    }
+  });
+
+  for (const texture of textures) context.ktx2Loader.preloadTexture(texture);
+};
+
 const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
   const box = new THREE.Box3().setFromObject(object);
   if (box.isEmpty()) return;
@@ -450,6 +467,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
           const sceneSetupStartedAt = performance.now();
           ownedModel = gltf.scene;
+          // GLTFLoader has now finalized sampler wrapping/filtering, so eager GPU
+          // upload is safe and still keeps the first visible render lightweight.
+          preloadObjectTextures(context, ownedModel);
           context.scene.add(ownedModel);
           if (selectedAnimationPath && gltf.animations.length > 0) {
             ownedMixer = new THREE.AnimationMixer(ownedModel);

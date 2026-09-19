@@ -65,6 +65,25 @@ export class Wh3Ktx2Loader extends KTX2Loader {
     };
   }
 
+  /**
+   * Preloads a texture only after GLTFLoader has finished applying the glTF
+   * sampler state. Uploading from load() is too early: wrapping/filtering are
+   * assigned in GLTFLoader's promise continuation after our onLoad callback.
+   */
+  preloadTexture(texture: THREE.Texture) {
+    const isRawPreviewTexture = texture instanceof THREE.DataTexture;
+    const uploadStartedAt = performance.now();
+    this.renderer.initTexture(texture);
+    const uploadMs = performance.now() - uploadStartedAt;
+
+    if (isRawPreviewTexture) {
+      this.timing.textureUploadMs += uploadMs;
+      const completedAt = performance.now();
+      this.rawWallEndMs =
+        this.rawWallEndMs == null ? completedAt : Math.max(this.rawWallEndMs, completedAt);
+    }
+  }
+
   load(
     url: string,
     onLoad: (texture: THREE.CompressedTexture) => void,
@@ -108,23 +127,12 @@ export class Wh3Ktx2Loader extends KTX2Loader {
             // GLTFLoader is typed against KTX2Loader<CompressedTexture>, but it
             // accepts any Texture at runtime. This is deliberately a DataTexture.
             //
-            // Invoke GLTFLoader's callback first: it synchronously applies the
-            // glTF sampler (filters/wrapping). Then preload the finalized texture
-            // before GLTFLoader's promise continuation resumes, so GPU upload is
-            // distributed across texture loading instead of deferred to the first
-            // scene render.
+            // Do not upload the texture here. GLTFLoader applies the glTF sampler
+            // (including RepeatWrapping) in its promise continuation after this
+            // callback returns. Eager upload here would leave the GPU texture with
+            // DataTexture's default ClampToEdgeWrapping and smear meshes whose UVs
+            // intentionally extend outside 0..1.
             onLoad(texture as unknown as THREE.CompressedTexture);
-
-            const uploadStartedAt = performance.now();
-            this.renderer.initTexture(texture);
-            const uploadMs = performance.now() - uploadStartedAt;
-
-            if (timingGeneration === this.timingGeneration) {
-              this.timing.textureUploadMs += uploadMs;
-              const completedAt = performance.now();
-              this.rawWallEndMs =
-                this.rawWallEndMs == null ? completedAt : Math.max(this.rawWallEndMs, completedAt);
-            }
           })
           .catch((error) => onError?.(error));
       },
