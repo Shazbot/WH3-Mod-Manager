@@ -58,6 +58,26 @@ const PREVIEW_GEOMETRY_KEY = "__wh3PreviewGeometryKey";
 type PreviewResourcePool = {
   geometries: Map<string, THREE.BufferGeometry>;
   textures: Map<string, THREE.Texture>;
+  preloadedTextures: Set<THREE.Texture>;
+};
+
+type PreviewResourceSession = {
+  key: string;
+  pool: PreviewResourcePool;
+};
+
+const createPreviewResourcePool = (): PreviewResourcePool => ({
+  geometries: new Map(),
+  textures: new Map(),
+  preloadedTextures: new Set(),
+});
+
+const disposePreviewResourcePool = (pool: PreviewResourcePool) => {
+  for (const geometry of new Set(pool.geometries.values())) geometry.dispose();
+  for (const texture of new Set(pool.textures.values())) texture.dispose();
+  pool.geometries.clear();
+  pool.textures.clear();
+  pool.preloadedTextures.clear();
 };
 
 type ComparisonVariant = {
@@ -74,7 +94,7 @@ const disposeMaterial = (material: THREE.Material) => {
   material.dispose();
 };
 
-const disposeObject = (object: THREE.Object3D) => {
+const disposeObject = (object: THREE.Object3D, preservedPool?: PreviewResourcePool) => {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
@@ -92,9 +112,15 @@ const disposeObject = (object: THREE.Object3D) => {
     }
   });
 
-  for (const geometry of geometries) geometry.dispose();
+  const preservedGeometries = preservedPool ? new Set(preservedPool.geometries.values()) : undefined;
+  const preservedTextures = preservedPool ? new Set(preservedPool.textures.values()) : undefined;
+  for (const geometry of geometries) {
+    if (!preservedGeometries?.has(geometry)) geometry.dispose();
+  }
   for (const material of materials) material.dispose();
-  for (const texture of textures) texture.dispose();
+  for (const texture of textures) {
+    if (!preservedTextures?.has(texture)) texture.dispose();
+  }
 };
 
 const hashGeometry = (geometry: THREE.BufferGeometry) => {
@@ -256,7 +282,11 @@ const disposeGrid = (grid: THREE.GridHelper) => {
   else disposeMaterial(grid.material);
 };
 
-const preloadObjectTextures = (context: ThreePreviewContext, object: THREE.Object3D) => {
+const preloadObjectTextures = (
+  context: ThreePreviewContext,
+  object: THREE.Object3D,
+  pool: PreviewResourcePool,
+) => {
   const textures = new Set<THREE.Texture>();
 
   object.traverse((child) => {
@@ -270,7 +300,11 @@ const preloadObjectTextures = (context: ThreePreviewContext, object: THREE.Objec
     }
   });
 
-  for (const texture of textures) context.ktx2Loader.preloadTexture(texture);
+  for (const texture of textures) {
+    if (pool.preloadedTextures.has(texture)) continue;
+    context.ktx2Loader.preloadTexture(texture);
+    pool.preloadedTextures.add(texture);
+  }
 };
 
 const frameObject = (context: ThreePreviewContext, object: THREE.Object3D) => {
@@ -340,6 +374,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   );
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
+  const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
   const showWireframeRef = useRef(showWireframe);
   showWireframeRef.current = showWireframe;
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
@@ -474,6 +509,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.afterNextRender = null;
       controls.dispose();
       disposeGrid(grid);
+      const resourceSession = previewResourceSessionRef.current;
+      if (resourceSession) {
+        disposePreviewResourcePool(resourceSession.pool);
+        previewResourceSessionRef.current = null;
+      }
+      ktx2Loader.clearRawTextureDataCache();
       ktx2Loader.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -684,10 +725,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const ownedMixers: THREE.AnimationMixer[] = [];
     const ownedActions: THREE.AnimationAction[] = [];
     const ownedPreviewIds = new Set<string>();
-    const resourcePool: PreviewResourcePool = {
-      geometries: new Map(),
-      textures: new Map(),
-    };
+    const resourceSessionKey = animationCatalogKey;
+    let resourceSession = previewResourceSessionRef.current;
+    if (!resourceSession || resourceSession.key !== resourceSessionKey) {
+      if (resourceSession) disposePreviewResourcePool(resourceSession.pool);
+      context.ktx2Loader.clearRawTextureDataCache();
+      resourceSession = {
+        key: resourceSessionKey,
+        pool: createPreviewResourcePool(),
+      };
+      previewResourceSessionRef.current = resourceSession;
+    }
+    const resourcePool = resourceSession.pool;
     const loadingPreviewIds = new Set<string>();
 
     const releasePreview = (previewId: string) => {
@@ -704,7 +753,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.mixers = [];
       context.actions = [];
       context.scene.remove(ownedGroup);
-      disposeObject(ownedGroup);
+      disposeObject(ownedGroup, resourcePool);
       ownedModels.length = 0;
       ownedMixers.length = 0;
       ownedActions.length = 0;
@@ -722,7 +771,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setClipDuration(0);
       setCurrentTime(0);
       setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics]);
-      context.ktx2Loader.clearRawTextureDataCache();
       context.ktx2Loader.resetTiming();
 
       if (comparisonTooLarge) {
@@ -820,7 +868,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           }
 
           internObjectResources(gltf.scene, resourcePool);
-          preloadObjectTextures(context, gltf.scene);
+          preloadObjectTextures(context, gltf.scene, resourcePool);
           ownedModels.push(gltf.scene);
           ownedGroup.add(gltf.scene);
 
@@ -887,11 +935,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           };
         }
 
-        context.ktx2Loader.clearRawTextureDataCache();
         setStatus("ready");
       } catch (previewError) {
         cleanupOwnedPreview();
-        context.ktx2Loader.clearRawTextureDataCache();
         if (!isCancelled) {
           setStatus("error");
           setError(previewError instanceof Error ? previewError.message : "Failed to render the model comparison.");
@@ -904,9 +950,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
       cleanupOwnedPreview();
-      context.ktx2Loader.clearRawTextureDataCache();
     };
   }, [
+    animationCatalogKey,
     animationCatalogReady,
     assetPath,
     catalogDiagnostics,
