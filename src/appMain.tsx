@@ -15,7 +15,6 @@ import Wh3AssetHostDecisionModal from "./components/Wh3AssetHostDecisionModal";
 
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
-import { endTiming, startTiming } from "./utility/performanceMonitor";
 
 function ErrorFallback({ error }: { error: Error }) {
   const localized = useLocalizations();
@@ -30,11 +29,7 @@ function ErrorFallback({ error }: { error: Error }) {
 
 const AppMain = React.memo(() => {
   useEffect(() => {
-    startTiming("app_main_mount");
     window.api?.rendererMainMounted();
-    return () => {
-      endTiming("app_main_mount");
-    };
   }, []);
 
   const [localization, setLocalization] = useState<Record<string, string>>({});
@@ -72,7 +67,6 @@ const AppMain = React.memo(() => {
 });
 
 export function renderMainWindow() {
-  startTiming("react_render_main");
   const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <StrictMode>
@@ -81,5 +75,4 @@ export function renderMainWindow() {
       </Provider>
     </StrictMode>,
   );
-  endTiming("react_render_main");
 }
