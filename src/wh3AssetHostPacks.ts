@@ -85,9 +85,8 @@ const packStateKey = (packPaths: readonly string[], outputRoot: string, vanillaP
 
 /**
  * Owns the initialization revision for one running WH3AssetHost client.
- * Callers may pass either the current main-process state or a Visuals session's
- * explicit pack list; the host is only reinitialized when that effective state
- * or the output root actually changes.
+ * The host is reinitialized only when the explicit pack snapshot, cache path,
+ * or output root changes.
  */
 export class Wh3AssetHostPackInitializer {
   private initializedStateKey: string | null = null;
@@ -119,5 +118,4 @@ export class Wh3AssetHostPackInitializer {
     this.initializedStateKey = stateKey;
     return result;
   }
-
 }
