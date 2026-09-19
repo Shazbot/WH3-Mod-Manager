@@ -108,5 +108,3 @@ script
 # Generated helper JavaScript rebuilt from src/sub.ts before Forge commands
 temp/*.js
 
-# Local self-contained WH3AssetHost staging folder bundled by Electron Forge
-tools/WH3AssetHost/
