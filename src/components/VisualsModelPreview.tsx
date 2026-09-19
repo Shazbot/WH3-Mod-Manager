@@ -883,8 +883,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         <div ref={mountRef} className="absolute inset-0" />
         {status !== "ready" && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-gray-950/70 text-sm text-gray-200">
-            {status === "exporting" && "Exporting model with WH3AssetHost..."}
-            {status === "loading" && "Loading exported model..."}
+            {status === "exporting" &&
+              (comparisonModelCount > 1
+                ? `Exporting ${comparisonModelCount} slot variants with WH3AssetHost...`
+                : "Exporting model with WH3AssetHost...")}
+            {status === "loading" &&
+              (comparisonModelCount > 1
+                ? `Loading ${comparisonModelCount} slot variants...`
+                : "Loading exported model...")}
             {status === "error" && <span className="max-w-2xl px-6 text-center text-red-300">{error}</span>}
           </div>
         )}
@@ -907,6 +913,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 `${variantCatalog.combinationCount.toLocaleString()}${variantCatalog.combinationCountCapped ? "+" : ""}`,
               )}
             </span>
+            {allVariantSlots.length > 0 && (
+              <span className="text-blue-300">
+                {comparisonModelCount} models
+                {comparisonColumnSlot ? ` · columns: ${comparisonColumnSlot.label}` : ""}
+                {comparisonRowSlot ? ` · rows: ${comparisonRowSlot.label}` : ""}
+              </span>
+            )}
           </div>
           <div className="flex max-h-20 flex-wrap gap-x-3 gap-y-1 overflow-auto">
             {activeVariantSlots.map((slot) => (
@@ -918,17 +931,32 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   aria-label={`Appearance: ${slot.label}`}
                   value={variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex}
                   onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    const previousValue = variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex;
                     const context = contextRef.current;
-                    if (status === "ready" && context) {
+                    if (
+                      status === "ready" &&
+                      context &&
+                      previousValue !== ALL_VARIANTS &&
+                      nextValue !== ALL_VARIANTS
+                    ) {
                       pendingCameraViewRef.current = { assetPath, view: captureCameraView(context) };
+                    } else if (previousValue === ALL_VARIANTS || nextValue === ALL_VARIANTS) {
+                      pendingCameraViewRef.current = null;
                     }
                     setVariantSelections((current) => ({
                       ...current,
-                      [slot.slotPath]: Number(event.target.value),
+                      [slot.slotPath]: nextValue,
                     }));
                   }}
                   className="min-w-0 flex-1 rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                 >
+                  <option
+                    value={ALL_VARIANTS}
+                    disabled={!allVariantSlotPaths.has(slot.slotPath) && allVariantSlotPaths.size >= 2}
+                  >
+                    All
+                  </option>
                   {slot.choices.map((choice) => (
                     <option key={choice.key} value={choice.index}>
                       {choice.index + 1} · {choice.label}
