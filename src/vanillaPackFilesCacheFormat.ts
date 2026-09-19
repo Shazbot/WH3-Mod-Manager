@@ -1,6 +1,6 @@
 import type { PackHeader, PackedFile } from "./packFileTypes";
 
-export const VANILLA_PACK_FILES_CACHE_VERSION = 3;
+export const VANILLA_PACK_FILES_CACHE_VERSION = 4;
 const MAGIC = Buffer.from("WVFC", "ascii");
 const ENTRY_EXPANDED = 1;
 const ENTRY_NAMES_ONLY = 2;
@@ -232,6 +232,8 @@ const readFrontCodedString = (reader: BinaryReader, previous: string): string =>
 const isExpandedEntry = (entry: VanillaPackFilesCacheEntry): boolean =>
   Array.isArray(entry.packedFiles) && !!entry.packHeader && Array.isArray(entry.dependencyPacks);
 
+const isWemPath = (path: string): boolean => path.toLowerCase().endsWith(".wem");
+
 const encodeExpandedEntry = (writer: BinaryWriter, entry: VanillaPackFilesCacheEntry): void => {
   const packedFiles = entry.packedFiles!;
   const header = entry.packHeader!;
@@ -249,6 +251,7 @@ const encodeExpandedEntry = (writer: BinaryWriter, entry: VanillaPackFilesCacheE
   for (const dependency of entry.dependencyPacks!) writer.writeString(dependency);
 
   writer.writeUInt32(packedFiles.length);
+  writer.writeUInt32(packedFiles.reduce((count, packedFile) => count + (isWemPath(packedFile.name) ? 0 : 1), 0));
   const firstStartPos = packedFiles.length === 0 ? 0 : packedFiles[0].start_pos;
   writer.writeUInt64(firstStartPos);
 
@@ -293,11 +296,14 @@ const decodeExpandedEntry = (
   const dependencyPacks = Array.from({ length: dependencyCount }, () => reader.readString());
 
   const fileCount = reader.readUInt32();
+  const nonWemFileCount = reader.readUInt32();
+  if (nonWemFileCount > fileCount) throw new Error("invalid non-WEM file count");
   totalFileCount.value += fileCount;
   if (totalFileCount.value > MAX_TOTAL_FILE_COUNT) throw new Error("cache contains too many files");
 
   let startPos = reader.readUInt64();
   let previousName = "";
+  let decodedNonWemFileCount = 0;
   const packedFiles = new Array<VanillaCachedPackedFile>(fileCount);
   for (let index = 0; index < fileCount; index++) {
     const name = readFrontCodedString(reader, previousName);
@@ -311,12 +317,14 @@ const decodeExpandedEntry = (
       start_pos: startPos,
       is_compressed: compressed === 1,
     };
+    if (!isWemPath(name)) decodedNonWemFileCount++;
     startPos += fileSize;
     assertSafeUnsignedInteger(startPos);
     previousName = name;
   }
 
   if (packFileCount !== fileCount) throw new Error("pack file count mismatch");
+  if (decodedNonWemFileCount !== nonWemFileCount) throw new Error("non-WEM file count mismatch");
 
   return {
     size,

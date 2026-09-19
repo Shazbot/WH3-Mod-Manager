@@ -56,7 +56,7 @@ describe("vanilla pack files cache", () => {
       Buffer.from(JSON.stringify({ [packPath]: { size: 4, lastChangedLocal: 1, packedFileNames: ["old.bin"] } })),
     );
 
-    await expect(loadVanillaPackFilesCache()).resolves.toMatchObject({ version: 3, entries: {} });
+    await expect(loadVanillaPackFilesCache()).resolves.toMatchObject({ version: 4, entries: {} });
 
     const packStats = await stat(packPath);
     const packHeader: PackHeader = {
@@ -80,7 +80,7 @@ describe("vanilla pack files cache", () => {
     await saveVanillaPackFilesCache();
 
     const written = decodeVanillaPackFilesCache(await readFile(path.join(root, "vanilla-pack-files-cache.bin")));
-    expect(written?.version).toBe(3);
+    expect(written?.version).toBe(4);
     expect(Object.keys(written?.entries ?? {})).toEqual([path.resolve(packPath), path.resolve(modPath)]);
     await expect(getCurrentVanillaPackIndex(packPath)).resolves.toMatchObject({
       packedFiles: [{ name: "animations\\stand_idle.anim", file_size: 12, start_pos: 36, is_compressed: false }],
