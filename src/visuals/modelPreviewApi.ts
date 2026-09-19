@@ -18,6 +18,7 @@ export interface VisualsModelPreviewKtx2Timing {
   rawTextureWallMs: number;
   zstdDecodeMs: number;
   textureCreateMs: number;
+  textureUploadMs: number;
 }
 
 export interface VisualsModelPreviewTimingReport {

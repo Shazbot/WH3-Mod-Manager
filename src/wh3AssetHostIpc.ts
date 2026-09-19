@@ -469,6 +469,7 @@ ipcMain.handle("reportVisualsModelPreviewTiming", async (_event, value: unknown)
       `rawKtx2Wall=${formatTiming(ktx2?.rawTextureWallMs)}ms`,
       `zstdDecodeCpu=${formatTiming(ktx2?.zstdDecodeMs)}ms`,
       `textureCreateCpu=${formatTiming(ktx2?.textureCreateMs)}ms`,
+      `textureUploadCpu=${formatTiming(ktx2?.textureUploadMs)}ms`,
       `rawCompressedBytes=${Math.round(finiteNumber(ktx2?.compressedBytes))}`,
       `rawDecodedBytes=${Math.round(finiteNumber(ktx2?.decodedBytes))}`,
       `sceneSetup=${formatTiming(report.sceneSetupMs)}ms`,
