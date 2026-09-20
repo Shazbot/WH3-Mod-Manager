@@ -14,6 +14,7 @@ import {
   reportVisualsModelPreviewTiming,
 } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
+import { selectDefaultAnimation } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 
 type VisualsModelPreviewProps = {
@@ -573,12 +574,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           .filter((animation, index, all) => all.findIndex((candidate) => candidate.path === animation.path) === index)
           .sort((first, second) => first.label.localeCompare(second.label) || first.path.localeCompare(second.path));
         const options = [NONE_ANIMATION, ...animations];
-        const defaultAnimation =
-          animations.find(
-            (animation) =>
-              /stand[_-]idle/i.test(animation.path) && !/^cam(?:\s|[_-]|$)/i.test(getAnimationLabel(animation.path)),
-          ) ||
-          animations.find((animation) => /stand[_-]idle/i.test(animation.path));
+        const defaultAnimation = selectDefaultAnimation(animations);
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.path || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
