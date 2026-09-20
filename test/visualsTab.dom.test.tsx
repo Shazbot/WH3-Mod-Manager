@@ -221,6 +221,80 @@ describe("VisualsTab filtering", () => {
     );
   });
 
+  it("keeps source tabs across main-tab switches while unloading the preview", async () => {
+    const modelPath = "models\\example.wsmodel";
+    const sourceText = `<model mesh="models\\example.rigid_model_v2" />`;
+    searchVisualsFiles.mockReset().mockResolvedValue({
+      success: true,
+      total: 1,
+      results: [{ path: modelPath, ext: "wsmodel" }],
+    });
+    readVariantMeshDefinition.mockResolvedValue({
+      success: true,
+      text: sourceText,
+      resolved: { packPath: "/mods/example.pack", fileName: modelPath },
+    });
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+
+    const rendered = render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <div>
+            <VisualsTab isActive />
+          </div>
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Human (1)" })).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("Show all visual files"));
+    const modelRow = await screen.findByText(modelPath);
+    fireEvent.doubleClick(modelRow);
+    await waitFor(() => expect(readVariantMeshDefinition).toHaveBeenCalledWith("visuals-session", modelPath));
+    await waitFor(() => expect(document.querySelector("pre")?.textContent).toContain(sourceText));
+
+    expect(screen.getByTestId("visuals-model-preview")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    expect(screen.queryByTestId("visuals-model-preview")).not.toBeInTheDocument();
+
+    rendered.rerender(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <div className="hidden">
+            <VisualsTab isActive={false} />
+          </div>
+        </localizationContext.Provider>
+      </Provider>,
+    );
+    expect(document.querySelector("pre")?.textContent).toContain(sourceText);
+
+    rendered.rerender(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <div>
+            <VisualsTab isActive />
+          </div>
+        </localizationContext.Provider>
+      </Provider>,
+    );
+    await waitFor(() => expect(getVisualsUnitsData).toHaveBeenCalledTimes(2));
+    expect(document.querySelector("pre")?.textContent).toContain(sourceText);
+    expect(screen.queryByTestId("visuals-model-preview")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByTestId("visuals-model-preview")).toBeInTheDocument();
+  });
+
   it("offers DDS copy and extraction actions without AssetEditor actions", async () => {
     const ddsPath = "textures\\example.dds";
     searchVisualsFiles.mockReset().mockResolvedValue({

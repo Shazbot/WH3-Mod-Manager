@@ -180,6 +180,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const [tabs, setTabs] = useState<VisualsViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [viewerMode, setViewerMode] = useState<VisualsViewerMode>("preview");
+  const loadedEnabledModsKeyRef = useRef<string>();
 
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [fileQueryInput, setFileQueryInput] = useState("");
@@ -249,6 +250,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     if (!isFeaturesForModdersEnabled || !isActive) return;
 
     let isCancelled = false;
+    const shouldResetViewer = loadedEnabledModsKeyRef.current !== enabledModsKeyToRequest;
 
     const run = async () => {
       setIsLoadingUnits(true);
@@ -261,8 +263,10 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           setUnits([]);
           setSessionId(null);
           setUnitsError(result?.error || "Failed to load visuals units data");
-          setTabs([]);
-          setActiveTabId(null);
+          if (shouldResetViewer) {
+            setTabs([]);
+            setActiveTabId(null);
+          }
           setFileResults([]);
           setFileResultsTotal(0);
           return;
@@ -270,8 +274,11 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
         setUnits(result.units);
         setSessionId(result.sessionId);
-        setTabs([]);
-        setActiveTabId(null);
+        if (shouldResetViewer) {
+          setTabs([]);
+          setActiveTabId(null);
+        }
+        loadedEnabledModsKeyRef.current = enabledModsKeyToRequest;
         setFileResults([]);
         setFileResultsTotal(0);
       } catch (error) {
@@ -1342,18 +1349,20 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 </div>
                 <div className="relative min-h-0 flex-1">
                   <div className={`absolute inset-0 ${viewerMode === "preview" ? "" : "hidden"}`}>
-                    {isActiveTabSourceOnly ? (
-                      <div className="flex h-full items-center justify-center p-4 text-sm text-gray-400">
-                        Preview is unavailable for material files. Select Source to inspect the file.
-                      </div>
-                    ) : (
-                      <VisualsModelPreview
-                        assetPath={activeTab.filePath}
-                        isActive={isActive}
-                        variantMeshSessionId={sessionId ?? undefined}
-                        variantMeshSessionType="visuals"
-                      />
-                    )}
+                    {isActive &&
+                      viewerMode === "preview" &&
+                      (isActiveTabSourceOnly ? (
+                        <div className="flex h-full items-center justify-center p-4 text-sm text-gray-400">
+                          Preview is unavailable for material files. Select Source to inspect the file.
+                        </div>
+                      ) : (
+                        <VisualsModelPreview
+                          assetPath={activeTab.filePath}
+                          isActive={isActive}
+                          variantMeshSessionId={sessionId ?? undefined}
+                          variantMeshSessionType="visuals"
+                        />
+                      ))}
                   </div>
                   <div
                     className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}
