@@ -51,7 +51,6 @@ export interface VisualsModelPreviewBatchExportItemResult {
   previewId: string;
   url: string;
   warnings?: string[];
-  textureSources?: VisualsModelPreviewTextureSource[];
 }
 
 export interface VisualsModelPreviewBatchExportResult {
