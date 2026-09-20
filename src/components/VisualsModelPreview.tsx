@@ -537,10 +537,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     };
 
     /**
-     * A single UV-space stamp cannot cross a UV seam. Approximate a screen-space projection brush
-     * with a center ray plus a small hexagonal ring. Each ray hits only the front-most visible
-     * surface, and the overlapping UV stamps can therefore cross seams, mesh/material boundaries,
-     * and even separate BaseColor textures without painting through the model.
+     * Keep interactive painting to one scene raycast per stamp. Raycasting a composed animated unit
+     * is CPU-heavy because Three must test the skinned meshes; sampling a ring around every brush
+     * position multiplied that work and caused multi-second stalls. Closely spaced center stamps
+     * still cross most visible seams during a drag without blocking the UI.
      */
     const paintProjectedBrush = (clientX: number, clientY: number) => {
       const root = paintRootRef.current;
@@ -548,39 +548,19 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (!root || !session) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
-      const settings = brushSettingsRef.current;
-      const brushRadius = Math.max(1, settings.radiusPx);
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      if (localX < 0 || localY < 0 || localX > rect.width || localY > rect.height) return;
+
       const viewportHeight = Math.max(rect.height, 1);
-      const samples: ReadonlyArray<readonly [number, number]> =
-        brushRadius <= 8
-          ? [[0, 0]]
-          : [
-              [0, 0],
-              [0.46, 0],
-              [0.23, 0.398],
-              [-0.23, 0.398],
-              [-0.46, 0],
-              [-0.23, -0.398],
-              [0.23, -0.398],
-            ];
-      const stampRadius = brushRadius <= 8 ? brushRadius : brushRadius * 0.54;
-
-      for (const [offsetX, offsetY] of samples) {
-        const sampleX = clientX + offsetX * brushRadius;
-        const sampleY = clientY + offsetY * brushRadius;
-        const localX = sampleX - rect.left;
-        const localY = sampleY - rect.top;
-        if (localX < 0 || localY < 0 || localX > rect.width || localY > rect.height) continue;
-
-        pointer.set(
-          (localX / Math.max(rect.width, 1)) * 2 - 1,
-          -(localY / viewportHeight) * 2 + 1,
-        );
-        raycaster.setFromCamera(pointer, camera);
-        const hit = raycaster.intersectObject(root, true)[0];
-        if (!hit) continue;
-        session.paintIntersection(hit, settings, camera, viewportHeight, stampRadius);
-      }
+      pointer.set(
+        (localX / Math.max(rect.width, 1)) * 2 - 1,
+        -(localY / viewportHeight) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObject(root, true)[0];
+      if (!hit) return;
+      session.paintIntersection(hit, brushSettingsRef.current, camera, viewportHeight);
     };
 
     const paintToPointer = (event: PointerEvent) => {
