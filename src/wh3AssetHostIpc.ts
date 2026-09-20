@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain } from "electron";
+import { app, dialog, ipcMain, type SaveDialogOptions } from "electron";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
@@ -850,7 +850,7 @@ const exportUnitPainterVariantNow = async (
   const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
   const suggestedPackName = getUnitPainterDefaultPackName(normalizedAsset.assetPath);
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
-  const dialogOptions = {
+  const dialogOptions: SaveDialogOptions = {
     title: "Create painted WH3 mod",
     buttonLabel: "Create Mod",
     defaultPath: dataFolder ? nodePath.join(dataFolder, suggestedPackName) : suggestedPackName,
