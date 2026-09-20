@@ -8,11 +8,13 @@ import { useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import {
   exportUnitPainterTextures,
+  openUnitPainterProject,
   exportVisualsModel,
   exportVisualsModelBatch,
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
   reportVisualsModelPreviewTiming,
+  type UnitPainterProjectOpenResult,
 } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import { selectDefaultAnimation } from "../visuals/animationSelection";
@@ -392,6 +394,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       currentPresetMods.filter((mod) => mod.isEnabled).map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
     [currentPresetMods],
   );
+  const effectiveEnabledMods = useMemo(() => {
+    if (paintExcludedPackPaths.length === 0) return enabledMods;
+    const excluded = new Set(paintExcludedPackPaths.map((path) => path.replace(/\//g, "\\").toLowerCase()));
+    return enabledMods.filter((mod) => !excluded.has(mod.path.replace(/\//g, "\\").toLowerCase()));
+  }, [enabledMods, paintExcludedPackPaths]);
+
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
@@ -443,15 +451,22 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintTextureCount, setPaintTextureCount] = useState(-1);
   const [paintExportStatus, setPaintExportStatus] = useState("");
   const [paintPackPath, setPaintPackPath] = useState<string>();
+  const [paintExcludedPackPaths, setPaintExcludedPackPaths] = useState<string[]>([]);
   const [isPaintExporting, setIsPaintExporting] = useState(false);
+  const [isPaintProjectOpening, setIsPaintProjectOpening] = useState(false);
+  const [paintProjectReloadVersion, setPaintProjectReloadVersion] = useState(0);
   const [paintHistoryVersion, setPaintHistoryVersion] = useState(0);
+  const pendingPaintProjectRef = useRef<UnitPainterProjectOpenResult | null>(null);
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
   const pendingCameraViewRef = useRef<{ assetPath: string; view: CameraView } | null>(null);
   const loadedAnimationCatalogKeyRef = useRef<string>();
   const loadedVariantCatalogKeyRef = useRef<string>();
-  const animationCatalogKey = useMemo(() => JSON.stringify([assetPath, enabledMods]), [assetPath, enabledMods]);
+  const animationCatalogKey = useMemo(
+    () => JSON.stringify([assetPath, effectiveEnabledMods]),
+    [assetPath, effectiveEnabledMods],
+  );
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
@@ -899,7 +914,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const loadCatalog = async () => {
       try {
-        const result = await getVisualsModelAnimationCatalog(assetPath, enabledMods);
+        const result = await getVisualsModelAnimationCatalog(assetPath, effectiveEnabledMods);
         if (isCancelled) return;
         const animations = (result.animations || [])
           .filter((animation) => animation.path?.trim())
@@ -932,7 +947,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [animationCatalogKey, assetPath, enabledMods, isActive]);
+  }, [animationCatalogKey, assetPath, effectiveEnabledMods, isActive]);
 
   useEffect(() => {
     if (!isActive || loadedVariantCatalogKeyRef.current === variantCatalogKey) return;
@@ -1146,7 +1161,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           const exportStartedAt = performance.now();
           const exportResult = await exportVisualsModel(
             assetPath,
-            enabledMods,
+            effectiveEnabledMods,
             selectedAnimationPath ? [selectedAnimationPath] : [],
             comparisonVariants[0].selections,
           );
@@ -1163,7 +1178,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         } else {
           const batchResult = await exportVisualsModelBatch(
             assetPath,
-            enabledMods,
+            effectiveEnabledMods,
             selectedAnimationPath ? [selectedAnimationPath] : [],
             comparisonVariants.map((variant) => ({ variantSelections: variant.selections })),
           );
@@ -1320,8 +1335,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     comparisonRowCount,
     comparisonTooLarge,
     comparisonVariants,
-    enabledMods,
+    effectiveEnabledMods,
     isActive,
+    paintProjectReloadVersion,
     selectedAnimationPath,
     unsyncedAnimations,
     variantCatalogDiagnostics,
@@ -1330,6 +1346,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
   useEffect(() => {
     setPaintPackPath(undefined);
+    setPaintExcludedPackPaths([]);
+    pendingPaintProjectRef.current = null;
   }, [assetPath]);
 
   useEffect(() => {
@@ -1366,6 +1384,20 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     }
     const session = createUnitPainterSession(paintRootRef.current);
     paintSessionRef.current = session;
+    const pendingProject = pendingPaintProjectRef.current;
+    if (pendingProject?.project && pendingProject.packPath) {
+      pendingPaintProjectRef.current = null;
+      try {
+        session.loadProjectTextures(pendingProject.project.textures);
+        setPaintPackPath(pendingProject.packPath);
+        setPaintExportStatus(`Opened painted mod: ${pendingProject.packPath}`);
+      } catch (projectError) {
+        setPaintPackPath(undefined);
+        setPaintExportStatus(
+          projectError instanceof Error ? projectError.message : "Failed to restore painted project textures.",
+        );
+      }
+    }
     setPaintTextureCount(session.textureCount);
     setPaintHistoryVersion((value) => value + 1);
   }, [comparisonModelCount, enablePainting, isPainterEnabled, status]);
@@ -1415,6 +1447,54 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setCurrentTime(nextTime);
   };
 
+  const openPaintedMod = () => {
+    if (isPaintProjectOpening || isPaintExporting) return;
+    void (async () => {
+      setIsPaintProjectOpening(true);
+      setPaintExportStatus("Opening painted mod…");
+      try {
+        const result = await openUnitPainterProject();
+        if (result.canceled) {
+          setPaintExportStatus("");
+          return;
+        }
+        if (!result.success || !result.project || !result.packPath) {
+          setPaintExportStatus(result.error || "Failed to open painted mod.");
+          return;
+        }
+        const normalize = (value: string) => value.replace(/\//g, "\\").replace(/^\\+/, "").toLowerCase();
+        if (normalize(result.project.sourceVariantMeshDefinition) !== normalize(assetPath)) {
+          setPaintExportStatus(
+            `This painted mod targets '${result.project.sourceVariantMeshDefinition}', not the currently viewed unit '${assetPath}'.`,
+          );
+          return;
+        }
+
+        paintSessionRef.current?.dispose();
+        paintSessionRef.current = null;
+        clearPaintSelection();
+        pendingPaintProjectRef.current = result;
+        setPaintPackPath(result.packPath);
+        setPaintExcludedPackPaths((current) => {
+          const key = normalize(result.packPath!);
+          return current.some((path) => normalize(path) === key) ? current : [...current, result.packPath!];
+        });
+        setVariantSelections(
+          Object.fromEntries(result.project.variantSelections.map((selection) => [selection.slotPath, selection.choiceIndex])),
+        );
+        setIsPainterEnabled(true);
+        setIsPlaying(false);
+        setPaintProjectReloadVersion((value) => value + 1);
+      } catch (projectError) {
+        setPaintExportStatus(
+          projectError instanceof Error ? projectError.message : "Failed to open painted mod.",
+        );
+      } finally {
+        setIsPaintProjectOpening(false);
+      }
+    })();
+  };
+
   const savePaintedMod = (mode: "create" | "save" | "saveAs") => {
     const session = paintSessionRef.current;
     if (!session || isPaintExporting) return;
@@ -1432,7 +1512,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         }
         const result = await exportUnitPainterTextures(
           assetPath,
-          enabledMods,
+          effectiveEnabledMods,
           comparisonVariants[0]?.selections ?? [],
           textures,
           targetPackPath,
@@ -1446,7 +1526,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           return;
         }
 
-        if (result.packPath) setPaintPackPath(result.packPath);
+        if (result.packPath) {
+          setPaintPackPath(result.packPath);
+          setPaintExcludedPackPaths((current) => {
+            const normalize = (value: string) => value.replace(/\//g, "\\").toLowerCase();
+            const key = normalize(result.packPath!);
+            return current.some((path) => normalize(path) === key) ? current : [...current, result.packPath!];
+          });
+        }
         session.markSaved();
         setPaintHistoryVersion((value) => value + 1);
         const warningSuffix = result.warnings?.length
@@ -1517,6 +1604,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               title={comparisonModelCount !== 1 ? "Painting is available for one model at a time." : "Paint directly on the unit"}
             >
               Paint
+            </button>
+            <button
+              type="button"
+              disabled={status !== "ready" || comparisonModelCount !== 1 || isPaintProjectOpening || isPaintExporting}
+              onClick={openPaintedMod}
+              className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Open a WHMM painted mod for continued editing"
+            >
+              {isPaintProjectOpening ? "Opening…" : "Open painted mod…"}
             </button>
             {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
               <>

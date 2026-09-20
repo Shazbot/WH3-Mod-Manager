@@ -26,12 +26,15 @@ import { getVanillaPackFilesCachePath } from "./vanillaPackFilesCache";
 import { ensureWh3AssetHostVanillaCache } from "./wh3AssetHostVanillaCache";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
 import type { VisualsModelPreviewTimingReport } from "./visuals/modelPreviewApi";
-import { writePack } from "./packFileSerializer";
+import { readPack, writePack } from "./packFileSerializer";
 import {
   buildUnitPainterPackFiles,
+  buildUnitPainterProjectPackFiles,
   ensureUnitPainterPackExtension,
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
+  parseUnitPainterProjectManifest,
+  UNIT_PAINTER_PROJECT_MANIFEST_PATH,
 } from "./visuals/unitPainterPack";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
@@ -889,36 +892,23 @@ const exportUnitPainterVariantNow = async (
     };
   }
 
+  const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
   if (textures.length === 0) {
-    const manifest = Buffer.from(
-      JSON.stringify(
-        {
-          version: 1,
-          sourceVariantMeshDefinition: normalizedAsset.assetPath,
-          paintedTextures: [],
-          resetToOriginal: true,
-        },
-        null,
-        2,
-      ),
-      "utf8",
+    const projectFiles = buildUnitPainterProjectPackFiles(
+      normalizedAsset.assetPath,
+      variantSelections,
+      [],
     );
-    const markerFile = {
-      name: "whmm_unit_painter_manifest_reset.json",
-      buffer: manifest,
-      file_size: manifest.length,
-    };
-    await writePack([markerFile], packPath);
+    await writePack(projectFiles, packPath);
     return {
       success: true as const,
       packPath,
-      files: [markerFile.name],
+      files: projectFiles.map((file) => file.name),
       warnings: [] as string[],
     };
   }
 
   const variantName = getUnitPainterNamespaceName(packPath, normalizedAsset.assetPath);
-  const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
   const stageId = `unit-painter-${randomUUID()}`;
   const stageRoot = nodePath.join(getOutputRoot(), stageId);
   const inputDirectory = nodePath.join(stageRoot, "input");
@@ -980,11 +970,17 @@ const exportUnitPainterVariantNow = async (
       };
     }
 
-    const packFiles = await buildUnitPainterPackFiles(
+    const gamePackFiles = await buildUnitPainterPackFiles(
       generatedDirectory,
       result.files ?? [],
       normalizedAsset.assetPath,
     );
+    const projectFiles = buildUnitPainterProjectPackFiles(
+      normalizedAsset.assetPath,
+      variantSelections,
+      textures,
+    );
+    const packFiles = [...gamePackFiles, ...projectFiles];
     await writePack(packFiles, packPath);
 
     // The normal Data-folder watcher will discover this shortly, but add a new
@@ -1038,6 +1034,94 @@ const exportUnitPainterVariantNow = async (
     }
   }
 };
+
+const openUnitPainterProjectNow = async (packPathValue: unknown) => {
+  const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
+  let packPath = typeof packPathValue === "string" ? packPathValue.trim() : "";
+  if (!packPath) {
+    const options = {
+      title: "Open painted WH3 mod",
+      buttonLabel: "Edit Mod",
+      properties: ["openFile"] as const,
+      filters: [{ name: "Total War pack", extensions: ["pack"] }],
+    };
+    const selection = ownerWindow
+      ? await dialog.showOpenDialog(ownerWindow, options)
+      : await dialog.showOpenDialog(options);
+    if (selection.canceled || selection.filePaths.length === 0) {
+      return { success: false as const, canceled: true };
+    }
+    packPath = selection.filePaths[0];
+  }
+  packPath = nodePath.resolve(packPath);
+
+  try {
+    const indexed = await readPack(packPath, { skipParsingTables: true });
+    const manifestEntry = indexed.packedFiles.find(
+      (file) => file.name.replace(/\//g, "\\").toLowerCase() === UNIT_PAINTER_PROJECT_MANIFEST_PATH.toLowerCase(),
+    );
+    if (!manifestEntry) {
+      return {
+        success: false as const,
+        error: "This pack is not an editable WHMM unit-painter project. Older painter packs must be recreated once with the new format.",
+      };
+    }
+
+    const withManifest = await readPack(packPath, {
+      skipParsingTables: true,
+      filesToRead: [manifestEntry.name],
+    });
+    const manifestBuffer = withManifest.packedFiles.find(
+      (file) => file.name.toLowerCase() === manifestEntry.name.toLowerCase(),
+    )?.buffer;
+    if (!manifestBuffer) return { success: false as const, error: "The unit painter project manifest could not be read." };
+    const manifest = parseUnitPainterProjectManifest(manifestBuffer);
+
+    const texturePaths = manifest.paintedTextures.map((texture) => texture.filePath);
+    const withTextures = texturePaths.length > 0
+      ? await readPack(packPath, { skipParsingTables: true, filesToRead: texturePaths })
+      : withManifest;
+    const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
+    let totalBytes = 0;
+    const textures = manifest.paintedTextures.map((texture) => {
+      const packed = byPath.get(texture.filePath.toLowerCase());
+      const rgbaBytes = packed?.buffer;
+      const expectedBytes = texture.width * texture.height * 4;
+      if (!rgbaBytes || rgbaBytes.length !== expectedBytes) {
+        throw new Error(`The saved painter texture '${texture.filePath}' is missing or has the wrong size.`);
+      }
+      totalBytes += rgbaBytes.length;
+      if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
+        throw new Error("The saved unit painter project is too large.");
+      }
+      return {
+        sourceVirtualPath: texture.sourceVirtualPath,
+        width: texture.width,
+        height: texture.height,
+        rgbaBytes,
+      };
+    });
+
+    return {
+      success: true as const,
+      packPath,
+      project: {
+        formatVersion: manifest.formatVersion,
+        sourceVariantMeshDefinition: manifest.sourceVariantMeshDefinition,
+        variantSelections: manifest.variantSelections,
+        textures,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : "Failed to open the unit painter project.",
+    };
+  }
+};
+
+ipcMain.removeHandler("openUnitPainterProject");
+ipcMain.handle("openUnitPainterProject", async (_event, packPath: unknown) => openUnitPainterProjectNow(packPath));
 
 ipcMain.removeHandler("exportUnitPainterTextures");
 ipcMain.handle(

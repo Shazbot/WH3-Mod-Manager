@@ -69,6 +69,13 @@ export type UnitPainterExportTexture = {
   rgbaBytes: Uint8Array;
 };
 
+export type UnitPainterImportTexture = {
+  sourceVirtualPath: string;
+  width: number;
+  height: number;
+  rgbaBytes: Uint8Array;
+};
+
 type MaterialRestore = {
   material: PaintableMaterial;
   original: THREE.DataTexture;
@@ -535,6 +542,7 @@ const blendPixelFromStrokeStart = (
 
 export class UnitPainterSession {
   private readonly targetsByEditableTexture = new Map<THREE.Texture, PaintableTexture>();
+  private readonly targetsBySourcePath = new Map<string, PaintableTexture>();
   private readonly restores: MaterialRestore[] = [];
   private readonly history: Stroke[] = [];
   private readonly redoHistory: Stroke[] = [];
@@ -590,6 +598,9 @@ export class UnitPainterSession {
           };
           targetsByOriginal.set(original, target);
           this.targetsByEditableTexture.set(editable, target);
+          if (target.sourceVirtualPath) {
+            this.targetsBySourcePath.set(target.sourceVirtualPath.replace(/\//g, "\\").toLowerCase(), target);
+          }
         }
 
         this.restores.push({ material, original });
@@ -617,6 +628,40 @@ export class UnitPainterSession {
 
   markSaved() {
     if (this.isStrokeOpen) this.endStroke();
+    this.savedStateId = this.currentStateId;
+  }
+
+  loadProjectTextures(textures: readonly UnitPainterImportTexture[]) {
+    if (this.isStrokeOpen) this.endStroke();
+
+    const resolved = textures.map((texture) => {
+      const sourceKey = texture.sourceVirtualPath.replace(/\//g, "\\").toLowerCase();
+      const target = this.targetsBySourcePath.get(sourceKey);
+      if (!target) {
+        throw new Error(
+          `The painted source texture '${texture.sourceVirtualPath}' is no longer present on this unit. The source mod may have changed.`,
+        );
+      }
+      if (target.width !== texture.width || target.height !== texture.height) {
+        throw new Error(
+          `The painted source texture '${texture.sourceVirtualPath}' changed size from ${texture.width}x${texture.height} to ${target.width}x${target.height}.`,
+        );
+      }
+      if (texture.rgbaBytes.length !== target.width * target.height * 4) {
+        throw new Error(`The saved painter data for '${texture.sourceVirtualPath}' has an invalid byte length.`);
+      }
+      return { target, rgbaBytes: texture.rgbaBytes };
+    });
+
+    for (const { target, rgbaBytes } of resolved) {
+      target.data.set(rgbaBytes);
+      target.editable.needsUpdate = true;
+    }
+    this.history.length = 0;
+    this.redoHistory.length = 0;
+    this.currentStroke.clear();
+    this.currentStrokeCoverage.clear();
+    this.currentStateId = resolved.length > 0 ? this.nextStateId++ : 0;
     this.savedStateId = this.currentStateId;
   }
 
@@ -963,6 +1008,7 @@ export class UnitPainterSession {
     for (const target of this.targetsByEditableTexture.values()) target.editable.dispose();
     this.restores.length = 0;
     this.targetsByEditableTexture.clear();
+    this.targetsBySourcePath.clear();
     this.history.length = 0;
     this.redoHistory.length = 0;
     this.currentStroke.clear();

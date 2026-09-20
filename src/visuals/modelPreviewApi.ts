@@ -87,6 +87,24 @@ export interface UnitPainterTextureExportResult {
   error?: string;
 }
 
+export interface UnitPainterProjectOpenResult {
+  success: boolean;
+  canceled?: boolean;
+  error?: string;
+  packPath?: string;
+  project?: {
+    formatVersion: number;
+    sourceVariantMeshDefinition: string;
+    variantSelections: VariantMeshSelection[];
+    textures: Array<{
+      sourceVirtualPath: string;
+      width: number;
+      height: number;
+      rgbaBytes: Uint8Array;
+    }>;
+  };
+}
+
 type RendererIpc = {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
 };
@@ -174,3 +192,7 @@ export const exportUnitPainterTextures = async (
     })),
     targetPackPath,
   )) as UnitPainterTextureExportResult;
+
+
+export const openUnitPainterProject = async (packPath?: string): Promise<UnitPainterProjectOpenResult> =>
+  (await getRendererIpc().invoke("openUnitPainterProject", packPath)) as UnitPainterProjectOpenResult;

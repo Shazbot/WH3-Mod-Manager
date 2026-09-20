@@ -15,6 +15,9 @@ import {
   ensureUnitPainterPackExtension,
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
+  buildUnitPainterProjectPackFiles,
+  parseUnitPainterProjectManifest,
+  UNIT_PAINTER_PROJECT_MANIFEST_PATH,
 } from "../src/visuals/unitPainterPack";
 
 const tempDirectories: string[] = [];
@@ -137,7 +140,63 @@ describe("unit painter pack staging", () => {
       buildUnitPainterPackFiles(
         root,
         ["..\\outside.dds"],
-        "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+        "variantmeshes\\variantmeshd
+
+  it("stores versioned editable painter metadata and raw RGBA snapshots in the pack", async () => {
+    const root = await makeTempDirectory();
+    const packPath = nodePath.join(root, "editable.pack");
+    const sourceVmd = "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition";
+    const rgba = new Uint8Array(4 * 4 * 4);
+    rgba[0] = 123;
+
+    const projectFiles = buildUnitPainterProjectPackFiles(
+      sourceVmd,
+      [{ slotPath: "body", choiceIndex: 2 }],
+      [{
+        sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+        width: 4,
+        height: 4,
+        rgbaBytes: rgba,
+      }],
+    );
+    const manifestFile = projectFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH);
+    expect(manifestFile?.buffer).toBeDefined();
+    const manifest = parseUnitPainterProjectManifest(manifestFile!.buffer!);
+    expect(manifest.formatVersion).toBe(1);
+    expect(manifest.sourceVariantMeshDefinition).toBe(sourceVmd);
+    expect(manifest.variantSelections).toEqual([{ slotPath: "body", choiceIndex: 2 }]);
+    expect(manifest.paintedTextures).toHaveLength(1);
+
+    const previousGame = appData.currentGame;
+    appData.currentGame = "wh3";
+    try {
+      await writePack(projectFiles, packPath);
+      const saved = await readPack(packPath, {
+        skipParsingTables: true,
+        filesToRead: [UNIT_PAINTER_PROJECT_MANIFEST_PATH, manifest.paintedTextures[0].filePath],
+      });
+      const savedManifest = saved.packedFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH)?.buffer;
+      const savedRgba = saved.packedFiles.find((file) => file.name === manifest.paintedTextures[0].filePath)?.buffer;
+      expect(parseUnitPainterProjectManifest(savedManifest!)).toEqual(manifest);
+      expect(savedRgba?.[0]).toBe(123);
+      expect(savedRgba?.length).toBe(rgba.length);
+    } finally {
+      appData.currentGame = previousGame;
+    }
+  });
+
+  it("supports a reset-to-original editable project with no painted texture snapshots", () => {
+    const files = buildUnitPainterProjectPackFiles(
+      "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+      [],
+      [],
+    );
+    expect(files).toHaveLength(1);
+    expect(files[0].name).toBe(UNIT_PAINTER_PROJECT_MANIFEST_PATH);
+    const manifest = parseUnitPainterProjectManifest(files[0].buffer!);
+    expect(manifest.paintedTextures).toEqual([]);
+  });
+efinitions\\unit.variantmeshdefinition",
       ),
     ).rejects.toThrow(/unsafe generated file path/i);
   });
