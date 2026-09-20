@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, type SaveDialogOptions } from "electron";
+import { app, dialog, ipcMain, type OpenDialogOptions, type SaveDialogOptions } from "electron";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
@@ -1039,10 +1039,10 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
   const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
   let packPath = typeof packPathValue === "string" ? packPathValue.trim() : "";
   if (!packPath) {
-    const options = {
+    const options: OpenDialogOptions = {
       title: "Open painted WH3 mod",
       buttonLabel: "Edit Mod",
-      properties: ["openFile"] as const,
+      properties: ["openFile"],
       filters: [{ name: "Total War pack", extensions: ["pack"] }],
     };
     const selection = ownerWindow
