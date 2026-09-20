@@ -13,7 +13,6 @@ import {
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
   reportVisualsModelPreviewTiming,
-  type VisualsModelPreviewTextureSource,
 } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import { selectDefaultAnimation } from "../visuals/animationSelection";
@@ -194,55 +193,6 @@ const texturePoolKey = (texture: THREE.Texture) => {
     texture.flipY ? 1 : 0,
     texture.colorSpace,
   ].join("|");
-};
-
-const previewTextureFileName = (texture: THREE.Texture) => {
-  const generatedFileName = texture.userData.wh3GeneratedFileName;
-  if (typeof generatedFileName === "string" && generatedFileName) {
-    return generatedFileName.replace(/[?#].*$/, "").split(/[\\/]/).pop()?.toLowerCase();
-  }
-
-  if (texture.name) {
-    return texture.name.replace(/[?#].*$/, "").split(/[\\/]/).pop()?.toLowerCase();
-  }
-
-  const url = texture.userData.wh3PreviewTextureUrl;
-  if (typeof url !== "string" || !url) return undefined;
-  try {
-    const decoded = decodeURIComponent(url).replace(/[?#].*$/, "");
-    return decoded.split(/[\\/]/).pop()?.toLowerCase();
-  } catch {
-    return url.replace(/[?#].*$/, "").split(/[\\/]/).pop()?.toLowerCase();
-  }
-};
-
-const annotatePreviewTextureSources = (
-  object: THREE.Object3D,
-  textureSources: readonly VisualsModelPreviewTextureSource[] | undefined,
-) => {
-  if (!textureSources?.length) return;
-
-  const baseColorSources = new Map(
-    textureSources
-      .filter((source) => source.channel.toLowerCase() === "basecolor")
-      .map((source) => [source.generatedFileName.toLowerCase(), source.sourceVirtualPath]),
-  );
-
-  object.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
-    const materials = Array.isArray(child.material) ? child.material : [child.material];
-    for (const material of materials) {
-      if (!material || !("map" in material)) continue;
-      const map = (material as THREE.Material & { map?: THREE.Texture | null }).map;
-      if (!map) continue;
-      if (typeof map.userData.wh3SourceVirtualPath === "string" && map.userData.wh3SourceVirtualPath) {
-        continue;
-      }
-      const fileName = previewTextureFileName(map);
-      const sourceVirtualPath = fileName ? baseColorSources.get(fileName) : undefined;
-      if (sourceVirtualPath) map.userData.wh3SourceVirtualPath = sourceVirtualPath;
-    }
-  });
 };
 
 const internObjectResources = (object: THREE.Object3D, pool: PreviewResourcePool) => {
@@ -1031,7 +981,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           previewId: string;
           url: string;
           warnings?: string[];
-          textureSources?: VisualsModelPreviewTextureSource[];
         }>;
 
         if (comparisonVariants.length === 1) {
@@ -1051,7 +1000,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             previewId: exportResult.previewId,
             url: exportResult.url,
             warnings: exportResult.warnings,
-            textureSources: exportResult.textureSources,
           }];
         } else {
           const batchResult = await exportVisualsModelBatch(
@@ -1113,7 +1061,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             return;
           }
 
-          annotatePreviewTextureSources(gltf.scene, exportItem.textureSources);
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
           ownedModels.push(gltf.scene);
