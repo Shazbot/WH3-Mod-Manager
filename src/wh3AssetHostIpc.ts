@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
 import appData from "./appData";
+import { getDataMod } from "./modFunctions";
 import {
   getModelPreviewServeTiming,
   modelPreviewAssetUrl,
@@ -932,6 +933,36 @@ const exportUnitPainterVariantNow = async (
       normalizedAsset.assetPath,
     );
     await writePack(packFiles, packPath);
+
+    // The normal Data-folder watcher will discover this shortly, but add a new
+    // painter pack immediately so one-click creation also enables it without
+    // waiting for chokidar's awaitWriteFinish delay. Existing packs keep their
+    // current enabled state because the reducer ignores a duplicate path.
+    const normalizedDataFolder = dataFolder ? nodePath.resolve(dataFolder).toLowerCase() : undefined;
+    const normalizedPackDirectory = nodePath.resolve(nodePath.dirname(packPath)).toLowerCase();
+    const normalizedModdingDirectory = dataFolder
+      ? nodePath.resolve(dataFolder, "modding").toLowerCase()
+      : undefined;
+    const isManagedDataPack =
+      !!normalizedDataFolder
+      && (normalizedPackDirectory === normalizedDataFolder
+        || normalizedPackDirectory === normalizedModdingDirectory);
+    if (isManagedDataPack && windows.mainWindow && !windows.mainWindow.isDestroyed()) {
+      try {
+        const mod = await getDataMod(packPath, (message) => {
+          windows.mainWindow?.webContents.send("handleLog", message);
+        });
+        mod.isEnabled = true;
+        windows.mainWindow.webContents.send("addMod", mod);
+      } catch (error) {
+        windows.mainWindow.webContents.send(
+          "handleLog",
+          `Painted mod was created but could not be added to the manager immediately: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
 
     return {
       success: true as const,
