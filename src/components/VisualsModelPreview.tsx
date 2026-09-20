@@ -1675,19 +1675,21 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   </select>
                   <button
                     type="button"
+                    disabled={paintLayers.length >= 32}
                     onClick={() => {
-                      paintSessionRef.current?.addLayer();
-                      setPaintExportStatus("");
-                      setPaintHistoryVersion((value) => value + 1);
+                      if (paintSessionRef.current?.addLayer()) {
+                        setPaintExportStatus("");
+                        setPaintHistoryVersion((value) => value + 1);
+                      }
                     }}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400"
-                    title="Add paint layer"
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={paintLayers.length >= 32 ? "Maximum 32 paint layers" : "Add paint layer"}
                   >
                     +
                   </button>
                   <button
                     type="button"
-                    disabled={!paintActiveLayer}
+                    disabled={!paintActiveLayer || paintLayers.length >= 32}
                     onClick={() => {
                       if (paintSessionRef.current?.duplicateActiveLayer()) {
                         setPaintExportStatus("");
@@ -1695,7 +1697,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       }
                     }}
                     className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Duplicate active layer"
+                    title={paintLayers.length >= 32 ? "Maximum 32 paint layers" : "Duplicate active layer"}
                   >
                     Dup
                   </button>
@@ -1740,6 +1742,20 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     title="Move active layer down"
                   >
                     ↓
+                  </button>
+                  <button
+                    type="button"
+                    disabled={paintActiveLayerIndex <= 0}
+                    onClick={() => {
+                      if (paintSessionRef.current?.mergeActiveLayerDown()) {
+                        setPaintExportStatus("");
+                        setPaintHistoryVersion((value) => value + 1);
+                      }
+                    }}
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Merge active layer down, baking both layers' visibility and opacity"
+                  >
+                    Merge↓
                   </button>
                   {paintActiveLayer && (
                     <>
