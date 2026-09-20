@@ -1752,7 +1752,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     Layers {paintLayers.length} · {paintActiveLayer?.name ?? "None"}
                   </button>
                   {isPaintLayersOpen && (
-                    <div className="absolute left-0 top-full z-40 mt-1 w-80 rounded border border-gray-600 bg-gray-950/98 p-2 shadow-xl">
+                    <div className="absolute left-0 top-full z-40 mt-1 w-80 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
                       <div className="mb-1 flex items-center justify-between text-[11px]">
                         <span className="font-semibold text-gray-200">BaseColour layers</span>
                         <span className="text-gray-500">top → bottom</span>
@@ -1981,7 +1981,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       ? "border-cyan-400 bg-cyan-900/60 text-cyan-100"
                       : "border-gray-600 bg-gray-800 hover:border-cyan-400"
                   }`}
-                  title="Pick a BaseColour from the model (Alt+click)"
+                  title="Pick a BaseColour from the model, or hold Alt while clicking the model"
                 >
                   Pick
                 </button>
