@@ -1783,20 +1783,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     </span>
                     <button
                       type="button"
+                      disabled={paintBrushMode === "restore"}
                       onClick={() => {
                         if (paintSessionRef.current?.fillSelection("material", brushSettingsRef.current)) {
                           setPaintExportStatus("");
                           setPaintHistoryVersion((value) => value + 1);
                         }
                       }}
-                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400"
-                      title="Fill the selected material UV footprint with the current color"
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={
+                        paintBrushMode === "restore"
+                          ? "Use Reset material to restore the whole selected material"
+                          : "Fill the selected material UV footprint with the current color"
+                      }
                     >
                       Fill material
                     </button>
                     <button
                       type="button"
-                      disabled={!paintSelection.hasUvIsland}
+                      disabled={!paintSelection.hasUvIsland || paintBrushMode === "restore"}
                       onClick={() => {
                         if (paintSessionRef.current?.fillSelection("island", brushSettingsRef.current)) {
                           setPaintExportStatus("");
@@ -1804,7 +1809,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         }
                       }}
                       className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Fill only the selected UV island with the current color"
+                      title={
+                        paintBrushMode === "restore"
+                          ? "Use Reset island to restore the whole selected UV island"
+                          : "Fill only the selected UV island with the current color"
+                      }
                     >
                       Fill island
                     </button>
