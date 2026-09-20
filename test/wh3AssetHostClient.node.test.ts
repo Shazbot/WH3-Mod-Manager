@@ -97,6 +97,7 @@ describe("WH3AssetHostClient", () => {
           "exportModelBatch",
           "exportPaintedVariant",
           "paintedVariantRgba",
+          "paintedVariantSourceOverride",
           "missingSkeletonDecision",
           "shutdown",
         ],
@@ -537,6 +538,47 @@ describe("WH3AssetHostClient", () => {
     await expect(assetHost.hello()).rejects.toMatchObject({
       code: "MissingCapabilities",
       message: expect.stringContaining("paintedVariantRgba"),
+    });
+    assetHost.dispose();
+  });
+
+  it("rejects a painter host that cannot override the source VMD path", async () => {
+    const child = createMockChild();
+    const { client, server } = createDuplexPair();
+    installServerResponder(server, (request) => ({
+      protocolVersion: 1,
+      requestId: request.requestId,
+      success: true,
+      command: request.command,
+      result: {
+        hostVersion: "pre-source-override-host",
+        protocolVersion: 1,
+        capabilities: [
+          "hello",
+          "initialize",
+          "getAnimationCatalog",
+          "exportModel",
+          "exportModelBatch",
+          "exportPaintedVariant",
+          "paintedVariantRgba",
+          "missingSkeletonDecision",
+          "shutdown",
+        ],
+        maxFrameBytes: 1024 * 1024,
+      },
+      error: null,
+    }));
+
+    const assetHost = new Wh3AssetHostClient({
+      executablePath: "host.exe",
+      spawnProcess: () => child as never,
+      connectPipe: async () => client,
+    });
+    await assetHost.start();
+
+    await expect(assetHost.hello()).rejects.toMatchObject({
+      code: "MissingCapabilities",
+      message: expect.stringContaining("paintedVariantSourceOverride"),
     });
     assetHost.dispose();
   });
