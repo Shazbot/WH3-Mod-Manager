@@ -454,8 +454,9 @@ export class Wh3AssetHostClient {
   private request<TResult>(
     command: string,
     fields: Record<string, unknown> = {},
-    timeoutMs = this.options.requestTimeoutMs,
+    timeoutMs?: number,
   ): Promise<TResult> {
+    const effectiveTimeoutMs = timeoutMs ?? this.options.requestTimeoutMs;
     const connection = this.connection;
     if (!connection || connection.destroyed) {
       return Promise.reject(new Wh3AssetHostClientError("NotConnected", "WH3AssetHost is not connected."));
@@ -475,10 +476,10 @@ export class Wh3AssetHostClient {
         reject(
           new Wh3AssetHostClientError(
             "RequestTimeout",
-            `WH3AssetHost '${command}' request '${requestId}' timed out after ${timeoutMs} ms.`,
+            `WH3AssetHost '${command}' request '${requestId}' timed out after ${effectiveTimeoutMs} ms.`,
           ),
         );
-      }, timeoutMs);
+      }, effectiveTimeoutMs);
 
       this.pending.set(requestId, {
         resolve: resolve as (value: unknown) => void,
