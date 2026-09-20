@@ -120,7 +120,9 @@ export interface Wh3AssetHostExportModelBatchResult {
 
 export interface Wh3AssetHostPaintedTextureInput {
   sourceVirtualPath: string;
-  pngPath: string;
+  rgbaPath: string;
+  width: number;
+  height: number;
 }
 
 export interface Wh3AssetHostPaintedVariantRequest {
@@ -407,7 +409,9 @@ export class Wh3AssetHostClient {
         variantName: request.variantName,
         textures: request.textures.map((texture) => ({
           sourceVirtualPath: texture.sourceVirtualPath,
-          pngPath: texture.pngPath,
+          rgbaPath: texture.rgbaPath,
+          width: texture.width,
+          height: texture.height,
         })),
         variantSelections: request.variantSelections ?? [],
       },
