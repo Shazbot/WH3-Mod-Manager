@@ -31,6 +31,7 @@ const LeftSidebar = memo(() => {
   const isSkillsTabVisible = currentGame === "wh3" && skillTreesDisplayMode === "tab";
   const isTechTreesTabVisible = currentGame === "wh3" && technologyTreesDisplayMode === "tab";
   const isUnitViewerVisible = currentGame === "wh3" && !isHidden("unitViewer");
+  const isAbilitiesTabVisible = currentGame === "wh3" && !isHidden("abilities");
   const isBuildingsTabVisible = currentGame === "wh3" && !isHidden("buildings");
   const isAncillariesTabVisible = currentGame === "wh3" && !isHidden("ancillaries");
   const isMapTabVisible = currentGame === "wh3" && !isHidden("map");
@@ -45,6 +46,7 @@ const LeftSidebar = memo(() => {
     if (isSkillsTabVisible) tabs.push("skills");
     if (isTechTreesTabVisible) tabs.push("techTrees");
     if (isUnitViewerVisible) tabs.push("unitViewer");
+    if (isAbilitiesTabVisible) tabs.push("abilities");
     if (isBuildingsTabVisible) tabs.push("buildings");
     if (isAncillariesTabVisible) tabs.push("ancillaries");
     if (isMapTabVisible) tabs.push("map");
@@ -52,6 +54,7 @@ const LeftSidebar = memo(() => {
     if (showNodeEditorTab) tabs.push("nodeEditor");
     return tabs;
   }, [
+    isAbilitiesTabVisible,
     isAncillariesTabVisible,
     isBuildingsTabVisible,
     isCategoriesTabVisible,
@@ -240,6 +243,17 @@ const LeftSidebar = memo(() => {
                 <span className="ml-2 mr-2 hidden-child">{localized.unitViewerTab || "Unit Viewer"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("unitViewer") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {isAbilitiesTabVisible && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <GiCrossedSwords size="1.3rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.abilitiesTab || "Abilities"}</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("abilities") + 1}
                 </span>
               </div>
             </Tab>

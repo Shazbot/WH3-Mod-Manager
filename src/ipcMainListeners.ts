@@ -128,6 +128,25 @@ import type {
   BuiltAncillariesData,
 } from "./ancillariesData/types";
 import {
+  ABILITY_EDITOR_TABLES,
+  applyAbilityPendingRows,
+  type AbilityEditState,
+} from "./abilitiesData/edits";
+import {
+  buildAbilitiesCatalogEntries,
+  buildAbilityDetail,
+  getAbilityLocWithPending,
+  getAbilityMechanicalTypes,
+  getAbilitySourceTypes,
+} from "./abilitiesData/data";
+import { buildAbilityTooltipForKey } from "./abilitiesData/tooltips";
+import type {
+  AbilitiesTableRows,
+  AbilityCatalogResponse,
+  AbilityDetailResponse,
+  AbilityTableRow,
+} from "./abilitiesData/types";
+import {
   clearEsfMapMemoryCache,
   loadEsfMapDiskCache,
   resolveEsfMapCachedImage,
@@ -4626,6 +4645,189 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
     return { byEffect, icons };
   };
+
+  type CachedAbilitiesData = {
+    signature: string;
+    tables: AbilitiesTableRows;
+    tableSchemas: Record<string, DBVersion>;
+    getLoc: (key: string) => string | undefined;
+  };
+  let cachedAbilitiesData: CachedAbilitiesData | undefined;
+  const abilitiesBuilds = createSerializedBuilds();
+  const abilityTablePrefixes = ABILITY_EDITOR_TABLES.map((table) => `db\\${table}\\`);
+
+  const getAbilityTableSchemas = async (): Promise<Record<string, DBVersion>> => {
+    const defaultTableVersions = await getDefaultTableVersions();
+    const schemas: Record<string, DBVersion> = {};
+    for (const tableName of ABILITY_EDITOR_TABLES) {
+      const versions = DBNameToDBVersions[appData.currentGame][tableName];
+      if (!versions?.length) continue;
+      const defaultVersion = defaultTableVersions?.[tableName];
+      schemas[tableName] = versions.find((version) => version.version === defaultVersion) || versions[0];
+    }
+    return schemas;
+  };
+
+  const buildAbilitiesSessionData = async (enabledMods: Mod[]): Promise<CachedAbilitiesData> => {
+    if (appData.currentGame !== "wh3") throw new Error("Abilities are available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+
+    const signature = buildSkillsDataSignature(enabledMods, appData.currentGame);
+    if (cachedAbilitiesData?.signature === signature) return cachedAbilitiesData;
+
+    // Reuse the established Skills localisation/icon core. The ability editor then reads the full
+    // ability graph (including assignment/condition tables Skills does not need) with provenance.
+    if (!appData.skillsData || appData.lastSkillsDataSignature !== signature) await getSkillsData(enabledMods);
+    const skillsData = appData.skillsData;
+    if (!skillsData || appData.lastSkillsDataSignature !== signature) {
+      throw new Error("The shared ability localisation data could not be built");
+    }
+
+    if (enabledMods.length > 0) {
+      await readMods(enabledMods, false, true, false, true, abilityTablePrefixes, undefined, false);
+    }
+
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, abilityTablePrefixes, [dbPackPath], false);
+    if (!vanillaPacks) throw new Error("The game's ability tables could not be read, try again");
+
+    const vanillaPackPaths = new Set(vanillaPacks.map((pack) => pack.path));
+    const enabledModPacks = appData.packsData.filter((pack) => enabledMods.some((mod) => mod.path === pack.path));
+    const sourcePacks = [...vanillaPacks, ...enabledModPacks];
+    const unsorted = getPacksTableData(sourcePacks, abilityTablePrefixes, true);
+    if (!unsorted) throw new Error("The ability table rows could not be decoded");
+
+    const ordered: PackViewData[] = [];
+    for (const pack of vanillaPacks) {
+      const tableData = unsorted.find((candidate) => candidate.packPath === pack.path);
+      if (tableData) ordered.push(tableData);
+    }
+    for (const mod of sortByNameAndLoadOrder(enabledMods)) {
+      const tableData = unsorted.find((candidate) => candidate.packPath === mod.path);
+      if (tableData) ordered.push(tableData);
+    }
+
+    const tables: AbilitiesTableRows = {};
+    for (const tableName of ABILITY_EDITOR_TABLES) {
+      getTableRowData(ordered, tableName, (schemaFieldRow, packViewData) => {
+        const row = schemaRowToRecord(schemaFieldRow) as AbilityTableRow;
+        row.__sourcePackPath = packViewData.packPath;
+        row.__sourcePackName = packViewData.packName;
+        row.__sourceKind = vanillaPackPaths.has(packViewData.packPath) ? "vanilla" : "mod";
+        (tables[tableName] ||= []).push(row);
+      });
+    }
+
+    const getLoc = (locId: string) => {
+      for (const locsInPack of Object.values(skillsData.locs)) {
+        const localized = locsInPack.get(locId);
+        if (localized) return localized;
+      }
+      return undefined;
+    };
+
+    releaseParsedTables(sourcePacks, abilityTablePrefixes);
+    cachedAbilitiesData = {
+      signature,
+      tables,
+      tableSchemas: await getAbilityTableSchemas(),
+      getLoc,
+    };
+    return cachedAbilitiesData;
+  };
+
+  const ensureAbilitiesData = async (enabledMods: Mod[]) =>
+    abilitiesBuilds.run(buildSkillsDataSignature(enabledMods, appData.currentGame), () =>
+      buildAbilitiesSessionData(enabledMods),
+    );
+
+  ipcMain.handle("invalidateAbilitiesCache", () => {
+    cachedAbilitiesData = undefined;
+    // Ability names/descriptions and the preview icon catalogue live in the shared Skills core.
+    // A pack save can change those without changing the renderer's mod signature yet.
+    appData.skillsData = undefined;
+    appData.lastSkillsDataSignature = undefined;
+    return true;
+  });
+
+  ipcMain.handle(
+    "getAbilitiesCatalog",
+    async (
+      _event,
+      enabledMods: Mod[],
+      pendingEdits?: AbilityEditState,
+    ): Promise<AbilityCatalogResponse> => {
+      try {
+        const built = await ensureAbilitiesData(enabledMods);
+        const tables = applyAbilityPendingRows(built.tables, pendingEdits);
+        const getLoc = getAbilityLocWithPending(built.getLoc, pendingEdits);
+        const entries = buildAbilitiesCatalogEntries(tables, getLoc);
+        return {
+          success: true,
+          catalog: {
+            entries,
+            sourceTypes: getAbilitySourceTypes(entries),
+            mechanicalTypes: getAbilityMechanicalTypes(entries),
+            tableSchemas: built.tableSchemas,
+            moddersPrefix: appData.moddersPrefix,
+          },
+        };
+      } catch (error) {
+        console.log("getAbilitiesCatalog failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "getAbilityDetail",
+    async (
+      _event,
+      enabledMods: Mod[],
+      abilityKey: string,
+      pendingEdits?: AbilityEditState,
+    ): Promise<AbilityDetailResponse> => {
+      try {
+        const built = await ensureAbilitiesData(enabledMods);
+        const tables = applyAbilityPendingRows(built.tables, pendingEdits);
+        const getLoc = getAbilityLocWithPending(built.getLoc, pendingEdits);
+        const detail = buildAbilityDetail(tables, getLoc, abilityKey);
+        if (!detail) return { success: false, error: `Ability "${abilityKey}" was not found` };
+
+        const preview = buildAbilityTooltipForKey(tables, getLoc, abilityKey);
+        detail.tooltip = preview.tooltip;
+
+        const skillsData = appData.skillsData;
+        if (skillsData && preview.iconPathsToLoad.length > 0) {
+          const missingIconPaths = preview.iconPathsToLoad.filter((iconPath) => !skillsData.icons[iconPath]);
+          if (missingIconPaths.length > 0) {
+            const vanillaIconPackPaths = (await findVanillaPacksHoldingIcons(missingIconPaths)) ?? [];
+            const iconPackPaths = [
+              ...skillsData.skillsDataPackPaths,
+              ...vanillaIconPackPaths.filter((packPath) => !skillsData.skillsDataPackPaths.includes(packPath)),
+            ];
+            const addedIconGeneration = await loadMissingIconsInto(
+              skillsData.icons,
+              await getIconPacks(iconPackPaths),
+              preview.iconPathsToLoad,
+            );
+            if (addedIconGeneration) skillsData.iconGeneration = addedIconGeneration;
+          }
+          for (const iconPath of preview.iconPathsToLoad) {
+            if (skillsData.icons[iconPath]) {
+              detail.icons[iconPath] = iconAssetUrl(skillsData.iconGeneration, iconPath);
+            }
+          }
+        }
+
+        return { success: true, detail };
+      } catch (error) {
+        console.log("getAbilityDetail failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
 
   const buildingsBuilds = createSerializedBuilds();
   const ensureBuildingsData = async (enabledMods: Mod[]) =>

@@ -12,6 +12,7 @@ import TechTreesTab from "./techTrees/TechTreesTab";
 import SkillsTab from "./skillsViewer/SkillsTab";
 import { gameToPackWithDBTablesName } from "../supportedGames";
 import UnitViewerTab from "./UnitViewerTab";
+import AbilitiesTab from "./abilities/AbilitiesTab";
 import BuildingsTab from "./buildings/BuildingsTab";
 import AncillariesTab from "./ancillaries/AncillariesTab";
 import EsfMapTab from "./EsfMapTab";
@@ -30,6 +31,7 @@ const Main = (props: MainProps) => {
   const isTechnologyTreesSupported = currentGame === "wh3";
   const isNodeEditorTab = currentTab == "nodeEditor";
   const isUnitViewerTab = currentTab == "unitViewer" && currentGame === "wh3";
+  const isAbilitiesTab = currentTab == "abilities" && currentGame === "wh3";
   const isVisualsTab = currentTab == "visuals" && isFeaturesForModdersEnabled;
   const isSkillsTab = currentTab == "skills";
   const isTechTreesTab = currentTab == "techTrees" && isTechnologyTreesSupported;
@@ -40,6 +42,7 @@ const Main = (props: MainProps) => {
   // Stateful tabs stay mounted once opened so switching tabs preserves their in-memory work.
   const isNodeEditorMounted = useKeepMountedOnceActive(isNodeEditorTab);
   const isUnitViewerMounted = useKeepMountedOnceActive(isUnitViewerTab);
+  const isAbilitiesMounted = useKeepMountedOnceActive(isAbilitiesTab);
   const isVisualsMounted = useKeepMountedOnceActive(isVisualsTab);
   const isSkillsMounted = useKeepMountedOnceActive(isSkillsTab);
   const isTechTreesMounted = useKeepMountedOnceActive(isTechTreesTab);
@@ -50,6 +53,7 @@ const Main = (props: MainProps) => {
   const isKeptMountedTab =
     isNodeEditorTab ||
     isUnitViewerTab ||
+    isAbilitiesTab ||
     isVisualsTab ||
     isSkillsTab ||
     isTechTreesTab ||
@@ -108,6 +112,12 @@ const Main = (props: MainProps) => {
       {isUnitViewerMounted && (
         <div className={isUnitViewerTab ? undefined : "hidden"}>
           <UnitViewerTab isActive={isUnitViewerTab} />
+        </div>
+      )}
+
+      {isAbilitiesMounted && (
+        <div className={isAbilitiesTab ? undefined : "hidden"}>
+          <AbilitiesTab isActive={isAbilitiesTab} />
         </div>
       )}
 

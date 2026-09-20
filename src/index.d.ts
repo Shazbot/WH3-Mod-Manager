@@ -1275,6 +1275,7 @@ declare global {
     | "skills"
     | "visuals"
     | "unitViewer"
+    | "abilities"
     | "twui"
     | "techTrees"
     | "buildings"

@@ -13,6 +13,9 @@ vi.mock("../src/components/VisualsTab", () => ({
 }));
 vi.mock("../src/components/NodeEditor", () => ({ default: () => <div /> }));
 vi.mock("../src/components/UnitViewerTab", () => ({ default: () => <div /> }));
+vi.mock("../src/components/abilities/AbilitiesTab", () => ({
+  default: () => <input aria-label="Abilities state" defaultValue="" />,
+}));
 vi.mock("../src/components/skillsViewer/SkillsTab", () => ({
   default: () => <input aria-label="Skills state" defaultValue="" />,
 }));
@@ -61,7 +64,7 @@ describe("main tab persistence", () => {
   /** Opened, edited, switched away from and returned to: the same element with the same value. */
   const expectTabKeepsItsState = (
     store: ReturnType<typeof renderMain>,
-    tab: "visuals" | "skills" | "techTrees" | "buildings" | "ancillaries",
+    tab: "visuals" | "skills" | "techTrees" | "abilities" | "buildings" | "ancillaries",
     label: string,
   ) => {
     expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
@@ -89,6 +92,10 @@ describe("main tab persistence", () => {
 
   it("lazily mounts Tech Trees and keeps its state after switching away", () => {
     expectTabKeepsItsState(renderMain(), "techTrees", "Tech trees state");
+  });
+
+  it("lazily mounts Abilities and keeps its state after switching away", () => {
+    expectTabKeepsItsState(renderMain(), "abilities", "Abilities state");
   });
 
   it("lazily mounts Buildings and keeps its state after switching away", () => {
@@ -136,6 +143,15 @@ describe("main tab persistence", () => {
 
     expect(store.getState().app.currentTab).toBe("mods");
     expect(screen.queryByLabelText("Ancillaries state")).not.toBeInTheDocument();
+  });
+
+  it("does not mount Abilities for a game that has none", () => {
+    const store = renderMain({ currentGame: "wh2" as const });
+
+    act(() => store.dispatch(setCurrentTab("abilities")));
+
+    expect(store.getState().app.currentTab).toBe("mods");
+    expect(screen.queryByLabelText("Abilities state")).not.toBeInTheDocument();
   });
 
   it("does not mount Buildings for a game that has none", () => {

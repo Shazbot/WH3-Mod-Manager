@@ -19,6 +19,8 @@ import type {
 import type { BuildingsEditState } from "./buildingsData/edits";
 import type { AncillariesCatalogResponse, AncillariesDetailResponse } from "./ancillariesData/types";
 import type { AncillariesEditState } from "./ancillariesData/edits";
+import type { AbilityCatalogResponse, AbilityDetailResponse } from "./abilitiesData/types";
+import type { AbilityEditState } from "./abilitiesData/edits";
 import type {
   GlobalSearchProgress,
   GlobalSearchRequest,
@@ -344,6 +346,15 @@ const api = {
     payload: SaveTechnologyChangesPayload,
   ): Promise<{ success: boolean; packName?: string; packPath?: string; warning?: string; error?: string }> =>
     ipcRenderer.invoke("saveTechnologyChanges", payload),
+  getAbilitiesCatalog: (enabledMods: Mod[], pendingEdits?: AbilityEditState): Promise<AbilityCatalogResponse> =>
+    ipcRenderer.invoke("getAbilitiesCatalog", enabledMods, pendingEdits),
+  getAbilityDetail: (
+    enabledMods: Mod[],
+    abilityKey: string,
+    pendingEdits?: AbilityEditState,
+  ): Promise<AbilityDetailResponse> =>
+    ipcRenderer.invoke("getAbilityDetail", enabledMods, abilityKey, pendingEdits),
+  invalidateAbilitiesCache: (): Promise<boolean> => ipcRenderer.invoke("invalidateAbilitiesCache"),
   getBuildingsCatalog: (enabledMods: Mod[]): Promise<BuildingsCatalogResponse> =>
     ipcRenderer.invoke("getBuildingsCatalog", enabledMods),
   onBuildingsDataRebuild: (callback: (event: Electron.IpcRendererEvent, isRebuilding: boolean) => void) => {

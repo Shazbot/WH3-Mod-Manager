@@ -19,6 +19,7 @@ export const hideableMainWindowTabs: {
   { tab: "presets", labelKey: "presetsTab", fallbackLabel: "Presets" },
   { tab: "loadOrderRules", labelKey: "loadOrderRulesTab", fallbackLabel: "Load Order Rules" },
   { tab: "unitViewer", labelKey: "unitViewerTab", fallbackLabel: "Unit Viewer" },
+  { tab: "abilities", labelKey: "abilitiesTab", fallbackLabel: "Abilities" },
   { tab: "buildings", labelKey: "buildingsTab", fallbackLabel: "Buildings" },
   { tab: "ancillaries", labelKey: "ancillariesTab", fallbackLabel: "Ancillaries" },
   { tab: "map", labelKey: "mapTab", fallbackLabel: "Map" },

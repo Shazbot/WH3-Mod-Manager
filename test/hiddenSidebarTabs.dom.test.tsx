@@ -18,6 +18,7 @@ const localizedStrings = {
   skillsViewer: "Skill Trees",
   techTreesTab: "Tech Trees",
   unitViewerTab: "Unit Viewer",
+  abilitiesTab: "Abilities",
   buildingsTab: "Buildings",
   ancillariesTab: "Ancillaries",
   mapTab: "Map",
@@ -75,7 +76,7 @@ describe("hidden sidebar tabs", () => {
 
     // Tenth in the sidebar order with every tab shown. The number is positional, so inserting a tab
     // above this one moves which tab Ctrl+10 reaches.
-    expect(store.getState().app.currentTab).toBe("ancillaries");
+    expect(store.getState().app.currentTab).toBe("buildings");
   });
 
   it("never hides All Mods", () => {
