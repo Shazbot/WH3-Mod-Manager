@@ -19,7 +19,6 @@ import { selectDefaultAnimation } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
   createUnitPainterSession,
-  mirrorPointAcrossObjectLocalX,
   mirrorRayAcrossObjectLocalX,
   type UnitPainterBrushMode,
   type UnitPainterSelectionInfo,
@@ -579,7 +578,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const symmetryRaycaster = new THREE.Raycaster();
     const symmetryCamera = new THREE.PerspectiveCamera();
     const mirroredRay = new THREE.Ray();
-    const mirroredCameraPosition = new THREE.Vector3();
     const pointer = new THREE.Vector2();
     const lastPaintPoint = new THREE.Vector2();
     let hasLastPaintPoint = false;
@@ -625,7 +623,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       );
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObject(root, true)[0];
-      return hit ? { hit, viewportHeight, ray: raycaster.ray.clone() } : undefined;
+      return hit ? { hit, viewportHeight } : undefined;
     };
 
     /**
@@ -653,21 +651,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
       if (!symmetryEnabledRef.current || !session.matchesSelectionScope(projected.hit, scope)) return;
 
-      mirrorRayAcrossObjectLocalX(projected.ray, root, mirroredRay);
+      mirrorRayAcrossObjectLocalX(raycaster.ray, root, mirroredRay);
       symmetryRaycaster.ray.copy(mirroredRay);
       symmetryRaycaster.near = raycaster.near;
       symmetryRaycaster.far = raycaster.far;
       const mirroredHit = symmetryRaycaster.intersectObject(root, true)[0];
       if (!mirroredHit) return;
 
-      const originalLocalPoint = root.worldToLocal(projected.hit.point.clone());
-      if (Math.abs(originalLocalPoint.x) < 1e-5 && mirroredHit.point.distanceToSquared(projected.hit.point) < 1e-8) {
+      if (
+        mirroredHit.object === projected.hit.object
+        && mirroredHit.faceIndex === projected.hit.faceIndex
+        && mirroredHit.point.distanceToSquared(projected.hit.point) < 1e-8
+      ) {
         return;
       }
 
       symmetryCamera.fov = camera.fov;
-      mirrorPointAcrossObjectLocalX(camera.position, root, mirroredCameraPosition);
-      symmetryCamera.position.copy(mirroredCameraPosition);
+      // A PerspectiveCamera ray originates at the camera position, so the mirrored ray origin
+      // is already the mirrored virtual camera position.
+      symmetryCamera.position.copy(mirroredRay.origin);
 
       // The initiating hit has already satisfied the user's selected scope. Let the mirrored
       // hit target the corresponding material/island on the other side, even when it is a

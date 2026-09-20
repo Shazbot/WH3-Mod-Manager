@@ -319,4 +319,22 @@ describe("unit painter", () => {
     expect(mirroredLocalDirection.z).toBeCloseTo(localDirection.z, 6);
   });
 
+
+  it("leaves a ray on the local symmetry plane unchanged", () => {
+    const root = new THREE.Object3D();
+    root.position.set(2, 3, -1);
+    root.rotation.set(0.1, -0.4, 0.2);
+    root.updateMatrixWorld(true);
+
+    const localOrigin = new THREE.Vector3(0, 1, 4);
+    const localDirection = new THREE.Vector3(0, -0.2, -1).normalize();
+    const worldOrigin = root.localToWorld(localOrigin.clone());
+    const worldDirection = localDirection.clone().transformDirection(root.matrixWorld);
+    const source = new THREE.Ray(worldOrigin, worldDirection);
+    const mirrored = mirrorRayAcrossObjectLocalX(source, root);
+
+    expect(mirrored.origin.distanceTo(source.origin)).toBeLessThan(1e-6);
+    expect(mirrored.direction.distanceTo(source.direction)).toBeLessThan(1e-6);
+  });
+
 });
