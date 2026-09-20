@@ -1206,10 +1206,12 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
       };
     }
 
-    const textureEntries = manifest.layers.flatMap((layer) => layer.textures);
-    if (textureEntries.length > MAX_UNIT_PAINTER_TEXTURES * manifest.layers.length) {
-      throw new Error("The saved unit painter project contains too many layer textures.");
+    if (manifest.layers.some((layer) => layer.textures.length > MAX_UNIT_PAINTER_TEXTURES)) {
+      throw new Error(
+        `Each unit-painter layer may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`,
+      );
     }
+    const textureEntries = manifest.layers.flatMap((layer) => layer.textures);
     const texturePaths = textureEntries.map((texture) => texture.filePath);
     const withTextures = texturePaths.length > 0
       ? await readPack(packPath, { skipParsingTables: true, filesToRead: texturePaths })
