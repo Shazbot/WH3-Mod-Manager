@@ -1205,8 +1205,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (!painterEnabledRef.current) {
       const cursor = brushCursorRef.current;
       if (cursor) cursor.style.display = "none";
+      if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
     }
-  }, [enablePainting, isPainterEnabled, status, comparisonModelCount]);
+  }, [enablePainting, isPainterEnabled, isPaintEyedropperActive, status, comparisonModelCount]);
 
   useEffect(() => {
     if (
@@ -1299,6 +1300,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               onClick={() => {
                 setIsPainterEnabled((enabled) => {
                   if (!enabled) setIsPlaying(false);
+                  else setIsPaintEyedropperActive(false);
                   return !enabled;
                 });
               }}
