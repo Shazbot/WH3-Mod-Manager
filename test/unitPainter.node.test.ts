@@ -546,13 +546,14 @@ describe("unit painter", () => {
       paint(painter, { color: { r: 255, g: 0, b: 0 } });
       const lowerLayerId = painter.session.activeLayerId;
       const upperLayerId = painter.session.addLayer("Blue");
+      expect(upperLayerId).toBeDefined();
       paint(painter, { color: { r: 0, g: 0, b: 255 } });
       expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
 
-      expect(painter.session.setLayerOpacity(upperLayerId, 0.5)).toBe(true);
+      expect(painter.session.setLayerOpacity(upperLayerId!, 0.5)).toBe(true);
       expect(getPixel(painter.material, 14, 8)).toEqual([128, 0, 128, 255]);
 
-      expect(painter.session.setLayerVisible(upperLayerId, false)).toBe(true);
+      expect(painter.session.setLayerVisible(upperLayerId!, false)).toBe(true);
       expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
 
       expect(painter.session.undo()).toBe(true);
@@ -590,10 +591,11 @@ describe("unit painter", () => {
     try {
       paint(painter, { color: { r: 255, g: 0, b: 0 } });
       const blueId = painter.session.addLayer("Blue");
+      expect(blueId).toBeDefined();
       paint(painter, { color: { r: 0, g: 0, b: 255 } });
       expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
 
-      expect(painter.session.moveLayer(blueId, -1)).toBe(true);
+      expect(painter.session.moveLayer(blueId!, -1)).toBe(true);
       expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
       expect(painter.session.undo()).toBe(true);
       expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
@@ -601,7 +603,7 @@ describe("unit painter", () => {
       expect(painter.session.deleteActiveLayer()).toBe(true);
       expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
       expect(painter.session.undo()).toBe(true);
-      expect(painter.session.activeLayerId).toBe(blueId);
+      expect(painter.session.activeLayerId).toBe(blueId!);
       expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
       expect(painter.session.redo()).toBe(true);
       expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
@@ -637,9 +639,10 @@ describe("unit painter", () => {
     try {
       paint(source, { color: { r: 200, g: 10, b: 20 } });
       const topId = source.session.addLayer("Highlights");
+      expect(topId).toBeDefined();
       paint(source, { color: { r: 20, g: 220, b: 40 }, opacity: 0.75 });
-      expect(source.session.setLayerOpacity(topId, 0.6)).toBe(true);
-      expect(source.session.renameLayer(topId, "Green highlights")).toBe(true);
+      expect(source.session.setLayerOpacity(topId!, 0.6)).toBe(true);
+      expect(source.session.renameLayer(topId!, "Green highlights")).toBe(true);
 
       const state = source.session.exportProjectState();
       reopened.session.loadProjectLayers(state);
