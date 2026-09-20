@@ -175,15 +175,16 @@ const estimateBrushRadiusTexels = (
   return Math.max(MIN_BRUSH_RADIUS_TEXELS, Math.min(radius, maxRadius));
 };
 
-const blendPixel = (
+const blendPixelFromStrokeStart = (
   target: PaintableTexture,
   byteIndex: number,
+  sourcePacked: number,
   settings: UnitPainterBrushSettings,
-  alpha: number,
+  coverage: number,
 ) => {
-  const sourceR = target.data[byteIndex];
-  const sourceG = target.data[byteIndex + 1];
-  const sourceB = target.data[byteIndex + 2];
+  const sourceR = sourcePacked & 0xff;
+  const sourceG = (sourcePacked >>> 8) & 0xff;
+  const sourceB = (sourcePacked >>> 16) & 0xff;
 
   let targetR = settings.color.r;
   let targetG = settings.color.g;
@@ -199,7 +200,7 @@ const blendPixel = (
     targetB *= originalValue;
   }
 
-  const blend = Math.max(0, Math.min(1, alpha * settings.strength));
+  const blend = Math.max(0, Math.min(1, coverage));
   target.data[byteIndex] = Math.round(sourceR + (targetR - sourceR) * blend);
   target.data[byteIndex + 1] = Math.round(sourceG + (targetG - sourceG) * blend);
   target.data[byteIndex + 2] = Math.round(sourceB + (targetB - sourceB) * blend);
@@ -211,6 +212,7 @@ export class UnitPainterSession {
   private readonly history: Stroke[] = [];
   private readonly redoHistory: Stroke[] = [];
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
+  private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private isStrokeOpen = false;
 
   constructor(root: THREE.Object3D) {
@@ -270,6 +272,7 @@ export class UnitPainterSession {
   beginStroke() {
     if (this.isStrokeOpen) this.endStroke();
     this.currentStroke = new Map();
+    this.currentStrokeCoverage = new Map();
     this.isStrokeOpen = true;
   }
 
@@ -278,6 +281,7 @@ export class UnitPainterSession {
     settings: UnitPainterBrushSettings,
     camera: THREE.PerspectiveCamera,
     viewportHeight: number,
+    screenRadiusPx = settings.radiusPx,
   ) {
     if (!this.isStrokeOpen || !intersection.uv) return false;
     const material = getIntersectionMaterial(intersection);
@@ -289,7 +293,7 @@ export class UnitPainterSession {
     const radius = estimateBrushRadiusTexels(
       intersection,
       target,
-      Math.max(1, settings.radiusPx),
+      Math.max(1, screenRadiusPx),
       camera,
       viewportHeight,
     );
@@ -304,6 +308,11 @@ export class UnitPainterSession {
       before = new Map();
       this.currentStroke.set(target, before);
     }
+    let coverage = this.currentStrokeCoverage.get(target);
+    if (!coverage) {
+      coverage = new Map();
+      this.currentStrokeCoverage.set(target, coverage);
+    }
 
     let changed = false;
     for (let y = minY; y <= maxY; y += 1) {
@@ -316,12 +325,16 @@ export class UnitPainterSession {
         const pixelX = wrapCoordinate(x, target.width, target.editable.wrapS);
         const pixelY = wrapCoordinate(y, target.height, target.editable.wrapT);
         const byteIndex = (pixelY * target.width + pixelX) * 4;
-        const oldValue = packPixel(target.data, byteIndex);
-        if (!before.has(byteIndex)) before.set(byteIndex, oldValue);
+        const currentValue = packPixel(target.data, byteIndex);
+        const strokeStartValue = before.get(byteIndex) ?? currentValue;
+        if (!before.has(byteIndex)) before.set(byteIndex, strokeStartValue);
 
         const falloff = distance <= 0.78 ? 1 : Math.max(0, (1 - distance) / 0.22);
-        blendPixel(target, byteIndex, settings, falloff);
-        if (packPixel(target.data, byteIndex) !== oldValue) changed = true;
+        const nextCoverage = Math.max(coverage.get(byteIndex) ?? 0, falloff * settings.strength);
+        if (nextCoverage <= (coverage.get(byteIndex) ?? 0)) continue;
+        coverage.set(byteIndex, nextCoverage);
+        blendPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
+        if (packPixel(target.data, byteIndex) !== currentValue) changed = true;
       }
     }
 
@@ -346,6 +359,7 @@ export class UnitPainterSession {
       if (after.size > 0) stroke.push({ target, before: compactBefore, after });
     }
     this.currentStroke = new Map();
+    this.currentStrokeCoverage = new Map();
 
     if (stroke.length === 0) return false;
     this.history.push(stroke);
@@ -394,6 +408,7 @@ export class UnitPainterSession {
     this.history.length = 0;
     this.redoHistory.length = 0;
     this.currentStroke.clear();
+    this.currentStrokeCoverage.clear();
   }
 
   private applyStroke(stroke: Stroke, side: "before" | "after") {
