@@ -21,6 +21,7 @@ import {
   type UnitPainterProjectOpenResult,
   type UnitPainterUnitVariantContext,
 } from "../visuals/modelPreviewApi";
+import type { VisualsModelPreviewAnimationReference } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
 import { selectDefaultAnimation } from "../visuals/animationSelection";
@@ -97,14 +98,16 @@ type CameraView = {
 };
 
 type PreviewAnimation = {
+  key: string;
   path: string;
   label: string;
+  reference?: VisualsModelPreviewAnimationReference;
 };
 
 type UnitPainterSelectMode = "material" | "island" | "similar";
 type UnitPainterIsolationMode = "off" | "ghost" | "hide";
 
-const NONE_ANIMATION: PreviewAnimation = { path: "", label: "None" };
+const NONE_ANIMATION: PreviewAnimation = { key: "", path: "", label: "None" };
 const ALL_VARIANTS = -1;
 const MAX_COMPARISON_MODELS = 100;
 const ALT_ORBIT_DRAG_THRESHOLD_PX = 4;
@@ -645,6 +648,9 @@ const getAnimationLabel = (path: string) => {
   return fileName.replace(/\.anim$/i, "").replace(/[_-]+/g, " ");
 };
 
+const getAnimationSelectionKey = (reference: VisualsModelPreviewAnimationReference, index: number) =>
+  [reference.path, reference.packIndex ?? "", reference.fragmentPath ?? "", reference.metadataPath ?? "", index].join("\0");
+
 const formatAnimationTime = (seconds: number) => {
   const wholeSeconds = Math.max(0, Math.floor(seconds));
   return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, "0")}`;
@@ -970,6 +976,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     [assetPath, effectiveEnabledMods],
   );
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
+  const selectedAnimation = animationOptions.find((animation) => animation.key === selectedAnimationPath);
+  const selectedAnimationReference = selectedAnimation?.reference;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
   const paintHasUnsavedChanges =
@@ -2080,13 +2088,24 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         if (isCancelled) return;
         const animations = (result.animations || [])
           .filter((animation) => animation.path?.trim())
-          .map((animation) => ({ path: animation.path, label: getAnimationLabel(animation.path) }))
-          .filter((animation, index, all) => all.findIndex((candidate) => candidate.path === animation.path) === index)
-          .sort((first, second) => first.label.localeCompare(second.label) || first.path.localeCompare(second.path));
+          .map((reference, index) => ({
+            key: getAnimationSelectionKey(reference, index),
+            path: reference.path,
+            label: getAnimationLabel(reference.path),
+            reference,
+          }))
+          .sort(
+            (first, second) =>
+              first.label.localeCompare(second.label)
+              || first.path.localeCompare(second.path)
+              || (first.reference.fragmentPath ?? "").localeCompare(second.reference.fragmentPath ?? "")
+              || (first.reference.metadataPath ?? "").localeCompare(second.reference.metadataPath ?? "")
+              || first.key.localeCompare(second.key),
+          );
         const options = [NONE_ANIMATION, ...animations];
         const defaultAnimation = selectDefaultAnimation(animations);
         setAnimationOptions(options);
-        setSelectedAnimationPath(defaultAnimation?.path || "");
+        setSelectedAnimationPath(defaultAnimation?.key || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
         if (result.success) loadedAnimationCatalogKeyRef.current = animationCatalogKey;
       } catch (catalogError) {
@@ -2325,7 +2344,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           const exportResult = await exportVisualsModel(
             assetPath,
             effectiveEnabledMods,
-            selectedAnimationPath ? [selectedAnimationPath] : [],
+            selectedAnimationReference ? [selectedAnimationReference] : [],
             comparisonVariants[0].selections,
           );
           singleExportRoundTripMs = performance.now() - exportStartedAt;
@@ -2342,7 +2361,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           const batchResult = await exportVisualsModelBatch(
             assetPath,
             effectiveEnabledMods,
-            selectedAnimationPath ? [selectedAnimationPath] : [],
+            selectedAnimationReference ? [selectedAnimationReference] : [],
             comparisonVariants.map((variant) => ({ variantSelections: variant.selections })),
           );
           if (!batchResult.success || !batchResult.items) {
@@ -2502,6 +2521,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     isActive,
     paintProjectReloadVersion,
     selectedAnimationPath,
+    selectedAnimationReference,
     unsyncedAnimations,
     variantCatalogDiagnostics,
     variantCatalogReady,
@@ -4787,11 +4807,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               setSelectedAnimationPath(event.target.value);
             }}
             aria-label="Animation"
-            title={selectedAnimationPath}
+            title={selectedAnimation?.path || ""}
             className="min-w-0 max-w-[18rem] flex-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-100"
           >
             {animationOptions.map((animation) => (
-              <option key={animation.path} value={animation.path}>
+              <option key={animation.key} value={animation.key}>
                 {animation.label}
               </option>
             ))}

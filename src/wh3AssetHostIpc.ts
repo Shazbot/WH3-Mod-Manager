@@ -13,6 +13,7 @@ import {
 } from "./assetProtocol";
 import {
   Wh3AssetHostClient,
+  type Wh3AssetHostAnimationReference,
   type Wh3AssetHostDecisionAction,
   type Wh3AssetHostDecisionRequest,
 } from "./wh3AssetHostClient";
@@ -353,15 +354,33 @@ const sanitizeEnabledMods = (value: unknown): Wh3AssetHostMod[] => {
   });
 };
 
-const sanitizeAnimationPaths = (value: unknown): string[] => {
+const sanitizeAnimationSelections = (value: unknown): Wh3AssetHostAnimationReference[] => {
   if (!Array.isArray(value)) return [];
-  const paths = new Set<string>();
+  const selections = new Map<string, Wh3AssetHostAnimationReference>();
   for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const path = entry.trim();
-    if (path) paths.add(path);
+    if (typeof entry === "string") {
+      const path = entry.trim();
+      if (path) selections.set(path.toLowerCase(), { path });
+      continue;
+    }
+    if (!entry || typeof entry !== "object") continue;
+    const candidate = entry as Partial<Wh3AssetHostAnimationReference>;
+    const path = typeof candidate.path === "string" ? candidate.path.trim() : "";
+    if (!path) continue;
+    const packIndex = candidate.packIndex;
+    if (packIndex != null && (!Number.isInteger(packIndex) || packIndex < 0)) continue;
+    const fragmentPath = typeof candidate.fragmentPath === "string" ? candidate.fragmentPath.trim() : "";
+    const metadataPath = typeof candidate.metadataPath === "string" ? candidate.metadataPath.trim() : "";
+    const selection = {
+      path,
+      packIndex: packIndex ?? null,
+      fragmentPath: fragmentPath || null,
+      metadataPath: metadataPath || null,
+    } satisfies Wh3AssetHostAnimationReference;
+    const key = [path.toLowerCase(), packIndex ?? "", fragmentPath.toLowerCase(), metadataPath.toLowerCase()].join("\0");
+    selections.set(key, selection);
   }
-  return [...paths];
+  return [...selections.values()];
 };
 
 const sanitizeVariantSelections = (value: unknown): VariantMeshSelection[] => {
@@ -454,7 +473,8 @@ const exportVisualsModelNow = async (
   if (!normalized.success) return normalized;
 
   const enabledMods = sanitizeEnabledMods(enabledModsValue);
-  const animationPaths = sanitizeAnimationPaths(animationPathsValue);
+  const animationSelections = sanitizeAnimationSelections(animationPathsValue);
+  const animationPaths = animationSelections.map((selection) => selection.path);
   const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
   const previewId = randomUUID();
   const outputRoot = getOutputRoot();
@@ -473,6 +493,7 @@ const exportVisualsModelNow = async (
       assetPath: normalized.assetPath,
       outputPath,
       animationPaths,
+      animationSelections,
       variantSelections,
     });
     const hostExportMs = performance.now() - hostExportStartedAt;
@@ -553,7 +574,8 @@ const exportVisualsModelBatchNow = async (
   if (!normalized.success) return normalized;
 
   const enabledMods = sanitizeEnabledMods(enabledModsValue);
-  const animationPaths = sanitizeAnimationPaths(animationPathsValue);
+  const animationSelections = sanitizeAnimationSelections(animationPathsValue);
+  const animationPaths = animationSelections.map((selection) => selection.path);
   const items = sanitizeVariantSelectionBatch(itemsValue);
   if (items.length === 0) {
     return { success: false as const, error: "At least one comparison model is required." };
@@ -581,6 +603,7 @@ const exportVisualsModelBatchNow = async (
     const batchResult = await host.client.exportModels({
       assetPath: normalized.assetPath,
       animationPaths,
+      animationSelections,
       items: previewsToCreate.map(({ outputPath, variantSelections }) => ({ outputPath, variantSelections })),
     });
     const hostExportMs = performance.now() - hostExportStartedAt;

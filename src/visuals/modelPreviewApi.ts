@@ -64,9 +64,16 @@ export interface VisualsModelPreviewBatchExportResult {
 export interface VisualsModelPreviewAnimationCatalogResult {
   success: boolean;
   skeletonName?: string | null;
-  animations?: Array<{ path: string }>;
+  animations?: VisualsModelPreviewAnimationReference[];
   diagnostics?: string[];
   error?: string;
+}
+
+export interface VisualsModelPreviewAnimationReference {
+  path: string;
+  packIndex?: number | null;
+  fragmentPath?: string | null;
+  metadataPath?: string | null;
 }
 
 export interface UnitPainterTextureExport {
@@ -219,7 +226,6 @@ export interface UnitPainterProjectOpenResult {
   packPath?: string;
   project?: UnitPainterOpenedProject;
 }
-
 type RendererIpc = {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
 };
@@ -243,28 +249,28 @@ const getRendererIpc = (): RendererIpc => {
 export const exportVisualsModel = async (
   assetPath: string,
   enabledMods: readonly VisualsModelPreviewMod[],
-  animationPaths: readonly string[] = [],
+  animationSelections: readonly VisualsModelPreviewAnimationReference[] = [],
   variantSelections: readonly VariantMeshSelection[] = [],
 ): Promise<VisualsModelPreviewExportResult> =>
   (await getRendererIpc().invoke(
     "exportVisualsModel",
     assetPath,
     enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
-    [...animationPaths],
+    [...animationSelections],
     [...variantSelections],
   )) as VisualsModelPreviewExportResult;
 
 export const exportVisualsModelBatch = async (
   assetPath: string,
   enabledMods: readonly VisualsModelPreviewMod[],
-  animationPaths: readonly string[] = [],
+  animationSelections: readonly VisualsModelPreviewAnimationReference[] = [],
   items: readonly VisualsModelPreviewBatchItem[] = [],
 ): Promise<VisualsModelPreviewBatchExportResult> =>
   (await getRendererIpc().invoke(
     "exportVisualsModelBatch",
     assetPath,
     enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
-    [...animationPaths],
+    [...animationSelections],
     items.map((item) => ({ variantSelections: [...item.variantSelections] })),
   )) as VisualsModelPreviewBatchExportResult;
 

@@ -220,6 +220,18 @@ describe("WH3AssetHostClient", () => {
       outputPath: "p\\model.glb",
       variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 1 }],
     });
+    await assetHost.exportModel({
+      assetPath: "variantmeshes\\foo.variantmeshdefinition",
+      outputPath: "p\\model-with-context.glb",
+      animationSelections: [
+        {
+          path: "animations\\battle\\human\\stand_idle.anim",
+          packIndex: 2,
+          fragmentPath: "animations\\fragments\\human.fragment",
+          metadataPath: "animations\\metadata\\human.meta",
+        },
+      ],
+    });
 
     expect(seen[0]).toMatchObject({
       protocolVersion: 1,
@@ -242,6 +254,19 @@ describe("WH3AssetHostClient", () => {
       exportMaterials: true,
       includeSkeleton: true,
       mirrorMesh: true,
+    });
+    expect(seen[3]).toMatchObject({
+      protocolVersion: 1,
+      command: "exportModel",
+      animationPaths: ["animations\\battle\\human\\stand_idle.anim"],
+      animationSelections: [
+        {
+          path: "animations\\battle\\human\\stand_idle.anim",
+          packIndex: 2,
+          fragmentPath: "animations\\fragments\\human.fragment",
+          metadataPath: "animations\\metadata\\human.meta",
+        },
+      ],
     });
     assetHost.dispose();
   });

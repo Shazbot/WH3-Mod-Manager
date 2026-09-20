@@ -95,6 +95,7 @@ export interface Wh3AssetHostExportModelRequest {
   assetPath: string;
   outputPath: string;
   animationPaths?: string[];
+  animationSelections?: readonly Wh3AssetHostAnimationReference[];
   /** Explicit choices for VMD slots; interpreted by the host when supported. */
   variantSelections?: readonly VariantMeshSelection[];
   exportMaterials?: boolean;
@@ -111,6 +112,7 @@ export interface Wh3AssetHostExportModelBatchRequest {
   assetPath: string;
   items: readonly Wh3AssetHostExportModelBatchItem[];
   animationPaths?: string[];
+  animationSelections?: readonly Wh3AssetHostAnimationReference[];
   exportMaterials?: boolean;
   includeSkeleton?: boolean;
   mirrorMesh?: boolean;
@@ -148,8 +150,15 @@ export interface Wh3AssetHostAnimationCatalog {
   assetPath: string;
   skeletonName?: string | null;
   hasSkeletonFile: boolean;
-  animations: Array<{ path: string }>;
+  animations: Wh3AssetHostAnimationReference[];
   diagnostics: string[];
+}
+
+export interface Wh3AssetHostAnimationReference {
+  path: string;
+  packIndex?: number | null;
+  fragmentPath?: string | null;
+  metadataPath?: string | null;
 }
 
 export class Wh3AssetHostRemoteError extends Error {
@@ -371,29 +380,43 @@ export class Wh3AssetHostClient {
   }
 
   exportModel(request: Wh3AssetHostExportModelRequest): Promise<Wh3AssetHostExportResult> {
-    return this.request<Wh3AssetHostExportResult>("exportModel", {
+    const animationPaths = request.animationSelections && request.animationSelections.length > 0
+      ? request.animationSelections.map((selection) => selection.path)
+      : request.animationPaths ?? [];
+    const payload = {
       assetPath: request.assetPath,
       outputPath: request.outputPath,
-      animationPaths: request.animationPaths ?? [],
+      animationPaths,
       variantSelections: request.variantSelections ?? [],
       exportMaterials: request.exportMaterials ?? true,
       includeSkeleton: request.includeSkeleton ?? true,
       mirrorMesh: request.mirrorMesh ?? true,
-    });
+      ...(request.animationSelections && request.animationSelections.length > 0
+        ? { animationSelections: request.animationSelections }
+        : {}),
+    };
+    return this.request<Wh3AssetHostExportResult>("exportModel", payload);
   }
 
   exportModels(request: Wh3AssetHostExportModelBatchRequest): Promise<Wh3AssetHostExportModelBatchResult> {
-    return this.request<Wh3AssetHostExportModelBatchResult>("exportModelBatch", {
+    const animationPaths = request.animationSelections && request.animationSelections.length > 0
+      ? request.animationSelections.map((selection) => selection.path)
+      : request.animationPaths ?? [];
+    const payload = {
       assetPath: request.assetPath,
       items: request.items.map((item) => ({
         outputPath: item.outputPath,
         variantSelections: item.variantSelections ?? [],
       })),
-      animationPaths: request.animationPaths ?? [],
+      animationPaths,
       exportMaterials: request.exportMaterials ?? true,
       includeSkeleton: request.includeSkeleton ?? true,
       mirrorMesh: request.mirrorMesh ?? true,
-    });
+      ...(request.animationSelections && request.animationSelections.length > 0
+        ? { animationSelections: request.animationSelections }
+        : {}),
+    };
+    return this.request<Wh3AssetHostExportModelBatchResult>("exportModelBatch", payload);
   }
 
   getAnimationCatalog(assetPath: string): Promise<Wh3AssetHostAnimationCatalog> {
