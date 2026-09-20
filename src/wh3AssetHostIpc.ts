@@ -776,6 +776,7 @@ const exportUnitPainterVariantNow = async (
   enabledModsValue: unknown,
   variantSelectionsValue: unknown,
   texturesValue: unknown,
+  targetPackPathValue: unknown,
   generation: number,
 ) => {
   const assetPath = typeof assetPathValue === "string" ? assetPathValue.trim() : "";
@@ -851,20 +852,26 @@ const exportUnitPainterVariantNow = async (
   const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
   const suggestedPackName = getUnitPainterDefaultPackName(normalizedAsset.assetPath);
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
-  const dialogOptions: SaveDialogOptions = {
-    title: "Create painted WH3 mod",
-    buttonLabel: "Create Mod",
-    defaultPath: dataFolder ? nodePath.join(dataFolder, suggestedPackName) : suggestedPackName,
-    filters: [{ name: "Total War pack", extensions: ["pack"] }],
-  };
-  const selection = ownerWindow
-    ? await dialog.showSaveDialog(ownerWindow, dialogOptions)
-    : await dialog.showSaveDialog(dialogOptions);
-  if (selection.canceled || !selection.filePath) {
-    return { success: false as const, canceled: true };
+  const requestedPackPath =
+    typeof targetPackPathValue === "string" ? targetPackPathValue.trim() : "";
+  let packPath: string;
+  if (requestedPackPath) {
+    packPath = ensureUnitPainterPackExtension(nodePath.resolve(requestedPackPath));
+  } else {
+    const dialogOptions: SaveDialogOptions = {
+      title: "Save painted WH3 mod",
+      buttonLabel: "Save Mod",
+      defaultPath: dataFolder ? nodePath.join(dataFolder, suggestedPackName) : suggestedPackName,
+      filters: [{ name: "Total War pack", extensions: ["pack"] }],
+    };
+    const selection = ownerWindow
+      ? await dialog.showSaveDialog(ownerWindow, dialogOptions)
+      : await dialog.showSaveDialog(dialogOptions);
+    if (selection.canceled || !selection.filePath) {
+      return { success: false as const, canceled: true };
+    }
+    packPath = ensureUnitPainterPackExtension(selection.filePath);
   }
-
-  const packPath = ensureUnitPainterPackExtension(selection.filePath);
   const packName = nodePath.basename(packPath);
   const vanillaPackNames = new Set(
     [
@@ -1010,10 +1017,18 @@ ipcMain.handle(
     enabledMods: unknown,
     variantSelections: unknown,
     textures: unknown,
+    targetPackPath: unknown,
   ) => {
     const generation = hostLifecycleGeneration;
     return exportVisualsModel(() =>
-      exportUnitPainterVariantNow(assetPath, enabledMods, variantSelections, textures, generation),
+      exportUnitPainterVariantNow(
+        assetPath,
+        enabledMods,
+        variantSelections,
+        textures,
+        targetPackPath,
+        generation,
+      ),
     );
   },
 );

@@ -158,6 +158,7 @@ export const exportUnitPainterTextures = async (
   enabledMods: readonly VisualsModelPreviewMod[],
   variantSelections: readonly VariantMeshSelection[],
   textures: readonly UnitPainterTextureExport[],
+  targetPackPath?: string,
 ): Promise<UnitPainterTextureExportResult> =>
   (await getRendererIpc().invoke(
     "exportUnitPainterTextures",
@@ -171,4 +172,5 @@ export const exportUnitPainterTextures = async (
       height: texture.height,
       rgbaBytes: texture.rgbaBytes,
     })),
+    targetPackPath,
   )) as UnitPainterTextureExportResult;

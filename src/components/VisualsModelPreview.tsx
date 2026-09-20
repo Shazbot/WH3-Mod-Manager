@@ -427,6 +427,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPaintEyedropperActive, setIsPaintEyedropperActive] = useState(false);
   const [paintTextureCount, setPaintTextureCount] = useState(-1);
   const [paintExportStatus, setPaintExportStatus] = useState("");
+  const [paintPackPath, setPaintPackPath] = useState<string>();
   const [isPaintExporting, setIsPaintExporting] = useState(false);
   const [, setPaintHistoryVersion] = useState(0);
   const catalogLoadingRef = useRef(true);
@@ -1198,6 +1199,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   ]);
 
   useEffect(() => {
+    setPaintPackPath(undefined);
+  }, [assetPath]);
+
+  useEffect(() => {
     if (comparisonModelCount !== 1 && isPainterEnabled) setIsPainterEnabled(false);
   }, [comparisonModelCount, isPainterEnabled]);
 
@@ -1269,6 +1274,62 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const nextTime = Math.max(0, Math.min(value, clipDuration));
     for (const action of actions) action.time = nextTime;
     setCurrentTime(nextTime);
+  };
+
+  const savePaintedMod = (mode: "create" | "save" | "saveAs") => {
+    const session = paintSessionRef.current;
+    if (!session || isPaintExporting) return;
+    const targetPackPath = mode === "save" ? paintPackPath : undefined;
+    if (mode === "save" && !targetPackPath) return;
+
+    void (async () => {
+      setIsPaintExporting(true);
+      setPaintExportStatus(mode === "save" ? "Saving painted mod…" : "Preparing painted mod…");
+      try {
+        const textures = await session.exportModifiedTextures();
+        if (textures.length === 0) {
+          setPaintExportStatus("Nothing has been painted yet.");
+          return;
+        }
+        const result = await exportUnitPainterTextures(
+          assetPath,
+          enabledMods,
+          comparisonVariants[0]?.selections ?? [],
+          textures,
+          targetPackPath,
+        );
+        if (result.canceled) {
+          setPaintExportStatus("");
+          return;
+        }
+        if (!result.success) {
+          setPaintExportStatus(result.error || "Painted mod save failed.");
+          return;
+        }
+
+        if (result.packPath) setPaintPackPath(result.packPath);
+        const warningSuffix = result.warnings?.length
+          ? ` · ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`
+          : "";
+        const successLabel =
+          mode === "save"
+            ? "Saved mod"
+            : mode === "saveAs"
+              ? "Saved as"
+              : "Created mod";
+        setPaintExportStatus(
+          result.packPath
+            ? `${successLabel}: ${result.packPath}${warningSuffix}`
+            : `${successLabel}${warningSuffix}`,
+        );
+      } catch (exportError) {
+        setPaintExportStatus(
+          exportError instanceof Error ? exportError.message : "Painted mod save failed.",
+        );
+      } finally {
+        setIsPaintExporting(false);
+      }
+    })();
   };
 
   return (
@@ -1422,51 +1483,29 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 <button
                   type="button"
                   disabled={!paintSessionRef.current || isPaintExporting}
-                  onClick={() => {
-                    const session = paintSessionRef.current;
-                    if (!session) return;
-                    void (async () => {
-                      setIsPaintExporting(true);
-                      setPaintExportStatus("Preparing painted mod…");
-                      try {
-                        const textures = await session.exportModifiedTextures();
-                        if (textures.length === 0) {
-                          setPaintExportStatus("Nothing has been painted yet.");
-                          return;
-                        }
-                        const result = await exportUnitPainterTextures(
-                          assetPath,
-                          enabledMods,
-                          comparisonVariants[0]?.selections ?? [],
-                          textures,
-                        );
-                        if (result.canceled) {
-                          setPaintExportStatus("");
-                        } else if (result.success) {
-                          const warningSuffix = result.warnings?.length
-                            ? ` · ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`
-                            : "";
-                          setPaintExportStatus(
-                            result.packPath
-                              ? `Created mod: ${result.packPath}${warningSuffix}`
-                              : `Created painted mod${warningSuffix}`,
-                          );
-                        } else {
-                          setPaintExportStatus(result.error || "Painted mod creation failed.");
-                        }
-                      } catch (exportError) {
-                        setPaintExportStatus(
-                          exportError instanceof Error ? exportError.message : "Painted mod creation failed.",
-                        );
-                      } finally {
-                        setIsPaintExporting(false);
-                      }
-                    })();
-                  }}
+                  onClick={() => savePaintedMod(paintPackPath ? "save" : "create")}
                   className="rounded border border-blue-500 bg-blue-700/40 px-2 py-1 text-blue-100 hover:bg-blue-700/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  title={paintPackPath ? `Save to ${paintPackPath}` : "Create a painted mod pack"}
                 >
-                  {isPaintExporting ? "Creating…" : "Create painted mod"}
+                  {isPaintExporting
+                    ? paintPackPath
+                      ? "Saving…"
+                      : "Creating…"
+                    : paintPackPath
+                      ? "Save painted mod"
+                      : "Create painted mod"}
                 </button>
+                {paintPackPath && (
+                  <button
+                    type="button"
+                    disabled={!paintSessionRef.current || isPaintExporting}
+                    onClick={() => savePaintedMod("saveAs")}
+                    className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Save the painted mod to a different pack"
+                  >
+                    Save As…
+                  </button>
+                )}
                 {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
                 {paintExportStatus && <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>{paintExportStatus}</span>}
               </>
