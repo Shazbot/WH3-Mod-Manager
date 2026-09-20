@@ -30,6 +30,7 @@ import { readPack, writePack } from "./packFileSerializer";
 import {
   buildUnitPainterPackFiles,
   buildUnitPainterProjectPackFiles,
+  decodeUnitPainterProjectTexture,
   ensureUnitPainterPackExtension,
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
@@ -894,7 +895,7 @@ const exportUnitPainterVariantNow = async (
 
   const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
   if (textures.length === 0) {
-    const projectFiles = buildUnitPainterProjectPackFiles(
+    const projectFiles = await buildUnitPainterProjectPackFiles(
       normalizedAsset.assetPath,
       variantSelections,
       [],
@@ -975,7 +976,7 @@ const exportUnitPainterVariantNow = async (
       result.files ?? [],
       normalizedAsset.assetPath,
     );
-    const projectFiles = buildUnitPainterProjectPackFiles(
+    const projectFiles = await buildUnitPainterProjectPackFiles(
       normalizedAsset.assetPath,
       variantSelections,
       textures,
@@ -1099,24 +1100,24 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
       : withManifest;
     const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
     let totalBytes = 0;
-    const textures = manifest.paintedTextures.map((texture) => {
+    const textures = [];
+    for (const texture of manifest.paintedTextures) {
       const packed = byPath.get(texture.filePath.toLowerCase());
-      const rgbaBytes = packed?.buffer;
+      const compressed = packed?.buffer;
+      if (!compressed) throw new Error(`The saved painter texture '${texture.filePath}' is missing.`);
       const expectedBytes = texture.width * texture.height * 4;
-      if (!rgbaBytes || rgbaBytes.length !== expectedBytes) {
-        throw new Error(`The saved painter texture '${texture.filePath}' is missing or has the wrong size.`);
-      }
-      totalBytes += rgbaBytes.length;
+      totalBytes += expectedBytes;
       if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
         throw new Error("The saved unit painter project is too large.");
       }
-      return {
+      const rgbaBytes = await decodeUnitPainterProjectTexture(compressed, expectedBytes);
+      textures.push({
         sourceVirtualPath: texture.sourceVirtualPath,
         width: texture.width,
         height: texture.height,
         rgbaBytes,
-      };
-    });
+      });
+    }
 
     return {
       success: true as const,
