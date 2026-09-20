@@ -53,12 +53,44 @@ type PaintableMaterial = THREE.Material & {
 type PaintableTexture = {
   original: THREE.DataTexture;
   editable: THREE.DataTexture;
+  /** Flattened Base + visible paint layers shown in Three and used for export. */
   data: Uint8Array;
   originalData: Uint8Array;
   width: number;
   height: number;
   sourceFileName: string;
   sourceVirtualPath?: string;
+};
+
+type PaintLayer = {
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  textures: Map<PaintableTexture, Uint8Array>;
+};
+
+export type UnitPainterLayerInfo = {
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number;
+};
+
+export type UnitPainterProjectLayerTexture = {
+  sourceVirtualPath: string;
+  width: number;
+  height: number;
+  rgbaBytes: Uint8Array;
+};
+
+export type UnitPainterProjectLayer = UnitPainterLayerInfo & {
+  textures: UnitPainterProjectLayerTexture[];
+};
+
+export type UnitPainterProjectState = {
+  activeLayerId: string;
+  layers: UnitPainterProjectLayer[];
 };
 
 export type UnitPainterExportTexture = {
@@ -91,6 +123,7 @@ type UnitPainterSelection = {
 
 type SparseStrokeChange = {
   kind: "sparse";
+  layerId: string;
   target: PaintableTexture;
   before: Map<number, number>;
   after: Map<number, number>;
@@ -98,6 +131,7 @@ type SparseStrokeChange = {
 
 type PackedStrokeChange = {
   kind: "packed";
+  layerId: string;
   target: PaintableTexture;
   byteIndices: Uint32Array;
   before: Uint32Array;
@@ -105,8 +139,38 @@ type PackedStrokeChange = {
 };
 
 type StrokeChange = SparseStrokeChange | PackedStrokeChange;
+
+type LayerSnapshot = {
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  textures: Array<{ target: PaintableTexture; data: Uint8Array }>;
+};
+
+type LayerMetadata = Pick<PaintLayer, "name" | "visible" | "opacity">;
+
+type HistoryChange =
+  | { kind: "pixels"; changes: StrokeChange[] }
+  | {
+      kind: "layer-add";
+      layer: LayerSnapshot;
+      index: number;
+      beforeActiveLayerId: string;
+      afterActiveLayerId: string;
+    }
+  | {
+      kind: "layer-delete";
+      layer: LayerSnapshot;
+      index: number;
+      beforeActiveLayerId: string;
+      afterActiveLayerId: string;
+    }
+  | { kind: "layer-meta"; layerId: string; before: LayerMetadata; after: LayerMetadata }
+  | { kind: "layer-order"; before: string[]; after: string[] };
+
 type Stroke = {
-  changes: StrokeChange[];
+  change: HistoryChange;
   beforeStateId: number;
   afterStateId: number;
 };
@@ -552,8 +616,9 @@ const maskContainsPixel = (mask: UvIslandMask, x: number, y: number) => {
   return mask.pixels[localY * mask.width + localX] !== 0;
 };
 
-const blendPixelFromStrokeStart = (
+const blendLayerPixelFromStrokeStart = (
   target: PaintableTexture,
+  layerData: Uint8Array,
   byteIndex: number,
   sourcePacked: number,
   settings: UnitPainterBrushSettings,
@@ -562,14 +627,18 @@ const blendPixelFromStrokeStart = (
   const sourceR = sourcePacked & 0xff;
   const sourceG = (sourcePacked >>> 8) & 0xff;
   const sourceB = (sourcePacked >>> 16) & 0xff;
+  const sourceA = (sourcePacked >>> 24) & 0xff;
 
   let targetR = settings.color.r;
   let targetG = settings.color.g;
   let targetB = settings.color.b;
+  let targetA = 255;
   if (settings.mode === "restore") {
-    targetR = target.originalData[byteIndex];
-    targetG = target.originalData[byteIndex + 1];
-    targetB = target.originalData[byteIndex + 2];
+    // Restore is an eraser in layer mode: reveal the layers/Base below.
+    targetR = sourceR;
+    targetG = sourceG;
+    targetB = sourceB;
+    targetA = 0;
   } else if (settings.mode === "recolor") {
     const originalValue = Math.max(
       target.originalData[byteIndex],
@@ -581,10 +650,11 @@ const blendPixelFromStrokeStart = (
     targetB *= originalValue;
   }
 
-  const blend = Math.max(0, Math.min(1, coverage));
-  target.data[byteIndex] = Math.round(sourceR + (targetR - sourceR) * blend);
-  target.data[byteIndex + 1] = Math.round(sourceG + (targetG - sourceG) * blend);
-  target.data[byteIndex + 2] = Math.round(sourceB + (targetB - sourceB) * blend);
+  const blend = clamp01(coverage);
+  layerData[byteIndex] = Math.round(sourceR + (targetR - sourceR) * blend);
+  layerData[byteIndex + 1] = Math.round(sourceG + (targetG - sourceG) * blend);
+  layerData[byteIndex + 2] = Math.round(sourceB + (targetB - sourceB) * blend);
+  layerData[byteIndex + 3] = Math.round(sourceA + (targetA - sourceA) * blend);
 };
 
 export class UnitPainterSession {
@@ -600,8 +670,12 @@ export class UnitPainterSession {
   >();
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
+  private currentStrokeLayerId = "";
   private isStrokeOpen = false;
   private selection?: UnitPainterSelection;
+  private paintLayers: PaintLayer[] = [];
+  private activePaintLayerId = "";
+  private nextLayerNumber = 1;
   private currentStateId = 0;
   private savedStateId = 0;
   private nextStateId = 1;
@@ -655,10 +729,141 @@ export class UnitPainterSession {
         material.needsUpdate = true;
       }
     });
+
+    const initialLayer = this.createEmptyLayer();
+    this.paintLayers.push(initialLayer);
+    this.activePaintLayerId = initialLayer.id;
   }
 
   get textureCount() {
     return this.targetsByEditableTexture.size;
+  }
+
+  get layers(): UnitPainterLayerInfo[] {
+    return this.paintLayers.map(({ id, name, visible, opacity }) => ({ id, name, visible, opacity }));
+  }
+
+  get activeLayerId() {
+    return this.activePaintLayerId;
+  }
+
+  setActiveLayer(layerId: string) {
+    if (!this.paintLayers.some((layer) => layer.id === layerId)) return false;
+    if (this.isStrokeOpen) this.endStroke();
+    this.activePaintLayerId = layerId;
+    return true;
+  }
+
+  addLayer(name?: string) {
+    if (this.isStrokeOpen) this.endStroke();
+    const beforeActiveLayerId = this.activePaintLayerId;
+    const layer = this.createEmptyLayer(name);
+    const index = this.paintLayers.length;
+    this.paintLayers.push(layer);
+    this.activePaintLayerId = layer.id;
+    this.pushHistoryChange({
+      kind: "layer-add",
+      layer: this.snapshotLayer(layer),
+      index,
+      beforeActiveLayerId,
+      afterActiveLayerId: layer.id,
+    });
+    return layer.id;
+  }
+
+  duplicateActiveLayer() {
+    if (this.isStrokeOpen) this.endStroke();
+    const source = this.getActiveLayer();
+    if (!source) return undefined;
+    const duplicate = this.createEmptyLayer(`${source.name} copy`);
+    duplicate.visible = source.visible;
+    duplicate.opacity = source.opacity;
+    for (const [target, data] of source.textures) duplicate.textures.set(target, new Uint8Array(data));
+    const sourceIndex = this.paintLayers.indexOf(source);
+    const index = sourceIndex + 1;
+    const beforeActiveLayerId = source.id;
+    this.paintLayers.splice(index, 0, duplicate);
+    this.activePaintLayerId = duplicate.id;
+    this.recomposeAllTargets();
+    this.pushHistoryChange({
+      kind: "layer-add",
+      layer: this.snapshotLayer(duplicate),
+      index,
+      beforeActiveLayerId,
+      afterActiveLayerId: duplicate.id,
+    });
+    return duplicate.id;
+  }
+
+  deleteActiveLayer() {
+    if (this.paintLayers.length <= 1) return false;
+    if (this.isStrokeOpen) this.endStroke();
+    const layer = this.getActiveLayer();
+    if (!layer) return false;
+    const index = this.paintLayers.indexOf(layer);
+    const snapshot = this.snapshotLayer(layer);
+    const beforeActiveLayerId = layer.id;
+    this.paintLayers.splice(index, 1);
+    const nextActive = this.paintLayers[Math.min(index, this.paintLayers.length - 1)]!;
+    this.activePaintLayerId = nextActive.id;
+    this.recomposeAllTargets();
+    this.pushHistoryChange({
+      kind: "layer-delete",
+      layer: snapshot,
+      index,
+      beforeActiveLayerId,
+      afterActiveLayerId: nextActive.id,
+    });
+    return true;
+  }
+
+  renameLayer(layerId: string, name: string) {
+    if (this.isStrokeOpen) this.endStroke();
+    const layer = this.paintLayers.find((candidate) => candidate.id === layerId);
+    const nextName = name.trim().slice(0, 80);
+    if (!layer || !nextName || nextName === layer.name) return false;
+    const before = this.layerMetadata(layer);
+    layer.name = nextName;
+    this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
+    return true;
+  }
+
+  setLayerVisible(layerId: string, visible: boolean) {
+    if (this.isStrokeOpen) this.endStroke();
+    const layer = this.paintLayers.find((candidate) => candidate.id === layerId);
+    if (!layer || layer.visible === visible) return false;
+    const before = this.layerMetadata(layer);
+    layer.visible = visible;
+    this.recomposeAllTargets();
+    this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
+    return true;
+  }
+
+  setLayerOpacity(layerId: string, opacity: number) {
+    if (this.isStrokeOpen) this.endStroke();
+    const layer = this.paintLayers.find((candidate) => candidate.id === layerId);
+    const nextOpacity = clamp01(opacity);
+    if (!layer || Math.abs(layer.opacity - nextOpacity) < 0.0001) return false;
+    const before = this.layerMetadata(layer);
+    layer.opacity = nextOpacity;
+    this.recomposeAllTargets();
+    this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
+    return true;
+  }
+
+  moveLayer(layerId: string, offset: -1 | 1) {
+    if (this.isStrokeOpen) this.endStroke();
+    const index = this.paintLayers.findIndex((layer) => layer.id === layerId);
+    if (index < 0) return false;
+    const nextIndex = index + offset;
+    if (nextIndex < 0 || nextIndex >= this.paintLayers.length) return false;
+    const before = this.paintLayers.map((layer) => layer.id);
+    const [layer] = this.paintLayers.splice(index, 1);
+    this.paintLayers.splice(nextIndex, 0, layer);
+    const after = this.paintLayers.map((candidate) => candidate.id);
+    this.recomposeAllTargets();
+    this.pushHistoryChange({ kind: "layer-order", before, after });
+    return true;
   }
 
   get canUndo() {
@@ -680,8 +885,8 @@ export class UnitPainterSession {
 
   loadProjectTextures(textures: readonly UnitPainterImportTexture[]) {
     if (this.isStrokeOpen) this.endStroke();
-
-    const resolved = textures.map((texture) => {
+    const layer = this.createEmptyLayer("Imported paint");
+    for (const texture of textures) {
       const sourceKey = texture.sourceVirtualPath.replace(/\//g, "\\").toLowerCase();
       const target = this.targetsBySourcePath.get(sourceKey);
       if (!target) {
@@ -697,19 +902,33 @@ export class UnitPainterSession {
       if (texture.rgbaBytes.length !== target.width * target.height * 4) {
         throw new Error(`The saved painter data for '${texture.sourceVirtualPath}' has an invalid byte length.`);
       }
-      return { target, rgbaBytes: texture.rgbaBytes };
-    });
 
-    for (const { target, rgbaBytes } of resolved) {
-      target.data.set(rgbaBytes);
-      target.editable.needsUpdate = true;
+      const layerData = new Uint8Array(texture.rgbaBytes.length);
+      for (let byteIndex = 0; byteIndex < texture.rgbaBytes.length; byteIndex += 4) {
+        const changed =
+          texture.rgbaBytes[byteIndex] !== target.originalData[byteIndex]
+          || texture.rgbaBytes[byteIndex + 1] !== target.originalData[byteIndex + 1]
+          || texture.rgbaBytes[byteIndex + 2] !== target.originalData[byteIndex + 2];
+        if (!changed) continue;
+        layerData[byteIndex] = texture.rgbaBytes[byteIndex];
+        layerData[byteIndex + 1] = texture.rgbaBytes[byteIndex + 1];
+        layerData[byteIndex + 2] = texture.rgbaBytes[byteIndex + 2];
+        layerData[byteIndex + 3] = 255;
+      }
+      if (this.hasLayerPixels(layerData)) layer.textures.set(target, layerData);
     }
+
+    this.paintLayers = [layer];
+    this.activePaintLayerId = layer.id;
+    this.recomposeAllTargets();
     this.history.length = 0;
     this.redoHistory.length = 0;
     this.currentStroke.clear();
     this.currentStrokeCoverage.clear();
-    this.currentStateId = resolved.length > 0 ? this.nextStateId++ : 0;
-    this.savedStateId = this.currentStateId;
+    this.currentStrokeLayerId = "";
+    this.currentStateId = 0;
+    this.savedStateId = 0;
+    this.nextStateId = 1;
   }
 
   selectIntersection(intersection: THREE.Intersection<THREE.Object3D>): UnitPainterSelectionInfo | undefined {
@@ -762,6 +981,7 @@ export class UnitPainterSession {
     if (this.isStrokeOpen) this.endStroke();
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
+    this.currentStrokeLayerId = this.activePaintLayerId;
     this.isStrokeOpen = true;
   }
 
@@ -776,10 +996,12 @@ export class UnitPainterSession {
     if (!this.isStrokeOpen || !intersection.uv || !(intersection.object instanceof THREE.Mesh)) return false;
     const material = getIntersectionMaterial(intersection);
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
-    if (!target) return false;
+    const layer = this.paintLayers.find((candidate) => candidate.id === this.currentStrokeLayerId);
+    if (!target || !layer) return false;
 
     if (!this.matchesSelectionScope(intersection, scope)) return false;
 
+    const layerData = this.getLayerTextureData(layer, target, true)!;
     const islandMask = this.getUvIslandMask(intersection, target);
     const uv = intersection.uv.clone();
     target.editable.transformUv(uv);
@@ -819,16 +1041,20 @@ export class UnitPainterSession {
         const pixelY = wrapCoordinate(y, target.height, target.editable.wrapT);
         if (islandMask && !maskContainsPixel(islandMask, pixelX, pixelY)) continue;
         const byteIndex = (pixelY * target.width + pixelX) * 4;
-        const currentValue = packPixel(target.data, byteIndex);
-        const strokeStartValue = before.get(byteIndex) ?? currentValue;
+        const currentLayerValue = packPixel(layerData, byteIndex);
+        const strokeStartValue = before.get(byteIndex) ?? currentLayerValue;
         if (!before.has(byteIndex)) before.set(byteIndex, strokeStartValue);
 
         const falloff = getBrushFalloff(distance, settings.hardness);
-        const nextCoverage = Math.max(coverage.get(byteIndex) ?? 0, falloff * clamp01(settings.opacity));
-        if (nextCoverage <= (coverage.get(byteIndex) ?? 0)) continue;
+        const previousCoverage = coverage.get(byteIndex) ?? 0;
+        const nextCoverage = Math.max(previousCoverage, falloff * clamp01(settings.opacity));
+        if (nextCoverage <= previousCoverage) continue;
         coverage.set(byteIndex, nextCoverage);
-        blendPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
-        if (packPixel(target.data, byteIndex) !== currentValue) changed = true;
+        blendLayerPixelFromStrokeStart(target, layerData, byteIndex, strokeStartValue, settings, nextCoverage);
+        if (packPixel(layerData, byteIndex) !== currentLayerValue) {
+          this.recomposeTargetPixel(target, byteIndex);
+          changed = true;
+        }
       }
     }
 
@@ -856,7 +1082,8 @@ export class UnitPainterSession {
 
   fillSelection(scope: Exclude<UnitPainterSelectionScope, "all">, settings: UnitPainterBrushSettings) {
     const selection = this.selection;
-    if (!selection) return false;
+    const layer = this.getActiveLayer();
+    if (!selection || !layer) return false;
 
     const mask =
       scope === "island"
@@ -872,6 +1099,7 @@ export class UnitPainterSession {
     if (!mask) return false;
 
     if (this.isStrokeOpen) this.endStroke();
+    const layerData = this.getLayerTextureData(layer, selection.target, true)!;
     const byteIndices: number[] = [];
     const beforeValues: number[] = [];
     const afterValues: number[] = [];
@@ -883,13 +1111,14 @@ export class UnitPainterSession {
         const pixelX = mask.minX + localX;
         const pixelY = mask.minY + localY;
         const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
-        const currentValue = packPixel(selection.target.data, byteIndex);
-        blendPixelFromStrokeStart(selection.target, byteIndex, currentValue, settings, fillOpacity);
-        const nextValue = packPixel(selection.target.data, byteIndex);
+        const currentValue = packPixel(layerData, byteIndex);
+        blendLayerPixelFromStrokeStart(selection.target, layerData, byteIndex, currentValue, settings, fillOpacity);
+        const nextValue = packPixel(layerData, byteIndex);
         if (nextValue === currentValue) continue;
         byteIndices.push(byteIndex);
         beforeValues.push(currentValue);
         afterValues.push(nextValue);
+        this.recomposeTargetPixel(selection.target, byteIndex);
       }
     }
 
@@ -897,6 +1126,7 @@ export class UnitPainterSession {
     selection.target.editable.needsUpdate = true;
     this.pushHistory([{
       kind: "packed",
+      layerId: layer.id,
       target: selection.target,
       byteIndices: Uint32Array.from(byteIndices),
       before: Uint32Array.from(beforeValues),
@@ -907,7 +1137,8 @@ export class UnitPainterSession {
 
   resetSelection(scope: Exclude<UnitPainterSelectionScope, "all">) {
     const selection = this.selection;
-    if (!selection) return false;
+    const layer = this.getActiveLayer();
+    if (!selection || !layer) return false;
 
     const mask =
       scope === "island"
@@ -923,6 +1154,8 @@ export class UnitPainterSession {
     if (!mask) return false;
 
     if (this.isStrokeOpen) this.endStroke();
+    const layerData = this.getLayerTextureData(layer, selection.target);
+    if (!layerData) return false;
     const byteIndices: number[] = [];
     const beforeValues: number[] = [];
     const afterValues: number[] = [];
@@ -933,13 +1166,13 @@ export class UnitPainterSession {
         const pixelX = mask.minX + localX;
         const pixelY = mask.minY + localY;
         const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
-        const currentValue = packPixel(selection.target.data, byteIndex);
-        const originalValue = packPixel(selection.target.originalData, byteIndex);
-        if (currentValue === originalValue) continue;
-        unpackPixel(originalValue, selection.target.data, byteIndex);
+        const currentValue = packPixel(layerData, byteIndex);
+        if (currentValue === 0) continue;
+        unpackPixel(0, layerData, byteIndex);
         byteIndices.push(byteIndex);
         beforeValues.push(currentValue);
-        afterValues.push(originalValue);
+        afterValues.push(0);
+        this.recomposeTargetPixel(selection.target, byteIndex);
       }
     }
 
@@ -947,6 +1180,7 @@ export class UnitPainterSession {
     selection.target.editable.needsUpdate = true;
     this.pushHistory([{
       kind: "packed",
+      layerId: layer.id,
       target: selection.target,
       byteIndices: Uint32Array.from(byteIndices),
       before: Uint32Array.from(beforeValues),
@@ -959,20 +1193,34 @@ export class UnitPainterSession {
     if (!this.isStrokeOpen) return false;
     this.isStrokeOpen = false;
 
+    const layer = this.paintLayers.find((candidate) => candidate.id === this.currentStrokeLayerId);
     const changes: StrokeChange[] = [];
-    for (const [target, before] of this.currentStroke) {
-      const after = new Map<number, number>();
-      const compactBefore = new Map<number, number>();
-      for (const [byteIndex, oldValue] of before) {
-        const newValue = packPixel(target.data, byteIndex);
-        if (newValue === oldValue) continue;
-        compactBefore.set(byteIndex, oldValue);
-        after.set(byteIndex, newValue);
+    if (layer) {
+      for (const [target, before] of this.currentStroke) {
+        const layerData = this.getLayerTextureData(layer, target);
+        if (!layerData) continue;
+        const after = new Map<number, number>();
+        const compactBefore = new Map<number, number>();
+        for (const [byteIndex, oldValue] of before) {
+          const newValue = packPixel(layerData, byteIndex);
+          if (newValue === oldValue) continue;
+          compactBefore.set(byteIndex, oldValue);
+          after.set(byteIndex, newValue);
+        }
+        if (after.size > 0) {
+          changes.push({
+            kind: "sparse",
+            layerId: layer.id,
+            target,
+            before: compactBefore,
+            after,
+          });
+        }
       }
-      if (after.size > 0) changes.push({ kind: "sparse", target, before: compactBefore, after });
     }
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
+    this.currentStrokeLayerId = "";
 
     if (changes.length === 0) return false;
     this.pushHistory(changes);
@@ -1001,13 +1249,121 @@ export class UnitPainterSession {
 
   reset() {
     if (this.isStrokeOpen) this.endStroke();
-    for (const target of this.targetsByEditableTexture.values()) {
-      target.data.set(target.originalData);
-      target.editable.needsUpdate = true;
+    const layer = this.getActiveLayer();
+    if (!layer) return false;
+    const changes: StrokeChange[] = [];
+
+    for (const [target, layerData] of layer.textures) {
+      const byteIndices: number[] = [];
+      const beforeValues: number[] = [];
+      const afterValues: number[] = [];
+      for (let byteIndex = 0; byteIndex < layerData.length; byteIndex += 4) {
+        const value = packPixel(layerData, byteIndex);
+        if (value === 0) continue;
+        byteIndices.push(byteIndex);
+        beforeValues.push(value);
+        afterValues.push(0);
+        unpackPixel(0, layerData, byteIndex);
+      }
+      if (byteIndices.length === 0) continue;
+      changes.push({
+        kind: "packed",
+        layerId: layer.id,
+        target,
+        byteIndices: Uint32Array.from(byteIndices),
+        before: Uint32Array.from(beforeValues),
+        after: Uint32Array.from(afterValues),
+      });
+      this.recomposeTarget(target);
     }
+
+    if (changes.length === 0) return false;
+    this.pushHistory(changes);
+    return true;
+  }
+
+  exportProjectState(): UnitPainterProjectState {
+    if (this.isStrokeOpen) this.endStroke();
+    return {
+      activeLayerId: this.activePaintLayerId,
+      layers: this.paintLayers.map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        visible: layer.visible,
+        opacity: layer.opacity,
+        textures: [...layer.textures.entries()]
+          .filter(([, data]) => this.hasLayerPixels(data))
+          .map(([target, data]) => {
+            if (!target.sourceVirtualPath) {
+              throw new Error(
+                `The painted texture '${target.sourceFileName}' is missing its original WH3 texture path.`,
+              );
+            }
+            return {
+              sourceVirtualPath: target.sourceVirtualPath,
+              width: target.width,
+              height: target.height,
+              rgbaBytes: new Uint8Array(data),
+            };
+          }),
+      })),
+    };
+  }
+
+  loadProjectLayers(project: UnitPainterProjectState) {
+    if (this.isStrokeOpen) this.endStroke();
+    if (!Array.isArray(project.layers) || project.layers.length === 0) {
+      throw new Error("The painter project does not contain any paint layers.");
+    }
+
+    const seenLayerIds = new Set<string>();
+    const layers: PaintLayer[] = project.layers.map((savedLayer, index) => {
+      const id = savedLayer.id.trim();
+      const name = savedLayer.name.trim();
+      if (!id || seenLayerIds.has(id) || !name) throw new Error("The painter project contains an invalid layer.");
+      seenLayerIds.add(id);
+      const layer: PaintLayer = {
+        id,
+        name: name.slice(0, 80),
+        visible: !!savedLayer.visible,
+        opacity: clamp01(savedLayer.opacity),
+        textures: new Map(),
+      };
+      for (const texture of savedLayer.textures ?? []) {
+        const sourceKey = texture.sourceVirtualPath.replace(/\//g, "\\").toLowerCase();
+        const target = this.targetsBySourcePath.get(sourceKey);
+        if (!target) {
+          throw new Error(
+            `The painted source texture '${texture.sourceVirtualPath}' is no longer present on this unit. The source mod may have changed.`,
+          );
+        }
+        if (target.width !== texture.width || target.height !== texture.height) {
+          throw new Error(
+            `The painted source texture '${texture.sourceVirtualPath}' changed size from ${texture.width}x${texture.height} to ${target.width}x${target.height}.`,
+          );
+        }
+        if (texture.rgbaBytes.length !== target.width * target.height * 4) {
+          throw new Error(`The saved layer data for '${texture.sourceVirtualPath}' has an invalid byte length.`);
+        }
+        layer.textures.set(target, new Uint8Array(texture.rgbaBytes));
+      }
+      if (index + 1 >= this.nextLayerNumber) this.nextLayerNumber = index + 2;
+      return layer;
+    });
+
+    this.paintLayers = layers;
+    this.activePaintLayerId = seenLayerIds.has(project.activeLayerId)
+      ? project.activeLayerId
+      : layers[layers.length - 1].id;
+    this.recomposeAllTargets();
     this.history.length = 0;
     this.redoHistory.length = 0;
+    this.currentStroke.clear();
+    this.currentStrokeCoverage.clear();
+    this.currentStrokeLayerId = "";
     this.currentStateId = 0;
+    this.savedStateId = 0;
+    this.nextStateId = 1;
   }
 
   exportModifiedTextures(): UnitPainterExportTexture[] {
@@ -1056,6 +1412,8 @@ export class UnitPainterSession {
     this.restores.length = 0;
     this.targetsByEditableTexture.clear();
     this.targetsBySourcePath.clear();
+    this.paintLayers.length = 0;
+    this.activePaintLayerId = "";
     this.history.length = 0;
     this.redoHistory.length = 0;
     this.currentStroke.clear();
@@ -1150,8 +1508,12 @@ export class UnitPainterSession {
   }
 
   private pushHistory(changes: StrokeChange[]) {
+    this.pushHistoryChange({ kind: "pixels", changes });
+  }
+
+  private pushHistoryChange(change: HistoryChange) {
     const stroke: Stroke = {
-      changes,
+      change,
       beforeStateId: this.currentStateId,
       afterStateId: this.nextStateId++,
     };
@@ -1162,20 +1524,164 @@ export class UnitPainterSession {
   }
 
   private applyStroke(stroke: Stroke, side: "before" | "after") {
-    for (const change of stroke.changes) {
-      if (change.kind === "sparse") {
-        for (const [byteIndex, value] of change[side]) {
-          unpackPixel(value, change.target.data, byteIndex);
+    const change = stroke.change;
+    if (change.kind === "pixels") {
+      for (const pixelChange of change.changes) {
+        const layer = this.paintLayers.find((candidate) => candidate.id === pixelChange.layerId);
+        if (!layer) continue;
+        const layerData = this.getLayerTextureData(layer, pixelChange.target, true)!;
+        if (pixelChange.kind === "sparse") {
+          for (const [byteIndex, value] of pixelChange[side]) {
+            unpackPixel(value, layerData, byteIndex);
+            this.recomposeTargetPixel(pixelChange.target, byteIndex);
+          }
+        } else {
+          const values = pixelChange[side];
+          for (let index = 0; index < pixelChange.byteIndices.length; index += 1) {
+            const byteIndex = pixelChange.byteIndices[index];
+            unpackPixel(values[index], layerData, byteIndex);
+            this.recomposeTargetPixel(pixelChange.target, byteIndex);
+          }
         }
-      } else {
-        const values = change[side];
-        for (let index = 0; index < change.byteIndices.length; index += 1) {
-          unpackPixel(values[index], change.target.data, change.byteIndices[index]);
-        }
+        pixelChange.target.editable.needsUpdate = true;
       }
-      change.target.editable.needsUpdate = true;
+      return;
     }
+
+    if (change.kind === "layer-add") {
+      if (side === "after") {
+        this.paintLayers.splice(change.index, 0, this.layerFromSnapshot(change.layer));
+        this.activePaintLayerId = change.afterActiveLayerId;
+      } else {
+        this.paintLayers = this.paintLayers.filter((layer) => layer.id !== change.layer.id);
+        this.activePaintLayerId = change.beforeActiveLayerId;
+      }
+      this.recomposeAllTargets();
+      return;
+    }
+
+    if (change.kind === "layer-delete") {
+      if (side === "before") {
+        this.paintLayers.splice(change.index, 0, this.layerFromSnapshot(change.layer));
+        this.activePaintLayerId = change.beforeActiveLayerId;
+      } else {
+        this.paintLayers = this.paintLayers.filter((layer) => layer.id !== change.layer.id);
+        this.activePaintLayerId = change.afterActiveLayerId;
+      }
+      this.recomposeAllTargets();
+      return;
+    }
+
+    if (change.kind === "layer-meta") {
+      const layer = this.paintLayers.find((candidate) => candidate.id === change.layerId);
+      if (!layer) return;
+      const metadata = change[side];
+      layer.name = metadata.name;
+      layer.visible = metadata.visible;
+      layer.opacity = metadata.opacity;
+      this.recomposeAllTargets();
+      return;
+    }
+
+    const order = change[side];
+    const byId = new Map(this.paintLayers.map((layer) => [layer.id, layer]));
+    const reordered = order.map((id) => byId.get(id)).filter((layer): layer is PaintLayer => !!layer);
+    if (reordered.length === this.paintLayers.length) this.paintLayers = reordered;
+    this.recomposeAllTargets();
   }
+
+  private createEmptyLayer(name?: string): PaintLayer {
+    const number = this.nextLayerNumber++;
+    return {
+      id: `layer-${number}`,
+      name: (name?.trim() || `Paint ${number}`).slice(0, 80),
+      visible: true,
+      opacity: 1,
+      textures: new Map(),
+    };
+  }
+
+  private getActiveLayer() {
+    return this.paintLayers.find((layer) => layer.id === this.activePaintLayerId);
+  }
+
+  private getLayerTextureData(layer: PaintLayer, target: PaintableTexture, create = false) {
+    let data = layer.textures.get(target);
+    if (!data && create) {
+      data = new Uint8Array(target.width * target.height * 4);
+      layer.textures.set(target, data);
+    }
+    return data;
+  }
+
+  private layerMetadata(layer: PaintLayer): LayerMetadata {
+    return { name: layer.name, visible: layer.visible, opacity: layer.opacity };
+  }
+
+  private snapshotLayer(layer: PaintLayer): LayerSnapshot {
+    return {
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      textures: [...layer.textures.entries()].map(([target, data]) => ({
+        target,
+        data: new Uint8Array(data),
+      })),
+    };
+  }
+
+  private layerFromSnapshot(snapshot: LayerSnapshot): PaintLayer {
+    return {
+      id: snapshot.id,
+      name: snapshot.name,
+      visible: snapshot.visible,
+      opacity: snapshot.opacity,
+      textures: new Map(snapshot.textures.map(({ target, data }) => [target, new Uint8Array(data)])),
+    };
+  }
+
+  private hasLayerPixels(data: Uint8Array) {
+    for (let byteIndex = 3; byteIndex < data.length; byteIndex += 4) {
+      if (data[byteIndex] !== 0) return true;
+    }
+    return false;
+  }
+
+  private recomposeTargetPixel(target: PaintableTexture, byteIndex: number) {
+    let r = target.originalData[byteIndex];
+    let g = target.originalData[byteIndex + 1];
+    let b = target.originalData[byteIndex + 2];
+
+    for (const layer of this.paintLayers) {
+      if (!layer.visible || layer.opacity <= 0) continue;
+      const layerData = layer.textures.get(target);
+      if (!layerData) continue;
+      const alpha = (layerData[byteIndex + 3] / 255) * layer.opacity;
+      if (alpha <= 0) continue;
+      r += (layerData[byteIndex] - r) * alpha;
+      g += (layerData[byteIndex + 1] - g) * alpha;
+      b += (layerData[byteIndex + 2] - b) * alpha;
+    }
+
+    target.data[byteIndex] = Math.round(r);
+    target.data[byteIndex + 1] = Math.round(g);
+    target.data[byteIndex + 2] = Math.round(b);
+    target.data[byteIndex + 3] = target.originalData[byteIndex + 3];
+  }
+
+  private recomposeTarget(target: PaintableTexture) {
+    target.data.set(target.originalData);
+    for (let byteIndex = 0; byteIndex < target.data.length; byteIndex += 4) {
+      this.recomposeTargetPixel(target, byteIndex);
+    }
+    target.editable.needsUpdate = true;
+  }
+
+  private recomposeAllTargets() {
+    for (const target of this.targetsByEditableTexture.values()) this.recomposeTarget(target);
+  }
+
 }
 
 export const createUnitPainterSession = (root: THREE.Object3D) => new UnitPainterSession(root);
