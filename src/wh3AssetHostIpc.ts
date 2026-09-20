@@ -759,56 +759,6 @@ const sanitizeUnitPainterSourcePath = (value: unknown) => {
   return normalized;
 };
 
-const sanitizeUnitPainterVariantName = (assetPath: string) => {
-  const fileName = assetPath.replace(/\//g, "\\").split("\\").pop() || "unit";
-  const stem = fileName.replace(/\.variantmeshdefinition$/i, "").replace(/\.[^.]+$/, "");
-  const sanitized = stem
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 64);
-  return `${sanitized || "unit"}_painted`;
-};
-
-const chooseUnitPainterVariantName = async (directory: string, assetPath: string) => {
-  const baseName = sanitizeUnitPainterVariantName(assetPath);
-  const pathExists = async (path: string) => {
-    try {
-      await fs.promises.access(path);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  for (let suffix = 1; suffix < 10_000; suffix += 1) {
-    const candidate = suffix === 1 ? baseName : `${baseName}_${suffix}`;
-    const vmdPath = nodePath.join(
-      directory,
-      "variantmeshes",
-      "variantmeshdefinitions",
-      "whmm_unit_painter",
-      `${candidate}.variantmeshdefinition`,
-    );
-    const assetDirectory = nodePath.join(
-      directory,
-      "variantmeshes",
-      "whmm_unit_painter",
-      candidate,
-    );
-    const manifestPath = nodePath.join(directory, `whmm_unit_painter_manifest_${candidate}.json`);
-
-    if (
-      !(await pathExists(vmdPath))
-      && !(await pathExists(assetDirectory))
-      && !(await pathExists(manifestPath))
-    ) {
-      return candidate;
-    }
-  }
-  return `${baseName}_${randomUUID().slice(0, 8)}`;
-};
-
 const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
   if (!ArrayBuffer.isView(value)) return undefined;
   const expectedBytes = width * height * 4;
@@ -817,25 +767,6 @@ const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
   }
   const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
   return bytes.length === expectedBytes ? bytes : undefined;
-};
-
-const copyUnitPainterDirectory = async (source: string, destination: string): Promise<string[]> => {
-  const copied: string[] = [];
-  await fs.promises.mkdir(destination, { recursive: true });
-  const entries = await fs.promises.readdir(source, { withFileTypes: true });
-  for (const entry of entries) {
-    const sourcePath = nodePath.join(source, entry.name);
-    const destinationPath = nodePath.join(destination, entry.name);
-    if (entry.isDirectory()) {
-      copied.push(...(await copyUnitPainterDirectory(sourcePath, destinationPath)));
-      continue;
-    }
-    if (!entry.isFile()) continue;
-    await fs.promises.mkdir(nodePath.dirname(destinationPath), { recursive: true });
-    await fs.promises.copyFile(sourcePath, destinationPath);
-    copied.push(destinationPath);
-  }
-  return copied;
 };
 
 const exportUnitPainterVariantNow = async (
@@ -916,20 +847,23 @@ const exportUnitPainterVariantNow = async (
   }
 
   const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
+  const suggestedPackName = getUnitPainterDefaultPackName(normalizedAsset.assetPath);
+  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
   const dialogOptions = {
-    title: "Export painted WH3 unit variant",
-    buttonLabel: "Export",
-    properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">,
+    title: "Create painted WH3 mod",
+    buttonLabel: "Create Mod",
+    defaultPath: dataFolder ? nodePath.join(dataFolder, suggestedPackName) : suggestedPackName,
+    filters: [{ name: "Total War pack", extensions: ["pack"] }],
   };
   const selection = ownerWindow
-    ? await dialog.showOpenDialog(ownerWindow, dialogOptions)
-    : await dialog.showOpenDialog(dialogOptions);
-  if (selection.canceled || !selection.filePaths[0]) {
+    ? await dialog.showSaveDialog(ownerWindow, dialogOptions)
+    : await dialog.showSaveDialog(dialogOptions);
+  if (selection.canceled || !selection.filePath) {
     return { success: false as const, canceled: true };
   }
 
-  const destinationDirectory = selection.filePaths[0];
-  const variantName = await chooseUnitPainterVariantName(destinationDirectory, normalizedAsset.assetPath);
+  const packPath = ensureUnitPainterPackExtension(selection.filePath);
+  const variantName = getUnitPainterNamespaceName(packPath, normalizedAsset.assetPath);
   const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
   const stageId = `unit-painter-${randomUUID()}`;
   const stageRoot = nodePath.join(getOutputRoot(), stageId);
@@ -980,11 +914,29 @@ const exportUnitPainterVariantNow = async (
       };
     }
 
-    const copiedFiles = await copyUnitPainterDirectory(generatedDirectory, destinationDirectory);
+    const normalizeVirtualPath = (value: string) =>
+      value.replace(/\//g, "\\").trim().replace(/^\\+/, "").toLowerCase();
+    if (normalizeVirtualPath(result.variantMeshVirtualPath) !== normalizeVirtualPath(normalizedAsset.assetPath)) {
+      return {
+        success: false as const,
+        error:
+          "WH3AssetHost did not export the painted VariantMeshDefinition at the source path. "
+          + "Rebuild the bundled asset host before creating a painted mod.",
+        warnings: result.warnings ?? [],
+      };
+    }
+
+    const packFiles = await buildUnitPainterPackFiles(
+      generatedDirectory,
+      result.files ?? [],
+      normalizedAsset.assetPath,
+    );
+    await writePack(packFiles, packPath);
+
     return {
       success: true as const,
-      directory: destinationDirectory,
-      files: copiedFiles,
+      packPath,
+      files: packFiles.map((file) => file.name),
       variantMeshPath: result.variantMeshVirtualPath,
       warnings: result.warnings ?? [],
     };
@@ -992,7 +944,7 @@ const exportUnitPainterVariantNow = async (
     disposeOperationHost(host);
     return {
       success: false as const,
-      error: error instanceof Error ? error.message : "Failed to export the painted unit variant.",
+      error: error instanceof Error ? error.message : "Failed to create the painted unit mod.",
     };
   } finally {
     try {
