@@ -392,9 +392,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintRootRef = useRef<THREE.Object3D | null>(null);
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
   const painterEnabledRef = useRef(false);
+  const eyedropperActiveRef = useRef(false);
   const brushSettingsRef = useRef({
     radiusPx: 24,
-    strength: 0.9,
+    opacity: 0.9,
+    hardness: 0.8,
     mode: "recolor" as UnitPainterBrushMode,
     color: { r: 196, g: 48, b: 48 },
   });
@@ -419,8 +421,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPainterEnabled, setIsPainterEnabled] = useState(false);
   const [paintColor, setPaintColor] = useState("#c43030");
   const [paintBrushRadius, setPaintBrushRadius] = useState(24);
-  const [paintBrushStrength, setPaintBrushStrength] = useState(0.9);
+  const [paintBrushOpacity, setPaintBrushOpacity] = useState(0.9);
+  const [paintBrushHardness, setPaintBrushHardness] = useState(0.8);
   const [paintBrushMode, setPaintBrushMode] = useState<UnitPainterBrushMode>("recolor");
+  const [isPaintEyedropperActive, setIsPaintEyedropperActive] = useState(false);
   const [paintTextureCount, setPaintTextureCount] = useState(-1);
   const [paintExportStatus, setPaintExportStatus] = useState("");
   const [isPaintExporting, setIsPaintExporting] = useState(false);
@@ -436,9 +440,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
+  eyedropperActiveRef.current = isPaintEyedropperActive;
   brushSettingsRef.current = {
     radiusPx: paintBrushRadius,
-    strength: paintBrushStrength,
+    opacity: paintBrushOpacity,
+    hardness: paintBrushHardness,
     mode: paintBrushMode,
     color: {
       r: (paintColorValue >> 16) & 0xff,
@@ -532,13 +538,33 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         return;
       }
       const rect = renderer.domElement.getBoundingClientRect();
-      const radius = brushSettingsRef.current.radiusPx;
+      const radius = eyedropperActiveRef.current ? 5 : brushSettingsRef.current.radiusPx;
       cursor.style.display = "block";
       cursor.style.width = `${radius * 2}px`;
       cursor.style.height = `${radius * 2}px`;
+      cursor.style.borderColor = eyedropperActiveRef.current ? "#67e8f9" : "rgba(255,255,255,0.9)";
       cursor.style.transform = `translate(${event.clientX - rect.left - radius}px, ${
         event.clientY - rect.top - radius
       }px)`;
+    };
+
+    const getPaintIntersection = (clientX: number, clientY: number) => {
+      const root = paintRootRef.current;
+      if (!root) return undefined;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      if (localX < 0 || localY < 0 || localX > rect.width || localY > rect.height) return undefined;
+
+      const viewportHeight = Math.max(rect.height, 1);
+      pointer.set(
+        (localX / Math.max(rect.width, 1)) * 2 - 1,
+        -(localY / viewportHeight) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObject(root, true)[0];
+      return hit ? { hit, viewportHeight } : undefined;
     };
 
     /**
@@ -548,24 +574,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
      * still cross most visible seams during a drag without blocking the UI.
      */
     const paintProjectedBrush = (clientX: number, clientY: number) => {
-      const root = paintRootRef.current;
       const session = paintSessionRef.current;
-      if (!root || !session) return;
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      const localX = clientX - rect.left;
-      const localY = clientY - rect.top;
-      if (localX < 0 || localY < 0 || localX > rect.width || localY > rect.height) return;
-
-      const viewportHeight = Math.max(rect.height, 1);
-      pointer.set(
-        (localX / Math.max(rect.width, 1)) * 2 - 1,
-        -(localY / viewportHeight) * 2 + 1,
-      );
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObject(root, true)[0];
-      if (!hit) return;
-      session.paintIntersection(hit, brushSettingsRef.current, camera, viewportHeight);
+      if (!session) return;
+      const projected = getPaintIntersection(clientX, clientY);
+      if (!projected) return;
+      session.paintIntersection(projected.hit, brushSettingsRef.current, camera, projected.viewportHeight);
     };
 
     const paintToPointer = (event: PointerEvent) => {
@@ -610,7 +623,22 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const onPointerDown = (event: PointerEvent) => {
       updateBrushCursor(event);
-      if (!painterEnabledRef.current || event.button !== 0 || !paintSessionRef.current) return;
+      const session = paintSessionRef.current;
+      if (!painterEnabledRef.current || event.button !== 0 || !session) return;
+
+      if (event.altKey || eyedropperActiveRef.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const projected = getPaintIntersection(event.clientX, event.clientY);
+        const sampled = projected ? session.sampleIntersection(projected.hit) : undefined;
+        if (sampled) {
+          const toHex = (value: number) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+          setPaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
+          setIsPaintEyedropperActive(false);
+        }
+        return;
+      }
+
       event.preventDefault();
       event.stopImmediatePropagation();
       isPainting = true;
@@ -618,7 +646,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       activePointerId = event.pointerId;
       controls.enabled = false;
       renderer.domElement.setPointerCapture(event.pointerId);
-      paintSessionRef.current.beginStroke();
+      session.beginStroke();
       paintToPointer(event);
     };
     const onPointerMove = (event: PointerEvent) => {
@@ -1198,6 +1226,34 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   }, [comparisonModelCount, enablePainting, isPainterEnabled, status]);
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!painterEnabledRef.current || (!event.ctrlKey && !event.metaKey)) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const session = paintSessionRef.current;
+      if (!session || (key !== "z" && key !== "y")) return;
+
+      const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
+      const changed = wantsRedo ? session.redo() : session.undo();
+      if (!changed) return;
+      event.preventDefault();
+      setPaintHistoryVersion((value) => value + 1);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
     if (status !== "ready" || clipDuration <= 0) return;
     const timer = window.setInterval(() => {
       const action = contextRef.current?.actions[0];
@@ -1267,6 +1323,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     aria-label="Paint color"
                   />
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setIsPaintEyedropperActive((active) => !active)}
+                  className={`rounded border px-2 py-1 ${
+                    isPaintEyedropperActive
+                      ? "border-cyan-400 bg-cyan-900/60 text-cyan-100"
+                      : "border-gray-600 bg-gray-800 hover:border-cyan-400"
+                  }`}
+                  title="Pick a BaseColour from the model (Alt+click)"
+                >
+                  Pick
+                </button>
                 <label className="flex items-center gap-1 text-gray-400">
                   Size
                   <input
@@ -1281,16 +1349,29 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   />
                 </label>
                 <label className="flex items-center gap-1 text-gray-400">
-                  Strength
+                  Opacity
                   <input
                     type="range"
-                    min={0.1}
+                    min={0.05}
                     max={1}
                     step={0.05}
-                    value={paintBrushStrength}
-                    onChange={(event) => setPaintBrushStrength(Number(event.target.value))}
+                    value={paintBrushOpacity}
+                    onChange={(event) => setPaintBrushOpacity(Number(event.target.value))}
                     className="w-16 accent-blue-500"
-                    aria-label="Brush strength"
+                    aria-label="Brush opacity"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-gray-400">
+                  Hardness
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={paintBrushHardness}
+                    onChange={(event) => setPaintBrushHardness(Number(event.target.value))}
+                    className="w-16 accent-blue-500"
+                    aria-label="Brush hardness"
                   />
                 </label>
                 <select
@@ -1308,6 +1389,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   onClick={() => {
                     if (paintSessionRef.current?.undo()) setPaintHistoryVersion((value) => value + 1);
                   }}
+                  title="Undo (Ctrl+Z)"
                   className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Undo
@@ -1318,6 +1400,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   onClick={() => {
                     if (paintSessionRef.current?.redo()) setPaintHistoryVersion((value) => value + 1);
                   }}
+                  title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
                   className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Redo
@@ -1390,7 +1473,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
