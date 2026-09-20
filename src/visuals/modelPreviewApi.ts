@@ -87,22 +87,50 @@ export interface UnitPainterTextureExportResult {
   error?: string;
 }
 
+export interface UnitPainterProjectLayerTransfer {
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  textures: Array<{
+    sourceVirtualPath: string;
+    width: number;
+    height: number;
+    rgbaBytes: Uint8Array;
+  }>;
+}
+
+export interface UnitPainterProjectStateTransfer {
+  activeLayerId: string;
+  layers: UnitPainterProjectLayerTransfer[];
+}
+
+export type UnitPainterOpenedProject =
+  | {
+      formatVersion: 1;
+      sourceVariantMeshDefinition: string;
+      variantSelections: VariantMeshSelection[];
+      textures: Array<{
+        sourceVirtualPath: string;
+        width: number;
+        height: number;
+        rgbaBytes: Uint8Array;
+      }>;
+    }
+  | {
+      formatVersion: 2;
+      sourceVariantMeshDefinition: string;
+      variantSelections: VariantMeshSelection[];
+      activeLayerId: string;
+      layers: UnitPainterProjectLayerTransfer[];
+    };
+
 export interface UnitPainterProjectOpenResult {
   success: boolean;
   canceled?: boolean;
   error?: string;
   packPath?: string;
-  project?: {
-    formatVersion: number;
-    sourceVariantMeshDefinition: string;
-    variantSelections: VariantMeshSelection[];
-    textures: Array<{
-      sourceVirtualPath: string;
-      width: number;
-      height: number;
-      rgbaBytes: Uint8Array;
-    }>;
-  };
+  project?: UnitPainterOpenedProject;
 }
 
 type RendererIpc = {
@@ -176,6 +204,7 @@ export const exportUnitPainterTextures = async (
   enabledMods: readonly VisualsModelPreviewMod[],
   variantSelections: readonly VariantMeshSelection[],
   textures: readonly UnitPainterTextureExport[],
+  projectState: UnitPainterProjectStateTransfer,
   targetPackPath?: string,
 ): Promise<UnitPainterTextureExportResult> =>
   (await getRendererIpc().invoke(
@@ -190,6 +219,21 @@ export const exportUnitPainterTextures = async (
       height: texture.height,
       rgbaBytes: texture.rgbaBytes,
     })),
+    {
+      activeLayerId: projectState.activeLayerId,
+      layers: projectState.layers.map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        visible: layer.visible,
+        opacity: layer.opacity,
+        textures: layer.textures.map((texture) => ({
+          sourceVirtualPath: texture.sourceVirtualPath,
+          width: texture.width,
+          height: texture.height,
+          rgbaBytes: texture.rgbaBytes,
+        })),
+      })),
+    },
     targetPackPath,
   )) as UnitPainterTextureExportResult;
 
