@@ -140,7 +140,10 @@ describe("unit painter pack staging", () => {
       buildUnitPainterPackFiles(
         root,
         ["..\\outside.dds"],
-        "variantmeshes\\variantmeshd
+        "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+      ),
+    ).rejects.toThrow(/unsafe generated file path/i);
+  });
 
   it("stores versioned editable painter metadata and raw RGBA snapshots in the pack", async () => {
     const root = await makeTempDirectory();
@@ -196,8 +199,5 @@ describe("unit painter pack staging", () => {
     const manifest = parseUnitPainterProjectManifest(files[0].buffer!);
     expect(manifest.paintedTextures).toEqual([]);
   });
-efinitions\\unit.variantmeshdefinition",
-      ),
-    ).rejects.toThrow(/unsafe generated file path/i);
-  });
+
 });
