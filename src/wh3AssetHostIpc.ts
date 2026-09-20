@@ -1,4 +1,4 @@
-import { app, ipcMain } from "electron";
+import { app, dialog, ipcMain } from "electron";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
@@ -725,6 +725,129 @@ ipcMain.removeHandler("releaseVisualsModelPreview");
 ipcMain.handle("releaseVisualsModelPreview", async (_event, previewId: string) => {
   if (previewId) await removePreview(previewId);
   return { success: true };
+});
+
+const MAX_UNIT_PAINTER_TEXTURES = 64;
+const MAX_UNIT_PAINTER_PNG_BYTES = 64 * 1024 * 1024;
+const MAX_UNIT_PAINTER_TOTAL_BYTES = 256 * 1024 * 1024;
+
+const sanitizeUnitPainterFileName = (value: unknown, index: number) => {
+  if (typeof value !== "string") return `painted_texture_${String(index + 1).padStart(2, "0")}.png`;
+  const baseName = nodePath.basename(value.trim()).replace(/[^a-zA-Z0-9._-]+/g, "_");
+  const stem = baseName.replace(/\.png$/i, "").replace(/^[_\.]+|[_\.]+$/g, "");
+  return `${stem || `painted_texture_${String(index + 1).padStart(2, "0")}`}.png`;
+};
+
+const readUnitPainterPng = (value: unknown) => {
+  if (!ArrayBuffer.isView(value)) return undefined;
+  const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  if (bytes.length === 0 || bytes.length > MAX_UNIT_PAINTER_PNG_BYTES) return undefined;
+  // PNG signature. The renderer produces these through Canvas.toBlob("image/png").
+  if (
+    bytes.length < 8 ||
+    bytes[0] !== 0x89 ||
+    bytes[1] !== 0x50 ||
+    bytes[2] !== 0x4e ||
+    bytes[3] !== 0x47 ||
+    bytes[4] !== 0x0d ||
+    bytes[5] !== 0x0a ||
+    bytes[6] !== 0x1a ||
+    bytes[7] !== 0x0a
+  ) {
+    return undefined;
+  }
+  return bytes;
+};
+
+ipcMain.removeHandler("exportUnitPainterTextures");
+ipcMain.handle("exportUnitPainterTextures", async (_event, assetPathValue: unknown, texturesValue: unknown) => {
+  if (!Array.isArray(texturesValue) || texturesValue.length === 0) {
+    return { success: false as const, error: "There are no modified textures to export." };
+  }
+  if (texturesValue.length > MAX_UNIT_PAINTER_TEXTURES) {
+    return {
+      success: false as const,
+      error: `A unit-painter export may contain at most ${MAX_UNIT_PAINTER_TEXTURES} textures.`,
+    };
+  }
+
+  const textures: Array<{ fileName: string; width: number; height: number; pngBytes: Buffer }> = [];
+  let totalBytes = 0;
+  for (let index = 0; index < texturesValue.length; index += 1) {
+    const value = texturesValue[index];
+    if (!value || typeof value !== "object") {
+      return { success: false as const, error: "The painted texture export payload is invalid." };
+    }
+    const candidate = value as { fileName?: unknown; width?: unknown; height?: unknown; pngBytes?: unknown };
+    const pngBytes = readUnitPainterPng(candidate.pngBytes);
+    const width = typeof candidate.width === "number" && Number.isInteger(candidate.width) ? candidate.width : 0;
+    const height = typeof candidate.height === "number" && Number.isInteger(candidate.height) ? candidate.height : 0;
+    if (!pngBytes || width <= 0 || height <= 0 || width > 16384 || height > 16384) {
+      return { success: false as const, error: "One of the painted textures is invalid." };
+    }
+    totalBytes += pngBytes.length;
+    if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
+      return { success: false as const, error: "The painted texture export is too large." };
+    }
+    textures.push({
+      fileName: sanitizeUnitPainterFileName(candidate.fileName, index),
+      width,
+      height,
+      pngBytes,
+    });
+  }
+
+  const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
+  const dialogOptions = {
+    title: "Export painted unit textures",
+    properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">,
+  };
+  const selection = ownerWindow
+    ? await dialog.showOpenDialog(ownerWindow, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions);
+  if (selection.canceled || !selection.filePaths[0]) {
+    return { success: false as const, canceled: true };
+  }
+
+  const directory = selection.filePaths[0];
+  await fs.promises.mkdir(directory, { recursive: true });
+
+  const usedNames = new Map<string, number>();
+  const writtenFiles: string[] = [];
+  for (const texture of textures) {
+    const seen = usedNames.get(texture.fileName) ?? 0;
+    usedNames.set(texture.fileName, seen + 1);
+    const fileName =
+      seen === 0
+        ? texture.fileName
+        : texture.fileName.replace(/\.png$/i, `_${seen + 1}.png`);
+    const outputPath = nodePath.join(directory, fileName);
+    await fs.promises.writeFile(outputPath, texture.pngBytes);
+    writtenFiles.push(outputPath);
+  }
+
+  const assetPath = typeof assetPathValue === "string" ? assetPathValue : "";
+  const manifestPath = nodePath.join(directory, "unit-painter-manifest.json");
+  await fs.promises.writeFile(
+    manifestPath,
+    JSON.stringify(
+      {
+        version: 1,
+        assetPath,
+        textures: textures.map((texture, index) => ({
+          fileName: nodePath.basename(writtenFiles[index]),
+          width: texture.width,
+          height: texture.height,
+        })),
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+  writtenFiles.push(manifestPath);
+
+  return { success: true as const, directory, files: writtenFiles };
 });
 
 const stopHostForAppExit = () => {
