@@ -45,10 +45,12 @@ const getDataTextureImage = (texture: THREE.DataTexture) => {
   if (
     !image ||
     !(image.data instanceof Uint8Array) ||
+    typeof image.width !== "number" ||
+    typeof image.height !== "number" ||
     !Number.isFinite(image.width) ||
     !Number.isFinite(image.height) ||
-    !image.width ||
-    !image.height
+    image.width <= 0 ||
+    image.height <= 0
   ) {
     return undefined;
   }
@@ -206,7 +208,7 @@ export class UnitPainterSession {
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
   private isStrokeOpen = false;
 
-  constructor(private readonly root: THREE.Object3D) {
+  constructor(root: THREE.Object3D) {
     const targetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
 
     root.traverse((child) => {
