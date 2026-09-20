@@ -655,6 +655,11 @@ const blendLayerPixelFromStrokeStart = (
   layerData[byteIndex + 1] = Math.round(sourceG + (targetG - sourceG) * blend);
   layerData[byteIndex + 2] = Math.round(sourceB + (targetB - sourceB) * blend);
   layerData[byteIndex + 3] = Math.round(sourceA + (targetA - sourceA) * blend);
+  if (layerData[byteIndex + 3] === 0) {
+    layerData[byteIndex] = 0;
+    layerData[byteIndex + 1] = 0;
+    layerData[byteIndex + 2] = 0;
+  }
 };
 
 export class UnitPainterSession {
@@ -1259,7 +1264,7 @@ export class UnitPainterSession {
       const afterValues: number[] = [];
       for (let byteIndex = 0; byteIndex < layerData.length; byteIndex += 4) {
         const value = packPixel(layerData, byteIndex);
-        if (value === 0) continue;
+        if (layerData[byteIndex + 3] === 0) continue;
         byteIndices.push(byteIndex);
         beforeValues.push(value);
         afterValues.push(0);
@@ -1347,7 +1352,9 @@ export class UnitPainterSession {
         }
         layer.textures.set(target, new Uint8Array(texture.rgbaBytes));
       }
-      if (index + 1 >= this.nextLayerNumber) this.nextLayerNumber = index + 2;
+      const numericId = /^layer-(\d+)$/.exec(id);
+      if (numericId) this.nextLayerNumber = Math.max(this.nextLayerNumber, Number(numericId[1]) + 1);
+      else if (index + 1 >= this.nextLayerNumber) this.nextLayerNumber = index + 2;
       return layer;
     });
 
