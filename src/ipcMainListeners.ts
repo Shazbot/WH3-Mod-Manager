@@ -14156,6 +14156,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       filePaths: string[],
       preserveFolders = true,
       preferredPackPath?: string,
+      excludeCommonTextures = false,
     ): Promise<PackExportResult> => {
       const skipped: Array<{ name: string; reason: string }> = [];
       let writtenCount = 0;
@@ -14186,6 +14187,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           const resolved = await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath });
           if (!resolved?.packPath || !resolved.fileName) {
             skipped.push({ name: requestedPath, reason: "File was not found in the visuals packs" });
+            continue;
+          }
+
+          if (excludeCommonTextures && /(?:^|[\\/])commontextures(?:[\\/]|$)/i.test(resolved.fileName)) {
+            skipped.push({ name: requestedPath, reason: "Commontextures file excluded" });
             continue;
           }
 
@@ -14234,9 +14240,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               async (packedFile, buffer) => {
                 const target = remaining.get(normalizePackFilePathKey(packedFile.name));
                 if (!target) return;
-                const relativePath = preserveFolders
-                  ? packedFile.name.replaceAll("\\", "/")
-                  : nodePath.posix.basename(packedFile.name.replaceAll("\\", "/"));
+                const normalizedPath = packedFile.name.replaceAll("\\", "/");
+                const relativePath = preserveFolders ? normalizedPath : nodePath.posix.basename(normalizedPath);
                 await writeOutput(target.requestedPath, relativePath, buffer);
                 remaining.delete(normalizePackFilePathKey(packedFile.name));
               },

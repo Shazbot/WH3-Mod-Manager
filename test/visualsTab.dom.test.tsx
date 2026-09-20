@@ -291,6 +291,72 @@ describe("VisualsTab filtering", () => {
     );
   });
 
+  it("offers commontextures-free extraction variants when the source references commontextures", async () => {
+    const modelPath = "models\\example.wsmodel";
+    const commonTexturePath = "commontextures\\example.dds";
+    readVariantMeshDefinition.mockResolvedValue({
+      success: true,
+      text: [`<model mesh="${modelPath}" />`, `<texture path="${commonTexturePath}" />`].join("\n"),
+      resolved: { packPath: "/mods/example.pack", fileName: modelPath },
+    });
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <VisualsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Human (1)" })).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("Show all visual files"));
+    const modelRow = await screen.findByText(modelPath);
+    fireEvent.doubleClick(modelRow);
+    await waitFor(() => expect(readVariantMeshDefinition).toHaveBeenCalledWith("visuals-session", modelPath));
+
+    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    fireEvent.contextMenu(document.querySelector("pre")!);
+
+    expect(screen.getByRole("button", { name: "Extract all (with folder, no commontextures)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Extract all (flat, not commontextures)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Extract all (with folder, no commontextures)" }));
+    await waitFor(() =>
+      expect(extractVisualsFilesToDirectory).toHaveBeenCalledWith(
+        "visuals-session",
+        "/tmp/visuals-extract",
+        [modelPath, commonTexturePath],
+        true,
+        "/mods/example.pack",
+        true,
+      ),
+    );
+
+    fireEvent.contextMenu(document.querySelector("pre")!);
+    fireEvent.click(screen.getByRole("button", { name: "Extract all (flat, not commontextures)" }));
+    await waitFor(() =>
+      expect(extractVisualsFilesToDirectory).toHaveBeenCalledWith(
+        "visuals-session",
+        "/tmp/visuals-extract",
+        [modelPath, commonTexturePath],
+        false,
+        "/mods/example.pack",
+        true,
+      ),
+    );
+  });
+
   it("defers hidden mod-data refreshes and remeasures when the tab becomes visible", async () => {
     const refreshedUnits = [{ ...units[0], localizedName: "Refreshed Lord" }];
     getVisualsUnitsData

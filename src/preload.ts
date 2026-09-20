@@ -801,6 +801,7 @@ const api = {
     filePaths: string[],
     preserveFolders: boolean,
     preferredPackPath?: string,
+    excludeCommonTextures?: boolean,
   ): Promise<PackExportResult> =>
     ipcRenderer.invoke(
       "extractVisualsFilesToDirectory",
@@ -809,6 +810,7 @@ const api = {
       filePaths,
       preserveFolders,
       preferredPackPath,
+      excludeCommonTextures,
     ),
 
   getDataFolder: (): Promise<string | undefined> => ipcRenderer.invoke("getDataFolder"),

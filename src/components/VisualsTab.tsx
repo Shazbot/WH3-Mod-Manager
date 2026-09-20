@@ -127,6 +127,8 @@ const isDdsPath = (path: string) => path.toLowerCase().endsWith(".dds");
 
 const isAssetEditorOpenablePath = (path: string) => !isXmlMaterialPath(path) && !isDdsPath(path);
 
+const isCommonTexturesPath = (path: string) => /(?:^|[\\/])commontextures(?:[\\/]|$)/i.test(path);
+
 const getVisualPathsFromText = (text: string) => {
   const paths: string[] = [];
   const seen = new Set<string>();
@@ -846,7 +848,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     window.api?.putPathInClipboard(copyName ? getBaseName(targetPath) : targetPath);
   };
 
-  const onExtractContextAction = async (preserveFolders: boolean) => {
+  const onExtractContextAction = async (preserveFolders: boolean, excludeCommonTextures = false) => {
     if (!assetEditorContextMenu) return;
     const { targetPaths, preferredPackPath } = assetEditorContextMenu;
     setAssetEditorContextMenu(null);
@@ -864,13 +866,17 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     try {
       const outputDirectory = await window.api?.selectDirectory();
       if (!outputDirectory) return;
-      const result = await window.api?.extractVisualsFilesToDirectory?.(
-        sessionId,
-        outputDirectory,
-        targetPaths,
-        preserveFolders,
-        preferredPackPath,
-      );
+      const extractVisualsFiles = window.api?.extractVisualsFilesToDirectory;
+      const result = excludeCommonTextures
+        ? await extractVisualsFiles?.(
+            sessionId,
+            outputDirectory,
+            targetPaths,
+            preserveFolders,
+            preferredPackPath,
+            true,
+          )
+        : await extractVisualsFiles?.(sessionId, outputDirectory, targetPaths, preserveFolders, preferredPackPath);
       if (!result?.success) {
         setViewerMessage(result?.error || "Failed to extract visual files.");
         return;
@@ -1432,6 +1438,28 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               {assetEditorContextMenu.targetPath && <div className="my-1 border-t border-gray-700" />}
             </>
           )}
+          {!assetEditorContextMenu.targetPath &&
+            assetEditorContextMenu.targetPaths.some(isCommonTexturesPath) && (
+              <>
+                <div className="my-1 border-t border-gray-700" />
+                <button
+                  type="button"
+                  disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
+                  className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                  onClick={() => void onExtractContextAction(true, true)}
+                >
+                  Extract all (with folder, no commontextures)
+                </button>
+                <button
+                  type="button"
+                  disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
+                  className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                  onClick={() => void onExtractContextAction(false, true)}
+                >
+                  Extract all (flat, not commontextures)
+                </button>
+              </>
+            )}
           {assetEditorContextMenu.targetPath && (
             <>
               <button
