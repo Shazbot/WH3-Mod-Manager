@@ -315,8 +315,7 @@ describe("WH3AssetHostClient", () => {
         command: request.command,
         result: {
           success: true,
-          variantMeshVirtualPath:
-            "variantmeshes\\variantmeshdefinitions\\whmm_unit_painter\\unit_painted.variantmeshdefinition",
+          variantMeshVirtualPath: "variantmeshes\\unit.variantmeshdefinition",
           files: ["variantmeshes\\whmm_unit_painter\\unit_painted\\textures\\body.dds"],
           warnings: [],
           errors: [],
@@ -347,7 +346,10 @@ describe("WH3AssetHostClient", () => {
         ],
         variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 2 }],
       }),
-    ).resolves.toMatchObject({ success: true });
+    ).resolves.toMatchObject({
+      success: true,
+      variantMeshVirtualPath: "variantmeshes\\unit.variantmeshdefinition",
+    });
 
     expect(seen[0]).toMatchObject({
       protocolVersion: 1,
