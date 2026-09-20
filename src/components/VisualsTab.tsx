@@ -1422,7 +1422,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               <button
                 type="button"
                 disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
-                className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
                 onClick={() => void onExtractContextAction(true)}
               >
                 {assetEditorContextMenu.targetPath ? "Extract (with folders)" : "Extract all (with folders)"}
@@ -1430,7 +1430,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               <button
                 type="button"
                 disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
-                className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
                 onClick={() => void onExtractContextAction(false)}
               >
                 {assetEditorContextMenu.targetPath ? "Extract (flat)" : "Extract all (flat)"}
@@ -1445,7 +1445,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 <button
                   type="button"
                   disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
-                  className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                  className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
                   onClick={() => void onExtractContextAction(true, true)}
                 >
                   Extract all (with folder, no commontextures)
@@ -1453,7 +1453,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 <button
                   type="button"
                   disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
-                  className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                  className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
                   onClick={() => void onExtractContextAction(false, true)}
                 >
                   Extract all (flat, not commontextures)
