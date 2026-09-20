@@ -146,60 +146,112 @@ describe("unit painter pack staging", () => {
     ).rejects.toThrow(/unsafe generated file path/i);
   });
 
-  it("stores versioned editable painter metadata and raw RGBA snapshots in the pack", async () => {
+  it("stores versioned editable layer metadata and compressed layer snapshots in the pack", async () => {
     const root = await makeTempDirectory();
     const packPath = nodePath.join(root, "editable.pack");
     const sourceVmd = "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition";
     const rgba = new Uint8Array(4 * 4 * 4);
     rgba[0] = 123;
+    rgba[3] = 255;
 
     const projectFiles = await buildUnitPainterProjectPackFiles(
       sourceVmd,
       [{ slotPath: "body", choiceIndex: 2 }],
-      [{
-        sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-        width: 4,
-        height: 4,
-        rgbaBytes: rgba,
-      }],
+      {
+        activeLayerId: "layer-2",
+        layers: [
+          { id: "layer-1", name: "Cloth", visible: true, opacity: 0.5, textures: [] },
+          {
+            id: "layer-2",
+            name: "Trim",
+            visible: false,
+            opacity: 1,
+            textures: [{
+              sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+              width: 4,
+              height: 4,
+              rgbaBytes: rgba,
+            }],
+          },
+        ],
+      },
     );
     const manifestFile = projectFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH);
     expect(manifestFile?.buffer).toBeDefined();
     const manifest = parseUnitPainterProjectManifest(manifestFile!.buffer!);
-    expect(manifest.formatVersion).toBe(1);
+    expect(manifest.formatVersion).toBe(2);
+    if (manifest.formatVersion !== 2) throw new Error("Expected painter project format v2.");
     expect(manifest.sourceVariantMeshDefinition).toBe(sourceVmd);
     expect(manifest.variantSelections).toEqual([{ slotPath: "body", choiceIndex: 2 }]);
-    expect(manifest.paintedTextures).toHaveLength(1);
+    expect(manifest.activeLayerId).toBe("layer-2");
+    expect(manifest.layers.map((layer) => ({
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      textures: layer.textures.length,
+    }))).toEqual([
+      { id: "layer-1", name: "Cloth", visible: true, opacity: 0.5, textures: 0 },
+      { id: "layer-2", name: "Trim", visible: false, opacity: 1, textures: 1 },
+    ]);
 
+    const storedTexture = manifest.layers[1].textures[0];
     const previousGame = appData.currentGame;
     appData.currentGame = "wh3";
     try {
       await writePack(projectFiles, packPath);
       const saved = await readPack(packPath, {
         skipParsingTables: true,
-        filesToRead: [UNIT_PAINTER_PROJECT_MANIFEST_PATH, manifest.paintedTextures[0].filePath],
+        filesToRead: [UNIT_PAINTER_PROJECT_MANIFEST_PATH, storedTexture.filePath],
       });
       const savedManifest = saved.packedFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH)?.buffer;
-      const savedRgba = saved.packedFiles.find((file) => file.name === manifest.paintedTextures[0].filePath)?.buffer;
+      const savedRgba = saved.packedFiles.find((file) => file.name === storedTexture.filePath)?.buffer;
       expect(parseUnitPainterProjectManifest(savedManifest!)).toEqual(manifest);
       const decoded = await decodeUnitPainterProjectTexture(savedRgba!, rgba.length);
       expect(decoded[0]).toBe(123);
+      expect(decoded[3]).toBe(255);
       expect(decoded.length).toBe(rgba.length);
     } finally {
       appData.currentGame = previousGame;
     }
   });
 
-  it("supports a reset-to-original editable project with no painted texture snapshots", async () => {
+  it("supports a reset-to-original v2 project with empty paint layers", async () => {
     const files = await buildUnitPainterProjectPackFiles(
       "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
       [],
-      [],
+      {
+        activeLayerId: "layer-1",
+        layers: [{ id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] }],
+      },
     );
     expect(files).toHaveLength(1);
     expect(files[0].name).toBe(UNIT_PAINTER_PROJECT_MANIFEST_PATH);
     const manifest = parseUnitPainterProjectManifest(files[0].buffer!);
-    expect(manifest.paintedTextures).toEqual([]);
+    expect(manifest.formatVersion).toBe(2);
+    if (manifest.formatVersion !== 2) throw new Error("Expected painter project format v2.");
+    expect(manifest.layers).toHaveLength(1);
+    expect(manifest.layers[0].textures).toEqual([]);
+  });
+
+  it("continues to parse v1 painter manifests for backward compatibility", () => {
+    const manifest = parseUnitPainterProjectManifest(
+      Buffer.from(JSON.stringify({
+        formatVersion: 1,
+        sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+        variantSelections: [{ slotPath: "body", choiceIndex: 1 }],
+        paintedTextures: [{
+          sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+          width: 4,
+          height: 4,
+          filePath: "whmm_unit_painter\\textures\\001.rgba.zst",
+          encoding: "zstd",
+        }],
+      })),
+    );
+    expect(manifest.formatVersion).toBe(1);
+    if (manifest.formatVersion !== 1) throw new Error("Expected painter project format v1.");
+    expect(manifest.paintedTextures).toHaveLength(1);
   });
 
 });
