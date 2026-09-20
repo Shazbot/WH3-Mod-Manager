@@ -415,7 +415,7 @@ export class Wh3AssetHostClient {
         })),
         variantSelections: request.variantSelections ?? [],
       },
-      PAINTED_VARIANT_REQUEST_TIMEOUT_MS,
+      Math.max(this.options.requestTimeoutMs, PAINTED_VARIANT_REQUEST_TIMEOUT_MS),
     );
   }
 
