@@ -783,7 +783,12 @@ const exportUnitPainterVariantNow = async (
   const normalizedAsset = normalizeVisualsModelAssetPath(assetPath);
   if (!normalizedAsset.success) return normalizedAsset;
 
-  if (!Array.isArray(texturesValue) || texturesValue.length === 0) {
+  const requestedPackPath =
+    typeof targetPackPathValue === "string" ? targetPackPathValue.trim() : "";
+  if (!Array.isArray(texturesValue)) {
+    return { success: false as const, error: "The painted texture export payload is invalid." };
+  }
+  if (texturesValue.length === 0 && !requestedPackPath) {
     return { success: false as const, error: "There are no modified textures to export." };
   }
   if (texturesValue.length > MAX_UNIT_PAINTER_TEXTURES) {
@@ -852,8 +857,6 @@ const exportUnitPainterVariantNow = async (
   const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
   const suggestedPackName = getUnitPainterDefaultPackName(normalizedAsset.assetPath);
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
-  const requestedPackPath =
-    typeof targetPackPathValue === "string" ? targetPackPathValue.trim() : "";
   let packPath: string;
   if (requestedPackPath) {
     packPath = ensureUnitPainterPackExtension(nodePath.resolve(requestedPackPath));
@@ -883,6 +886,34 @@ const exportUnitPainterVariantNow = async (
     return {
       success: false as const,
       error: `'${packName}' is a vanilla game pack and cannot be overwritten by the unit painter.`,
+    };
+  }
+
+  if (textures.length === 0) {
+    const manifest = Buffer.from(
+      JSON.stringify(
+        {
+          version: 1,
+          sourceVariantMeshDefinition: normalizedAsset.assetPath,
+          paintedTextures: [],
+          resetToOriginal: true,
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+    const markerFile = {
+      name: "whmm_unit_painter_manifest_reset.json",
+      buffer: manifest,
+      file_size: manifest.length,
+    };
+    await writePack([markerFile], packPath);
+    return {
+      success: true as const,
+      packPath,
+      files: [markerFile.name],
+      warnings: [] as string[],
     };
   }
 
