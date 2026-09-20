@@ -386,6 +386,7 @@ const buildUvIslandMask = (
 ): UvIslandMask | undefined => {
   if (triangles.length === 0) return undefined;
 
+  target.editable.updateMatrix();
   const transformed = triangles.map((triangle) => {
     const uvA = triangle.uvA.clone();
     const uvB = triangle.uvB.clone();
