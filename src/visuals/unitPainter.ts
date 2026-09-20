@@ -103,7 +103,7 @@ const cloneEditableDataTexture = (texture: THREE.DataTexture, data: Uint8Array, 
     new Uint8Array(data),
     width,
     height,
-    texture.format,
+    texture.format as THREE.PixelFormat,
     texture.type,
   );
   editable.name = texture.name;
