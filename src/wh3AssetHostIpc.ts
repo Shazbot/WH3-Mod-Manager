@@ -775,17 +775,96 @@ const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
   return bytes.length === expectedBytes ? bytes : undefined;
 };
 
+
+const sanitizeUnitPainterProjectState = (value: unknown) => {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as { activeLayerId?: unknown; layers?: unknown };
+  const activeLayerId = typeof candidate.activeLayerId === "string" ? candidate.activeLayerId.trim() : "";
+  if (!activeLayerId || !Array.isArray(candidate.layers) || candidate.layers.length < 1 || candidate.layers.length > 32) {
+    return undefined;
+  }
+
+  let totalBytes = 0;
+  const seenLayerIds = new Set<string>();
+  const layers = [];
+  for (const rawLayer of candidate.layers) {
+    if (!rawLayer || typeof rawLayer !== "object") return undefined;
+    const layer = rawLayer as {
+      id?: unknown;
+      name?: unknown;
+      visible?: unknown;
+      opacity?: unknown;
+      textures?: unknown;
+    };
+    const id = typeof layer.id === "string" ? layer.id.trim() : "";
+    const name = typeof layer.name === "string" ? layer.name.trim().slice(0, 80) : "";
+    const opacity = typeof layer.opacity === "number" ? layer.opacity : Number.NaN;
+    if (
+      !id
+      || !/^[a-zA-Z0-9_-]{1,80}$/.test(id)
+      || seenLayerIds.has(id)
+      || !name
+      || typeof layer.visible !== "boolean"
+      || !Number.isFinite(opacity)
+      || opacity < 0
+      || opacity > 1
+      || !Array.isArray(layer.textures)
+      || layer.textures.length > MAX_UNIT_PAINTER_TEXTURES
+    ) {
+      return undefined;
+    }
+    seenLayerIds.add(id);
+
+    const seenSources = new Set<string>();
+    const textures = [];
+    for (const rawTexture of layer.textures) {
+      if (!rawTexture || typeof rawTexture !== "object") return undefined;
+      const texture = rawTexture as {
+        sourceVirtualPath?: unknown;
+        width?: unknown;
+        height?: unknown;
+        rgbaBytes?: unknown;
+      };
+      const sourceVirtualPath = sanitizeUnitPainterSourcePath(texture.sourceVirtualPath);
+      const width = typeof texture.width === "number" && Number.isInteger(texture.width) ? texture.width : 0;
+      const height = typeof texture.height === "number" && Number.isInteger(texture.height) ? texture.height : 0;
+      const rgbaBytes =
+        width > 0 && height > 0 && width <= 16384 && height <= 16384
+          ? readUnitPainterRgba(texture.rgbaBytes, width, height)
+          : undefined;
+      if (!sourceVirtualPath || !rgbaBytes) return undefined;
+      const sourceKey = sourceVirtualPath.toLowerCase();
+      if (seenSources.has(sourceKey)) return undefined;
+      seenSources.add(sourceKey);
+      totalBytes += rgbaBytes.length;
+      if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) return undefined;
+      textures.push({ sourceVirtualPath, width, height, rgbaBytes });
+    }
+
+    layers.push({ id, name, visible: layer.visible, opacity, textures });
+  }
+
+  if (!seenLayerIds.has(activeLayerId)) return undefined;
+  return { activeLayerId, layers };
+};
+
 const exportUnitPainterVariantNow = async (
   assetPathValue: unknown,
   enabledModsValue: unknown,
   variantSelectionsValue: unknown,
   texturesValue: unknown,
+  projectStateValue: unknown,
   targetPackPathValue: unknown,
   generation: number,
 ) => {
   const assetPath = typeof assetPathValue === "string" ? assetPathValue.trim() : "";
   const normalizedAsset = normalizeVisualsModelAssetPath(assetPath);
   if (!normalizedAsset.success) return normalizedAsset;
+
+  const projectState = sanitizeUnitPainterProjectState(projectStateValue);
+  if (!projectState) {
+    return { success: false as const, error: "The unit painter layer project payload is invalid." };
+  }
 
   const requestedPackPath =
     typeof targetPackPathValue === "string" ? targetPackPathValue.trim() : "";
@@ -898,7 +977,7 @@ const exportUnitPainterVariantNow = async (
     const projectFiles = await buildUnitPainterProjectPackFiles(
       normalizedAsset.assetPath,
       variantSelections,
-      [],
+      projectState,
     );
     await writePack(projectFiles, packPath);
     return {
@@ -979,7 +1058,7 @@ const exportUnitPainterVariantNow = async (
     const projectFiles = await buildUnitPainterProjectPackFiles(
       normalizedAsset.assetPath,
       variantSelections,
-      textures,
+      projectState,
     );
     const packFiles = [...gamePackFiles, ...projectFiles];
     await writePack(packFiles, packPath);
@@ -1088,34 +1167,82 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     if (!manifestBuffer) return { success: false as const, error: "The unit painter project manifest could not be read." };
     const manifest = parseUnitPainterProjectManifest(manifestBuffer);
 
-    if (manifest.paintedTextures.length > MAX_UNIT_PAINTER_TEXTURES) {
+    if (manifest.formatVersion === 1) {
+      if (manifest.paintedTextures.length > MAX_UNIT_PAINTER_TEXTURES) {
+        return {
+          success: false as const,
+          error: `A unit-painter project may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`,
+        };
+      }
+      const texturePaths = manifest.paintedTextures.map((texture) => texture.filePath);
+      const withTextures = texturePaths.length > 0
+        ? await readPack(packPath, { skipParsingTables: true, filesToRead: texturePaths })
+        : withManifest;
+      const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
+      let totalBytes = 0;
+      const textures = [];
+      for (const texture of manifest.paintedTextures) {
+        const packed = byPath.get(texture.filePath.toLowerCase());
+        const compressed = packed?.buffer;
+        if (!compressed) throw new Error(`The saved painter texture '${texture.filePath}' is missing.`);
+        const expectedBytes = texture.width * texture.height * 4;
+        totalBytes += expectedBytes;
+        if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) throw new Error("The saved unit painter project is too large.");
+        const rgbaBytes = await decodeUnitPainterProjectTexture(compressed, expectedBytes);
+        textures.push({
+          sourceVirtualPath: texture.sourceVirtualPath,
+          width: texture.width,
+          height: texture.height,
+          rgbaBytes,
+        });
+      }
+
       return {
-        success: false as const,
-        error: `A unit-painter project may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`,
+        success: true as const,
+        packPath,
+        project: {
+          formatVersion: 1 as const,
+          sourceVariantMeshDefinition: manifest.sourceVariantMeshDefinition,
+          variantSelections: manifest.variantSelections,
+          textures,
+        },
       };
     }
-    const texturePaths = manifest.paintedTextures.map((texture) => texture.filePath);
+
+    const textureEntries = manifest.layers.flatMap((layer) => layer.textures);
+    if (textureEntries.length > MAX_UNIT_PAINTER_TEXTURES * manifest.layers.length) {
+      throw new Error("The saved unit painter project contains too many layer textures.");
+    }
+    const texturePaths = textureEntries.map((texture) => texture.filePath);
     const withTextures = texturePaths.length > 0
       ? await readPack(packPath, { skipParsingTables: true, filesToRead: texturePaths })
       : withManifest;
     const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
     let totalBytes = 0;
-    const textures = [];
-    for (const texture of manifest.paintedTextures) {
-      const packed = byPath.get(texture.filePath.toLowerCase());
-      const compressed = packed?.buffer;
-      if (!compressed) throw new Error(`The saved painter texture '${texture.filePath}' is missing.`);
-      const expectedBytes = texture.width * texture.height * 4;
-      totalBytes += expectedBytes;
-      if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
-        throw new Error("The saved unit painter project is too large.");
+    const layers = [];
+    for (const layer of manifest.layers) {
+      const textures = [];
+      for (const texture of layer.textures) {
+        const packed = byPath.get(texture.filePath.toLowerCase());
+        const compressed = packed?.buffer;
+        if (!compressed) throw new Error(`The saved painter layer texture '${texture.filePath}' is missing.`);
+        const expectedBytes = texture.width * texture.height * 4;
+        totalBytes += expectedBytes;
+        if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) throw new Error("The saved unit painter project is too large.");
+        const rgbaBytes = await decodeUnitPainterProjectTexture(compressed, expectedBytes);
+        textures.push({
+          sourceVirtualPath: texture.sourceVirtualPath,
+          width: texture.width,
+          height: texture.height,
+          rgbaBytes,
+        });
       }
-      const rgbaBytes = await decodeUnitPainterProjectTexture(compressed, expectedBytes);
-      textures.push({
-        sourceVirtualPath: texture.sourceVirtualPath,
-        width: texture.width,
-        height: texture.height,
-        rgbaBytes,
+      layers.push({
+        id: layer.id,
+        name: layer.name,
+        visible: layer.visible,
+        opacity: layer.opacity,
+        textures,
       });
     }
 
@@ -1123,10 +1250,11 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
       success: true as const,
       packPath,
       project: {
-        formatVersion: manifest.formatVersion,
+        formatVersion: 2 as const,
         sourceVariantMeshDefinition: manifest.sourceVariantMeshDefinition,
         variantSelections: manifest.variantSelections,
-        textures,
+        activeLayerId: manifest.activeLayerId,
+        layers,
       },
     };
   } catch (error) {
@@ -1149,6 +1277,7 @@ ipcMain.handle(
     enabledMods: unknown,
     variantSelections: unknown,
     textures: unknown,
+    projectState: unknown,
     targetPackPath: unknown,
   ) => {
     const generation = hostLifecycleGeneration;
@@ -1158,6 +1287,7 @@ ipcMain.handle(
         enabledMods,
         variantSelections,
         textures,
+        projectState,
         targetPackPath,
         generation,
       ),
