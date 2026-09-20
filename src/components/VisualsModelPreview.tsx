@@ -25,6 +25,7 @@ import {
   mirrorRayAcrossObjectLocalX,
   sampleUnitPainterStrokeSegment,
   type UnitPainterBrushMode,
+  type UnitPainterLayerInfo,
   type UnitPainterSelectionInfo,
   type UnitPainterSelectionScope,
 } from "../visuals/unitPainter";
@@ -472,6 +473,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
   const paintHasUnsavedChanges = paintSessionRef.current?.hasUnsavedChanges ?? false;
+  const paintLayers: UnitPainterLayerInfo[] = paintSessionRef.current?.layers ?? [];
+  const paintActiveLayerId = paintSessionRef.current?.activeLayerId ?? "";
+  const paintActiveLayer = paintLayers.find((layer) => layer.id === paintActiveLayerId);
+  const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
   void paintHistoryVersion;
 
   const rememberPaintColor = (color: string) => {
@@ -1402,7 +1407,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (pendingProject?.project && pendingProject.packPath) {
       pendingPaintProjectRef.current = null;
       try {
-        session.loadProjectTextures(pendingProject.project.textures);
+        if (pendingProject.project.formatVersion === 2) {
+          session.loadProjectLayers({
+            activeLayerId: pendingProject.project.activeLayerId,
+            layers: pendingProject.project.layers,
+          });
+        } else {
+          session.loadProjectTextures(pendingProject.project.textures);
+        }
         setPaintPackPath(pendingProject.packPath);
         setPaintExportStatus(`Opened painted mod: ${pendingProject.packPath}`);
       } catch (projectError) {
@@ -1524,11 +1536,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           setPaintExportStatus("Nothing has been painted yet.");
           return;
         }
+        const projectState = session.exportProjectState();
         const result = await exportUnitPainterTextures(
           assetPath,
           effectiveEnabledMods,
           comparisonVariants[0]?.selections ?? [],
           textures,
+          projectState,
           targetPackPath,
         );
         if (result.canceled) {
@@ -1635,6 +1649,157 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             )}
             {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
               <>
+                <div className="flex items-center gap-1 rounded border border-gray-700 bg-gray-950/70 px-1 py-0.5">
+                  <span className="text-gray-500" title="Immutable original BaseColour">Base</span>
+                  <span className="text-gray-600">+</span>
+                  <select
+                    value={paintActiveLayerId}
+                    onChange={(event) => {
+                      if (paintSessionRef.current?.setActiveLayer(event.target.value)) {
+                        setPaintHistoryVersion((value) => value + 1);
+                      }
+                    }}
+                    aria-label="Active paint layer"
+                    className="max-w-32 rounded border border-gray-600 bg-gray-800 px-1 py-1 text-xs text-gray-100"
+                  >
+                    {[...paintLayers].reverse().map((layer) => (
+                      <option key={layer.id} value={layer.id}>
+                        {layer.visible ? "" : "◌ "}{layer.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      paintSessionRef.current?.addLayer();
+                      setPaintExportStatus("");
+                      setPaintHistoryVersion((value) => value + 1);
+                    }}
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400"
+                    title="Add paint layer"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!paintActiveLayer}
+                    onClick={() => {
+                      if (paintSessionRef.current?.duplicateActiveLayer()) {
+                        setPaintExportStatus("");
+                        setPaintHistoryVersion((value) => value + 1);
+                      }
+                    }}
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Duplicate active layer"
+                  >
+                    Dup
+                  </button>
+                  <button
+                    type="button"
+                    disabled={paintLayers.length <= 1}
+                    onClick={() => {
+                      if (paintSessionRef.current?.deleteActiveLayer()) {
+                        setPaintExportStatus("");
+                        setPaintHistoryVersion((value) => value + 1);
+                      }
+                    }}
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Delete active layer"
+                  >
+                    Del
+                  </button>
+                  <button
+                    type="button"
+                    disabled={paintActiveLayerIndex < 0 || paintActiveLayerIndex >= paintLayers.length - 1}
+                    onClick={() => {
+                      if (paintActiveLayer && paintSessionRef.current?.moveLayer(paintActiveLayer.id, 1)) {
+                        setPaintExportStatus("");
+                        setPaintHistoryVersion((value) => value + 1);
+                      }
+                    }}
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Move active layer up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    disabled={paintActiveLayerIndex <= 0}
+                    onClick={() => {
+                      if (paintActiveLayer && paintSessionRef.current?.moveLayer(paintActiveLayer.id, -1)) {
+                        setPaintExportStatus("");
+                        setPaintHistoryVersion((value) => value + 1);
+                      }
+                    }}
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Move active layer down"
+                  >
+                    ↓
+                  </button>
+                  {paintActiveLayer && (
+                    <>
+                      <label className="flex items-center gap-1 text-gray-400" title="Layer visibility">
+                        <input
+                          type="checkbox"
+                          checked={paintActiveLayer.visible}
+                          onChange={(event) => {
+                            if (paintSessionRef.current?.setLayerVisible(paintActiveLayer.id, event.target.checked)) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                        />
+                        Vis
+                      </label>
+                      <input
+                        key={`${paintActiveLayer.id}:${paintActiveLayer.name}`}
+                        defaultValue={paintActiveLayer.name}
+                        onBlur={(event) => {
+                          if (paintSessionRef.current?.renameLayer(paintActiveLayer.id, event.currentTarget.value)) {
+                            setPaintExportStatus("");
+                            setPaintHistoryVersion((value) => value + 1);
+                          } else {
+                            event.currentTarget.value = paintActiveLayer.name;
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") event.currentTarget.blur();
+                        }}
+                        aria-label="Layer name"
+                        className="w-24 rounded border border-gray-600 bg-gray-800 px-1 py-1 text-xs text-gray-100"
+                      />
+                      <label className="flex items-center gap-1 text-gray-400">
+                        Layer
+                        <input
+                          key={`${paintActiveLayer.id}:${paintActiveLayer.opacity}`}
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={5}
+                          defaultValue={Math.round(paintActiveLayer.opacity * 100)}
+                          onBlur={(event) => {
+                            const next = Number(event.currentTarget.value);
+                            if (
+                              Number.isFinite(next)
+                              && paintSessionRef.current?.setLayerOpacity(paintActiveLayer.id, next / 100)
+                            ) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            } else {
+                              event.currentTarget.value = String(Math.round(paintActiveLayer.opacity * 100));
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") event.currentTarget.blur();
+                          }}
+                          aria-label="Layer opacity percent"
+                          className="w-12 rounded border border-gray-600 bg-gray-800 px-1 py-1 text-xs text-gray-100"
+                        />
+                        %
+                      </label>
+                    </>
+                  )}
+                </div>
                 <label className="flex items-center gap-1 text-gray-400">
                   Color
                   <input
@@ -1741,7 +1906,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   value={paintBrushMode}
                   onChange={(event) => setPaintBrushMode(event.target.value as UnitPainterBrushMode)}
                   aria-label="Brush mode"
-                  title={paintBrushMode === "restore" ? "Restore the original BaseColour" : "Brush mode"}
+                  title={paintBrushMode === "restore" ? "Erase the active layer to reveal layers/Base below" : "Brush mode"}
                   className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                 >
                   <option value="recolor">Recolor</option>
@@ -1793,7 +1958,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         paintBrushMode === "restore"
-                          ? "Use Reset material to restore the whole selected material"
+                          ? "Use Clear material to erase this area from the active layer"
                           : "Fill the selected material UV footprint with the current color"
                       }
                     >
@@ -1811,7 +1976,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         paintBrushMode === "restore"
-                          ? "Use Reset island to restore the whole selected UV island"
+                          ? "Use Clear island to erase this area from the active layer"
                           : "Fill only the selected UV island with the current color"
                       }
                     >
@@ -1826,9 +1991,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         }
                       }}
                       className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
-                      title="Restore the selected material UV footprint to its original BaseColour"
+                      title="Clear the active paint layer inside the selected material"
                     >
-                      Reset material
+                      Clear material
                     </button>
                     <button
                       type="button"
@@ -1840,9 +2005,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         }
                       }}
                       className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Restore only the selected UV island to its original BaseColour"
+                      title="Clear the active paint layer inside the selected UV island"
                     >
-                      Reset island
+                      Clear island
                     </button>
                     <button
                       type="button"
@@ -1880,13 +2045,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   type="button"
                   disabled={!paintSessionRef.current}
                   onClick={() => {
-                    paintSessionRef.current?.reset();
-                    setPaintExportStatus("");
-                    setPaintHistoryVersion((value) => value + 1);
+                    if (paintSessionRef.current?.reset()) {
+                      setPaintExportStatus("");
+                      setPaintHistoryVersion((value) => value + 1);
+                    }
                   }}
                   className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Clear all paint from the active layer"
                 >
-                  Reset all
+                  Clear layer
                 </button>
                 <button
                   type="button"
@@ -1934,7 +2101,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint · Symmetry X: mirror left/right · Select: choose material/island · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint active layer · Restore: erase active layer · Symmetry X: mirror left/right · Select: choose material/island · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
