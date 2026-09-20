@@ -482,6 +482,7 @@ const exportVisualsModelNow = async (
       previewId,
       url: modelPreviewAssetUrl(previewId),
       warnings: result.warnings?.map((warning) => warning.message) ?? [],
+      textureSources: result.textureSources ?? [],
       timings: {
         queueWaitMs,
         prepareHostMs,
@@ -594,6 +595,7 @@ const exportVisualsModelBatchNow = async (
         previewId,
         url: modelPreviewAssetUrl(previewId),
         warnings: result.warnings?.map((warning) => warning.message) ?? [],
+        textureSources: result.textureSources ?? [],
       };
     });
 
@@ -738,6 +740,51 @@ const sanitizeUnitPainterFileName = (value: unknown, index: number) => {
   return `${stem || `painted_texture_${String(index + 1).padStart(2, "0")}`}.png`;
 };
 
+const sanitizeUnitPainterSourcePath = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.replace(/\//g, "\\").trim().replace(/^\\+/, "");
+  if (
+    !normalized ||
+    normalized.includes("\0") ||
+    normalized.split("\\").some((part) => part === "..") ||
+    !normalized.toLowerCase().endsWith(".dds")
+  ) {
+    return undefined;
+  }
+  return normalized;
+};
+
+const sanitizeUnitPainterVariantName = (assetPath: string) => {
+  const fileName = assetPath.replace(/\//g, "\\").split("\\").pop() || "unit";
+  const stem = fileName.replace(/\.variantmeshdefinition$/i, "").replace(/\.[^.]+$/, "");
+  const sanitized = stem
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+  return `${sanitized || "unit"}_painted`;
+};
+
+const chooseUnitPainterVariantName = async (directory: string, assetPath: string) => {
+  const baseName = sanitizeUnitPainterVariantName(assetPath);
+  for (let suffix = 1; suffix < 10_000; suffix += 1) {
+    const candidate = suffix === 1 ? baseName : `${baseName}_${suffix}`;
+    const vmdPath = nodePath.join(
+      directory,
+      "variantmeshes",
+      "variantmeshdefinitions",
+      "whmm_unit_painter",
+      `${candidate}.variantmeshdefinition`,
+    );
+    try {
+      await fs.promises.access(vmdPath);
+    } catch {
+      return candidate;
+    }
+  }
+  return `${baseName}_${randomUUID().slice(0, 8)}`;
+};
+
 const readUnitPainterPng = (value: unknown) => {
   if (!ArrayBuffer.isView(value)) return undefined;
   const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
@@ -759,8 +806,36 @@ const readUnitPainterPng = (value: unknown) => {
   return bytes;
 };
 
-ipcMain.removeHandler("exportUnitPainterTextures");
-ipcMain.handle("exportUnitPainterTextures", async (_event, assetPathValue: unknown, texturesValue: unknown) => {
+const copyUnitPainterDirectory = async (source: string, destination: string): Promise<string[]> => {
+  const copied: string[] = [];
+  await fs.promises.mkdir(destination, { recursive: true });
+  const entries = await fs.promises.readdir(source, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = nodePath.join(source, entry.name);
+    const destinationPath = nodePath.join(destination, entry.name);
+    if (entry.isDirectory()) {
+      copied.push(...(await copyUnitPainterDirectory(sourcePath, destinationPath)));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    await fs.promises.mkdir(nodePath.dirname(destinationPath), { recursive: true });
+    await fs.promises.copyFile(sourcePath, destinationPath);
+    copied.push(destinationPath);
+  }
+  return copied;
+};
+
+const exportUnitPainterVariantNow = async (
+  assetPathValue: unknown,
+  enabledModsValue: unknown,
+  variantSelectionsValue: unknown,
+  texturesValue: unknown,
+  generation: number,
+) => {
+  const assetPath = typeof assetPathValue === "string" ? assetPathValue.trim() : "";
+  const normalizedAsset = normalizeVisualsModelAssetPath(assetPath);
+  if (!normalizedAsset.success) return normalizedAsset;
+
   if (!Array.isArray(texturesValue) || texturesValue.length === 0) {
     return { success: false as const, error: "There are no modified textures to export." };
   }
@@ -771,26 +846,53 @@ ipcMain.handle("exportUnitPainterTextures", async (_event, assetPathValue: unkno
     };
   }
 
-  const textures: Array<{ fileName: string; width: number; height: number; pngBytes: Buffer }> = [];
+  const textures: Array<{
+    fileName: string;
+    sourceVirtualPath: string;
+    width: number;
+    height: number;
+    pngBytes: Buffer;
+  }> = [];
+  const seenSourcePaths = new Set<string>();
   let totalBytes = 0;
   for (let index = 0; index < texturesValue.length; index += 1) {
     const value = texturesValue[index];
     if (!value || typeof value !== "object") {
       return { success: false as const, error: "The painted texture export payload is invalid." };
     }
-    const candidate = value as { fileName?: unknown; width?: unknown; height?: unknown; pngBytes?: unknown };
+
+    const candidate = value as {
+      fileName?: unknown;
+      sourceVirtualPath?: unknown;
+      width?: unknown;
+      height?: unknown;
+      pngBytes?: unknown;
+    };
     const pngBytes = readUnitPainterPng(candidate.pngBytes);
+    const sourceVirtualPath = sanitizeUnitPainterSourcePath(candidate.sourceVirtualPath);
     const width = typeof candidate.width === "number" && Number.isInteger(candidate.width) ? candidate.width : 0;
     const height = typeof candidate.height === "number" && Number.isInteger(candidate.height) ? candidate.height : 0;
-    if (!pngBytes || width <= 0 || height <= 0 || width > 16384 || height > 16384) {
+    if (!pngBytes || !sourceVirtualPath || width <= 0 || height <= 0 || width > 16384 || height > 16384) {
       return { success: false as const, error: "One of the painted textures is invalid." };
     }
+
+    const sourceKey = sourceVirtualPath.toLowerCase();
+    if (seenSourcePaths.has(sourceKey)) {
+      return {
+        success: false as const,
+        error: `The source texture '${sourceVirtualPath}' appears more than once in this paint export.`,
+      };
+    }
+    seenSourcePaths.add(sourceKey);
+
     totalBytes += pngBytes.length;
     if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
       return { success: false as const, error: "The painted texture export is too large." };
     }
+
     textures.push({
       fileName: sanitizeUnitPainterFileName(candidate.fileName, index),
+      sourceVirtualPath,
       width,
       height,
       pngBytes,
@@ -799,7 +901,8 @@ ipcMain.handle("exportUnitPainterTextures", async (_event, assetPathValue: unkno
 
   const ownerWindow = windows.mainWindow && !windows.mainWindow.isDestroyed() ? windows.mainWindow : undefined;
   const dialogOptions = {
-    title: "Export painted unit textures",
+    title: "Export painted WH3 unit variant",
+    buttonLabel: "Export",
     properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">,
   };
   const selection = ownerWindow
@@ -809,46 +912,90 @@ ipcMain.handle("exportUnitPainterTextures", async (_event, assetPathValue: unkno
     return { success: false as const, canceled: true };
   }
 
-  const directory = selection.filePaths[0];
-  await fs.promises.mkdir(directory, { recursive: true });
+  const destinationDirectory = selection.filePaths[0];
+  const variantName = await chooseUnitPainterVariantName(destinationDirectory, normalizedAsset.assetPath);
+  const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
+  const stageId = `unit-painter-${randomUUID()}`;
+  const stageRoot = nodePath.join(getOutputRoot(), stageId);
+  const inputDirectory = nodePath.join(stageRoot, "input");
+  const generatedDirectory = nodePath.join(stageRoot, "generated");
+  let host: RunningHost | undefined;
 
-  const usedNames = new Map<string, number>();
-  const writtenFiles: string[] = [];
-  for (const texture of textures) {
-    const seen = usedNames.get(texture.fileName) ?? 0;
-    usedNames.set(texture.fileName, seen + 1);
-    const fileName =
-      seen === 0
-        ? texture.fileName
-        : texture.fileName.replace(/\.png$/i, `_${seen + 1}.png`);
-    const outputPath = nodePath.join(directory, fileName);
-    await fs.promises.writeFile(outputPath, texture.pngBytes);
-    writtenFiles.push(outputPath);
+  try {
+    host = await prepareVisualsModelHost(enabledModsValue, generation);
+    assertHostLifecycleActive(generation);
+    await fs.promises.mkdir(inputDirectory, { recursive: true });
+    await fs.promises.mkdir(generatedDirectory, { recursive: true });
+
+    const stagedTextures: Array<{ sourceVirtualPath: string; pngPath: string }> = [];
+    for (let index = 0; index < textures.length; index += 1) {
+      const texture = textures[index];
+      const stagedName = `${String(index + 1).padStart(2, "0")}_${texture.fileName}`;
+      const stagedPath = nodePath.join(inputDirectory, stagedName);
+      await fs.promises.writeFile(stagedPath, texture.pngBytes);
+      stagedTextures.push({
+        sourceVirtualPath: texture.sourceVirtualPath,
+        pngPath: nodePath.relative(getOutputRoot(), stagedPath),
+      });
+    }
+
+    const result = await host.client.exportPaintedVariant({
+      assetPath: normalizedAsset.assetPath,
+      outputDirectory: nodePath.relative(getOutputRoot(), generatedDirectory),
+      variantName,
+      textures: stagedTextures,
+      variantSelections,
+    });
+    assertHostLifecycleActive(generation);
+
+    if (!result.success || !result.variantMeshVirtualPath) {
+      const hostErrors = result.errors?.map((error) => error.message).filter(Boolean).join(" | ");
+      return {
+        success: false as const,
+        error: hostErrors || "WH3AssetHost could not create the painted unit variant.",
+        warnings: result.warnings ?? [],
+      };
+    }
+
+    const copiedFiles = await copyUnitPainterDirectory(generatedDirectory, destinationDirectory);
+    return {
+      success: true as const,
+      directory: destinationDirectory,
+      files: copiedFiles,
+      variantMeshPath: result.variantMeshVirtualPath,
+      warnings: result.warnings ?? [],
+    };
+  } catch (error) {
+    disposeOperationHost(host);
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : "Failed to export the painted unit variant.",
+    };
+  } finally {
+    try {
+      await fs.promises.rm(stageRoot, { recursive: true, force: true });
+    } catch {
+      // Unit-painter staging is disposable and will also be cleared on the next app run.
+    }
   }
+};
 
-  const assetPath = typeof assetPathValue === "string" ? assetPathValue : "";
-  const manifestPath = nodePath.join(directory, "unit-painter-manifest.json");
-  await fs.promises.writeFile(
-    manifestPath,
-    JSON.stringify(
-      {
-        version: 1,
-        assetPath,
-        textures: textures.map((texture, index) => ({
-          fileName: nodePath.basename(writtenFiles[index]),
-          width: texture.width,
-          height: texture.height,
-        })),
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
-  writtenFiles.push(manifestPath);
-
-  return { success: true as const, directory, files: writtenFiles };
-});
+ipcMain.removeHandler("exportUnitPainterTextures");
+ipcMain.handle(
+  "exportUnitPainterTextures",
+  async (
+    _event,
+    assetPath: unknown,
+    enabledMods: unknown,
+    variantSelections: unknown,
+    textures: unknown,
+  ) => {
+    const generation = hostLifecycleGeneration;
+    return exportVisualsModel(() =>
+      exportUnitPainterVariantNow(assetPath, enabledMods, variantSelections, textures, generation),
+    );
+  },
+);
 
 const stopHostForAppExit = () => {
   hostShutdownRequested = true;
