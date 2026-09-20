@@ -69,6 +69,21 @@ export interface VisualsModelPreviewAnimationCatalogResult {
   error?: string;
 }
 
+export interface UnitPainterTextureExport {
+  fileName: string;
+  width: number;
+  height: number;
+  pngBytes: Uint8Array;
+}
+
+export interface UnitPainterTextureExportResult {
+  success: boolean;
+  directory?: string;
+  files?: string[];
+  canceled?: boolean;
+  error?: string;
+}
+
 type RendererIpc = {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
 };
@@ -134,3 +149,18 @@ export const releaseVisualsModelPreview = async (previewId: string): Promise<{ s
 export const reportVisualsModelPreviewTiming = async (report: VisualsModelPreviewTimingReport): Promise<void> => {
   await getRendererIpc().invoke("reportVisualsModelPreviewTiming", report);
 };
+
+export const exportUnitPainterTextures = async (
+  assetPath: string,
+  textures: readonly UnitPainterTextureExport[],
+): Promise<UnitPainterTextureExportResult> =>
+  (await getRendererIpc().invoke(
+    "exportUnitPainterTextures",
+    assetPath,
+    textures.map((texture) => ({
+      fileName: texture.fileName,
+      width: texture.width,
+      height: texture.height,
+      pngBytes: texture.pngBytes,
+    })),
+  )) as UnitPainterTextureExportResult;
