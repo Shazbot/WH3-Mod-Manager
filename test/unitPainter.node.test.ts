@@ -166,8 +166,8 @@ describe("unit painter", () => {
 
       // x=17 is deliberately outside the selected island, so compare a texel
       // near the brush edge that still belongs to the selected triangle.
-      const softEdge = getPixel(soft.material, 12, 12)[0];
-      const hardEdge = getPixel(hard.material, 12, 12)[0];
+      const softEdge = getPixel(soft.material, 12, 10)[0];
+      const hardEdge = getPixel(hard.material, 12, 10)[0];
       expect(hardEdge).toBeGreaterThanOrEqual(softEdge);
       expect(hardEdge).toBe(255);
       expect(softEdge).toBeLessThan(255);
