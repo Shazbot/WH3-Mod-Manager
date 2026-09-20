@@ -1,6 +1,6 @@
 import { TextDecoder } from "node:util";
 
-export const WH3_ASSET_HOST_PROTOCOL_VERSION = 2;
+export const WH3_ASSET_HOST_PROTOCOL_VERSION = 1;
 export const WH3_ASSET_HOST_MAX_FRAME_BYTES = 1024 * 1024;
 const FRAME_HEADER_BYTES = 4;
 
