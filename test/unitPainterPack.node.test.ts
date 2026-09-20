@@ -16,6 +16,7 @@ import {
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
   buildUnitPainterProjectPackFiles,
+  decodeUnitPainterProjectTexture,
   parseUnitPainterProjectManifest,
   UNIT_PAINTER_PROJECT_MANIFEST_PATH,
 } from "../src/visuals/unitPainterPack";
@@ -152,7 +153,7 @@ describe("unit painter pack staging", () => {
     const rgba = new Uint8Array(4 * 4 * 4);
     rgba[0] = 123;
 
-    const projectFiles = buildUnitPainterProjectPackFiles(
+    const projectFiles = await buildUnitPainterProjectPackFiles(
       sourceVmd,
       [{ slotPath: "body", choiceIndex: 2 }],
       [{
@@ -181,15 +182,16 @@ describe("unit painter pack staging", () => {
       const savedManifest = saved.packedFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH)?.buffer;
       const savedRgba = saved.packedFiles.find((file) => file.name === manifest.paintedTextures[0].filePath)?.buffer;
       expect(parseUnitPainterProjectManifest(savedManifest!)).toEqual(manifest);
-      expect(savedRgba?.[0]).toBe(123);
-      expect(savedRgba?.length).toBe(rgba.length);
+      const decoded = await decodeUnitPainterProjectTexture(savedRgba!, rgba.length);
+      expect(decoded[0]).toBe(123);
+      expect(decoded.length).toBe(rgba.length);
     } finally {
       appData.currentGame = previousGame;
     }
   });
 
-  it("supports a reset-to-original editable project with no painted texture snapshots", () => {
-    const files = buildUnitPainterProjectPackFiles(
+  it("supports a reset-to-original editable project with no painted texture snapshots", async () => {
+    const files = await buildUnitPainterProjectPackFiles(
       "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
       [],
       [],
