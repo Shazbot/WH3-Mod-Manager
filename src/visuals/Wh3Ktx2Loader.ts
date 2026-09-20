@@ -155,6 +155,7 @@ export class Wh3Ktx2Loader extends KTX2Loader {
         const cacheKey = hashWh3RawKtx2(buffer);
         void this.createWh3RawTexture(buffer, header, timingGeneration, cacheKey)
           .then((texture) => {
+            texture.userData.wh3PreviewTextureUrl = url;
             // GLTFLoader is typed against KTX2Loader<CompressedTexture>, but it
             // accepts any Texture at runtime. This is deliberately a DataTexture.
             //
