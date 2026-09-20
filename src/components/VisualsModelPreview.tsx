@@ -1367,11 +1367,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                               : `Exported painted variant${warningSuffix}`,
                           );
                         } else {
-                          setPaintExportStatus(result.error || "Texture export failed.");
+                          setPaintExportStatus(result.error || "Variant export failed.");
                         }
                       } catch (exportError) {
                         setPaintExportStatus(
-                          exportError instanceof Error ? exportError.message : "Texture export failed.",
+                          exportError instanceof Error ? exportError.message : "Variant export failed.",
                         );
                       } finally {
                         setIsPaintExporting(false);
