@@ -197,6 +197,15 @@ const texturePoolKey = (texture: THREE.Texture) => {
 };
 
 const previewTextureFileName = (texture: THREE.Texture) => {
+  const generatedFileName = texture.userData.wh3GeneratedFileName;
+  if (typeof generatedFileName === "string" && generatedFileName) {
+    return generatedFileName.replace(/[?#].*$/, "").split(/[\\/]/).pop()?.toLowerCase();
+  }
+
+  if (texture.name) {
+    return texture.name.replace(/[?#].*$/, "").split(/[\\/]/).pop()?.toLowerCase();
+  }
+
   const url = texture.userData.wh3PreviewTextureUrl;
   if (typeof url !== "string" || !url) return undefined;
   try {
@@ -226,6 +235,9 @@ const annotatePreviewTextureSources = (
       if (!material || !("map" in material)) continue;
       const map = (material as THREE.Material & { map?: THREE.Texture | null }).map;
       if (!map) continue;
+      if (typeof map.userData.wh3SourceVirtualPath === "string" && map.userData.wh3SourceVirtualPath) {
+        continue;
+      }
       const fileName = previewTextureFileName(map);
       const sourceVirtualPath = fileName ? baseColorSources.get(fileName) : undefined;
       if (sourceVirtualPath) map.userData.wh3SourceVirtualPath = sourceVirtualPath;
