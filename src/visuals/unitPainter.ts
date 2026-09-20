@@ -442,7 +442,7 @@ export class UnitPainterSession {
     this.redoHistory.length = 0;
   }
 
-  async exportModifiedTextures(): Promise<UnitPainterExportTexture[]> {
+  exportModifiedTextures(): UnitPainterExportTexture[] {
     if (this.isStrokeOpen) this.endStroke();
     const modifiedTargets = [...this.targetsByEditableTexture.values()].filter((target) => {
       if (target.data.length !== target.originalData.length) return true;
