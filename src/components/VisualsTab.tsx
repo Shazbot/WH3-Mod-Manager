@@ -50,7 +50,7 @@ type VisualsViewerMode = "preview" | "source";
 
 type VisualsFileResult = {
   path: string;
-  ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material";
+  ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material" | "dds";
 };
 
 type VisualsListRow =
@@ -67,10 +67,11 @@ type VisualsListRow =
     }
   | { kind: "origin"; key: string; label: string; count: number; isCollapsed: boolean };
 
-type VisualsAssetEditorContextMenu = {
+type VisualsContextMenu = {
   x: number;
   y: number;
-  targetPath: string;
+  targetPath?: string;
+  targetPaths: string[];
   preferredPackPath?: string;
 };
 
@@ -89,7 +90,8 @@ let nextVisualsTabId = 1;
 let nextVisualsRequestId = 1;
 
 const collator = new Intl.Collator("en");
-const viewerModelPathRegex = /([A-Za-z0-9_.\-\\/]+?\.(?:variantmeshdefinition|wsmodel|rigid_model_v2|xml\.material))/gi;
+const viewerModelPathRegex =
+  /([A-Za-z0-9_.\-\\/]+?\.(?:variantmeshdefinition|wsmodel|rigid_model_v2|xml\.material|dds))/gi;
 
 const getBaseName = (path: string) => {
   const parts = path.split(/[\\/]/);
@@ -121,7 +123,24 @@ const isOpenableVisualsFile = (file: VisualsFileResult) =>
 
 const isXmlMaterialPath = (path: string) => path.toLowerCase().endsWith(".xml.material");
 
-const isAssetEditorOpenablePath = (path: string) => !isXmlMaterialPath(path);
+const isDdsPath = (path: string) => path.toLowerCase().endsWith(".dds");
+
+const isAssetEditorOpenablePath = (path: string) => !isXmlMaterialPath(path) && !isDdsPath(path);
+
+const getVisualPathsFromText = (text: string) => {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  const matcher = new RegExp(viewerModelPathRegex.source, "gi");
+  for (const match of text.matchAll(matcher)) {
+    const path = match[1];
+    if (!path) continue;
+    const key = getVariantFileKey(path);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    paths.push(path);
+  }
+  return paths;
+};
 
 const formatCasteLabel = (caste: string) =>
   caste.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unknown caste";
@@ -166,7 +185,8 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const [fileResultsTotal, setFileResultsTotal] = useState(0);
   const [isFileSearchLoading, setIsFileSearchLoading] = useState(false);
   const [fileSearchError, setFileSearchError] = useState<string | null>(null);
-  const [assetEditorContextMenu, setAssetEditorContextMenu] = useState<VisualsAssetEditorContextMenu | null>(null);
+  const [assetEditorContextMenu, setAssetEditorContextMenu] = useState<VisualsContextMenu | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const unitClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -748,7 +768,9 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                     ? "text-sky-400"
                     : file.ext === "rigid_model_v2"
                       ? "text-violet-400"
-                      : "text-gray-400"
+                      : file.ext === "dds"
+                        ? "text-amber-300"
+                        : "text-gray-400"
               }`}
             >
               {file.ext}
@@ -767,7 +789,25 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       setViewerMessage("No resolved file path is available for AssetEditor.");
       return;
     }
-    setAssetEditorContextMenu({ x: event.clientX, y: event.clientY, targetPath, preferredPackPath });
+    setAssetEditorContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      targetPath,
+      targetPaths: [targetPath],
+      preferredPackPath,
+    });
+  };
+
+  const openSourceContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!activeTab) return;
+    setAssetEditorContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      targetPaths: activeTab.text ? getVisualPathsFromText(activeTab.text) : [],
+      preferredPackPath: activeTab.resolvedPackPath,
+    });
   };
 
   const sendToAssetEditor = async (targetPath: string, mode: "new" | "existing", preferredPackPath?: string) => {
@@ -793,6 +833,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const onAssetEditorContextAction = async (mode: "new" | "existing") => {
     if (!assetEditorContextMenu) return;
     const { targetPath, preferredPackPath } = assetEditorContextMenu;
+    if (!targetPath) return;
     setAssetEditorContextMenu(null);
     await sendToAssetEditor(targetPath, mode, preferredPackPath);
   };
@@ -800,8 +841,47 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const onCopyAssetPathContextAction = (copyName: boolean) => {
     if (!assetEditorContextMenu) return;
     const { targetPath } = assetEditorContextMenu;
+    if (!targetPath) return;
     setAssetEditorContextMenu(null);
     window.api?.putPathInClipboard(copyName ? getBaseName(targetPath) : targetPath);
+  };
+
+  const onExtractContextAction = async (preserveFolders: boolean) => {
+    if (!assetEditorContextMenu) return;
+    const { targetPaths, preferredPackPath } = assetEditorContextMenu;
+    setAssetEditorContextMenu(null);
+    if (!sessionId) {
+      setViewerMessage("Visuals session is not ready yet.");
+      return;
+    }
+    if (targetPaths.length === 0) {
+      setViewerMessage("No actionable visual files were found in the source tab.");
+      return;
+    }
+
+    setIsExtracting(true);
+    setViewerMessage(null);
+    try {
+      const outputDirectory = await window.api?.selectDirectory();
+      if (!outputDirectory) return;
+      const result = await window.api?.extractVisualsFilesToDirectory?.(
+        sessionId,
+        outputDirectory,
+        targetPaths,
+        preserveFolders,
+        preferredPackPath,
+      );
+      if (!result?.success) {
+        setViewerMessage(result?.error || "Failed to extract visual files.");
+        return;
+      }
+      const skippedMessage = result.skipped.length > 0 ? ` (${result.skipped.length} skipped)` : "";
+      setViewerMessage(`Extracted ${result.writtenCount} file(s) to: ${outputDirectory}${skippedMessage}`);
+    } catch (error) {
+      setViewerMessage(error instanceof Error ? error.message : "Failed to extract visual files.");
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const closeTab = (tabId: string) => {
@@ -846,6 +926,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
             const isVariantMeshDefinition = pathExt.endsWith(".variantmeshdefinition");
             const isWsmodel = pathExt.endsWith(".wsmodel");
             const isXmlMaterial = pathExt.endsWith(".xml.material");
+            const isDds = pathExt.endsWith(".dds");
             const pathPrefix = line.slice(Math.max(0, matchStart - 32), matchStart);
             const isClickableInVisuals =
               isXmlMaterial ||
@@ -872,9 +953,13 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               parts.push(
                 <span
                   key={`path-${lineIndex}-${matchStart}`}
-                  className="text-sky-200 underline decoration-dotted cursor-context-menu"
+                  className={
+                    isDds
+                      ? "text-amber-300 underline decoration-dashed cursor-context-menu bg-amber-900/20"
+                      : "text-sky-200 underline decoration-dotted cursor-context-menu"
+                  }
                   onContextMenu={(event) => openAssetEditorContextMenu(event, pathValue, preferredPackPath)}
-                  title="Right-click to open in AssetEditor"
+                  title={isDds ? "Right-click to extract or copy this DDS file" : "Right-click to open in AssetEditor"}
                 >
                   {pathValue}
                 </span>,
@@ -1221,6 +1306,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   </div>
                   <div
                     className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}
+                    onContextMenu={openSourceContextMenu}
                   >
                     {activeTab.status === "loading" && <div className="p-4 text-gray-300">Loading file...</div>}
                     {activeTab.status === "error" && (
@@ -1244,7 +1330,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   type="text"
                   value={fileQueryInput}
                   onChange={(e) => setFileQueryInput(e.target.value)}
-                  placeholder="Search variantmesh/wsmodel/rigid_model_v2/xml.material"
+                  placeholder="Search variantmesh/wsmodel/rigid_model_v2/xml.material/dds"
                   className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm"
                 />
                 <div className="text-xs text-gray-400 mt-1">
@@ -1302,7 +1388,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
         >
-          {isAssetEditorOpenablePath(assetEditorContextMenu.targetPath) && (
+          {assetEditorContextMenu.targetPath && isAssetEditorOpenablePath(assetEditorContextMenu.targetPath) && (
             <>
               <button
                 type="button"
@@ -1325,20 +1411,45 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               <div className="my-1 border-t border-gray-700" />
             </>
           )}
-          <button
-            type="button"
-            className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
-            onClick={() => onCopyAssetPathContextAction(true)}
-          >
-            Copy Name to Clipboard
-          </button>
-          <button
-            type="button"
-            className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
-            onClick={() => onCopyAssetPathContextAction(false)}
-          >
-            Copy Full Path to Clipboard
-          </button>
+          {(assetEditorContextMenu.targetPaths.length > 0 || !assetEditorContextMenu.targetPath) && (
+            <>
+              <button
+                type="button"
+                disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
+                className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                onClick={() => void onExtractContextAction(true)}
+              >
+                {assetEditorContextMenu.targetPath ? "Extract (with folders)" : "Extract all (with folders)"}
+              </button>
+              <button
+                type="button"
+                disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
+                className="w-full text-left px-4 py-2 text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-50 text-sm"
+                onClick={() => void onExtractContextAction(false)}
+              >
+                {assetEditorContextMenu.targetPath ? "Extract (flat)" : "Extract all (flat)"}
+              </button>
+              {assetEditorContextMenu.targetPath && <div className="my-1 border-t border-gray-700" />}
+            </>
+          )}
+          {assetEditorContextMenu.targetPath && (
+            <>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+                onClick={() => onCopyAssetPathContextAction(true)}
+              >
+                Copy Name to Clipboard
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+                onClick={() => onCopyAssetPathContextAction(false)}
+              >
+                Copy Full Path to Clipboard
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

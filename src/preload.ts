@@ -697,7 +697,7 @@ const api = {
     total?: number;
     results?: {
       path: string;
-      ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material";
+      ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material" | "dds";
     }[];
     error?: string;
   }> => ipcRenderer.invoke("searchVisualsFiles", sessionId, query, offset, limit),
@@ -794,6 +794,22 @@ const api = {
     filePaths: string[] | "all",
   ): Promise<PackExportResult> =>
     ipcRenderer.invoke("exportPackedFilesToDirectory", packPath, outputDirectory, filePaths),
+
+  extractVisualsFilesToDirectory: (
+    sessionId: string,
+    outputDirectory: string,
+    filePaths: string[],
+    preserveFolders: boolean,
+    preferredPackPath?: string,
+  ): Promise<PackExportResult> =>
+    ipcRenderer.invoke(
+      "extractVisualsFilesToDirectory",
+      sessionId,
+      outputDirectory,
+      filePaths,
+      preserveFolders,
+      preferredPackPath,
+    ),
 
   getDataFolder: (): Promise<string | undefined> => ipcRenderer.invoke("getDataFolder"),
 

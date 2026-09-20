@@ -14147,6 +14147,132 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  ipcMain.handle(
+    "extractVisualsFilesToDirectory",
+    async (
+      _event,
+      sessionId: string,
+      outputDirectory: string,
+      filePaths: string[],
+      preserveFolders = true,
+      preferredPackPath?: string,
+    ): Promise<PackExportResult> => {
+      const skipped: Array<{ name: string; reason: string }> = [];
+      let writtenCount = 0;
+      const errors: string[] = [];
+
+      try {
+        const session = visualsSessions.get(sessionId);
+        if (!session) return { success: false, writtenCount, skipped, error: "Visuals session expired or missing" };
+        if (!outputDirectory) return { success: false, writtenCount, skipped, error: "No output directory selected" };
+        if (!Array.isArray(filePaths) || filePaths.length === 0) {
+          return { success: false, writtenCount, skipped, error: "No files to extract" };
+        }
+
+        const uniqueRequestedPaths = Array.from(
+          new Map(
+            filePaths
+              .map((filePath) => [normalizePackFilePathKey(filePath), filePath] as const)
+              .filter(([key]) => key.length > 0),
+          ).values(),
+        );
+        const filesByPack = new Map<
+          string,
+          { packPath: string; files: Array<{ requestedPath: string; fileName: string }> }
+        >();
+        const flatOutputNames = new Set<string>();
+
+        for (const requestedPath of uniqueRequestedPaths) {
+          const resolved = await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath });
+          if (!resolved?.packPath || !resolved.fileName) {
+            skipped.push({ name: requestedPath, reason: "File was not found in the visuals packs" });
+            continue;
+          }
+
+          if (!preserveFolders) {
+            const flatName = nodePath.posix.basename(resolved.fileName.replaceAll("\\", "/"));
+            const flatKey = flatName.toLowerCase();
+            if (flatOutputNames.has(flatKey)) {
+              skipped.push({ name: requestedPath, reason: `Flat extraction name collision: ${flatName}` });
+              continue;
+            }
+            flatOutputNames.add(flatKey);
+          }
+
+          const packKey = resolved.packPath.replaceAll("\\", "/").toLowerCase();
+          const group = filesByPack.get(packKey);
+          if (group) group.files.push({ requestedPath, fileName: resolved.fileName });
+          else {
+            filesByPack.set(packKey, {
+              packPath: resolved.packPath,
+              files: [{ requestedPath, fileName: resolved.fileName }],
+            });
+          }
+        }
+
+        const writeOutput = async (name: string, relativePath: string, contents: Buffer) => {
+          const outputPath = resolveExportOutputPath(outputDirectory, relativePath);
+          if (!outputPath) {
+            skipped.push({ name, reason: "Invalid output path" });
+            return;
+          }
+          try {
+            await fsExtra.ensureDir(nodePath.dirname(outputPath));
+            await fs.promises.writeFile(outputPath, contents);
+            writtenCount += 1;
+          } catch (error) {
+            errors.push(`${name}: ${error instanceof Error ? error.message : "Failed to write file"}`);
+          }
+        };
+
+        for (const group of filesByPack.values()) {
+          const remaining = new Map(group.files.map((file) => [normalizePackFilePathKey(file.fileName), file]));
+          try {
+            await forEachPackedFileBuffer(
+              group.packPath,
+              (name) => remaining.has(normalizePackFilePathKey(name)),
+              async (packedFile, buffer) => {
+                const target = remaining.get(normalizePackFilePathKey(packedFile.name));
+                if (!target) return;
+                const relativePath = preserveFolders
+                  ? packedFile.name.replaceAll("\\", "/")
+                  : nodePath.posix.basename(packedFile.name.replaceAll("\\", "/"));
+                await writeOutput(target.requestedPath, relativePath, buffer);
+                remaining.delete(normalizePackFilePathKey(packedFile.name));
+              },
+              {
+                onSkipped: (packedFile, reason) => {
+                  const target = remaining.get(normalizePackFilePathKey(packedFile.name));
+                  if (!target) return;
+                  remaining.delete(normalizePackFilePathKey(packedFile.name));
+                  skipped.push({
+                    name: target.requestedPath,
+                    reason: reason === "tooLarge" ? "File is too large" : "Could not read payload",
+                  });
+                },
+              },
+            );
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message : "Could not read visual files");
+          }
+          for (const target of remaining.values()) {
+            skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
+          }
+        }
+
+        const error = errors.length > 0 ? errors.join("\n") : undefined;
+        return { success: !error, writtenCount, skipped, ...(error ? { error } : {}) };
+      } catch (error) {
+        console.error("Error extracting Visuals files:", error);
+        return {
+          success: false,
+          writtenCount,
+          skipped,
+          error: error instanceof Error ? error.message : "Failed to extract Visuals files",
+        };
+      }
+    },
+  );
   ipcMain.handle("selectFlowPackFile", async (event) => {
     const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
