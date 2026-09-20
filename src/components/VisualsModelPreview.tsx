@@ -427,7 +427,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
-  painterEnabledRef.current = enablePainting && isPainterEnabled;
+  painterEnabledRef.current =
+    enablePainting && isPainterEnabled && status === "ready" && comparisonModelCount === 1;
   brushSettingsRef.current = {
     radiusPx: paintBrushRadius,
     strength: paintBrushStrength,
@@ -644,6 +645,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.actions = [];
       context.afterNextRender = null;
       finishPaintStroke();
+      paintSessionRef.current?.dispose();
+      paintSessionRef.current = null;
+      paintRootRef.current = null;
       renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
       renderer.domElement.removeEventListener("pointermove", onPointerMove, true);
       renderer.domElement.removeEventListener("pointerup", onPointerUp, true);
@@ -1114,6 +1118,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   ]);
 
   useEffect(() => {
+    if (comparisonModelCount !== 1 && isPainterEnabled) setIsPainterEnabled(false);
+  }, [comparisonModelCount, isPainterEnabled]);
+
+  useEffect(() => {
+    if (!painterEnabledRef.current) {
+      const cursor = brushCursorRef.current;
+      if (cursor) cursor.style.display = "none";
+    }
+  }, [enablePainting, isPainterEnabled, status, comparisonModelCount]);
+
+  useEffect(() => {
     if (
       !enablePainting ||
       !isPainterEnabled ||
@@ -1169,7 +1184,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           className="pointer-events-none absolute left-0 top-0 z-20 hidden rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.75)]"
         />
         {enablePainting && (
-          <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] items-center gap-2 rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-xs text-gray-200 shadow-lg">
+          <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-xs text-gray-200 shadow-lg">
             <button
               type="button"
               disabled={status !== "ready" || comparisonModelCount !== 1}
@@ -1272,7 +1287,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           </div>
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
-          {isPainterEnabled
+          {painterEnabledRef.current
             ? "Left drag: paint · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
