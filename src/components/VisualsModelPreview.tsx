@@ -427,8 +427,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
-  painterEnabledRef.current =
-    enablePainting && isPainterEnabled && status === "ready" && comparisonModelCount === 1;
+  painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   brushSettingsRef.current = {
     radiusPx: paintBrushRadius,
     strength: paintBrushStrength,
