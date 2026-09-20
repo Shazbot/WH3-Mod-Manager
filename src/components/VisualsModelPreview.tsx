@@ -13,6 +13,7 @@ import {
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
   reportVisualsModelPreviewTiming,
+  type VisualsModelPreviewTextureSource,
 } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import { selectDefaultAnimation } from "../visuals/animationSelection";
@@ -169,8 +170,13 @@ const hashGeometry = (geometry: THREE.BufferGeometry) => {
 const texturePoolKey = (texture: THREE.Texture) => {
   const rawKey = texture.userData.wh3RawKtx2CacheKey;
   if (typeof rawKey !== "string") return undefined;
+  const sourceVirtualPath =
+    typeof texture.userData.wh3SourceVirtualPath === "string"
+      ? texture.userData.wh3SourceVirtualPath.toLowerCase()
+      : "";
   return [
     rawKey,
+    sourceVirtualPath,
     texture.wrapS,
     texture.wrapT,
     texture.magFilter,
@@ -188,6 +194,43 @@ const texturePoolKey = (texture: THREE.Texture) => {
     texture.flipY ? 1 : 0,
     texture.colorSpace,
   ].join("|");
+};
+
+const previewTextureFileName = (texture: THREE.Texture) => {
+  const url = texture.userData.wh3PreviewTextureUrl;
+  if (typeof url !== "string" || !url) return undefined;
+  try {
+    const decoded = decodeURIComponent(url).replace(/[?#].*$/, "");
+    return decoded.split(/[\\/]/).pop()?.toLowerCase();
+  } catch {
+    return url.replace(/[?#].*$/, "").split(/[\\/]/).pop()?.toLowerCase();
+  }
+};
+
+const annotatePreviewTextureSources = (
+  object: THREE.Object3D,
+  textureSources: readonly VisualsModelPreviewTextureSource[] | undefined,
+) => {
+  if (!textureSources?.length) return;
+
+  const baseColorSources = new Map(
+    textureSources
+      .filter((source) => source.channel.toLowerCase() === "basecolor")
+      .map((source) => [source.generatedFileName.toLowerCase(), source.sourceVirtualPath]),
+  );
+
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material || !("map" in material)) continue;
+      const map = (material as THREE.Material & { map?: THREE.Texture | null }).map;
+      if (!map) continue;
+      const fileName = previewTextureFileName(map);
+      const sourceVirtualPath = fileName ? baseColorSources.get(fileName) : undefined;
+      if (sourceVirtualPath) map.userData.wh3SourceVirtualPath = sourceVirtualPath;
+    }
+  });
 };
 
 const internObjectResources = (object: THREE.Object3D, pool: PreviewResourcePool) => {
@@ -972,7 +1015,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         let singleExportRoundTripMs = 0;
         let singleGltfLoadMs = 0;
         let maxClipDuration = 0;
-        let exportsToLoad: Array<{ previewId: string; url: string; warnings?: string[] }>;
+        let exportsToLoad: Array<{
+          previewId: string;
+          url: string;
+          warnings?: string[];
+          textureSources?: VisualsModelPreviewTextureSource[];
+        }>;
 
         if (comparisonVariants.length === 1) {
           const exportStartedAt = performance.now();
@@ -991,6 +1039,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             previewId: exportResult.previewId,
             url: exportResult.url,
             warnings: exportResult.warnings,
+            textureSources: exportResult.textureSources,
           }];
         } else {
           const batchResult = await exportVisualsModelBatch(
@@ -1052,6 +1101,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             return;
           }
 
+          annotatePreviewTextureSources(gltf.scene, exportItem.textureSources);
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
           ownedModels.push(gltf.scene);
@@ -1340,12 +1390,22 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                           setPaintExportStatus("Nothing has been painted yet.");
                           return;
                         }
-                        const result = await exportUnitPainterTextures(assetPath, textures);
+                        const result = await exportUnitPainterTextures(
+                          assetPath,
+                          enabledMods,
+                          comparisonVariants[0]?.selections ?? [],
+                          textures,
+                        );
                         if (result.canceled) {
                           setPaintExportStatus("");
                         } else if (result.success) {
+                          const warningSuffix = result.warnings?.length
+                            ? ` · ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`
+                            : "";
                           setPaintExportStatus(
-                            `Exported ${textures.length} painted texture${textures.length === 1 ? "" : "s"}.`,
+                            result.variantMeshPath
+                              ? `Exported variant: ${result.variantMeshPath}${warningSuffix}`
+                              : `Exported painted variant${warningSuffix}`,
                           );
                         } else {
                           setPaintExportStatus(result.error || "Texture export failed.");
@@ -1361,7 +1421,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   }}
                   className="rounded border border-blue-500 bg-blue-700/40 px-2 py-1 text-blue-100 hover:bg-blue-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {isPaintExporting ? "Exporting…" : "Export textures"}
+                  {isPaintExporting ? "Exporting…" : "Export variant"}
                 </button>
                 {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
                 {paintExportStatus && <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>{paintExportStatus}</span>}
