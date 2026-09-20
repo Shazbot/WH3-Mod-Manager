@@ -80,19 +80,12 @@ export interface Wh3AssetHostExportError {
   details?: string | null;
 }
 
-export interface Wh3AssetHostTextureSource {
-  sourceVirtualPath: string;
-  generatedFileName: string;
-  channel: string;
-}
-
 export interface Wh3AssetHostExportResult {
   success: boolean;
   primaryFile: string | null;
   auxiliaryFiles: string[];
   warnings: Wh3AssetHostExportWarning[];
   errors: Wh3AssetHostExportError[];
-  textureSources?: Wh3AssetHostTextureSource[] | null;
 }
 
 export interface Wh3AssetHostExportModelRequest {
