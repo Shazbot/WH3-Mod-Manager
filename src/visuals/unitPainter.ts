@@ -167,7 +167,15 @@ type HistoryChange =
       afterActiveLayerId: string;
     }
   | { kind: "layer-meta"; layerId: string; before: LayerMetadata; after: LayerMetadata }
-  | { kind: "layer-order"; before: string[]; after: string[] };
+  | { kind: "layer-order"; before: string[]; after: string[] }
+  | {
+      kind: "layer-replace";
+      index: number;
+      before: LayerSnapshot[];
+      after: LayerSnapshot[];
+      beforeActiveLayerId: string;
+      afterActiveLayerId: string;
+    };
 
 type Stroke = {
   change: HistoryChange;
@@ -196,6 +204,7 @@ type UvIslandMask = {
 };
 
 const MAX_HISTORY_STROKES = 30;
+const MAX_PAINT_LAYERS = 32;
 const MIN_BRUSH_RADIUS_TEXELS = 1;
 // A pathological UV/world-area ratio can otherwise turn a small screen brush into a
 // million-pixel CPU stamp. GPU projection can remove this cap later; keep interaction responsive now.
@@ -760,6 +769,7 @@ export class UnitPainterSession {
   }
 
   addLayer(name?: string) {
+    if (this.paintLayers.length >= MAX_PAINT_LAYERS) return undefined;
     if (this.isStrokeOpen) this.endStroke();
     const beforeActiveLayerId = this.activePaintLayerId;
     const layer = this.createEmptyLayer(name);
@@ -777,6 +787,7 @@ export class UnitPainterSession {
   }
 
   duplicateActiveLayer() {
+    if (this.paintLayers.length >= MAX_PAINT_LAYERS) return undefined;
     if (this.isStrokeOpen) this.endStroke();
     const source = this.getActiveLayer();
     if (!source) return undefined;
@@ -868,6 +879,75 @@ export class UnitPainterSession {
     const after = this.paintLayers.map((candidate) => candidate.id);
     this.recomposeAllTargets();
     this.pushHistoryChange({ kind: "layer-order", before, after });
+    return true;
+  }
+
+  mergeActiveLayerDown() {
+    if (this.isStrokeOpen) this.endStroke();
+    const topIndex = this.paintLayers.findIndex((layer) => layer.id === this.activePaintLayerId);
+    if (topIndex <= 0) return false;
+
+    const bottom = this.paintLayers[topIndex - 1];
+    const top = this.paintLayers[topIndex];
+    const merged: PaintLayer = {
+      id: bottom.id,
+      name: bottom.name,
+      visible: true,
+      opacity: 1,
+      textures: new Map(),
+    };
+
+    const targets = new Set<PaintableTexture>([
+      ...bottom.textures.keys(),
+      ...top.textures.keys(),
+    ]);
+    for (const target of targets) {
+      const bottomData = bottom.textures.get(target);
+      const topData = top.textures.get(target);
+      const output = new Uint8Array(target.width * target.height * 4);
+      let hasPixels = false;
+      for (let byteIndex = 0; byteIndex < output.length; byteIndex += 4) {
+        const bottomAlpha =
+          bottom.visible && bottomData ? (bottomData[byteIndex + 3] / 255) * bottom.opacity : 0;
+        const topAlpha =
+          top.visible && topData ? (topData[byteIndex + 3] / 255) * top.opacity : 0;
+        const alpha = topAlpha + bottomAlpha * (1 - topAlpha);
+        if (alpha <= 0) continue;
+
+        const bottomWeight = bottomAlpha * (1 - topAlpha);
+        const topWeight = topAlpha;
+        output[byteIndex] = Math.round(
+          (((topData?.[byteIndex] ?? 0) * topWeight)
+            + ((bottomData?.[byteIndex] ?? 0) * bottomWeight)) / alpha,
+        );
+        output[byteIndex + 1] = Math.round(
+          (((topData?.[byteIndex + 1] ?? 0) * topWeight)
+            + ((bottomData?.[byteIndex + 1] ?? 0) * bottomWeight)) / alpha,
+        );
+        output[byteIndex + 2] = Math.round(
+          (((topData?.[byteIndex + 2] ?? 0) * topWeight)
+            + ((bottomData?.[byteIndex + 2] ?? 0) * bottomWeight)) / alpha,
+        );
+        output[byteIndex + 3] = Math.round(alpha * 255);
+        hasPixels = true;
+      }
+      if (hasPixels) merged.textures.set(target, output);
+    }
+
+    const before = [this.snapshotLayer(bottom), this.snapshotLayer(top)];
+    const after = [this.snapshotLayer(merged)];
+    const index = topIndex - 1;
+    this.paintLayers.splice(index, 2, merged);
+    this.activePaintLayerId = merged.id;
+    this.recomposeAllTargets();
+    this.pushHistoryChange({
+      kind: "layer-replace",
+      index,
+      before,
+      after,
+      beforeActiveLayerId: top.id,
+      afterActiveLayerId: merged.id,
+    });
     return true;
   }
 
@@ -1317,7 +1397,11 @@ export class UnitPainterSession {
 
   loadProjectLayers(project: UnitPainterProjectState) {
     if (this.isStrokeOpen) this.endStroke();
-    if (!Array.isArray(project.layers) || project.layers.length === 0) {
+    if (
+      !Array.isArray(project.layers)
+      || project.layers.length === 0
+      || project.layers.length > MAX_PAINT_LAYERS
+    ) {
       throw new Error("The painter project does not contain any paint layers.");
     }
 
@@ -1586,6 +1670,18 @@ export class UnitPainterSession {
       layer.name = metadata.name;
       layer.visible = metadata.visible;
       layer.opacity = metadata.opacity;
+      this.recomposeAllTargets();
+      return;
+    }
+
+    if (change.kind === "layer-replace") {
+      const removeCount = side === "before" ? change.after.length : change.before.length;
+      const insert = (side === "before" ? change.before : change.after).map((snapshot) =>
+        this.layerFromSnapshot(snapshot),
+      );
+      this.paintLayers.splice(change.index, removeCount, ...insert);
+      this.activePaintLayerId =
+        side === "before" ? change.beforeActiveLayerId : change.afterActiveLayerId;
       this.recomposeAllTargets();
       return;
     }
