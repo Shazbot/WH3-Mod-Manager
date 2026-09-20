@@ -60,6 +60,11 @@ const sanitizeExportFileName = (value: string) => {
 };
 
 const getTextureExportFileName = (texture: THREE.DataTexture, index: number) => {
+  const sourceVirtualPath = texture.userData.wh3SourceVirtualPath;
+  if (typeof sourceVirtualPath === "string" && sourceVirtualPath) {
+    return sanitizeExportFileName(sourceVirtualPath);
+  }
+
   const previewUrl = texture.userData.wh3PreviewTextureUrl;
   if (typeof previewUrl === "string" && previewUrl) {
     try {
