@@ -21,3 +21,24 @@ If you downloaded WH3 Mod Manager from its official release page, this file is a
 
 WH3 Mod Manager:
 https://github.com/Shazbot/WH3-Mod-Manager
+
+
+## texconv.exe
+
+The unit painter uses Microsoft's DirectXTex texconv utility to encode edited
+textures back to DDS while preserving the source WH3 texture format and mip
+count.
+
+texconv is distributed with the WH3AssetHost publish output and is launched
+only when exporting a painted unit variant.
+
+DirectXTex:
+https://github.com/microsoft/DirectXTex
+
+The bundled texconv build is from the pinned May 2026 DirectXTex release.
+DirectXTex is licensed under the MIT License; the redistributed license is
+included as DirectXTex-LICENSE.txt.
+
+When updating WH3AssetHost in this directory, copy the complete publish output
+rather than WH3AssetHost.exe by itself so texconv.exe and its license remain
+beside the host executable.
