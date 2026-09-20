@@ -22,6 +22,7 @@ const REQUIRED_CAPABILITIES = [
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000;
 const DEFAULT_CONNECT_RETRY_DELAY_MS = 50;
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+const PAINTED_VARIANT_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const MAX_STDERR_TAIL_CHARS = 32 * 1024;
 
 export interface Wh3AssetHostErrorPayload {
@@ -398,16 +399,20 @@ export class Wh3AssetHostClient {
   exportPaintedVariant(
     request: Wh3AssetHostPaintedVariantRequest,
   ): Promise<Wh3AssetHostPaintedVariantResult> {
-    return this.request<Wh3AssetHostPaintedVariantResult>("exportPaintedVariant", {
-      assetPath: request.assetPath,
-      outputDirectory: request.outputDirectory,
-      variantName: request.variantName,
-      textures: request.textures.map((texture) => ({
-        sourceVirtualPath: texture.sourceVirtualPath,
-        pngPath: texture.pngPath,
-      })),
-      variantSelections: request.variantSelections ?? [],
-    });
+    return this.request<Wh3AssetHostPaintedVariantResult>(
+      "exportPaintedVariant",
+      {
+        assetPath: request.assetPath,
+        outputDirectory: request.outputDirectory,
+        variantName: request.variantName,
+        textures: request.textures.map((texture) => ({
+          sourceVirtualPath: texture.sourceVirtualPath,
+          pngPath: texture.pngPath,
+        })),
+        variantSelections: request.variantSelections ?? [],
+      },
+      PAINTED_VARIANT_REQUEST_TIMEOUT_MS,
+    );
   }
 
   async shutdown(): Promise<void> {
@@ -446,7 +451,11 @@ export class Wh3AssetHostClient {
     this.shuttingDown = false;
   }
 
-  private request<TResult>(command: string, fields: Record<string, unknown> = {}): Promise<TResult> {
+  private request<TResult>(
+    command: string,
+    fields: Record<string, unknown> = {},
+    timeoutMs = this.options.requestTimeoutMs,
+  ): Promise<TResult> {
     const connection = this.connection;
     if (!connection || connection.destroyed) {
       return Promise.reject(new Wh3AssetHostClientError("NotConnected", "WH3AssetHost is not connected."));
@@ -466,10 +475,10 @@ export class Wh3AssetHostClient {
         reject(
           new Wh3AssetHostClientError(
             "RequestTimeout",
-            `WH3AssetHost '${command}' request '${requestId}' timed out after ${this.options.requestTimeoutMs} ms.`,
+            `WH3AssetHost '${command}' request '${requestId}' timed out after ${timeoutMs} ms.`,
           ),
         );
-      }, this.options.requestTimeoutMs);
+      }, timeoutMs);
 
       this.pending.set(requestId, {
         resolve: resolve as (value: unknown) => void,
