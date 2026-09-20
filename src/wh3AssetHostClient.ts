@@ -16,6 +16,7 @@ const REQUIRED_CAPABILITIES = [
   "exportModel",
   "exportModelBatch",
   "exportPaintedVariant",
+  "paintedVariantRgba",
   "missingSkeletonDecision",
   "shutdown",
 ] as const;
