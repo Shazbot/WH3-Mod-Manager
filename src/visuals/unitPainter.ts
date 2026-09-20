@@ -22,10 +22,12 @@ type PaintableTexture = {
   width: number;
   height: number;
   sourceFileName: string;
+  sourceVirtualPath?: string;
 };
 
 export type UnitPainterExportTexture = {
   fileName: string;
+  sourceVirtualPath: string;
   width: number;
   height: number;
   pngBytes: Uint8Array;
@@ -280,6 +282,10 @@ export class UnitPainterSession {
             width: image.width,
             height: image.height,
             sourceFileName: getTextureExportFileName(original, textureIndex++),
+            sourceVirtualPath:
+              typeof original.userData.wh3SourceVirtualPath === "string"
+                ? original.userData.wh3SourceVirtualPath
+                : undefined,
           };
           targetsByOriginal.set(original, target);
           this.targetsByEditableTexture.set(editable, target);
@@ -444,6 +450,12 @@ export class UnitPainterSession {
     const usedNames = new Map<string, number>();
     const output: UnitPainterExportTexture[] = [];
     for (const target of modifiedTargets) {
+      if (!target.sourceVirtualPath) {
+        throw new Error(
+          `The painted texture '${target.sourceFileName}' is missing its original WH3 texture path. Reload the unit with the updated WH3AssetHost and try again.`,
+        );
+      }
+
       const canvas = document.createElement("canvas");
       canvas.width = target.width;
       canvas.height = target.height;
@@ -467,6 +479,7 @@ export class UnitPainterSession {
           : target.sourceFileName.replace(/\.png$/i, `_${seenCount + 1}.png`);
       output.push({
         fileName,
+        sourceVirtualPath: target.sourceVirtualPath,
         width: target.width,
         height: target.height,
         pngBytes: new Uint8Array(await blob.arrayBuffer()),
