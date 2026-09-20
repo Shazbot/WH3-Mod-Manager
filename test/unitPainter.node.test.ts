@@ -539,4 +539,146 @@ describe("unit painter", () => {
     expect(noisy.carried).toBeCloseTo(sparse.carried, 6);
   });
 
+
+  it("composites paint layers in order and respects layer opacity and visibility", () => {
+    const painter = makePainter();
+    try {
+      paint(painter, { color: { r: 255, g: 0, b: 0 } });
+      const lowerLayerId = painter.session.activeLayerId;
+      const upperLayerId = painter.session.addLayer("Blue");
+      paint(painter, { color: { r: 0, g: 0, b: 255 } });
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+
+      expect(painter.session.setLayerOpacity(upperLayerId, 0.5)).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([128, 0, 128, 255]);
+
+      expect(painter.session.setLayerVisible(upperLayerId, false)).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([128, 0, 128, 255]);
+      expect(painter.session.setActiveLayer(lowerLayerId)).toBe(true);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("restore erases only the active layer and reveals the layer below", () => {
+    const painter = makePainter();
+    try {
+      paint(painter, { color: { r: 255, g: 0, b: 0 } });
+      painter.session.addLayer("Blue");
+      paint(painter, { color: { r: 0, g: 0, b: 255 } });
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+
+      paint(painter, { mode: "restore", opacity: 1 });
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("reorders, deletes, and restores layers through undo/redo", () => {
+    const painter = makePainter();
+    try {
+      paint(painter, { color: { r: 255, g: 0, b: 0 } });
+      const blueId = painter.session.addLayer("Blue");
+      paint(painter, { color: { r: 0, g: 0, b: 255 } });
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+
+      expect(painter.session.moveLayer(blueId, -1)).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+
+      expect(painter.session.deleteActiveLayer()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+      expect(painter.session.undo()).toBe(true);
+      expect(painter.session.activeLayerId).toBe(blueId);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+      expect(painter.session.redo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("clear layer removes only active-layer paint and is undoable", () => {
+    const painter = makePainter();
+    try {
+      paint(painter, { color: { r: 255, g: 0, b: 0 } });
+      painter.session.addLayer("Blue");
+      paint(painter, { color: { r: 0, g: 0, b: 255 } });
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+
+      expect(painter.session.reset()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 255, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("exports and reloads the complete layer stack as a clean project state", () => {
+    const source = makePainter();
+    const reopened = makePainter();
+    try {
+      paint(source, { color: { r: 200, g: 10, b: 20 } });
+      const topId = source.session.addLayer("Highlights");
+      paint(source, { color: { r: 20, g: 220, b: 40 }, opacity: 0.75 });
+      expect(source.session.setLayerOpacity(topId, 0.6)).toBe(true);
+      expect(source.session.renameLayer(topId, "Green highlights")).toBe(true);
+
+      const state = source.session.exportProjectState();
+      reopened.session.loadProjectLayers(state);
+
+      expect(reopened.session.layers).toEqual(source.session.layers);
+      expect(reopened.session.activeLayerId).toBe(source.session.activeLayerId);
+      expect(getPixel(reopened.material, 14, 8)).toEqual(getPixel(source.material, 14, 8));
+      expect(reopened.session.hasUnsavedChanges).toBe(false);
+      expect(reopened.session.canUndo).toBe(false);
+
+      paint(reopened, { mode: "restore", opacity: 1 });
+      expect(reopened.session.hasUnsavedChanges).toBe(true);
+    } finally {
+      source.session.dispose();
+      reopened.session.dispose();
+      source.geometry.dispose();
+      reopened.geometry.dispose();
+      source.material.dispose();
+      reopened.material.dispose();
+    }
+  });
+
+  it("tracks layer metadata edits in the saved-state undo model", () => {
+    const painter = makePainter();
+    try {
+      painter.session.markSaved();
+      const layerId = painter.session.activeLayerId;
+      expect(painter.session.renameLayer(layerId, "Armor")).toBe(true);
+      expect(painter.session.hasUnsavedChanges).toBe(true);
+      expect(painter.session.undo()).toBe(true);
+      expect(painter.session.hasUnsavedChanges).toBe(false);
+      expect(painter.session.layers[0].name).toBe("Paint 1");
+      expect(painter.session.redo()).toBe(true);
+      expect(painter.session.layers[0].name).toBe("Armor");
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
 });
