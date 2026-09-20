@@ -871,9 +871,6 @@ const exportUnitPainterVariantNow = async (
   if (!Array.isArray(texturesValue)) {
     return { success: false as const, error: "The painted texture export payload is invalid." };
   }
-  if (texturesValue.length === 0 && !requestedPackPath) {
-    return { success: false as const, error: "There are no modified textures to export." };
-  }
   if (texturesValue.length > MAX_UNIT_PAINTER_TEXTURES) {
     return {
       success: false as const,
