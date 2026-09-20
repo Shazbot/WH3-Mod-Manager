@@ -10,6 +10,33 @@ export type UnitPainterSelectionInfo = {
   object: THREE.Mesh;
 };
 
+/** Mirror a world-space point through an object's local X=0 plane. */
+export const mirrorPointAcrossObjectLocalX = (
+  point: THREE.Vector3,
+  root: THREE.Object3D,
+  target = new THREE.Vector3(),
+) => {
+  root.updateWorldMatrix(true, false);
+  const inverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  target.copy(point).applyMatrix4(inverse);
+  target.x = -target.x;
+  return target.applyMatrix4(root.matrixWorld);
+};
+
+/** Mirror a world-space ray through an object's local X=0 plane. */
+export const mirrorRayAcrossObjectLocalX = (
+  ray: THREE.Ray,
+  root: THREE.Object3D,
+  target = new THREE.Ray(),
+) => {
+  root.updateWorldMatrix(true, false);
+  const inverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  target.copy(ray).applyMatrix4(inverse);
+  target.origin.x = -target.origin.x;
+  target.direction.x = -target.direction.x;
+  return target.applyMatrix4(root.matrixWorld);
+};
+
 export type UnitPainterBrushSettings = {
   radiusPx: number;
   opacity: number;
@@ -602,6 +629,27 @@ export class UnitPainterSession {
     this.selection = undefined;
   }
 
+  matchesSelectionScope(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    scope: UnitPainterSelectionScope,
+  ) {
+    if (scope === "all") return true;
+    if (!(intersection.object instanceof THREE.Mesh)) return false;
+    const selection = this.selection;
+    if (!selection) return false;
+
+    const mesh = intersection.object;
+    const materialIndex =
+      intersection.face?.materialIndex
+      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+    if (selection.mesh !== mesh || selection.materialIndex !== materialIndex) return false;
+    if (scope === "material") return true;
+    if (selection.islandId == null || intersection.faceIndex == null) return false;
+
+    const topology = this.getUvTopology(mesh.geometry, materialIndex);
+    return topology?.faceToIsland.get(intersection.faceIndex) === selection.islandId;
+  }
+
   beginStroke() {
     if (this.isStrokeOpen) this.endStroke();
     this.currentStroke = new Map();
@@ -622,19 +670,7 @@ export class UnitPainterSession {
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
     if (!target) return false;
 
-    const mesh = intersection.object;
-    const materialIndex =
-      intersection.face?.materialIndex
-      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
-    if (scope !== "all") {
-      const selection = this.selection;
-      if (!selection || selection.mesh !== mesh || selection.materialIndex !== materialIndex) return false;
-      if (scope === "island") {
-        if (selection.islandId == null || intersection.faceIndex == null) return false;
-        const topology = this.getUvTopology(mesh.geometry, materialIndex);
-        if (topology?.faceToIsland.get(intersection.faceIndex) !== selection.islandId) return false;
-      }
-    }
+    if (!this.matchesSelectionScope(intersection, scope)) return false;
 
     const islandMask = this.getUvIslandMask(intersection, target);
     const uv = intersection.uv.clone();

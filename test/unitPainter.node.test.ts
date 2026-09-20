@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 
-import { createUnitPainterSession, type UnitPainterBrushSettings } from "../src/visuals/unitPainter";
+import {
+  createUnitPainterSession,
+  mirrorPointAcrossObjectLocalX,
+  mirrorRayAcrossObjectLocalX,
+  type UnitPainterBrushSettings,
+} from "../src/visuals/unitPainter";
 
 const WIDTH = 32;
 const HEIGHT = 32;
@@ -270,6 +275,48 @@ describe("unit painter", () => {
       painter.geometry.dispose();
       painter.material.dispose();
     }
+  });
+
+
+  it("mirrors points through the model-local X plane even when the model is transformed", () => {
+    const root = new THREE.Object3D();
+    root.position.set(3, -2, 5);
+    root.rotation.set(0.2, 0.7, -0.1);
+    root.scale.setScalar(1.5);
+    root.updateMatrixWorld(true);
+
+    const sourceLocal = new THREE.Vector3(2, 1, -3);
+    const sourceWorld = root.localToWorld(sourceLocal.clone());
+    const mirroredWorld = mirrorPointAcrossObjectLocalX(sourceWorld, root);
+    const mirroredLocal = root.worldToLocal(mirroredWorld.clone());
+
+    expect(mirroredLocal.x).toBeCloseTo(-2, 6);
+    expect(mirroredLocal.y).toBeCloseTo(1, 6);
+    expect(mirroredLocal.z).toBeCloseTo(-3, 6);
+  });
+
+  it("mirrors complete paint rays through the model-local X plane", () => {
+    const root = new THREE.Object3D();
+    root.position.set(-4, 3, 2);
+    root.rotation.set(-0.15, 0.45, 0.25);
+    root.updateMatrixWorld(true);
+
+    const localOrigin = new THREE.Vector3(2, 1, 4);
+    const localDirection = new THREE.Vector3(-0.3, 0.1, -1).normalize();
+    const worldOrigin = root.localToWorld(localOrigin.clone());
+    const worldDirection = localDirection.clone().transformDirection(root.matrixWorld);
+    const mirrored = mirrorRayAcrossObjectLocalX(new THREE.Ray(worldOrigin, worldDirection), root);
+
+    const inverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    const mirroredLocalOrigin = mirrored.origin.clone().applyMatrix4(inverse);
+    const mirroredLocalDirection = mirrored.direction.clone().transformDirection(inverse);
+
+    expect(mirroredLocalOrigin.x).toBeCloseTo(-localOrigin.x, 6);
+    expect(mirroredLocalOrigin.y).toBeCloseTo(localOrigin.y, 6);
+    expect(mirroredLocalOrigin.z).toBeCloseTo(localOrigin.z, 6);
+    expect(mirroredLocalDirection.x).toBeCloseTo(-localDirection.x, 6);
+    expect(mirroredLocalDirection.y).toBeCloseTo(localDirection.y, 6);
+    expect(mirroredLocalDirection.z).toBeCloseTo(localDirection.z, 6);
   });
 
 });

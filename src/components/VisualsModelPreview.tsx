@@ -19,6 +19,8 @@ import { selectDefaultAnimation } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
   createUnitPainterSession,
+  mirrorPointAcrossObjectLocalX,
+  mirrorRayAcrossObjectLocalX,
   type UnitPainterBrushMode,
   type UnitPainterSelectionInfo,
   type UnitPainterSelectionScope,
@@ -400,6 +402,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const painterEnabledRef = useRef(false);
   const eyedropperActiveRef = useRef(false);
   const selectToolActiveRef = useRef(false);
+  const symmetryEnabledRef = useRef(false);
   const paintScopeRef = useRef<UnitPainterSelectionScope>("all");
   const brushSettingsRef = useRef({
     radiusPx: 24,
@@ -434,6 +437,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintBrushMode, setPaintBrushMode] = useState<UnitPainterBrushMode>("recolor");
   const [isPaintEyedropperActive, setIsPaintEyedropperActive] = useState(false);
   const [isPaintSelectActive, setIsPaintSelectActive] = useState(false);
+  const [isPaintSymmetryEnabled, setIsPaintSymmetryEnabled] = useState(false);
   const [paintScope, setPaintScope] = useState<UnitPainterSelectionScope>("all");
   const [paintSelection, setPaintSelection] = useState<UnitPainterSelectionInfo>();
   const [paintTextureCount, setPaintTextureCount] = useState(-1);
@@ -454,6 +458,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolActiveRef.current = isPaintSelectActive;
+  symmetryEnabledRef.current = isPaintSymmetryEnabled;
   paintScopeRef.current = paintScope;
   brushSettingsRef.current = {
     radiusPx: paintBrushRadius,
@@ -571,6 +576,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     contextRef.current = context;
 
     const raycaster = new THREE.Raycaster();
+    const symmetryRaycaster = new THREE.Raycaster();
+    const symmetryCamera = new THREE.PerspectiveCamera();
+    const mirroredRay = new THREE.Ray();
+    const mirroredCameraPosition = new THREE.Vector3();
     const pointer = new THREE.Vector2();
     const lastPaintPoint = new THREE.Vector2();
     let hasLastPaintPoint = false;
@@ -616,7 +625,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       );
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObject(root, true)[0];
-      return hit ? { hit, viewportHeight } : undefined;
+      return hit ? { hit, viewportHeight, ray: raycaster.ray.clone() } : undefined;
     };
 
     /**
@@ -627,16 +636,49 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
      */
     const paintProjectedBrush = (clientX: number, clientY: number) => {
       const session = paintSessionRef.current;
-      if (!session) return;
+      const root = paintRootRef.current;
+      if (!session || !root) return;
       const projected = getPaintIntersection(clientX, clientY);
       if (!projected) return;
+
+      const scope = paintScopeRef.current;
       session.paintIntersection(
         projected.hit,
         brushSettingsRef.current,
         camera,
         projected.viewportHeight,
         brushSettingsRef.current.radiusPx,
-        paintScopeRef.current,
+        scope,
+      );
+
+      if (!symmetryEnabledRef.current || !session.matchesSelectionScope(projected.hit, scope)) return;
+
+      mirrorRayAcrossObjectLocalX(projected.ray, root, mirroredRay);
+      symmetryRaycaster.ray.copy(mirroredRay);
+      symmetryRaycaster.near = raycaster.near;
+      symmetryRaycaster.far = raycaster.far;
+      const mirroredHit = symmetryRaycaster.intersectObject(root, true)[0];
+      if (!mirroredHit) return;
+
+      const originalLocalPoint = root.worldToLocal(projected.hit.point.clone());
+      if (Math.abs(originalLocalPoint.x) < 1e-5 && mirroredHit.point.distanceToSquared(projected.hit.point) < 1e-8) {
+        return;
+      }
+
+      symmetryCamera.fov = camera.fov;
+      mirrorPointAcrossObjectLocalX(camera.position, root, mirroredCameraPosition);
+      symmetryCamera.position.copy(mirroredCameraPosition);
+
+      // The initiating hit has already satisfied the user's selected scope. Let the mirrored
+      // hit target the corresponding material/island on the other side, even when it is a
+      // separate mesh or UV island.
+      session.paintIntersection(
+        mirroredHit,
+        brushSettingsRef.current,
+        symmetryCamera,
+        projected.viewportHeight,
+        brushSettingsRef.current.radiusPx,
+        "all",
       );
     };
 
@@ -1553,6 +1595,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   <option value="recolor">Recolor</option>
                   <option value="paint">Paint</option>
                 </select>
+                <button
+                  type="button"
+                  onClick={() => setIsPaintSymmetryEnabled((enabled) => !enabled)}
+                  className={`rounded border px-2 py-1 ${
+                    isPaintSymmetryEnabled
+                      ? "border-fuchsia-400 bg-fuchsia-900/50 text-fuchsia-100"
+                      : "border-gray-600 bg-gray-800 hover:border-fuchsia-400"
+                  }`}
+                  title="Mirror brush strokes left/right across the model's local X=0 plane"
+                >
+                  Symmetry X
+                </button>
                 <label className="flex items-center gap-1 text-gray-400">
                   Scope
                   <select
@@ -1679,7 +1733,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint · Select: choose material/island · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint · Symmetry X: mirror left/right · Select: choose material/island · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
