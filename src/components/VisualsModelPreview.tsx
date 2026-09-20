@@ -1361,10 +1361,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                           const warningSuffix = result.warnings?.length
                             ? ` · ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`
                             : "";
-                          const packName = result.packPath?.split(/[\\/]/).pop();
                           setPaintExportStatus(
-                            packName
-                              ? `Created mod: ${packName}${warningSuffix}`
+                            result.packPath
+                              ? `Created mod: ${result.packPath}${warningSuffix}`
                               : `Created painted mod${warningSuffix}`,
                           );
                         } else {
