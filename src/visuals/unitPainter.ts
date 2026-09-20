@@ -30,7 +30,7 @@ export type UnitPainterExportTexture = {
   sourceVirtualPath: string;
   width: number;
   height: number;
-  pngBytes: Uint8Array;
+  rgbaBytes: Uint8Array;
 };
 
 type MaterialRestore = {
@@ -56,7 +56,7 @@ const MAX_BRUSH_TEXTURE_FRACTION = 0.15;
 const sanitizeExportFileName = (value: string) => {
   const trimmed = value.replace(/[?#].*$/, "").split(/[\\/]/).pop() || "painted_texture";
   const stem = trimmed.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^[_\.]+|[_\.]+$/g, "");
-  return `${stem || "painted_texture"}.png`;
+  return `${stem || "painted_texture"}.rgba`;
 };
 
 const getTextureExportFileName = (texture: THREE.DataTexture, index: number) => {
@@ -461,33 +461,18 @@ export class UnitPainterSession {
         );
       }
 
-      const canvas = document.createElement("canvas");
-      canvas.width = target.width;
-      canvas.height = target.height;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("The browser could not create a 2D canvas for texture export.");
-
-      const pixels = new Uint8ClampedArray(target.data);
-      context.putImageData(new ImageData(pixels, target.width, target.height), 0, 0);
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((value) => {
-          if (value) resolve(value);
-          else reject(new Error("Failed to encode a painted texture as PNG."));
-        }, "image/png");
-      });
-
       const seenCount = usedNames.get(target.sourceFileName) ?? 0;
       usedNames.set(target.sourceFileName, seenCount + 1);
       const fileName =
         seenCount === 0
           ? target.sourceFileName
-          : target.sourceFileName.replace(/\.png$/i, `_${seenCount + 1}.png`);
+          : target.sourceFileName.replace(/\.rgba$/i, `_${seenCount + 1}.rgba`);
       output.push({
         fileName,
         sourceVirtualPath: target.sourceVirtualPath,
         width: target.width,
         height: target.height,
-        pngBytes: new Uint8Array(await blob.arrayBuffer()),
+        rgbaBytes: new Uint8Array(target.data),
       });
     }
     return output;
