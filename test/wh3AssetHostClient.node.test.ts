@@ -95,6 +95,7 @@ describe("WH3AssetHostClient", () => {
           "getAnimationCatalog",
           "exportModel",
           "exportModelBatch",
+          "exportPaintedVariant",
           "missingSkeletonDecision",
           "shutdown",
         ],
@@ -295,6 +296,68 @@ describe("WH3AssetHostClient", () => {
         { outputPath: "batch\\one.glb", variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 0 }] },
         { outputPath: "batch\\two.glb", variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 1 }] },
       ],
+    });
+    assetHost.dispose();
+  });
+
+  it("sends exportPaintedVariant with texture source paths and selected VMD choices", async () => {
+    const child = createMockChild();
+    const { client, server } = createDuplexPair();
+    const seen: any[] = [];
+    installServerResponder(server, (request) => {
+      seen.push(request);
+      return {
+        protocolVersion: 1,
+        requestId: request.requestId,
+        success: true,
+        command: request.command,
+        result: {
+          success: true,
+          variantMeshVirtualPath:
+            "variantmeshes\\variantmeshdefinitions\\whmm_unit_painter\\unit_painted.variantmeshdefinition",
+          files: ["variantmeshes\\whmm_unit_painter\\unit_painted\\textures\\body.dds"],
+          warnings: [],
+          errors: [],
+        },
+        error: null,
+      };
+    });
+
+    const assetHost = new Wh3AssetHostClient({
+      executablePath: "host.exe",
+      spawnProcess: () => child as never,
+      connectPipe: async () => client,
+    });
+    await assetHost.start();
+
+    await expect(
+      assetHost.exportPaintedVariant({
+        assetPath: "variantmeshes\\unit.variantmeshdefinition",
+        outputDirectory: "painted\\generated",
+        variantName: "unit_painted",
+        textures: [
+          {
+            sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+            pngPath: "painted\\input\\body.png",
+          },
+        ],
+        variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 2 }],
+      }),
+    ).resolves.toMatchObject({ success: true });
+
+    expect(seen[0]).toMatchObject({
+      protocolVersion: 1,
+      command: "exportPaintedVariant",
+      assetPath: "variantmeshes\\unit.variantmeshdefinition",
+      outputDirectory: "painted\\generated",
+      variantName: "unit_painted",
+      textures: [
+        {
+          sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+          pngPath: "painted\\input\\body.png",
+        },
+      ],
+      variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 2 }],
     });
     assetHost.dispose();
   });
