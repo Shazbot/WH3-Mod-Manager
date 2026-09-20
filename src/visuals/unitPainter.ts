@@ -4,7 +4,8 @@ export type UnitPainterBrushMode = "recolor" | "paint";
 
 export type UnitPainterBrushSettings = {
   radiusPx: number;
-  strength: number;
+  opacity: number;
+  hardness: number;
   mode: UnitPainterBrushMode;
   color: { r: number; g: number; b: number };
 };
@@ -45,6 +46,26 @@ type StrokeChange = {
 };
 
 type Stroke = StrokeChange[];
+
+type UvTriangle = {
+  faceIndex: number;
+  uvA: THREE.Vector2;
+  uvB: THREE.Vector2;
+  uvC: THREE.Vector2;
+};
+
+type UvIslandTopology = {
+  faceToIsland: Map<number, number>;
+  islands: Map<number, UvTriangle[]>;
+};
+
+type UvIslandMask = {
+  minX: number;
+  minY: number;
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+};
 
 const MAX_HISTORY_STROKES = 30;
 const MIN_BRUSH_RADIUS_TEXELS = 1;
@@ -215,6 +236,214 @@ const estimateBrushRadiusTexels = (
   return Math.max(MIN_BRUSH_RADIUS_TEXELS, Math.min(radius, maxRadius));
 };
 
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+const getBrushFalloff = (distance: number, hardness: number) => {
+  const clampedHardness = clamp01(hardness);
+  if (distance > 1) return 0;
+  if (distance <= clampedHardness || clampedHardness >= 0.999) return 1;
+  const amount = clamp01((1 - distance) / Math.max(1 - clampedHardness, Number.EPSILON));
+  return amount * amount * (3 - 2 * amount);
+};
+
+const uvPointKey = (point: THREE.Vector2) =>
+  `${Math.round(point.x * 1_000_000)},${Math.round(point.y * 1_000_000)}`;
+
+const uvEdgeKey = (first: THREE.Vector2, second: THREE.Vector2) => {
+  const a = uvPointKey(first);
+  const b = uvPointKey(second);
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+};
+
+const getTriangleMaterialIndex = (geometry: THREE.BufferGeometry, faceIndex: number) => {
+  if (geometry.groups.length === 0) return 0;
+  const offset = faceIndex * 3;
+  const group = geometry.groups.find(
+    (candidate) => offset >= candidate.start && offset < candidate.start + candidate.count,
+  );
+  return group?.materialIndex ?? 0;
+};
+
+const getTriangleVertexIndices = (geometry: THREE.BufferGeometry, faceIndex: number) => {
+  const base = faceIndex * 3;
+  if (geometry.index) {
+    if (base + 2 >= geometry.index.count) return undefined;
+    return [
+      geometry.index.getX(base),
+      geometry.index.getX(base + 1),
+      geometry.index.getX(base + 2),
+    ] as const;
+  }
+
+  const positions = geometry.getAttribute("position");
+  if (!positions || base + 2 >= positions.count) return undefined;
+  return [base, base + 1, base + 2] as const;
+};
+
+const createUvIslandTopology = (
+  geometry: THREE.BufferGeometry,
+  materialIndex: number,
+): UvIslandTopology | undefined => {
+  const uv = geometry.getAttribute("uv");
+  const positions = geometry.getAttribute("position");
+  if (!uv || !positions) return undefined;
+
+  const triangleCount = Math.floor((geometry.index?.count ?? positions.count) / 3);
+  const triangles = new Map<number, UvTriangle>();
+  const edgeToFaces = new Map<string, number[]>();
+
+  for (let faceIndex = 0; faceIndex < triangleCount; faceIndex += 1) {
+    if (getTriangleMaterialIndex(geometry, faceIndex) !== materialIndex) continue;
+    const indices = getTriangleVertexIndices(geometry, faceIndex);
+    if (!indices) continue;
+    const [a, b, c] = indices;
+    if (a >= uv.count || b >= uv.count || c >= uv.count) continue;
+
+    const uvA = new THREE.Vector2(uv.getX(a), uv.getY(a));
+    const uvB = new THREE.Vector2(uv.getX(b), uv.getY(b));
+    const uvC = new THREE.Vector2(uv.getX(c), uv.getY(c));
+    const twiceArea = Math.abs(
+      (uvB.x - uvA.x) * (uvC.y - uvA.y) - (uvB.y - uvA.y) * (uvC.x - uvA.x),
+    );
+    if (twiceArea <= Number.EPSILON) continue;
+
+    triangles.set(faceIndex, { faceIndex, uvA, uvB, uvC });
+    for (const key of [uvEdgeKey(uvA, uvB), uvEdgeKey(uvB, uvC), uvEdgeKey(uvC, uvA)]) {
+      const faces = edgeToFaces.get(key);
+      if (faces) faces.push(faceIndex);
+      else edgeToFaces.set(key, [faceIndex]);
+    }
+  }
+
+  if (triangles.size === 0) return undefined;
+
+  const neighbors = new Map<number, Set<number>>();
+  const addNeighbor = (from: number, to: number) => {
+    let values = neighbors.get(from);
+    if (!values) {
+      values = new Set();
+      neighbors.set(from, values);
+    }
+    values.add(to);
+  };
+  for (const faces of edgeToFaces.values()) {
+    if (faces.length < 2) continue;
+    const first = faces[0];
+    for (let index = 1; index < faces.length; index += 1) {
+      addNeighbor(first, faces[index]);
+      addNeighbor(faces[index], first);
+    }
+  }
+
+  const faceToIsland = new Map<number, number>();
+  const islands = new Map<number, UvTriangle[]>();
+  let nextIsland = 0;
+  for (const faceIndex of triangles.keys()) {
+    if (faceToIsland.has(faceIndex)) continue;
+    const islandId = nextIsland++;
+    const pending = [faceIndex];
+    const islandTriangles: UvTriangle[] = [];
+    faceToIsland.set(faceIndex, islandId);
+
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      const triangle = triangles.get(current);
+      if (triangle) islandTriangles.push(triangle);
+      for (const neighbor of neighbors.get(current) ?? []) {
+        if (faceToIsland.has(neighbor)) continue;
+        faceToIsland.set(neighbor, islandId);
+        pending.push(neighbor);
+      }
+    }
+    islands.set(islandId, islandTriangles);
+  }
+
+  return { faceToIsland, islands };
+};
+
+const pointInTriangle = (
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+) => {
+  const ab = (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+  const bc = (px - bx) * (cy - by) - (py - by) * (cx - bx);
+  const ca = (px - cx) * (ay - cy) - (py - cy) * (ax - cx);
+  const epsilon = 1e-6;
+  const hasNegative = ab < -epsilon || bc < -epsilon || ca < -epsilon;
+  const hasPositive = ab > epsilon || bc > epsilon || ca > epsilon;
+  return !(hasNegative && hasPositive);
+};
+
+const buildUvIslandMask = (
+  triangles: readonly UvTriangle[],
+  target: PaintableTexture,
+): UvIslandMask | undefined => {
+  if (triangles.length === 0) return undefined;
+
+  const transformed = triangles.map((triangle) => {
+    const uvA = triangle.uvA.clone();
+    const uvB = triangle.uvB.clone();
+    const uvC = triangle.uvC.clone();
+    target.editable.transformUv(uvA);
+    target.editable.transformUv(uvB);
+    target.editable.transformUv(uvC);
+    return [
+      new THREE.Vector2(uvA.x * target.width, uvA.y * target.height),
+      new THREE.Vector2(uvB.x * target.width, uvB.y * target.height),
+      new THREE.Vector2(uvC.x * target.width, uvC.y * target.height),
+    ] as const;
+  });
+
+  let minX = target.width - 1;
+  let minY = target.height - 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const [a, b, c] of transformed) {
+    minX = Math.min(minX, Math.floor(Math.min(a.x, b.x, c.x)));
+    minY = Math.min(minY, Math.floor(Math.min(a.y, b.y, c.y)));
+    maxX = Math.max(maxX, Math.ceil(Math.max(a.x, b.x, c.x)));
+    maxY = Math.max(maxY, Math.ceil(Math.max(a.y, b.y, c.y)));
+  }
+
+  minX = Math.max(0, minX);
+  minY = Math.max(0, minY);
+  maxX = Math.min(target.width - 1, maxX);
+  maxY = Math.min(target.height - 1, maxY);
+  if (maxX < minX || maxY < minY) return undefined;
+
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  const pixels = new Uint8Array(width * height);
+
+  for (const [a, b, c] of transformed) {
+    const triangleMinX = Math.max(minX, Math.floor(Math.min(a.x, b.x, c.x)));
+    const triangleMinY = Math.max(minY, Math.floor(Math.min(a.y, b.y, c.y)));
+    const triangleMaxX = Math.min(maxX, Math.ceil(Math.max(a.x, b.x, c.x)));
+    const triangleMaxY = Math.min(maxY, Math.ceil(Math.max(a.y, b.y, c.y)));
+    for (let y = triangleMinY; y <= triangleMaxY; y += 1) {
+      for (let x = triangleMinX; x <= triangleMaxX; x += 1) {
+        if (!pointInTriangle(x + 0.5, y + 0.5, a.x, a.y, b.x, b.y, c.x, c.y)) continue;
+        pixels[(y - minY) * width + (x - minX)] = 1;
+      }
+    }
+  }
+
+  return { minX, minY, width, height, pixels };
+};
+
+const maskContainsPixel = (mask: UvIslandMask, x: number, y: number) => {
+  const localX = x - mask.minX;
+  const localY = y - mask.minY;
+  if (localX < 0 || localY < 0 || localX >= mask.width || localY >= mask.height) return false;
+  return mask.pixels[localY * mask.width + localX] !== 0;
+};
+
 const blendPixelFromStrokeStart = (
   target: PaintableTexture,
   byteIndex: number,
@@ -251,6 +480,11 @@ export class UnitPainterSession {
   private readonly restores: MaterialRestore[] = [];
   private readonly history: Stroke[] = [];
   private readonly redoHistory: Stroke[] = [];
+  private readonly uvTopologies = new WeakMap<THREE.BufferGeometry, Map<number, UvIslandTopology>>();
+  private readonly uvMasksByTarget = new Map<
+    PaintableTexture,
+    WeakMap<THREE.BufferGeometry, Map<string, UvIslandMask>>
+  >();
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private isStrokeOpen = false;
@@ -334,6 +568,7 @@ export class UnitPainterSession {
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
     if (!target) return false;
 
+    const islandMask = this.getUvIslandMask(intersection, target);
     const uv = intersection.uv.clone();
     target.editable.transformUv(uv);
     const radius = estimateBrushRadiusTexels(
@@ -370,13 +605,14 @@ export class UnitPainterSession {
 
         const pixelX = wrapCoordinate(x, target.width, target.editable.wrapS);
         const pixelY = wrapCoordinate(y, target.height, target.editable.wrapT);
+        if (islandMask && !maskContainsPixel(islandMask, pixelX, pixelY)) continue;
         const byteIndex = (pixelY * target.width + pixelX) * 4;
         const currentValue = packPixel(target.data, byteIndex);
         const strokeStartValue = before.get(byteIndex) ?? currentValue;
         if (!before.has(byteIndex)) before.set(byteIndex, strokeStartValue);
 
-        const falloff = distance <= 0.78 ? 1 : Math.max(0, (1 - distance) / 0.22);
-        const nextCoverage = Math.max(coverage.get(byteIndex) ?? 0, falloff * settings.strength);
+        const falloff = getBrushFalloff(distance, settings.hardness);
+        const nextCoverage = Math.max(coverage.get(byteIndex) ?? 0, falloff * clamp01(settings.opacity));
         if (nextCoverage <= (coverage.get(byteIndex) ?? 0)) continue;
         coverage.set(byteIndex, nextCoverage);
         blendPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
@@ -386,6 +622,24 @@ export class UnitPainterSession {
 
     if (changed) target.editable.needsUpdate = true;
     return changed;
+  }
+
+  sampleIntersection(intersection: THREE.Intersection<THREE.Object3D>) {
+    if (!intersection.uv) return undefined;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!target) return undefined;
+
+    const uv = intersection.uv.clone();
+    target.editable.transformUv(uv);
+    const pixelX = wrapCoordinate(Math.floor(uv.x * target.width), target.width, target.editable.wrapS);
+    const pixelY = wrapCoordinate(Math.floor(uv.y * target.height), target.height, target.editable.wrapT);
+    const byteIndex = (pixelY * target.width + pixelX) * 4;
+    return {
+      r: target.data[byteIndex],
+      g: target.data[byteIndex + 1],
+      b: target.data[byteIndex + 2],
+    };
   }
 
   endStroke() {
@@ -491,6 +745,54 @@ export class UnitPainterSession {
     this.redoHistory.length = 0;
     this.currentStroke.clear();
     this.currentStrokeCoverage.clear();
+    this.uvMasksByTarget.clear();
+  }
+
+  private getUvIslandMask(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    target: PaintableTexture,
+  ): UvIslandMask | undefined {
+    if (!(intersection.object instanceof THREE.Mesh) || intersection.faceIndex == null) return undefined;
+    const geometry = intersection.object.geometry;
+    const materialIndex = intersection.face?.materialIndex ?? getTriangleMaterialIndex(geometry, intersection.faceIndex);
+
+    let topologyByMaterial = this.uvTopologies.get(geometry);
+    if (!topologyByMaterial) {
+      topologyByMaterial = new Map();
+      this.uvTopologies.set(geometry, topologyByMaterial);
+    }
+
+    let topology = topologyByMaterial.get(materialIndex);
+    if (!topology) {
+      topology = createUvIslandTopology(geometry, materialIndex);
+      if (!topology) return undefined;
+      topologyByMaterial.set(materialIndex, topology);
+    }
+
+    const islandId = topology.faceToIsland.get(intersection.faceIndex);
+    if (islandId == null) return undefined;
+
+    let masksByGeometry = this.uvMasksByTarget.get(target);
+    if (!masksByGeometry) {
+      masksByGeometry = new WeakMap();
+      this.uvMasksByTarget.set(target, masksByGeometry);
+    }
+    let masks = masksByGeometry.get(geometry);
+    if (!masks) {
+      masks = new Map();
+      masksByGeometry.set(geometry, masks);
+    }
+
+    const key = `${materialIndex}:${islandId}`;
+    const cached = masks.get(key);
+    if (cached) return cached;
+
+    const triangles = topology.islands.get(islandId);
+    if (!triangles) return undefined;
+    const mask = buildUvIslandMask(triangles, target);
+    if (!mask) return undefined;
+    masks.set(key, mask);
+    return mask;
   }
 
   private applyStroke(stroke: Stroke, side: "before" | "after") {
