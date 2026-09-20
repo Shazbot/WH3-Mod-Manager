@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import * as nodePath from "node:path";
+import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 
 import type { NewPackedFile } from "../packFileTypes";
 import type { VariantMeshSelection } from "./variantMesh";
@@ -23,6 +24,7 @@ export type UnitPainterProjectManifest = {
     width: number;
     height: number;
     filePath: string;
+    encoding: "zstd";
   }>;
 };
 
@@ -124,18 +126,22 @@ export const buildUnitPainterPackFiles = async (
 
 const normalizeProjectSourcePath = (value: string) => normalizePackPath(value).replace(/^\\+/, "");
 
-export const buildUnitPainterProjectPackFiles = (
+export const buildUnitPainterProjectPackFiles = async (
   sourceVariantMeshDefinition: string,
   variantSelections: readonly VariantMeshSelection[],
   textures: readonly UnitPainterProjectTexture[],
-): NewPackedFile[] => {
+): Promise<NewPackedFile[]> => {
+  const compressedTextures = await Promise.all(
+    textures.map(async (texture) => Buffer.from(await zstdCompress(texture.rgbaBytes, 1))),
+  );
   const paintedTextures = textures.map((texture, index) => {
-    const filePath = `whmm_unit_painter\\textures\\${String(index + 1).padStart(3, "0")}.rgba`;
+    const filePath = `whmm_unit_painter\\textures\\${String(index + 1).padStart(3, "0")}.rgba.zst`;
     return {
       sourceVirtualPath: normalizeProjectSourcePath(texture.sourceVirtualPath),
       width: texture.width,
       height: texture.height,
       filePath,
+      encoding: "zstd" as const,
     };
   });
   const manifest: UnitPainterProjectManifest = {
@@ -153,14 +159,11 @@ export const buildUnitPainterProjectPackFiles = (
       buffer: manifestBuffer,
       file_size: manifestBuffer.length,
     },
-    ...textures.map((texture, index) => {
-      const buffer = Buffer.from(texture.rgbaBytes);
-      return {
-        name: paintedTextures[index].filePath,
-        buffer,
-        file_size: buffer.length,
-      };
-    }),
+    ...compressedTextures.map((buffer, index) => ({
+      name: paintedTextures[index].filePath,
+      buffer,
+      file_size: buffer.length,
+    })),
   ];
 };
 
@@ -215,12 +218,14 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     const filePath = typeof texture.filePath === "string" ? normalizePackPath(texture.filePath) : "";
     const width = typeof texture.width === "number" && Number.isInteger(texture.width) ? texture.width : 0;
     const height = typeof texture.height === "number" && Number.isInteger(texture.height) ? texture.height : 0;
+    const encoding = texture.encoding;
     if (
       !sourceVirtualPath ||
       !isSafePackPath(sourceVirtualPath) ||
       !filePath ||
       !isSafePackPath(filePath) ||
-      !/^whmm_unit_painter\\textures\\.+\.rgba$/i.test(filePath) ||
+      !/^whmm_unit_painter\\textures\\.+\.rgba\.zst$/i.test(filePath) ||
+      encoding !== "zstd" ||
       width <= 0 ||
       height <= 0 ||
       width > 16384 ||
@@ -235,7 +240,7 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     }
     seenSources.add(sourceKey);
     seenFiles.add(fileKey);
-    paintedTextures.push({ sourceVirtualPath, width, height, filePath });
+    paintedTextures.push({ sourceVirtualPath, width, height, filePath, encoding: "zstd" });
   }
 
   return {
@@ -244,4 +249,16 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     variantSelections,
     paintedTextures,
   };
+};
+
+
+export const decodeUnitPainterProjectTexture = async (
+  compressed: Uint8Array,
+  expectedBytes: number,
+): Promise<Buffer> => {
+  const decoded = Buffer.from(await zstdDecompress(compressed));
+  if (decoded.length !== expectedBytes) {
+    throw new Error(`The saved painter texture decoded to ${decoded.length} bytes; expected ${expectedBytes}.`);
+  }
+  return decoded;
 };
