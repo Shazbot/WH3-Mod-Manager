@@ -21,6 +21,14 @@ type PaintableTexture = {
   originalData: Uint8Array;
   width: number;
   height: number;
+  sourceFileName: string;
+};
+
+export type UnitPainterExportTexture = {
+  fileName: string;
+  width: number;
+  height: number;
+  pngBytes: Uint8Array;
 };
 
 type MaterialRestore = {
@@ -39,6 +47,25 @@ type Stroke = StrokeChange[];
 const MAX_HISTORY_STROKES = 30;
 const MIN_BRUSH_RADIUS_TEXELS = 1;
 const MAX_BRUSH_TEXTURE_FRACTION = 0.15;
+
+const sanitizeExportFileName = (value: string) => {
+  const trimmed = value.replace(/[?#].*$/, "").split(/[\\/]/).pop() || "painted_texture";
+  const stem = trimmed.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^[_\.]+|[_\.]+$/g, "");
+  return `${stem || "painted_texture"}.png`;
+};
+
+const getTextureExportFileName = (texture: THREE.DataTexture, index: number) => {
+  const previewUrl = texture.userData.wh3PreviewTextureUrl;
+  if (typeof previewUrl === "string" && previewUrl) {
+    try {
+      return sanitizeExportFileName(decodeURIComponent(previewUrl));
+    } catch {
+      return sanitizeExportFileName(previewUrl);
+    }
+  }
+  if (texture.name) return sanitizeExportFileName(texture.name);
+  return `painted_texture_${String(index + 1).padStart(2, "0")}.png`;
+};
 
 const getDataTextureImage = (texture: THREE.DataTexture) => {
   const image = texture.image as { data?: ArrayBufferView; width?: number; height?: number } | undefined;
@@ -218,6 +245,7 @@ export class UnitPainterSession {
   constructor(root: THREE.Object3D) {
     const targetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
     const processedMaterials = new Set<PaintableMaterial>();
+    let textureIndex = 0;
 
     root.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
@@ -245,6 +273,7 @@ export class UnitPainterSession {
             originalData: image.data,
             width: image.width,
             height: image.height,
+            sourceFileName: getTextureExportFileName(original, textureIndex++),
           };
           targetsByOriginal.set(original, target);
           this.targetsByEditableTexture.set(editable, target);
@@ -394,6 +423,50 @@ export class UnitPainterSession {
     }
     this.history.length = 0;
     this.redoHistory.length = 0;
+  }
+
+  async exportModifiedTextures(): Promise<UnitPainterExportTexture[]> {
+    if (this.isStrokeOpen) this.endStroke();
+    const modifiedTargets = [...this.targetsByEditableTexture.values()].filter((target) => {
+      if (target.data.length !== target.originalData.length) return true;
+      for (let index = 0; index < target.data.length; index += 1) {
+        if (target.data[index] !== target.originalData[index]) return true;
+      }
+      return false;
+    });
+
+    const usedNames = new Map<string, number>();
+    const output: UnitPainterExportTexture[] = [];
+    for (const target of modifiedTargets) {
+      const canvas = document.createElement("canvas");
+      canvas.width = target.width;
+      canvas.height = target.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("The browser could not create a 2D canvas for texture export.");
+
+      const pixels = new Uint8ClampedArray(target.data);
+      context.putImageData(new ImageData(pixels, target.width, target.height), 0, 0);
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((value) => {
+          if (value) resolve(value);
+          else reject(new Error("Failed to encode a painted texture as PNG."));
+        }, "image/png");
+      });
+
+      const seenCount = usedNames.get(target.sourceFileName) ?? 0;
+      usedNames.set(target.sourceFileName, seenCount + 1);
+      const fileName =
+        seenCount === 0
+          ? target.sourceFileName
+          : target.sourceFileName.replace(/\.png$/i, `_${seenCount + 1}.png`);
+      output.push({
+        fileName,
+        width: target.width,
+        height: target.height,
+        pngBytes: new Uint8Array(await blob.arrayBuffer()),
+      });
+    }
+    return output;
   }
 
   dispose() {
