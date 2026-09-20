@@ -3,12 +3,19 @@ import * as nodePath from "node:path";
 
 import type { NewPackedFile } from "../packFileTypes";
 
-const normalizePackPath = (value: string): string =>
-  value.replace(/\//g, "\\").trim().replace(/^\\+/, "");
+const normalizePackPath = (value: string): string => value.replace(/\//g, "\\").trim();
 
 const isSafePackPath = (value: string): boolean => {
-  if (!value || value.includes("\0") || nodePath.isAbsolute(value)) return false;
-  return !value.split("\\").some((part) => part === ".." || part === "");
+  if (
+    !value
+    || value.includes("\0")
+    || value.startsWith("\\")
+    || /^[a-zA-Z]:/.test(value)
+    || nodePath.isAbsolute(value)
+  ) {
+    return false;
+  }
+  return !value.split("\\").some((part) => part === ".." || part === "." || part === "");
 };
 
 const isPainterManifestPath = (value: string): boolean =>
