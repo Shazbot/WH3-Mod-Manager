@@ -765,6 +765,15 @@ const sanitizeUnitPainterVariantName = (assetPath: string) => {
 
 const chooseUnitPainterVariantName = async (directory: string, assetPath: string) => {
   const baseName = sanitizeUnitPainterVariantName(assetPath);
+  const pathExists = async (path: string) => {
+    try {
+      await fs.promises.access(path);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   for (let suffix = 1; suffix < 10_000; suffix += 1) {
     const candidate = suffix === 1 ? baseName : `${baseName}_${suffix}`;
     const vmdPath = nodePath.join(
@@ -774,9 +783,19 @@ const chooseUnitPainterVariantName = async (directory: string, assetPath: string
       "whmm_unit_painter",
       `${candidate}.variantmeshdefinition`,
     );
-    try {
-      await fs.promises.access(vmdPath);
-    } catch {
+    const assetDirectory = nodePath.join(
+      directory,
+      "variantmeshes",
+      "whmm_unit_painter",
+      candidate,
+    );
+    const manifestPath = nodePath.join(directory, `whmm_unit_painter_manifest_${candidate}.json`);
+
+    if (
+      !(await pathExists(vmdPath))
+      && !(await pathExists(assetDirectory))
+      && !(await pathExists(manifestPath))
+    ) {
       return candidate;
     }
   }
