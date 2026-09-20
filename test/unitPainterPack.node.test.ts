@@ -1,8 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as nodePath from "node:path";
 
+vi.mock("@mongodb-js/zstd", () => ({
+  compress: async (value: Uint8Array) => value,
+  decompress: async (value: Uint8Array) => value,
+}));
+
+import appData from "../src/appData";
+import { readPack, writePack } from "../src/packFileSerializer";
 import {
   buildUnitPainterPackFiles,
   ensureUnitPainterPackExtension,
@@ -66,6 +73,45 @@ describe("unit painter pack staging", () => {
     expect(packedFiles.map((file) => file.name)).toEqual([vmdPath, wsModelPath, materialPath, texturePath]);
     expect(packedFiles.some((file) => file.name === manifestPath)).toBe(false);
     expect(packedFiles.find((file) => file.name === vmdPath)?.buffer?.toString()).toBe("<VARIANT_MESH />");
+  });
+
+  it("writes a WH3 pack containing the source VMD override and generated assets", async () => {
+    const root = await makeTempDirectory();
+    const generated = nodePath.join(root, "generated");
+    const packPath = nodePath.join(root, "belegar_painted.pack");
+    const vmdPath =
+      "variantmeshes\\variantmeshdefinitions\\wh_variantmodels\\hu3\\dwf\\dwf_belegar.variantmeshdefinition";
+    const wsModelPath = "variantmeshes\\whmm_unit_painter\\belegar_painted\\models\\001_torso.wsmodel";
+    const texturePath = "variantmeshes\\whmm_unit_painter\\belegar_painted\\textures\\torso_painted.dds";
+
+    for (const [virtualPath, bytes] of [
+      [vmdPath, Buffer.from("<VARIANT_MESH />")],
+      [wsModelPath, Buffer.from("<model />")],
+      [texturePath, Buffer.from([0x44, 0x44, 0x53, 0x20])],
+    ] as const) {
+      const fullPath = nodePath.join(generated, ...virtualPath.split("\\"));
+      await fs.mkdir(nodePath.dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, bytes);
+    }
+
+    const packFiles = await buildUnitPainterPackFiles(
+      generated,
+      [vmdPath, wsModelPath, texturePath],
+      vmdPath,
+    );
+
+    const previousGame = appData.currentGame;
+    appData.currentGame = "wh3";
+    try {
+      await writePack(packFiles, packPath);
+      const saved = await readPack(packPath, { skipParsingTables: true, skipSorting: true });
+      expect(saved.packedFiles.map((file) => file.name).toSorted()).toEqual(
+        [vmdPath, wsModelPath, texturePath].toSorted(),
+      );
+      expect(saved.packedFiles.some((file) => file.name === vmdPath)).toBe(true);
+    } finally {
+      appData.currentGame = previousGame;
+    }
   });
 
   it("rejects a generated export that does not override the source VMD", async () => {
