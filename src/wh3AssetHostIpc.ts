@@ -24,6 +24,13 @@ import { getVanillaPackFilesCachePath } from "./vanillaPackFilesCache";
 import { ensureWh3AssetHostVanillaCache } from "./wh3AssetHostVanillaCache";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
 import type { VisualsModelPreviewTimingReport } from "./visuals/modelPreviewApi";
+import { writePack } from "./packFileSerializer";
+import {
+  buildUnitPainterPackFiles,
+  ensureUnitPainterPackExtension,
+  getUnitPainterDefaultPackName,
+  getUnitPainterNamespaceName,
+} from "./visuals/unitPainterPack";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
 const HOST_EXECUTABLE_NAME = "WH3AssetHost.exe";
