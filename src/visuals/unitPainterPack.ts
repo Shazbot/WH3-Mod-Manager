@@ -6,7 +6,7 @@ import type { NewPackedFile } from "../packFileTypes";
 import type { VariantMeshSelection } from "./variantMesh";
 
 export const UNIT_PAINTER_PROJECT_MANIFEST_PATH = "whmm_unit_painter\\project.json";
-export const UNIT_PAINTER_PROJECT_FORMAT_VERSION = 1;
+export const UNIT_PAINTER_PROJECT_FORMAT_VERSION = 2;
 
 export type UnitPainterProjectTexture = {
   sourceVirtualPath: string;
@@ -15,18 +15,49 @@ export type UnitPainterProjectTexture = {
   rgbaBytes: Uint8Array;
 };
 
-export type UnitPainterProjectManifest = {
+export type UnitPainterProjectLayerInput = {
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  textures: UnitPainterProjectTexture[];
+};
+
+export type UnitPainterProjectStateInput = {
+  activeLayerId: string;
+  layers: UnitPainterProjectLayerInput[];
+};
+
+type UnitPainterProjectStoredTexture = {
+  sourceVirtualPath: string;
+  width: number;
+  height: number;
+  filePath: string;
+  encoding: "zstd";
+};
+
+export type UnitPainterProjectManifestV1 = {
   formatVersion: 1;
   sourceVariantMeshDefinition: string;
   variantSelections: VariantMeshSelection[];
-  paintedTextures: Array<{
-    sourceVirtualPath: string;
-    width: number;
-    height: number;
-    filePath: string;
-    encoding: "zstd";
+  paintedTextures: UnitPainterProjectStoredTexture[];
+};
+
+export type UnitPainterProjectManifestV2 = {
+  formatVersion: 2;
+  sourceVariantMeshDefinition: string;
+  variantSelections: VariantMeshSelection[];
+  activeLayerId: string;
+  layers: Array<{
+    id: string;
+    name: string;
+    visible: boolean;
+    opacity: number;
+    textures: UnitPainterProjectStoredTexture[];
   }>;
 };
+
+export type UnitPainterProjectManifest = UnitPainterProjectManifestV1 | UnitPainterProjectManifestV2;
 
 const normalizePackPath = (value: string): string => value.replace(/\//g, "\\").trim();
 
@@ -126,31 +157,101 @@ export const buildUnitPainterPackFiles = async (
 
 const normalizeProjectSourcePath = (value: string) => normalizePackPath(value).replace(/^\\+/, "");
 
+const normalizeVariantSelections = (variantSelections: readonly VariantMeshSelection[]) =>
+  [...variantSelections]
+    .map((selection) => ({ slotPath: selection.slotPath, choiceIndex: selection.choiceIndex }))
+    .sort((a, b) => a.slotPath.localeCompare(b.slotPath));
+
+const validateProjectTextureInput = (texture: UnitPainterProjectTexture) => {
+  const sourceVirtualPath = normalizeProjectSourcePath(texture.sourceVirtualPath);
+  if (!isSafePackPath(sourceVirtualPath)) throw new Error("The unit painter project contains an invalid source texture path.");
+  if (
+    !Number.isInteger(texture.width)
+    || !Number.isInteger(texture.height)
+    || texture.width <= 0
+    || texture.height <= 0
+    || texture.width > 16384
+    || texture.height > 16384
+    || texture.rgbaBytes.length !== texture.width * texture.height * 4
+  ) {
+    throw new Error(`The unit painter project texture '${sourceVirtualPath}' has invalid dimensions or RGBA data.`);
+  }
+  return sourceVirtualPath;
+};
+
 export const buildUnitPainterProjectPackFiles = async (
   sourceVariantMeshDefinition: string,
   variantSelections: readonly VariantMeshSelection[],
-  textures: readonly UnitPainterProjectTexture[],
+  project: UnitPainterProjectStateInput,
 ): Promise<NewPackedFile[]> => {
-  const compressedTextures = await Promise.all(
-    textures.map(async (texture) => Buffer.from(await zstdCompress(texture.rgbaBytes, 1))),
-  );
-  const paintedTextures = textures.map((texture, index) => {
-    const filePath = `whmm_unit_painter\\textures\\${String(index + 1).padStart(3, "0")}.rgba.zst`;
-    return {
-      sourceVirtualPath: normalizeProjectSourcePath(texture.sourceVirtualPath),
-      width: texture.width,
-      height: texture.height,
-      filePath,
-      encoding: "zstd" as const,
-    };
-  });
-  const manifest: UnitPainterProjectManifest = {
+  const sourceVmd = normalizeProjectSourcePath(sourceVariantMeshDefinition);
+  if (!isSafePackPath(sourceVmd) || !/\.variantmeshdefinition$/i.test(sourceVmd)) {
+    throw new Error("The unit painter project contains an invalid source VariantMeshDefinition path.");
+  }
+  if (!project.layers.length || project.layers.length > 32) {
+    throw new Error("A unit painter project must contain between 1 and 32 paint layers.");
+  }
+
+  const seenLayerIds = new Set<string>();
+  const storedLayers: UnitPainterProjectManifestV2["layers"] = [];
+  const packedTextureFiles: NewPackedFile[] = [];
+
+  for (let layerIndex = 0; layerIndex < project.layers.length; layerIndex += 1) {
+    const layer = project.layers[layerIndex];
+    const id = layer.id.trim();
+    const name = layer.name.trim().slice(0, 80);
+    if (!id || !/^[a-zA-Z0-9_-]{1,80}$/.test(id) || seenLayerIds.has(id) || !name) {
+      throw new Error("The unit painter project contains an invalid or duplicate paint layer.");
+    }
+    if (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1) {
+      throw new Error(`Paint layer '${name}' has an invalid opacity.`);
+    }
+    seenLayerIds.add(id);
+
+    const seenSources = new Set<string>();
+    const storedTextures: UnitPainterProjectStoredTexture[] = [];
+    for (let textureIndex = 0; textureIndex < layer.textures.length; textureIndex += 1) {
+      const texture = layer.textures[textureIndex];
+      const sourceVirtualPath = validateProjectTextureInput(texture);
+      const sourceKey = sourceVirtualPath.toLowerCase();
+      if (seenSources.has(sourceKey)) {
+        throw new Error(`Paint layer '${name}' repeats source texture '${sourceVirtualPath}'.`);
+      }
+      seenSources.add(sourceKey);
+
+      const filePath =
+        `whmm_unit_painter\\layers\\${String(layerIndex + 1).padStart(2, "0")}_${id}`
+        + `\\textures\\${String(textureIndex + 1).padStart(3, "0")}.rgba.zst`;
+      const buffer = Buffer.from(await zstdCompress(texture.rgbaBytes, 1));
+      packedTextureFiles.push({ name: filePath, buffer, file_size: buffer.length });
+      storedTextures.push({
+        sourceVirtualPath,
+        width: texture.width,
+        height: texture.height,
+        filePath,
+        encoding: "zstd",
+      });
+    }
+
+    storedLayers.push({
+      id,
+      name,
+      visible: !!layer.visible,
+      opacity: layer.opacity,
+      textures: storedTextures,
+    });
+  }
+
+  if (!seenLayerIds.has(project.activeLayerId)) {
+    throw new Error("The unit painter project active layer does not exist.");
+  }
+
+  const manifest: UnitPainterProjectManifestV2 = {
     formatVersion: UNIT_PAINTER_PROJECT_FORMAT_VERSION,
-    sourceVariantMeshDefinition: normalizeProjectSourcePath(sourceVariantMeshDefinition),
-    variantSelections: [...variantSelections]
-      .map((selection) => ({ slotPath: selection.slotPath, choiceIndex: selection.choiceIndex }))
-      .sort((a, b) => a.slotPath.localeCompare(b.slotPath)),
-    paintedTextures,
+    sourceVariantMeshDefinition: sourceVmd,
+    variantSelections: normalizeVariantSelections(variantSelections),
+    activeLayerId: project.activeLayerId,
+    layers: storedLayers,
   };
   const manifestBuffer = Buffer.from(JSON.stringify(manifest, null, 2), "utf8");
   return [
@@ -159,28 +260,14 @@ export const buildUnitPainterProjectPackFiles = async (
       buffer: manifestBuffer,
       file_size: manifestBuffer.length,
     },
-    ...compressedTextures.map((buffer, index) => ({
-      name: paintedTextures[index].filePath,
-      buffer,
-      file_size: buffer.length,
-    })),
+    ...packedTextureFiles,
   ];
 };
 
-export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainterProjectManifest => {
-  let value: unknown;
-  try {
-    value = JSON.parse(Buffer.from(buffer).toString("utf8"));
-  } catch {
-    throw new Error("The unit painter project manifest is not valid JSON.");
-  }
-  if (!value || typeof value !== "object") throw new Error("The unit painter project manifest is invalid.");
-  const candidate = value as Partial<UnitPainterProjectManifest>;
-  if (candidate.formatVersion !== UNIT_PAINTER_PROJECT_FORMAT_VERSION) {
-    throw new Error(
-      `Unsupported unit painter project format '${String(candidate.formatVersion)}'. Expected version ${UNIT_PAINTER_PROJECT_FORMAT_VERSION}.`,
-    );
-  }
+const parseCommonManifestFields = (candidate: {
+  sourceVariantMeshDefinition?: unknown;
+  variantSelections?: unknown;
+}) => {
   if (typeof candidate.sourceVariantMeshDefinition !== "string" || !candidate.sourceVariantMeshDefinition.trim()) {
     throw new Error("The unit painter project is missing its source VariantMeshDefinition.");
   }
@@ -188,7 +275,7 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
   if (!isSafePackPath(sourceVariantMeshDefinition) || !/\.variantmeshdefinition$/i.test(sourceVariantMeshDefinition)) {
     throw new Error("The unit painter project contains an invalid source VariantMeshDefinition path.");
   }
-  if (!Array.isArray(candidate.variantSelections) || !Array.isArray(candidate.paintedTextures)) {
+  if (!Array.isArray(candidate.variantSelections)) {
     throw new Error("The unit painter project manifest is incomplete.");
   }
 
@@ -206,48 +293,130 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     seenSlots.add(key);
     variantSelections.push({ slotPath, choiceIndex: selection.choiceIndex! });
   }
+  return { sourceVariantMeshDefinition, variantSelections };
+};
 
-  const paintedTextures: UnitPainterProjectManifest["paintedTextures"] = [];
-  const seenSources = new Set<string>();
+const parseStoredTexture = (
+  raw: unknown,
+  seenSources: Set<string>,
+  seenFiles: Set<string>,
+  requiredPrefix: RegExp,
+): UnitPainterProjectStoredTexture => {
+  if (!raw || typeof raw !== "object") throw new Error("The unit painter project contains an invalid painted texture.");
+  const texture = raw as Partial<UnitPainterProjectStoredTexture>;
+  const sourceVirtualPath =
+    typeof texture.sourceVirtualPath === "string" ? normalizeProjectSourcePath(texture.sourceVirtualPath) : "";
+  const filePath = typeof texture.filePath === "string" ? normalizePackPath(texture.filePath) : "";
+  const width = typeof texture.width === "number" && Number.isInteger(texture.width) ? texture.width : 0;
+  const height = typeof texture.height === "number" && Number.isInteger(texture.height) ? texture.height : 0;
+  if (
+    !sourceVirtualPath
+    || !isSafePackPath(sourceVirtualPath)
+    || !filePath
+    || !isSafePackPath(filePath)
+    || !requiredPrefix.test(filePath)
+    || texture.encoding !== "zstd"
+    || width <= 0
+    || height <= 0
+    || width > 16384
+    || height > 16384
+  ) {
+    throw new Error("The unit painter project contains an invalid painted texture.");
+  }
+  const sourceKey = sourceVirtualPath.toLowerCase();
+  const fileKey = filePath.toLowerCase();
+  if (seenSources.has(sourceKey) || seenFiles.has(fileKey)) {
+    throw new Error("The unit painter project contains duplicate texture entries.");
+  }
+  seenSources.add(sourceKey);
+  seenFiles.add(fileKey);
+  return { sourceVirtualPath, width, height, filePath, encoding: "zstd" };
+};
+
+export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainterProjectManifest => {
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(buffer).toString("utf8"));
+  } catch {
+    throw new Error("The unit painter project manifest is not valid JSON.");
+  }
+  if (!value || typeof value !== "object") throw new Error("The unit painter project manifest is invalid.");
+  const candidate = value as Record<string, unknown>;
+  const common = parseCommonManifestFields(candidate);
+
+  if (candidate.formatVersion === 1) {
+    if (!Array.isArray(candidate.paintedTextures)) throw new Error("The unit painter project manifest is incomplete.");
+    const seenSources = new Set<string>();
+    const seenFiles = new Set<string>();
+    const paintedTextures = candidate.paintedTextures.map((raw) =>
+      parseStoredTexture(
+        raw,
+        seenSources,
+        seenFiles,
+        /^whmm_unit_painter\\textures\\.+\.rgba\.zst$/i,
+      ),
+    );
+    return {
+      formatVersion: 1,
+      ...common,
+      paintedTextures,
+    };
+  }
+
+  if (candidate.formatVersion !== UNIT_PAINTER_PROJECT_FORMAT_VERSION) {
+    throw new Error(
+      `Unsupported unit painter project format '${String(candidate.formatVersion)}'. Expected version 1 or ${UNIT_PAINTER_PROJECT_FORMAT_VERSION}.`,
+    );
+  }
+  if (!Array.isArray(candidate.layers) || candidate.layers.length === 0 || candidate.layers.length > 32) {
+    throw new Error("The unit painter project contains an invalid paint layer stack.");
+  }
+  const activeLayerId = typeof candidate.activeLayerId === "string" ? candidate.activeLayerId.trim() : "";
+  const seenLayerIds = new Set<string>();
   const seenFiles = new Set<string>();
-  for (const raw of candidate.paintedTextures) {
-    if (!raw || typeof raw !== "object") throw new Error("The unit painter project contains an invalid painted texture.");
-    const texture = raw as Partial<UnitPainterProjectManifest["paintedTextures"][number]>;
-    const sourceVirtualPath =
-      typeof texture.sourceVirtualPath === "string" ? normalizeProjectSourcePath(texture.sourceVirtualPath) : "";
-    const filePath = typeof texture.filePath === "string" ? normalizePackPath(texture.filePath) : "";
-    const width = typeof texture.width === "number" && Number.isInteger(texture.width) ? texture.width : 0;
-    const height = typeof texture.height === "number" && Number.isInteger(texture.height) ? texture.height : 0;
-    const encoding = texture.encoding;
+  const layers: UnitPainterProjectManifestV2["layers"] = [];
+
+  for (const rawLayer of candidate.layers) {
+    if (!rawLayer || typeof rawLayer !== "object") throw new Error("The unit painter project contains an invalid paint layer.");
+    const layer = rawLayer as Record<string, unknown>;
+    const id = typeof layer.id === "string" ? layer.id.trim() : "";
+    const name = typeof layer.name === "string" ? layer.name.trim().slice(0, 80) : "";
+    const opacity = typeof layer.opacity === "number" ? layer.opacity : Number.NaN;
     if (
-      !sourceVirtualPath ||
-      !isSafePackPath(sourceVirtualPath) ||
-      !filePath ||
-      !isSafePackPath(filePath) ||
-      !/^whmm_unit_painter\\textures\\.+\.rgba\.zst$/i.test(filePath) ||
-      encoding !== "zstd" ||
-      width <= 0 ||
-      height <= 0 ||
-      width > 16384 ||
-      height > 16384
+      !id
+      || !/^[a-zA-Z0-9_-]{1,80}$/.test(id)
+      || seenLayerIds.has(id)
+      || !name
+      || typeof layer.visible !== "boolean"
+      || !Number.isFinite(opacity)
+      || opacity < 0
+      || opacity > 1
+      || !Array.isArray(layer.textures)
     ) {
-      throw new Error("The unit painter project contains an invalid painted texture.");
+      throw new Error("The unit painter project contains an invalid paint layer.");
     }
-    const sourceKey = sourceVirtualPath.toLowerCase();
-    const fileKey = filePath.toLowerCase();
-    if (seenSources.has(sourceKey) || seenFiles.has(fileKey)) {
-      throw new Error("The unit painter project contains duplicate texture entries.");
-    }
-    seenSources.add(sourceKey);
-    seenFiles.add(fileKey);
-    paintedTextures.push({ sourceVirtualPath, width, height, filePath, encoding: "zstd" });
+    seenLayerIds.add(id);
+    const seenSources = new Set<string>();
+    const textures = layer.textures.map((raw) =>
+      parseStoredTexture(
+        raw,
+        seenSources,
+        seenFiles,
+        /^whmm_unit_painter\\layers\\.+\\textures\\.+\.rgba\.zst$/i,
+      ),
+    );
+    layers.push({ id, name, visible: layer.visible, opacity, textures });
+  }
+
+  if (!activeLayerId || !seenLayerIds.has(activeLayerId)) {
+    throw new Error("The unit painter project active layer is invalid.");
   }
 
   return {
     formatVersion: UNIT_PAINTER_PROJECT_FORMAT_VERSION,
-    sourceVariantMeshDefinition,
-    variantSelections,
-    paintedTextures,
+    ...common,
+    activeLayerId,
+    layers,
   };
 };
 
