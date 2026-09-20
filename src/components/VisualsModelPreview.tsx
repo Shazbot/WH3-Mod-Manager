@@ -1361,17 +1361,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                           const warningSuffix = result.warnings?.length
                             ? ` · ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`
                             : "";
+                          const packName = result.packPath?.split(/[\\/]/).pop();
                           setPaintExportStatus(
-                            result.variantMeshPath
-                              ? `Exported variant: ${result.variantMeshPath}${warningSuffix}`
-                              : `Exported painted variant${warningSuffix}`,
+                            packName
+                              ? `Created mod: ${packName}${warningSuffix}`
+                              : `Created painted mod${warningSuffix}`,
                           );
                         } else {
-                          setPaintExportStatus(result.error || "Variant export failed.");
+                          setPaintExportStatus(result.error || "Painted mod creation failed.");
                         }
                       } catch (exportError) {
                         setPaintExportStatus(
-                          exportError instanceof Error ? exportError.message : "Variant export failed.",
+                          exportError instanceof Error ? exportError.message : "Painted mod creation failed.",
                         );
                       } finally {
                         setIsPaintExporting(false);
@@ -1380,7 +1381,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   }}
                   className="rounded border border-blue-500 bg-blue-700/40 px-2 py-1 text-blue-100 hover:bg-blue-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {isPaintExporting ? "Exporting…" : "Export variant"}
+                  {isPaintExporting ? "Creating…" : "Create painted mod"}
                 </button>
                 {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
                 {paintExportStatus && <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>{paintExportStatus}</span>}
