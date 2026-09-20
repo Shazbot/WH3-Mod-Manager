@@ -472,7 +472,7 @@ export class UnitPainterSession {
         sourceVirtualPath: target.sourceVirtualPath,
         width: target.width,
         height: target.height,
-        rgbaBytes: new Uint8Array(target.data),
+        rgbaBytes: target.data,
       });
     }
     return output;
