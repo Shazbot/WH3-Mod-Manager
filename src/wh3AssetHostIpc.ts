@@ -728,14 +728,14 @@ ipcMain.handle("releaseVisualsModelPreview", async (_event, previewId: string) =
 });
 
 const MAX_UNIT_PAINTER_TEXTURES = 64;
-const MAX_UNIT_PAINTER_PNG_BYTES = 64 * 1024 * 1024;
+const MAX_UNIT_PAINTER_RGBA_BYTES = 64 * 1024 * 1024;
 const MAX_UNIT_PAINTER_TOTAL_BYTES = 256 * 1024 * 1024;
 
 const sanitizeUnitPainterFileName = (value: unknown, index: number) => {
-  if (typeof value !== "string") return `painted_texture_${String(index + 1).padStart(2, "0")}.png`;
+  if (typeof value !== "string") return `painted_texture_${String(index + 1).padStart(2, "0")}.rgba`;
   const baseName = nodePath.basename(value.trim()).replace(/[^a-zA-Z0-9._-]+/g, "_");
-  const stem = baseName.replace(/\.png$/i, "").replace(/^[_\.]+|[_\.]+$/g, "");
-  return `${stem || `painted_texture_${String(index + 1).padStart(2, "0")}`}.png`;
+  const stem = baseName.replace(/\.rgba$/i, "").replace(/^[_\.]+|[_\.]+$/g, "");
+  return `${stem || `painted_texture_${String(index + 1).padStart(2, "0")}`}.rgba`;
 };
 
 const sanitizeUnitPainterSourcePath = (value: unknown) => {
@@ -802,25 +802,14 @@ const chooseUnitPainterVariantName = async (directory: string, assetPath: string
   return `${baseName}_${randomUUID().slice(0, 8)}`;
 };
 
-const readUnitPainterPng = (value: unknown) => {
+const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
   if (!ArrayBuffer.isView(value)) return undefined;
-  const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
-  if (bytes.length === 0 || bytes.length > MAX_UNIT_PAINTER_PNG_BYTES) return undefined;
-  // PNG signature. The renderer produces these through Canvas.toBlob("image/png").
-  if (
-    bytes.length < 8 ||
-    bytes[0] !== 0x89 ||
-    bytes[1] !== 0x50 ||
-    bytes[2] !== 0x4e ||
-    bytes[3] !== 0x47 ||
-    bytes[4] !== 0x0d ||
-    bytes[5] !== 0x0a ||
-    bytes[6] !== 0x1a ||
-    bytes[7] !== 0x0a
-  ) {
+  const expectedBytes = width * height * 4;
+  if (!Number.isSafeInteger(expectedBytes) || expectedBytes <= 0 || expectedBytes > MAX_UNIT_PAINTER_RGBA_BYTES) {
     return undefined;
   }
-  return bytes;
+  const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  return bytes.length === expectedBytes ? bytes : undefined;
 };
 
 const copyUnitPainterDirectory = async (source: string, destination: string): Promise<string[]> => {
@@ -868,7 +857,7 @@ const exportUnitPainterVariantNow = async (
     sourceVirtualPath: string;
     width: number;
     height: number;
-    pngBytes: Buffer;
+    rgbaBytes: Buffer;
   }> = [];
   const seenSourcePaths = new Set<string>();
   let totalBytes = 0;
@@ -883,13 +872,16 @@ const exportUnitPainterVariantNow = async (
       sourceVirtualPath?: unknown;
       width?: unknown;
       height?: unknown;
-      pngBytes?: unknown;
+      rgbaBytes?: unknown;
     };
-    const pngBytes = readUnitPainterPng(candidate.pngBytes);
     const sourceVirtualPath = sanitizeUnitPainterSourcePath(candidate.sourceVirtualPath);
     const width = typeof candidate.width === "number" && Number.isInteger(candidate.width) ? candidate.width : 0;
     const height = typeof candidate.height === "number" && Number.isInteger(candidate.height) ? candidate.height : 0;
-    if (!pngBytes || !sourceVirtualPath || width <= 0 || height <= 0 || width > 16384 || height > 16384) {
+    const rgbaBytes =
+      width > 0 && height > 0 && width <= 16384 && height <= 16384
+        ? readUnitPainterRgba(candidate.rgbaBytes, width, height)
+        : undefined;
+    if (!rgbaBytes || !sourceVirtualPath) {
       return { success: false as const, error: "One of the painted textures is invalid." };
     }
 
@@ -902,7 +894,7 @@ const exportUnitPainterVariantNow = async (
     }
     seenSourcePaths.add(sourceKey);
 
-    totalBytes += pngBytes.length;
+    totalBytes += rgbaBytes.length;
     if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
       return { success: false as const, error: "The painted texture export is too large." };
     }
@@ -912,7 +904,7 @@ const exportUnitPainterVariantNow = async (
       sourceVirtualPath,
       width,
       height,
-      pngBytes,
+      rgbaBytes,
     });
   }
 
@@ -944,15 +936,22 @@ const exportUnitPainterVariantNow = async (
     await fs.promises.mkdir(inputDirectory, { recursive: true });
     await fs.promises.mkdir(generatedDirectory, { recursive: true });
 
-    const stagedTextures: Array<{ sourceVirtualPath: string; pngPath: string }> = [];
+    const stagedTextures: Array<{
+      sourceVirtualPath: string;
+      rgbaPath: string;
+      width: number;
+      height: number;
+    }> = [];
     for (let index = 0; index < textures.length; index += 1) {
       const texture = textures[index];
       const stagedName = `${String(index + 1).padStart(2, "0")}_${texture.fileName}`;
       const stagedPath = nodePath.join(inputDirectory, stagedName);
-      await fs.promises.writeFile(stagedPath, texture.pngBytes);
+      await fs.promises.writeFile(stagedPath, texture.rgbaBytes);
       stagedTextures.push({
         sourceVirtualPath: texture.sourceVirtualPath,
-        pngPath: nodePath.relative(getOutputRoot(), stagedPath),
+        rgbaPath: nodePath.relative(getOutputRoot(), stagedPath),
+        width: texture.width,
+        height: texture.height,
       });
     }
 
