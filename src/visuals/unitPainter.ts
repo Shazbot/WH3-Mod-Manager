@@ -74,7 +74,7 @@ const getTextureExportFileName = (texture: THREE.DataTexture, index: number) => 
     }
   }
   if (texture.name) return sanitizeExportFileName(texture.name);
-  return `painted_texture_${String(index + 1).padStart(2, "0")}.png`;
+  return `painted_texture_${String(index + 1).padStart(2, "0")}.rgba`;
 };
 
 const getDataTextureImage = (texture: THREE.DataTexture) => {
