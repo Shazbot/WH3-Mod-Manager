@@ -416,6 +416,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     color: { r: 196, g: 48, b: 48 },
   });
   const brushCursorRef = useRef<HTMLDivElement>(null);
+  const brushHardnessCursorRef = useRef<HTMLDivElement>(null);
+  const altEyedropperHeldRef = useRef(false);
+  const lastPaintBrushModeRef = useRef<Exclude<UnitPainterBrushMode, "restore">>("recolor");
   const showWireframeRef = useRef(showWireframe);
   showWireframeRef.current = showWireframe;
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
@@ -453,6 +456,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPaintProjectOpening, setIsPaintProjectOpening] = useState(false);
   const [paintProjectReloadVersion, setPaintProjectReloadVersion] = useState(0);
   const [paintHistoryVersion, setPaintHistoryVersion] = useState(0);
+  const [isPaintLayersOpen, setIsPaintLayersOpen] = useState(false);
   const pendingPaintProjectRef = useRef<UnitPainterProjectOpenResult | null>(null);
   const effectiveEnabledMods = useMemo(() => {
     if (paintExcludedPackPaths.length === 0) return enabledMods;
@@ -478,6 +482,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintActiveLayer = paintLayers.find((layer) => layer.id === paintActiveLayerId);
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
   void paintHistoryVersion;
+  if (paintBrushMode !== "restore") lastPaintBrushModeRef.current = paintBrushMode;
 
   const rememberPaintColor = (color: string) => {
     const normalized = color.toLowerCase();
@@ -623,27 +628,44 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const updateBrushCursor = (event: PointerEvent, visible = true) => {
       const cursor = brushCursorRef.current;
+      const hardnessCursor = brushHardnessCursorRef.current;
       if (!cursor) return;
       if (!visible || !painterEnabledRef.current) {
         cursor.style.display = "none";
         return;
       }
+
       const rect = renderer.domElement.getBoundingClientRect();
-      const precisionToolActive = eyedropperActiveRef.current || selectToolActiveRef.current;
+      const eyedropperActive = event.altKey || altEyedropperHeldRef.current || eyedropperActiveRef.current;
+      const precisionToolActive = eyedropperActive || selectToolActiveRef.current;
       const radius = precisionToolActive ? 5 : brushSettingsRef.current.radiusPx;
-      cursor.style.display = "block";
-      cursor.style.width = `${radius * 2}px`;
-      cursor.style.height = `${radius * 2}px`;
-      cursor.style.borderColor = eyedropperActiveRef.current
+      const cursorColor = eyedropperActive
         ? "#67e8f9"
         : selectToolActiveRef.current
           ? "#facc15"
           : brushSettingsRef.current.mode === "restore"
             ? "#f59e0b"
             : "rgba(255,255,255,0.9)";
+
+      cursor.style.display = "block";
+      cursor.style.width = `${radius * 2}px`;
+      cursor.style.height = `${radius * 2}px`;
+      cursor.style.borderColor = cursorColor;
       cursor.style.transform = `translate(${event.clientX - rect.left - radius}px, ${
         event.clientY - rect.top - radius
       }px)`;
+
+      if (hardnessCursor) {
+        const hardness = Math.max(0, Math.min(1, brushSettingsRef.current.hardness));
+        if (precisionToolActive || hardness <= 0.01 || hardness >= 0.99) {
+          hardnessCursor.style.display = "none";
+        } else {
+          hardnessCursor.style.display = "block";
+          hardnessCursor.style.width = `${radius * hardness * 2}px`;
+          hardnessCursor.style.height = `${radius * hardness * 2}px`;
+          hardnessCursor.style.borderColor = cursorColor;
+        }
+      }
     };
 
     const getPaintIntersection = (clientX: number, clientY: number) => {
@@ -776,7 +798,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const session = paintSessionRef.current;
       if (!painterEnabledRef.current || event.button !== 0 || !session) return;
 
-      if (event.altKey || eyedropperActiveRef.current) {
+      if (event.altKey || altEyedropperHeldRef.current || eyedropperActiveRef.current) {
         event.preventDefault();
         event.stopImmediatePropagation();
         const projected = getPaintIntersection(event.clientX, event.clientY);
@@ -1378,6 +1400,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const cursor = brushCursorRef.current;
       if (cursor) cursor.style.display = "none";
       if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
+      if (isPaintLayersOpen) setIsPaintLayersOpen(false);
       if (isPaintSelectActive || paintSelection) clearPaintSelection();
     }
   }, [
@@ -1385,6 +1408,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     isPainterEnabled,
     isPaintEyedropperActive,
     isPaintSelectActive,
+    isPaintLayersOpen,
     paintSelection,
     status,
     comparisonModelCount,
@@ -1429,31 +1453,86 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   }, [comparisonModelCount, enablePainting, isPainterEnabled, status]);
 
   useEffect(() => {
+    const isEditingControl = (target: EventTarget | null) =>
+      target instanceof HTMLInputElement
+      || target instanceof HTMLTextAreaElement
+      || target instanceof HTMLSelectElement
+      || (target instanceof HTMLElement && target.isContentEditable);
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!painterEnabledRef.current || (!event.ctrlKey && !event.metaKey)) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
+      if (!painterEnabledRef.current || isEditingControl(event.target)) return;
+
+      if (event.key === "Alt") {
+        altEyedropperHeldRef.current = true;
+        event.preventDefault();
         return;
       }
 
       const key = event.key.toLowerCase();
       const session = paintSessionRef.current;
-      if (!session || (key !== "z" && key !== "y")) return;
 
-      const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
-      const changed = wantsRedo ? session.redo() : session.undo();
-      if (!changed) return;
-      event.preventDefault();
-      setPaintHistoryVersion((value) => value + 1);
+      if (event.ctrlKey || event.metaKey) {
+        if (!session || (key !== "z" && key !== "y")) return;
+        const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
+        const changed = wantsRedo ? session.redo() : session.undo();
+        if (!changed) return;
+        event.preventDefault();
+        setPaintHistoryVersion((value) => value + 1);
+        return;
+      }
+      if (event.altKey) return;
+
+      if (event.code === "BracketLeft" || event.code === "BracketRight") {
+        const direction = event.code === "BracketRight" ? 1 : -1;
+        if (event.shiftKey) {
+          setPaintBrushHardness((value) =>
+            Math.max(0, Math.min(1, Math.round((value + direction * 0.05) * 20) / 20)),
+          );
+        } else {
+          setPaintBrushRadius((value) => Math.max(4, Math.min(64, value + direction * 2)));
+        }
+        event.preventDefault();
+        return;
+      }
+
+      if (key === "b") {
+        setPaintBrushMode(lastPaintBrushModeRef.current);
+        event.preventDefault();
+        return;
+      }
+      if (key === "e") {
+        setPaintBrushMode("restore");
+        event.preventDefault();
+        return;
+      }
+      if (key === "x") {
+        setIsPaintSymmetryEnabled((enabled) => !enabled);
+        event.preventDefault();
+        return;
+      }
+      if (event.key === "Escape") {
+        setIsPaintLayersOpen(false);
+        setIsPaintEyedropperActive(false);
+        clearPaintSelection();
+        event.preventDefault();
+      }
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Alt") altEyedropperHeldRef.current = false;
+    };
+    const onBlur = () => {
+      altEyedropperHeldRef.current = false;
     };
 
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
   }, []);
 
   useEffect(() => {
@@ -1613,7 +1692,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         <div
           ref={brushCursorRef}
           className="pointer-events-none absolute left-0 top-0 z-20 hidden rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.75)]"
-        />
+        >
+          <div
+            ref={brushHardnessCursorRef}
+            className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/80 shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
+          />
+        </div>
         {enablePainting && (
           <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-xs text-gray-200 shadow-lg">
             <button
@@ -1654,171 +1738,206 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             )}
             {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
               <>
-                <div className="flex items-center gap-1 rounded border border-gray-700 bg-gray-950/70 px-1 py-0.5">
-                  <span className="text-gray-500" title="Immutable original BaseColour">Base</span>
-                  <span className="text-gray-600">+</span>
-                  <select
-                    value={paintActiveLayerId}
-                    onChange={(event) => {
-                      if (paintSessionRef.current?.setActiveLayer(event.target.value)) {
-                        setPaintHistoryVersion((value) => value + 1);
-                      }
-                    }}
-                    aria-label="Active paint layer"
-                    className="max-w-32 rounded border border-gray-600 bg-gray-800 px-1 py-1 text-xs text-gray-100"
-                  >
-                    {[...paintLayers].reverse().map((layer) => (
-                      <option key={layer.id} value={layer.id}>
-                        {layer.visible ? "" : "◌ "}{layer.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="relative">
                   <button
                     type="button"
-                    disabled={paintLayers.length >= 32}
-                    onClick={() => {
-                      if (paintSessionRef.current?.addLayer()) {
-                        setPaintExportStatus("");
-                        setPaintHistoryVersion((value) => value + 1);
-                      }
-                    }}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title={paintLayers.length >= 32 ? "Maximum 32 paint layers" : "Add paint layer"}
+                    onClick={() => setIsPaintLayersOpen((open) => !open)}
+                    className={`rounded border px-2 py-1 ${
+                      isPaintLayersOpen
+                        ? "border-violet-400 bg-violet-900/50 text-violet-100"
+                        : "border-gray-600 bg-gray-800 hover:border-violet-400"
+                    }`}
+                    title="Open paint layers"
                   >
-                    +
+                    Layers {paintLayers.length} · {paintActiveLayer?.name ?? "None"}
                   </button>
-                  <button
-                    type="button"
-                    disabled={!paintActiveLayer || paintLayers.length >= 32}
-                    onClick={() => {
-                      if (paintSessionRef.current?.duplicateActiveLayer()) {
-                        setPaintExportStatus("");
-                        setPaintHistoryVersion((value) => value + 1);
-                      }
-                    }}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title={paintLayers.length >= 32 ? "Maximum 32 paint layers" : "Duplicate active layer"}
-                  >
-                    Dup
-                  </button>
-                  <button
-                    type="button"
-                    disabled={paintLayers.length <= 1}
-                    onClick={() => {
-                      if (paintSessionRef.current?.deleteActiveLayer()) {
-                        setPaintExportStatus("");
-                        setPaintHistoryVersion((value) => value + 1);
-                      }
-                    }}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Delete active layer"
-                  >
-                    Del
-                  </button>
-                  <button
-                    type="button"
-                    disabled={paintActiveLayerIndex < 0 || paintActiveLayerIndex >= paintLayers.length - 1}
-                    onClick={() => {
-                      if (paintActiveLayer && paintSessionRef.current?.moveLayer(paintActiveLayer.id, 1)) {
-                        setPaintExportStatus("");
-                        setPaintHistoryVersion((value) => value + 1);
-                      }
-                    }}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Move active layer up"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    disabled={paintActiveLayerIndex <= 0}
-                    onClick={() => {
-                      if (paintActiveLayer && paintSessionRef.current?.moveLayer(paintActiveLayer.id, -1)) {
-                        setPaintExportStatus("");
-                        setPaintHistoryVersion((value) => value + 1);
-                      }
-                    }}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Move active layer down"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    disabled={paintActiveLayerIndex <= 0}
-                    onClick={() => {
-                      if (paintSessionRef.current?.mergeActiveLayerDown()) {
-                        setPaintExportStatus("");
-                        setPaintHistoryVersion((value) => value + 1);
-                      }
-                    }}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Merge active layer down, baking both layers' visibility and opacity"
-                  >
-                    Merge↓
-                  </button>
-                  {paintActiveLayer && (
-                    <>
-                      <label className="flex items-center gap-1 text-gray-400" title="Layer visibility">
-                        <input
-                          type="checkbox"
-                          checked={paintActiveLayer.visible}
-                          onChange={(event) => {
-                            if (paintSessionRef.current?.setLayerVisible(paintActiveLayer.id, event.target.checked)) {
+                  {isPaintLayersOpen && (
+                    <div className="absolute left-0 top-full z-40 mt-1 w-80 rounded border border-gray-600 bg-gray-950/98 p-2 shadow-xl">
+                      <div className="mb-1 flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-gray-200">BaseColour layers</span>
+                        <span className="text-gray-500">top → bottom</span>
+                      </div>
+                      <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                        {[...paintLayers].reverse().map((layer) => {
+                          const index = paintLayers.findIndex((candidate) => candidate.id === layer.id);
+                          const isActive = layer.id === paintActiveLayerId;
+                          return (
+                            <div
+                              key={layer.id}
+                              className={`flex items-center gap-1 rounded border px-1 py-1 ${
+                                isActive
+                                  ? "border-violet-400 bg-violet-950/60"
+                                  : "border-gray-700 bg-gray-900/80 hover:border-gray-500"
+                              }`}
+                              onClick={() => {
+                                if (paintSessionRef.current?.setActiveLayer(layer.id)) {
+                                  setPaintHistoryVersion((value) => value + 1);
+                                }
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={layer.visible}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => {
+                                  if (paintSessionRef.current?.setLayerVisible(layer.id, event.target.checked)) {
+                                    setPaintExportStatus("");
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  }
+                                }}
+                                title="Layer visibility"
+                                aria-label={`Visibility: ${layer.name}`}
+                              />
+                              <input
+                                key={`${layer.id}:${layer.name}`}
+                                defaultValue={layer.name}
+                                onClick={(event) => event.stopPropagation()}
+                                onFocus={() => {
+                                  if (paintSessionRef.current?.setActiveLayer(layer.id)) {
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  }
+                                }}
+                                onBlur={(event) => {
+                                  if (paintSessionRef.current?.renameLayer(layer.id, event.currentTarget.value)) {
+                                    setPaintExportStatus("");
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  } else {
+                                    event.currentTarget.value = layer.name;
+                                  }
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") event.currentTarget.blur();
+                                }}
+                                aria-label={`Layer name: ${layer.name}`}
+                                className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-[11px] text-gray-100"
+                              />
+                              <input
+                                key={`${layer.id}:${layer.opacity}`}
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={5}
+                                defaultValue={Math.round(layer.opacity * 100)}
+                                onClick={(event) => event.stopPropagation()}
+                                onFocus={() => {
+                                  if (paintSessionRef.current?.setActiveLayer(layer.id)) {
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  }
+                                }}
+                                onBlur={(event) => {
+                                  const next = Number(event.currentTarget.value);
+                                  if (
+                                    Number.isFinite(next)
+                                    && paintSessionRef.current?.setLayerOpacity(layer.id, next / 100)
+                                  ) {
+                                    setPaintExportStatus("");
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  } else {
+                                    event.currentTarget.value = String(Math.round(layer.opacity * 100));
+                                  }
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") event.currentTarget.blur();
+                                }}
+                                aria-label={`Layer opacity: ${layer.name}`}
+                                className="w-12 rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-right text-[11px] text-gray-100"
+                              />
+                              <span className="text-[10px] text-gray-500">%</span>
+                              <button
+                                type="button"
+                                disabled={index >= paintLayers.length - 1}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (paintSessionRef.current?.moveLayer(layer.id, 1)) {
+                                    setPaintExportStatus("");
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  }
+                                }}
+                                className="rounded px-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-25"
+                                title="Move layer up"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                disabled={index <= 0}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (paintSessionRef.current?.moveLayer(layer.id, -1)) {
+                                    setPaintExportStatus("");
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  }
+                                }}
+                                className="rounded px-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-25"
+                                title="Move layer down"
+                              >
+                                ↓
+                              </button>
+                            </div>
+                          );
+                        })}
+                        <div className="flex items-center gap-2 rounded border border-gray-800 bg-gray-900/50 px-2 py-1 text-[11px] text-gray-500">
+                          <span title="Immutable source BaseColour">🔒 Base</span>
+                          <span className="ml-auto">100%</span>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1 border-t border-gray-800 pt-2">
+                        <button
+                          type="button"
+                          disabled={paintLayers.length >= 32}
+                          onClick={() => {
+                            if (paintSessionRef.current?.addLayer()) {
                               setPaintExportStatus("");
                               setPaintHistoryVersion((value) => value + 1);
                             }
                           }}
-                        />
-                        Vis
-                      </label>
-                      <input
-                        key={`${paintActiveLayer.id}:${paintActiveLayer.name}`}
-                        defaultValue={paintActiveLayer.name}
-                        onBlur={(event) => {
-                          if (paintSessionRef.current?.renameLayer(paintActiveLayer.id, event.currentTarget.value)) {
-                            setPaintExportStatus("");
-                            setPaintHistoryVersion((value) => value + 1);
-                          } else {
-                            event.currentTarget.value = paintActiveLayer.name;
-                          }
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") event.currentTarget.blur();
-                        }}
-                        aria-label="Layer name"
-                        className="w-24 rounded border border-gray-600 bg-gray-800 px-1 py-1 text-xs text-gray-100"
-                      />
-                      <label className="flex items-center gap-1 text-gray-400">
-                        Layer
-                        <input
-                          key={`${paintActiveLayer.id}:${paintActiveLayer.opacity}`}
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={5}
-                          defaultValue={Math.round(paintActiveLayer.opacity * 100)}
-                          onBlur={(event) => {
-                            const next = Number(event.currentTarget.value);
-                            if (
-                              Number.isFinite(next)
-                              && paintSessionRef.current?.setLayerOpacity(paintActiveLayer.id, next / 100)
-                            ) {
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:opacity-40"
+                          title={paintLayers.length >= 32 ? "Maximum 32 paint layers" : "Add paint layer"}
+                        >
+                          + Layer
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!paintActiveLayer || paintLayers.length >= 32}
+                          onClick={() => {
+                            if (paintSessionRef.current?.duplicateActiveLayer()) {
                               setPaintExportStatus("");
                               setPaintHistoryVersion((value) => value + 1);
-                            } else {
-                              event.currentTarget.value = String(Math.round(paintActiveLayer.opacity * 100));
                             }
                           }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") event.currentTarget.blur();
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:opacity-40"
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          disabled={paintLayers.length <= 1}
+                          onClick={() => {
+                            if (paintSessionRef.current?.deleteActiveLayer()) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
                           }}
-                          aria-label="Layer opacity percent"
-                          className="w-12 rounded border border-gray-600 bg-gray-800 px-1 py-1 text-xs text-gray-100"
-                        />
-                        %
-                      </label>
-                    </>
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-red-400 disabled:opacity-40"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          disabled={paintActiveLayerIndex <= 0}
+                          onClick={() => {
+                            if (paintSessionRef.current?.mergeActiveLayerDown()) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-violet-400 disabled:opacity-40"
+                          title="Merge active layer down, baking visibility and opacity"
+                        >
+                          Merge Down
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
                 <label className="flex items-center gap-1 text-gray-400">
@@ -2122,7 +2241,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint active layer · Restore: erase active layer · Symmetry X: mirror left/right · Select: choose material/island · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint · B: brush · E: restore · [/]: size · Shift+[/]: hardness · X: symmetry · Hold Alt: pick color · Esc: clear selection · Ctrl+Z/Y: undo/redo · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
