@@ -1342,7 +1342,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     if (!session) return;
                     void (async () => {
                       setIsPaintExporting(true);
-                      setPaintExportStatus("Preparing textures…");
+                      setPaintExportStatus("Preparing painted mod…");
                       try {
                         const textures = await session.exportModifiedTextures();
                         if (textures.length === 0) {
