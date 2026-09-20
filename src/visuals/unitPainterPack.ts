@@ -181,6 +181,10 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
   if (typeof candidate.sourceVariantMeshDefinition !== "string" || !candidate.sourceVariantMeshDefinition.trim()) {
     throw new Error("The unit painter project is missing its source VariantMeshDefinition.");
   }
+  const sourceVariantMeshDefinition = normalizeProjectSourcePath(candidate.sourceVariantMeshDefinition);
+  if (!isSafePackPath(sourceVariantMeshDefinition) || !/\.variantmeshdefinition$/i.test(sourceVariantMeshDefinition)) {
+    throw new Error("The unit painter project contains an invalid source VariantMeshDefinition path.");
+  }
   if (!Array.isArray(candidate.variantSelections) || !Array.isArray(candidate.paintedTextures)) {
     throw new Error("The unit painter project manifest is incomplete.");
   }
@@ -236,7 +240,7 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
 
   return {
     formatVersion: UNIT_PAINTER_PROJECT_FORMAT_VERSION,
-    sourceVariantMeshDefinition: normalizeProjectSourcePath(candidate.sourceVariantMeshDefinition),
+    sourceVariantMeshDefinition,
     variantSelections,
     paintedTextures,
   };
