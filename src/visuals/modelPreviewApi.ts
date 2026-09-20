@@ -74,7 +74,7 @@ export interface UnitPainterTextureExport {
   sourceVirtualPath: string;
   width: number;
   height: number;
-  pngBytes: Uint8Array;
+  rgbaBytes: Uint8Array;
 }
 
 export interface UnitPainterTextureExportResult {
@@ -169,6 +169,6 @@ export const exportUnitPainterTextures = async (
       sourceVirtualPath: texture.sourceVirtualPath,
       width: texture.width,
       height: texture.height,
-      pngBytes: texture.pngBytes,
+      rgbaBytes: texture.rgbaBytes,
     })),
   )) as UnitPainterTextureExportResult;
