@@ -79,7 +79,7 @@ export interface UnitPainterTextureExport {
 
 export interface UnitPainterTextureExportResult {
   success: boolean;
-  directory?: string;
+  packPath?: string;
   files?: string[];
   variantMeshPath?: string;
   warnings?: string[];
