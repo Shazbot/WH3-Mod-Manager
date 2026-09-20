@@ -89,6 +89,7 @@ const cloneEditableDataTexture = (texture: THREE.DataTexture, data: Uint8Array, 
   editable.flipY = texture.flipY;
   editable.unpackAlignment = texture.unpackAlignment;
   editable.userData = { ...texture.userData, wh3UnitPainterEditable: true };
+  delete editable.userData.wh3RawKtx2CacheKey;
   editable.needsUpdate = true;
   return editable;
 };
@@ -175,29 +176,33 @@ const estimateBrushRadiusTexels = (
 };
 
 const blendPixel = (
-  data: Uint8Array,
+  target: PaintableTexture,
   byteIndex: number,
   settings: UnitPainterBrushSettings,
   alpha: number,
 ) => {
-  const sourceR = data[byteIndex];
-  const sourceG = data[byteIndex + 1];
-  const sourceB = data[byteIndex + 2];
+  const sourceR = target.data[byteIndex];
+  const sourceG = target.data[byteIndex + 1];
+  const sourceB = target.data[byteIndex + 2];
 
   let targetR = settings.color.r;
   let targetG = settings.color.g;
   let targetB = settings.color.b;
   if (settings.mode === "recolor") {
-    const value = Math.max(sourceR, sourceG, sourceB) / 255;
-    targetR *= value;
-    targetG *= value;
-    targetB *= value;
+    const originalValue = Math.max(
+      target.originalData[byteIndex],
+      target.originalData[byteIndex + 1],
+      target.originalData[byteIndex + 2],
+    ) / 255;
+    targetR *= originalValue;
+    targetG *= originalValue;
+    targetB *= originalValue;
   }
 
   const blend = Math.max(0, Math.min(1, alpha * settings.strength));
-  data[byteIndex] = Math.round(sourceR + (targetR - sourceR) * blend);
-  data[byteIndex + 1] = Math.round(sourceG + (targetG - sourceG) * blend);
-  data[byteIndex + 2] = Math.round(sourceB + (targetB - sourceB) * blend);
+  target.data[byteIndex] = Math.round(sourceR + (targetR - sourceR) * blend);
+  target.data[byteIndex + 1] = Math.round(sourceG + (targetG - sourceG) * blend);
+  target.data[byteIndex + 2] = Math.round(sourceB + (targetB - sourceB) * blend);
 };
 
 export class UnitPainterSession {
@@ -210,13 +215,15 @@ export class UnitPainterSession {
 
   constructor(root: THREE.Object3D) {
     const targetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
+    const processedMaterials = new Set<PaintableMaterial>();
 
     root.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       const materials = Array.isArray(child.material) ? child.material : [child.material];
       for (const rawMaterial of materials) {
         const material = asPaintableMaterial(rawMaterial);
-        if (!material || !(material.map instanceof THREE.DataTexture)) continue;
+        if (!material || processedMaterials.has(material) || !(material.map instanceof THREE.DataTexture)) continue;
+        processedMaterials.add(material);
         const original = material.map;
         const image = getDataTextureImage(original);
         if (!image) continue;
@@ -313,7 +320,7 @@ export class UnitPainterSession {
         if (!before.has(byteIndex)) before.set(byteIndex, oldValue);
 
         const falloff = distance <= 0.78 ? 1 : Math.max(0, (1 - distance) / 0.22);
-        blendPixel(target.data, byteIndex, settings, falloff);
+        blendPixel(target, byteIndex, settings, falloff);
         if (packPixel(target.data, byteIndex) !== oldValue) changed = true;
       }
     }
