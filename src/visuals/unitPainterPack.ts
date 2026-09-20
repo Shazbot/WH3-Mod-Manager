@@ -35,7 +35,8 @@ export const getUnitPainterDefaultPackName = (assetPath: string): string => {
 };
 
 export const getUnitPainterNamespaceName = (packPath: string, assetPath: string): string => {
-  const packStem = nodePath.basename(packPath).replace(/\.pack$/i, "");
+  const packFileName = packPath.replace(/\//g, "\\").split("\\").pop() || "";
+  const packStem = packFileName.replace(/\.pack$/i, "");
   const sourceStem = getUnitPainterDefaultPackName(assetPath).replace(/\.pack$/i, "");
   const candidate = packStem || sourceStem;
   const sanitized = candidate
