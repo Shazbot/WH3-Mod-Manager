@@ -4,6 +4,7 @@ import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
 import appData from "./appData";
 import { getDataMod } from "./modFunctions";
+import { gameToVanillaPacksData } from "./supportedGames";
 import {
   getModelPreviewServeTiming,
   modelPreviewAssetUrl,
@@ -864,6 +865,20 @@ const exportUnitPainterVariantNow = async (
   }
 
   const packPath = ensureUnitPainterPackExtension(selection.filePath);
+  const packName = nodePath.basename(packPath);
+  const vanillaPackNames = new Set(
+    [
+      ...gameToVanillaPacksData[appData.currentGame].map((pack) => pack.name),
+      ...appData.allVanillaPackNames,
+    ].map((name) => name.toLowerCase()),
+  );
+  if (vanillaPackNames.has(packName.toLowerCase())) {
+    return {
+      success: false as const,
+      error: `'${packName}' is a vanilla game pack and cannot be overwritten by the unit painter.`,
+    };
+  }
+
   const variantName = getUnitPainterNamespaceName(packPath, normalizedAsset.assetPath);
   const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
   const stageId = `unit-painter-${randomUUID()}`;
