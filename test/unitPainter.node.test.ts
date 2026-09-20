@@ -180,4 +180,96 @@ describe("unit painter", () => {
       hard.material.dispose();
     }
   });
+
+  it("fills only the selected UV island as one undoable operation", () => {
+    const painter = makePainter();
+    try {
+      expect(painter.session.selectIntersection(painter.intersection)?.hasUvIsland).toBe(true);
+      const changed = painter.session.fillSelection("island", {
+        radiusPx: 1,
+        opacity: 1,
+        hardness: 1,
+        mode: "paint",
+        color: { r: 255, g: 0, b: 0 },
+      });
+      expect(changed).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([0, 0, 0, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("fills every UV island belonging to the selected material", () => {
+    const painter = makePainter();
+    try {
+      painter.session.selectIntersection(painter.intersection);
+      expect(
+        painter.session.fillSelection("material", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 0, g: 255, b: 0 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 255, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([0, 255, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("restricts brush painting to the selected material or UV island", () => {
+    const painter = makePainter();
+    try {
+      painter.session.selectIntersection(painter.intersection);
+      const secondIsland = {
+        ...painter.intersection,
+        point: new THREE.Vector3(0.7, 0.28, 0),
+        uv: new THREE.Vector2(0.7, 0.28),
+        face: {
+          a: 3,
+          b: 4,
+          c: 5,
+          normal: new THREE.Vector3(0, 0, 1),
+          materialIndex: 0,
+        },
+        faceIndex: 1,
+      } as THREE.Intersection<THREE.Object3D>;
+      const settings: UnitPainterBrushSettings = {
+        radiusPx: 100,
+        opacity: 1,
+        hardness: 1,
+        mode: "paint",
+        color: { r: 255, g: 0, b: 0 },
+      };
+
+      painter.session.beginStroke();
+      expect(
+        painter.session.paintIntersection(secondIsland, settings, painter.camera, 100, settings.radiusPx, "island"),
+      ).toBe(false);
+      expect(painter.session.endStroke()).toBe(false);
+      expect(getPixel(painter.material, 20, 8)).toEqual([0, 0, 0, 255]);
+
+      painter.session.beginStroke();
+      expect(
+        painter.session.paintIntersection(secondIsland, settings, painter.camera, 100, settings.radiusPx, "material"),
+      ).toBe(true);
+      expect(painter.session.endStroke()).toBe(true);
+      expect(getPixel(painter.material, 20, 8)).toEqual([255, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
 });

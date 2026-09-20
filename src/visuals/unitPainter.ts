@@ -1,6 +1,14 @@
 import * as THREE from "three";
 
 export type UnitPainterBrushMode = "recolor" | "paint";
+export type UnitPainterSelectionScope = "all" | "material" | "island";
+
+export type UnitPainterSelectionInfo = {
+  objectName: string;
+  materialName: string;
+  hasUvIsland: boolean;
+  object: THREE.Mesh;
+};
 
 export type UnitPainterBrushSettings = {
   radiusPx: number;
@@ -37,6 +45,14 @@ export type UnitPainterExportTexture = {
 type MaterialRestore = {
   material: PaintableMaterial;
   original: THREE.DataTexture;
+};
+
+type UnitPainterSelection = {
+  mesh: THREE.Mesh;
+  material: PaintableMaterial;
+  materialIndex: number;
+  target: PaintableTexture;
+  islandId?: number;
 };
 
 type StrokeChange = {
@@ -489,6 +505,7 @@ export class UnitPainterSession {
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private isStrokeOpen = false;
+  private selection?: UnitPainterSelection;
 
   constructor(root: THREE.Object3D) {
     const targetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
@@ -550,6 +567,31 @@ export class UnitPainterSession {
     return this.redoHistory.length > 0;
   }
 
+  selectIntersection(intersection: THREE.Intersection<THREE.Object3D>): UnitPainterSelectionInfo | undefined {
+    if (!(intersection.object instanceof THREE.Mesh)) return undefined;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!material || !target) return undefined;
+
+    const mesh = intersection.object;
+    const materialIndex =
+      intersection.face?.materialIndex
+      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+    const topology = this.getUvTopology(mesh.geometry, materialIndex);
+    const islandId = intersection.faceIndex != null ? topology?.faceToIsland.get(intersection.faceIndex) : undefined;
+    this.selection = { mesh, material, materialIndex, target, islandId };
+    return {
+      objectName: mesh.name || "Mesh",
+      materialName: material.name || `Material ${materialIndex + 1}`,
+      hasUvIsland: islandId != null,
+      object: mesh,
+    };
+  }
+
+  clearSelection() {
+    this.selection = undefined;
+  }
+
   beginStroke() {
     if (this.isStrokeOpen) this.endStroke();
     this.currentStroke = new Map();
@@ -563,11 +605,26 @@ export class UnitPainterSession {
     camera: THREE.PerspectiveCamera,
     viewportHeight: number,
     screenRadiusPx = settings.radiusPx,
+    scope: UnitPainterSelectionScope = "all",
   ) {
-    if (!this.isStrokeOpen || !intersection.uv) return false;
+    if (!this.isStrokeOpen || !intersection.uv || !(intersection.object instanceof THREE.Mesh)) return false;
     const material = getIntersectionMaterial(intersection);
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
     if (!target) return false;
+
+    const mesh = intersection.object;
+    const materialIndex =
+      intersection.face?.materialIndex
+      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+    if (scope !== "all") {
+      const selection = this.selection;
+      if (!selection || selection.mesh !== mesh || selection.materialIndex !== materialIndex) return false;
+      if (scope === "island") {
+        if (selection.islandId == null || intersection.faceIndex == null) return false;
+        const topology = this.getUvTopology(mesh.geometry, materialIndex);
+        if (topology?.faceToIsland.get(intersection.faceIndex) !== selection.islandId) return false;
+      }
+    }
 
     const islandMask = this.getUvIslandMask(intersection, target);
     const uv = intersection.uv.clone();
@@ -641,6 +698,46 @@ export class UnitPainterSession {
       g: target.data[byteIndex + 1],
       b: target.data[byteIndex + 2],
     };
+  }
+
+  fillSelection(scope: Exclude<UnitPainterSelectionScope, "all">, settings: UnitPainterBrushSettings) {
+    const selection = this.selection;
+    if (!selection) return false;
+
+    const mask =
+      scope === "island"
+        ? selection.islandId == null
+          ? undefined
+          : this.getUvMask(
+              selection.target,
+              selection.mesh.geometry,
+              selection.materialIndex,
+              selection.islandId,
+            )
+        : this.getMaterialMask(selection.target, selection.mesh.geometry, selection.materialIndex);
+    if (!mask) return false;
+
+    this.beginStroke();
+    const before = new Map<number, number>();
+    this.currentStroke.set(selection.target, before);
+    let changed = false;
+    const fillOpacity = clamp01(settings.opacity);
+
+    for (let localY = 0; localY < mask.height; localY += 1) {
+      for (let localX = 0; localX < mask.width; localX += 1) {
+        if (mask.pixels[localY * mask.width + localX] === 0) continue;
+        const pixelX = mask.minX + localX;
+        const pixelY = mask.minY + localY;
+        const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
+        const currentValue = packPixel(selection.target.data, byteIndex);
+        before.set(byteIndex, currentValue);
+        blendPixelFromStrokeStart(selection.target, byteIndex, currentValue, settings, fillOpacity);
+        if (packPixel(selection.target.data, byteIndex) !== currentValue) changed = true;
+      }
+    }
+
+    if (changed) selection.target.editable.needsUpdate = true;
+    return this.endStroke();
   }
 
   endStroke() {
@@ -747,16 +844,10 @@ export class UnitPainterSession {
     this.currentStroke.clear();
     this.currentStrokeCoverage.clear();
     this.uvMasksByTarget.clear();
+    this.selection = undefined;
   }
 
-  private getUvIslandMask(
-    intersection: THREE.Intersection<THREE.Object3D>,
-    target: PaintableTexture,
-  ): UvIslandMask | undefined {
-    if (!(intersection.object instanceof THREE.Mesh) || intersection.faceIndex == null) return undefined;
-    const geometry = intersection.object.geometry;
-    const materialIndex = intersection.face?.materialIndex ?? getTriangleMaterialIndex(geometry, intersection.faceIndex);
-
+  private getUvTopology(geometry: THREE.BufferGeometry, materialIndex: number) {
     let topologyByMaterial = this.uvTopologies.get(geometry);
     if (!topologyByMaterial) {
       topologyByMaterial = new Map();
@@ -769,9 +860,18 @@ export class UnitPainterSession {
       if (!topology) return undefined;
       topologyByMaterial.set(materialIndex, topology);
     }
+    return topology;
+  }
 
-    const islandId = topology.faceToIsland.get(intersection.faceIndex);
-    if (islandId == null) return undefined;
+  private getUvMask(
+    target: PaintableTexture,
+    geometry: THREE.BufferGeometry,
+    materialIndex: number,
+    islandId: number,
+  ) {
+    const topology = this.getUvTopology(geometry, materialIndex);
+    const triangles = topology?.islands.get(islandId);
+    if (!triangles) return undefined;
 
     let masksByGeometry = this.uvMasksByTarget.get(target);
     if (!masksByGeometry) {
@@ -784,16 +884,52 @@ export class UnitPainterSession {
       masksByGeometry.set(geometry, masks);
     }
 
-    const key = `${materialIndex}:${islandId}`;
+    const key = `island:${materialIndex}:${islandId}`;
     const cached = masks.get(key);
     if (cached) return cached;
-
-    const triangles = topology.islands.get(islandId);
-    if (!triangles) return undefined;
     const mask = buildUvIslandMask(triangles, target);
     if (!mask) return undefined;
     masks.set(key, mask);
     return mask;
+  }
+
+  private getMaterialMask(target: PaintableTexture, geometry: THREE.BufferGeometry, materialIndex: number) {
+    const topology = this.getUvTopology(geometry, materialIndex);
+    if (!topology) return undefined;
+
+    let masksByGeometry = this.uvMasksByTarget.get(target);
+    if (!masksByGeometry) {
+      masksByGeometry = new WeakMap();
+      this.uvMasksByTarget.set(target, masksByGeometry);
+    }
+    let masks = masksByGeometry.get(geometry);
+    if (!masks) {
+      masks = new Map();
+      masksByGeometry.set(geometry, masks);
+    }
+
+    const key = `material:${materialIndex}`;
+    const cached = masks.get(key);
+    if (cached) return cached;
+    const triangles = [...topology.islands.values()].flat();
+    const mask = buildUvIslandMask(triangles, target);
+    if (!mask) return undefined;
+    masks.set(key, mask);
+    return mask;
+  }
+
+  private getUvIslandMask(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    target: PaintableTexture,
+  ): UvIslandMask | undefined {
+    if (!(intersection.object instanceof THREE.Mesh) || intersection.faceIndex == null) return undefined;
+    const geometry = intersection.object.geometry;
+    const materialIndex =
+      intersection.face?.materialIndex ?? getTriangleMaterialIndex(geometry, intersection.faceIndex);
+    const topology = this.getUvTopology(geometry, materialIndex);
+    const islandId = topology?.faceToIsland.get(intersection.faceIndex);
+    if (islandId == null) return undefined;
+    return this.getUvMask(target, geometry, materialIndex, islandId);
   }
 
   private applyStroke(stroke: Stroke, side: "before" | "after") {

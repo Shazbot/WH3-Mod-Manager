@@ -17,7 +17,12 @@ import {
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import { selectDefaultAnimation } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
-import { createUnitPainterSession, type UnitPainterBrushMode } from "../visuals/unitPainter";
+import {
+  createUnitPainterSession,
+  type UnitPainterBrushMode,
+  type UnitPainterSelectionInfo,
+  type UnitPainterSelectionScope,
+} from "../visuals/unitPainter";
 
 type VisualsModelPreviewProps = {
   assetPath: string;
@@ -391,8 +396,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
   const paintRootRef = useRef<THREE.Object3D | null>(null);
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
+  const paintSelectionHelperRef = useRef<THREE.BoxHelper | null>(null);
   const painterEnabledRef = useRef(false);
   const eyedropperActiveRef = useRef(false);
+  const selectToolActiveRef = useRef(false);
+  const paintScopeRef = useRef<UnitPainterSelectionScope>("all");
   const brushSettingsRef = useRef({
     radiusPx: 24,
     opacity: 0.9,
@@ -425,6 +433,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintBrushHardness, setPaintBrushHardness] = useState(0.8);
   const [paintBrushMode, setPaintBrushMode] = useState<UnitPainterBrushMode>("recolor");
   const [isPaintEyedropperActive, setIsPaintEyedropperActive] = useState(false);
+  const [isPaintSelectActive, setIsPaintSelectActive] = useState(false);
+  const [paintScope, setPaintScope] = useState<UnitPainterSelectionScope>("all");
+  const [paintSelection, setPaintSelection] = useState<UnitPainterSelectionInfo>();
   const [paintTextureCount, setPaintTextureCount] = useState(-1);
   const [paintExportStatus, setPaintExportStatus] = useState("");
   const [paintPackPath, setPaintPackPath] = useState<string>();
@@ -442,6 +453,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   eyedropperActiveRef.current = isPaintEyedropperActive;
+  selectToolActiveRef.current = isPaintSelectActive;
+  paintScopeRef.current = paintScope;
   brushSettingsRef.current = {
     radiusPx: paintBrushRadius,
     opacity: paintBrushOpacity,
@@ -452,6 +465,39 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       g: (paintColorValue >> 8) & 0xff,
       b: paintColorValue & 0xff,
     },
+  };
+
+  const clearPaintSelectionVisual = () => {
+    const helper = paintSelectionHelperRef.current;
+    if (!helper) return;
+    contextRef.current?.scene.remove(helper);
+    helper.geometry.dispose();
+    helper.material.dispose();
+    paintSelectionHelperRef.current = null;
+  };
+
+  const clearPaintSelection = () => {
+    paintSessionRef.current?.clearSelection();
+    clearPaintSelectionVisual();
+    setPaintSelection(undefined);
+    setPaintScope("all");
+    setIsPaintSelectActive(false);
+  };
+
+  const selectPaintIntersection = (intersection: THREE.Intersection<THREE.Object3D>) => {
+    const selection = paintSessionRef.current?.selectIntersection(intersection);
+    if (!selection) return false;
+    clearPaintSelectionVisual();
+    const helper = new THREE.BoxHelper(selection.object, 0x22d3ee);
+    helper.material.depthTest = false;
+    helper.material.transparent = true;
+    helper.material.opacity = 0.8;
+    helper.renderOrder = 1000;
+    contextRef.current?.scene.add(helper);
+    paintSelectionHelperRef.current = helper;
+    setPaintSelection(selection);
+    setPaintScope((current) => current === "island" && selection.hasUvIsland ? "island" : "material");
+    return true;
   };
 
   useEffect(() => {
@@ -539,11 +585,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         return;
       }
       const rect = renderer.domElement.getBoundingClientRect();
-      const radius = eyedropperActiveRef.current ? 5 : brushSettingsRef.current.radiusPx;
+      const precisionToolActive = eyedropperActiveRef.current || selectToolActiveRef.current;
+      const radius = precisionToolActive ? 5 : brushSettingsRef.current.radiusPx;
       cursor.style.display = "block";
       cursor.style.width = `${radius * 2}px`;
       cursor.style.height = `${radius * 2}px`;
-      cursor.style.borderColor = eyedropperActiveRef.current ? "#67e8f9" : "rgba(255,255,255,0.9)";
+      cursor.style.borderColor = eyedropperActiveRef.current
+        ? "#67e8f9"
+        : selectToolActiveRef.current
+          ? "#facc15"
+          : "rgba(255,255,255,0.9)";
       cursor.style.transform = `translate(${event.clientX - rect.left - radius}px, ${
         event.clientY - rect.top - radius
       }px)`;
@@ -579,7 +630,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (!session) return;
       const projected = getPaintIntersection(clientX, clientY);
       if (!projected) return;
-      session.paintIntersection(projected.hit, brushSettingsRef.current, camera, projected.viewportHeight);
+      session.paintIntersection(
+        projected.hit,
+        brushSettingsRef.current,
+        camera,
+        projected.viewportHeight,
+        brushSettingsRef.current.radiusPx,
+        paintScopeRef.current,
+      );
     };
 
     const paintToPointer = (event: PointerEvent) => {
@@ -637,6 +695,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           setPaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
           setIsPaintEyedropperActive(false);
         }
+        return;
+      }
+
+      if (selectToolActiveRef.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const projected = getPaintIntersection(event.clientX, event.clientY);
+        if (projected) selectPaintIntersection(projected.hit);
         return;
       }
 
@@ -723,6 +789,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       finishPaintStroke();
       paintSessionRef.current?.dispose();
       paintSessionRef.current = null;
+      clearPaintSelectionVisual();
       paintRootRef.current = null;
       renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
       renderer.domElement.removeEventListener("pointermove", onPointerMove, true);
@@ -969,6 +1036,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         paintSessionRef.current.dispose();
         paintSessionRef.current = null;
       }
+      clearPaintSelectionVisual();
+      setPaintSelection(undefined);
+      setPaintScope("all");
+      setIsPaintSelectActive(false);
       paintRootRef.current = null;
       disposeObject(ownedGroup, resourcePool);
       ownedModels.length = 0;
@@ -1211,8 +1282,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const cursor = brushCursorRef.current;
       if (cursor) cursor.style.display = "none";
       if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
+      if (isPaintSelectActive || paintSelection) clearPaintSelection();
     }
-  }, [enablePainting, isPainterEnabled, isPaintEyedropperActive, status, comparisonModelCount]);
+  }, [
+    enablePainting,
+    isPainterEnabled,
+    isPaintEyedropperActive,
+    isPaintSelectActive,
+    paintSelection,
+    status,
+    comparisonModelCount,
+  ]);
 
   useEffect(() => {
     if (
@@ -1361,7 +1441,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               onClick={() => {
                 setIsPainterEnabled((enabled) => {
                   if (!enabled) setIsPlaying(false);
-                  else setIsPaintEyedropperActive(false);
+                  else {
+                    setIsPaintEyedropperActive(false);
+                    clearPaintSelection();
+                  }
                   return !enabled;
                 });
               }}
@@ -1388,7 +1471,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 </label>
                 <button
                   type="button"
-                  onClick={() => setIsPaintEyedropperActive((active) => !active)}
+                  onClick={() =>
+                    setIsPaintEyedropperActive((active) => {
+                      const next = !active;
+                      if (next) setIsPaintSelectActive(false);
+                      return next;
+                    })
+                  }
                   className={`rounded border px-2 py-1 ${
                     isPaintEyedropperActive
                       ? "border-cyan-400 bg-cyan-900/60 text-cyan-100"
@@ -1397,6 +1486,24 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   title="Pick a BaseColour from the model (Alt+click)"
                 >
                   Pick
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setIsPaintSelectActive((active) => {
+                      const next = !active;
+                      if (next) setIsPaintEyedropperActive(false);
+                      return next;
+                    })
+                  }
+                  className={`rounded border px-2 py-1 ${
+                    isPaintSelectActive
+                      ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                      : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                  }`}
+                  title="Select a mesh material and UV island"
+                >
+                  Select
                 </button>
                 <label className="flex items-center gap-1 text-gray-400">
                   Size
@@ -1446,6 +1553,64 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   <option value="recolor">Recolor</option>
                   <option value="paint">Paint</option>
                 </select>
+                <label className="flex items-center gap-1 text-gray-400">
+                  Scope
+                  <select
+                    value={paintScope}
+                    onChange={(event) => setPaintScope(event.target.value as UnitPainterSelectionScope)}
+                    aria-label="Paint scope"
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                  >
+                    <option value="all">All parts</option>
+                    <option value="material" disabled={!paintSelection}>Selected material</option>
+                    <option value="island" disabled={!paintSelection?.hasUvIsland}>Selected UV island</option>
+                  </select>
+                </label>
+                {paintSelection && (
+                  <>
+                    <span
+                      className="max-w-40 truncate text-cyan-300"
+                      title={`${paintSelection.objectName} · ${paintSelection.materialName}`}
+                    >
+                      {paintSelection.objectName} · {paintSelection.materialName}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (paintSessionRef.current?.fillSelection("material", brushSettingsRef.current)) {
+                          setPaintExportStatus("");
+                          setPaintHistoryVersion((value) => value + 1);
+                        }
+                      }}
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400"
+                      title="Fill the selected material UV footprint with the current color"
+                    >
+                      Fill material
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!paintSelection.hasUvIsland}
+                      onClick={() => {
+                        if (paintSessionRef.current?.fillSelection("island", brushSettingsRef.current)) {
+                          setPaintExportStatus("");
+                          setPaintHistoryVersion((value) => value + 1);
+                        }
+                      }}
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Fill only the selected UV island with the current color"
+                    >
+                      Fill island
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearPaintSelection}
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
+                      title="Clear material and UV-island selection"
+                    >
+                      Clear selection
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   disabled={!paintSessionRef.current?.canUndo}
@@ -1514,7 +1679,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint · Select: choose material/island · Alt+click: pick color · Ctrl+Z/Y: undo/redo · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
