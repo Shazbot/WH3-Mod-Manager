@@ -1426,7 +1426,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setPaintExportStatus(mode === "save" ? "Saving painted mod…" : "Preparing painted mod…");
       try {
         const textures = await session.exportModifiedTextures();
-        if (textures.length === 0) {
+        if (textures.length === 0 && !targetPackPath) {
           setPaintExportStatus("Nothing has been painted yet.");
           return;
         }
