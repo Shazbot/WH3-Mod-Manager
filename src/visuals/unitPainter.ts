@@ -46,6 +46,9 @@ type Stroke = StrokeChange[];
 
 const MAX_HISTORY_STROKES = 30;
 const MIN_BRUSH_RADIUS_TEXELS = 1;
+// A pathological UV/world-area ratio can otherwise turn a small screen brush into a
+// million-pixel CPU stamp. GPU projection can remove this cap later; keep interaction responsive now.
+const MAX_BRUSH_RADIUS_TEXELS = 192;
 const MAX_BRUSH_TEXTURE_FRACTION = 0.15;
 
 const sanitizeExportFileName = (value: string) => {
@@ -198,7 +201,10 @@ const estimateBrushRadiusTexels = (
   const uvPerWorld = Math.sqrt(uvArea / worldArea);
   const textureScale = Math.sqrt(target.width * target.height);
   const radius = worldRadius * uvPerWorld * textureScale;
-  const maxRadius = Math.max(target.width, target.height) * MAX_BRUSH_TEXTURE_FRACTION;
+  const maxRadius = Math.min(
+    MAX_BRUSH_RADIUS_TEXELS,
+    Math.max(target.width, target.height) * MAX_BRUSH_TEXTURE_FRACTION,
+  );
   return Math.max(MIN_BRUSH_RADIUS_TEXELS, Math.min(radius, maxRadius));
 };
 
