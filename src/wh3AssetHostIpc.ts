@@ -983,10 +983,9 @@ const exportUnitPainterVariantNow = async (
     const packFiles = [...gamePackFiles, ...projectFiles];
     await writePack(packFiles, packPath);
 
-    // The normal Data-folder watcher will discover this shortly, but add a new
-    // painter pack immediately so one-click creation also enables it without
-    // waiting for chokidar's awaitWriteFinish delay. Existing packs keep their
-    // current enabled state because the reducer ignores a duplicate path.
+    // The normal Data-folder watcher will discover this shortly. Defer the immediate
+    // add/enable notification until after this IPC handler has returned so the painter
+    // renderer can exclude its own output pack from the source stack before Redux sees it.
     const normalizedDataFolder = dataFolder ? nodePath.resolve(dataFolder).toLowerCase() : undefined;
     const normalizedPackDirectory = nodePath.resolve(nodePath.dirname(packPath)).toLowerCase();
     const normalizedModdingDirectory = dataFolder
@@ -997,20 +996,28 @@ const exportUnitPainterVariantNow = async (
       && (normalizedPackDirectory === normalizedDataFolder
         || normalizedPackDirectory === normalizedModdingDirectory);
     if (isManagedDataPack && windows.mainWindow && !windows.mainWindow.isDestroyed()) {
-      try {
-        const mod = await getDataMod(packPath, (message) => {
-          windows.mainWindow?.webContents.send("handleLog", message);
-        });
-        mod.isEnabled = true;
-        windows.mainWindow.webContents.send("addMod", mod);
-      } catch (error) {
-        windows.mainWindow.webContents.send(
-          "handleLog",
-          `Painted mod was created but could not be added to the manager immediately: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+      setImmediate(() => {
+        void (async () => {
+          const mainWindow = windows.mainWindow;
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          try {
+            const mod = await getDataMod(packPath, (message) => {
+              windows.mainWindow?.webContents.send("handleLog", message);
+            });
+            mod.isEnabled = true;
+            if (!mainWindow.isDestroyed()) mainWindow.webContents.send("addMod", mod);
+          } catch (error) {
+            if (!mainWindow.isDestroyed()) {
+              mainWindow.webContents.send(
+                "handleLog",
+                `Painted mod was created but could not be added to the manager immediately: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          }
+        })();
+      });
     }
 
     return {
@@ -1066,6 +1073,9 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
         error: "This pack is not an editable WHMM unit-painter project. Older painter packs must be recreated once with the new format.",
       };
     }
+    if (manifestEntry.file_size <= 0 || manifestEntry.file_size > 1024 * 1024) {
+      return { success: false as const, error: "The unit painter project manifest has an invalid size." };
+    }
 
     const withManifest = await readPack(packPath, {
       skipParsingTables: true,
@@ -1077,6 +1087,12 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     if (!manifestBuffer) return { success: false as const, error: "The unit painter project manifest could not be read." };
     const manifest = parseUnitPainterProjectManifest(manifestBuffer);
 
+    if (manifest.paintedTextures.length > MAX_UNIT_PAINTER_TEXTURES) {
+      return {
+        success: false as const,
+        error: `A unit-painter project may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`,
+      };
+    }
     const texturePaths = manifest.paintedTextures.map((texture) => texture.filePath);
     const withTextures = texturePaths.length > 0
       ? await readPack(packPath, { skipParsingTables: true, filesToRead: texturePaths })
