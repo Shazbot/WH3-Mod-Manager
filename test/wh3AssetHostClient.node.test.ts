@@ -96,6 +96,7 @@ describe("WH3AssetHostClient", () => {
           "exportModel",
           "exportModelBatch",
           "exportPaintedVariant",
+          "paintedVariantRgba",
           "missingSkeletonDecision",
           "shutdown",
         ],
