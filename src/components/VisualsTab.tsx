@@ -50,7 +50,7 @@ type VisualsViewerMode = "preview" | "source";
 
 type VisualsFileResult = {
   path: string;
-  ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2";
+  ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material";
 };
 
 type VisualsListRow =
@@ -89,7 +89,7 @@ let nextVisualsTabId = 1;
 let nextVisualsRequestId = 1;
 
 const collator = new Intl.Collator("en");
-const viewerModelPathRegex = /([A-Za-z0-9_.\-\\/]+?\.(?:variantmeshdefinition|wsmodel|rigid_model_v2))/gi;
+const viewerModelPathRegex = /([A-Za-z0-9_.\-\\/]+?\.(?:variantmeshdefinition|wsmodel|rigid_model_v2|xml\.material))/gi;
 
 const getBaseName = (path: string) => {
   const parts = path.split(/[\\/]/);
@@ -117,7 +117,11 @@ const getVisualsFileKey = (path: string) => {
 };
 
 const isOpenableVisualsFile = (file: VisualsFileResult) =>
-  file.ext === "variantmeshdefinition" || file.ext === "wsmodel";
+  file.ext === "variantmeshdefinition" || file.ext === "wsmodel" || file.ext === "xml.material";
+
+const isXmlMaterialPath = (path: string) => path.toLowerCase().endsWith(".xml.material");
+
+const isAssetEditorOpenablePath = (path: string) => !isXmlMaterialPath(path);
 
 const formatCasteLabel = (caste: string) =>
   caste.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unknown caste";
@@ -534,12 +538,14 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   };
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
+  const isActiveTabSourceOnly = !!activeTab && isXmlMaterialPath(activeTab.filePath);
 
   const openVisualsFileTab = async (filePath: string, mode: "current" | "new") => {
     if (!filePath) {
       setViewerMessage("No visual file path is available for this entry.");
       return;
     }
+    if (isXmlMaterialPath(filePath)) setViewerMode("source");
 
     const fileKey = getVisualsFileKey(filePath);
     const existingTab = tabs.find((tab) =>
@@ -697,6 +703,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     if (!file) return null;
 
     const isOpenableInVisuals = isOpenableVisualsFile(file);
+    const canOpenInAssetEditor = isAssetEditorOpenablePath(file.path);
     return (
       <CellMeasurer cache={fileListCache} columnIndex={0} index={index} key={key} parent={parent}>
         {({ registerChild }) => (
@@ -727,8 +734,10 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
             onContextMenu={(event) => openAssetEditorContextMenu(event, file.path)}
             title={
               isOpenableInVisuals
-                ? "Click to open, double-click for new tab, right-click for AssetEditor"
-                : "Right-click to open in AssetEditor"
+                ? `Click to open, double-click for new tab, right-click for ${canOpenInAssetEditor ? "AssetEditor" : "copy options"}`
+                : canOpenInAssetEditor
+                  ? "Right-click to open in AssetEditor"
+                  : "Right-click for copy options"
             }
           >
             <div
@@ -836,8 +845,10 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
             const pathExt = pathValue.toLowerCase();
             const isVariantMeshDefinition = pathExt.endsWith(".variantmeshdefinition");
             const isWsmodel = pathExt.endsWith(".wsmodel");
+            const isXmlMaterial = pathExt.endsWith(".xml.material");
             const pathPrefix = line.slice(Math.max(0, matchStart - 32), matchStart);
             const isClickableInVisuals =
+              isXmlMaterial ||
               (isVariantMeshDefinition &&
                 line.includes("VARIANT_MESH_REFERENCE") &&
                 pathPrefix.includes('definition="')) ||
@@ -851,7 +862,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   className="text-blue-300 underline hover:text-blue-200"
                   onClick={() => openVisualsFileTab(pathValue, "new")}
                   onContextMenu={(event) => openAssetEditorContextMenu(event, pathValue, preferredPackPath)}
-                  title={`Open referenced ${isVariantMeshDefinition ? "variantmeshdefinition" : "wsmodel"} in a new tab (right-click for AssetEditor)`}
+                  title={`Open referenced ${isXmlMaterial ? "xml.material" : isVariantMeshDefinition ? "variantmeshdefinition" : "wsmodel"} in a new tab (${isAssetEditorOpenablePath(pathValue) ? "right-click for AssetEditor" : "right-click for copy options"})`}
                   type="button"
                 >
                   {pathValue}
@@ -1025,7 +1036,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
         </div>
         <label className="flex items-center gap-2 text-gray-300">
           <input type="checkbox" checked={isFilePanelOpen} onChange={() => setIsFilePanelOpen((prev) => !prev)} />
-          Show all model files
+          Show all visual files
         </label>
         <label className="flex items-center gap-2 text-gray-300">
           <input type="checkbox" checked={isGroupedByOrigin} onChange={() => setIsGroupedByOrigin((prev) => !prev)} />
@@ -1121,7 +1132,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
         >
           <div className="flex bg-gray-800 border border-gray-700 rounded-t overflow-x-auto min-h-[36px]">
             {tabs.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-400">Open a unit or model file to view it</div>
+              <div className="px-3 py-2 text-sm text-gray-400">Open a unit or visual file to view it</div>
             ) : (
               tabs.map((tab) => (
                 <div
@@ -1131,7 +1142,10 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                       ? "bg-gray-700 text-white border-b-2 border-blue-400"
                       : "bg-gray-800 text-gray-400 hover:bg-gray-700"
                   }`}
-                  onClick={() => setActiveTabId(tab.id)}
+                  onClick={() => {
+                    setActiveTabId(tab.id);
+                    if (isXmlMaterialPath(tab.filePath)) setViewerMode("source");
+                  }}
                   title={tab.filePath}
                 >
                   <span className="mr-2 max-w-[260px] overflow-hidden text-ellipsis">{tab.label}</span>
@@ -1192,12 +1206,18 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 </div>
                 <div className="relative min-h-0 flex-1">
                   <div className={`absolute inset-0 ${viewerMode === "preview" ? "" : "hidden"}`}>
-                    <VisualsModelPreview
-                      assetPath={activeTab.filePath}
-                      isActive={isActive}
-                      variantMeshSessionId={sessionId ?? undefined}
-                      variantMeshSessionType="visuals"
-                    />
+                    {isActiveTabSourceOnly ? (
+                      <div className="flex h-full items-center justify-center p-4 text-sm text-gray-400">
+                        Preview is unavailable for material files. Select Source to inspect the file.
+                      </div>
+                    ) : (
+                      <VisualsModelPreview
+                        assetPath={activeTab.filePath}
+                        isActive={isActive}
+                        variantMeshSessionId={sessionId ?? undefined}
+                        variantMeshSessionType="visuals"
+                      />
+                    )}
                   </div>
                   <div
                     className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}
@@ -1224,7 +1244,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   type="text"
                   value={fileQueryInput}
                   onChange={(e) => setFileQueryInput(e.target.value)}
-                  placeholder="Search variantmesh/wsmodel/rigid_model_v2"
+                  placeholder="Search variantmesh/wsmodel/rigid_model_v2/xml.material"
                   className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm"
                 />
                 <div className="text-xs text-gray-400 mt-1">
@@ -1282,25 +1302,29 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
         >
-          <button
-            type="button"
-            className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
-            onClick={() => {
-              void onAssetEditorContextAction("new");
-            }}
-          >
-            Open In New AssetEd Tab
-          </button>
-          <button
-            type="button"
-            className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
-            onClick={() => {
-              void onAssetEditorContextAction("existing");
-            }}
-          >
-            Open In Existing AssetEd Tab
-          </button>
-          <div className="my-1 border-t border-gray-700" />
+          {isAssetEditorOpenablePath(assetEditorContextMenu.targetPath) && (
+            <>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+                onClick={() => {
+                  void onAssetEditorContextAction("new");
+                }}
+              >
+                Open In New AssetEd Tab
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+                onClick={() => {
+                  void onAssetEditorContextAction("existing");
+                }}
+              >
+                Open In Existing AssetEd Tab
+              </button>
+              <div className="my-1 border-t border-gray-700" />
+            </>
+          )}
           <button
             type="button"
             className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"

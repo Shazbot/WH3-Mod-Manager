@@ -37,7 +37,6 @@ import type {
 } from "./compressionAnalysis";
 import type { Wh3AssetHostDecisionAction, Wh3AssetHostDecisionRequest } from "./wh3AssetHostClient";
 
-
 const createWorkshopStagingRunId = (): string => {
   try {
     if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
@@ -698,7 +697,7 @@ const api = {
     total?: number;
     results?: {
       path: string;
-      ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2";
+      ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material";
     }[];
     error?: string;
   }> => ipcRenderer.invoke("searchVisualsFiles", sessionId, query, offset, limit),

@@ -2,7 +2,7 @@ import * as nodePath from "path";
 import * as fs from "fs";
 
 /** Bump whenever the extraction rules or the cached shape change. */
-export const VISUALS_DATA_CACHE_VERSION = 4;
+export const VISUALS_DATA_CACHE_VERSION = 5;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const VISUALS_CACHE_DIR = "visuals";
 const VANILLA_CACHE_FILE = "vanilla.bin";
@@ -11,7 +11,7 @@ const MODS_CACHE_FILE = "mods.bin";
 /** Keep the mod cache bounded while retaining disabled mods for quick re-enabling. */
 const MOD_SEGMENT_CAP = 100;
 
-export type VisualsFileExtension = "variantmeshdefinition" | "wsmodel" | "rigid_model_v2";
+export type VisualsFileExtension = "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material";
 
 export interface VisualsFileResult {
   path: string;
@@ -301,6 +301,7 @@ export const getCurrentVisualsTableContribution = (
 
 export const getVisualsFileExtension = (fileName: string): VisualsFileExtension | undefined => {
   const normalizedName = fileName.toLowerCase();
+  if (normalizedName.endsWith(".xml.material")) return "xml.material";
   if (normalizedName.endsWith(".variantmeshdefinition")) return "variantmeshdefinition";
   if (normalizedName.endsWith(".wsmodel")) return "wsmodel";
   if (normalizedName.endsWith(".rigid_model_v2")) return "rigid_model_v2";

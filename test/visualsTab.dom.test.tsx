@@ -44,6 +44,8 @@ const units = [
 
 const searchVisualsFiles = vi.fn();
 const getVisualsUnitsData = vi.fn();
+const readVariantMeshDefinition = vi.fn();
+const putPathInClipboard = vi.fn();
 
 describe("VisualsTab filtering", () => {
   beforeEach(() => {
@@ -57,10 +59,14 @@ describe("VisualsTab filtering", () => {
       total: 1,
       results: [{ path: "models\\example.wsmodel", ext: "wsmodel" }],
     });
+    readVariantMeshDefinition.mockReset();
+    putPathInClipboard.mockReset();
     window.api = {
       ...window.api,
       getVisualsUnitsData,
       searchVisualsFiles,
+      readVariantMeshDefinition,
+      putPathInClipboard,
     } as NonNullable<Window["api"]>;
   });
 
@@ -113,10 +119,60 @@ describe("VisualsTab filtering", () => {
     );
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Human (1)" })).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText("Show all model files"));
+    fireEvent.click(screen.getByLabelText("Show all visual files"));
 
     await waitFor(() => expect(searchVisualsFiles).toHaveBeenCalledWith("visuals-session", "", 0, 1000));
     expect(screen.getByText("models\\example.wsmodel")).toBeInTheDocument();
+  });
+
+  it("opens material files in a new tab and only offers copy actions", async () => {
+    const materialPath = "materials\\example.xml.material";
+    searchVisualsFiles.mockReset().mockResolvedValue({
+      success: true,
+      total: 1,
+      results: [{ path: materialPath, ext: "xml.material" }],
+    });
+    readVariantMeshDefinition.mockResolvedValue({
+      success: true,
+      text: "<material />",
+      resolved: { packPath: "/mods/example.pack", fileName: materialPath },
+    });
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <VisualsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Human (1)" })).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("Show all visual files"));
+
+    const materialRow = await screen.findByText(materialPath);
+    fireEvent.doubleClick(materialRow);
+    await waitFor(() => expect(readVariantMeshDefinition).toHaveBeenCalledWith("visuals-session", materialPath));
+
+    fireEvent.contextMenu(materialRow);
+    expect(screen.queryByRole("button", { name: "Open In New AssetEd Tab" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open In Existing AssetEd Tab" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy Name to Clipboard" }));
+    expect(putPathInClipboard).toHaveBeenCalledWith("example.xml.material");
+
+    fireEvent.contextMenu(materialRow);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Full Path to Clipboard" }));
+    expect(putPathInClipboard).toHaveBeenCalledWith(materialPath);
   });
 
   it("defers hidden mod-data refreshes and remeasures when the tab becomes visible", async () => {
