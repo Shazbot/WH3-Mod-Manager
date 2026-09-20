@@ -34,6 +34,12 @@ export interface VisualsModelPreviewTimingReport {
   ktx2: VisualsModelPreviewKtx2Timing;
 }
 
+export interface VisualsModelPreviewTextureSource {
+  sourceVirtualPath: string;
+  generatedFileName: string;
+  channel: string;
+}
+
 export interface VisualsModelPreviewExportResult {
   success: boolean;
   previewId?: string;
@@ -41,6 +47,7 @@ export interface VisualsModelPreviewExportResult {
   warnings?: string[];
   error?: string;
   timings?: VisualsModelPreviewMainTiming;
+  textureSources?: VisualsModelPreviewTextureSource[];
 }
 
 export interface VisualsModelPreviewBatchItem {
@@ -51,6 +58,7 @@ export interface VisualsModelPreviewBatchExportItemResult {
   previewId: string;
   url: string;
   warnings?: string[];
+  textureSources?: VisualsModelPreviewTextureSource[];
 }
 
 export interface VisualsModelPreviewBatchExportResult {
@@ -71,6 +79,7 @@ export interface VisualsModelPreviewAnimationCatalogResult {
 
 export interface UnitPainterTextureExport {
   fileName: string;
+  sourceVirtualPath: string;
   width: number;
   height: number;
   pngBytes: Uint8Array;
@@ -80,6 +89,8 @@ export interface UnitPainterTextureExportResult {
   success: boolean;
   directory?: string;
   files?: string[];
+  variantMeshPath?: string;
+  warnings?: string[];
   canceled?: boolean;
   error?: string;
 }
@@ -152,13 +163,18 @@ export const reportVisualsModelPreviewTiming = async (report: VisualsModelPrevie
 
 export const exportUnitPainterTextures = async (
   assetPath: string,
+  enabledMods: readonly VisualsModelPreviewMod[],
+  variantSelections: readonly VariantMeshSelection[],
   textures: readonly UnitPainterTextureExport[],
 ): Promise<UnitPainterTextureExportResult> =>
   (await getRendererIpc().invoke(
     "exportUnitPainterTextures",
     assetPath,
+    enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
+    [...variantSelections],
     textures.map((texture) => ({
       fileName: texture.fileName,
+      sourceVirtualPath: texture.sourceVirtualPath,
       width: texture.width,
       height: texture.height,
       pngBytes: texture.pngBytes,
