@@ -501,6 +501,46 @@ describe("WH3AssetHostClient", () => {
     assetHost.dispose();
   });
 
+  it("rejects a pre-RGBA painted-variant host even when the older painter capability exists", async () => {
+    const child = createMockChild();
+    const { client, server } = createDuplexPair();
+    installServerResponder(server, (request) => ({
+      protocolVersion: 1,
+      requestId: request.requestId,
+      success: true,
+      command: request.command,
+      result: {
+        hostVersion: "pre-rgba-painter-host",
+        protocolVersion: 1,
+        capabilities: [
+          "hello",
+          "initialize",
+          "getAnimationCatalog",
+          "exportModel",
+          "exportModelBatch",
+          "exportPaintedVariant",
+          "missingSkeletonDecision",
+          "shutdown",
+        ],
+        maxFrameBytes: 1024 * 1024,
+      },
+      error: null,
+    }));
+
+    const assetHost = new Wh3AssetHostClient({
+      executablePath: "host.exe",
+      spawnProcess: () => child as never,
+      connectPipe: async () => client,
+    });
+    await assetHost.start();
+
+    await expect(assetHost.hello()).rejects.toMatchObject({
+      code: "MissingCapabilities",
+      message: expect.stringContaining("paintedVariantRgba"),
+    });
+    assetHost.dispose();
+  });
+
   it("rejects hello when the host reports an incompatible protocol", async () => {
     const child = createMockChild();
     const { client, server } = createDuplexPair();
