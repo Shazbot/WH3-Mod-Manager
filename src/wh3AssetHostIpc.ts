@@ -482,7 +482,6 @@ const exportVisualsModelNow = async (
       previewId,
       url: modelPreviewAssetUrl(previewId),
       warnings: result.warnings?.map((warning) => warning.message) ?? [],
-      textureSources: result.textureSources ?? [],
       timings: {
         queueWaitMs,
         prepareHostMs,
@@ -595,7 +594,6 @@ const exportVisualsModelBatchNow = async (
         previewId,
         url: modelPreviewAssetUrl(previewId),
         warnings: result.warnings?.map((warning) => warning.message) ?? [],
-        textureSources: result.textureSources ?? [],
       };
     });
 
