@@ -394,12 +394,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       currentPresetMods.filter((mod) => mod.isEnabled).map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
     [currentPresetMods],
   );
-  const effectiveEnabledMods = useMemo(() => {
-    if (paintExcludedPackPaths.length === 0) return enabledMods;
-    const excluded = new Set(paintExcludedPackPaths.map((path) => path.replace(/\//g, "\\").toLowerCase()));
-    return enabledMods.filter((mod) => !excluded.has(mod.path.replace(/\//g, "\\").toLowerCase()));
-  }, [enabledMods, paintExcludedPackPaths]);
-
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
@@ -457,6 +451,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintProjectReloadVersion, setPaintProjectReloadVersion] = useState(0);
   const [paintHistoryVersion, setPaintHistoryVersion] = useState(0);
   const pendingPaintProjectRef = useRef<UnitPainterProjectOpenResult | null>(null);
+  const effectiveEnabledMods = useMemo(() => {
+    if (paintExcludedPackPaths.length === 0) return enabledMods;
+    const excluded = new Set(paintExcludedPackPaths.map((path) => path.replace(/\//g, "\\").toLowerCase()));
+    return enabledMods.filter((mod) => !excluded.has(mod.path.replace(/\//g, "\\").toLowerCase()));
+  }, [enabledMods, paintExcludedPackPaths]);
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
@@ -1614,6 +1613,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             >
               {isPaintProjectOpening ? "Opening…" : "Open painted mod…"}
             </button>
+            {!isPainterEnabled && paintExportStatus && (
+              <span className="max-w-80 truncate text-gray-300" title={paintExportStatus}>
+                {paintExportStatus}
+              </span>
+            )}
             {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
               <>
                 <label className="flex items-center gap-1 text-gray-400">
