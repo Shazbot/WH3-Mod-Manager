@@ -1,21 +1,30 @@
 const fs = require("fs");
 const path = require("path");
 
-const hostPath = path.resolve(__dirname, "..", "tools", "WH3AssetHost", "WH3AssetHost.exe");
+const toolDirectory = path.resolve(__dirname, "..", "tools", "WH3AssetHost");
+const requiredFiles = [
+  "WH3AssetHost.exe",
+  "texconv.exe",
+  "DirectXTex-LICENSE.txt",
+];
 
-let valid = false;
-try {
-  valid = fs.statSync(hostPath).isFile() && fs.statSync(hostPath).size > 0;
-} catch {
-  valid = false;
-}
+const missing = requiredFiles.filter((fileName) => {
+  const filePath = path.join(toolDirectory, fileName);
+  try {
+    return !fs.statSync(filePath).isFile() || fs.statSync(filePath).size <= 0;
+  } catch {
+    return true;
+  }
+});
 
-if (!valid) {
+if (missing.length > 0) {
   console.error(
     [
-      "WH3AssetHost.exe is required for packaged WHMM builds.",
-      `Expected: ${hostPath}`,
-      "Publish the AssetEditor WH3AssetHost project and copy the release executable into tools/WH3AssetHost before packaging.",
+      "The packaged WH3AssetHost runtime is incomplete.",
+      `Directory: ${toolDirectory}`,
+      `Missing: ${missing.join(", ")}`,
+      "Publish the AssetEditor WH3AssetHost project and copy the complete publish output into tools/WH3AssetHost before packaging.",
+      "The publish output includes the pinned DirectXTex texconv.exe and its MIT license.",
     ].join("\n"),
   );
   process.exit(1);
