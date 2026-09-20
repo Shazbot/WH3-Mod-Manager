@@ -16,6 +16,7 @@ import {
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import { selectDefaultAnimation } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
+import { createUnitPainterSession, type UnitPainterBrushMode } from "../visuals/unitPainter";
 
 type VisualsModelPreviewProps = {
   assetPath: string;
@@ -28,6 +29,8 @@ type VisualsModelPreviewProps = {
   /** Session used to inspect VMD slots and select appearances. */
   variantMeshSessionId?: string;
   variantMeshSessionType?: "unitViewer" | "visuals";
+  /** Enables the experimental direct-on-model base-colour painter. */
+  enablePainting?: boolean;
 };
 
 type ThreePreviewContext = {
@@ -367,6 +370,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     unsyncedAnimations = true,
     variantMeshSessionId,
     variantMeshSessionType = "unitViewer",
+    enablePainting = false,
   } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -379,6 +383,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
+  const paintRootRef = useRef<THREE.Object3D | null>(null);
+  const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
+  const painterEnabledRef = useRef(false);
+  const brushSettingsRef = useRef({
+    radiusPx: 24,
+    strength: 0.9,
+    mode: "recolor" as UnitPainterBrushMode,
+    color: { r: 196, g: 48, b: 48 },
+  });
+  const brushCursorRef = useRef<HTMLDivElement>(null);
   const showWireframeRef = useRef(showWireframe);
   showWireframeRef.current = showWireframe;
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
@@ -396,6 +410,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [animationSpeed, setAnimationSpeed] = useState(1);
+  const [isPainterEnabled, setIsPainterEnabled] = useState(false);
+  const [paintColor, setPaintColor] = useState("#c43030");
+  const [paintBrushRadius, setPaintBrushRadius] = useState(24);
+  const [paintBrushStrength, setPaintBrushStrength] = useState(0.9);
+  const [paintBrushMode, setPaintBrushMode] = useState<UnitPainterBrushMode>("recolor");
+  const [paintTextureCount, setPaintTextureCount] = useState(-1);
+  const [, setPaintHistoryVersion] = useState(0);
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
@@ -405,6 +426,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const animationCatalogKey = useMemo(() => JSON.stringify([assetPath, enabledMods]), [assetPath, enabledMods]);
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
+  const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
+  painterEnabledRef.current = enablePainting && isPainterEnabled;
+  brushSettingsRef.current = {
+    radiusPx: paintBrushRadius,
+    strength: paintBrushStrength,
+    mode: paintBrushMode,
+    color: {
+      r: (paintColorValue >> 16) & 0xff,
+      g: (paintColorValue >> 8) & 0xff,
+      b: paintColorValue & 0xff,
+    },
+  };
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -476,6 +509,94 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     };
     contextRef.current = context;
 
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let isPainting = false;
+    let activePointerId: number | undefined;
+
+    const updateBrushCursor = (event: PointerEvent, visible = true) => {
+      const cursor = brushCursorRef.current;
+      if (!cursor) return;
+      if (!visible || !painterEnabledRef.current) {
+        cursor.style.display = "none";
+        return;
+      }
+      const rect = renderer.domElement.getBoundingClientRect();
+      const radius = brushSettingsRef.current.radiusPx;
+      cursor.style.display = "block";
+      cursor.style.width = `${radius * 2}px`;
+      cursor.style.height = `${radius * 2}px`;
+      cursor.style.transform = `translate(${event.clientX - rect.left - radius}px, ${
+        event.clientY - rect.top - radius
+      }px)`;
+    };
+
+    const paintAtPointer = (event: PointerEvent) => {
+      const root = paintRootRef.current;
+      const session = paintSessionRef.current;
+      if (!root || !session) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+        -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObject(root, true)[0];
+      if (!hit) return;
+      session.paintIntersection(hit, brushSettingsRef.current, camera, Math.max(rect.height, 1));
+    };
+
+    const finishPaintStroke = (event?: PointerEvent) => {
+      if (!isPainting) return;
+      isPainting = false;
+      controls.enabled = true;
+      if (paintSessionRef.current?.endStroke()) setPaintHistoryVersion((value) => value + 1);
+      if (
+        event &&
+        activePointerId != null &&
+        renderer.domElement.hasPointerCapture(activePointerId)
+      ) {
+        renderer.domElement.releasePointerCapture(activePointerId);
+      }
+      activePointerId = undefined;
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      updateBrushCursor(event);
+      if (!painterEnabledRef.current || event.button !== 0 || !paintSessionRef.current) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      isPainting = true;
+      activePointerId = event.pointerId;
+      controls.enabled = false;
+      renderer.domElement.setPointerCapture(event.pointerId);
+      paintSessionRef.current.beginStroke();
+      paintAtPointer(event);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      updateBrushCursor(event);
+      if (!isPainting || event.pointerId !== activePointerId) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      paintAtPointer(event);
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (!isPainting || event.pointerId !== activePointerId) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      finishPaintStroke(event);
+    };
+    const onPointerCancel = (event: PointerEvent) => finishPaintStroke(event);
+    const onPointerLeave = (event: PointerEvent) => {
+      if (!isPainting) updateBrushCursor(event, false);
+    };
+
+    renderer.domElement.addEventListener("pointerdown", onPointerDown, true);
+    renderer.domElement.addEventListener("pointermove", onPointerMove, true);
+    renderer.domElement.addEventListener("pointerup", onPointerUp, true);
+    renderer.domElement.addEventListener("pointercancel", onPointerCancel, true);
+    renderer.domElement.addEventListener("pointerleave", onPointerLeave, true);
+
     const resize = () => {
       const width = Math.max(mount.clientWidth, 1);
       const height = Math.max(mount.clientHeight, 1);
@@ -522,6 +643,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.mixers = [];
       context.actions = [];
       context.afterNextRender = null;
+      finishPaintStroke();
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
+      renderer.domElement.removeEventListener("pointermove", onPointerMove, true);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp, true);
+      renderer.domElement.removeEventListener("pointercancel", onPointerCancel, true);
+      renderer.domElement.removeEventListener("pointerleave", onPointerLeave, true);
       controls.dispose();
       disposeGrid(grid);
       clearHostSessionCache();
@@ -758,6 +885,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.mixers = [];
       context.actions = [];
       context.scene.remove(ownedGroup);
+      if (paintSessionRef.current) {
+        paintSessionRef.current.dispose();
+        paintSessionRef.current = null;
+      }
+      paintRootRef.current = null;
       disposeObject(ownedGroup, resourcePool);
       ownedModels.length = 0;
       ownedMixers.length = 0;
@@ -775,6 +907,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setError(null);
       setClipDuration(0);
       setCurrentTime(0);
+      setPaintTextureCount(-1);
       setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics]);
       context.ktx2Loader.resetTiming();
 
@@ -903,6 +1036,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           comparisonRowCount,
           comparisonLayerCount,
         );
+        paintRootRef.current = comparisonVariants.length === 1 ? ownedModels[0] ?? null : null;
         context.scene.add(ownedGroup);
         context.mixers = ownedMixers;
         context.actions = ownedActions;
@@ -980,6 +1114,23 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   ]);
 
   useEffect(() => {
+    if (
+      !enablePainting ||
+      !isPainterEnabled ||
+      status !== "ready" ||
+      comparisonModelCount !== 1 ||
+      !paintRootRef.current ||
+      paintSessionRef.current
+    ) {
+      return;
+    }
+    const session = createUnitPainterSession(paintRootRef.current);
+    paintSessionRef.current = session;
+    setPaintTextureCount(session.textureCount);
+    setPaintHistoryVersion((value) => value + 1);
+  }, [comparisonModelCount, enablePainting, isPainterEnabled, status]);
+
+  useEffect(() => {
     if (status !== "ready" || clipDuration <= 0) return;
     const timer = window.setInterval(() => {
       const action = contextRef.current?.actions[0];
@@ -1013,8 +1164,117 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             {status === "error" && <span className="max-w-2xl px-6 text-center text-red-300">{error}</span>}
           </div>
         )}
+        <div
+          ref={brushCursorRef}
+          className="pointer-events-none absolute left-0 top-0 z-20 hidden rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.75)]"
+        />
+        {enablePainting && (
+          <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] items-center gap-2 rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-xs text-gray-200 shadow-lg">
+            <button
+              type="button"
+              disabled={status !== "ready" || comparisonModelCount !== 1}
+              onClick={() => {
+                setIsPainterEnabled((enabled) => {
+                  if (!enabled) setIsPlaying(false);
+                  return !enabled;
+                });
+              }}
+              className={`rounded border px-2 py-1 ${
+                isPainterEnabled
+                  ? "border-blue-400 bg-blue-700/50 text-white"
+                  : "border-gray-600 bg-gray-800 hover:border-blue-400"
+              } disabled:cursor-not-allowed disabled:opacity-40`}
+              title={comparisonModelCount !== 1 ? "Painting is available for one model at a time." : "Paint directly on the unit"}
+            >
+              Paint
+            </button>
+            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
+              <>
+                <label className="flex items-center gap-1 text-gray-400">
+                  Color
+                  <input
+                    type="color"
+                    value={paintColor}
+                    onChange={(event) => setPaintColor(event.target.value)}
+                    className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0"
+                    aria-label="Paint color"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-gray-400">
+                  Size
+                  <input
+                    type="range"
+                    min={4}
+                    max={64}
+                    step={1}
+                    value={paintBrushRadius}
+                    onChange={(event) => setPaintBrushRadius(Number(event.target.value))}
+                    className="w-20 accent-blue-500"
+                    aria-label="Brush size"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-gray-400">
+                  Strength
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={1}
+                    step={0.05}
+                    value={paintBrushStrength}
+                    onChange={(event) => setPaintBrushStrength(Number(event.target.value))}
+                    className="w-16 accent-blue-500"
+                    aria-label="Brush strength"
+                  />
+                </label>
+                <select
+                  value={paintBrushMode}
+                  onChange={(event) => setPaintBrushMode(event.target.value as UnitPainterBrushMode)}
+                  aria-label="Brush mode"
+                  className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                >
+                  <option value="recolor">Recolor</option>
+                  <option value="paint">Paint</option>
+                </select>
+                <button
+                  type="button"
+                  disabled={!paintSessionRef.current?.canUndo}
+                  onClick={() => {
+                    if (paintSessionRef.current?.undo()) setPaintHistoryVersion((value) => value + 1);
+                  }}
+                  className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  disabled={!paintSessionRef.current?.canRedo}
+                  onClick={() => {
+                    if (paintSessionRef.current?.redo()) setPaintHistoryVersion((value) => value + 1);
+                  }}
+                  className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Redo
+                </button>
+                <button
+                  type="button"
+                  disabled={!paintSessionRef.current}
+                  onClick={() => {
+                    paintSessionRef.current?.reset();
+                    setPaintHistoryVersion((value) => value + 1);
+                  }}
+                  className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Reset
+                </button>
+                {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
+              </>
+            )}
+          </div>
+        )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
-          Left drag: orbit · Right drag: pan · Wheel: zoom
+          {isPainterEnabled
+            ? "Left drag: paint · Disable Paint to orbit · Right drag: pan · Wheel: zoom"
+            : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
       {variantMeshSessionId && !variantCatalogReady && (
