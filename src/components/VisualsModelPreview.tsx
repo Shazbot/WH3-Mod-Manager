@@ -7,6 +7,7 @@ import { IoPause, IoPlay, IoRefresh } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import {
+  exportUnitPainterTextures,
   exportVisualsModel,
   exportVisualsModelBatch,
   getVisualsModelAnimationCatalog,
@@ -416,6 +417,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintBrushStrength, setPaintBrushStrength] = useState(0.9);
   const [paintBrushMode, setPaintBrushMode] = useState<UnitPainterBrushMode>("recolor");
   const [paintTextureCount, setPaintTextureCount] = useState(-1);
+  const [paintExportStatus, setPaintExportStatus] = useState("");
+  const [isPaintExporting, setIsPaintExporting] = useState(false);
   const [, setPaintHistoryVersion] = useState(0);
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
@@ -971,6 +974,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setClipDuration(0);
       setCurrentTime(0);
       setPaintTextureCount(-1);
+      setPaintExportStatus("");
       setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics]);
       context.ktx2Loader.resetTiming();
 
@@ -1334,13 +1338,53 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   disabled={!paintSessionRef.current}
                   onClick={() => {
                     paintSessionRef.current?.reset();
+                    setPaintExportStatus("");
                     setPaintHistoryVersion((value) => value + 1);
                   }}
                   className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Reset
                 </button>
+                <button
+                  type="button"
+                  disabled={!paintSessionRef.current || isPaintExporting}
+                  onClick={() => {
+                    const session = paintSessionRef.current;
+                    if (!session) return;
+                    void (async () => {
+                      setIsPaintExporting(true);
+                      setPaintExportStatus("Preparing textures…");
+                      try {
+                        const textures = await session.exportModifiedTextures();
+                        if (textures.length === 0) {
+                          setPaintExportStatus("Nothing has been painted yet.");
+                          return;
+                        }
+                        const result = await exportUnitPainterTextures(assetPath, textures);
+                        if (result.canceled) {
+                          setPaintExportStatus("");
+                        } else if (result.success) {
+                          setPaintExportStatus(
+                            `Exported ${textures.length} painted texture${textures.length === 1 ? "" : "s"}.`,
+                          );
+                        } else {
+                          setPaintExportStatus(result.error || "Texture export failed.");
+                        }
+                      } catch (exportError) {
+                        setPaintExportStatus(
+                          exportError instanceof Error ? exportError.message : "Texture export failed.",
+                        );
+                      } finally {
+                        setIsPaintExporting(false);
+                      }
+                    })();
+                  }}
+                  className="rounded border border-blue-500 bg-blue-700/40 px-2 py-1 text-blue-100 hover:bg-blue-700/60 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isPaintExporting ? "Exporting…" : "Export textures"}
+                </button>
                 {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
+                {paintExportStatus && <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>{paintExportStatus}</span>}
               </>
             )}
           </div>
