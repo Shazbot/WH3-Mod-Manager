@@ -681,4 +681,32 @@ describe("unit painter", () => {
     }
   });
 
+
+  it("merge down preserves the current two-layer appearance and is undoable", () => {
+    const painter = makePainter();
+    try {
+      paint(painter, { color: { r: 255, g: 0, b: 0 } });
+      painter.session.addLayer("Blue");
+      paint(painter, { color: { r: 0, g: 0, b: 255 } });
+      expect(painter.session.setLayerOpacity(painter.session.activeLayerId, 0.5)).toBe(true);
+      const beforeMerge = getPixel(painter.material, 14, 8);
+
+      expect(painter.session.mergeActiveLayerDown()).toBe(true);
+      expect(painter.session.layers).toHaveLength(1);
+      expect(getPixel(painter.material, 14, 8)).toEqual(beforeMerge);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(painter.session.layers).toHaveLength(2);
+      expect(getPixel(painter.material, 14, 8)).toEqual(beforeMerge);
+
+      expect(painter.session.redo()).toBe(true);
+      expect(painter.session.layers).toHaveLength(1);
+      expect(getPixel(painter.material, 14, 8)).toEqual(beforeMerge);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
 });
