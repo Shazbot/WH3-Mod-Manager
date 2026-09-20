@@ -15,6 +15,7 @@ const REQUIRED_CAPABILITIES = [
   "getAnimationCatalog",
   "exportModel",
   "exportModelBatch",
+  "exportPaintedVariant",
   "missingSkeletonDecision",
   "shutdown",
 ] as const;
@@ -79,12 +80,19 @@ export interface Wh3AssetHostExportError {
   details?: string | null;
 }
 
+export interface Wh3AssetHostTextureSource {
+  sourceVirtualPath: string;
+  generatedFileName: string;
+  channel: string;
+}
+
 export interface Wh3AssetHostExportResult {
   success: boolean;
   primaryFile: string | null;
   auxiliaryFiles: string[];
   warnings: Wh3AssetHostExportWarning[];
   errors: Wh3AssetHostExportError[];
+  textureSources?: Wh3AssetHostTextureSource[] | null;
 }
 
 export interface Wh3AssetHostExportModelRequest {
@@ -114,6 +122,27 @@ export interface Wh3AssetHostExportModelBatchRequest {
 
 export interface Wh3AssetHostExportModelBatchResult {
   exports: Wh3AssetHostExportResult[];
+}
+
+export interface Wh3AssetHostPaintedTextureInput {
+  sourceVirtualPath: string;
+  pngPath: string;
+}
+
+export interface Wh3AssetHostPaintedVariantRequest {
+  assetPath: string;
+  outputDirectory: string;
+  variantName: string;
+  textures: readonly Wh3AssetHostPaintedTextureInput[];
+  variantSelections?: readonly VariantMeshSelection[];
+}
+
+export interface Wh3AssetHostPaintedVariantResult {
+  success: boolean;
+  variantMeshVirtualPath?: string | null;
+  files: string[];
+  warnings: string[];
+  errors: Wh3AssetHostExportError[];
 }
 
 export interface Wh3AssetHostAnimationCatalog {
@@ -371,6 +400,21 @@ export class Wh3AssetHostClient {
 
   getAnimationCatalog(assetPath: string): Promise<Wh3AssetHostAnimationCatalog> {
     return this.request<Wh3AssetHostAnimationCatalog>("getAnimationCatalog", { assetPath });
+  }
+
+  exportPaintedVariant(
+    request: Wh3AssetHostPaintedVariantRequest,
+  ): Promise<Wh3AssetHostPaintedVariantResult> {
+    return this.request<Wh3AssetHostPaintedVariantResult>("exportPaintedVariant", {
+      assetPath: request.assetPath,
+      outputDirectory: request.outputDirectory,
+      variantName: request.variantName,
+      textures: request.textures.map((texture) => ({
+        sourceVirtualPath: texture.sourceVirtualPath,
+        pngPath: texture.pngPath,
+      })),
+      variantSelections: request.variantSelections ?? [],
+    });
   }
 
   async shutdown(): Promise<void> {
