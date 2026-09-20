@@ -337,4 +337,92 @@ describe("unit painter", () => {
     expect(mirrored.direction.distanceTo(source.direction)).toBeLessThan(1e-6);
   });
 
+
+  it("resets only the selected UV island and keeps the reset undoable", () => {
+    const painter = makePainter();
+    try {
+      painter.session.selectIntersection(painter.intersection);
+      expect(
+        painter.session.fillSelection("material", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 255, g: 0, b: 0 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([255, 0, 0, 255]);
+
+      expect(painter.session.resetSelection("island")).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([255, 0, 0, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([255, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("resets the full selected material to its original BaseColour", () => {
+    const painter = makePainter();
+    try {
+      painter.session.selectIntersection(painter.intersection);
+      expect(
+        painter.session.fillSelection("material", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 0, g: 255, b: 0 },
+        }),
+      ).toBe(true);
+      expect(painter.session.resetSelection("material")).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([0, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("tracks the exact saved edit state across undo and redo", () => {
+    const painter = makePainter();
+    try {
+      expect(painter.session.hasUnsavedChanges).toBe(false);
+      paint(painter);
+      expect(painter.session.hasUnsavedChanges).toBe(true);
+
+      painter.session.markSaved();
+      expect(painter.session.hasUnsavedChanges).toBe(false);
+
+      painter.session.selectIntersection(painter.intersection);
+      expect(
+        painter.session.fillSelection("island", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 0, g: 255, b: 0 },
+        }),
+      ).toBe(true);
+      expect(painter.session.hasUnsavedChanges).toBe(true);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(painter.session.hasUnsavedChanges).toBe(false);
+
+      expect(painter.session.redo()).toBe(true);
+      expect(painter.session.hasUnsavedChanges).toBe(true);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
 });

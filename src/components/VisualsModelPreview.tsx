@@ -430,6 +430,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [animationSpeed, setAnimationSpeed] = useState(1);
   const [isPainterEnabled, setIsPainterEnabled] = useState(false);
   const [paintColor, setPaintColor] = useState("#c43030");
+  const [paintRecentColors, setPaintRecentColors] = useState<string[]>(["#c43030"]);
   const [paintBrushRadius, setPaintBrushRadius] = useState(24);
   const [paintBrushOpacity, setPaintBrushOpacity] = useState(0.9);
   const [paintBrushHardness, setPaintBrushHardness] = useState(0.8);
@@ -443,7 +444,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintExportStatus, setPaintExportStatus] = useState("");
   const [paintPackPath, setPaintPackPath] = useState<string>();
   const [isPaintExporting, setIsPaintExporting] = useState(false);
-  const [, setPaintHistoryVersion] = useState(0);
+  const [paintHistoryVersion, setPaintHistoryVersion] = useState(0);
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
@@ -454,6 +455,20 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
+  const paintHasUnsavedChanges = paintSessionRef.current?.hasUnsavedChanges ?? false;
+  void paintHistoryVersion;
+
+  const rememberPaintColor = (color: string) => {
+    const normalized = color.toLowerCase();
+    setPaintRecentColors((current) => [normalized, ...current.filter((value) => value !== normalized)].slice(0, 8));
+  };
+
+  const choosePaintColor = (color: string) => {
+    const normalized = color.toLowerCase();
+    setPaintColor(normalized);
+    rememberPaintColor(normalized);
+  };
+
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolActiveRef.current = isPaintSelectActive;
@@ -736,7 +751,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const sampled = projected ? session.sampleIntersection(projected.hit) : undefined;
         if (sampled) {
           const toHex = (value: number) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
-          setPaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
+          choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
           setIsPaintEyedropperActive(false);
         }
         return;
@@ -1432,6 +1447,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         }
 
         if (result.packPath) setPaintPackPath(result.packPath);
+        session.markSaved();
+        setPaintHistoryVersion((value) => value + 1);
         const warningSuffix = result.warnings?.length
           ? ` · ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`
           : "";
@@ -1508,11 +1525,26 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   <input
                     type="color"
                     value={paintColor}
-                    onChange={(event) => setPaintColor(event.target.value)}
+                    onChange={(event) => choosePaintColor(event.target.value)}
                     className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0"
                     aria-label="Paint color"
                   />
                 </label>
+                <div className="flex items-center gap-1" aria-label="Recent paint colors">
+                  {paintRecentColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => choosePaintColor(color)}
+                      className={`h-5 w-5 rounded-sm border ${
+                        paintColor === color ? "border-white" : "border-gray-600"
+                      }`}
+                      style={{ backgroundColor: color }}
+                      title={`Use recent color ${color}`}
+                      aria-label={`Use recent color ${color}`}
+                    />
+                  ))}
+                </div>
                 <button
                   type="button"
                   onClick={() =>
@@ -1659,6 +1691,33 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     </button>
                     <button
                       type="button"
+                      onClick={() => {
+                        if (paintSessionRef.current?.resetSelection("material")) {
+                          setPaintExportStatus("");
+                          setPaintHistoryVersion((value) => value + 1);
+                        }
+                      }}
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
+                      title="Restore the selected material UV footprint to its original BaseColour"
+                    >
+                      Reset material
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!paintSelection.hasUvIsland}
+                      onClick={() => {
+                        if (paintSessionRef.current?.resetSelection("island")) {
+                          setPaintExportStatus("");
+                          setPaintHistoryVersion((value) => value + 1);
+                        }
+                      }}
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Restore only the selected UV island to its original BaseColour"
+                    >
+                      Reset island
+                    </button>
+                    <button
+                      type="button"
                       onClick={clearPaintSelection}
                       className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
                       title="Clear material and UV-island selection"
@@ -1699,7 +1758,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   }}
                   className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Reset
+                  Reset all
                 </button>
                 <button
                   type="button"
@@ -1727,6 +1786,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     Save As…
                   </button>
                 )}
+                {paintPackPath ? (
+                  <span
+                    className={paintHasUnsavedChanges ? "font-medium text-amber-300" : "font-medium text-emerald-300"}
+                    title={paintHasUnsavedChanges ? "The painted mod has unsaved changes" : "The painted mod matches the last successful save"}
+                  >
+                    {paintHasUnsavedChanges ? "Modified" : "Saved"}
+                  </span>
+                ) : paintHasUnsavedChanges ? (
+                  <span className="font-medium text-amber-300" title="Paint changes have not been saved to a mod yet">
+                    Modified
+                  </span>
+                ) : null}
                 {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
                 {paintExportStatus && <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>{paintExportStatus}</span>}
               </>
