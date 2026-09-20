@@ -55,12 +55,22 @@ type UnitPainterSelection = {
   islandId?: number;
 };
 
-type StrokeChange = {
+type SparseStrokeChange = {
+  kind: "sparse";
   target: PaintableTexture;
   before: Map<number, number>;
   after: Map<number, number>;
 };
 
+type PackedStrokeChange = {
+  kind: "packed";
+  target: PaintableTexture;
+  byteIndices: Uint32Array;
+  before: Uint32Array;
+  after: Uint32Array;
+};
+
+type StrokeChange = SparseStrokeChange | PackedStrokeChange;
 type Stroke = StrokeChange[];
 
 type UvTriangle = {
@@ -717,10 +727,10 @@ export class UnitPainterSession {
         : this.getMaterialMask(selection.target, selection.mesh.geometry, selection.materialIndex);
     if (!mask) return false;
 
-    this.beginStroke();
-    const before = new Map<number, number>();
-    this.currentStroke.set(selection.target, before);
-    let changed = false;
+    if (this.isStrokeOpen) this.endStroke();
+    const byteIndices: number[] = [];
+    const beforeValues: number[] = [];
+    const afterValues: number[] = [];
     const fillOpacity = clamp01(settings.opacity);
 
     for (let localY = 0; localY < mask.height; localY += 1) {
@@ -730,14 +740,25 @@ export class UnitPainterSession {
         const pixelY = mask.minY + localY;
         const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
         const currentValue = packPixel(selection.target.data, byteIndex);
-        before.set(byteIndex, currentValue);
         blendPixelFromStrokeStart(selection.target, byteIndex, currentValue, settings, fillOpacity);
-        if (packPixel(selection.target.data, byteIndex) !== currentValue) changed = true;
+        const nextValue = packPixel(selection.target.data, byteIndex);
+        if (nextValue === currentValue) continue;
+        byteIndices.push(byteIndex);
+        beforeValues.push(currentValue);
+        afterValues.push(nextValue);
       }
     }
 
-    if (changed) selection.target.editable.needsUpdate = true;
-    return this.endStroke();
+    if (byteIndices.length === 0) return false;
+    selection.target.editable.needsUpdate = true;
+    this.pushHistory([{
+      kind: "packed",
+      target: selection.target,
+      byteIndices: Uint32Array.from(byteIndices),
+      before: Uint32Array.from(beforeValues),
+      after: Uint32Array.from(afterValues),
+    }]);
+    return true;
   }
 
   endStroke() {
@@ -754,15 +775,13 @@ export class UnitPainterSession {
         compactBefore.set(byteIndex, oldValue);
         after.set(byteIndex, newValue);
       }
-      if (after.size > 0) stroke.push({ target, before: compactBefore, after });
+      if (after.size > 0) stroke.push({ kind: "sparse", target, before: compactBefore, after });
     }
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
 
     if (stroke.length === 0) return false;
-    this.history.push(stroke);
-    if (this.history.length > MAX_HISTORY_STROKES) this.history.shift();
-    this.redoHistory.length = 0;
+    this.pushHistory(stroke);
     return true;
   }
 
@@ -932,10 +951,23 @@ export class UnitPainterSession {
     return this.getUvMask(target, geometry, materialIndex, islandId);
   }
 
+  private pushHistory(stroke: Stroke) {
+    this.history.push(stroke);
+    if (this.history.length > MAX_HISTORY_STROKES) this.history.shift();
+    this.redoHistory.length = 0;
+  }
+
   private applyStroke(stroke: Stroke, side: "before" | "after") {
     for (const change of stroke) {
-      for (const [byteIndex, value] of change[side]) {
-        unpackPixel(value, change.target.data, byteIndex);
+      if (change.kind === "sparse") {
+        for (const [byteIndex, value] of change[side]) {
+          unpackPixel(value, change.target.data, byteIndex);
+        }
+      } else {
+        const values = change[side];
+        for (let index = 0; index < change.byteIndices.length; index += 1) {
+          unpackPixel(values[index], change.target.data, change.byteIndices[index]);
+        }
       }
       change.target.editable.needsUpdate = true;
     }
