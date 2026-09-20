@@ -34,12 +34,6 @@ export interface VisualsModelPreviewTimingReport {
   ktx2: VisualsModelPreviewKtx2Timing;
 }
 
-export interface VisualsModelPreviewTextureSource {
-  sourceVirtualPath: string;
-  generatedFileName: string;
-  channel: string;
-}
-
 export interface VisualsModelPreviewExportResult {
   success: boolean;
   previewId?: string;
@@ -47,7 +41,6 @@ export interface VisualsModelPreviewExportResult {
   warnings?: string[];
   error?: string;
   timings?: VisualsModelPreviewMainTiming;
-  textureSources?: VisualsModelPreviewTextureSource[];
 }
 
 export interface VisualsModelPreviewBatchItem {
