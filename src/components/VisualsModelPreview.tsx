@@ -1532,11 +1532,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setPaintExportStatus(mode === "save" ? "Saving painted mod…" : "Preparing painted mod…");
       try {
         const textures = await session.exportModifiedTextures();
-        if (textures.length === 0 && !targetPackPath) {
+        const projectState = session.exportProjectState();
+        if (
+          textures.length === 0
+          && !targetPackPath
+          && !paintPackPath
+          && !session.hasUnsavedChanges
+        ) {
           setPaintExportStatus("Nothing has been painted yet.");
           return;
         }
-        const projectState = session.exportProjectState();
         const result = await exportUnitPainterTextures(
           assetPath,
           effectiveEnabledMods,
