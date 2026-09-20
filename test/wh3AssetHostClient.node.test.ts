@@ -338,7 +338,9 @@ describe("WH3AssetHostClient", () => {
         textures: [
           {
             sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-            pngPath: "painted\\input\\body.png",
+            rgbaPath: "painted\\input\\body.rgba",
+            width: 1024,
+            height: 1024,
           },
         ],
         variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 2 }],
@@ -354,7 +356,9 @@ describe("WH3AssetHostClient", () => {
       textures: [
         {
           sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-          pngPath: "painted\\input\\body.png",
+          rgbaPath: "painted\\input\\body.rgba",
+          width: 1024,
+          height: 1024,
         },
       ],
       variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 2 }],
