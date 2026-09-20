@@ -511,6 +511,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const lastPaintPoint = new THREE.Vector2();
+    let hasLastPaintPoint = false;
     let isPainting = false;
     let activePointerId: number | undefined;
 
@@ -531,24 +533,81 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }px)`;
     };
 
-    const paintAtPointer = (event: PointerEvent) => {
+    /**
+     * A single UV-space stamp cannot cross a UV seam. Approximate a screen-space projection brush
+     * with a center ray plus a small hexagonal ring. Each ray hits only the front-most visible
+     * surface, and the overlapping UV stamps can therefore cross seams, mesh/material boundaries,
+     * and even separate BaseColor textures without painting through the model.
+     */
+    const paintProjectedBrush = (clientX: number, clientY: number) => {
       const root = paintRootRef.current;
       const session = paintSessionRef.current;
       if (!root || !session) return;
+
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.set(
-        ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
-        -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
-      );
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObject(root, true)[0];
-      if (!hit) return;
-      session.paintIntersection(hit, brushSettingsRef.current, camera, Math.max(rect.height, 1));
+      const settings = brushSettingsRef.current;
+      const brushRadius = Math.max(1, settings.radiusPx);
+      const viewportHeight = Math.max(rect.height, 1);
+      const samples: ReadonlyArray<readonly [number, number]> =
+        brushRadius <= 8
+          ? [[0, 0]]
+          : [
+              [0, 0],
+              [0.46, 0],
+              [0.23, 0.398],
+              [-0.23, 0.398],
+              [-0.46, 0],
+              [-0.23, -0.398],
+              [0.23, -0.398],
+            ];
+      const stampRadius = brushRadius <= 8 ? brushRadius : brushRadius * 0.54;
+
+      for (const [offsetX, offsetY] of samples) {
+        const sampleX = clientX + offsetX * brushRadius;
+        const sampleY = clientY + offsetY * brushRadius;
+        const localX = sampleX - rect.left;
+        const localY = sampleY - rect.top;
+        if (localX < 0 || localY < 0 || localX > rect.width || localY > rect.height) continue;
+
+        pointer.set(
+          (localX / Math.max(rect.width, 1)) * 2 - 1,
+          -(localY / viewportHeight) * 2 + 1,
+        );
+        raycaster.setFromCamera(pointer, camera);
+        const hit = raycaster.intersectObject(root, true)[0];
+        if (!hit) continue;
+        session.paintIntersection(hit, settings, camera, viewportHeight, stampRadius);
+      }
+    };
+
+    const paintToPointer = (event: PointerEvent) => {
+      const nextX = event.clientX;
+      const nextY = event.clientY;
+      if (!hasLastPaintPoint) {
+        paintProjectedBrush(nextX, nextY);
+        lastPaintPoint.set(nextX, nextY);
+        hasLastPaintPoint = true;
+        return;
+      }
+
+      const deltaX = nextX - lastPaintPoint.x;
+      const deltaY = nextY - lastPaintPoint.y;
+      const distance = Math.hypot(deltaX, deltaY);
+      const spacing = Math.max(2, brushSettingsRef.current.radiusPx * 0.35);
+      const steps = Math.max(1, Math.ceil(distance / spacing));
+      const startX = lastPaintPoint.x;
+      const startY = lastPaintPoint.y;
+      for (let step = 1; step <= steps; step += 1) {
+        const amount = step / steps;
+        paintProjectedBrush(startX + deltaX * amount, startY + deltaY * amount);
+      }
+      lastPaintPoint.set(nextX, nextY);
     };
 
     const finishPaintStroke = (event?: PointerEvent) => {
       if (!isPainting) return;
       isPainting = false;
+      hasLastPaintPoint = false;
       controls.enabled = true;
       if (paintSessionRef.current?.endStroke()) setPaintHistoryVersion((value) => value + 1);
       if (
@@ -567,18 +626,19 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       event.preventDefault();
       event.stopImmediatePropagation();
       isPainting = true;
+      hasLastPaintPoint = false;
       activePointerId = event.pointerId;
       controls.enabled = false;
       renderer.domElement.setPointerCapture(event.pointerId);
       paintSessionRef.current.beginStroke();
-      paintAtPointer(event);
+      paintToPointer(event);
     };
     const onPointerMove = (event: PointerEvent) => {
       updateBrushCursor(event);
       if (!isPainting || event.pointerId !== activePointerId) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      paintAtPointer(event);
+      paintToPointer(event);
     };
     const onPointerUp = (event: PointerEvent) => {
       if (!isPainting || event.pointerId !== activePointerId) return;
