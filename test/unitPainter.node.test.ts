@@ -3,8 +3,10 @@ import * as THREE from "three";
 
 import {
   createUnitPainterSession,
+  getUnitPainterBrushSpacing,
   mirrorPointAcrossObjectLocalX,
   mirrorRayAcrossObjectLocalX,
+  sampleUnitPainterStrokeSegment,
   type UnitPainterBrushSettings,
 } from "../src/visuals/unitPainter";
 
@@ -473,6 +475,68 @@ describe("unit painter", () => {
       painter.geometry.dispose();
       painter.material.dispose();
     }
+  });
+
+
+  it("restores painted pixels toward the original BaseColour and keeps undo intact", () => {
+    const painter = makePainter(makeTexture({ x: 14, y: 8, r: 40, g: 80, b: 120 }));
+    try {
+      paint(painter, { mode: "paint", color: { r: 240, g: 20, b: 10 } });
+      expect(getPixel(painter.material, 14, 8)).toEqual([240, 20, 10, 255]);
+
+      paint(painter, { mode: "restore", opacity: 0.5 });
+      expect(getPixel(painter.material, 14, 8)).toEqual([140, 50, 65, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([240, 20, 10, 255]);
+
+      paint(painter, { mode: "restore", opacity: 1 });
+      expect(getPixel(painter.material, 14, 8)).toEqual([40, 80, 120, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("keeps brush stamp spacing uniform across irregular pointer-event segments", () => {
+    const spacing = getUnitPainterBrushSpacing(20);
+    expect(spacing).toBe(7);
+
+    let x = 0;
+    let carried = 0;
+    const samples: number[] = [];
+    for (const nextX of [3, 17, 19, 44, 70]) {
+      const result = sampleUnitPainterStrokeSegment(x, 0, nextX, 0, spacing, carried);
+      samples.push(...result.samples.map((sample) => sample.x));
+      carried = result.distanceSinceLastStamp;
+      x = nextX;
+    }
+
+    expect(samples).toHaveLength(10);
+    samples.forEach((sample, index) => expect(sample).toBeCloseTo((index + 1) * 7, 6));
+    expect(carried).toBeCloseTo(0, 6);
+  });
+
+  it("produces the same straight-line stamp positions regardless of pointer-event frequency", () => {
+    const spacing = 8;
+    const collect = (events: number[]) => {
+      let previous = 0;
+      let carried = 0;
+      const samples: number[] = [];
+      for (const next of events) {
+        const result = sampleUnitPainterStrokeSegment(previous, 0, next, 0, spacing, carried);
+        samples.push(...result.samples.map((sample) => sample.x));
+        carried = result.distanceSinceLastStamp;
+        previous = next;
+      }
+      return { samples, carried };
+    };
+
+    const sparse = collect([64]);
+    const noisy = collect([1, 7, 9, 14, 21, 22, 38, 41, 63, 64]);
+    expect(noisy.samples).toEqual(sparse.samples);
+    expect(noisy.carried).toBeCloseTo(sparse.carried, 6);
   });
 
 });

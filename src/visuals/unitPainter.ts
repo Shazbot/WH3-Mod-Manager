@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export type UnitPainterBrushMode = "recolor" | "paint";
+export type UnitPainterBrushMode = "recolor" | "paint" | "restore";
 export type UnitPainterSelectionScope = "all" | "material" | "island";
 
 export type UnitPainterSelectionInfo = {
@@ -137,6 +137,49 @@ const MIN_BRUSH_RADIUS_TEXELS = 1;
 // million-pixel CPU stamp. GPU projection can remove this cap later; keep interaction responsive now.
 const MAX_BRUSH_RADIUS_TEXELS = 192;
 const MAX_BRUSH_TEXTURE_FRACTION = 0.15;
+const BRUSH_SPACING_RATIO = 0.35;
+
+export const getUnitPainterBrushSpacing = (radiusPx: number) =>
+  Math.max(2, Math.max(1, radiusPx) * BRUSH_SPACING_RATIO);
+
+export type UnitPainterStrokeSample = { x: number; y: number };
+
+export const sampleUnitPainterStrokeSegment = (
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  spacing: number,
+  distanceSinceLastStamp: number,
+): { samples: UnitPainterStrokeSample[]; distanceSinceLastStamp: number } => {
+  const safeSpacing = Math.max(0.001, spacing);
+  const deltaX = endX - startX;
+  const deltaY = endY - startY;
+  const distance = Math.hypot(deltaX, deltaY);
+  if (distance <= Number.EPSILON) {
+    return { samples: [], distanceSinceLastStamp: Math.max(0, distanceSinceLastStamp) };
+  }
+
+  let carried = Math.max(0, distanceSinceLastStamp) % safeSpacing;
+  let travelled = 0;
+  let distanceToNext = safeSpacing - carried;
+  const samples: UnitPainterStrokeSample[] = [];
+
+  while (travelled + distanceToNext <= distance + 1e-6) {
+    travelled += distanceToNext;
+    const amount = Math.min(1, travelled / distance);
+    samples.push({
+      x: startX + deltaX * amount,
+      y: startY + deltaY * amount,
+    });
+    carried = 0;
+    distanceToNext = safeSpacing;
+  }
+
+  carried += Math.max(0, distance - travelled);
+  if (Math.abs(carried - safeSpacing) <= 1e-6) carried = 0;
+  return { samples, distanceSinceLastStamp: carried };
+};
 
 const sanitizeExportFileName = (value: string) => {
   const trimmed = value.replace(/[?#].*$/, "").split(/[\\/]/).pop() || "painted_texture";
@@ -523,7 +566,11 @@ const blendPixelFromStrokeStart = (
   let targetR = settings.color.r;
   let targetG = settings.color.g;
   let targetB = settings.color.b;
-  if (settings.mode === "recolor") {
+  if (settings.mode === "restore") {
+    targetR = target.originalData[byteIndex];
+    targetG = target.originalData[byteIndex + 1];
+    targetB = target.originalData[byteIndex + 2];
+  } else if (settings.mode === "recolor") {
     const originalValue = Math.max(
       target.originalData[byteIndex],
       target.originalData[byteIndex + 1],

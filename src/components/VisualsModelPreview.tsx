@@ -21,7 +21,9 @@ import { selectDefaultAnimation } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
   createUnitPainterSession,
+  getUnitPainterBrushSpacing,
   mirrorRayAcrossObjectLocalX,
+  sampleUnitPainterStrokeSegment,
   type UnitPainterBrushMode,
   type UnitPainterSelectionInfo,
   type UnitPainterSelectionScope,
@@ -610,6 +612,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const pointer = new THREE.Vector2();
     const lastPaintPoint = new THREE.Vector2();
     let hasLastPaintPoint = false;
+    let distanceSinceLastPaintStamp = 0;
     let isPainting = false;
     let activePointerId: number | undefined;
 
@@ -630,7 +633,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         ? "#67e8f9"
         : selectToolActiveRef.current
           ? "#facc15"
-          : "rgba(255,255,255,0.9)";
+          : brushSettingsRef.current.mode === "restore"
+            ? "#f59e0b"
+            : "rgba(255,255,255,0.9)";
       cursor.style.transform = `translate(${event.clientX - rect.left - radius}px, ${
         event.clientY - rect.top - radius
       }px)`;
@@ -713,34 +718,42 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       );
     };
 
-    const paintToPointer = (event: PointerEvent) => {
+    const paintToPointer = (event: PointerEvent, flushTail = false) => {
       const nextX = event.clientX;
       const nextY = event.clientY;
       if (!hasLastPaintPoint) {
         paintProjectedBrush(nextX, nextY);
         lastPaintPoint.set(nextX, nextY);
         hasLastPaintPoint = true;
+        distanceSinceLastPaintStamp = 0;
         return;
       }
 
-      const deltaX = nextX - lastPaintPoint.x;
-      const deltaY = nextY - lastPaintPoint.y;
-      const distance = Math.hypot(deltaX, deltaY);
-      const spacing = Math.max(2, brushSettingsRef.current.radiusPx * 0.35);
-      const steps = Math.max(1, Math.ceil(distance / spacing));
-      const startX = lastPaintPoint.x;
-      const startY = lastPaintPoint.y;
-      for (let step = 1; step <= steps; step += 1) {
-        const amount = step / steps;
-        paintProjectedBrush(startX + deltaX * amount, startY + deltaY * amount);
-      }
+      const sampled = sampleUnitPainterStrokeSegment(
+        lastPaintPoint.x,
+        lastPaintPoint.y,
+        nextX,
+        nextY,
+        getUnitPainterBrushSpacing(brushSettingsRef.current.radiusPx),
+        distanceSinceLastPaintStamp,
+      );
+      for (const sample of sampled.samples) paintProjectedBrush(sample.x, sample.y);
+      distanceSinceLastPaintStamp = sampled.distanceSinceLastStamp;
       lastPaintPoint.set(nextX, nextY);
+
+      // A normal spaced brush deliberately leaves a short tail. Stamp the actual release
+      // position once so quick taps and short drags still end exactly under the pointer.
+      if (flushTail && distanceSinceLastPaintStamp > 0.5) {
+        paintProjectedBrush(nextX, nextY);
+        distanceSinceLastPaintStamp = 0;
+      }
     };
 
     const finishPaintStroke = (event?: PointerEvent) => {
       if (!isPainting) return;
       isPainting = false;
       hasLastPaintPoint = false;
+      distanceSinceLastPaintStamp = 0;
       controls.enabled = true;
       if (paintSessionRef.current?.endStroke()) setPaintHistoryVersion((value) => value + 1);
       if (
@@ -783,6 +796,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       event.stopImmediatePropagation();
       isPainting = true;
       hasLastPaintPoint = false;
+      distanceSinceLastPaintStamp = 0;
       activePointerId = event.pointerId;
       controls.enabled = false;
       renderer.domElement.setPointerCapture(event.pointerId);
@@ -800,6 +814,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (!isPainting || event.pointerId !== activePointerId) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      paintToPointer(event, true);
       finishPaintStroke(event);
     };
     const onPointerCancel = (event: PointerEvent) => finishPaintStroke(event);
@@ -1625,8 +1640,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   <input
                     type="color"
                     value={paintColor}
+                    disabled={paintBrushMode === "restore"}
                     onChange={(event) => choosePaintColor(event.target.value)}
-                    className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0"
+                    className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0 disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label="Paint color"
                   />
                 </label>
@@ -1635,8 +1651,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     <button
                       key={color}
                       type="button"
+                      disabled={paintBrushMode === "restore"}
                       onClick={() => choosePaintColor(color)}
-                      className={`h-5 w-5 rounded-sm border ${
+                      className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
                         paintColor === color ? "border-white" : "border-gray-600"
                       }`}
                       style={{ backgroundColor: color }}
@@ -1724,10 +1741,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   value={paintBrushMode}
                   onChange={(event) => setPaintBrushMode(event.target.value as UnitPainterBrushMode)}
                   aria-label="Brush mode"
+                  title={paintBrushMode === "restore" ? "Restore the original BaseColour" : "Brush mode"}
                   className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                 >
                   <option value="recolor">Recolor</option>
                   <option value="paint">Paint</option>
+                  <option value="restore">Restore</option>
                 </select>
                 <button
                   type="button"
