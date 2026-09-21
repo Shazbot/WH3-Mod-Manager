@@ -7,6 +7,7 @@ import type { VariantMeshSelection } from "./variantMesh";
 
 export const UNIT_PAINTER_PROJECT_MANIFEST_PATH = "whmm_unit_painter\\project.json";
 export const UNIT_PAINTER_PROJECT_FORMAT_VERSION = 2;
+export const UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY = 64;
 
 export type UnitPainterProjectTexture = {
   sourceVirtualPath: string;
@@ -26,6 +27,8 @@ export type UnitPainterProjectLayerInput = {
 export type UnitPainterProjectStateInput = {
   activeLayerId: string;
   layers: UnitPainterProjectLayerInput[];
+  usedColorHistory?: readonly string[];
+  selectedColor?: string;
 };
 
 type UnitPainterProjectStoredTexture = {
@@ -48,6 +51,8 @@ export type UnitPainterProjectManifestV2 = {
   sourceVariantMeshDefinition: string;
   variantSelections: VariantMeshSelection[];
   activeLayerId: string;
+  usedColorHistory?: string[];
+  selectedColor?: string;
   layers: Array<{
     id: string;
     name: string;
@@ -156,6 +161,28 @@ export const buildUnitPainterPackFiles = async (
 
 
 const normalizeProjectSourcePath = (value: string) => normalizePackPath(value).replace(/^\\+/, "");
+const normalizeProjectColor = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : undefined;
+};
+
+const normalizeProjectColorHistory = (value: unknown): string[] | undefined => {
+  if (value == null) return undefined;
+  if (!Array.isArray(value)) throw new Error("The unit painter project contains an invalid used-color history.");
+  const colors: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const color = normalizeProjectColor(raw);
+    if (!color) throw new Error("The unit painter project contains an invalid used color.");
+    if (seen.has(color)) continue;
+    seen.add(color);
+    colors.push(color);
+    if (colors.length >= UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY) break;
+  }
+  return colors;
+};
+
 
 const normalizeVariantSelections = (variantSelections: readonly VariantMeshSelection[]) =>
   [...variantSelections]
@@ -246,11 +273,20 @@ export const buildUnitPainterProjectPackFiles = async (
     throw new Error("The unit painter project active layer does not exist.");
   }
 
+  const usedColorHistory = normalizeProjectColorHistory(project.usedColorHistory);
+  const selectedColor =
+    project.selectedColor == null ? undefined : normalizeProjectColor(project.selectedColor);
+  if (project.selectedColor != null && !selectedColor) {
+    throw new Error("The unit painter project contains an invalid selected color.");
+  }
+
   const manifest: UnitPainterProjectManifestV2 = {
     formatVersion: UNIT_PAINTER_PROJECT_FORMAT_VERSION,
     sourceVariantMeshDefinition: sourceVmd,
     variantSelections: normalizeVariantSelections(variantSelections),
     activeLayerId: project.activeLayerId,
+    ...(usedColorHistory ? { usedColorHistory } : {}),
+    ...(selectedColor ? { selectedColor } : {}),
     layers: storedLayers,
   };
   const manifestBuffer = Buffer.from(JSON.stringify(manifest, null, 2), "utf8");
@@ -412,10 +448,19 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     throw new Error("The unit painter project active layer is invalid.");
   }
 
+  const usedColorHistory = normalizeProjectColorHistory(candidate.usedColorHistory);
+  const selectedColor =
+    candidate.selectedColor == null ? undefined : normalizeProjectColor(candidate.selectedColor);
+  if (candidate.selectedColor != null && !selectedColor) {
+    throw new Error("The unit painter project contains an invalid selected color.");
+  }
+
   return {
     formatVersion: UNIT_PAINTER_PROJECT_FORMAT_VERSION,
     ...common,
     activeLayerId,
+    ...(usedColorHistory ? { usedColorHistory } : {}),
+    ...(selectedColor ? { selectedColor } : {}),
     layers,
   };
 };
