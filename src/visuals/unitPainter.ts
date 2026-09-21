@@ -1076,7 +1076,8 @@ export class UnitPainterSession {
           const topAlpha =
             top.visible && topTile ? (topTile.data[localByteIndex + 3] / 255) * top.opacity : 0;
           const alpha = topAlpha + bottomAlpha * (1 - topAlpha);
-          if (alpha <= 0) continue;
+          const outputAlpha = Math.round(alpha * 255);
+          if (outputAlpha === 0) continue;
 
           const bottomWeight = bottomAlpha * (1 - topAlpha);
           const topWeight = topAlpha;
@@ -1092,7 +1093,7 @@ export class UnitPainterSession {
             (((topTile?.data[localByteIndex + 2] ?? 0) * topWeight)
               + ((bottomTile?.data[localByteIndex + 2] ?? 0) * bottomWeight)) / alpha,
           );
-          outputTile.data[localByteIndex + 3] = Math.round(alpha * 255);
+          outputTile.data[localByteIndex + 3] = outputAlpha;
           outputTile.nonZeroPixels += 1;
         }
 
