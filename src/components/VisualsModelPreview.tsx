@@ -2953,35 +2953,39 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                             } selected`
                           : `${paintSelection.objectName} · ${paintSelection.materialName}`}
                     </span>
-                    <span className="text-gray-500">Split</span>
-                    {([
-                      ["vertical", "V", "Vertical split"],
-                      ["horizontal", "H", "Horizontal split"],
-                      ["slash", "/", "Diagonal / split"],
-                      ["backslash", "\\", "Diagonal \\ split"],
-                      ["x", "X", "Both diagonals"],
-                    ] as Array<[UnitPainterSelectionSplitKind, string, string]>).map(([kind, label, title]) => (
-                      <button
-                        key={kind}
-                        type="button"
-                        onClick={() => {
-                          const session = paintSessionRef.current;
-                          if (!session || paintScope === "all") return;
-                          if (session.splitSelection(paintScope, kind)) {
-                            clearPaintSelectionVisual();
-                            setPaintHistoryVersion((value) => value + 1);
-                          }
-                        }}
-                        className={`rounded border px-1.5 py-1 ${
-                          paintSelectionPartition?.kind === kind
-                            ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
-                            : "border-gray-600 bg-gray-800 hover:border-yellow-400"
-                        }`}
-                        title={title}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                    {paintScope !== "all" && (
+                      <>
+                        <span className="text-gray-500">Split</span>
+                        {([
+                          ["vertical", "V", "Vertical split"],
+                          ["horizontal", "H", "Horizontal split"],
+                          ["slash", "/", "Diagonal / split"],
+                          ["backslash", "\\", "Diagonal \\ split"],
+                          ["x", "X", "Both diagonals"],
+                        ] as Array<[UnitPainterSelectionSplitKind, string, string]>).map(([kind, label, title]) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            onClick={() => {
+                              const session = paintSessionRef.current;
+                              if (!session) return;
+                              if (session.splitSelection(paintScope, kind)) {
+                                clearPaintSelectionVisual();
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className={`rounded border px-1.5 py-1 ${
+                              paintSelectionPartition?.kind === kind
+                                ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                                : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                            }`}
+                            title={title}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </>
+                    )}
                     {paintSelectionPartition && (
                       <>
                         <span className="text-gray-500">Region</span>
