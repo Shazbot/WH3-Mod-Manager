@@ -930,6 +930,55 @@ describe("unit painter", () => {
     }
   });
 
+  it("reports submitted GPU update ranges for the completed stroke", () => {
+    const painter = makePainter();
+    try {
+      const internal = painter.session as unknown as {
+        targetsByEditableTexture: Map<
+          THREE.Texture,
+          {
+            editable: THREE.DataTexture;
+            fullUploadPending: boolean;
+          }
+        >;
+      };
+      const target = [...internal.targetsByEditableTexture.values()][0];
+      target.fullUploadPending = false;
+      target.editable.clearUpdateRanges();
+
+      painter.session.beginStroke();
+      expect(
+        painter.session.paintIntersection(
+          painter.intersection,
+          {
+            radiusPx: 12,
+            opacity: 1,
+            hardness: 1,
+            mode: "paint",
+            color: { r: 230, g: 40, b: 20 },
+          },
+          painter.camera,
+          1000,
+          12,
+        ),
+      ).toBe(true);
+      expect(painter.session.endStroke()).toBe(true);
+
+      expect(painter.session.lastStrokeGpuProfile.updateRanges).toBeGreaterThan(0);
+      expect(painter.session.lastStrokeGpuProfile.updateBytes).toBeGreaterThan(0);
+      expect(painter.session.lastStrokeGpuProfile.updateRanges).toBe(
+        target.editable.updateRanges.length,
+      );
+      expect(painter.session.lastStrokeGpuProfile.updateBytes).toBe(
+        target.editable.updateRanges.reduce((total, range) => total + range.count, 0),
+      );
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("keeps live brush GPU update ranges within individual texture rows", () => {
     const painter = makePainter();
     try {
