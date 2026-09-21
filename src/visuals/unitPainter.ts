@@ -1081,6 +1081,7 @@ export class UnitPainterSession {
     WeakMap<THREE.BufferGeometry, Map<string, CachedUvMask>>
   >();
   private readonly uvCoverageMasksByTarget = new Map<PaintableTexture, Map<string, CachedUvMask>>();
+  private readonly selectionMaskCache = new Map<PaintableTexture, Map<string, UvIslandMask>>();
   private readonly uvMaskCacheLru = new Map<
     number,
     { owner: Map<string, CachedUvMask>; key: string; mask: UvIslandMask }
@@ -1284,22 +1285,31 @@ export class UnitPainterSession {
     if (this.selectionMode !== mode) {
       this.selections = [];
       this.selectionMode = mode;
+      this.selectionMaskCache.clear();
       operation = "replace";
     }
 
     const next = { ...selection, key };
     const existingIndex = this.selections.findIndex((candidate) => candidate.key === key);
 
+    let changed = false;
     if (operation === "replace") {
+      changed = this.selections.length !== 1 || this.selections[0]?.key !== key;
       this.selections = [next];
     } else if (operation === "add") {
-      if (existingIndex < 0) this.selections = [...this.selections, next];
+      if (existingIndex < 0) {
+        this.selections = [...this.selections, next];
+        changed = true;
+      }
     } else if (existingIndex >= 0) {
       this.selections = this.selections.filter((_, index) => index !== existingIndex);
+      changed = true;
     } else {
       this.selections = [...this.selections, next];
+      changed = true;
     }
 
+    if (changed) this.selectionMaskCache.clear();
     if (this.selections.length === 0) this.selectionMode = undefined;
     return true;
   }
@@ -2000,6 +2010,7 @@ export class UnitPainterSession {
   clearSelection() {
     this.selections = [];
     this.selectionMode = undefined;
+    this.selectionMaskCache.clear();
   }
 
   getIntersectionSurfaceHighlight(
@@ -2345,9 +2356,23 @@ export class UnitPainterSession {
     scope: Exclude<UnitPainterSelectionScope, "all">,
     paddingPx = 0,
   ) {
+    const relevantSelections = this.selections.filter((selection) => selection.target === target);
+    if (relevantSelections.length === 0) return undefined;
+
+    let cache = this.selectionMaskCache.get(target);
+    if (!cache) {
+      cache = new Map();
+      this.selectionMaskCache.set(target, cache);
+    }
+    const key = `${scope}:padding:${Math.max(0, Math.floor(paddingPx))}:${relevantSelections
+      .map((selection) => selection.key)
+      .sort()
+      .join("|")}`;
+    const cached = cache.get(key);
+    if (cached) return cached;
+
     const masks: UvIslandMask[] = [];
-    for (const selection of this.selections) {
-      if (selection.target !== target) continue;
+    for (const selection of relevantSelections) {
       const mask =
         scope === "island"
           ? selection.islandId == null
@@ -2367,7 +2392,9 @@ export class UnitPainterSession {
             );
       if (mask) masks.push(mask);
     }
-    return unionUvMasks(masks);
+    const combined = masks.length === 1 ? masks[0] : unionUvMasks(masks);
+    if (combined) cache.set(key, combined);
+    return combined;
   }
 
   fillSelection(
@@ -2758,6 +2785,7 @@ export class UnitPainterSession {
     this.currentStrokeCoverage.clear();
     this.uvMasksByTarget.clear();
     this.uvCoverageMasksByTarget.clear();
+    this.selectionMaskCache.clear();
     this.uvMaskCacheLru.clear();
     this.uvMaskCacheBytes = 0;
     this.selections = [];
