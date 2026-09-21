@@ -1072,10 +1072,16 @@ export class UnitPainterSession {
       const materials = Array.isArray(child.material) ? child.material : [child.material];
       materials.forEach((rawMaterial, materialIndex) => {
         const material = asPaintableMaterial(rawMaterial);
-        const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+        if (!material?.map) return;
+        const target = this.targetsByEditableTexture.get(material.map);
         if (!target) return;
         const surfaces = this.surfacesByTarget.get(target);
-        const surface = { mesh: child, material, geometry: child.geometry, materialIndex };
+        const surface: PaintableSurface = {
+          mesh: child,
+          material,
+          geometry: child.geometry,
+          materialIndex,
+        };
         if (surfaces) surfaces.push(surface);
         else this.surfacesByTarget.set(target, [surface]);
       });
