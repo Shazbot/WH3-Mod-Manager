@@ -8,6 +8,28 @@ export type UnitPainterSelectionInfo = {
   materialName: string;
   hasUvIsland: boolean;
   object: THREE.Mesh;
+  textureId: string;
+};
+
+export type UnitPainterTextureView = {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  /** Live flattened BaseColour data. Treat as read-only. */
+  data: Uint8Array;
+  /** x1,y1,x2,y2 in normalized transformed UV coordinates. */
+  uvSegments: Float32Array;
+  /** Current material/island selection in the same coordinate format. */
+  selectedUvSegments: Float32Array;
+};
+
+export type UnitPainterTexturePaintResult = {
+  changed: boolean;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 };
 
 export type UnitPainterSurfaceHighlight = {
@@ -71,8 +93,14 @@ type PaintableTexture = {
   height: number;
   sourceFileName: string;
   sourceVirtualPath?: string;
+  textureId: string;
   touchedLayerTiles: Set<number>;
   fullUploadPending: boolean;
+};
+
+type PaintableSurface = {
+  geometry: THREE.BufferGeometry;
+  materialIndex: number;
 };
 
 type LayerTile = {
@@ -840,6 +868,7 @@ export class UnitPainterSession {
   private readonly targetsByEditableTexture = new Map<THREE.Texture, PaintableTexture>();
   private readonly targetsBySourcePath = new Map<string, PaintableTexture>();
   private readonly restores: MaterialRestore[] = [];
+  private readonly surfacesByTarget = new Map<PaintableTexture, PaintableSurface[]>();
   private readonly history: Stroke[] = [];
   private readonly redoHistory: Stroke[] = [];
   private retainedHistoryBytes = 0;
@@ -902,6 +931,7 @@ export class UnitPainterSession {
               typeof original.userData.wh3SourceVirtualPath === "string"
                 ? original.userData.wh3SourceVirtualPath
                 : undefined,
+            textureId: `texture-${textureIndex}`,
             touchedLayerTiles: new Set(),
             fullUploadPending: true,
           };
@@ -920,6 +950,20 @@ export class UnitPainterSession {
         material.map = target.editable;
         material.needsUpdate = true;
       }
+    });
+
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((rawMaterial, materialIndex) => {
+        const material = asPaintableMaterial(rawMaterial);
+        const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+        if (!target) return;
+        const surfaces = this.surfacesByTarget.get(target);
+        const surface = { geometry: child.geometry, materialIndex };
+        if (surfaces) surfaces.push(surface);
+        else this.surfacesByTarget.set(target, [surface]);
+      });
     });
 
     const initialLayer = this.createEmptyLayer();
@@ -1169,6 +1213,122 @@ export class UnitPainterSession {
     this.savedStateId = this.currentStateId;
   }
 
+  get textureViews(): UnitPainterTextureView[] {
+    return [...this.targetsByEditableTexture.values()].map((target) => {
+      const uvSegments: number[] = [];
+      const seenEdges = new Set<string>();
+      target.editable.updateMatrix();
+
+      for (const surface of this.surfacesByTarget.get(target) ?? []) {
+        const uv = surface.geometry.getAttribute("uv");
+        if (!(uv instanceof THREE.BufferAttribute)) continue;
+        for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
+          const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
+          if (!indices) continue;
+          const points = indices.map((index) =>
+            new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+          );
+          for (const [firstIndex, secondIndex] of [[0, 1], [1, 2], [2, 0]] as const) {
+            const first = points[firstIndex];
+            const second = points[secondIndex];
+            const key = uvEdgeKey(first, second);
+            if (seenEdges.has(key)) continue;
+            seenEdges.add(key);
+            uvSegments.push(first.x, first.y, second.x, second.y);
+          }
+        }
+      }
+
+      const selectedUvSegments: number[] = [];
+      if (this.selection?.target === target) {
+        const geometry = this.selection.mesh.geometry;
+        const uv = geometry.getAttribute("uv");
+        if (uv instanceof THREE.BufferAttribute) {
+          const selectedFaces =
+            this.selection.islandId == null
+              ? getMaterialFaceIndices(geometry, this.selection.materialIndex)
+              : (this.getUvTopology(geometry, this.selection.materialIndex)?.islands.get(this.selection.islandId) ?? [])
+                  .map((triangle) => triangle.faceIndex);
+          const seenSelectedEdges = new Set<string>();
+          for (const faceIndex of selectedFaces) {
+            const indices = getTriangleVertexIndices(geometry, faceIndex);
+            if (!indices) continue;
+            const points = indices.map((index) =>
+              new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+            );
+            for (const [firstIndex, secondIndex] of [[0, 1], [1, 2], [2, 0]] as const) {
+              const first = points[firstIndex];
+              const second = points[secondIndex];
+              const key = uvEdgeKey(first, second);
+              if (seenSelectedEdges.has(key)) continue;
+              seenSelectedEdges.add(key);
+              selectedUvSegments.push(first.x, first.y, second.x, second.y);
+            }
+          }
+        }
+      }
+
+      return {
+        id: target.textureId,
+        label: target.sourceVirtualPath ?? target.sourceFileName,
+        width: target.width,
+        height: target.height,
+        data: target.data,
+        uvSegments: Float32Array.from(uvSegments),
+        selectedUvSegments: Float32Array.from(selectedUvSegments),
+      };
+    });
+  }
+
+  sampleTexturePoint(textureId: string, x: number, y: number) {
+    const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
+    if (!target) return undefined;
+    const pixelX = Math.max(0, Math.min(target.width - 1, Math.floor(x)));
+    const pixelY = Math.max(0, Math.min(target.height - 1, Math.floor(y)));
+    const byteIndex = (pixelY * target.width + pixelX) * 4;
+    return {
+      r: target.data[byteIndex],
+      g: target.data[byteIndex + 1],
+      b: target.data[byteIndex + 2],
+    };
+  }
+
+  paintTexturePoint(
+    textureId: string,
+    centerX: number,
+    centerY: number,
+    radiusTexels: number,
+    settings: UnitPainterBrushSettings,
+    scope: UnitPainterSelectionScope = "all",
+  ): UnitPainterTexturePaintResult | undefined {
+    if (!this.isStrokeOpen) return undefined;
+    const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
+    if (!target) return undefined;
+
+    let mask: UvIslandMask | undefined;
+    if (scope !== "all") {
+      const selection = this.selection;
+      if (!selection || selection.target !== target) return undefined;
+      mask =
+        scope === "island"
+          ? selection.islandId == null
+            ? undefined
+            : this.getUvMask(target, selection.mesh.geometry, selection.materialIndex, selection.islandId)
+          : this.getMaterialMask(target, selection.mesh.geometry, selection.materialIndex);
+      if (!mask) return undefined;
+    }
+
+    return this.paintTexturePointInternal(
+      target,
+      centerX,
+      centerY,
+      Math.max(MIN_BRUSH_RADIUS_TEXELS, radiusTexels),
+      settings,
+      mask,
+      false,
+    );
+  }
+
   selectIntersection(intersection: THREE.Intersection<THREE.Object3D>): UnitPainterSelectionInfo | undefined {
     if (!(intersection.object instanceof THREE.Mesh)) return undefined;
     const material = getIntersectionMaterial(intersection);
@@ -1187,6 +1347,7 @@ export class UnitPainterSession {
       materialName: material.name || `Material ${materialIndex + 1}`,
       hasUvIsland: islandId != null,
       object: mesh,
+      textureId: target.textureId,
     };
   }
 
@@ -1317,12 +1478,8 @@ export class UnitPainterSession {
     if (!this.isStrokeOpen || !intersection.uv || !(intersection.object instanceof THREE.Mesh)) return false;
     const material = getIntersectionMaterial(intersection);
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
-    const layer = this.paintLayers.find((candidate) => candidate.id === this.currentStrokeLayerId);
-    if (!target || !layer) return false;
+    if (!target || !this.matchesSelectionScope(intersection, scope)) return false;
 
-    if (!this.matchesSelectionScope(intersection, scope)) return false;
-
-    const layerData = this.getLayerTextureData(layer, target, true)!;
     const islandMask = this.getUvIslandMask(intersection, target);
     const uv = intersection.uv.clone();
     target.editable.transformUv(uv);
@@ -1333,8 +1490,30 @@ export class UnitPainterSession {
       camera,
       viewportHeight,
     );
-    const centerX = uv.x * target.width;
-    const centerY = uv.y * target.height;
+    return this.paintTexturePointInternal(
+      target,
+      uv.x * target.width,
+      uv.y * target.height,
+      radius,
+      settings,
+      islandMask,
+      true,
+    ).changed;
+  }
+
+  private paintTexturePointInternal(
+    target: PaintableTexture,
+    centerX: number,
+    centerY: number,
+    radius: number,
+    settings: UnitPainterBrushSettings,
+    mask: UvIslandMask | undefined,
+    useTextureWrapping: boolean,
+  ): UnitPainterTexturePaintResult {
+    const layer = this.paintLayers.find((candidate) => candidate.id === this.currentStrokeLayerId);
+    if (!layer) return { changed: false, minX: 0, minY: 0, maxX: -1, maxY: -1 };
+
+    const layerData = this.getLayerTextureData(layer, target, true)!;
     const minX = Math.floor(centerX - radius);
     const maxX = Math.ceil(centerX + radius);
     const minY = Math.floor(centerY - radius);
@@ -1353,16 +1532,23 @@ export class UnitPainterSession {
     let changed = false;
     let dirtyStart = Number.POSITIVE_INFINITY;
     let dirtyEnd = 0;
+    let changedMinX = target.width;
+    let changedMinY = target.height;
+    let changedMaxX = -1;
+    let changedMaxY = -1;
+
     for (let y = minY; y <= maxY; y += 1) {
       for (let x = minX; x <= maxX; x += 1) {
         const dx = (x + 0.5 - centerX) / radius;
         const dy = (y + 0.5 - centerY) / radius;
         const distance = Math.sqrt(dx * dx + dy * dy);
         if (distance > 1) continue;
+        if (!useTextureWrapping && (x < 0 || y < 0 || x >= target.width || y >= target.height)) continue;
 
-        const pixelX = wrapCoordinate(x, target.width, target.editable.wrapS);
-        const pixelY = wrapCoordinate(y, target.height, target.editable.wrapT);
-        if (islandMask && !maskContainsPixel(islandMask, pixelX, pixelY)) continue;
+        const pixelX = useTextureWrapping ? wrapCoordinate(x, target.width, target.editable.wrapS) : x;
+        const pixelY = useTextureWrapping ? wrapCoordinate(y, target.height, target.editable.wrapT) : y;
+        if (mask && !maskContainsPixel(mask, pixelX, pixelY)) continue;
+
         const byteIndex = (pixelY * target.width + pixelX) * 4;
         const currentLayerValue = getLayerPixel(layerData, target, byteIndex);
         const strokeStartValue = before.get(byteIndex) ?? currentLayerValue;
@@ -1373,20 +1559,31 @@ export class UnitPainterSession {
         const nextCoverage = Math.max(previousCoverage, falloff * clamp01(settings.opacity));
         if (nextCoverage <= previousCoverage) continue;
         coverage.set(byteIndex, nextCoverage);
+
         const nextLayerValue =
           blendLayerPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
-        if (nextLayerValue !== currentLayerValue) {
-          setLayerPixel(layerData, target, byteIndex, nextLayerValue);
-          this.recomposeTargetPixel(target, byteIndex);
-          dirtyStart = Math.min(dirtyStart, byteIndex);
-          dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
-          changed = true;
-        }
+        if (nextLayerValue === currentLayerValue) continue;
+
+        setLayerPixel(layerData, target, byteIndex, nextLayerValue);
+        this.recomposeTargetPixel(target, byteIndex);
+        dirtyStart = Math.min(dirtyStart, byteIndex);
+        dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
+        changedMinX = Math.min(changedMinX, pixelX);
+        changedMinY = Math.min(changedMinY, pixelY);
+        changedMaxX = Math.max(changedMaxX, pixelX);
+        changedMaxY = Math.max(changedMaxY, pixelY);
+        changed = true;
       }
     }
 
     if (changed) this.markTargetRangeDirty(target, dirtyStart, dirtyEnd);
-    return changed;
+    return {
+      changed,
+      minX: changed ? changedMinX : 0,
+      minY: changed ? changedMinY : 0,
+      maxX: changedMaxX,
+      maxY: changedMaxY,
+    };
   }
 
   sampleIntersection(intersection: THREE.Intersection<THREE.Object3D>) {
@@ -1777,6 +1974,7 @@ export class UnitPainterSession {
     this.restores.length = 0;
     this.targetsByEditableTexture.clear();
     this.targetsBySourcePath.clear();
+    this.surfacesByTarget.clear();
     this.paintLayers.length = 0;
     this.activePaintLayerId = "";
     this.history.length = 0;
