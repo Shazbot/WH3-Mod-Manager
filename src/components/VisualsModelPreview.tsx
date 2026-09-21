@@ -1137,7 +1137,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const gpu = session.lastStrokeGpuProfile;
         const durationMs = performance.now() - profile.startedAt;
         const round = (value: number) => Number(value.toFixed(2));
-        console.info("[UnitPainterProfile] 3D stroke", {
+        console.log("[UnitPainterProfile] 3D stroke", {
           changed,
           viewMode: paintViewModeRef.current,
           symmetry: symmetryEnabledRef.current,
