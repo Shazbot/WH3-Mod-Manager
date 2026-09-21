@@ -226,7 +226,7 @@ const LAYER_TILE_PIXELS = LAYER_TILE_SIZE * LAYER_TILE_SIZE;
 const LAYER_TILE_BYTES = LAYER_TILE_PIXELS * 4;
 const MASK_TILE_SIZE = 64;
 const MASK_TILE_PIXELS = MASK_TILE_SIZE * MASK_TILE_SIZE;
-const MASK_TILE_BYTES = MASK_TILE_PIXELS;
+const MASK_TILE_BYTES = Math.ceil(MASK_TILE_PIXELS / 8);
 const MAX_UV_MASK_CACHE_BYTES = 32 * 1024 * 1024;
 const MIN_BRUSH_RADIUS_TEXELS = 1;
 // A pathological UV/world-area ratio can otherwise turn a small screen brush into a
@@ -708,7 +708,9 @@ const setMaskPixel = (mask: UvIslandMask, x: number, y: number) => {
     mask.tiles.set(tileKey, tile);
     mask.byteSize += tile.byteLength;
   }
-  tile[localIndex] = 1;
+  const byteIndex = localIndex >> 3;
+  const bit = 1 << (localIndex & 7);
+  tile[byteIndex] |= bit;
 };
 
 const buildUvIslandMask = (
@@ -756,7 +758,11 @@ const buildUvIslandMask = (
 const maskContainsPixel = (mask: UvIslandMask, x: number, y: number) => {
   if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) return false;
   const { tileKey, localIndex } = getMaskTileAddress(mask, x, y);
-  return (mask.tiles.get(tileKey)?.[localIndex] ?? 0) !== 0;
+  const tile = mask.tiles.get(tileKey);
+  if (!tile) return false;
+  const byteIndex = localIndex >> 3;
+  const bit = 1 << (localIndex & 7);
+  return (tile[byteIndex] & bit) !== 0;
 };
 
 const forEachMaskPixel = (
@@ -773,7 +779,10 @@ const forEachMaskPixel = (
     const height = Math.min(MASK_TILE_SIZE, mask.height - startY);
     for (let localY = 0; localY < height; localY += 1) {
       for (let localX = 0; localX < width; localX += 1) {
-        if (tile[localY * MASK_TILE_SIZE + localX] === 0) continue;
+        const localIndex = localY * MASK_TILE_SIZE + localX;
+        const byteIndex = localIndex >> 3;
+        const bit = 1 << (localIndex & 7);
+        if ((tile[byteIndex] & bit) === 0) continue;
         callback(startX + localX, startY + localY);
       }
     }
