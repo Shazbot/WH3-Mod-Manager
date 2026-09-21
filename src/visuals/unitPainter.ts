@@ -285,7 +285,7 @@ const BRUSH_SPACING_RATIO = 0.35;
 export const getUnitPainterBrushSpacing = (radiusPx: number) =>
   Math.max(2, Math.max(1, radiusPx) * BRUSH_SPACING_RATIO);
 
-export type UnitPainterStrokeSample = { x: number; y: number };
+export type UnitPainterStrokeSample = { x: number; y: number; amount: number };
 
 export const sampleUnitPainterStrokeSegment = (
   startX: number,
@@ -314,6 +314,7 @@ export const sampleUnitPainterStrokeSegment = (
     samples.push({
       x: startX + deltaX * amount,
       y: startY + deltaY * amount,
+      amount,
     });
     carried = 0;
     distanceToNext = safeSpacing;
@@ -988,6 +989,16 @@ const blendLayerPixelFromStrokeStart = (
   const a = Math.round(outputAlpha * 255);
   return (r | (g << 8) | (b << 16) | (a << 24)) >>> 0;
 };
+
+type ResolvedBrushIntersection = {
+  target: PaintableTexture;
+  mask: UvIslandMask | undefined;
+  centerX: number;
+  centerY: number;
+  radius: number;
+};
+
+type DirtyRowSpan = { minX: number; maxX: number };
 
 export class UnitPainterSession {
   private readonly targetsByEditableTexture = new Map<THREE.Texture, PaintableTexture>();
@@ -1699,11 +1710,13 @@ export class UnitPainterSession {
       if (!mask) return undefined;
     }
 
-    return this.paintTexturePointInternal(
+    return this.paintTexturePointsInternal(
       target,
-      centerX,
-      centerY,
-      Math.max(MIN_BRUSH_RADIUS_TEXELS, radiusTexels),
+      [{
+        x: centerX,
+        y: centerY,
+        radius: Math.max(MIN_BRUSH_RADIUS_TEXELS, radiusTexels),
+      }],
       settings,
       mask,
       false,
@@ -1828,6 +1841,36 @@ export class UnitPainterSession {
     this.isStrokeOpen = true;
   }
 
+  private resolveBrushIntersection(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    camera: THREE.PerspectiveCamera,
+    viewportHeight: number,
+    screenRadiusPx: number,
+    scope: UnitPainterSelectionScope,
+  ): ResolvedBrushIntersection | undefined {
+    if (!this.isStrokeOpen || !intersection.uv || !(intersection.object instanceof THREE.Mesh)) return undefined;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!target || !this.matchesSelectionScope(intersection, scope)) return undefined;
+
+    const mask = this.getUvIslandMask(intersection, target);
+    const uv = intersection.uv.clone();
+    target.editable.transformUv(uv);
+    return {
+      target,
+      mask,
+      centerX: uv.x * target.width,
+      centerY: uv.y * target.height,
+      radius: estimateBrushRadiusTexels(
+        intersection,
+        target,
+        Math.max(1, screenRadiusPx),
+        camera,
+        viewportHeight,
+      ),
+    };
+  }
+
   paintIntersection(
     intersection: THREE.Intersection<THREE.Object3D>,
     settings: UnitPainterBrushSettings,
@@ -1836,49 +1879,92 @@ export class UnitPainterSession {
     screenRadiusPx = settings.radiusPx,
     scope: UnitPainterSelectionScope = "all",
   ) {
-    if (!this.isStrokeOpen || !intersection.uv || !(intersection.object instanceof THREE.Mesh)) return false;
-    const material = getIntersectionMaterial(intersection);
-    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
-    if (!target || !this.matchesSelectionScope(intersection, scope)) return false;
-
-    const islandMask = this.getUvIslandMask(intersection, target);
-    const uv = intersection.uv.clone();
-    target.editable.transformUv(uv);
-    const radius = estimateBrushRadiusTexels(
+    const resolved = this.resolveBrushIntersection(
       intersection,
-      target,
-      Math.max(1, screenRadiusPx),
       camera,
       viewportHeight,
+      screenRadiusPx,
+      scope,
     );
-    return this.paintTexturePointInternal(
-      target,
-      uv.x * target.width,
-      uv.y * target.height,
-      radius,
+    if (!resolved) return false;
+    return this.paintTexturePointsInternal(
+      resolved.target,
+      [{ x: resolved.centerX, y: resolved.centerY, radius: resolved.radius }],
       settings,
-      islandMask,
+      resolved.mask,
       true,
     ).changed;
   }
 
-  private paintTexturePointInternal(
+  paintIntersectionSamples(
+    previousIntersection: THREE.Intersection<THREE.Object3D>,
+    intersection: THREE.Intersection<THREE.Object3D>,
+    sampleAmounts: readonly number[],
+    settings: UnitPainterBrushSettings,
+    camera: THREE.PerspectiveCamera,
+    viewportHeight: number,
+    screenRadiusPx = settings.radiusPx,
+    scope: UnitPainterSelectionScope = "all",
+  ) {
+    if (sampleAmounts.length === 0) return false;
+    const previous = this.resolveBrushIntersection(
+      previousIntersection,
+      camera,
+      viewportHeight,
+      screenRadiusPx,
+      scope,
+    );
+    const current = this.resolveBrushIntersection(
+      intersection,
+      camera,
+      viewportHeight,
+      screenRadiusPx,
+      scope,
+    );
+    if (!current) return false;
+
+    // Crossing a mesh/texture/UV-island seam cannot safely be interpolated in UV
+    // space. Paint the current hit once and resume UV interpolation from there.
+    if (!previous || previous.target !== current.target || previous.mask !== current.mask) {
+      return this.paintTexturePointsInternal(
+        current.target,
+        [{ x: current.centerX, y: current.centerY, radius: current.radius }],
+        settings,
+        current.mask,
+        true,
+      ).changed;
+    }
+
+    const points = sampleAmounts.map((rawAmount) => {
+      const amount = clamp01(rawAmount);
+      return {
+        x: previous.centerX + (current.centerX - previous.centerX) * amount,
+        y: previous.centerY + (current.centerY - previous.centerY) * amount,
+        radius: previous.radius + (current.radius - previous.radius) * amount,
+      };
+    });
+    return this.paintTexturePointsInternal(
+      current.target,
+      points,
+      settings,
+      current.mask,
+      true,
+    ).changed;
+  }
+
+  private paintTexturePointsInternal(
     target: PaintableTexture,
-    centerX: number,
-    centerY: number,
-    radius: number,
+    points: readonly { x: number; y: number; radius: number }[],
     settings: UnitPainterBrushSettings,
     mask: UvIslandMask | undefined,
     useTextureWrapping: boolean,
   ): UnitPainterTexturePaintResult {
     const layer = this.paintLayers.find((candidate) => candidate.id === this.currentStrokeLayerId);
-    if (!layer) return { changed: false, minX: 0, minY: 0, maxX: -1, maxY: -1 };
+    if (!layer || points.length === 0) {
+      return { changed: false, minX: 0, minY: 0, maxX: -1, maxY: -1 };
+    }
 
     const layerData = this.getLayerTextureData(layer, target, true)!;
-    const minX = Math.floor(centerX - radius);
-    const maxX = Math.ceil(centerX + radius);
-    const minY = Math.floor(centerY - radius);
-    const maxY = Math.ceil(centerY + radius);
     let before = this.currentStroke.get(target);
     if (!before) {
       before = new Map();
@@ -1890,54 +1976,67 @@ export class UnitPainterSession {
       this.currentStrokeCoverage.set(target, coverage);
     }
 
+    const dirtyRows = new Map<number, DirtyRowSpan>();
     let changed = false;
-    let dirtyStart = Number.POSITIVE_INFINITY;
-    let dirtyEnd = 0;
     let changedMinX = target.width;
     let changedMinY = target.height;
     let changedMaxX = -1;
     let changedMaxY = -1;
 
-    for (let y = minY; y <= maxY; y += 1) {
-      for (let x = minX; x <= maxX; x += 1) {
-        const dx = (x + 0.5 - centerX) / radius;
-        const dy = (y + 0.5 - centerY) / radius;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance > 1) continue;
-        if (!useTextureWrapping && (x < 0 || y < 0 || x >= target.width || y >= target.height)) continue;
+    for (const point of points) {
+      const radius = Math.max(MIN_BRUSH_RADIUS_TEXELS, point.radius);
+      const minX = Math.floor(point.x - radius);
+      const maxX = Math.ceil(point.x + radius);
+      const minY = Math.floor(point.y - radius);
+      const maxY = Math.ceil(point.y + radius);
 
-        const pixelX = useTextureWrapping ? wrapCoordinate(x, target.width, target.editable.wrapS) : x;
-        const pixelY = useTextureWrapping ? wrapCoordinate(y, target.height, target.editable.wrapT) : y;
-        if (mask && !maskContainsPixel(mask, pixelX, pixelY)) continue;
+      for (let y = minY; y <= maxY; y += 1) {
+        for (let x = minX; x <= maxX; x += 1) {
+          const dx = (x + 0.5 - point.x) / radius;
+          const dy = (y + 0.5 - point.y) / radius;
+          const distanceSquared = dx * dx + dy * dy;
+          if (distanceSquared > 1) continue;
+          if (!useTextureWrapping && (x < 0 || y < 0 || x >= target.width || y >= target.height)) continue;
 
-        const byteIndex = (pixelY * target.width + pixelX) * 4;
-        const currentLayerValue = getLayerPixel(layerData, target, byteIndex);
-        const strokeStartValue = before.get(byteIndex) ?? currentLayerValue;
-        if (!before.has(byteIndex)) before.set(byteIndex, strokeStartValue);
+          const pixelX = useTextureWrapping ? wrapCoordinate(x, target.width, target.editable.wrapS) : x;
+          const pixelY = useTextureWrapping ? wrapCoordinate(y, target.height, target.editable.wrapT) : y;
+          if (mask && !maskContainsPixel(mask, pixelX, pixelY)) continue;
 
-        const falloff = getBrushFalloff(distance, settings.hardness);
-        const previousCoverage = coverage.get(byteIndex) ?? 0;
-        const nextCoverage = Math.max(previousCoverage, falloff * clamp01(settings.opacity));
-        if (nextCoverage <= previousCoverage) continue;
-        coverage.set(byteIndex, nextCoverage);
+          const byteIndex = (pixelY * target.width + pixelX) * 4;
+          const currentLayerValue = getLayerPixel(layerData, target, byteIndex);
+          const strokeStartValue = before.get(byteIndex) ?? currentLayerValue;
+          if (!before.has(byteIndex)) before.set(byteIndex, strokeStartValue);
 
-        const nextLayerValue =
-          blendLayerPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
-        if (nextLayerValue === currentLayerValue) continue;
+          const falloff = getBrushFalloff(Math.sqrt(distanceSquared), settings.hardness);
+          const previousCoverage = coverage.get(byteIndex) ?? 0;
+          const nextCoverage = Math.max(previousCoverage, falloff * clamp01(settings.opacity));
+          if (nextCoverage <= previousCoverage) continue;
+          coverage.set(byteIndex, nextCoverage);
 
-        setLayerPixel(layerData, target, byteIndex, nextLayerValue);
-        this.recomposeTargetPixel(target, byteIndex);
-        dirtyStart = Math.min(dirtyStart, byteIndex);
-        dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
-        changedMinX = Math.min(changedMinX, pixelX);
-        changedMinY = Math.min(changedMinY, pixelY);
-        changedMaxX = Math.max(changedMaxX, pixelX);
-        changedMaxY = Math.max(changedMaxY, pixelY);
-        changed = true;
+          const nextLayerValue =
+            blendLayerPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
+          if (nextLayerValue === currentLayerValue) continue;
+
+          setLayerPixel(layerData, target, byteIndex, nextLayerValue);
+          this.recomposeTargetPixel(target, byteIndex);
+
+          const row = dirtyRows.get(pixelY);
+          if (row) {
+            row.minX = Math.min(row.minX, pixelX);
+            row.maxX = Math.max(row.maxX, pixelX);
+          } else {
+            dirtyRows.set(pixelY, { minX: pixelX, maxX: pixelX });
+          }
+          changedMinX = Math.min(changedMinX, pixelX);
+          changedMinY = Math.min(changedMinY, pixelY);
+          changedMaxX = Math.max(changedMaxX, pixelX);
+          changedMaxY = Math.max(changedMaxY, pixelY);
+          changed = true;
+        }
       }
     }
 
-    if (changed) this.markTargetRangeDirty(target, dirtyStart, dirtyEnd);
+    if (changed) this.markTargetRowSpansDirty(target, dirtyRows);
     const result = {
       changed,
       minX: changed ? changedMinX : 0,
@@ -1950,6 +2049,8 @@ export class UnitPainterSession {
     }
     return result;
   }
+
+
 
   sampleIntersection(intersection: THREE.Intersection<THREE.Object3D>) {
     if (!intersection.uv) return undefined;
@@ -2852,6 +2953,20 @@ export class UnitPainterSession {
       }
     }
     return false;
+  }
+
+  private markTargetRowSpansDirty(target: PaintableTexture, dirtyRows: Map<number, DirtyRowSpan>) {
+    if (dirtyRows.size === 0) return;
+    if (!target.fullUploadPending) {
+      for (const [row, span] of [...dirtyRows.entries()].sort((a, b) => a[0] - b[0])) {
+        target.editable.addUpdateRange(
+          (row * target.width + span.minX) * 4,
+          (span.maxX - span.minX + 1) * 4,
+        );
+      }
+    }
+    target.revision += 1;
+    target.editable.needsUpdate = true;
   }
 
   private markTargetRangeDirty(target: PaintableTexture, start: number, endExclusive: number) {
