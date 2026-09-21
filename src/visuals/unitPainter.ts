@@ -802,6 +802,24 @@ const maskContainsPixel = (mask: UvIslandMask, x: number, y: number) => {
   return (tile[byteIndex] & bit) !== 0;
 };
 
+const clearMaskPixel = (mask: UvIslandMask, x: number, y: number) => {
+  if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) return;
+  const { tileKey, localIndex } = getMaskTileAddress(mask, x, y);
+  const tile = mask.tiles.get(tileKey);
+  if (!tile) return;
+  const byteIndex = localIndex >> 3;
+  const bit = 1 << (localIndex & 7);
+  tile[byteIndex] &= (~bit) & 0xff;
+};
+
+const pruneEmptyMaskTiles = (mask: UvIslandMask) => {
+  for (const [tileKey, tile] of [...mask.tiles]) {
+    if (tile.some((value) => value !== 0)) continue;
+    mask.tiles.delete(tileKey);
+    mask.byteSize = Math.max(0, mask.byteSize - tile.byteLength);
+  }
+};
+
 const forEachMaskPixel = (
   mask: UvIslandMask,
   callback: (x: number, y: number) => void,
@@ -902,6 +920,19 @@ const dilateUvMask = (source: UvIslandMask, padding: number): UvIslandMask => {
   return result;
 };
 
+const protectOccupiedUvPixels = (
+  padded: UvIslandMask,
+  selected: UvIslandMask,
+  occupied: UvIslandMask | undefined,
+) => {
+  if (!occupied) return padded;
+  forEachMaskPixel(occupied, (x, y) => {
+    if (!maskContainsPixel(selected, x, y)) clearMaskPixel(padded, x, y);
+  });
+  pruneEmptyMaskTiles(padded);
+  return padded;
+};
+
 const blendLayerPixelFromStrokeStart = (
   target: PaintableTexture,
   byteIndex: number,
@@ -959,6 +990,7 @@ export class UnitPainterSession {
     PaintableTexture,
     WeakMap<THREE.BufferGeometry, Map<string, CachedUvMask>>
   >();
+  private readonly uvCoverageMasksByTarget = new Map<PaintableTexture, Map<string, CachedUvMask>>();
   private readonly uvMaskCacheLru = new Map<
     number,
     { owner: Map<string, CachedUvMask>; key: string; mask: UvIslandMask }
@@ -2160,6 +2192,7 @@ export class UnitPainterSession {
     this.currentStroke.clear();
     this.currentStrokeCoverage.clear();
     this.uvMasksByTarget.clear();
+    this.uvCoverageMasksByTarget.clear();
     this.uvMaskCacheLru.clear();
     this.uvMaskCacheBytes = 0;
     this.selection = undefined;
@@ -2218,6 +2251,27 @@ export class UnitPainterSession {
     return mask;
   }
 
+  private getTargetUvCoverageMask(target: PaintableTexture) {
+    let cache = this.uvCoverageMasksByTarget.get(target);
+    if (!cache) {
+      cache = new Map();
+      this.uvCoverageMasksByTarget.set(target, cache);
+    }
+    const key = "target:coverage";
+    const cached = this.getCachedUvMask(cache, key);
+    if (cached) return cached;
+
+    const triangles: UvTriangle[] = [];
+    for (const surface of this.surfacesByTarget.get(target) ?? []) {
+      const topology = this.getUvTopology(surface.geometry, surface.materialIndex);
+      if (!topology) continue;
+      for (const island of topology.islands.values()) triangles.push(...island);
+    }
+    const mask = buildUvIslandMask(triangles, target);
+    if (!mask) return undefined;
+    return this.cacheUvMask(cache, key, mask);
+  }
+
   private getUvMask(
     target: PaintableTexture,
     geometry: THREE.BufferGeometry,
@@ -2247,7 +2301,12 @@ export class UnitPainterSession {
     if (padding > 0) {
       const baseMask = this.getUvMask(target, geometry, materialIndex, islandId, 0);
       if (!baseMask) return undefined;
-      return this.cacheUvMask(masks, key, dilateUvMask(baseMask, padding));
+      const padded = protectOccupiedUvPixels(
+        dilateUvMask(baseMask, padding),
+        baseMask,
+        this.getTargetUvCoverageMask(target),
+      );
+      return this.cacheUvMask(masks, key, padded);
     }
     const mask = buildUvIslandMask(triangles, target);
     if (!mask) return undefined;
@@ -2281,7 +2340,12 @@ export class UnitPainterSession {
     if (padding > 0) {
       const baseMask = this.getMaterialMask(target, geometry, materialIndex, 0);
       if (!baseMask) return undefined;
-      return this.cacheUvMask(masks, key, dilateUvMask(baseMask, padding));
+      const padded = protectOccupiedUvPixels(
+        dilateUvMask(baseMask, padding),
+        baseMask,
+        this.getTargetUvCoverageMask(target),
+      );
+      return this.cacheUvMask(masks, key, padded);
     }
     const triangles = [...topology.islands.values()].flat();
     const mask = buildUvIslandMask(triangles, target);
