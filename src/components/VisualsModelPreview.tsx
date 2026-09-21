@@ -963,6 +963,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         distanceSinceLastPaintStamp = sampled.distanceSinceLastStamp;
       }
 
+      const mirroredHit = projected
+        ? getMirroredPaintIntersection(projected, scope)
+        : undefined;
+
       if (projected && session && sampleAmounts.length > 0) {
         if (lastPaintIntersection) {
           session.paintIntersectionSamples(
@@ -986,7 +990,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           );
         }
 
-        const mirroredHit = getMirroredPaintIntersection(projected, scope);
         if (mirroredHit) {
           if (lastMirroredPaintIntersection) {
             session.paintIntersectionSamples(
@@ -1010,11 +1013,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             );
           }
         }
-        lastMirroredPaintIntersection = mirroredHit;
-      } else if (!projected) {
-        lastMirroredPaintIntersection = undefined;
       }
 
+      lastMirroredPaintIntersection = mirroredHit;
       lastPaintIntersection = projected?.hit;
       lastPaintPoint.set(nextX, nextY);
       return projected;
