@@ -202,6 +202,47 @@ describe("unit painter", () => {
     }
   });
 
+  it("maps 3D hover into texture coordinates and UV-island wireframe segments", () => {
+    const painter = makePainter();
+    try {
+      const hover = painter.session.getIntersectionTextureHover(painter.intersection, "island");
+      expect(hover?.textureId).toBe(painter.session.textureViews[0].id);
+      expect(hover?.x).toBeCloseTo(0.46 * WIDTH, 6);
+      expect(hover?.y).toBeCloseTo(0.28 * HEIGHT, 6);
+      expect(hover?.scope).toBe("island");
+      expect(hover?.uvSegments.length).toBeGreaterThan(0);
+
+      const materialHover = painter.session.getIntersectionTextureHover(painter.intersection, "material");
+      expect(materialHover?.uvSegments.length).toBeGreaterThan(hover?.uvSegments.length ?? 0);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("maps texture hover back to the matching 3D material or UV island", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      const island = painter.session.getTexturePointSurfaceHighlight(textureId, 14.5, 8.5, "island");
+      expect(island?.scope).toBe("island");
+      expect(island?.indices).toEqual([0, 1, 2]);
+
+      const material = painter.session.getTexturePointSurfaceHighlight(textureId, 14.5, 8.5, "material");
+      expect(material?.scope).toBe("material");
+      expect(material?.indices).toEqual([0, 1, 2, 3, 4, 5]);
+
+      const secondIsland = painter.session.getTexturePointSurfaceHighlight(textureId, 20.5, 8.5, "island");
+      expect(secondIsland?.indices).toEqual([3, 4, 5]);
+      expect(painter.session.getTexturePointSurfaceHighlight(textureId, 2.5, 2.5, "island")).toBeUndefined();
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("streams dirty rectangles while 3D painting for a live split texture view", () => {
     const painter = makePainter();
     try {
@@ -373,6 +414,38 @@ describe("unit painter", () => {
       hard.geometry.dispose();
       soft.material.dispose();
       hard.material.dispose();
+    }
+  });
+
+  it("applies UV padding to Fill Island without painting neighboring islands", () => {
+    const painter = makePainter();
+    try {
+      expect(painter.session.selectIntersection(painter.intersection)?.hasUvIsland).toBe(true);
+      const changed = painter.session.fillSelection(
+        "island",
+        {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 240, g: 100, b: 30 },
+        },
+        2,
+      );
+
+      expect(changed).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([240, 100, 30, 255]);
+      // Just outside the selected island but inside its 2px atlas padding.
+      expect(getPixel(painter.material, 7, 8)).toEqual([240, 100, 30, 255]);
+      // Occupied by the disconnected second island: protected from padding.
+      expect(getPixel(painter.material, 17, 8)).toEqual([0, 0, 0, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 7, 8)).toEqual([0, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
     }
   });
 
