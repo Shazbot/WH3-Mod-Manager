@@ -94,6 +94,7 @@ type PaintableTexture = {
   sourceFileName: string;
   sourceVirtualPath?: string;
   textureId: string;
+  revision: number;
   touchedLayerTiles: Set<number>;
   fullUploadPending: boolean;
 };
@@ -825,6 +826,82 @@ const forEachMaskPixel = (
   }
 };
 
+const setMaskSpan = (mask: UvIslandMask, y: number, startX: number, endX: number) => {
+  if (y < 0 || y >= mask.height || endX < 0 || startX >= mask.width) return;
+  const firstX = Math.max(0, startX);
+  const lastX = Math.min(mask.width - 1, endX);
+  const tilesPerRow = Math.ceil(mask.width / MASK_TILE_SIZE);
+  const tileY = Math.floor(y / MASK_TILE_SIZE);
+  const localY = y - tileY * MASK_TILE_SIZE;
+  const firstTileX = Math.floor(firstX / MASK_TILE_SIZE);
+  const lastTileX = Math.floor(lastX / MASK_TILE_SIZE);
+
+  for (let tileX = firstTileX; tileX <= lastTileX; tileX += 1) {
+    const tileStartX = tileX * MASK_TILE_SIZE;
+    const localStartX = Math.max(0, firstX - tileStartX);
+    const localEndX = Math.min(MASK_TILE_SIZE - 1, lastX - tileStartX);
+    const tileKey = tileY * tilesPerRow + tileX;
+    let tile = mask.tiles.get(tileKey);
+    if (!tile) {
+      tile = new Uint8Array(MASK_TILE_BYTES);
+      mask.tiles.set(tileKey, tile);
+      mask.byteSize += tile.byteLength;
+    }
+
+    const rowByteStart = localY * (MASK_TILE_SIZE / 8);
+    const firstByte = Math.floor(localStartX / 8);
+    const lastByte = Math.floor(localEndX / 8);
+    const firstBit = localStartX & 7;
+    const lastBit = localEndX & 7;
+    if (firstByte === lastByte) {
+      const maskBits = ((0xff << firstBit) & (0xff >>> (7 - lastBit))) & 0xff;
+      tile[rowByteStart + firstByte] |= maskBits;
+      continue;
+    }
+
+    tile[rowByteStart + firstByte] |= (0xff << firstBit) & 0xff;
+    for (let byteIndex = firstByte + 1; byteIndex < lastByte; byteIndex += 1) {
+      tile[rowByteStart + byteIndex] = 0xff;
+    }
+    tile[rowByteStart + lastByte] |= 0xff >>> (7 - lastBit);
+  }
+};
+
+const dilateUvMask = (source: UvIslandMask, padding: number): UvIslandMask => {
+  const radius = Math.max(0, Math.floor(padding));
+  if (radius === 0) return source;
+
+  const result: UvIslandMask = {
+    width: source.width,
+    height: source.height,
+    tiles: new Map(),
+    byteSize: 0,
+  };
+
+  for (let y = 0; y < source.height; y += 1) {
+    let runStart = -1;
+    for (let x = 0; x <= source.width; x += 1) {
+      const inside = x < source.width && maskContainsPixel(source, x, y);
+      if (inside && runStart < 0) {
+        runStart = x;
+        continue;
+      }
+      if (inside || runStart < 0) continue;
+
+      const runEnd = x - 1;
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        const targetY = y + dy;
+        if (targetY < 0 || targetY >= source.height) continue;
+        const horizontal = Math.floor(Math.sqrt(radius * radius - dy * dy));
+        setMaskSpan(result, targetY, runStart - horizontal, runEnd + horizontal);
+      }
+      runStart = -1;
+    }
+  }
+
+  return result;
+};
+
 const blendLayerPixelFromStrokeStart = (
   target: PaintableTexture,
   byteIndex: number,
@@ -934,6 +1011,7 @@ export class UnitPainterSession {
                 ? original.userData.wh3SourceVirtualPath
                 : undefined,
             textureId: `texture-${textureIndex}`,
+            revision: 0,
             touchedLayerTiles: new Set(),
             fullUploadPending: true,
           };
@@ -1344,6 +1422,12 @@ export class UnitPainterSession {
     return undefined;
   }
 
+  getTextureRevision(textureId: string) {
+    return [...this.targetsByEditableTexture.values()].find(
+      (candidate) => candidate.textureId === textureId,
+    )?.revision ?? -1;
+  }
+
   sampleTexturePoint(textureId: string, x: number, y: number) {
     const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
     if (!target) return undefined;
@@ -1364,6 +1448,7 @@ export class UnitPainterSession {
     radiusTexels: number,
     settings: UnitPainterBrushSettings,
     scope: UnitPainterSelectionScope = "all",
+    paddingPx = 0,
   ): UnitPainterTexturePaintResult | undefined {
     if (!this.isStrokeOpen) return undefined;
     const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
@@ -1377,8 +1462,19 @@ export class UnitPainterSession {
         scope === "island"
           ? selection.islandId == null
             ? undefined
-            : this.getUvMask(target, selection.mesh.geometry, selection.materialIndex, selection.islandId)
-          : this.getMaterialMask(target, selection.mesh.geometry, selection.materialIndex);
+            : this.getUvMask(
+                target,
+                selection.mesh.geometry,
+                selection.materialIndex,
+                selection.islandId,
+                paddingPx,
+              )
+          : this.getMaterialMask(
+              target,
+              selection.mesh.geometry,
+              selection.materialIndex,
+              paddingPx,
+            );
       if (!mask) return undefined;
     }
 
@@ -2110,6 +2206,7 @@ export class UnitPainterSession {
     geometry: THREE.BufferGeometry,
     materialIndex: number,
     islandId: number,
+    paddingPx = 0,
   ) {
     const topology = this.getUvTopology(geometry, materialIndex);
     const triangles = topology?.islands.get(islandId);
@@ -2126,15 +2223,26 @@ export class UnitPainterSession {
       masksByGeometry.set(geometry, masks);
     }
 
-    const key = `island:${materialIndex}:${islandId}`;
+    const padding = Math.max(0, Math.floor(paddingPx));
+    const key = `island:${materialIndex}:${islandId}:padding:${padding}`;
     const cached = this.getCachedUvMask(masks, key);
     if (cached) return cached;
+    if (padding > 0) {
+      const baseMask = this.getUvMask(target, geometry, materialIndex, islandId, 0);
+      if (!baseMask) return undefined;
+      return this.cacheUvMask(masks, key, dilateUvMask(baseMask, padding));
+    }
     const mask = buildUvIslandMask(triangles, target);
     if (!mask) return undefined;
     return this.cacheUvMask(masks, key, mask);
   }
 
-  private getMaterialMask(target: PaintableTexture, geometry: THREE.BufferGeometry, materialIndex: number) {
+  private getMaterialMask(
+    target: PaintableTexture,
+    geometry: THREE.BufferGeometry,
+    materialIndex: number,
+    paddingPx = 0,
+  ) {
     const topology = this.getUvTopology(geometry, materialIndex);
     if (!topology) return undefined;
 
@@ -2149,9 +2257,15 @@ export class UnitPainterSession {
       masksByGeometry.set(geometry, masks);
     }
 
-    const key = `material:${materialIndex}`;
+    const padding = Math.max(0, Math.floor(paddingPx));
+    const key = `material:${materialIndex}:padding:${padding}`;
     const cached = this.getCachedUvMask(masks, key);
     if (cached) return cached;
+    if (padding > 0) {
+      const baseMask = this.getMaterialMask(target, geometry, materialIndex, 0);
+      if (!baseMask) return undefined;
+      return this.cacheUvMask(masks, key, dilateUvMask(baseMask, padding));
+    }
     const triangles = [...topology.islands.values()].flat();
     const mask = buildUvIslandMask(triangles, target);
     if (!mask) return undefined;
@@ -2499,6 +2613,7 @@ export class UnitPainterSession {
     if (!target.fullUploadPending) {
       target.editable.addUpdateRange(start, endExclusive - start);
     }
+    target.revision += 1;
     target.editable.needsUpdate = true;
   }
 
@@ -2568,6 +2683,7 @@ export class UnitPainterSession {
         target.editable.addUpdateRange(range.start, range.count);
       }
     }
+    target.revision += 1;
     target.editable.needsUpdate = true;
   }
 
