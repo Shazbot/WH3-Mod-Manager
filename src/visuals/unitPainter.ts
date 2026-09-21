@@ -1680,13 +1680,9 @@ export class UnitPainterSession {
 
   exportModifiedTextures(): UnitPainterExportTexture[] {
     if (this.isStrokeOpen) this.endStroke();
-    const modifiedTargets = [...this.targetsByEditableTexture.values()].filter((target) => {
-      if (target.data.length !== target.originalData.length) return true;
-      for (let index = 0; index < target.data.length; index += 1) {
-        if (target.data[index] !== target.originalData[index]) return true;
-      }
-      return false;
-    });
+    const modifiedTargets = [...this.targetsByEditableTexture.values()].filter((target) =>
+      this.hasCompositeChanges(target),
+    );
 
     const usedNames = new Map<string, number>();
     const output: UnitPainterExportTexture[] = [];
@@ -1994,6 +1990,29 @@ export class UnitPainterSession {
     target.data[byteIndex + 1] = Math.round(g);
     target.data[byteIndex + 2] = Math.round(b);
     target.data[byteIndex + 3] = target.originalData[byteIndex + 3];
+  }
+
+  private hasCompositeChanges(target: PaintableTexture) {
+    if (target.data.length !== target.originalData.length) return true;
+    if (target.touchedLayerTiles.size === 0) return false;
+
+    const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+    for (const tileKey of target.touchedLayerTiles) {
+      const tileX = tileKey % tilesPerRow;
+      const tileY = Math.floor(tileKey / tilesPerRow);
+      const startX = tileX * LAYER_TILE_SIZE;
+      const startY = tileY * LAYER_TILE_SIZE;
+      const width = Math.min(LAYER_TILE_SIZE, target.width - startX);
+      const height = Math.min(LAYER_TILE_SIZE, target.height - startY);
+      for (let localY = 0; localY < height; localY += 1) {
+        let byteIndex = ((startY + localY) * target.width + startX) * 4;
+        const end = byteIndex + width * 4;
+        for (; byteIndex < end; byteIndex += 1) {
+          if (target.data[byteIndex] !== target.originalData[byteIndex]) return true;
+        }
+      }
+    }
+    return false;
   }
 
   private markTargetRangeDirty(target: PaintableTexture, start: number, endExclusive: number) {
