@@ -7,6 +7,7 @@ import {
   type UnitPainterSelectionScope,
   type UnitPainterSelectionInfo,
   type UnitPainterSession,
+  type UnitPainterTextureHover,
   type UnitPainterTexturePaintResult,
 } from "../visuals/unitPainter";
 
@@ -24,6 +25,9 @@ type UnitPainterTextureEditorProps = {
   eyedropperActive: boolean;
   onEyedropperComplete: (color: { r: number; g: number; b: number }) => void;
   onSelectionComplete: (selection: UnitPainterSelectionInfo, mode: Exclude<UnitPainterSelectionScope, "all">) => void;
+  linkedHoverSinkRef: React.MutableRefObject<((hover?: UnitPainterTextureHover) => void) | undefined>;
+  onTextureHover: (textureId: string, x: number, y: number) => void;
+  onTextureHoverEnd: () => void;
   onStrokeComplete: (changed: boolean) => void;
 };
 
@@ -49,11 +53,17 @@ const UnitPainterTextureEditor = ({
   eyedropperActive,
   onEyedropperComplete,
   onSelectionComplete,
+  linkedHoverSinkRef,
+  onTextureHover,
+  onTextureHoverEnd,
   onStrokeComplete,
 }: UnitPainterTextureEditorProps) => {
   const viewportRef = useRef<HTMLDivElement>(null);
   const textureCanvasRef = useRef<HTMLCanvasElement>(null);
   const uvCanvasRef = useRef<HTMLCanvasElement>(null);
+  const linkedHoverCanvasRef = useRef<HTMLCanvasElement>(null);
+  const linkedHoverCursorRef = useRef<HTMLDivElement>(null);
+  const linkedHoverHardnessRef = useRef<HTMLDivElement>(null);
   const activePaintPointerRef = useRef<number>();
   const activePanPointerRef = useRef<number>();
   const lastPaintPointRef = useRef<{ x: number; y: number }>();
@@ -189,6 +199,85 @@ const UnitPainterTextureEditor = ({
     drawSegments(view.selectedUvSegments, "rgba(250,204,21,0.95)", 2);
   }, [showUvs, transform.scale, view]);
 
+  useEffect(() => {
+    linkedHoverSinkRef.current = (hover) => {
+      const hoverCanvas = linkedHoverCanvasRef.current;
+      const cursor = linkedHoverCursorRef.current;
+      const hardnessCursor = linkedHoverHardnessRef.current;
+      const context = hoverCanvas?.getContext("2d");
+
+      if (!hover || !view) {
+        if (cursor) cursor.style.display = "none";
+        if (context && hoverCanvas) context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+        return;
+      }
+      if (hover.textureId !== view.id) {
+        onSelectedTextureIdChange(hover.textureId);
+        if (cursor) cursor.style.display = "none";
+        if (context && hoverCanvas) context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+        return;
+      }
+
+      if (hoverCanvas && context) {
+        if (hoverCanvas.width !== view.width) hoverCanvas.width = view.width;
+        if (hoverCanvas.height !== view.height) hoverCanvas.height = view.height;
+        context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+        if (hover.uvSegments.length > 0) {
+          context.beginPath();
+          for (let index = 0; index + 3 < hover.uvSegments.length; index += 4) {
+            context.moveTo(hover.uvSegments[index] * view.width, hover.uvSegments[index + 1] * view.height);
+            context.lineTo(hover.uvSegments[index + 2] * view.width, hover.uvSegments[index + 3] * view.height);
+          }
+          context.strokeStyle = hover.scope === "island"
+            ? "rgba(196,181,253,0.95)"
+            : "rgba(103,232,249,0.95)";
+          context.lineWidth = Math.max(1, 2 / Math.max(transform.scale, 0.001));
+          context.stroke();
+        }
+      }
+
+      if (cursor) {
+        const radius = selectMode || eyedropperActive ? 5 : brushSettings.radiusPx;
+        const screenX = transform.x + hover.x * transform.scale;
+        const screenY = transform.y + hover.y * transform.scale;
+        const color = hover.scope === "island" ? "#c4b5fd" : "#67e8f9";
+        cursor.style.display = "block";
+        cursor.style.left = `${screenX - radius}px`;
+        cursor.style.top = `${screenY - radius}px`;
+        cursor.style.width = `${radius * 2}px`;
+        cursor.style.height = `${radius * 2}px`;
+        cursor.style.borderColor = color;
+
+        if (hardnessCursor) {
+          const hardness = Math.max(0, Math.min(1, brushSettings.hardness));
+          if (selectMode || eyedropperActive || hardness <= 0.01 || hardness >= 0.99) {
+            hardnessCursor.style.display = "none";
+          } else {
+            hardnessCursor.style.display = "block";
+            hardnessCursor.style.width = `${radius * hardness * 2}px`;
+            hardnessCursor.style.height = `${radius * hardness * 2}px`;
+            hardnessCursor.style.borderColor = color;
+          }
+        }
+      }
+    };
+
+    return () => {
+      linkedHoverSinkRef.current = undefined;
+    };
+  }, [
+    brushSettings.hardness,
+    brushSettings.radiusPx,
+    eyedropperActive,
+    linkedHoverSinkRef,
+    onSelectedTextureIdChange,
+    selectMode,
+    transform.scale,
+    transform.x,
+    transform.y,
+    view,
+  ]);
+
   if (!view) {
     return (
       <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950 text-sm text-gray-400">
@@ -304,6 +393,7 @@ const UnitPainterTextureEditor = ({
     setCursor({ x: event.clientX - rect.left, y: event.clientY - rect.top, visible: true });
 
     if (event.pointerId === activePanPointerRef.current) {
+      onTextureHoverEnd();
       const last = lastPanPointRef.current;
       if (!last) return;
       const dx = event.clientX - last.x;
@@ -311,6 +401,13 @@ const UnitPainterTextureEditor = ({
       lastPanPointRef.current = { x: event.clientX, y: event.clientY };
       setTransform((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
       return;
+    }
+
+    const point = pointerToTexture(event.clientX, event.clientY);
+    if (point && point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
+      onTextureHover(view.id, point.x, point.y);
+    } else {
+      onTextureHoverEnd();
     }
 
     if (event.pointerId !== activePaintPointerRef.current) return;
@@ -421,7 +518,10 @@ const UnitPainterTextureEditor = ({
           }
           if (event.pointerId === activePaintPointerRef.current) finishStroke(event.pointerId);
         }}
-        onPointerLeave={() => setCursor((current) => ({ ...current, visible: false }))}
+        onPointerLeave={() => {
+          setCursor((current) => ({ ...current, visible: false }));
+          onTextureHoverEnd();
+        }}
         onWheel={onWheel}
       >
         <canvas
@@ -440,6 +540,23 @@ const UnitPainterTextureEditor = ({
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           }}
         />
+        <canvas
+          ref={linkedHoverCanvasRef}
+          className="pointer-events-none absolute left-0 top-0"
+          style={{
+            transformOrigin: "0 0",
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+          }}
+        />
+        <div
+          ref={linkedHoverCursorRef}
+          className="pointer-events-none absolute hidden rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
+        >
+          <div
+            ref={linkedHoverHardnessRef}
+            className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed"
+          />
+        </div>
         {cursor.visible && activePanPointerRef.current == null && (
           <>
             <div
