@@ -2856,10 +2856,18 @@ export class UnitPainterSession {
 
   private markTargetRangeDirty(target: PaintableTexture, start: number, endExclusive: number) {
     if (!Number.isFinite(start) || endExclusive <= start) return;
-    // If a full upload is already pending, adding a subrange would incorrectly
-    // turn that pending full upload into a partial one before the next render.
+    // Three r186 uploads every DataTexture update range as one texSubImage2D row.
+    // Never submit a range that crosses a row boundary: WebGL would interpret its
+    // total component count as the width of a single-row upload.
     if (!target.fullUploadPending) {
-      target.editable.addUpdateRange(start, endExclusive - start);
+      const rowBytes = target.width * 4;
+      let cursor = start;
+      while (cursor < endExclusive) {
+        const rowEnd = (Math.floor(cursor / rowBytes) + 1) * rowBytes;
+        const rangeEnd = Math.min(endExclusive, rowEnd);
+        target.editable.addUpdateRange(cursor, rangeEnd - cursor);
+        cursor = rangeEnd;
+      }
     }
     target.revision += 1;
     target.editable.needsUpdate = true;
@@ -2886,15 +2894,6 @@ export class UnitPainterSession {
     }
 
     const ranges: Array<{ start: number; count: number }> = [];
-    const appendRange = (start: number, count: number) => {
-      if (count <= 0) return;
-      const previous = ranges[ranges.length - 1];
-      if (previous && previous.start + previous.count === start) {
-        previous.count += count;
-      } else {
-        ranges.push({ start, count });
-      }
-    };
 
     for (const [tileY, rawTileXs] of [...tileRows.entries()].sort((a, b) => a[0] - b[0])) {
       const tileXs = [...new Set(rawTileXs)].sort((a, b) => a - b);
@@ -2912,8 +2911,10 @@ export class UnitPainterSession {
       for (let localY = 0; localY < height; localY += 1) {
         const y = startY + localY;
         for (const span of spans) {
-          const start = (y * target.width + span.startX) * 4;
-          appendRange(start, (span.endX - span.startX) * 4);
+          ranges.push({
+            start: (y * target.width + span.startX) * 4,
+            count: (span.endX - span.startX) * 4,
+          });
         }
       }
     }
