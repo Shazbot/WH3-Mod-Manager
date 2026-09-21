@@ -1963,12 +1963,21 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               onSelectedTextureIdChange={setPaintTextureViewId}
               brushSettings={brushSettingsRef.current}
               scope={paintScope}
+              selectMode={paintSelectMode}
               eyedropperActive={isPaintEyedropperActive}
               onEyedropperComplete={(sampled) => {
                 const toHex = (value: number) =>
                   Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
                 choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
                 if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
+              }}
+              onSelectionComplete={(selection, mode) => {
+                setPaintSelection(selection);
+                setPaintTextureViewId(selection.textureId);
+                setPaintScope(mode);
+                paintScopeRef.current = mode;
+                refreshPaintSelectionVisual(mode);
+                setPaintHistoryVersion((value) => value + 1);
               }}
               onStrokeComplete={(changed) => {
                 if (!changed) return;
