@@ -193,6 +193,7 @@ type Stroke = {
   change: HistoryChange;
   beforeStateId: number;
   afterStateId: number;
+  byteSize: number;
 };
 
 type UvTriangle = {
@@ -220,6 +221,11 @@ type CachedUvMask = {
 };
 
 const MAX_HISTORY_STROKES = 30;
+const MAX_HISTORY_BYTES = 96 * 1024 * 1024;
+const HISTORY_BASE_OVERHEAD_BYTES = 256;
+const HISTORY_SNAPSHOT_OVERHEAD_BYTES = 256;
+const HISTORY_TEXTURE_OVERHEAD_BYTES = 128;
+const HISTORY_TILE_OVERHEAD_BYTES = 64;
 const MAX_PAINT_LAYERS = 32;
 const LAYER_TILE_SIZE = 64;
 const LAYER_TILE_PIXELS = LAYER_TILE_SIZE * LAYER_TILE_SIZE;
@@ -836,6 +842,7 @@ export class UnitPainterSession {
   private readonly restores: MaterialRestore[] = [];
   private readonly history: Stroke[] = [];
   private readonly redoHistory: Stroke[] = [];
+  private retainedHistoryBytes = 0;
   private readonly uvTopologies = new WeakMap<THREE.BufferGeometry, Map<number, UvIslandTopology>>();
   private readonly uvMasksByTarget = new Map<
     PaintableTexture,
@@ -1719,6 +1726,7 @@ export class UnitPainterSession {
     this.recomposeAllTargets();
     this.history.length = 0;
     this.redoHistory.length = 0;
+    this.retainedHistoryBytes = 0;
     this.currentStroke.clear();
     this.currentStrokeCoverage.clear();
     this.currentStrokeLayerId = "";
@@ -1773,6 +1781,7 @@ export class UnitPainterSession {
     this.activePaintLayerId = "";
     this.history.length = 0;
     this.redoHistory.length = 0;
+    this.retainedHistoryBytes = 0;
     this.currentStroke.clear();
     this.currentStrokeCoverage.clear();
     this.uvMasksByTarget.clear();
@@ -1901,20 +1910,97 @@ export class UnitPainterSession {
     return this.getUvMask(target, geometry, materialIndex, islandId);
   }
 
+  private estimateLayerSnapshotBytes(snapshot: LayerSnapshot) {
+    let bytes =
+      HISTORY_SNAPSHOT_OVERHEAD_BYTES
+      + (snapshot.id.length + snapshot.name.length) * 2;
+    for (const { data } of snapshot.textures) {
+      bytes += HISTORY_TEXTURE_OVERHEAD_BYTES;
+      for (const tile of data.tiles.values()) {
+        bytes += HISTORY_TILE_OVERHEAD_BYTES + tile.data.byteLength;
+      }
+    }
+    return bytes;
+  }
+
+  private estimateHistoryChangeBytes(change: HistoryChange) {
+    let bytes = HISTORY_BASE_OVERHEAD_BYTES;
+
+    if (change.kind === "pixels") {
+      for (const pixelChange of change.changes) {
+        bytes +=
+          HISTORY_TEXTURE_OVERHEAD_BYTES
+          + pixelChange.layerId.length * 2
+          + pixelChange.byteIndices.byteLength
+          + pixelChange.before.byteLength
+          + pixelChange.after.byteLength;
+      }
+      return bytes;
+    }
+
+    if (change.kind === "layer-add" || change.kind === "layer-delete") {
+      return bytes
+        + this.estimateLayerSnapshotBytes(change.layer)
+        + (change.beforeActiveLayerId.length + change.afterActiveLayerId.length) * 2;
+    }
+
+    if (change.kind === "layer-replace") {
+      for (const snapshot of change.before) bytes += this.estimateLayerSnapshotBytes(snapshot);
+      for (const snapshot of change.after) bytes += this.estimateLayerSnapshotBytes(snapshot);
+      return bytes
+        + (change.beforeActiveLayerId.length + change.afterActiveLayerId.length) * 2;
+    }
+
+    if (change.kind === "layer-order") {
+      return bytes
+        + [...change.before, ...change.after].reduce((total, id) => total + id.length * 2, 0);
+    }
+
+    return bytes
+      + change.layerId.length * 2
+      + (change.before.name.length + change.after.name.length) * 2
+      + 64;
+  }
+
+  private clearRedoHistory() {
+    if (this.redoHistory.length === 0) return;
+    for (const stroke of this.redoHistory) {
+      this.retainedHistoryBytes -= stroke.byteSize;
+    }
+    this.retainedHistoryBytes = Math.max(0, this.retainedHistoryBytes);
+    this.redoHistory.length = 0;
+  }
+
+  private trimHistoryToBudget() {
+    while (
+      this.history.length > 1
+      && (
+        this.history.length > MAX_HISTORY_STROKES
+        || this.retainedHistoryBytes > MAX_HISTORY_BYTES
+      )
+    ) {
+      const removed = this.history.shift();
+      if (!removed) break;
+      this.retainedHistoryBytes = Math.max(0, this.retainedHistoryBytes - removed.byteSize);
+    }
+  }
+
   private pushHistory(changes: StrokeChange[]) {
     this.pushHistoryChange({ kind: "pixels", changes });
   }
 
   private pushHistoryChange(change: HistoryChange) {
+    this.clearRedoHistory();
     const stroke: Stroke = {
       change,
       beforeStateId: this.currentStateId,
       afterStateId: this.nextStateId++,
+      byteSize: this.estimateHistoryChangeBytes(change),
     };
     this.currentStateId = stroke.afterStateId;
     this.history.push(stroke);
-    if (this.history.length > MAX_HISTORY_STROKES) this.history.shift();
-    this.redoHistory.length = 0;
+    this.retainedHistoryBytes += stroke.byteSize;
+    this.trimHistoryToBudget();
   }
 
   private applyStroke(stroke: Stroke, side: "before" | "after") {
