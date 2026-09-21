@@ -591,6 +591,38 @@ describe("unit painter", () => {
   });
 
 
+  it("allocates layer pixels lazily in tiles and releases an emptied tile", () => {
+    const painter = makePainter();
+    try {
+      const getActiveTileCount = () => {
+        const internal = painter.session as unknown as {
+          activePaintLayerId: string;
+          paintLayers: Array<{
+            id: string;
+            textures: Map<unknown, { tiles: Map<number, unknown> }>;
+          }>;
+        };
+        const active = internal.paintLayers.find((layer) => layer.id === internal.activePaintLayerId);
+        return [...(active?.textures.values() ?? [])].reduce(
+          (count, texture) => count + texture.tiles.size,
+          0,
+        );
+      };
+
+      expect(getActiveTileCount()).toBe(0);
+      paint(painter, { mode: "paint", color: { r: 255, g: 0, b: 0 } });
+      expect(getActiveTileCount()).toBe(1);
+
+      paint(painter, { mode: "restore", opacity: 1 });
+      expect(getActiveTileCount()).toBe(0);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("composites paint layers in order and respects layer opacity and visibility", () => {
     const painter = makePainter();
     try {
