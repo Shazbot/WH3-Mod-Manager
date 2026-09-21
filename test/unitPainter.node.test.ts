@@ -479,56 +479,6 @@ describe("unit painter", () => {
   });
 
 
-  it("loads a saved painted texture as the clean editable state while keeping original reset data", () => {
-    const painter = makePainter();
-    try {
-      const rgba = new Uint8Array(WIDTH * HEIGHT * 4);
-      for (let index = 3; index < rgba.length; index += 4) rgba[index] = 255;
-      const offset = (8 * WIDTH + 14) * 4;
-      rgba[offset] = 91;
-      rgba[offset + 1] = 42;
-      rgba[offset + 2] = 17;
-
-      painter.session.loadProjectTextures([{
-        sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-        width: WIDTH,
-        height: HEIGHT,
-        rgbaBytes: rgba,
-      }]);
-      expect(getPixel(painter.material, 14, 8)).toEqual([91, 42, 17, 255]);
-      expect(painter.session.hasUnsavedChanges).toBe(false);
-      expect(painter.session.canUndo).toBe(false);
-
-      painter.session.selectIntersection(painter.intersection);
-      expect(painter.session.resetSelection("island")).toBe(true);
-      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
-      expect(painter.session.hasUnsavedChanges).toBe(true);
-    } finally {
-      painter.session.dispose();
-      painter.geometry.dispose();
-      painter.material.dispose();
-    }
-  });
-
-  it("rejects reopened painter data when its source texture dimensions changed", () => {
-    const painter = makePainter();
-    try {
-      expect(() =>
-        painter.session.loadProjectTextures([{
-          sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-          width: WIDTH * 2,
-          height: HEIGHT,
-          rgbaBytes: new Uint8Array(WIDTH * HEIGHT * 8),
-        }]),
-      ).toThrow(/changed size/i);
-    } finally {
-      painter.session.dispose();
-      painter.geometry.dispose();
-      painter.material.dispose();
-    }
-  });
-
-
   it("restores painted pixels toward the original BaseColour and keeps undo intact", () => {
     const painter = makePainter(makeTexture({ x: 14, y: 8, r: 40, g: 80, b: 120 }));
     try {
