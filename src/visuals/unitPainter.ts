@@ -99,11 +99,16 @@ export type UnitPainterLayerInfo = {
   opacity: number;
 };
 
+export type UnitPainterProjectTile = {
+  key: number;
+  rgbaBytes: Uint8Array;
+};
+
 export type UnitPainterProjectLayerTexture = {
   sourceVirtualPath: string;
   width: number;
   height: number;
-  rgbaBytes: Uint8Array;
+  tiles: UnitPainterProjectTile[];
 };
 
 export type UnitPainterProjectLayer = UnitPainterLayerInfo & {
@@ -117,13 +122,6 @@ export type UnitPainterProjectState = {
 
 export type UnitPainterExportTexture = {
   fileName: string;
-  sourceVirtualPath: string;
-  width: number;
-  height: number;
-  rgbaBytes: Uint8Array;
-};
-
-export type UnitPainterImportTexture = {
   sourceVirtualPath: string;
   width: number;
   height: number;
@@ -433,37 +431,6 @@ const setLayerPixel = (
   unpackPixel(normalizedValue, tile.data, localByteIndex);
   target.touchedLayerTiles.add(tileKey);
   if (tile.nonZeroPixels === 0) texture.tiles.delete(tileKey);
-};
-
-const expandLayerTexture = (texture: LayerTexture, target: PaintableTexture) => {
-  // v2 project snapshots are still full RGBA arrays; runtime storage stays sparse.
-  const output = new Uint8Array(target.width * target.height * 4);
-  const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
-  for (const [tileKey, tile] of texture.tiles) {
-    const tileX = tileKey % tilesPerRow;
-    const tileY = Math.floor(tileKey / tilesPerRow);
-    const startX = tileX * LAYER_TILE_SIZE;
-    const startY = tileY * LAYER_TILE_SIZE;
-    const copyWidth = Math.min(LAYER_TILE_SIZE, target.width - startX);
-    const copyHeight = Math.min(LAYER_TILE_SIZE, target.height - startY);
-    if (copyWidth <= 0 || copyHeight <= 0) continue;
-
-    for (let localY = 0; localY < copyHeight; localY += 1) {
-      const sourceStart = localY * LAYER_TILE_SIZE * 4;
-      const targetStart = ((startY + localY) * target.width + startX) * 4;
-      output.set(tile.data.subarray(sourceStart, sourceStart + copyWidth * 4), targetStart);
-    }
-  }
-  return output;
-};
-
-const layerTextureFromFullRgba = (target: PaintableTexture, data: Uint8Array) => {
-  const texture = createLayerTexture();
-  for (let byteIndex = 0; byteIndex < data.length; byteIndex += 4) {
-    if (data[byteIndex + 3] === 0) continue;
-    setLayerPixel(texture, target, byteIndex, packPixel(data, byteIndex));
-  }
-  return texture;
 };
 
 const forEachLayerPixel = (
@@ -1140,56 +1107,6 @@ export class UnitPainterSession {
     this.savedStateId = this.currentStateId;
   }
 
-  loadProjectTextures(textures: readonly UnitPainterImportTexture[]) {
-    if (this.isStrokeOpen) this.endStroke();
-    const layer = this.createEmptyLayer("Imported paint");
-    for (const texture of textures) {
-      const sourceKey = texture.sourceVirtualPath.replace(/\//g, "\\").toLowerCase();
-      const target = this.targetsBySourcePath.get(sourceKey);
-      if (!target) {
-        throw new Error(
-          `The painted source texture '${texture.sourceVirtualPath}' is no longer present on this unit. The source mod may have changed.`,
-        );
-      }
-      if (target.width !== texture.width || target.height !== texture.height) {
-        throw new Error(
-          `The painted source texture '${texture.sourceVirtualPath}' changed size from ${texture.width}x${texture.height} to ${target.width}x${target.height}.`,
-        );
-      }
-      if (texture.rgbaBytes.length !== target.width * target.height * 4) {
-        throw new Error(`The saved painter data for '${texture.sourceVirtualPath}' has an invalid byte length.`);
-      }
-
-      const layerData = createLayerTexture();
-      for (let byteIndex = 0; byteIndex < texture.rgbaBytes.length; byteIndex += 4) {
-        const changed =
-          texture.rgbaBytes[byteIndex] !== target.originalData[byteIndex]
-          || texture.rgbaBytes[byteIndex + 1] !== target.originalData[byteIndex + 1]
-          || texture.rgbaBytes[byteIndex + 2] !== target.originalData[byteIndex + 2];
-        if (!changed) continue;
-        const value =
-          texture.rgbaBytes[byteIndex]
-          | (texture.rgbaBytes[byteIndex + 1] << 8)
-          | (texture.rgbaBytes[byteIndex + 2] << 16)
-          | (255 << 24);
-        setLayerPixel(layerData, target, byteIndex, value >>> 0);
-      }
-      if (layerData.tiles.size > 0) layer.textures.set(target, layerData);
-    }
-
-    this.paintLayers = [layer];
-    this.activePaintLayerId = layer.id;
-    this.recomposeAllTargets();
-    this.history.length = 0;
-    this.redoHistory.length = 0;
-    this.currentStroke.clear();
-    this.currentStrokeCoverage.clear();
-    this.currentStrokeLayerId = "";
-    this.currentStateId = 0;
-    this.savedStateId = 0;
-    this.nextStateId = 1;
-  }
-
   selectIntersection(intersection: THREE.Intersection<THREE.Object3D>): UnitPainterSelectionInfo | undefined {
     if (!(intersection.object instanceof THREE.Mesh)) return undefined;
     const material = getIntersectionMaterial(intersection);
@@ -1660,7 +1577,10 @@ export class UnitPainterSession {
               sourceVirtualPath: target.sourceVirtualPath,
               width: target.width,
               height: target.height,
-              rgbaBytes: expandLayerTexture(data, target),
+              tiles: [...data.tiles.entries()].map(([key, tile]) => ({
+                key,
+                rgbaBytes: new Uint8Array(tile.data),
+              })),
             };
           }),
       })),
@@ -1690,6 +1610,7 @@ export class UnitPainterSession {
         opacity: clamp01(savedLayer.opacity),
         textures: new Map(),
       };
+
       for (const texture of savedLayer.textures ?? []) {
         const sourceKey = texture.sourceVirtualPath.replace(/\//g, "\\").toLowerCase();
         const target = this.targetsBySourcePath.get(sourceKey);
@@ -1703,12 +1624,39 @@ export class UnitPainterSession {
             `The painted source texture '${texture.sourceVirtualPath}' changed size from ${texture.width}x${texture.height} to ${target.width}x${target.height}.`,
           );
         }
-        if (texture.rgbaBytes.length !== target.width * target.height * 4) {
-          throw new Error(`The saved layer data for '${texture.sourceVirtualPath}' has an invalid byte length.`);
+
+        const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+        const tileRows = Math.ceil(target.height / LAYER_TILE_SIZE);
+        const maxTileKey = tilesPerRow * tileRows;
+        const layerTexture = createLayerTexture();
+        const seenTileKeys = new Set<number>();
+        for (const savedTile of texture.tiles ?? []) {
+          if (
+            !Number.isInteger(savedTile.key)
+            || savedTile.key < 0
+            || savedTile.key >= maxTileKey
+            || seenTileKeys.has(savedTile.key)
+            || savedTile.rgbaBytes.length !== LAYER_TILE_BYTES
+          ) {
+            throw new Error(`The saved layer tiles for '${texture.sourceVirtualPath}' are invalid.`);
+          }
+          seenTileKeys.add(savedTile.key);
+
+          let nonZeroPixels = 0;
+          for (let byteIndex = 3; byteIndex < savedTile.rgbaBytes.length; byteIndex += 4) {
+            if (savedTile.rgbaBytes[byteIndex] !== 0) nonZeroPixels += 1;
+          }
+          if (nonZeroPixels === 0) continue;
+
+          layerTexture.tiles.set(savedTile.key, {
+            data: new Uint8Array(savedTile.rgbaBytes),
+            nonZeroPixels,
+          });
+          target.touchedLayerTiles.add(savedTile.key);
         }
-        const layerTexture = layerTextureFromFullRgba(target, texture.rgbaBytes);
         if (layerTexture.tiles.size > 0) layer.textures.set(target, layerTexture);
       }
+
       const numericId = /^layer-(\d+)$/.exec(id);
       if (numericId) this.nextLayerNumber = Math.max(this.nextLayerNumber, Number(numericId[1]) + 1);
       else if (index + 1 >= this.nextLayerNumber) this.nextLayerNumber = index + 2;
