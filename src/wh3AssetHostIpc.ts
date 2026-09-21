@@ -30,13 +30,15 @@ import { readPack, writePack } from "./packFileSerializer";
 import {
   buildUnitPainterPackFiles,
   buildUnitPainterProjectPackFiles,
-  decodeUnitPainterProjectTexture,
+  decodeUnitPainterProjectTiles,
   ensureUnitPainterPackExtension,
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
   parseUnitPainterProjectManifest,
   UNIT_PAINTER_PROJECT_MANIFEST_PATH,
   UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY,
+  UNIT_PAINTER_PROJECT_TILE_BYTES,
+  UNIT_PAINTER_PROJECT_TILE_SIZE,
 } from "./visuals/unitPainterPack";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
@@ -856,22 +858,50 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
         sourceVirtualPath?: unknown;
         width?: unknown;
         height?: unknown;
-        rgbaBytes?: unknown;
+        tiles?: unknown;
       };
       const sourceVirtualPath = sanitizeUnitPainterSourcePath(texture.sourceVirtualPath);
       const width = typeof texture.width === "number" && Number.isInteger(texture.width) ? texture.width : 0;
       const height = typeof texture.height === "number" && Number.isInteger(texture.height) ? texture.height : 0;
-      const rgbaBytes =
-        width > 0 && height > 0 && width <= 16384 && height <= 16384
-          ? readUnitPainterRgba(texture.rgbaBytes, width, height)
-          : undefined;
-      if (!sourceVirtualPath || !rgbaBytes) return undefined;
+      if (
+        !sourceVirtualPath
+        || width <= 0
+        || height <= 0
+        || width > 16384
+        || height > 16384
+        || !Array.isArray(texture.tiles)
+      ) {
+        return undefined;
+      }
+
       const sourceKey = sourceVirtualPath.toLowerCase();
       if (seenSources.has(sourceKey)) return undefined;
       seenSources.add(sourceKey);
-      totalBytes += rgbaBytes.length;
-      if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) return undefined;
-      textures.push({ sourceVirtualPath, width, height, rgbaBytes });
+
+      const tilesPerRow = Math.ceil(width / UNIT_PAINTER_PROJECT_TILE_SIZE);
+      const tileRows = Math.ceil(height / UNIT_PAINTER_PROJECT_TILE_SIZE);
+      const maxTileKey = tilesPerRow * tileRows;
+      const seenTileKeys = new Set<number>();
+      const tiles = [];
+      for (const rawTile of texture.tiles) {
+        if (!rawTile || typeof rawTile !== "object") return undefined;
+        const tile = rawTile as { key?: unknown; rgbaBytes?: unknown };
+        const key = typeof tile.key === "number" && Number.isInteger(tile.key) ? tile.key : -1;
+        if (key < 0 || key >= maxTileKey || seenTileKeys.has(key) || !ArrayBuffer.isView(tile.rgbaBytes)) {
+          return undefined;
+        }
+        const rgbaBytes = Buffer.from(
+          tile.rgbaBytes.buffer,
+          tile.rgbaBytes.byteOffset,
+          tile.rgbaBytes.byteLength,
+        );
+        if (rgbaBytes.length !== UNIT_PAINTER_PROJECT_TILE_BYTES) return undefined;
+        seenTileKeys.add(key);
+        totalBytes += rgbaBytes.length;
+        if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) return undefined;
+        tiles.push({ key, rgbaBytes });
+      }
+      textures.push({ sourceVirtualPath, width, height, tiles });
     }
 
     layers.push({ id, name, visible: layer.visible, opacity, textures });
@@ -1185,7 +1215,7 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     if (!manifestEntry) {
       return {
         success: false as const,
-        error: "This pack is not an editable WHMM unit-painter project. Older painter packs must be recreated once with the new format.",
+        error: "This pack is not an editable WHMM unit-painter project.",
       };
     }
     if (manifestEntry.file_size <= 0 || manifestEntry.file_size > 1024 * 1024) {
@@ -1202,53 +1232,12 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     if (!manifestBuffer) return { success: false as const, error: "The unit painter project manifest could not be read." };
     const manifest = parseUnitPainterProjectManifest(manifestBuffer);
 
-    if (manifest.formatVersion === 1) {
-      if (manifest.paintedTextures.length > MAX_UNIT_PAINTER_TEXTURES) {
-        return {
-          success: false as const,
-          error: `A unit-painter project may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`,
-        };
-      }
-      const texturePaths = manifest.paintedTextures.map((texture) => texture.filePath);
-      const withTextures = texturePaths.length > 0
-        ? await readPack(packPath, { skipParsingTables: true, filesToRead: texturePaths })
-        : withManifest;
-      const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
-      let totalBytes = 0;
-      const textures = [];
-      for (const texture of manifest.paintedTextures) {
-        const packed = byPath.get(texture.filePath.toLowerCase());
-        const compressed = packed?.buffer;
-        if (!compressed) throw new Error(`The saved painter texture '${texture.filePath}' is missing.`);
-        const expectedBytes = texture.width * texture.height * 4;
-        totalBytes += expectedBytes;
-        if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) throw new Error("The saved unit painter project is too large.");
-        const rgbaBytes = await decodeUnitPainterProjectTexture(compressed, expectedBytes);
-        textures.push({
-          sourceVirtualPath: texture.sourceVirtualPath,
-          width: texture.width,
-          height: texture.height,
-          rgbaBytes,
-        });
-      }
-
-      return {
-        success: true as const,
-        packPath,
-        project: {
-          formatVersion: 1 as const,
-          sourceVariantMeshDefinition: manifest.sourceVariantMeshDefinition,
-          variantSelections: manifest.variantSelections,
-          textures,
-        },
-      };
-    }
-
     if (manifest.layers.some((layer) => layer.textures.length > MAX_UNIT_PAINTER_TEXTURES)) {
       throw new Error(
         `Each unit-painter layer may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`,
       );
     }
+
     const textureEntries = manifest.layers.flatMap((layer) => layer.textures);
     const texturePaths = textureEntries.map((texture) => texture.filePath);
     const withTextures = texturePaths.length > 0
@@ -1257,21 +1246,34 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
     let totalBytes = 0;
     const layers = [];
+
     for (const layer of manifest.layers) {
       const textures = [];
       for (const texture of layer.textures) {
         const packed = byPath.get(texture.filePath.toLowerCase());
         const compressed = packed?.buffer;
         if (!compressed) throw new Error(`The saved painter layer texture '${texture.filePath}' is missing.`);
-        const expectedBytes = texture.width * texture.height * 4;
-        totalBytes += expectedBytes;
-        if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) throw new Error("The saved unit painter project is too large.");
-        const rgbaBytes = await decodeUnitPainterProjectTexture(compressed, expectedBytes);
+
+        const tileBytes = texture.tileKeys.length * UNIT_PAINTER_PROJECT_TILE_BYTES;
+        totalBytes += tileBytes;
+        if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
+          throw new Error("The saved unit painter project is too large.");
+        }
+
+        const decoded = await decodeUnitPainterProjectTiles(compressed, texture.tileKeys.length);
+        const tiles = texture.tileKeys.map((key, index) => ({
+          key,
+          rgbaBytes: new Uint8Array(
+            decoded.buffer,
+            decoded.byteOffset + index * UNIT_PAINTER_PROJECT_TILE_BYTES,
+            UNIT_PAINTER_PROJECT_TILE_BYTES,
+          ),
+        }));
         textures.push({
           sourceVirtualPath: texture.sourceVirtualPath,
           width: texture.width,
           height: texture.height,
-          rgbaBytes,
+          tiles,
         });
       }
       layers.push({
@@ -1287,7 +1289,7 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
       success: true as const,
       packPath,
       project: {
-        formatVersion: 2 as const,
+        formatVersion: 3 as const,
         sourceVariantMeshDefinition: manifest.sourceVariantMeshDefinition,
         variantSelections: manifest.variantSelections,
         activeLayerId: manifest.activeLayerId,
