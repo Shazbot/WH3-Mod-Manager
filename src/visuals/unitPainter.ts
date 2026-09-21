@@ -1216,6 +1216,10 @@ export class UnitPainterSession {
   }
 
   get textureViews(): UnitPainterTextureView[] {
+    return this.getTextureViews("island");
+  }
+
+  getTextureViews(selectionScope: UnitPainterSelectionScope = "all"): UnitPainterTextureView[] {
     return [...this.targetsByEditableTexture.values()].map((target) => {
       const uvSegments: number[] = [];
       const seenEdges = new Set<string>();
@@ -1247,10 +1251,12 @@ export class UnitPainterSession {
         const uv = geometry.getAttribute("uv");
         if (uv instanceof THREE.BufferAttribute) {
           const selectedFaces =
-            this.selection.islandId == null
+            selectionScope === "material" || this.selection.islandId == null
               ? getMaterialFaceIndices(geometry, this.selection.materialIndex)
-              : (this.getUvTopology(geometry, this.selection.materialIndex)?.islands.get(this.selection.islandId) ?? [])
-                  .map((triangle) => triangle.faceIndex);
+              : selectionScope === "island"
+                ? (this.getUvTopology(geometry, this.selection.materialIndex)?.islands.get(this.selection.islandId) ?? [])
+                    .map((triangle) => triangle.faceIndex)
+                : [];
           const seenSelectedEdges = new Set<string>();
           for (const faceIndex of selectedFaces) {
             const indices = getTriangleVertexIndices(geometry, faceIndex);
