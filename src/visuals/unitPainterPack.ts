@@ -222,7 +222,7 @@ export const buildUnitPainterProjectPackFiles = async (
       const filePath =
         `whmm_unit_painter\\layers\\${String(layerIndex + 1).padStart(2, "0")}_${id}`
         + `\\textures\\${String(textureIndex + 1).padStart(3, "0")}.rgba.zst`;
-      const buffer = Buffer.from(await zstdCompress(texture.rgbaBytes, 1));
+      const buffer = await zstdCompress(Buffer.from(texture.rgbaBytes), 1);
       packedTextureFiles.push({ name: filePath, buffer, file_size: buffer.length });
       storedTextures.push({
         sourceVirtualPath,
@@ -425,7 +425,7 @@ export const decodeUnitPainterProjectTexture = async (
   compressed: Uint8Array,
   expectedBytes: number,
 ): Promise<Buffer> => {
-  const decoded = Buffer.from(await zstdDecompress(compressed));
+  const decoded = await zstdDecompress(Buffer.from(compressed));
   if (decoded.length !== expectedBytes) {
     throw new Error(`The saved painter texture decoded to ${decoded.length} bytes; expected ${expectedBytes}.`);
   }
