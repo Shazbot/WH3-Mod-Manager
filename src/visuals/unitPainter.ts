@@ -1466,10 +1466,11 @@ export class UnitPainterSession {
       else this.similarSelectionMasks.delete(target);
     }
 
+    const remainingTargets = [...this.similarSelectionMasks.keys()];
     this.similarSelectionLastTarget =
       this.similarSelectionMasks.has(target)
         ? target
-        : [...this.similarSelectionMasks.keys()].at(-1);
+        : remainingTargets[remainingTargets.length - 1];
     if (this.similarSelectionMasks.size === 0) {
       this.selectionMode = undefined;
       this.similarSelectionLastTarget = undefined;
@@ -1920,7 +1921,7 @@ export class UnitPainterSession {
 
   getIntersectionTextureHover(
     intersection: THREE.Intersection<THREE.Object3D>,
-    scope: UnitPainterSurfaceSelectionScope,
+    scope: Exclude<UnitPainterSelectionScope, "all">,
   ): UnitPainterTextureHover | undefined {
     if (!intersection.uv || !(intersection.object instanceof THREE.Mesh)) return undefined;
     const material = getIntersectionMaterial(intersection);
@@ -1960,7 +1961,7 @@ export class UnitPainterSession {
     textureId: string,
     x: number,
     y: number,
-    scope: Exclude<UnitPainterSelectionScope, "all">,
+    scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterSurfaceHighlight | undefined {
     const target = [...this.targetsByEditableTexture.values()].find(
       (candidate) => candidate.textureId === textureId,
@@ -2007,7 +2008,7 @@ export class UnitPainterSession {
     textureId: string,
     x: number,
     y: number,
-    scope: Exclude<UnitPainterSelectionScope, "all">,
+    scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterTextureHover | undefined {
     const target = [...this.targetsByEditableTexture.values()].find(
       (candidate) => candidate.textureId === textureId,
@@ -2239,7 +2240,7 @@ export class UnitPainterSession {
 
   getIntersectionSurfaceHighlight(
     intersection: THREE.Intersection<THREE.Object3D>,
-    scope: Exclude<UnitPainterSelectionScope, "all">,
+    scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterSurfaceHighlight | undefined {
     if (!(intersection.object instanceof THREE.Mesh)) return undefined;
     const material = getIntersectionMaterial(intersection);
