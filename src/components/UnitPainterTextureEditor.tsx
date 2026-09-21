@@ -77,6 +77,7 @@ const UnitPainterTextureEditor = ({
   const distanceSinceLastStampRef = useRef(0);
   const strokeChangedRef = useRef(false);
   const transformModeRef = useRef<ViewTransformMode>("fit");
+  const pendingLinkedHoverRef = useRef<UnitPainterTextureHover>();
   const [displayMode, setDisplayMode] = useState<TextureDisplayMode>("textureUv");
   const [backgroundMode, setBackgroundMode] = useState<TextureBackgroundMode>("checker");
   const [dimOutsideSelection, setDimOutsideSelection] = useState(false);
@@ -124,9 +125,37 @@ const UnitPainterTextureEditor = ({
     });
   };
 
+  const panTexturePointIntoView = (textureX: number, textureY: number, forceCenter = false) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const margin = 48;
+    setTransform((current) => {
+      const screenX = current.x + textureX * current.scale;
+      const screenY = current.y + textureY * current.scale;
+      const isVisible =
+        screenX >= margin
+        && screenY >= margin
+        && screenX <= rect.width - margin
+        && screenY <= rect.height - margin;
+      if (!forceCenter && isVisible) return current;
+      transformModeRef.current = "manual";
+      return {
+        ...current,
+        x: rect.width / 2 - textureX * current.scale,
+        y: rect.height / 2 - textureY * current.scale,
+      };
+    });
+  };
+
   useEffect(() => {
+    if (view && pendingLinkedHoverRef.current?.textureId === view.id) {
+      transformModeRef.current = "manual";
+      return;
+    }
     fitTexture();
-    // Fit only when switching textures/dimensions, not after each paint-history update.
+    // Fit only for deliberate texture switches/dimension changes. Linked 3D hover
+    // keeps the current zoom and recenters the hovered texel instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.id, view?.width, view?.height]);
 
@@ -273,16 +302,22 @@ const UnitPainterTextureEditor = ({
       const context = hoverCanvas?.getContext("2d");
 
       if (!hover || !view) {
+        pendingLinkedHoverRef.current = undefined;
         if (cursor) cursor.style.display = "none";
         if (context && hoverCanvas) context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
         return;
       }
       if (hover.textureId !== view.id) {
+        pendingLinkedHoverRef.current = hover;
         onSelectedTextureIdChange(hover.textureId);
         if (cursor) cursor.style.display = "none";
         if (context && hoverCanvas) context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
         return;
       }
+
+      const switchedTexture = pendingLinkedHoverRef.current?.textureId === hover.textureId;
+      pendingLinkedHoverRef.current = undefined;
+      panTexturePointIntoView(hover.x, hover.y, switchedTexture);
 
       if (hoverCanvas && context) {
         if (hoverCanvas.width !== view.width) hoverCanvas.width = view.width;
@@ -327,6 +362,9 @@ const UnitPainterTextureEditor = ({
         }
       }
     };
+
+    const pendingHover = pendingLinkedHoverRef.current;
+    if (pendingHover?.textureId === view.id) linkedHoverSinkRef.current(pendingHover);
 
     return () => {
       linkedHoverSinkRef.current = undefined;

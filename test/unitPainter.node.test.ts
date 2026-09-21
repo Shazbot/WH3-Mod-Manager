@@ -202,6 +202,41 @@ describe("unit painter", () => {
     }
   });
 
+  it("selects UV islands from interleaved texture coordinates", () => {
+    const painter = makePainter();
+    try {
+      painter.geometry.setAttribute(
+        "uv",
+        new THREE.InterleavedBufferAttribute(
+          new THREE.InterleavedBuffer(
+            new Float32Array([
+              0.25, 0.25, 0,
+              0.5, 0.25, 0,
+              0.25, 0.5, 0,
+              0.52, 0.25, 0,
+              0.77, 0.25, 0,
+              0.52, 0.5, 0,
+            ]),
+            3,
+          ),
+          2,
+          0,
+        ),
+      );
+
+      const textureId = painter.session.textureViews[0].id;
+      const island = painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island");
+      expect(island?.textureId).toBe(textureId);
+      expect(island?.hasUvIsland).toBe(true);
+      expect(painter.session.getTexturePointSurfaceHighlight(textureId, 14.5, 8.5, "island")?.scope)
+        .toBe("island");
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("exposes the selected material footprint as UV triangles for texture display masking", () => {
     const painter = makePainter();
     try {

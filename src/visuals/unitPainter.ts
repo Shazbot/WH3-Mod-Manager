@@ -538,7 +538,7 @@ const estimateBrushRadiusTexels = (
   const mesh = intersection.object;
   const geometry = mesh.geometry;
   const uvAttribute = geometry.getAttribute("uv");
-  if (!(uvAttribute instanceof THREE.BufferAttribute)) {
+  if (!uvAttribute) {
     return Math.max(MIN_BRUSH_RADIUS_TEXELS, screenRadiusPx * 0.5);
   }
 
@@ -1472,7 +1472,7 @@ export class UnitPainterSession {
     faceIndices: readonly number[],
   ) {
     const uv = geometry.getAttribute("uv");
-    if (!(uv instanceof THREE.BufferAttribute)) return new Float32Array();
+    if (!uv) return new Float32Array();
     target.editable.updateMatrix();
     const segments: number[] = [];
     const seenEdges = new Set<string>();
@@ -1543,7 +1543,7 @@ export class UnitPainterSession {
 
       for (const surface of this.surfacesByTarget.get(target) ?? []) {
         const uv = surface.geometry.getAttribute("uv");
-        if (!(uv instanceof THREE.BufferAttribute)) continue;
+        if (!uv) continue;
         for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
           const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
           if (!indices) continue;
@@ -1566,7 +1566,7 @@ export class UnitPainterSession {
       if (this.selection?.target === target) {
         const geometry = this.selection.mesh.geometry;
         const uv = geometry.getAttribute("uv");
-        if (uv instanceof THREE.BufferAttribute) {
+        if (uv) {
           const selectedFaces =
             selectionScope === "material" || this.selection.islandId == null
               ? getMaterialFaceIndices(geometry, this.selection.materialIndex)
@@ -1663,7 +1663,7 @@ export class UnitPainterSession {
 
     for (const surface of this.surfacesByTarget.get(target) ?? []) {
       const uv = surface.geometry.getAttribute("uv");
-      if (!(uv instanceof THREE.BufferAttribute)) continue;
+      if (!uv) continue;
       for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
         const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
         if (!indices) continue;
@@ -1684,12 +1684,13 @@ export class UnitPainterSession {
         ) {
           continue;
         }
-        return this.getSurfaceHighlightForFace(
+        const highlight = this.getSurfaceHighlightForFace(
           surface.mesh,
           surface.materialIndex,
           faceIndex,
           scope,
         );
+        if (highlight) return highlight;
       }
     }
     return undefined;
@@ -1707,7 +1708,7 @@ export class UnitPainterSession {
 
     for (const surface of this.surfacesByTarget.get(target) ?? []) {
       const uv = surface.geometry.getAttribute("uv");
-      if (!(uv instanceof THREE.BufferAttribute)) continue;
+      if (!uv) continue;
       for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
         const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
         if (!indices) continue;
@@ -1731,7 +1732,7 @@ export class UnitPainterSession {
 
         const topology = this.getUvTopology(surface.geometry, surface.materialIndex);
         const islandId = topology?.faceToIsland.get(faceIndex);
-        if (mode === "island" && islandId == null) return undefined;
+        if (mode === "island" && islandId == null) continue;
         this.selection = {
           mesh: surface.mesh,
           material: surface.material,
