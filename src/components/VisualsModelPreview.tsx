@@ -480,6 +480,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintHoverHelperRef = useRef<THREE.Mesh | null>(null);
   const paintHoverKeyRef = useRef("");
   const painterEnabledRef = useRef(false);
+  const paintViewModeRef = useRef<"model" | "split" | "texture">("model");
   const eyedropperActiveRef = useRef(false);
   const selectToolModeRef = useRef<UnitPainterSelectMode>();
   const symmetryEnabledRef = useRef(false);
@@ -578,6 +579,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   };
 
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
+  paintViewModeRef.current = paintViewMode;
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolModeRef.current = paintSelectMode;
   symmetryEnabledRef.current = paintViewMode !== "texture" && isPaintSymmetryEnabled;
@@ -1774,6 +1776,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         return;
       }
       if (key === "x") {
+        if (paintViewModeRef.current === "texture") return;
         setIsPaintSymmetryEnabled((enabled) => !enabled);
         event.preventDefault();
         return;
@@ -1951,11 +1954,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         <div
           ref={mountRef}
           className={
-            paintViewMode === "texture"
-              ? "invisible pointer-events-none absolute inset-0"
-              : paintViewMode === "split"
-                ? "absolute bottom-0 left-0 top-0 w-1/2"
-                : "absolute inset-0"
+            !isPainterEnabled || status !== "ready"
+              ? "absolute inset-0"
+              : paintViewMode === "texture"
+                ? "invisible pointer-events-none absolute inset-0"
+                : paintViewMode === "split"
+                  ? "absolute bottom-0 left-0 top-0 w-1/2"
+                  : "absolute inset-0"
           }
         />
         {isPainterEnabled
