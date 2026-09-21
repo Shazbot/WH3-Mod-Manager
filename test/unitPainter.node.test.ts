@@ -133,6 +133,87 @@ describe("unit painter", () => {
     }
   });
 
+  it("exposes editable texture data and UV wireframe segments for the texture painter", () => {
+    const painter = makePainter();
+    try {
+      const views = painter.session.textureViews;
+      expect(views).toHaveLength(1);
+      expect(views[0].width).toBe(WIDTH);
+      expect(views[0].height).toBe(HEIGHT);
+      expect(views[0].data).toBe((painter.material.map as THREE.DataTexture).image.data);
+      expect(views[0].uvSegments.length).toBeGreaterThan(0);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("paints directly in texture coordinates with the same undo history", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      painter.session.beginStroke();
+      const result = painter.session.paintTexturePoint(
+        textureId,
+        2.5,
+        2.5,
+        1,
+        {
+          radiusPx: 12,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 80, g: 120, b: 200 },
+        },
+      );
+      expect(result?.changed).toBe(true);
+      expect(painter.session.endStroke()).toBe(true);
+      expect(getPixel(painter.material, 2, 2)).toEqual([80, 120, 200, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 2, 2)).toEqual([0, 0, 0, 255]);
+      expect(painter.session.redo()).toBe(true);
+      expect(getPixel(painter.material, 2, 2)).toEqual([80, 120, 200, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("clips direct texture painting to the selected UV island when requested", () => {
+    const painter = makePainter();
+    try {
+      const selection = painter.session.selectIntersection(painter.intersection);
+      expect(selection?.hasUvIsland).toBe(true);
+      const textureId = selection!.textureId;
+      const settings: UnitPainterBrushSettings = {
+        radiusPx: 12,
+        opacity: 1,
+        hardness: 1,
+        mode: "paint",
+        color: { r: 255, g: 0, b: 0 },
+      };
+
+      painter.session.beginStroke();
+      const outside = painter.session.paintTexturePoint(textureId, 20.5, 8.5, 1, settings, "island");
+      expect(outside?.changed).toBe(false);
+      const inside = painter.session.paintTexturePoint(textureId, 14.5, 8.5, 1, settings, "island");
+      expect(inside?.changed).toBe(true);
+      expect(painter.session.endStroke()).toBe(true);
+
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([0, 0, 0, 255]);
+      const selectedView = painter.session.textureViews.find((view) => view.id === textureId);
+      expect(selectedView?.selectedUvSegments.length).toBeGreaterThan(0);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("samples the current editable BaseColour for the eyedropper", () => {
     const painter = makePainter(makeTexture({ x: 14, y: 8, r: 12, g: 34, b: 56 }));
     try {
