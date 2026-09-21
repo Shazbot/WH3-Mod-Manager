@@ -948,6 +948,9 @@ export class UnitPainterSession {
   private readonly targetsBySourcePath = new Map<string, PaintableTexture>();
   private readonly restores: MaterialRestore[] = [];
   private readonly surfacesByTarget = new Map<PaintableTexture, PaintableSurface[]>();
+  private readonly textureChangeListeners = new Set<
+    (textureId: string, dirty: UnitPainterTexturePaintResult) => void
+  >();
   private readonly history: Stroke[] = [];
   private readonly redoHistory: Stroke[] = [];
   private retainedHistoryBytes = 0;
@@ -1291,6 +1294,13 @@ export class UnitPainterSession {
   markSaved() {
     if (this.isStrokeOpen) this.endStroke();
     this.savedStateId = this.currentStateId;
+  }
+
+  subscribeTextureChanges(
+    listener: (textureId: string, dirty: UnitPainterTexturePaintResult) => void,
+  ) {
+    this.textureChangeListeners.add(listener);
+    return () => this.textureChangeListeners.delete(listener);
   }
 
   get textureViews(): UnitPainterTextureView[] {
@@ -1737,13 +1747,17 @@ export class UnitPainterSession {
     }
 
     if (changed) this.markTargetRangeDirty(target, dirtyStart, dirtyEnd);
-    return {
+    const result = {
       changed,
       minX: changed ? changedMinX : 0,
       minY: changed ? changedMinY : 0,
       maxX: changedMaxX,
       maxY: changedMaxY,
     };
+    if (changed) {
+      for (const listener of this.textureChangeListeners) listener(target.textureId, result);
+    }
+    return result;
   }
 
   sampleIntersection(intersection: THREE.Intersection<THREE.Object3D>) {
@@ -2135,6 +2149,7 @@ export class UnitPainterSession {
     this.targetsByEditableTexture.clear();
     this.targetsBySourcePath.clear();
     this.surfacesByTarget.clear();
+    this.textureChangeListeners.clear();
     this.paintLayers.length = 0;
     this.activePaintLayerId = "";
     this.history.length = 0;
