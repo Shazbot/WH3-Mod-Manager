@@ -1300,7 +1300,9 @@ export class UnitPainterSession {
     listener: (textureId: string, dirty: UnitPainterTexturePaintResult) => void,
   ) {
     this.textureChangeListeners.add(listener);
-    return () => this.textureChangeListeners.delete(listener);
+    return () => {
+      this.textureChangeListeners.delete(listener);
+    };
   }
 
   get textureViews(): UnitPainterTextureView[] {
