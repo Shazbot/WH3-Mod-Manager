@@ -777,7 +777,7 @@ const UnitPainterTextureEditor = ({
           ref={textureCanvasRef}
           className="pointer-events-none absolute left-0 top-0 shadow-2xl [image-rendering:pixelated]"
           style={{
-            display: displayMode === "uvOnly" ? "none" : undefined,
+            display: displayMode === "uvOnly" && !view.selectedPixelMask ? "none" : undefined,
             transformOrigin: "0 0",
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           }}
@@ -816,34 +816,49 @@ const UnitPainterTextureEditor = ({
             className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed"
           />
         </div>
-        {cursor.visible && activePanPointerRef.current == null && (
-          <>
-            <div
-              className="pointer-events-none absolute rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
-              style={{
-                left: cursor.x - brushSettings.radiusPx,
-                top: cursor.y - brushSettings.radiusPx,
-                width: brushSettings.radiusPx * 2,
-                height: brushSettings.radiusPx * 2,
-              }}
-            />
-            <div
-              className="pointer-events-none absolute rounded-full border border-dashed border-white/70"
-              style={{
-                left: cursor.x - brushSettings.radiusPx * brushSettings.hardness,
-                top: cursor.y - brushSettings.radiusPx * brushSettings.hardness,
-                width: brushSettings.radiusPx * brushSettings.hardness * 2,
-                height: brushSettings.radiusPx * brushSettings.hardness * 2,
-              }}
-            />
-          </>
-        )}
+        {cursor.visible && activePanPointerRef.current == null && (() => {
+          const precisionToolActive = !!selectMode || eyedropperActive;
+          const radius = precisionToolActive ? 5 : brushSettings.radiusPx;
+          const cursorColor =
+            selectMode === "similar"
+              ? "#facc15"
+              : selectMode === "island"
+                ? "#c4b5fd"
+                : selectMode === "material" || eyedropperActive
+                  ? "#67e8f9"
+                  : "rgba(255,255,255,0.9)";
+          return (
+            <>
+              <div
+                className="pointer-events-none absolute rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
+                style={{
+                  left: cursor.x - radius,
+                  top: cursor.y - radius,
+                  width: radius * 2,
+                  height: radius * 2,
+                  borderColor: cursorColor,
+                }}
+              />
+              {!precisionToolActive && (
+                <div
+                  className="pointer-events-none absolute rounded-full border border-dashed border-white/70"
+                  style={{
+                    left: cursor.x - radius * brushSettings.hardness,
+                    top: cursor.y - radius * brushSettings.hardness,
+                    width: radius * brushSettings.hardness * 2,
+                    height: radius * brushSettings.hardness * 2,
+                  }}
+                />
+              )}
+            </>
+          );
+        })()}
       </div>
 
       <div className="pointer-events-none absolute bottom-2 left-2 z-20 rounded bg-gray-900/90 px-2 py-1 text-[11px] text-gray-400">
         {selectMode ? `LMB select ${selectMode}` : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
         {scope !== "all"
-          ? ` · clipped to selection${paddingPx > 0 ? ` + ${paddingPx}px padding` : ""}`
+          ? ` · clipped to selection${scope !== "similar" && paddingPx > 0 ? ` + ${paddingPx}px padding` : ""}`
           : ""}
       </div>
     </div>
