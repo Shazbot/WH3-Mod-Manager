@@ -10,6 +10,17 @@ export type UnitPainterSelectionInfo = {
   object: THREE.Mesh;
 };
 
+export type UnitPainterSurfaceHighlight = {
+  object: THREE.Mesh;
+  scope: "material" | "island";
+  materialIndex: number;
+  islandId?: number;
+  /** Triangle vertex indices into the source geometry. */
+  indices: number[];
+  /** Stable while the highlighted mesh/material/island is unchanged. */
+  key: string;
+};
+
 /** Mirror a world-space point through an object's local X=0 plane. */
 export const mirrorPointAcrossObjectLocalX = (
   point: THREE.Vector3,
@@ -458,6 +469,27 @@ const getTriangleVertexIndices = (geometry: THREE.BufferGeometry, faceIndex: num
   const positions = geometry.getAttribute("position");
   if (!positions || base + 2 >= positions.count) return undefined;
   return [base, base + 1, base + 2] as const;
+};
+
+const getMaterialFaceIndices = (geometry: THREE.BufferGeometry, materialIndex: number) => {
+  const positions = geometry.getAttribute("position");
+  if (!positions) return [];
+  const triangleCount = Math.floor((geometry.index?.count ?? positions.count) / 3);
+  const faces: number[] = [];
+  for (let faceIndex = 0; faceIndex < triangleCount; faceIndex += 1) {
+    if (getTriangleMaterialIndex(geometry, faceIndex) === materialIndex) faces.push(faceIndex);
+  }
+  return faces;
+};
+
+const getSurfaceTriangleIndices = (geometry: THREE.BufferGeometry, faceIndices: readonly number[]) => {
+  const indices: number[] = [];
+  for (const faceIndex of faceIndices) {
+    const triangle = getTriangleVertexIndices(geometry, faceIndex);
+    if (!triangle) continue;
+    indices.push(triangle[0], triangle[1], triangle[2]);
+  }
+  return indices;
 };
 
 const createUvIslandTopology = (
@@ -1039,6 +1071,89 @@ export class UnitPainterSession {
 
   clearSelection() {
     this.selection = undefined;
+  }
+
+  getIntersectionSurfaceHighlight(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+  ): UnitPainterSurfaceHighlight | undefined {
+    if (!(intersection.object instanceof THREE.Mesh)) return undefined;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!material || !target) return undefined;
+
+    const mesh = intersection.object;
+    const materialIndex =
+      intersection.face?.materialIndex
+      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+
+    if (scope === "material") {
+      const indices = getSurfaceTriangleIndices(mesh.geometry, getMaterialFaceIndices(mesh.geometry, materialIndex));
+      if (indices.length === 0) return undefined;
+      return {
+        object: mesh,
+        scope,
+        materialIndex,
+        indices,
+        key: `${mesh.uuid}:material:${materialIndex}`,
+      };
+    }
+
+    if (intersection.faceIndex == null) return undefined;
+    const topology = this.getUvTopology(mesh.geometry, materialIndex);
+    const islandId = topology?.faceToIsland.get(intersection.faceIndex);
+    const triangles = islandId == null ? undefined : topology?.islands.get(islandId);
+    if (islandId == null || !triangles) return undefined;
+    const indices = getSurfaceTriangleIndices(mesh.geometry, triangles.map((triangle) => triangle.faceIndex));
+    if (indices.length === 0) return undefined;
+    return {
+      object: mesh,
+      scope,
+      materialIndex,
+      islandId,
+      indices,
+      key: `${mesh.uuid}:island:${materialIndex}:${islandId}`,
+    };
+  }
+
+  getSelectionSurfaceHighlight(
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+  ): UnitPainterSurfaceHighlight | undefined {
+    const selection = this.selection;
+    if (!selection) return undefined;
+
+    if (scope === "material") {
+      const indices = getSurfaceTriangleIndices(
+        selection.mesh.geometry,
+        getMaterialFaceIndices(selection.mesh.geometry, selection.materialIndex),
+      );
+      if (indices.length === 0) return undefined;
+      return {
+        object: selection.mesh,
+        scope,
+        materialIndex: selection.materialIndex,
+        indices,
+        key: `${selection.mesh.uuid}:material:${selection.materialIndex}`,
+      };
+    }
+
+    if (selection.islandId == null) return undefined;
+    const topology = this.getUvTopology(selection.mesh.geometry, selection.materialIndex);
+    const triangles = topology?.islands.get(selection.islandId);
+    if (!triangles) return undefined;
+    const indices = getSurfaceTriangleIndices(
+      selection.mesh.geometry,
+      triangles.map((triangle) => triangle.faceIndex),
+    );
+    if (indices.length === 0) return undefined;
+    return {
+      object: selection.mesh,
+      scope,
+      materialIndex: selection.materialIndex,
+      islandId: selection.islandId,
+      indices,
+      key: `${selection.mesh.uuid}:island:${selection.materialIndex}:${selection.islandId}`,
+    };
   }
 
   matchesSelectionScope(
