@@ -513,8 +513,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [animationSpeed, setAnimationSpeed] = useState(1);
   const [isPainterEnabled, setIsPainterEnabled] = useState(false);
-  const [paintViewMode, setPaintViewMode] = useState<"model" | "texture">("model");
+  const [paintViewMode, setPaintViewMode] = useState<"model" | "split" | "texture">("model");
   const [paintTextureViewId, setPaintTextureViewId] = useState<string>();
+  const [paintTexturePadding, setPaintTexturePadding] = useState(0);
   const [paintColor, setPaintColor] = useState(DEFAULT_PAINT_COLOR);
   const [paintColorHistory, setPaintColorHistory] = useState<string[]>([]);
   const [isPaintColorHistoryOpen, setIsPaintColorHistoryOpen] = useState(false);
@@ -579,7 +580,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolModeRef.current = paintSelectMode;
-  symmetryEnabledRef.current = paintViewMode === "model" && isPaintSymmetryEnabled;
+  symmetryEnabledRef.current = paintViewMode !== "texture" && isPaintSymmetryEnabled;
   paintScopeRef.current = paintScope;
   brushSettingsRef.current = {
     radiusPx: paintBrushRadius,
@@ -1641,6 +1642,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintColor(DEFAULT_PAINT_COLOR);
     setPaintViewMode("model");
     setPaintTextureViewId(undefined);
+    setPaintTexturePadding(0);
     setIsPaintColorHistoryOpen(false);
     pendingPaintProjectRef.current = null;
   }, [assetPath]);
@@ -1948,13 +1950,26 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       <div className="relative min-h-0 flex-1 w-full overflow-hidden">
         <div
           ref={mountRef}
-          className={`absolute inset-0 ${paintViewMode === "texture" ? "invisible pointer-events-none" : ""}`}
+          className={
+            paintViewMode === "texture"
+              ? "invisible pointer-events-none absolute inset-0"
+              : paintViewMode === "split"
+                ? "absolute bottom-0 left-0 top-0 w-1/2"
+                : "absolute inset-0"
+          }
         />
         {isPainterEnabled
-          && paintViewMode === "texture"
+          && paintViewMode !== "model"
           && status === "ready"
           && comparisonModelCount === 1
           && paintSessionRef.current && (
+            <div
+              className={
+                paintViewMode === "split"
+                  ? "absolute bottom-0 right-0 top-0 w-1/2 border-l border-gray-700"
+                  : "absolute inset-0"
+              }
+            >
             <UnitPainterTextureEditor
               session={paintSessionRef.current}
               historyVersion={paintHistoryVersion}
@@ -1963,6 +1978,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               onSelectedTextureIdChange={setPaintTextureViewId}
               brushSettings={brushSettingsRef.current}
               scope={paintScope}
+              paddingPx={paintTexturePadding}
+              onPaddingPxChange={setPaintTexturePadding}
               selectMode={paintSelectMode}
               eyedropperActive={isPaintEyedropperActive}
               onEyedropperComplete={(sampled) => {
@@ -1986,6 +2003,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 if (brushSettingsRef.current.mode !== "restore") rememberUsedPaintColor(paintColor);
               }}
             />
+            </div>
           )}
         {status !== "ready" && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-gray-950/70 text-sm text-gray-200">
@@ -2047,6 +2065,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   title="Paint directly on the 3D model"
                 >
                   3D
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaintViewMode("split")}
+                  className={`border-l border-gray-600 px-2 py-1 ${
+                    paintViewMode === "split"
+                      ? "bg-blue-700/60 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  }`}
+                  title="Show the 3D model and BaseColour texture together"
+                >
+                  Split
                 </button>
                 <button
                   type="button"
@@ -2477,13 +2507,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   disabled={paintViewMode === "texture"}
                   onClick={() => setIsPaintSymmetryEnabled((enabled) => !enabled)}
                   className={`rounded border px-2 py-1 ${
-                    isPaintSymmetryEnabled && paintViewMode === "model"
+                    isPaintSymmetryEnabled && paintViewMode !== "texture"
                       ? "border-fuchsia-400 bg-fuchsia-900/50 text-fuchsia-100"
                       : "border-gray-600 bg-gray-800 hover:border-fuchsia-400"
                   } disabled:cursor-not-allowed disabled:opacity-40`}
                   title={
                     paintViewMode === "texture"
-                      ? "Model-space symmetry is available in the 3D view."
+                      ? "Model-space symmetry is available in the 3D or Split view."
                       : "Mirror brush strokes left/right across the model's local X=0 plane"
                   }
                 >
