@@ -396,6 +396,8 @@ describe("unit painter", () => {
           color: { r: 220, g: 30, b: 30 },
         }),
       ).toBe(true);
+      expect(getPixel(painter.material, 9, 9)).toEqual([220, 30, 30, 255]);
+      expect(getPixel(painter.material, 13, 9)).toEqual([0, 0, 0, 255]);
 
       expect(painter.session.setSelectionPartitionRegion("right")).toBe(true);
       expect(
@@ -407,6 +409,8 @@ describe("unit painter", () => {
           color: { r: 30, g: 60, b: 220 },
         }),
       ).toBe(true);
+      expect(getPixel(painter.material, 9, 9)).toEqual([220, 30, 30, 255]);
+      expect(getPixel(painter.material, 13, 9)).toEqual([30, 60, 220, 255]);
 
       expect(painter.session.selectAllSelectionPartitionRegions()).toBe(true);
       expect(painter.session.selectionPartitionInfo?.allActive).toBe(true);
@@ -426,9 +430,11 @@ describe("unit painter", () => {
     const painter = makePainter();
     try {
       const textureId = painter.session.textureViews[0].id;
-      painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace");
+      // Default texture is uniformly black, so Similar at tolerance 0 selects the
+      // full texture and guarantees all four geometric wedges are populated.
+      expect(painter.session.selectSimilarTexturePoint(textureId, 1.5, 1.5, 0, "replace")).toBe(true);
 
-      expect(painter.session.splitSelection("island", "x")).toBe(true);
+      expect(painter.session.splitSelection("similar", "x")).toBe(true);
       expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label))
         .toEqual(["Top", "Right", "Bottom", "Left"]);
 
