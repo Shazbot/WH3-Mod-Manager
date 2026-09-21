@@ -4,6 +4,8 @@ import * as THREE from "three";
 
 import {
   createUnitPainterSession,
+  getUnitPainterBrushSpacing,
+  sampleUnitPainterStrokeSegment,
   type UnitPainterBrushSettings,
 } from "../src/visuals/unitPainter";
 
@@ -107,6 +109,55 @@ runBenchmark(
       rows.push(await time("first brush dab", () => {
         painter.session.beginStroke();
         painter.session.paintIntersection(center, paintSettings, painter.camera, 1000, paintSettings.radiusPx);
+        painter.session.endStroke();
+      }));
+
+      painter.session.addLayer("Continuous drag");
+      rows.push(await time("continuous drag (24 pointer events)", () => {
+        painter.session.beginStroke();
+        let previousScreenX = 100;
+        let previousU = 0.3;
+        let carried = 0;
+        const spacing = getUnitPainterBrushSpacing(paintSettings.radiusPx);
+
+        const first = painter.makeIntersection(previousU, 0.5);
+        painter.session.paintIntersection(
+          first,
+          paintSettings,
+          painter.camera,
+          1000,
+          paintSettings.radiusPx,
+        );
+        let previousHit = first;
+
+        for (let eventIndex = 1; eventIndex <= 24; eventIndex += 1) {
+          const screenX = 100 + eventIndex * 8;
+          const u = 0.3 + (eventIndex / 24) * 0.4;
+          const sampled = sampleUnitPainterStrokeSegment(
+            previousScreenX,
+            500,
+            screenX,
+            500,
+            spacing,
+            carried,
+          );
+          const hit = painter.makeIntersection(u, 0.5);
+          if (sampled.samples.length > 0) {
+            painter.session.paintIntersectionSamples(
+              previousHit,
+              hit,
+              sampled.samples.map((sample) => sample.amount),
+              paintSettings,
+              painter.camera,
+              1000,
+              paintSettings.radiusPx,
+            );
+          }
+          carried = sampled.distanceSinceLastStamp;
+          previousScreenX = screenX;
+          previousU = u;
+          previousHit = hit;
+        }
         painter.session.endStroke();
       }));
 
