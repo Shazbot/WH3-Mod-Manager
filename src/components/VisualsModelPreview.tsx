@@ -33,6 +33,22 @@ import {
   type UnitPainterTextureHover,
 } from "../visuals/unitPainter";
 
+type PainterStrokeRuntimeProfile = {
+  startedAt: number;
+  pointerEvents: number;
+  normalRaycasts: number;
+  normalRaycastMs: number;
+  symmetryRaycasts: number;
+  symmetryRaycastMs: number;
+  paintBatches: number;
+  primaryStamps: number;
+  mirroredStamps: number;
+  paintCpuMs: number;
+  renderFrames: number;
+  renderCpuMs: number;
+  maxRenderCpuMs: number;
+};
+
 type VisualsModelPreviewProps = {
   assetPath: string;
   /** False while the owning main-window tab is kept mounted but hidden. */
@@ -798,6 +814,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     let activePointerId: number | undefined;
     let activeStrokeColor = "";
     let activeStrokeMode: UnitPainterBrushMode | undefined;
+    let activeStrokeProfile: PainterStrokeRuntimeProfile | undefined;
     let altOrbitPointerId: number | undefined;
     let isAltOrbiting = false;
 
@@ -846,6 +863,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }
     };
 
+    const profilePaintCall = (stamps: number, mirrored: boolean, paint: () => void) => {
+      const startedAt = performance.now();
+      paint();
+      const profile = activeStrokeProfile;
+      if (!profile) return;
+      profile.paintCpuMs += performance.now() - startedAt;
+      profile.paintBatches += 1;
+      if (mirrored) profile.mirroredStamps += stamps;
+      else profile.primaryStamps += stamps;
+    };
+
     const getPaintIntersection = (clientX: number, clientY: number) => {
       const root = paintRootRef.current;
       if (!root) return undefined;
@@ -884,7 +912,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       symmetryRaycaster.ray.copy(mirroredRay);
       symmetryRaycaster.near = raycaster.near;
       symmetryRaycaster.far = raycaster.far;
+      const raycastStartedAt = performance.now();
       const mirroredHit = symmetryRaycaster.intersectObject(root, true)[0];
+      if (activeStrokeProfile) {
+        activeStrokeProfile.symmetryRaycasts += 1;
+        activeStrokeProfile.symmetryRaycastMs += performance.now() - raycastStartedAt;
+      }
       if (!mirroredHit) return undefined;
       if (
         mirroredHit.object === projected.hit.object
@@ -911,29 +944,39 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const session = paintSessionRef.current;
       const nextX = event.clientX;
       const nextY = event.clientY;
+      const raycastStartedAt = performance.now();
       const projected = getPaintIntersection(nextX, nextY);
+      if (activeStrokeProfile) {
+        activeStrokeProfile.pointerEvents += 1;
+        activeStrokeProfile.normalRaycasts += 1;
+        activeStrokeProfile.normalRaycastMs += performance.now() - raycastStartedAt;
+      }
       const scope = paintScopeRef.current;
 
       if (!hasLastPaintPoint) {
         if (projected && session) {
-          session.paintIntersection(
-            projected.hit,
-            brushSettingsRef.current,
-            camera,
-            projected.viewportHeight,
-            brushSettingsRef.current.radiusPx,
-            scope,
-          );
-          const mirroredHit = getMirroredPaintIntersection(projected, scope);
-          if (mirroredHit) {
+          profilePaintCall(1, false, () => {
             session.paintIntersection(
-              mirroredHit,
+              projected.hit,
               brushSettingsRef.current,
-              symmetryCamera,
+              camera,
               projected.viewportHeight,
               brushSettingsRef.current.radiusPx,
-              "all",
+              scope,
             );
+          });
+          const mirroredHit = getMirroredPaintIntersection(projected, scope);
+          if (mirroredHit) {
+            profilePaintCall(1, true, () => {
+              session.paintIntersection(
+                mirroredHit,
+                brushSettingsRef.current,
+                symmetryCamera,
+                projected.viewportHeight,
+                brushSettingsRef.current.radiusPx,
+                "all",
+              );
+            });
           }
           lastPaintIntersection = projected.hit;
           lastMirroredPaintIntersection = mirroredHit;
@@ -969,48 +1012,56 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
       if (projected && session && sampleAmounts.length > 0) {
         if (lastPaintIntersection) {
-          session.paintIntersectionSamples(
-            lastPaintIntersection,
-            projected.hit,
-            sampleAmounts,
-            brushSettingsRef.current,
-            camera,
-            projected.viewportHeight,
-            brushSettingsRef.current.radiusPx,
-            scope,
-          );
+          profilePaintCall(sampleAmounts.length, false, () => {
+            session.paintIntersectionSamples(
+              lastPaintIntersection!,
+              projected.hit,
+              sampleAmounts,
+              brushSettingsRef.current,
+              camera,
+              projected.viewportHeight,
+              brushSettingsRef.current.radiusPx,
+              scope,
+            );
+          });
         } else {
-          session.paintIntersection(
-            projected.hit,
-            brushSettingsRef.current,
-            camera,
-            projected.viewportHeight,
-            brushSettingsRef.current.radiusPx,
-            scope,
-          );
+          profilePaintCall(1, false, () => {
+            session.paintIntersection(
+              projected.hit,
+              brushSettingsRef.current,
+              camera,
+              projected.viewportHeight,
+              brushSettingsRef.current.radiusPx,
+              scope,
+            );
+          });
         }
 
         if (mirroredHit) {
           if (lastMirroredPaintIntersection) {
-            session.paintIntersectionSamples(
-              lastMirroredPaintIntersection,
-              mirroredHit,
-              sampleAmounts,
-              brushSettingsRef.current,
-              symmetryCamera,
-              projected.viewportHeight,
-              brushSettingsRef.current.radiusPx,
-              "all",
-            );
+            profilePaintCall(sampleAmounts.length, true, () => {
+              session.paintIntersectionSamples(
+                lastMirroredPaintIntersection!,
+                mirroredHit,
+                sampleAmounts,
+                brushSettingsRef.current,
+                symmetryCamera,
+                projected.viewportHeight,
+                brushSettingsRef.current.radiusPx,
+                "all",
+              );
+            });
           } else {
-            session.paintIntersection(
-              mirroredHit,
-              brushSettingsRef.current,
-              symmetryCamera,
-              projected.viewportHeight,
-              brushSettingsRef.current.radiusPx,
-              "all",
-            );
+            profilePaintCall(1, true, () => {
+              session.paintIntersection(
+                mirroredHit,
+                brushSettingsRef.current,
+                symmetryCamera,
+                projected.viewportHeight,
+                brushSettingsRef.current.radiusPx,
+                "all",
+              );
+            });
           }
         }
       }
@@ -1072,7 +1123,38 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       lastMirroredPaintIntersection = undefined;
       distanceSinceLastPaintStamp = 0;
       controls.enabled = true;
-      const changed = paintSessionRef.current?.endStroke() ?? false;
+      const session = paintSessionRef.current;
+      const changed = session?.endStroke() ?? false;
+      const profile = activeStrokeProfile;
+      activeStrokeProfile = undefined;
+      if (profile && session) {
+        const gpu = session.lastStrokeGpuProfile;
+        const durationMs = performance.now() - profile.startedAt;
+        const round = (value: number) => Number(value.toFixed(2));
+        console.info("[UnitPainterProfile] 3D stroke", {
+          changed,
+          viewMode: paintViewModeRef.current,
+          symmetry: symmetryEnabledRef.current,
+          durationMs: round(durationMs),
+          pointerEvents: profile.pointerEvents,
+          normalRaycasts: profile.normalRaycasts,
+          normalRaycastMs: round(profile.normalRaycastMs),
+          symmetryRaycasts: profile.symmetryRaycasts,
+          symmetryRaycastMs: round(profile.symmetryRaycastMs),
+          paintBatches: profile.paintBatches,
+          primaryStamps: profile.primaryStamps,
+          mirroredStamps: profile.mirroredStamps,
+          paintCpuMs: round(profile.paintCpuMs),
+          renderFrames: profile.renderFrames,
+          renderCpuMs: round(profile.renderCpuMs),
+          avgRenderCpuMs: round(
+            profile.renderFrames > 0 ? profile.renderCpuMs / profile.renderFrames : 0,
+          ),
+          maxRenderCpuMs: round(profile.maxRenderCpuMs),
+          gpuUpdateRanges: gpu.updateRanges,
+          gpuUpdateMiB: round(gpu.updateBytes / 1024 / 1024),
+        });
+      }
       if (changed) {
         setPaintHistoryVersion((value) => value + 1);
         if (activeStrokeMode !== "restore" && activeStrokeColor) {
@@ -1134,6 +1216,21 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       activePointerId = event.pointerId;
       activeStrokeColor = brushColorToHex();
       activeStrokeMode = brushSettingsRef.current.mode;
+      activeStrokeProfile = {
+        startedAt: performance.now(),
+        pointerEvents: 0,
+        normalRaycasts: 0,
+        normalRaycastMs: 0,
+        symmetryRaycasts: 0,
+        symmetryRaycastMs: 0,
+        paintBatches: 0,
+        primaryStamps: 0,
+        mirroredStamps: 0,
+        paintCpuMs: 0,
+        renderFrames: 0,
+        renderCpuMs: 0,
+        maxRenderCpuMs: 0,
+      };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(event.pointerId);
       session.beginStroke();
@@ -1262,6 +1359,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const renderStartedAt = performance.now();
       renderer.render(scene, camera);
       const completedAt = performance.now();
+      if (activeStrokeProfile) {
+        const renderCpuMs = completedAt - renderStartedAt;
+        activeStrokeProfile.renderFrames += 1;
+        activeStrokeProfile.renderCpuMs += renderCpuMs;
+        activeStrokeProfile.maxRenderCpuMs = Math.max(
+          activeStrokeProfile.maxRenderCpuMs,
+          renderCpuMs,
+        );
+      }
       const afterNextRender = context.afterNextRender;
       if (afterNextRender) {
         context.afterNextRender = null;
