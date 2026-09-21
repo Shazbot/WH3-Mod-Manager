@@ -678,6 +678,10 @@ describe("unit painter", () => {
       expect(source.session.renameLayer(topId!, "Green highlights")).toBe(true);
 
       const state = source.session.exportProjectState();
+      expect(state.layers.flatMap((layer) => layer.textures).every((texture) =>
+        texture.tiles.every((tile) => tile.rgbaBytes.length === 64 * 64 * 4),
+      )).toBe(true);
+      expect(state.layers.flatMap((layer) => layer.textures).some((texture) => texture.tiles.length > 0)).toBe(true);
       reopened.session.loadProjectLayers(state);
 
       expect(reopened.session.layers).toEqual(source.session.layers);
