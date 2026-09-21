@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { MeshBVH, SkinnedMeshBVH, acceleratedRaycast } from "three-mesh-bvh";
 
 export type UnitPainterBrushMode = "recolor" | "paint" | "restore";
 export type UnitPainterSelectionScope = "all" | "material" | "island";
@@ -1070,6 +1071,12 @@ export class UnitPainterSession {
   private currentStateId = 0;
   private savedStateId = 0;
   private nextStateId = 1;
+  private readonly raycastRestores: Array<{
+    mesh: THREE.Mesh;
+    raycast: THREE.Mesh["raycast"];
+  }> = [];
+  private readonly ownedStaticBoundsTrees = new Map<THREE.BufferGeometry, MeshBVH>();
+  private readonly dynamicRaycastBvhs: Array<{ mesh: THREE.Mesh; bvh: SkinnedMeshBVH }> = [];
 
   constructor(root: THREE.Object3D) {
     const targetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
@@ -1149,9 +1156,63 @@ export class UnitPainterSession {
       });
     });
 
+    this.enableRaycastAcceleration(root);
+
     const initialLayer = this.createEmptyLayer();
     this.paintLayers.push(initialLayer);
     this.activePaintLayerId = initialLayer.id;
+  }
+
+  private enableRaycastAcceleration(root: THREE.Object3D) {
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const position = child.geometry.getAttribute("position");
+      if (!position || position.count < 3) return;
+
+      const originalRaycast = child.raycast;
+      const hasMorphTargets = (child.geometry.morphAttributes.position?.length ?? 0) > 0;
+      const hasDynamicVertices = child instanceof THREE.SkinnedMesh || hasMorphTargets;
+
+      try {
+        if (hasDynamicVertices) {
+          // SkinnedMeshBVH currently expects a single material when forming hit data.
+          // Keep Three's native path for the uncommon multi-material animated mesh so
+          // material/island selection remains exact.
+          if (Array.isArray(child.material)) return;
+          const bvh = new SkinnedMeshBVH(child as THREE.SkinnedMesh, { indirect: true });
+          child.raycast = (raycaster, intersects) => {
+            bvh.raycastObject3D(child, raycaster, intersects);
+          };
+          this.dynamicRaycastBvhs.push({ mesh: child, bvh });
+          this.raycastRestores.push({ mesh: child, raycast: originalRaycast });
+          return;
+        }
+
+        if (!child.geometry.boundsTree) {
+          const bvh = new MeshBVH(child.geometry, { indirect: true });
+          child.geometry.boundsTree = bvh;
+          this.ownedStaticBoundsTrees.set(child.geometry, bvh);
+        }
+        child.raycast = acceleratedRaycast;
+        this.raycastRestores.push({ mesh: child, raycast: originalRaycast });
+      } catch (error) {
+        console.warn("[UnitPainter] Could not build BVH raycast acceleration", child.name, error);
+      }
+    });
+  }
+
+  refitRaycastAcceleration() {
+    if (this.dynamicRaycastBvhs.length === 0) return 0;
+
+    const updatedSkeletons = new Set<THREE.Skeleton>();
+    for (const { mesh, bvh } of this.dynamicRaycastBvhs) {
+      if (mesh instanceof THREE.SkinnedMesh && !updatedSkeletons.has(mesh.skeleton)) {
+        mesh.skeleton.update();
+        updatedSkeletons.add(mesh.skeleton);
+      }
+      bvh.refit();
+    }
+    return this.dynamicRaycastBvhs.length;
   }
 
   get textureCount() {
@@ -2485,6 +2546,13 @@ export class UnitPainterSession {
 
   dispose() {
     if (this.isStrokeOpen) this.endStroke();
+    for (const { mesh, raycast } of this.raycastRestores) mesh.raycast = raycast;
+    for (const [geometry, bvh] of this.ownedStaticBoundsTrees) {
+      if (geometry.boundsTree === bvh) geometry.boundsTree = undefined;
+    }
+    this.raycastRestores.length = 0;
+    this.dynamicRaycastBvhs.length = 0;
+    this.ownedStaticBoundsTrees.clear();
     for (const { material, original } of this.restores) {
       material.map = original;
       material.needsUpdate = true;

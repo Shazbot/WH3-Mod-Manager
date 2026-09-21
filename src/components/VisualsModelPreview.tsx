@@ -47,6 +47,10 @@ type PainterStrokeRuntimeProfile = {
   renderFrames: number;
   renderCpuMs: number;
   maxRenderCpuMs: number;
+  bvhRefitPasses: number;
+  bvhRefits: number;
+  bvhRefitMs: number;
+  maxBvhRefitMs: number;
 };
 
 type VisualsModelPreviewProps = {
@@ -798,6 +802,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const raycaster = new THREE.Raycaster();
     const symmetryRaycaster = new THREE.Raycaster();
+    raycaster.firstHitOnly = true;
+    symmetryRaycaster.firstHitOnly = true;
     const symmetryCamera = new THREE.PerspectiveCamera();
     const mirroredRay = new THREE.Ray();
     const pointer = new THREE.Vector2();
@@ -1151,6 +1157,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             profile.renderFrames > 0 ? profile.renderCpuMs / profile.renderFrames : 0,
           ),
           maxRenderCpuMs: round(profile.maxRenderCpuMs),
+          bvhRefitPasses: profile.bvhRefitPasses,
+          bvhRefits: profile.bvhRefits,
+          bvhRefitMs: round(profile.bvhRefitMs),
+          avgBvhRefitMs: round(
+            profile.bvhRefitPasses > 0 ? profile.bvhRefitMs / profile.bvhRefitPasses : 0,
+          ),
+          maxBvhRefitMs: round(profile.maxBvhRefitMs),
           gpuUpdateRanges: gpu.updateRanges,
           gpuUpdateMiB: round(gpu.updateBytes / 1024 / 1024),
         });
@@ -1230,6 +1243,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         renderFrames: 0,
         renderCpuMs: 0,
         maxRenderCpuMs: 0,
+        bvhRefitPasses: 0,
+        bvhRefits: 0,
+        bvhRefitMs: 0,
+        maxBvhRefitMs: 0,
       };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(event.pointerId);
@@ -1367,6 +1384,21 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           activeStrokeProfile.maxRenderCpuMs,
           renderCpuMs,
         );
+      }
+
+      if (context.isPlaying && paintSessionRef.current) {
+        const refitStartedAt = performance.now();
+        const bvhRefits = paintSessionRef.current.refitRaycastAcceleration();
+        if (activeStrokeProfile && bvhRefits > 0) {
+          const bvhRefitMs = performance.now() - refitStartedAt;
+          activeStrokeProfile.bvhRefitPasses += 1;
+          activeStrokeProfile.bvhRefits += bvhRefits;
+          activeStrokeProfile.bvhRefitMs += bvhRefitMs;
+          activeStrokeProfile.maxBvhRefitMs = Math.max(
+            activeStrokeProfile.maxBvhRefitMs,
+            bvhRefitMs,
+          );
+        }
       }
       const afterNextRender = context.afterNextRender;
       if (afterNextRender) {

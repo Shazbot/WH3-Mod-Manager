@@ -296,6 +296,7 @@
     "semver": "^7.6.3",
     "stream-http": "^3.2.0",
     "three": "^0.186.0",
+    "three-mesh-bvh": "0.9.15",
     "tailwind-merge": "^2.2.2",
     "tailwindcss-animate": "^1.0.7",
     "unzipper": "^0.12.3",
