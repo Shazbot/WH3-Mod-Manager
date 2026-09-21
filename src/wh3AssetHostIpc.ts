@@ -36,6 +36,7 @@ import {
   getUnitPainterNamespaceName,
   parseUnitPainterProjectManifest,
   UNIT_PAINTER_PROJECT_MANIFEST_PATH,
+  UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY,
 } from "./visuals/unitPainterPack";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
@@ -765,6 +766,28 @@ const sanitizeUnitPainterSourcePath = (value: unknown) => {
   return normalized;
 };
 
+const sanitizeUnitPainterColor = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : undefined;
+};
+
+const sanitizeUnitPainterColorHistory = (value: unknown) => {
+  if (value == null) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const colors: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const color = sanitizeUnitPainterColor(raw);
+    if (!color) return undefined;
+    if (seen.has(color)) continue;
+    seen.add(color);
+    colors.push(color);
+    if (colors.length >= UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY) break;
+  }
+  return colors;
+};
+
 const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
   if (!ArrayBuffer.isView(value)) return undefined;
   const expectedBytes = width * height * 4;
@@ -778,8 +801,18 @@ const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
 
 const sanitizeUnitPainterProjectState = (value: unknown) => {
   if (!value || typeof value !== "object") return undefined;
-  const candidate = value as { activeLayerId?: unknown; layers?: unknown };
+  const candidate = value as {
+    activeLayerId?: unknown;
+    layers?: unknown;
+    usedColorHistory?: unknown;
+    selectedColor?: unknown;
+  };
   const activeLayerId = typeof candidate.activeLayerId === "string" ? candidate.activeLayerId.trim() : "";
+  const usedColorHistory = sanitizeUnitPainterColorHistory(candidate.usedColorHistory);
+  const selectedColor =
+    candidate.selectedColor == null ? undefined : sanitizeUnitPainterColor(candidate.selectedColor);
+  if (candidate.usedColorHistory != null && !usedColorHistory) return undefined;
+  if (candidate.selectedColor != null && !selectedColor) return undefined;
   if (!activeLayerId || !Array.isArray(candidate.layers) || candidate.layers.length < 1 || candidate.layers.length > 32) {
     return undefined;
   }
@@ -845,7 +878,12 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
   }
 
   if (!seenLayerIds.has(activeLayerId)) return undefined;
-  return { activeLayerId, layers };
+  return {
+    activeLayerId,
+    layers,
+    ...(usedColorHistory ? { usedColorHistory } : {}),
+    ...(selectedColor ? { selectedColor } : {}),
+  };
 };
 
 const exportUnitPainterVariantNow = async (
@@ -1253,6 +1291,8 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
         sourceVariantMeshDefinition: manifest.sourceVariantMeshDefinition,
         variantSelections: manifest.variantSelections,
         activeLayerId: manifest.activeLayerId,
+        usedColorHistory: manifest.usedColorHistory,
+        selectedColor: manifest.selectedColor,
         layers,
       },
     };
