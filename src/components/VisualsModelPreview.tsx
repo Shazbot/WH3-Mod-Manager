@@ -28,6 +28,7 @@ import {
   type UnitPainterLayerInfo,
   type UnitPainterSelectionInfo,
   type UnitPainterSelectionScope,
+  type UnitPainterSurfaceHighlight,
 } from "../visuals/unitPainter";
 
 type VisualsModelPreviewProps = {
@@ -139,6 +140,73 @@ const disposeObject = (object: THREE.Object3D, preservedPool?: PreviewResourcePo
   for (const texture of textures) {
     if (!preservedTextures?.has(texture)) texture.dispose();
   }
+};
+
+const disposePainterSurfaceOverlay = (overlay: THREE.Mesh | null) => {
+  if (!overlay) return;
+  overlay.parent?.remove(overlay);
+
+  // The overlay intentionally shares the source mesh's vertex attributes so only
+  // the selected triangle index buffer is allocated. Detach shared attributes
+  // before dispose so Three does not release the source geometry's GPU buffers.
+  for (const attributeName of Object.keys(overlay.geometry.attributes)) {
+    overlay.geometry.deleteAttribute(attributeName);
+  }
+  overlay.geometry.morphAttributes = {};
+  overlay.geometry.dispose();
+
+  const materials = Array.isArray(overlay.material) ? overlay.material : [overlay.material];
+  for (const material of materials) material.dispose();
+};
+
+const createPainterSurfaceOverlay = (
+  surface: UnitPainterSurfaceHighlight,
+  opacity: number,
+) => {
+  const source = surface.object;
+  const geometry = new THREE.BufferGeometry();
+  for (const [name, attribute] of Object.entries(source.geometry.attributes)) {
+    geometry.setAttribute(name, attribute);
+  }
+  geometry.morphAttributes = source.geometry.morphAttributes;
+  geometry.morphTargetsRelative = source.geometry.morphTargetsRelative;
+  geometry.setIndex(surface.indices);
+
+  const material = new THREE.MeshBasicMaterial({
+    color: surface.scope === "island" ? 0xa78bfa : 0x22d3ee,
+    transparent: true,
+    opacity,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  material.toneMapped = false;
+
+  let overlay: THREE.Mesh;
+  if (source instanceof THREE.SkinnedMesh) {
+    const skinned = new THREE.SkinnedMesh(geometry, material);
+    skinned.skeleton = source.skeleton;
+    skinned.bindMode = source.bindMode;
+    skinned.bindMatrix.copy(source.bindMatrix);
+    skinned.bindMatrixInverse.copy(source.bindMatrixInverse);
+    skinned.morphTargetDictionary = source.morphTargetDictionary;
+    skinned.morphTargetInfluences = source.morphTargetInfluences;
+    overlay = skinned;
+  } else {
+    overlay = new THREE.Mesh(geometry, material);
+    overlay.morphTargetDictionary = source.morphTargetDictionary;
+    overlay.morphTargetInfluences = source.morphTargetInfluences;
+  }
+
+  overlay.name = "__whmm_unit_painter_surface_highlight";
+  overlay.frustumCulled = false;
+  overlay.renderOrder = 2000;
+  overlay.raycast = () => undefined;
+  source.add(overlay);
+  return overlay;
 };
 
 const hashGeometry = (geometry: THREE.BufferGeometry) => {
@@ -402,7 +470,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
   const paintRootRef = useRef<THREE.Object3D | null>(null);
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
-  const paintSelectionHelperRef = useRef<THREE.BoxHelper | null>(null);
+  const paintSelectionHelperRef = useRef<THREE.Mesh | null>(null);
+  const paintHoverHelperRef = useRef<THREE.Mesh | null>(null);
+  const paintHoverKeyRef = useRef("");
   const painterEnabledRef = useRef(false);
   const eyedropperActiveRef = useRef(false);
   const selectToolActiveRef = useRef(false);
@@ -513,35 +583,78 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   };
 
   const clearPaintSelectionVisual = () => {
-    const helper = paintSelectionHelperRef.current;
-    if (!helper) return;
-    contextRef.current?.scene.remove(helper);
-    helper.geometry.dispose();
-    helper.material.dispose();
+    disposePainterSurfaceOverlay(paintSelectionHelperRef.current);
     paintSelectionHelperRef.current = null;
+  };
+
+  const clearPaintHoverVisual = () => {
+    disposePainterSurfaceOverlay(paintHoverHelperRef.current);
+    paintHoverHelperRef.current = null;
+    paintHoverKeyRef.current = "";
+  };
+
+  const showPaintSelectionSurface = (
+    surface: UnitPainterSurfaceHighlight | undefined,
+    hover = false,
+  ) => {
+    if (hover) {
+      if (!surface) {
+        clearPaintHoverVisual();
+        return;
+      }
+      if (paintHoverKeyRef.current === surface.key && paintHoverHelperRef.current) return;
+      clearPaintHoverVisual();
+      paintHoverHelperRef.current = createPainterSurfaceOverlay(surface, 0.16);
+      paintHoverKeyRef.current = surface.key;
+      return;
+    }
+
+    clearPaintSelectionVisual();
+    if (surface) paintSelectionHelperRef.current = createPainterSurfaceOverlay(surface, 0.34);
+  };
+
+  const refreshPaintSelectionVisual = (scope: UnitPainterSelectionScope = paintScopeRef.current) => {
+    if (scope === "all") {
+      clearPaintSelectionVisual();
+      return;
+    }
+    showPaintSelectionSurface(paintSessionRef.current?.getSelectionSurfaceHighlight(scope));
+  };
+
+  const updatePaintHoverVisual = (intersection?: THREE.Intersection<THREE.Object3D>) => {
+    if (!selectToolActiveRef.current || !intersection) {
+      clearPaintHoverVisual();
+      return;
+    }
+    const scope = paintScopeRef.current === "island" ? "island" : "material";
+    showPaintSelectionSurface(
+      paintSessionRef.current?.getIntersectionSurfaceHighlight(intersection, scope),
+      true,
+    );
   };
 
   const clearPaintSelection = () => {
     paintSessionRef.current?.clearSelection();
     clearPaintSelectionVisual();
+    clearPaintHoverVisual();
     setPaintSelection(undefined);
     setPaintScope("all");
+    paintScopeRef.current = "all";
     setIsPaintSelectActive(false);
   };
 
   const selectPaintIntersection = (intersection: THREE.Intersection<THREE.Object3D>) => {
-    const selection = paintSessionRef.current?.selectIntersection(intersection);
-    if (!selection) return false;
-    clearPaintSelectionVisual();
-    const helper = new THREE.BoxHelper(selection.object, 0x22d3ee);
-    helper.material.depthTest = false;
-    helper.material.transparent = true;
-    helper.material.opacity = 0.8;
-    helper.renderOrder = 1000;
-    contextRef.current?.scene.add(helper);
-    paintSelectionHelperRef.current = helper;
+    const session = paintSessionRef.current;
+    const selection = session?.selectIntersection(intersection);
+    if (!selection || !session) return false;
+
+    const nextScope: Exclude<UnitPainterSelectionScope, "all"> =
+      paintScopeRef.current === "island" && selection.hasUvIsland ? "island" : "material";
+    clearPaintHoverVisual();
     setPaintSelection(selection);
-    setPaintScope((current) => current === "island" && selection.hasUvIsland ? "island" : "material");
+    setPaintScope(nextScope);
+    paintScopeRef.current = nextScope;
+    showPaintSelectionSurface(session.getSelectionSurfaceHighlight(nextScope));
     return true;
   };
 
@@ -832,6 +945,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     };
     const onPointerMove = (event: PointerEvent) => {
       updateBrushCursor(event);
+      if (!isPainting && selectToolActiveRef.current) {
+        const projected = getPaintIntersection(event.clientX, event.clientY);
+        updatePaintHoverVisual(projected?.hit);
+      }
       if (!isPainting || event.pointerId !== activePointerId) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -846,7 +963,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     };
     const onPointerCancel = (event: PointerEvent) => finishPaintStroke(event);
     const onPointerLeave = (event: PointerEvent) => {
-      if (!isPainting) updateBrushCursor(event, false);
+      if (!isPainting) {
+        updateBrushCursor(event, false);
+        clearPaintHoverVisual();
+      }
     };
 
     renderer.domElement.addEventListener("pointerdown", onPointerDown, true);
@@ -905,6 +1025,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       paintSessionRef.current?.dispose();
       paintSessionRef.current = null;
       clearPaintSelectionVisual();
+      clearPaintHoverVisual();
       paintRootRef.current = null;
       renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
       renderer.domElement.removeEventListener("pointermove", onPointerMove, true);
@@ -1152,6 +1273,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         paintSessionRef.current = null;
       }
       clearPaintSelectionVisual();
+      clearPaintHoverVisual();
       setPaintSelection(undefined);
       setPaintScope("all");
       setIsPaintSelectActive(false);
@@ -1401,6 +1523,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (cursor) cursor.style.display = "none";
       if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
       if (isPaintLayersOpen) setIsPaintLayersOpen(false);
+      clearPaintHoverVisual();
       if (isPaintSelectActive || paintSelection) clearPaintSelection();
     }
   }, [
@@ -1972,7 +2095,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   onClick={() =>
                     setIsPaintEyedropperActive((active) => {
                       const next = !active;
-                      if (next) setIsPaintSelectActive(false);
+                      if (next) {
+                        setIsPaintSelectActive(false);
+                        clearPaintHoverVisual();
+                      }
                       return next;
                     })
                   }
@@ -1991,6 +2117,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     setIsPaintSelectActive((active) => {
                       const next = !active;
                       if (next) setIsPaintEyedropperActive(false);
+                      else clearPaintHoverVisual();
                       return next;
                     })
                   }
@@ -2069,7 +2196,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   Scope
                   <select
                     value={paintScope}
-                    onChange={(event) => setPaintScope(event.target.value as UnitPainterSelectionScope)}
+                    onChange={(event) => {
+                      const nextScope = event.target.value as UnitPainterSelectionScope;
+                      setPaintScope(nextScope);
+                      paintScopeRef.current = nextScope;
+                      refreshPaintSelectionVisual(nextScope);
+                      clearPaintHoverVisual();
+                    }}
                     aria-label="Paint scope"
                     className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                   >
@@ -2081,7 +2214,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 {paintSelection && (
                   <>
                     <span
-                      className="max-w-40 truncate text-cyan-300"
+                      className={`max-w-40 truncate ${
+                        paintScope === "island" ? "text-violet-300" : "text-cyan-300"
+                      }`}
                       title={`${paintSelection.objectName} · ${paintSelection.materialName}`}
                     >
                       {paintSelection.objectName} · {paintSelection.materialName}
@@ -2241,7 +2376,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint · B: brush · E: restore · [/]: size · Shift+[/]: hardness · X: symmetry · Hold Alt: pick color · Esc: clear selection · Ctrl+Z/Y: undo/redo · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint · B: brush · E: restore · [/]: size · Shift+[/]: hardness · X: symmetry · Hold Alt: pick color · Select: hover surface, click to lock · Esc: clear selection · Ctrl+Z/Y: undo/redo · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
