@@ -497,7 +497,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
   const paintRootRef = useRef<THREE.Object3D | null>(null);
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
-  const paintSelectionHelperRef = useRef<THREE.Mesh | null>(null);
+  const paintSelectionHelperRef = useRef<THREE.Mesh[]>([]);
   const paintHoverHelperRef = useRef<THREE.Mesh | null>(null);
   const paintHoverKeyRef = useRef("");
   const textureLinkedHoverSinkRef = useRef<((hover?: UnitPainterTextureHover) => void)>();
@@ -622,8 +622,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   };
 
   const clearPaintSelectionVisual = () => {
-    disposePainterSurfaceOverlay(paintSelectionHelperRef.current);
-    paintSelectionHelperRef.current = null;
+    for (const overlay of paintSelectionHelperRef.current) disposePainterSurfaceOverlay(overlay);
+    paintSelectionHelperRef.current = [];
   };
 
   const clearPaintHoverVisual = () => {
@@ -632,32 +632,23 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     paintHoverKeyRef.current = "";
   };
 
-  const showPaintSelectionSurface = (
-    surface: UnitPainterSurfaceHighlight | undefined,
-    hover = false,
-  ) => {
-    if (hover) {
-      if (!surface) {
-        clearPaintHoverVisual();
-        return;
-      }
-      if (paintHoverKeyRef.current === surface.key && paintHoverHelperRef.current) return;
+  const showPaintHoverSurface = (surface: UnitPainterSurfaceHighlight | undefined) => {
+    if (!surface) {
       clearPaintHoverVisual();
-      paintHoverHelperRef.current = createPainterSurfaceOverlay(surface, 0.16);
-      paintHoverKeyRef.current = surface.key;
       return;
     }
-
-    clearPaintSelectionVisual();
-    if (surface) paintSelectionHelperRef.current = createPainterSurfaceOverlay(surface, 0.34);
+    if (paintHoverKeyRef.current === surface.key && paintHoverHelperRef.current) return;
+    clearPaintHoverVisual();
+    paintHoverHelperRef.current = createPainterSurfaceOverlay(surface, 0.16);
+    paintHoverKeyRef.current = surface.key;
   };
 
   const refreshPaintSelectionVisual = (scope: UnitPainterSelectionScope = paintScopeRef.current) => {
-    if (scope === "all") {
-      clearPaintSelectionVisual();
-      return;
+    clearPaintSelectionVisual();
+    if (scope === "all") return;
+    for (const surface of paintSessionRef.current?.getSelectionSurfaceHighlights(scope) ?? []) {
+      paintSelectionHelperRef.current.push(createPainterSurfaceOverlay(surface, 0.34));
     }
-    showPaintSelectionSurface(paintSessionRef.current?.getSelectionSurfaceHighlight(scope));
   };
 
   const updatePaintHoverVisual = (intersection?: THREE.Intersection<THREE.Object3D>) => {
@@ -666,9 +657,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       clearPaintHoverVisual();
       return;
     }
-    showPaintSelectionSurface(
+    showPaintHoverSurface(
       paintSessionRef.current?.getIntersectionSurfaceHighlight(intersection, selectMode),
-      true,
     );
   };
 
@@ -685,14 +675,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const hoverScope =
       selectToolModeRef.current
       ?? (paintScopeRef.current === "all" ? "island" : paintScopeRef.current);
-    showPaintSelectionSurface(
+    showPaintHoverSurface(
       session.getTexturePointSurfaceHighlight(
         hover.textureId,
         hover.x,
         hover.y,
         hoverScope,
       ),
-      true,
     );
   };
 
@@ -707,7 +696,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintSelectMode(undefined);
   };
 
-  const selectPaintIntersection = (intersection: THREE.Intersection<THREE.Object3D>) => {
+  const selectPaintIntersection = (
+    intersection: THREE.Intersection<THREE.Object3D>,
+    operation: "replace" | "add" | "toggle" = "replace",
+  ) => {
     const session = paintSessionRef.current;
     const selectMode = selectToolModeRef.current;
     if (!session || !selectMode) return false;
@@ -717,15 +709,21 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const surface = session.getIntersectionSurfaceHighlight(intersection, selectMode);
     if (!surface) return false;
 
-    const selection = session.selectIntersection(intersection);
-    if (!selection || (selectMode === "island" && !selection.hasUvIsland)) return false;
+    const clicked = session.selectIntersection(intersection, selectMode, operation);
+    if (!clicked) return false;
 
     clearPaintHoverVisual();
+    const selection = session.selectionInfo;
     setPaintSelection(selection);
-    setPaintTextureViewId(selection.textureId);
-    setPaintScope(selectMode);
-    paintScopeRef.current = selectMode;
-    showPaintSelectionSurface(session.getSelectionSurfaceHighlight(selectMode) ?? surface);
+    if (selection) {
+      setPaintTextureViewId(selection.textureId);
+      setPaintScope(selectMode);
+      paintScopeRef.current = selectMode;
+    } else {
+      setPaintScope("all");
+      paintScopeRef.current = "all";
+    }
+    refreshPaintSelectionVisual(selection ? selectMode : "all");
     setPaintHistoryVersion((value) => value + 1);
     return true;
   };
@@ -1217,7 +1215,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         event.preventDefault();
         event.stopImmediatePropagation();
         const projected = getPaintIntersection(event.clientX, event.clientY);
-        if (projected) selectPaintIntersection(projected.hit);
+        const operation = event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
+        if (projected) selectPaintIntersection(projected.hit, operation);
         return;
       }
 
@@ -2246,7 +2245,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             <UnitPainterTextureEditor
               session={paintSessionRef.current}
               historyVersion={paintHistoryVersion}
-              selectionKey={`${paintScope}:${paintSelection?.object.uuid ?? ""}:${paintSelection?.materialName ?? ""}`}
+              selectionKey={`${paintScope}:${paintSessionRef.current?.selectionCount ?? 0}:${paintHistoryVersion}`}
               selectedTextureId={paintTextureViewId}
               onSelectedTextureIdChange={setPaintTextureViewId}
               brushSettings={brushSettingsRef.current}
@@ -2263,10 +2262,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               }}
               onSelectionComplete={(selection, mode) => {
                 setPaintSelection(selection);
-                setPaintTextureViewId(selection.textureId);
-                setPaintScope(mode);
-                paintScopeRef.current = mode;
-                refreshPaintSelectionVisual(mode);
+                if (selection) {
+                  setPaintTextureViewId(selection.textureId);
+                  setPaintScope(mode);
+                  paintScopeRef.current = mode;
+                } else {
+                  setPaintScope("all");
+                  paintScopeRef.current = "all";
+                }
+                refreshPaintSelectionVisual(selection ? mode : "all");
                 setPaintHistoryVersion((value) => value + 1);
               }}
               linkedHoverSinkRef={textureLinkedHoverSinkRef}
@@ -2710,7 +2714,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       ? "border-cyan-400 bg-cyan-900/60 text-cyan-100"
                       : "border-gray-600 bg-gray-800 hover:border-cyan-400"
                   }`}
-                  title="Select a whole material; hover previews the material and click locks it"
+                  title="Select a material. Shift-click adds; Ctrl-click toggles."
                 >
                   Select Material
                 </button>
@@ -2728,7 +2732,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       ? "border-violet-400 bg-violet-900/60 text-violet-100"
                       : "border-gray-600 bg-gray-800 hover:border-violet-400"
                   }`}
-                  title="Select only the UV island under the cursor; hover previews the island and click locks it"
+                  title="Select a UV island. Shift-click adds; Ctrl-click toggles."
                 >
                   Select Island
                 </button>
@@ -2815,7 +2819,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   >
                     <option value="all">All parts</option>
                     <option value="material" disabled={!paintSelection}>Selected material</option>
-                    <option value="island" disabled={!paintSelection?.hasUvIsland}>Selected UV island</option>
+                    <option value="island" disabled={!paintSessionRef.current?.selectionHasUvIsland}>Selected UV island</option>
                   </select>
                 </label>
                 {paintSelection && (
@@ -2842,9 +2846,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       className={`max-w-40 truncate ${
                         paintScope === "island" ? "text-violet-300" : "text-cyan-300"
                       }`}
-                      title={`${paintSelection.objectName} · ${paintSelection.materialName}`}
+                      title={
+                        (paintSessionRef.current?.selectionCount ?? 0) > 1
+                          ? `${paintSessionRef.current?.selectionCount} selections`
+                          : `${paintSelection.objectName} · ${paintSelection.materialName}`
+                      }
                     >
-                      {paintSelection.objectName} · {paintSelection.materialName}
+                      {(paintSessionRef.current?.selectionCount ?? 0) > 1
+                        ? `${paintSessionRef.current?.selectionCount} ${
+                            paintScope === "island" ? "UV islands" : "materials"
+                          } selected`
+                        : `${paintSelection.objectName} · ${paintSelection.materialName}`}
                     </span>
                     <button
                       type="button"
@@ -2867,7 +2879,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     </button>
                     <button
                       type="button"
-                      disabled={!paintSelection.hasUvIsland || paintBrushMode === "restore"}
+                      disabled={!paintSessionRef.current?.selectionHasUvIsland || paintBrushMode === "restore"}
                       onClick={() => {
                         if (paintSessionRef.current?.fillSelection("island", brushSettingsRef.current, paintTexturePadding)) {
                           rememberUsedPaintColor(paintColor);

@@ -202,6 +202,86 @@ describe("unit painter", () => {
     }
   });
 
+  it("adds and toggles multiple UV-island selections", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+
+      expect(
+        painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace"),
+      ).toBeDefined();
+      expect(
+        painter.session.selectTexturePoint(textureId, 20.5, 8.5, "island", "add"),
+      ).toBeDefined();
+      expect(painter.session.selectionCount).toBe(2);
+      expect(painter.session.getTextureViews("island")[0].selectedUvTriangles).toHaveLength(12);
+
+      expect(
+        painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "toggle"),
+      ).toBeDefined();
+      expect(painter.session.selectionCount).toBe(1);
+      expect(painter.session.getTextureViews("island")[0].selectedUvTriangles).toHaveLength(6);
+
+      expect(
+        painter.session.selectTexturePoint(textureId, 20.5, 8.5, "island", "toggle"),
+      ).toBeDefined();
+      expect(painter.session.selectionCount).toBe(0);
+      expect(painter.session.selectionInfo).toBeUndefined();
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("fills the union of multiple selected UV islands as one undoable operation", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace");
+      painter.session.selectTexturePoint(textureId, 20.5, 8.5, "island", "add");
+
+      expect(
+        painter.session.fillSelection("island", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 220, g: 80, b: 40 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([220, 80, 40, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([220, 80, 40, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([0, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("uses the same add and toggle semantics for material selection", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+
+      painter.session.selectTexturePoint(textureId, 14.5, 8.5, "material", "replace");
+      painter.session.selectTexturePoint(textureId, 20.5, 8.5, "material", "add");
+      // Both triangles are the same mesh/material, so add must not duplicate it.
+      expect(painter.session.selectionCount).toBe(1);
+
+      painter.session.selectTexturePoint(textureId, 20.5, 8.5, "material", "toggle");
+      expect(painter.session.selectionCount).toBe(0);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("selects UV islands from interleaved texture coordinates", () => {
     const painter = makePainter();
     try {

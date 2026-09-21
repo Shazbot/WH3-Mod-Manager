@@ -24,7 +24,7 @@ type UnitPainterTextureEditorProps = {
   selectMode?: Exclude<UnitPainterSelectionScope, "all">;
   eyedropperActive: boolean;
   onEyedropperComplete: (color: { r: number; g: number; b: number }) => void;
-  onSelectionComplete: (selection: UnitPainterSelectionInfo, mode: Exclude<UnitPainterSelectionScope, "all">) => void;
+  onSelectionComplete: (selection: UnitPainterSelectionInfo | undefined, mode: Exclude<UnitPainterSelectionScope, "all">) => void;
   linkedHoverSinkRef: React.MutableRefObject<((hover?: UnitPainterTextureHover) => void) | undefined>;
   onTextureHover: (textureId: string, x: number, y: number) => void;
   onTextureHoverEnd: () => void;
@@ -489,8 +489,15 @@ const UnitPainterTextureEditor = ({
     }
 
     if (selectMode) {
-      const selection = session.selectTexturePoint(view.id, point.x, point.y, selectMode);
-      if (selection) onSelectionComplete(selection, selectMode);
+      const operation = event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
+      const clicked = session.selectTexturePoint(
+        view.id,
+        point.x,
+        point.y,
+        selectMode,
+        operation,
+      );
+      if (clicked) onSelectionComplete(session.selectionInfo, selectMode);
       return;
     }
 
