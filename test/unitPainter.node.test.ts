@@ -202,6 +202,93 @@ describe("unit painter", () => {
     }
   });
 
+  it("streams dirty rectangles while 3D painting for a live split texture view", () => {
+    const painter = makePainter();
+    try {
+      const events: Array<{ textureId: string; minX: number; minY: number; maxX: number; maxY: number }> = [];
+      const unsubscribe = painter.session.subscribeTextureChanges((textureId, dirty) => {
+        events.push({ textureId, ...dirty });
+      });
+
+      paint(painter, { color: { r: 90, g: 120, b: 210 } });
+      unsubscribe();
+
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.every((event) => event.textureId === painter.session.textureViews[0].id)).toBe(true);
+      expect(events.some((event) =>
+        event.minX <= 14 && event.maxX >= 14 && event.minY <= 8 && event.maxY >= 8
+      )).toBe(true);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("pads scoped texture painting into unused texels without bleeding into neighboring UV islands", () => {
+    const painter = makePainter();
+    try {
+      const selection = painter.session.selectIntersection(painter.intersection);
+      expect(selection?.hasUvIsland).toBe(true);
+      const textureId = selection!.textureId;
+      const settings: UnitPainterBrushSettings = {
+        radiusPx: 12,
+        opacity: 1,
+        hardness: 1,
+        mode: "paint",
+        color: { r: 255, g: 80, b: 20 },
+      };
+
+      painter.session.beginStroke();
+      const withoutPadding = painter.session.paintTexturePoint(
+        textureId,
+        7.4,
+        8.5,
+        1,
+        settings,
+        "island",
+        0,
+      );
+      expect(withoutPadding?.changed).toBe(false);
+      expect(painter.session.endStroke()).toBe(false);
+      expect(getPixel(painter.material, 7, 8)).toEqual([0, 0, 0, 255]);
+
+      painter.session.beginStroke();
+      const withPadding = painter.session.paintTexturePoint(
+        textureId,
+        7.4,
+        8.5,
+        1,
+        settings,
+        "island",
+        2,
+      );
+      expect(withPadding?.changed).toBe(true);
+      expect(painter.session.endStroke()).toBe(true);
+      expect(getPixel(painter.material, 7, 8)).toEqual([255, 80, 20, 255]);
+
+      painter.session.beginStroke();
+      painter.session.paintTexturePoint(
+        textureId,
+        17.5,
+        8.5,
+        1,
+        settings,
+        "island",
+        8,
+      );
+      painter.session.endStroke();
+
+      // x=17 belongs to the second disconnected island. Padding from the first
+      // island may fill atlas gutter texels nearby, but never UV-covered texels.
+      expect(getPixel(painter.material, 17, 8)).toEqual([0, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("clips direct texture painting to the selected UV island when requested", () => {
     const painter = makePainter();
     try {
