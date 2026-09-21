@@ -118,19 +118,9 @@ const UnitPainterTextureEditor = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.id, view?.width, view?.height]);
 
-  const getImageData = () => {
-    if (!view) return undefined;
-    return new ImageData(
-      new Uint8ClampedArray(view.data.buffer, view.data.byteOffset, view.data.byteLength),
-      view.width,
-      view.height,
-    );
-  };
-
   const redrawTexture = (dirty?: UnitPainterTexturePaintResult) => {
     const canvas = textureCanvasRef.current;
-    const imageData = getImageData();
-    if (!canvas || !view || !imageData) return;
+    if (!canvas || !view) return;
     const context = canvas.getContext("2d");
     if (!context) return;
     if (canvas.width !== view.width) canvas.width = view.width;
@@ -141,10 +131,22 @@ const UnitPainterTextureEditor = ({
       const y = Math.max(0, dirty.minY);
       const width = Math.max(1, Math.min(view.width - x, dirty.maxX - x + 1));
       const height = Math.max(1, Math.min(view.height - y, dirty.maxY - y + 1));
-      context.putImageData(imageData, 0, 0, x, y, width, height);
-    } else {
-      context.putImageData(imageData, 0, 0);
+      const imageData = context.createImageData(width, height);
+      const rowBytes = width * 4;
+      for (let row = 0; row < height; row += 1) {
+        const sourceStart = ((y + row) * view.width + x) * 4;
+        imageData.data.set(
+          view.data.subarray(sourceStart, sourceStart + rowBytes),
+          row * rowBytes,
+        );
+      }
+      context.putImageData(imageData, x, y);
+      return;
     }
+
+    const imageData = context.createImageData(view.width, view.height);
+    imageData.data.set(view.data);
+    context.putImageData(imageData, 0, 0);
   };
 
   useEffect(() => {
