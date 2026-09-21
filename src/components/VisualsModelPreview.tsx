@@ -75,6 +75,8 @@ const NONE_ANIMATION: PreviewAnimation = { path: "", label: "None" };
 const ALL_VARIANTS = -1;
 const MAX_COMPARISON_MODELS = 100;
 const ALT_ORBIT_DRAG_THRESHOLD_PX = 4;
+const PAINT_COLOR_HISTORY_LIMIT = 64;
+const DEFAULT_PAINT_COLOR = "#c43030";
 const PREVIEW_GEOMETRY_KEY = "__wh3PreviewGeometryKey";
 
 type PreviewResourcePool = {
@@ -510,7 +512,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [animationSpeed, setAnimationSpeed] = useState(1);
   const [isPainterEnabled, setIsPainterEnabled] = useState(false);
-  const [paintColor, setPaintColor] = useState("#c43030");
+  const [paintColor, setPaintColor] = useState(DEFAULT_PAINT_COLOR);
   const [paintColorHistory, setPaintColorHistory] = useState<string[]>([]);
   const [isPaintColorHistoryOpen, setIsPaintColorHistoryOpen] = useState(false);
   const [paintBrushRadius, setPaintBrushRadius] = useState(24);
@@ -564,7 +566,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintColorHistory((current) => [
       normalized,
       ...current.filter((value) => value !== normalized),
-    ]);
+    ].slice(0, PAINT_COLOR_HISTORY_LIMIT));
   };
 
   const choosePaintColor = (color: string) => {
@@ -1630,6 +1632,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   useEffect(() => {
     setPaintPackPath(undefined);
     setPaintExcludedPackPaths([]);
+    setPaintColorHistory([]);
+    setPaintColor(DEFAULT_PAINT_COLOR);
+    setIsPaintColorHistoryOpen(false);
     pendingPaintProjectRef.current = null;
   }, [assetPath]);
 
@@ -1681,8 +1686,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             activeLayerId: pendingProject.project.activeLayerId,
             layers: pendingProject.project.layers,
           });
+          const restoredColorHistory =
+            pendingProject.project.usedColorHistory?.slice(0, PAINT_COLOR_HISTORY_LIMIT) ?? [];
+          setPaintColorHistory(restoredColorHistory);
+          setPaintColor(
+            pendingProject.project.selectedColor
+            ?? restoredColorHistory[0]
+            ?? DEFAULT_PAINT_COLOR,
+          );
         } else {
           session.loadProjectTextures(pendingProject.project.textures);
+          setPaintColorHistory([]);
+          setPaintColor(DEFAULT_PAINT_COLOR);
         }
         setPaintPackPath(pendingProject.packPath);
         setPaintExportStatus(`Opened painted mod: ${pendingProject.packPath}`);
@@ -1857,7 +1872,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setPaintExportStatus(mode === "save" ? "Saving painted mod…" : "Preparing painted mod…");
       try {
         const textures = await session.exportModifiedTextures();
-        const projectState = session.exportProjectState();
+        const projectState = {
+          ...session.exportProjectState(),
+          usedColorHistory: paintColorHistory.slice(0, PAINT_COLOR_HISTORY_LIMIT),
+          selectedColor: paintColor,
+        };
         if (
           textures.length === 0
           && !targetPackPath
