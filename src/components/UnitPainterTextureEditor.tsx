@@ -5,6 +5,7 @@ import {
   sampleUnitPainterStrokeSegment,
   type UnitPainterBrushSettings,
   type UnitPainterSelectionScope,
+  type UnitPainterSelectionInfo,
   type UnitPainterSession,
   type UnitPainterTexturePaintResult,
 } from "../visuals/unitPainter";
@@ -17,8 +18,10 @@ type UnitPainterTextureEditorProps = {
   onSelectedTextureIdChange: (textureId: string) => void;
   brushSettings: UnitPainterBrushSettings;
   scope: UnitPainterSelectionScope;
+  selectMode?: Exclude<UnitPainterSelectionScope, "all">;
   eyedropperActive: boolean;
   onEyedropperComplete: (color: { r: number; g: number; b: number }) => void;
+  onSelectionComplete: (selection: UnitPainterSelectionInfo, mode: Exclude<UnitPainterSelectionScope, "all">) => void;
   onStrokeComplete: (changed: boolean) => void;
 };
 
@@ -38,8 +41,10 @@ const UnitPainterTextureEditor = ({
   onSelectedTextureIdChange,
   brushSettings,
   scope,
+  selectMode,
   eyedropperActive,
   onEyedropperComplete,
+  onSelectionComplete,
   onStrokeComplete,
 }: UnitPainterTextureEditorProps) => {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -253,6 +258,12 @@ const UnitPainterTextureEditor = ({
       return;
     }
 
+    if (selectMode) {
+      const selection = session.selectTexturePoint(view.id, point.x, point.y, selectMode);
+      if (selection) onSelectionComplete(selection, selectMode);
+      return;
+    }
+
     activePaintPointerRef.current = event.pointerId;
     strokeChangedRef.current = false;
     lastPaintPointRef.current = undefined;
@@ -407,8 +418,8 @@ const UnitPainterTextureEditor = ({
       </div>
 
       <div className="pointer-events-none absolute bottom-2 left-2 z-20 rounded bg-gray-900/90 px-2 py-1 text-[11px] text-gray-400">
-        LMB paint · Alt+click sample · RMB/MMB pan · Wheel zoom
-        {scope !== "all" ? " · painting clipped to the current 3D selection" : ""}
+        {selectMode ? `LMB select ${selectMode}` : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
+        {scope !== "all" ? " · painting clipped to the current selection" : ""}
       </div>
     </div>
   );
