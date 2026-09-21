@@ -73,6 +73,7 @@ type VisualsContextMenu = {
   targetPath?: string;
   targetPaths: string[];
   preferredPackPath?: string;
+  isUnitTarget?: boolean;
 };
 
 const ALL_VISUALS_PACKS_VALUE = "all";
@@ -784,7 +785,12 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     );
   };
 
-  const openAssetEditorContextMenu = (event: React.MouseEvent, targetPath?: string, preferredPackPath?: string) => {
+  const openAssetEditorContextMenu = (
+    event: React.MouseEvent,
+    targetPath?: string,
+    preferredPackPath?: string,
+    isUnitTarget = false,
+  ) => {
     event.preventDefault();
     event.stopPropagation();
     if (!targetPath) {
@@ -797,6 +803,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       targetPath,
       targetPaths: [targetPath],
       preferredPackPath,
+      isUnitTarget,
     });
   };
 
@@ -885,6 +892,44 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       setViewerMessage(`Extracted ${result.writtenCount} file(s) to: ${outputDirectory}${skippedMessage}`);
     } catch (error) {
       setViewerMessage(error instanceof Error ? error.message : "Failed to extract visual files.");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const onExtractIsolatedContextAction = async () => {
+    if (!assetEditorContextMenu?.targetPath) return;
+    const { targetPath, preferredPackPath } = assetEditorContextMenu;
+    setAssetEditorContextMenu(null);
+    if (!sessionId) {
+      setViewerMessage("Visuals session is not ready yet.");
+      return;
+    }
+
+    setIsExtracting(true);
+    setViewerMessage(null);
+    try {
+      const outputDirectory = await window.api?.selectDirectory();
+      if (!outputDirectory) return;
+      const result = await window.api?.extractVisualsFilesToDirectory(
+        sessionId,
+        outputDirectory,
+        [targetPath],
+        true,
+        preferredPackPath,
+        false,
+        true,
+      );
+      if (!result?.success) {
+        setViewerMessage(result?.error || "Failed to extract isolated visual files.");
+        return;
+      }
+      const skippedMessage = result.skipped.length > 0 ? ` (${result.skipped.length} skipped)` : "";
+      setViewerMessage(
+        `Extracted isolated asset tree (${result.writtenCount} file(s)) to: ${outputDirectory}${skippedMessage}`,
+      );
+    } catch (error) {
+      setViewerMessage(error instanceof Error ? error.message : "Failed to extract isolated visual files.");
     } finally {
       setIsExtracting(false);
     }
@@ -1007,7 +1052,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           }
           onUnitDoubleClick(unit);
         }}
-        onContextMenu={(event) => openAssetEditorContextMenu(event, unit.variantMeshPath)}
+        onContextMenu={(event) => openAssetEditorContextMenu(event, unit.variantMeshPath, undefined, true)}
         title={unit.variantMeshPath || "No variantmeshdefinition resolved"}
       >
         <div className="text-sm">{unit.localizedName}</div>
@@ -1413,6 +1458,19 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 }}
               >
                 Open In Existing AssetEd Tab
+              </button>
+              <div className="my-1 border-t border-gray-700" />
+            </>
+          )}
+          {assetEditorContextMenu.isUnitTarget && assetEditorContextMenu.targetPath && (
+            <>
+              <button
+                type="button"
+                disabled={isExtracting}
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
+                onClick={() => void onExtractIsolatedContextAction()}
+              >
+                Extract isolated
               </button>
               <div className="my-1 border-t border-gray-700" />
             </>
