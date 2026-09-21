@@ -622,28 +622,70 @@ describe("unit painter", () => {
   it("allocates layer pixels lazily in tiles and releases an emptied tile", () => {
     const painter = makePainter();
     try {
+      const internal = painter.session as unknown as {
+        activePaintLayerId: string;
+        paintLayers: Array<{
+          id: string;
+          textures: Map<unknown, { tiles: Map<number, unknown> }>;
+        }>;
+        targetsByEditableTexture: Map<unknown, { touchedLayerTiles: Set<number> }>;
+      };
       const getActiveTileCount = () => {
-        const internal = painter.session as unknown as {
-          activePaintLayerId: string;
-          paintLayers: Array<{
-            id: string;
-            textures: Map<unknown, { tiles: Map<number, unknown> }>;
-          }>;
-        };
         const active = internal.paintLayers.find((layer) => layer.id === internal.activePaintLayerId);
         return [...(active?.textures.values() ?? [])].reduce(
           (count, texture) => count + texture.tiles.size,
           0,
         );
       };
+      const getTouchedTileCount = () =>
+        [...internal.targetsByEditableTexture.values()].reduce(
+          (count, target) => count + target.touchedLayerTiles.size,
+          0,
+        );
 
       expect(getActiveTileCount()).toBe(0);
+      expect(getTouchedTileCount()).toBe(0);
       paint(painter, { mode: "paint", color: { r: 255, g: 0, b: 0 } });
       expect(getActiveTileCount()).toBe(1);
+      expect(getTouchedTileCount()).toBe(1);
 
       paint(painter, { mode: "restore", opacity: 1 });
       expect(getActiveTileCount()).toBe(0);
+      expect(getTouchedTileCount()).toBe(0);
       expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(getActiveTileCount()).toBe(1);
+      expect(getTouchedTileCount()).toBe(1);
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 0, 0, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("prunes stale touched tiles after deleting the last painted layer and restores them on undo", () => {
+    const painter = makePainter();
+    try {
+      paint(painter, { color: { r: 180, g: 30, b: 20 } });
+      const paintedLayerId = painter.session.activeLayerId;
+      expect(painter.session.addLayer("Empty")).toBeDefined();
+      expect(painter.session.setActiveLayer(paintedLayerId)).toBe(true);
+
+      const internal = painter.session as unknown as {
+        targetsByEditableTexture: Map<unknown, { touchedLayerTiles: Set<number> }>;
+      };
+      const target = [...internal.targetsByEditableTexture.values()][0];
+      expect(target.touchedLayerTiles.size).toBe(1);
+
+      expect(painter.session.deleteActiveLayer()).toBe(true);
+      expect(target.touchedLayerTiles.size).toBe(0);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(target.touchedLayerTiles.size).toBe(1);
+      expect(getPixel(painter.material, 14, 8)).toEqual([180, 30, 20, 255]);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -777,6 +819,71 @@ describe("unit painter", () => {
       reopened.geometry.dispose();
       source.material.dispose();
       reopened.material.dispose();
+    }
+  });
+
+  it("evicts oldest undo entries when retained history exceeds the byte budget", () => {
+    const painter = makePainter();
+    try {
+      const internal = painter.session as unknown as {
+        history: Array<{ byteSize: number; marker?: string }>;
+        retainedHistoryBytes: number;
+        trimHistoryToBudget: () => void;
+      };
+      const mib = 1024 * 1024;
+      internal.history.splice(
+        0,
+        internal.history.length,
+        { byteSize: 40 * mib, marker: "oldest" },
+        { byteSize: 40 * mib, marker: "middle" },
+        { byteSize: 40 * mib, marker: "newest" },
+      );
+      internal.retainedHistoryBytes = 120 * mib;
+
+      internal.trimHistoryToBudget();
+
+      expect(internal.history.map((entry) => entry.marker)).toEqual(["middle", "newest"]);
+      expect(internal.retainedHistoryBytes).toBe(80 * mib);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("keeps one oversized latest undo entry and does not double-count undo/redo moves", () => {
+    const painter = makePainter();
+    try {
+      const internal = painter.session as unknown as {
+        history: Array<{ byteSize: number; marker?: string }>;
+        redoHistory: Array<{ byteSize: number; marker?: string }>;
+        retainedHistoryBytes: number;
+        trimHistoryToBudget: () => void;
+      };
+      const mib = 1024 * 1024;
+      internal.history.splice(0, internal.history.length, { byteSize: 120 * mib, marker: "latest" });
+      internal.redoHistory.length = 0;
+      internal.retainedHistoryBytes = 120 * mib;
+
+      internal.trimHistoryToBudget();
+
+      expect(internal.history).toHaveLength(1);
+      expect(internal.retainedHistoryBytes).toBe(120 * mib);
+
+      // Real undo/redo should move a retained entry without changing accounted bytes.
+      internal.history.length = 0;
+      internal.retainedHistoryBytes = 0;
+      paint(painter, { color: { r: 10, g: 20, b: 30 } });
+      const retained = internal.retainedHistoryBytes;
+      expect(retained).toBeGreaterThan(0);
+      expect(painter.session.undo()).toBe(true);
+      expect(internal.retainedHistoryBytes).toBe(retained);
+      expect(painter.session.redo()).toBe(true);
+      expect(internal.retainedHistoryBytes).toBe(retained);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
     }
   });
 
