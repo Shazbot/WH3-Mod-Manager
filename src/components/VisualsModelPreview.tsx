@@ -2253,6 +2253,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     })();
   };
 
+  const paintSelectionPartition = paintSessionRef.current?.selectionPartitionInfo;
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-950">
       <div className="relative min-h-0 flex-1 w-full overflow-hidden">
@@ -2886,7 +2888,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     value={paintScope}
                     onChange={(event) => {
                       const nextScope = event.target.value as UnitPainterSelectionScope;
-                      if (paintSessionRef.current?.selectionPartitionInfo?.sourceScope !== nextScope) {
+                      if (paintSelectionPartition?.sourceScope !== nextScope) {
                         paintSessionRef.current?.removeSelectionPartition();
                       }
                       setPaintScope(nextScope);
@@ -2894,9 +2896,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       refreshPaintSelectionVisual(nextScope);
                       clearPaintHoverVisual();
                     }}
-                    disabled={!!paintSessionRef.current?.selectionPartitionInfo}
+                    disabled={!!paintSelectionPartition}
                     title={
-                      paintSessionRef.current?.selectionPartitionInfo
+                      paintSelectionPartition
                         ? "Remove the split before changing selection scope"
                         : "Paint scope"
                     }
@@ -2909,7 +2911,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>Selected similar colors</option>
                   </select>
                 </label>
-                {paintSelection && paintScope !== "similar" && !paintSessionRef.current?.selectionPartitionInfo && (
+                {paintSelection && paintScope !== "similar" && !paintSelectionPartition && (
                   <label
                     className="flex items-center gap-1 text-gray-400"
                     title="Padding used by Fill and by scoped painting in the Texture view"
@@ -2971,7 +2973,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                           }
                         }}
                         className={`rounded border px-1.5 py-1 ${
-                          paintSessionRef.current?.selectionPartitionInfo?.kind === kind
+                          paintSelectionPartition?.kind === kind
                             ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
                             : "border-gray-600 bg-gray-800 hover:border-yellow-400"
                         }`}
@@ -2980,10 +2982,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         {label}
                       </button>
                     ))}
-                    {paintSessionRef.current?.selectionPartitionInfo && (
+                    {paintSelectionPartition && (
                       <>
                         <span className="text-gray-500">Region</span>
-                        {paintSessionRef.current.selectionPartitionInfo.regions.map((region) => (
+                        {paintSelectionPartition.regions.map((region) => (
                           <button
                             key={region.id}
                             type="button"
@@ -3012,13 +3014,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                             }
                           }}
                           className={`rounded border px-1.5 py-1 ${
-                            paintSessionRef.current.selectionPartitionInfo.allActive
+                            paintSelectionPartition.allActive
                               ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
                               : "border-gray-600 bg-gray-800 hover:border-yellow-400"
                           }`}
                           title="Activate the complete parent selection while keeping the split"
                         >
-                          {paintSessionRef.current.selectionPartitionInfo.regions.length === 2 ? "Both" : "All"}
+                          {paintSelectionPartition.regions.length === 2 ? "Both" : "All"}
                         </button>
                         <button
                           type="button"
@@ -3035,13 +3037,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         </button>
                       </>
                     )}
-                    {paintSessionRef.current?.selectionPartitionInfo ? (
+                    {paintSelectionPartition ? (
                       <>
                         <button
                           type="button"
                           disabled={paintBrushMode === "restore"}
                           onClick={() => {
-                            const scope = paintSessionRef.current?.selectionPartitionInfo?.sourceScope;
+                            const scope = paintSelectionPartition?.sourceScope;
                             if (
                               scope
                               && paintSessionRef.current?.fillSelection(scope, brushSettingsRef.current)
@@ -3059,7 +3061,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         <button
                           type="button"
                           onClick={() => {
-                            const scope = paintSessionRef.current?.selectionPartitionInfo?.sourceScope;
+                            const scope = paintSelectionPartition?.sourceScope;
                             if (scope && paintSessionRef.current?.resetSelection(scope)) {
                               setPaintExportStatus("");
                               setPaintHistoryVersion((value) => value + 1);
