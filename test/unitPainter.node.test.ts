@@ -780,6 +780,11 @@ describe("unit painter", () => {
     }
   });
 
+  it("reports normalized sample positions for UV-space drag interpolation", () => {
+    const result = sampleUnitPainterStrokeSegment(10, 20, 30, 20, 5, 0);
+    expect(result.samples.map((sample) => sample.amount)).toEqual([0.25, 0.5, 0.75, 1]);
+  });
+
   it("keeps brush stamp spacing uniform across irregular pointer-event segments", () => {
     const spacing = getUnitPainterBrushSpacing(20);
     expect(spacing).toBe(7);
@@ -849,6 +854,69 @@ describe("unit painter", () => {
       expect(ranges.every((range) => {
         const firstRow = Math.floor(range.start / (128 * 4));
         const lastRow = Math.floor((range.start + range.count - 1) / (128 * 4));
+        return firstRow === lastRow;
+      })).toBe(true);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("batches interpolated drag stamps into one dirty span per touched row", () => {
+    const painter = makePainter();
+    try {
+      const internal = painter.session as unknown as {
+        targetsByEditableTexture: Map<
+          THREE.Texture,
+          {
+            editable: THREE.DataTexture;
+            fullUploadPending: boolean;
+          }
+        >;
+      };
+      const target = [...internal.targetsByEditableTexture.values()][0];
+      target.fullUploadPending = false;
+      target.editable.clearUpdateRanges();
+
+      const start = {
+        ...painter.intersection,
+        point: new THREE.Vector3(-0.15, -0.12, 0),
+        uv: new THREE.Vector2(0.42, 0.42),
+      } as THREE.Intersection<THREE.Object3D>;
+      const end = {
+        ...painter.intersection,
+        point: new THREE.Vector3(0.15, 0.12, 0),
+        uv: new THREE.Vector2(0.58, 0.58),
+      } as THREE.Intersection<THREE.Object3D>;
+
+      painter.session.beginStroke();
+      expect(
+        painter.session.paintIntersectionSamples(
+          start,
+          end,
+          [0.2, 0.4, 0.6, 0.8, 1],
+          {
+            radiusPx: 12,
+            opacity: 1,
+            hardness: 1,
+            mode: "paint",
+            color: { r: 220, g: 40, b: 20 },
+          },
+          painter.camera,
+          1000,
+          12,
+        ),
+      ).toBe(true);
+      painter.session.endStroke();
+
+      const rows = target.editable.updateRanges.map((range) =>
+        Math.floor(range.start / (WIDTH * 4)),
+      );
+      expect(new Set(rows).size).toBe(rows.length);
+      expect(target.editable.updateRanges.every((range) => {
+        const firstRow = Math.floor(range.start / (WIDTH * 4));
+        const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
         return firstRow === lastRow;
       })).toBe(true);
     } finally {
