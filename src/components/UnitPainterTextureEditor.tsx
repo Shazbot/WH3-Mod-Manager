@@ -65,8 +65,8 @@ const UnitPainterTextureEditor = ({
   });
 
   const views = useMemo(
-    () => session.textureViews,
-    [session, historyVersion, selectionKey],
+    () => session.getTextureViews(scope),
+    [session, historyVersion, selectionKey, scope],
   );
   const view = views.find((candidate) => candidate.id === selectedTextureId) ?? views[0];
 
