@@ -749,9 +749,11 @@ describe("unit painter", () => {
         touchedLayerTiles: new Set([0, 1, 2]),
       });
 
-      expect(ranges).toHaveLength(65);
-      expect(ranges[0]).toEqual({ start: 0, count: 128 * 64 * 4 });
-      expect(ranges[1]).toEqual({ start: 128 * 64 * 4, count: 64 * 4 });
+      // The first lower-left half-row begins immediately after the 64 complete
+      // top rows, so it coalesces into that first contiguous byte range.
+      expect(ranges).toHaveLength(64);
+      expect(ranges[0]).toEqual({ start: 0, count: (128 * 64 + 64) * 4 });
+      expect(ranges[1]).toEqual({ start: 128 * 65 * 4, count: 64 * 4 });
       expect(ranges.at(-1)).toEqual({ start: 128 * 127 * 4, count: 64 * 4 });
     } finally {
       painter.session.dispose();
