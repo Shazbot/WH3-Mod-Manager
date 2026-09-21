@@ -879,15 +879,19 @@ describe("unit painter", () => {
       target.fullUploadPending = false;
       target.editable.clearUpdateRanges();
 
+      // Keep both synthetic hits inside triangle 0 (u + v <= 1). A real
+      // raycast could not report faceIndex 0 for a UV point beyond that diagonal.
+      const startUv = new THREE.Vector2(0.38, 0.36);
+      const endUv = new THREE.Vector2(0.48, 0.42);
       const start = {
         ...painter.intersection,
-        point: new THREE.Vector3(-0.15, -0.12, 0),
-        uv: new THREE.Vector2(0.42, 0.42),
+        point: new THREE.Vector3((startUv.x - 0.5) * 2, (startUv.y - 0.5) * 2, 0),
+        uv: startUv,
       } as THREE.Intersection<THREE.Object3D>;
       const end = {
         ...painter.intersection,
-        point: new THREE.Vector3(0.15, 0.12, 0),
-        uv: new THREE.Vector2(0.58, 0.58),
+        point: new THREE.Vector3((endUv.x - 0.5) * 2, (endUv.y - 0.5) * 2, 0),
+        uv: endUv,
       } as THREE.Intersection<THREE.Object3D>;
 
       painter.session.beginStroke();
