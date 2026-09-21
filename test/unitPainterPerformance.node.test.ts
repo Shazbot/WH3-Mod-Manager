@@ -56,20 +56,23 @@ const makePainter = () => {
   camera.position.set(0, 0, 2);
   camera.updateMatrixWorld(true);
 
-  const makeIntersection = (u: number, v: number) => ({
-    distance: 2,
-    point: new THREE.Vector3((u - 0.5) * 2, (v - 0.5) * 2, 0),
-    object: mesh,
-    uv: new THREE.Vector2(u, v),
-    face: {
-      a: 0,
-      b: 1,
-      c: 2,
-      normal: new THREE.Vector3(0, 0, 1),
-      materialIndex: 0,
-    },
-    faceIndex: 0,
-  } as THREE.Intersection<THREE.Object3D>);
+  const makeIntersection = (u: number, v: number) => {
+    const firstTriangle = u + v <= 1;
+    return {
+      distance: 2,
+      point: new THREE.Vector3((u - 0.5) * 2, (v - 0.5) * 2, 0),
+      object: mesh,
+      uv: new THREE.Vector2(u, v),
+      face: {
+        a: firstTriangle ? 0 : 3,
+        b: firstTriangle ? 1 : 4,
+        c: firstTriangle ? 2 : 5,
+        normal: new THREE.Vector3(0, 0, 1),
+        materialIndex: 0,
+      },
+      faceIndex: firstTriangle ? 0 : 1,
+    } as THREE.Intersection<THREE.Object3D>;
+  };
 
   const dispose = () => {
     session.dispose();
