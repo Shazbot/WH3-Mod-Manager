@@ -24,6 +24,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "analyze:vanilla-compression": "node scripts/analyze-vanilla-pack-compression.mjs",
+    "benchmark:unit-painter": "node scripts/benchmark-unit-painter.cjs",
     "typecheck": "tsc --noEmit",
     "esf:build": "tsc -p tools/esf/tsconfig.json",
     "esf:typecheck": "tsc -p tools/esf/tsconfig.json --noEmit",
