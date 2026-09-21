@@ -37,6 +37,9 @@ type ViewTransform = {
   y: number;
 };
 
+type TextureDisplayMode = "textureUv" | "uvOnly" | "selected";
+type TextureBackgroundMode = "checker" | "dark" | "light";
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const UnitPainterTextureEditor = ({
@@ -60,6 +63,7 @@ const UnitPainterTextureEditor = ({
 }: UnitPainterTextureEditorProps) => {
   const viewportRef = useRef<HTMLDivElement>(null);
   const textureCanvasRef = useRef<HTMLCanvasElement>(null);
+  const selectionMaskCanvasRef = useRef<HTMLCanvasElement>(null);
   const uvCanvasRef = useRef<HTMLCanvasElement>(null);
   const linkedHoverCanvasRef = useRef<HTMLCanvasElement>(null);
   const linkedHoverCursorRef = useRef<HTMLDivElement>(null);
@@ -70,7 +74,9 @@ const UnitPainterTextureEditor = ({
   const lastPanPointRef = useRef<{ x: number; y: number }>();
   const distanceSinceLastStampRef = useRef(0);
   const strokeChangedRef = useRef(false);
-  const [showUvs, setShowUvs] = useState(true);
+  const [displayMode, setDisplayMode] = useState<TextureDisplayMode>("textureUv");
+  const [backgroundMode, setBackgroundMode] = useState<TextureBackgroundMode>("checker");
+  const [dimOutsideSelection, setDimOutsideSelection] = useState(false);
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 });
   const [cursor, setCursor] = useState<{ x: number; y: number; visible: boolean }>({
     x: 0,
@@ -181,7 +187,6 @@ const UnitPainterTextureEditor = ({
     const context = canvas.getContext("2d");
     if (!context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    if (!showUvs) return;
 
     const drawSegments = (segments: Float32Array, strokeStyle: string, lineWidth: number) => {
       if (segments.length === 0) return;
@@ -195,9 +200,62 @@ const UnitPainterTextureEditor = ({
       context.stroke();
     };
 
-    drawSegments(view.uvSegments, "rgba(255,255,255,0.65)", 1);
-    drawSegments(view.selectedUvSegments, "rgba(250,204,21,0.95)", 2);
-  }, [showUvs, transform.scale, view]);
+    if (displayMode !== "selected") {
+      drawSegments(
+        view.uvSegments,
+        backgroundMode === "light" ? "rgba(17,24,39,0.72)" : "rgba(255,255,255,0.65)",
+        1,
+      );
+    }
+    drawSegments(view.selectedUvSegments, "rgba(250,204,21,0.98)", 2);
+  }, [backgroundMode, displayMode, transform.scale, view]);
+
+  useEffect(() => {
+    if (displayMode === "selected" && view && view.selectedUvTriangles.length === 0) {
+      setDisplayMode("textureUv");
+    }
+  }, [displayMode, view]);
+
+  useEffect(() => {
+    const canvas = selectionMaskCanvasRef.current;
+    if (!canvas || !view) return;
+    if (canvas.width !== view.width) canvas.width = view.width;
+    if (canvas.height !== view.height) canvas.height = view.height;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    const shouldDim =
+      view.selectedUvTriangles.length > 0
+      && (dimOutsideSelection || displayMode === "selected");
+    if (!shouldDim) return;
+
+    context.globalCompositeOperation = "source-over";
+    context.fillStyle = displayMode === "selected"
+      ? "rgba(3,7,18,0.88)"
+      : "rgba(3,7,18,0.58)";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    context.globalCompositeOperation = "destination-out";
+    context.beginPath();
+    for (let index = 0; index + 5 < view.selectedUvTriangles.length; index += 6) {
+      context.moveTo(
+        view.selectedUvTriangles[index] * view.width,
+        view.selectedUvTriangles[index + 1] * view.height,
+      );
+      context.lineTo(
+        view.selectedUvTriangles[index + 2] * view.width,
+        view.selectedUvTriangles[index + 3] * view.height,
+      );
+      context.lineTo(
+        view.selectedUvTriangles[index + 4] * view.width,
+        view.selectedUvTriangles[index + 5] * view.height,
+      );
+      context.closePath();
+    }
+    context.fill();
+    context.globalCompositeOperation = "source-over";
+  }, [dimOutsideSelection, displayMode, view]);
 
   useEffect(() => {
     linkedHoverSinkRef.current = (hover) => {
@@ -445,9 +503,17 @@ const UnitPainterTextureEditor = ({
     });
   };
 
+  const viewportBackgroundClass =
+    backgroundMode === "checker"
+      ? "bg-[linear-gradient(45deg,#111827_25%,transparent_25%),linear-gradient(-45deg,#111827_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#111827_75%),linear-gradient(-45deg,transparent_75%,#111827_75%)] bg-[length:24px_24px] bg-[position:0_0,0_12px,12px_-12px,-12px_0px]"
+      : backgroundMode === "light"
+        ? "bg-gray-200"
+        : "bg-gray-950";
+  const hasSelection = view.selectedUvTriangles.length > 0;
+
   return (
     <div className="absolute inset-0 z-10 bg-gray-950">
-      <div className="absolute right-2 top-2 z-20 flex max-w-[60%] items-center gap-1 rounded border border-gray-700 bg-gray-900/95 p-1 text-[11px] text-gray-200 shadow-lg">
+      <div className="absolute right-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap items-center justify-end gap-1 rounded border border-gray-700 bg-gray-900/95 p-1 text-[11px] text-gray-200 shadow-lg">
         <select
           value={view.id}
           onChange={(event) => onSelectedTextureIdChange(event.target.value)}
@@ -460,15 +526,46 @@ const UnitPainterTextureEditor = ({
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-1 text-gray-400" title="Choose what the texture pane displays">
+          View
+          <select
+            value={displayMode}
+            onChange={(event) => setDisplayMode(event.target.value as TextureDisplayMode)}
+            className="rounded border border-gray-600 bg-gray-800 px-1 py-1 text-gray-100"
+          >
+            <option value="textureUv">Texture + UV</option>
+            <option value="uvOnly">UV only</option>
+            <option value="selected" disabled={!hasSelection}>Selected only</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-gray-400" title="Texture editor background">
+          BG
+          <select
+            value={backgroundMode}
+            onChange={(event) => setBackgroundMode(event.target.value as TextureBackgroundMode)}
+            className="rounded border border-gray-600 bg-gray-800 px-1 py-1 text-gray-100"
+          >
+            <option value="checker">Checker</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
         <button
           type="button"
-          onClick={() => setShowUvs((value) => !value)}
+          disabled={!hasSelection || displayMode === "selected"}
+          onClick={() => setDimOutsideSelection((value) => !value)}
           className={`rounded border px-2 py-1 ${
-            showUvs ? "border-cyan-500 bg-cyan-950/60 text-cyan-100" : "border-gray-600 bg-gray-800"
-          }`}
-          title="Toggle UV wireframe"
+            dimOutsideSelection || displayMode === "selected"
+              ? "border-yellow-500 bg-yellow-950/50 text-yellow-100"
+              : "border-gray-600 bg-gray-800 hover:border-yellow-500"
+          } disabled:cursor-not-allowed disabled:opacity-40`}
+          title={
+            displayMode === "selected"
+              ? "Selected only already dims everything outside the selection"
+              : "Dim texels outside the selected material or UV island"
+          }
         >
-          UV
+          Dim outside
         </button>
         <label className="flex items-center gap-1 text-gray-400" title="Extend scoped painting beyond UV boundaries">
           Pad
@@ -506,7 +603,7 @@ const UnitPainterTextureEditor = ({
 
       <div
         ref={viewportRef}
-        className="absolute inset-0 cursor-crosshair overflow-hidden bg-[linear-gradient(45deg,#111827_25%,transparent_25%),linear-gradient(-45deg,#111827_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#111827_75%),linear-gradient(-45deg,transparent_75%,#111827_75%)] bg-[length:24px_24px] bg-[position:0_0,0_12px,12px_-12px,-12px_0px]"
+        className={`absolute inset-0 cursor-crosshair overflow-hidden ${viewportBackgroundClass}`}
         onContextMenu={(event) => event.preventDefault()}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -528,6 +625,16 @@ const UnitPainterTextureEditor = ({
           ref={textureCanvasRef}
           className="pointer-events-none absolute left-0 top-0 shadow-2xl [image-rendering:pixelated]"
           style={{
+            display: displayMode === "uvOnly" ? "none" : undefined,
+            transformOrigin: "0 0",
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+          }}
+        />
+        <canvas
+          ref={selectionMaskCanvasRef}
+          className="pointer-events-none absolute left-0 top-0"
+          style={{
+            display: displayMode === "uvOnly" ? "none" : undefined,
             transformOrigin: "0 0",
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           }}
