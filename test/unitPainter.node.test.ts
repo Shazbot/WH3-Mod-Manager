@@ -202,6 +202,23 @@ describe("unit painter", () => {
     }
   });
 
+  it("exposes the selected material footprint as UV triangles for texture display masking", () => {
+    const painter = makePainter();
+    try {
+      painter.session.selectIntersection(painter.intersection);
+      const islandView = painter.session.getTextureViews("island")[0];
+      const materialView = painter.session.getTextureViews("material")[0];
+
+      expect(islandView.selectedUvTriangles).toHaveLength(6);
+      expect(materialView.selectedUvTriangles).toHaveLength(12);
+      expect(materialView.selectedUvSegments.length).toBeGreaterThan(islandView.selectedUvSegments.length);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("maps 3D hover into texture coordinates and UV-island wireframe segments", () => {
     const painter = makePainter();
     try {
@@ -355,6 +372,8 @@ describe("unit painter", () => {
       expect(getPixel(painter.material, 20, 8)).toEqual([0, 0, 0, 255]);
       const selectedView = painter.session.textureViews.find((view) => view.id === textureId);
       expect(selectedView?.selectedUvSegments.length).toBeGreaterThan(0);
+      expect(selectedView?.selectedUvTriangles.length).toBeGreaterThan(0);
+      expect((selectedView?.selectedUvTriangles.length ?? 0) % 6).toBe(0);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
