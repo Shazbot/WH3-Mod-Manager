@@ -993,7 +993,9 @@ export class UnitPainterSession {
     this.paintLayers.splice(index, 1);
     const nextActive = this.paintLayers[Math.min(index, this.paintLayers.length - 1)]!;
     this.activePaintLayerId = nextActive.id;
-    this.recomposeTargets(layer.textures.keys());
+    const affectedTargets = [...layer.textures.keys()];
+    this.recomposeTargets(affectedTargets);
+    this.pruneTouchedLayerTiles(affectedTargets);
     this.pushHistoryChange({
       kind: "layer-delete",
       layer: snapshot,
@@ -1131,6 +1133,7 @@ export class UnitPainterSession {
     this.paintLayers.splice(index, 2, merged);
     this.activePaintLayerId = merged.id;
     this.recomposeTargets(targets);
+    this.pruneTouchedLayerTiles(targets);
     this.pushHistoryChange({
       kind: "layer-replace",
       index,
@@ -1494,6 +1497,7 @@ export class UnitPainterSession {
 
     if (byteIndices.length === 0) return false;
     this.markTargetRangeDirty(selection.target, dirtyStart, dirtyEnd);
+    this.pruneTouchedLayerTiles([selection.target]);
     this.pushHistory([{
       kind: "packed",
       layerId: layer.id,
@@ -1537,9 +1541,11 @@ export class UnitPainterSession {
         }
       }
     }
+    const touchedTargets = [...this.currentStroke.keys()];
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
     this.currentStrokeLayerId = "";
+    this.pruneTouchedLayerTiles(touchedTargets);
 
     if (changes.length === 0) return false;
     this.pushHistory(changes);
@@ -1591,6 +1597,7 @@ export class UnitPainterSession {
         after: new Uint32Array(byteIndices.length),
       });
       this.recomposeTarget(target);
+      this.pruneTouchedLayerTiles([target]);
     }
 
     if (changes.length === 0) return false;
@@ -1913,7 +1920,9 @@ export class UnitPainterSession {
   private applyStroke(stroke: Stroke, side: "before" | "after") {
     const change = stroke.change;
     if (change.kind === "pixels") {
+      const affectedTargets = new Set<PaintableTexture>();
       for (const pixelChange of change.changes) {
+        affectedTargets.add(pixelChange.target);
         const layer = this.paintLayers.find((candidate) => candidate.id === pixelChange.layerId);
         if (!layer) continue;
         const layerData = this.getLayerTextureData(layer, pixelChange.target, true)!;
@@ -1929,6 +1938,7 @@ export class UnitPainterSession {
         }
         if (dirtyEnd > dirtyStart) this.markTargetRangeDirty(pixelChange.target, dirtyStart, dirtyEnd);
       }
+      this.pruneTouchedLayerTiles(affectedTargets);
       return;
     }
 
@@ -1940,7 +1950,9 @@ export class UnitPainterSession {
         this.paintLayers = this.paintLayers.filter((layer) => layer.id !== change.layer.id);
         this.activePaintLayerId = change.beforeActiveLayerId;
       }
-      this.recomposeTargets(change.layer.textures.map(({ target }) => target));
+      const affectedTargets = change.layer.textures.map(({ target }) => target);
+      this.recomposeTargets(affectedTargets);
+      this.pruneTouchedLayerTiles(affectedTargets);
       return;
     }
 
@@ -1952,7 +1964,9 @@ export class UnitPainterSession {
         this.paintLayers = this.paintLayers.filter((layer) => layer.id !== change.layer.id);
         this.activePaintLayerId = change.afterActiveLayerId;
       }
-      this.recomposeTargets(change.layer.textures.map(({ target }) => target));
+      const affectedTargets = change.layer.textures.map(({ target }) => target);
+      this.recomposeTargets(affectedTargets);
+      this.pruneTouchedLayerTiles(affectedTargets);
       return;
     }
 
@@ -1977,11 +1991,11 @@ export class UnitPainterSession {
       this.paintLayers.splice(change.index, removeCount, ...insert);
       this.activePaintLayerId =
         side === "before" ? change.beforeActiveLayerId : change.afterActiveLayerId;
-      this.recomposeTargets(
-        [...change.before, ...change.after].flatMap((snapshot) =>
-          snapshot.textures.map(({ target }) => target),
-        ),
+      const affectedTargets = [...change.before, ...change.after].flatMap((snapshot) =>
+        snapshot.textures.map(({ target }) => target),
       );
+      this.recomposeTargets(affectedTargets);
+      this.pruneTouchedLayerTiles(affectedTargets);
       return;
     }
 
@@ -2069,6 +2083,42 @@ export class UnitPainterSession {
     target.data[byteIndex + 1] = Math.round(g);
     target.data[byteIndex + 2] = Math.round(b);
     target.data[byteIndex + 3] = target.originalData[byteIndex + 3];
+  }
+
+  private restoreTargetTileFromOriginal(target: PaintableTexture, tileKey: number) {
+    const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+    const tileX = tileKey % tilesPerRow;
+    const tileY = Math.floor(tileKey / tilesPerRow);
+    const startX = tileX * LAYER_TILE_SIZE;
+    const startY = tileY * LAYER_TILE_SIZE;
+    const width = Math.min(LAYER_TILE_SIZE, target.width - startX);
+    const height = Math.min(LAYER_TILE_SIZE, target.height - startY);
+    if (width <= 0 || height <= 0) return;
+
+    for (let localY = 0; localY < height; localY += 1) {
+      const byteStart = ((startY + localY) * target.width + startX) * 4;
+      const byteEnd = byteStart + width * 4;
+      target.data.set(target.originalData.subarray(byteStart, byteEnd), byteStart);
+      this.markTargetRangeDirty(target, byteStart, byteEnd);
+    }
+  }
+
+  private pruneTouchedLayerTiles(targets: Iterable<PaintableTexture>) {
+    for (const target of new Set(targets)) {
+      for (const layer of this.paintLayers) {
+        const texture = layer.textures.get(target);
+        if (texture && texture.tiles.size === 0) layer.textures.delete(target);
+      }
+
+      for (const tileKey of [...target.touchedLayerTiles]) {
+        const stillUsed = this.paintLayers.some((layer) =>
+          layer.textures.get(target)?.tiles.has(tileKey),
+        );
+        if (stillUsed) continue;
+        this.restoreTargetTileFromOriginal(target, tileKey);
+        target.touchedLayerTiles.delete(tileKey);
+      }
+    }
   }
 
   private hasCompositeChanges(target: PaintableTexture) {
