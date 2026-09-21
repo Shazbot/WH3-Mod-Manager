@@ -541,6 +541,84 @@ describe("unit painter", () => {
   });
 
 
+  it("stores cached material masks as sparse 64x64 bitset tiles", () => {
+    const painter = makePainter();
+    try {
+      painter.session.selectIntersection(painter.intersection);
+      expect(
+        painter.session.fillSelection("material", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 255, g: 0, b: 0 },
+        }),
+      ).toBe(true);
+
+      const internal = painter.session as unknown as {
+        uvMaskCacheBytes: number;
+        uvMaskCacheLru: Map<number, {
+          mask: { tiles: Map<number, Uint8Array>; byteSize: number };
+        }>;
+      };
+      const masks = [...internal.uvMaskCacheLru.values()].map((entry) => entry.mask);
+      expect(masks.length).toBeGreaterThan(0);
+      expect(masks.every((mask) =>
+        [...mask.tiles.values()].every((tile) => tile.byteLength === (64 * 64) / 8),
+      )).toBe(true);
+      expect(masks.every((mask) => mask.byteSize === mask.tiles.size * ((64 * 64) / 8))).toBe(true);
+      expect(internal.uvMaskCacheBytes).toBe(
+        masks.reduce((total, mask) => total + mask.byteSize, 0),
+      );
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("evicts least-recently-used mask entries when the cache exceeds its byte budget", () => {
+    const painter = makePainter();
+    try {
+      type FakeMask = {
+        width: number;
+        height: number;
+        tiles: Map<number, Uint8Array>;
+        byteSize: number;
+      };
+      type Cached = { cacheId: number; mask: FakeMask };
+      const internal = painter.session as unknown as {
+        uvMaskCacheBytes: number;
+        uvMaskCacheLru: Map<number, unknown>;
+        cacheUvMask: (cache: Map<string, Cached>, key: string, mask: FakeMask) => FakeMask;
+        getCachedUvMask: (cache: Map<string, Cached>, key: string) => FakeMask | undefined;
+      };
+      const cache = new Map<string, Cached>();
+      const makeMask = (byteSize: number): FakeMask => ({
+        width: 1,
+        height: 1,
+        tiles: new Map(),
+        byteSize,
+      });
+      const halfBudget = 16 * 1024 * 1024;
+
+      internal.cacheUvMask(cache, "first", makeMask(halfBudget));
+      internal.cacheUvMask(cache, "second", makeMask(halfBudget));
+      expect(internal.getCachedUvMask(cache, "first")).toBeDefined();
+      internal.cacheUvMask(cache, "third", makeMask(halfBudget));
+
+      expect(cache.has("first")).toBe(true);
+      expect(cache.has("second")).toBe(false);
+      expect(cache.has("third")).toBe(true);
+      expect(internal.uvMaskCacheBytes).toBe(32 * 1024 * 1024);
+      expect(internal.uvMaskCacheLru.size).toBe(2);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("allocates layer pixels lazily in tiles and releases an emptied tile", () => {
     const painter = makePainter();
     try {
