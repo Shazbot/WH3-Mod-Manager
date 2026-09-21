@@ -103,6 +103,8 @@ export interface UnitPainterProjectLayerTransfer {
 export interface UnitPainterProjectStateTransfer {
   activeLayerId: string;
   layers: UnitPainterProjectLayerTransfer[];
+  usedColorHistory?: string[];
+  selectedColor?: string;
 }
 
 export type UnitPainterOpenedProject =
@@ -123,6 +125,8 @@ export type UnitPainterOpenedProject =
       variantSelections: VariantMeshSelection[];
       activeLayerId: string;
       layers: UnitPainterProjectLayerTransfer[];
+      usedColorHistory?: string[];
+      selectedColor?: string;
     };
 
 export interface UnitPainterProjectOpenResult {
@@ -221,6 +225,8 @@ export const exportUnitPainterTextures = async (
     })),
     {
       activeLayerId: projectState.activeLayerId,
+      usedColorHistory: projectState.usedColorHistory ? [...projectState.usedColorHistory] : undefined,
+      selectedColor: projectState.selectedColor,
       layers: projectState.layers.map((layer) => ({
         id: layer.id,
         name: layer.name,
