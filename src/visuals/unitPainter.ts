@@ -99,6 +99,8 @@ type PaintableTexture = {
 };
 
 type PaintableSurface = {
+  mesh: THREE.Mesh;
+  material: PaintableMaterial;
   geometry: THREE.BufferGeometry;
   materialIndex: number;
 };
@@ -960,7 +962,7 @@ export class UnitPainterSession {
         const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
         if (!target) return;
         const surfaces = this.surfacesByTarget.get(target);
-        const surface = { geometry: child.geometry, materialIndex };
+        const surface = { mesh: child, material, geometry: child.geometry, materialIndex };
         if (surfaces) surfaces.push(surface);
         else this.surfacesByTarget.set(target, [surface]);
       });
@@ -1278,6 +1280,62 @@ export class UnitPainterSession {
         selectedUvSegments: Float32Array.from(selectedUvSegments),
       };
     });
+  }
+
+  selectTexturePoint(
+    textureId: string,
+    x: number,
+    y: number,
+    mode: Exclude<UnitPainterSelectionScope, "all">,
+  ): UnitPainterSelectionInfo | undefined {
+    const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
+    if (!target) return undefined;
+    target.editable.updateMatrix();
+
+    for (const surface of this.surfacesByTarget.get(target) ?? []) {
+      const uv = surface.geometry.getAttribute("uv");
+      if (!(uv instanceof THREE.BufferAttribute)) continue;
+      for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
+        const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
+        if (!indices) continue;
+        const [a, b, c] = indices.map((index) =>
+          new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+        );
+        if (
+          !pointInTriangle(
+            x,
+            y,
+            a.x * target.width,
+            a.y * target.height,
+            b.x * target.width,
+            b.y * target.height,
+            c.x * target.width,
+            c.y * target.height,
+          )
+        ) {
+          continue;
+        }
+
+        const topology = this.getUvTopology(surface.geometry, surface.materialIndex);
+        const islandId = topology?.faceToIsland.get(faceIndex);
+        if (mode === "island" && islandId == null) return undefined;
+        this.selection = {
+          mesh: surface.mesh,
+          material: surface.material,
+          materialIndex: surface.materialIndex,
+          target,
+          islandId,
+        };
+        return {
+          objectName: surface.mesh.name || "Mesh",
+          materialName: surface.material.name || `Material ${surface.materialIndex + 1}`,
+          hasUvIsland: islandId != null,
+          object: surface.mesh,
+          textureId: target.textureId,
+        };
+      }
+    }
+    return undefined;
   }
 
   sampleTexturePoint(textureId: string, x: number, y: number) {
