@@ -2240,9 +2240,72 @@ export class UnitPainterSession {
     target.editable.needsUpdate = true;
   }
 
-  private markTargetFullDirty(target: PaintableTexture) {
-    target.editable.clearUpdateRanges();
-    target.fullUploadPending = true;
+  private getTouchedTileUpdateRanges(target: Pick<PaintableTexture, "width" | "height" | "touchedLayerTiles">) {
+    const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+    const tileRows = new Map<number, number[]>();
+
+    for (const tileKey of target.touchedLayerTiles) {
+      const tileX = tileKey % tilesPerRow;
+      const tileY = Math.floor(tileKey / tilesPerRow);
+      if (
+        tileX < 0
+        || tileX >= tilesPerRow
+        || tileY < 0
+        || tileY * LAYER_TILE_SIZE >= target.height
+      ) {
+        continue;
+      }
+      const row = tileRows.get(tileY);
+      if (row) row.push(tileX);
+      else tileRows.set(tileY, [tileX]);
+    }
+
+    const ranges: Array<{ start: number; count: number }> = [];
+    const appendRange = (start: number, count: number) => {
+      if (count <= 0) return;
+      const previous = ranges[ranges.length - 1];
+      if (previous && previous.start + previous.count === start) {
+        previous.count += count;
+      } else {
+        ranges.push({ start, count });
+      }
+    };
+
+    for (const [tileY, rawTileXs] of [...tileRows.entries()].sort((a, b) => a[0] - b[0])) {
+      const tileXs = [...new Set(rawTileXs)].sort((a, b) => a - b);
+      const spans: Array<{ startX: number; endX: number }> = [];
+      for (const tileX of tileXs) {
+        const startX = tileX * LAYER_TILE_SIZE;
+        const endX = Math.min(target.width, startX + LAYER_TILE_SIZE);
+        const previous = spans[spans.length - 1];
+        if (previous && previous.endX === startX) previous.endX = endX;
+        else spans.push({ startX, endX });
+      }
+
+      const startY = tileY * LAYER_TILE_SIZE;
+      const height = Math.min(LAYER_TILE_SIZE, target.height - startY);
+      for (let localY = 0; localY < height; localY += 1) {
+        const y = startY + localY;
+        for (const span of spans) {
+          const start = (y * target.width + span.startX) * 4;
+          appendRange(start, (span.endX - span.startX) * 4);
+        }
+      }
+    }
+
+    return ranges;
+  }
+
+  private markTouchedTilesDirty(target: PaintableTexture) {
+    if (target.touchedLayerTiles.size === 0) return;
+    // A complete recomposition supersedes any pending partial paint ranges because
+    // every previously edited pixel lives inside one of these touched tiles.
+    if (!target.fullUploadPending) {
+      target.editable.clearUpdateRanges();
+      for (const range of this.getTouchedTileUpdateRanges(target)) {
+        target.editable.addUpdateRange(range.start, range.count);
+      }
+    }
     target.editable.needsUpdate = true;
   }
 
@@ -2263,7 +2326,7 @@ export class UnitPainterSession {
         }
       }
     }
-    this.markTargetFullDirty(target);
+    this.markTouchedTilesDirty(target);
   }
 
   private recomposeTargets(targets: Iterable<PaintableTexture>) {
