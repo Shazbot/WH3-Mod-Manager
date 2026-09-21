@@ -786,17 +786,46 @@ const buildUvIslandMask = (
     const b = new THREE.Vector2(uvB.x * target.width, uvB.y * target.height);
     const c = new THREE.Vector2(uvC.x * target.width, uvC.y * target.height);
 
-    const triangleMinX = Math.max(0, Math.floor(Math.min(a.x, b.x, c.x)));
     const triangleMinY = Math.max(0, Math.floor(Math.min(a.y, b.y, c.y)));
-    const triangleMaxX = Math.min(target.width - 1, Math.ceil(Math.max(a.x, b.x, c.x)));
     const triangleMaxY = Math.min(target.height - 1, Math.ceil(Math.max(a.y, b.y, c.y)));
-    if (triangleMaxX < triangleMinX || triangleMaxY < triangleMinY) continue;
+    if (triangleMaxY < triangleMinY) continue;
 
+    const edges = [[a, b], [b, c], [c, a]] as const;
     for (let y = triangleMinY; y <= triangleMaxY; y += 1) {
-      for (let x = triangleMinX; x <= triangleMaxX; x += 1) {
-        if (!pointInTriangle(x + 0.5, y + 0.5, a.x, a.y, b.x, b.y, c.x, c.y)) continue;
-        setMaskPixel(mask, x, y);
+      const scanY = y + 0.5;
+      const intersections: number[] = [];
+
+      for (const [first, second] of edges) {
+        const minY = Math.min(first.y, second.y);
+        const maxY = Math.max(first.y, second.y);
+        if (scanY < minY - 1e-9 || scanY > maxY + 1e-9) continue;
+
+        const dy = second.y - first.y;
+        if (Math.abs(dy) <= 1e-12) {
+          if (Math.abs(scanY - first.y) <= 1e-9) {
+            intersections.push(first.x, second.x);
+          }
+          continue;
+        }
+
+        const amount = (scanY - first.y) / dy;
+        if (amount < -1e-9 || amount > 1 + 1e-9) continue;
+        intersections.push(first.x + (second.x - first.x) * amount);
       }
+
+      if (intersections.length < 2) continue;
+      let minX = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      for (const x of intersections) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+      }
+
+      // Pixel centers are at x + 0.5. Convert the continuous scanline span to
+      // the inclusive integer texel range whose centers lie inside/on the triangle.
+      const firstX = Math.ceil(minX - 0.5 - 1e-9);
+      const lastX = Math.floor(maxX - 0.5 + 1e-9);
+      if (lastX >= firstX) setMaskSpan(mask, y, firstX, lastX);
     }
   }
 
