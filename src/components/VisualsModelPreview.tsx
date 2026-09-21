@@ -579,7 +579,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolModeRef.current = paintSelectMode;
-  symmetryEnabledRef.current = isPaintSymmetryEnabled;
+  symmetryEnabledRef.current = paintViewMode === "model" && isPaintSymmetryEnabled;
   paintScopeRef.current = paintScope;
   brushSettingsRef.current = {
     radiusPx: paintBrushRadius,
@@ -1993,7 +1993,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div
           ref={brushCursorRef}
-          className={`pointer-events-none absolute left-0 top-0 z-20 rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.75)] ${paintViewMode === "texture" ? "hidden" : "hidden"}`}
+          className="pointer-events-none absolute left-0 top-0 z-20 hidden rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.75)]"
+          style={paintViewMode === "texture" ? { display: "none" } : undefined}
         >
           <div
             ref={brushHardnessCursorRef}
@@ -2464,13 +2465,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 </select>
                 <button
                   type="button"
+                  disabled={paintViewMode === "texture"}
                   onClick={() => setIsPaintSymmetryEnabled((enabled) => !enabled)}
                   className={`rounded border px-2 py-1 ${
-                    isPaintSymmetryEnabled
+                    isPaintSymmetryEnabled && paintViewMode === "model"
                       ? "border-fuchsia-400 bg-fuchsia-900/50 text-fuchsia-100"
                       : "border-gray-600 bg-gray-800 hover:border-fuchsia-400"
-                  }`}
-                  title="Mirror brush strokes left/right across the model's local X=0 plane"
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                  title={
+                    paintViewMode === "texture"
+                      ? "Model-space symmetry is available in the 3D view."
+                      : "Mirror brush strokes left/right across the model's local X=0 plane"
+                  }
                 >
                   Symmetry X
                 </button>
