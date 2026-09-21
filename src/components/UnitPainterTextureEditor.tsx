@@ -18,6 +18,8 @@ type UnitPainterTextureEditorProps = {
   onSelectedTextureIdChange: (textureId: string) => void;
   brushSettings: UnitPainterBrushSettings;
   scope: UnitPainterSelectionScope;
+  paddingPx: number;
+  onPaddingPxChange: (padding: number) => void;
   selectMode?: Exclude<UnitPainterSelectionScope, "all">;
   eyedropperActive: boolean;
   onEyedropperComplete: (color: { r: number; g: number; b: number }) => void;
@@ -41,6 +43,8 @@ const UnitPainterTextureEditor = ({
   onSelectedTextureIdChange,
   brushSettings,
   scope,
+  paddingPx,
+  onPaddingPxChange,
   selectMode,
   eyedropperActive,
   onEyedropperComplete,
@@ -85,6 +89,17 @@ const UnitPainterTextureEditor = ({
       scale,
       x: (rect.width - view.width * scale) / 2,
       y: (rect.height - view.height * scale) / 2,
+    });
+  };
+
+  const setOneToOne = () => {
+    const viewport = viewportRef.current;
+    if (!viewport || !view) return;
+    const rect = viewport.getBoundingClientRect();
+    setTransform({
+      scale: 1,
+      x: (rect.width - view.width) / 2,
+      y: (rect.height - view.height) / 2,
     });
   };
 
@@ -136,6 +151,15 @@ const UnitPainterTextureEditor = ({
     redrawTexture();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.id, historyVersion]);
+
+  useEffect(() => {
+    if (!view) return;
+    return session.subscribeTextureChanges((textureId, dirty) => {
+      if (textureId === view.id) redrawTexture(dirty);
+    });
+    // The live view points at the same mutable RGBA buffer for the life of this texture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, view?.id]);
 
   useEffect(() => {
     const canvas = uvCanvasRef.current;
@@ -191,10 +215,10 @@ const UnitPainterTextureEditor = ({
       brushSettings.radiusPx / Math.max(transform.scale, 0.001),
       brushSettings,
       scope,
+      scope === "all" ? 0 : paddingPx,
     );
     if (!result?.changed) return false;
     strokeChangedRef.current = true;
-    redrawTexture(result);
     return true;
   };
 
@@ -347,6 +371,19 @@ const UnitPainterTextureEditor = ({
         >
           UV
         </button>
+        <label className="flex items-center gap-1 text-gray-400" title="Extend scoped painting beyond UV boundaries">
+          Pad
+          <select
+            value={scope === "all" ? 0 : paddingPx}
+            disabled={scope === "all"}
+            onChange={(event) => onPaddingPxChange(Number(event.target.value))}
+            className="rounded border border-gray-600 bg-gray-800 px-1 py-1 text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {[0, 2, 4, 8].map((padding) => (
+              <option key={padding} value={padding}>{padding}px</option>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
           onClick={fitTexture}
@@ -354,6 +391,14 @@ const UnitPainterTextureEditor = ({
           title="Fit texture to view"
         >
           Fit
+        </button>
+        <button
+          type="button"
+          onClick={setOneToOne}
+          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400"
+          title="Show one texture pixel per screen pixel"
+        >
+          1:1
         </button>
         <span className="min-w-12 text-right tabular-nums text-gray-400">
           {Math.round(transform.scale * 100)}%
@@ -419,7 +464,9 @@ const UnitPainterTextureEditor = ({
 
       <div className="pointer-events-none absolute bottom-2 left-2 z-20 rounded bg-gray-900/90 px-2 py-1 text-[11px] text-gray-400">
         {selectMode ? `LMB select ${selectMode}` : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
-        {scope !== "all" ? " · painting clipped to the current selection" : ""}
+        {scope !== "all"
+          ? ` · clipped to selection${paddingPx > 0 ? ` + ${paddingPx}px padding` : ""}`
+          : ""}
       </div>
     </div>
   );
