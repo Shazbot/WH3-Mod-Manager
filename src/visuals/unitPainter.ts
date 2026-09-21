@@ -1294,7 +1294,11 @@ export class UnitPainterSession {
 
     let changed = false;
     if (operation === "replace") {
-      changed = this.selections.length !== 1 || this.selections[0]?.key !== key;
+      const current = this.selections[0];
+      changed =
+        this.selections.length !== 1
+        || current?.key !== key
+        || current?.islandId !== next.islandId;
       this.selections = [next];
     } else if (operation === "add") {
       if (existingIndex < 0) {
