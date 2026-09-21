@@ -37,6 +37,8 @@ type ViewTransform = {
   y: number;
 };
 
+type ViewTransformMode = "fit" | "oneToOne" | "manual";
+
 type TextureDisplayMode = "textureUv" | "uvOnly" | "selected";
 type TextureBackgroundMode = "checker" | "dark" | "light";
 
@@ -74,6 +76,7 @@ const UnitPainterTextureEditor = ({
   const lastPanPointRef = useRef<{ x: number; y: number }>();
   const distanceSinceLastStampRef = useRef(0);
   const strokeChangedRef = useRef(false);
+  const transformModeRef = useRef<ViewTransformMode>("fit");
   const [displayMode, setDisplayMode] = useState<TextureDisplayMode>("textureUv");
   const [backgroundMode, setBackgroundMode] = useState<TextureBackgroundMode>("checker");
   const [dimOutsideSelection, setDimOutsideSelection] = useState(false);
@@ -97,6 +100,7 @@ const UnitPainterTextureEditor = ({
   const fitTexture = () => {
     const viewport = viewportRef.current;
     if (!viewport || !view) return;
+    transformModeRef.current = "fit";
     const rect = viewport.getBoundingClientRect();
     const availableWidth = Math.max(1, rect.width - 32);
     const availableHeight = Math.max(1, rect.height - 32);
@@ -111,6 +115,7 @@ const UnitPainterTextureEditor = ({
   const setOneToOne = () => {
     const viewport = viewportRef.current;
     if (!viewport || !view) return;
+    transformModeRef.current = "oneToOne";
     const rect = viewport.getBoundingClientRect();
     setTransform({
       scale: 1,
@@ -128,7 +133,10 @@ const UnitPainterTextureEditor = ({
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const observer = new ResizeObserver(() => fitTexture());
+    const observer = new ResizeObserver(() => {
+      if (transformModeRef.current === "fit") fitTexture();
+      else if (transformModeRef.current === "oneToOne") setOneToOne();
+    });
     observer.observe(viewport);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -457,6 +465,7 @@ const UnitPainterTextureEditor = ({
       const dx = event.clientX - last.x;
       const dy = event.clientY - last.y;
       lastPanPointRef.current = { x: event.clientX, y: event.clientY };
+      transformModeRef.current = "manual";
       setTransform((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
       return;
     }
@@ -487,6 +496,7 @@ const UnitPainterTextureEditor = ({
 
   const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    transformModeRef.current = "manual";
     const rect = event.currentTarget.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
     const mouseY = event.clientY - rect.top;
