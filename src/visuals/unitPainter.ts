@@ -26,6 +26,11 @@ export type UnitPainterTextureView = {
   selectedUvTriangles: Float32Array;
 };
 
+export type UnitPainterStrokeGpuProfile = {
+  updateRanges: number;
+  updateBytes: number;
+};
+
 export type UnitPainterTexturePaintResult = {
   changed: boolean;
   minX: number;
@@ -1055,6 +1060,8 @@ export class UnitPainterSession {
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeLayerId = "";
+  private currentStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
+  private lastStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private isStrokeOpen = false;
   private selection?: UnitPainterSelection;
   private paintLayers: PaintLayer[] = [];
@@ -1867,7 +1874,12 @@ export class UnitPainterSession {
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
     this.currentStrokeLayerId = this.activePaintLayerId;
+    this.currentStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
     this.isStrokeOpen = true;
+  }
+
+  get lastStrokeGpuProfile(): UnitPainterStrokeGpuProfile {
+    return { ...this.lastStrokeGpuProfile };
   }
 
   private resolveBrushIntersection(
@@ -2253,8 +2265,10 @@ export class UnitPainterSession {
     const touchedTargets = [...this.currentStroke.keys()];
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
-    this.currentStrokeLayerId = "";
     this.pruneTouchedLayerTiles(touchedTargets);
+    this.lastStrokeGpuProfile = { ...this.currentStrokeGpuProfile };
+    this.currentStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
+    this.currentStrokeLayerId = "";
 
     if (changes.length === 0) return false;
     this.pushHistory(changes);
@@ -2984,14 +2998,20 @@ export class UnitPainterSession {
     return false;
   }
 
+  private recordStrokeGpuUpdateRange(count: number) {
+    if (!this.currentStrokeLayerId || count <= 0) return;
+    this.currentStrokeGpuProfile.updateRanges += 1;
+    this.currentStrokeGpuProfile.updateBytes += count;
+  }
+
   private markTargetRowSpansDirty(target: PaintableTexture, dirtyRows: Map<number, DirtyRowSpan>) {
     if (dirtyRows.size === 0) return;
     if (!target.fullUploadPending) {
       for (const [row, span] of [...dirtyRows.entries()].sort((a, b) => a[0] - b[0])) {
-        target.editable.addUpdateRange(
-          (row * target.width + span.minX) * 4,
-          (span.maxX - span.minX + 1) * 4,
-        );
+        const start = (row * target.width + span.minX) * 4;
+        const count = (span.maxX - span.minX + 1) * 4;
+        target.editable.addUpdateRange(start, count);
+        this.recordStrokeGpuUpdateRange(count);
       }
     }
     target.revision += 1;
@@ -3009,7 +3029,9 @@ export class UnitPainterSession {
       while (cursor < endExclusive) {
         const rowEnd = (Math.floor(cursor / rowBytes) + 1) * rowBytes;
         const rangeEnd = Math.min(endExclusive, rowEnd);
-        target.editable.addUpdateRange(cursor, rangeEnd - cursor);
+        const count = rangeEnd - cursor;
+        target.editable.addUpdateRange(cursor, count);
+        this.recordStrokeGpuUpdateRange(count);
         cursor = rangeEnd;
       }
     }
@@ -3074,6 +3096,7 @@ export class UnitPainterSession {
       target.editable.clearUpdateRanges();
       for (const range of this.getTouchedTileUpdateRanges(target)) {
         target.editable.addUpdateRange(range.start, range.count);
+        this.recordStrokeGpuUpdateRange(range.count);
       }
     }
     target.revision += 1;
