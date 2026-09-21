@@ -777,7 +777,7 @@ const UnitPainterTextureEditor = ({
           ref={textureCanvasRef}
           className="pointer-events-none absolute left-0 top-0 shadow-2xl [image-rendering:pixelated]"
           style={{
-            display: displayMode === "uvOnly" && !view.selectedPixelMask ? "none" : undefined,
+            display: displayMode === "uvOnly" ? "none" : undefined,
             transformOrigin: "0 0",
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           }}
@@ -786,7 +786,7 @@ const UnitPainterTextureEditor = ({
           ref={selectionMaskCanvasRef}
           className="pointer-events-none absolute left-0 top-0"
           style={{
-            display: displayMode === "uvOnly" ? "none" : undefined,
+            display: displayMode === "uvOnly" && !view.selectedPixelMask ? "none" : undefined,
             transformOrigin: "0 0",
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           }}
