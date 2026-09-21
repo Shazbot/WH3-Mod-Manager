@@ -1061,7 +1061,7 @@ export class UnitPainterSession {
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeLayerId = "";
   private currentStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
-  private lastStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
+  private completedStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private isStrokeOpen = false;
   private selection?: UnitPainterSelection;
   private paintLayers: PaintLayer[] = [];
@@ -1879,7 +1879,7 @@ export class UnitPainterSession {
   }
 
   get lastStrokeGpuProfile(): UnitPainterStrokeGpuProfile {
-    return { ...this.lastStrokeGpuProfile };
+    return { ...this.completedStrokeGpuProfile };
   }
 
   private resolveBrushIntersection(
@@ -2266,7 +2266,7 @@ export class UnitPainterSession {
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
     this.pruneTouchedLayerTiles(touchedTargets);
-    this.lastStrokeGpuProfile = { ...this.currentStrokeGpuProfile };
+    this.completedStrokeGpuProfile = { ...this.currentStrokeGpuProfile };
     this.currentStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
     this.currentStrokeLayerId = "";
 
