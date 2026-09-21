@@ -273,6 +273,28 @@ describe("unit painter", () => {
     }
   });
 
+  it("resolves texture-space material and island hover outlines", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+
+      const island = painter.session.getTexturePointHover(textureId, 14.5, 8.5, "island");
+      expect(island?.textureId).toBe(textureId);
+      expect(island?.scope).toBe("island");
+      expect(island?.uvSegments.length).toBeGreaterThan(0);
+
+      const material = painter.session.getTexturePointHover(textureId, 14.5, 8.5, "material");
+      expect(material?.scope).toBe("material");
+      expect(material?.uvSegments.length).toBeGreaterThan(island?.uvSegments.length ?? 0);
+
+      expect(painter.session.getTexturePointHover(textureId, 2.5, 2.5, "island")).toBeUndefined();
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("maps texture hover back to the matching 3D material or UV island", () => {
     const painter = makePainter();
     try {

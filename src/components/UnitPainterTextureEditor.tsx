@@ -294,6 +294,31 @@ const UnitPainterTextureEditor = ({
     context.globalCompositeOperation = "source-over";
   }, [dimOutsideSelection, displayMode, view]);
 
+  const drawTextureHoverOutline = useCallback((hover?: UnitPainterTextureHover) => {
+    const hoverCanvas = linkedHoverCanvasRef.current;
+    const context = hoverCanvas?.getContext("2d");
+    if (!hoverCanvas || !context || !view || !hover || hover.textureId !== view.id) {
+      if (hoverCanvas && context) context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+      return;
+    }
+
+    if (hoverCanvas.width !== view.width) hoverCanvas.width = view.width;
+    if (hoverCanvas.height !== view.height) hoverCanvas.height = view.height;
+    context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+    if (hover.uvSegments.length === 0) return;
+
+    context.beginPath();
+    for (let index = 0; index + 3 < hover.uvSegments.length; index += 4) {
+      context.moveTo(hover.uvSegments[index] * view.width, hover.uvSegments[index + 1] * view.height);
+      context.lineTo(hover.uvSegments[index + 2] * view.width, hover.uvSegments[index + 3] * view.height);
+    }
+    context.strokeStyle = hover.scope === "island"
+      ? "rgba(196,181,253,0.98)"
+      : "rgba(103,232,249,0.98)";
+    context.lineWidth = Math.max(1, 2 / Math.max(transform.scale, 0.001));
+    context.stroke();
+  }, [transform.scale, view]);
+
   useEffect(() => {
     linkedHoverSinkRef.current = (hover) => {
       const hoverCanvas = linkedHoverCanvasRef.current;
@@ -319,23 +344,7 @@ const UnitPainterTextureEditor = ({
       pendingLinkedHoverRef.current = undefined;
       panTexturePointIntoView(hover.x, hover.y, switchedTexture);
 
-      if (hoverCanvas && context) {
-        if (hoverCanvas.width !== view.width) hoverCanvas.width = view.width;
-        if (hoverCanvas.height !== view.height) hoverCanvas.height = view.height;
-        context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
-        if (hover.uvSegments.length > 0) {
-          context.beginPath();
-          for (let index = 0; index + 3 < hover.uvSegments.length; index += 4) {
-            context.moveTo(hover.uvSegments[index] * view.width, hover.uvSegments[index + 1] * view.height);
-            context.lineTo(hover.uvSegments[index + 2] * view.width, hover.uvSegments[index + 3] * view.height);
-          }
-          context.strokeStyle = hover.scope === "island"
-            ? "rgba(196,181,253,0.95)"
-            : "rgba(103,232,249,0.95)";
-          context.lineWidth = Math.max(1, 2 / Math.max(transform.scale, 0.001));
-          context.stroke();
-        }
-      }
+      drawTextureHoverOutline(hover);
 
       if (cursor) {
         const radius = selectMode || eyedropperActive ? 5 : brushSettings.radiusPx;
@@ -372,6 +381,7 @@ const UnitPainterTextureEditor = ({
   }, [
     brushSettings.hardness,
     brushSettings.radiusPx,
+    drawTextureHoverOutline,
     eyedropperActive,
     linkedHoverSinkRef,
     onSelectedTextureIdChange,
@@ -498,6 +508,7 @@ const UnitPainterTextureEditor = ({
     setCursor({ x: event.clientX - rect.left, y: event.clientY - rect.top, visible: true });
 
     if (event.pointerId === activePanPointerRef.current) {
+      drawTextureHoverOutline(undefined);
       onTextureHoverEnd();
       const last = lastPanPointRef.current;
       if (!last) return;
@@ -511,8 +522,16 @@ const UnitPainterTextureEditor = ({
 
     const point = pointerToTexture(event.clientX, event.clientY);
     if (point && point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
+      if (selectMode) {
+        drawTextureHoverOutline(
+          session.getTexturePointHover(view.id, point.x, point.y, selectMode),
+        );
+      } else {
+        drawTextureHoverOutline(undefined);
+      }
       onTextureHover(view.id, point.x, point.y);
     } else {
+      drawTextureHoverOutline(undefined);
       onTextureHoverEnd();
     }
 
@@ -666,6 +685,7 @@ const UnitPainterTextureEditor = ({
         }}
         onPointerLeave={() => {
           setCursor((current) => ({ ...current, visible: false }));
+          drawTextureHoverOutline(undefined);
           onTextureHoverEnd();
         }}
         onWheel={onWheel}

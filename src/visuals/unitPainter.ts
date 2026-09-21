@@ -1696,6 +1696,65 @@ export class UnitPainterSession {
     return undefined;
   }
 
+  getTexturePointHover(
+    textureId: string,
+    x: number,
+    y: number,
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+  ): UnitPainterTextureHover | undefined {
+    const target = [...this.targetsByEditableTexture.values()].find(
+      (candidate) => candidate.textureId === textureId,
+    );
+    if (!target) return undefined;
+    target.editable.updateMatrix();
+
+    for (const surface of this.surfacesByTarget.get(target) ?? []) {
+      const uv = surface.geometry.getAttribute("uv");
+      if (!uv) continue;
+      for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
+        const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
+        if (!indices) continue;
+        const [a, b, c] = indices.map((index) =>
+          new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+        );
+        if (
+          !pointInTriangle(
+            x,
+            y,
+            a.x * target.width,
+            a.y * target.height,
+            b.x * target.width,
+            b.y * target.height,
+            c.x * target.width,
+            c.y * target.height,
+          )
+        ) {
+          continue;
+        }
+
+        let faceIndices: number[];
+        if (scope === "material") {
+          faceIndices = getMaterialFaceIndices(surface.geometry, surface.materialIndex);
+        } else {
+          const topology = this.getUvTopology(surface.geometry, surface.materialIndex);
+          const islandId = topology?.faceToIsland.get(faceIndex);
+          if (islandId == null) continue;
+          faceIndices = (topology?.islands.get(islandId) ?? []).map((triangle) => triangle.faceIndex);
+          if (faceIndices.length === 0) continue;
+        }
+
+        return {
+          textureId,
+          x,
+          y,
+          scope,
+          uvSegments: this.getUvSegmentsForFaces(target, surface.geometry, faceIndices),
+        };
+      }
+    }
+    return undefined;
+  }
+
   selectTexturePoint(
     textureId: string,
     x: number,
