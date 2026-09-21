@@ -170,6 +170,10 @@ import {
 } from "./visuals/cache";
 import { toVariantMeshDefinitionPath } from "./visuals/paths";
 import {
+  collectVisualDependencyClosure,
+  getSupportedVisualDependencyExtension,
+} from "./visuals/dependencies";
+import {
   canUseVanillaDbCacheForPack,
   closeVanillaDbCacheReaders,
   fillPackedFileFromVanillaCache,
@@ -14157,6 +14161,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       preserveFolders = true,
       preferredPackPath?: string,
       excludeCommonTextures = false,
+      recursive = false,
     ): Promise<PackExportResult> => {
       const skipped: Array<{ name: string; reason: string }> = [];
       let writtenCount = 0;
@@ -14170,9 +14175,64 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           return { success: false, writtenCount, skipped, error: "No files to extract" };
         }
 
+        let filePathsToExtract = filePaths;
+        if (recursive) {
+          if (filePaths.length !== 1) {
+            return {
+              success: false,
+              writtenCount,
+              skipped,
+              error: "Recursive Visuals extraction requires exactly one root file",
+            };
+          }
+
+          const dependencyClosure = await collectVisualDependencyClosure(filePaths[0], async (requestedPath) => {
+            const requestedExtension = getSupportedVisualDependencyExtension(requestedPath);
+            const resolved = await resolveVisualsFileInSession(session, requestedPath, {
+              variantMeshDefinitionFallback: requestedExtension === "variantmeshdefinition",
+              preferredPackPath,
+            });
+            if (!resolved?.pack || !resolved.fileName) return undefined;
+
+            const resolvedExtension = getSupportedVisualDependencyExtension(resolved.fileName);
+            let text: string | undefined;
+            if (
+              resolvedExtension === "variantmeshdefinition" ||
+              resolvedExtension === "wsmodel" ||
+              resolvedExtension === "xml.material"
+            ) {
+              await readFromExistingPack(resolved.pack, {
+                filesToRead: [resolved.fileName],
+                skipParsingTables: true,
+              });
+              const refreshedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+              const decoded = refreshedFile ? decodePackedFileText(refreshedFile) : undefined;
+              if (decoded != null) text = decoded;
+            }
+
+            return { resolvedPath: resolved.fileName, text };
+          });
+
+          filePathsToExtract = dependencyClosure.paths;
+          skipped.push(
+            ...dependencyClosure.missing.map((name) => ({
+              name,
+              reason: "Referenced file was not found in the visuals packs",
+            })),
+          );
+          if (filePathsToExtract.length === 0) {
+            return {
+              success: false,
+              writtenCount,
+              skipped,
+              error: "No supported Visuals files were resolved from the root file",
+            };
+          }
+        }
+
         const uniqueRequestedPaths = Array.from(
           new Map(
-            filePaths
+            filePathsToExtract
               .map((filePath) => [normalizePackFilePathKey(filePath), filePath] as const)
               .filter(([key]) => key.length > 0),
           ).values(),
