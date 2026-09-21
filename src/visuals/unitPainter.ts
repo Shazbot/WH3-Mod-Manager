@@ -208,11 +208,15 @@ type UvIslandTopology = {
 };
 
 type UvIslandMask = {
-  minX: number;
-  minY: number;
   width: number;
   height: number;
-  pixels: Uint8Array;
+  tiles: Map<number, Uint8Array>;
+  byteSize: number;
+};
+
+type CachedUvMask = {
+  cacheId: number;
+  mask: UvIslandMask;
 };
 
 const MAX_HISTORY_STROKES = 30;
@@ -220,6 +224,10 @@ const MAX_PAINT_LAYERS = 32;
 const LAYER_TILE_SIZE = 64;
 const LAYER_TILE_PIXELS = LAYER_TILE_SIZE * LAYER_TILE_SIZE;
 const LAYER_TILE_BYTES = LAYER_TILE_PIXELS * 4;
+const MASK_TILE_SIZE = 64;
+const MASK_TILE_PIXELS = MASK_TILE_SIZE * MASK_TILE_SIZE;
+const MASK_TILE_BYTES = MASK_TILE_PIXELS;
+const MAX_UV_MASK_CACHE_BYTES = 32 * 1024 * 1024;
 const MIN_BRUSH_RADIUS_TEXELS = 1;
 // A pathological UV/world-area ratio can otherwise turn a small screen brush into a
 // million-pixel CPU stamp. GPU projection can remove this cap later; keep interaction responsive now.
@@ -678,6 +686,31 @@ const pointInTriangle = (
   return !(hasNegative && hasPositive);
 };
 
+const getMaskTileAddress = (mask: UvIslandMask, x: number, y: number) => {
+  const tilesPerRow = Math.ceil(mask.width / MASK_TILE_SIZE);
+  const tileX = Math.floor(x / MASK_TILE_SIZE);
+  const tileY = Math.floor(y / MASK_TILE_SIZE);
+  const tileKey = tileY * tilesPerRow + tileX;
+  const localX = x - tileX * MASK_TILE_SIZE;
+  const localY = y - tileY * MASK_TILE_SIZE;
+  return {
+    tileKey,
+    localIndex: localY * MASK_TILE_SIZE + localX,
+  };
+};
+
+const setMaskPixel = (mask: UvIslandMask, x: number, y: number) => {
+  if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) return;
+  const { tileKey, localIndex } = getMaskTileAddress(mask, x, y);
+  let tile = mask.tiles.get(tileKey);
+  if (!tile) {
+    tile = new Uint8Array(MASK_TILE_BYTES);
+    mask.tiles.set(tileKey, tile);
+    mask.byteSize += tile.byteLength;
+  }
+  tile[localIndex] = 1;
+};
+
 const buildUvIslandMask = (
   triangles: readonly UvTriangle[],
   target: PaintableTexture,
@@ -685,62 +718,66 @@ const buildUvIslandMask = (
   if (triangles.length === 0) return undefined;
 
   target.editable.updateMatrix();
-  const transformed = triangles.map((triangle) => {
+  const mask: UvIslandMask = {
+    width: target.width,
+    height: target.height,
+    tiles: new Map(),
+    byteSize: 0,
+  };
+
+  for (const triangle of triangles) {
     const uvA = triangle.uvA.clone();
     const uvB = triangle.uvB.clone();
     const uvC = triangle.uvC.clone();
     target.editable.transformUv(uvA);
     target.editable.transformUv(uvB);
     target.editable.transformUv(uvC);
-    return [
-      new THREE.Vector2(uvA.x * target.width, uvA.y * target.height),
-      new THREE.Vector2(uvB.x * target.width, uvB.y * target.height),
-      new THREE.Vector2(uvC.x * target.width, uvC.y * target.height),
-    ] as const;
-  });
+    const a = new THREE.Vector2(uvA.x * target.width, uvA.y * target.height);
+    const b = new THREE.Vector2(uvB.x * target.width, uvB.y * target.height);
+    const c = new THREE.Vector2(uvC.x * target.width, uvC.y * target.height);
 
-  let minX = target.width - 1;
-  let minY = target.height - 1;
-  let maxX = 0;
-  let maxY = 0;
-  for (const [a, b, c] of transformed) {
-    minX = Math.min(minX, Math.floor(Math.min(a.x, b.x, c.x)));
-    minY = Math.min(minY, Math.floor(Math.min(a.y, b.y, c.y)));
-    maxX = Math.max(maxX, Math.ceil(Math.max(a.x, b.x, c.x)));
-    maxY = Math.max(maxY, Math.ceil(Math.max(a.y, b.y, c.y)));
-  }
+    const triangleMinX = Math.max(0, Math.floor(Math.min(a.x, b.x, c.x)));
+    const triangleMinY = Math.max(0, Math.floor(Math.min(a.y, b.y, c.y)));
+    const triangleMaxX = Math.min(target.width - 1, Math.ceil(Math.max(a.x, b.x, c.x)));
+    const triangleMaxY = Math.min(target.height - 1, Math.ceil(Math.max(a.y, b.y, c.y)));
+    if (triangleMaxX < triangleMinX || triangleMaxY < triangleMinY) continue;
 
-  minX = Math.max(0, minX);
-  minY = Math.max(0, minY);
-  maxX = Math.min(target.width - 1, maxX);
-  maxY = Math.min(target.height - 1, maxY);
-  if (maxX < minX || maxY < minY) return undefined;
-
-  const width = maxX - minX + 1;
-  const height = maxY - minY + 1;
-  const pixels = new Uint8Array(width * height);
-
-  for (const [a, b, c] of transformed) {
-    const triangleMinX = Math.max(minX, Math.floor(Math.min(a.x, b.x, c.x)));
-    const triangleMinY = Math.max(minY, Math.floor(Math.min(a.y, b.y, c.y)));
-    const triangleMaxX = Math.min(maxX, Math.ceil(Math.max(a.x, b.x, c.x)));
-    const triangleMaxY = Math.min(maxY, Math.ceil(Math.max(a.y, b.y, c.y)));
     for (let y = triangleMinY; y <= triangleMaxY; y += 1) {
       for (let x = triangleMinX; x <= triangleMaxX; x += 1) {
         if (!pointInTriangle(x + 0.5, y + 0.5, a.x, a.y, b.x, b.y, c.x, c.y)) continue;
-        pixels[(y - minY) * width + (x - minX)] = 1;
+        setMaskPixel(mask, x, y);
       }
     }
   }
 
-  return { minX, minY, width, height, pixels };
+  return mask.tiles.size > 0 ? mask : undefined;
 };
 
 const maskContainsPixel = (mask: UvIslandMask, x: number, y: number) => {
-  const localX = x - mask.minX;
-  const localY = y - mask.minY;
-  if (localX < 0 || localY < 0 || localX >= mask.width || localY >= mask.height) return false;
-  return mask.pixels[localY * mask.width + localX] !== 0;
+  if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) return false;
+  const { tileKey, localIndex } = getMaskTileAddress(mask, x, y);
+  return (mask.tiles.get(tileKey)?.[localIndex] ?? 0) !== 0;
+};
+
+const forEachMaskPixel = (
+  mask: UvIslandMask,
+  callback: (x: number, y: number) => void,
+) => {
+  const tilesPerRow = Math.ceil(mask.width / MASK_TILE_SIZE);
+  for (const [tileKey, tile] of mask.tiles) {
+    const tileX = tileKey % tilesPerRow;
+    const tileY = Math.floor(tileKey / tilesPerRow);
+    const startX = tileX * MASK_TILE_SIZE;
+    const startY = tileY * MASK_TILE_SIZE;
+    const width = Math.min(MASK_TILE_SIZE, mask.width - startX);
+    const height = Math.min(MASK_TILE_SIZE, mask.height - startY);
+    for (let localY = 0; localY < height; localY += 1) {
+      for (let localX = 0; localX < width; localX += 1) {
+        if (tile[localY * MASK_TILE_SIZE + localX] === 0) continue;
+        callback(startX + localX, startY + localY);
+      }
+    }
+  }
 };
 
 const blendLayerPixelFromStrokeStart = (
@@ -793,8 +830,14 @@ export class UnitPainterSession {
   private readonly uvTopologies = new WeakMap<THREE.BufferGeometry, Map<number, UvIslandTopology>>();
   private readonly uvMasksByTarget = new Map<
     PaintableTexture,
-    WeakMap<THREE.BufferGeometry, Map<string, UvIslandMask>>
+    WeakMap<THREE.BufferGeometry, Map<string, CachedUvMask>>
   >();
+  private readonly uvMaskCacheLru = new Map<
+    number,
+    { owner: Map<string, CachedUvMask>; key: string; mask: UvIslandMask }
+  >();
+  private uvMaskCacheBytes = 0;
+  private nextUvMaskCacheId = 1;
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeLayerId = "";
@@ -1372,25 +1415,20 @@ export class UnitPainterSession {
     let dirtyStart = Number.POSITIVE_INFINITY;
     let dirtyEnd = 0;
 
-    for (let localY = 0; localY < mask.height; localY += 1) {
-      for (let localX = 0; localX < mask.width; localX += 1) {
-        if (mask.pixels[localY * mask.width + localX] === 0) continue;
-        const pixelX = mask.minX + localX;
-        const pixelY = mask.minY + localY;
-        const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
-        const currentValue = getLayerPixel(layerData, selection.target, byteIndex);
-        const nextValue =
-          blendLayerPixelFromStrokeStart(selection.target, byteIndex, currentValue, settings, fillOpacity);
-        if (nextValue !== currentValue) setLayerPixel(layerData, selection.target, byteIndex, nextValue);
-        if (nextValue === currentValue) continue;
-        byteIndices.push(byteIndex);
-        beforeValues.push(currentValue);
-        afterValues.push(nextValue);
-        this.recomposeTargetPixel(selection.target, byteIndex);
-        dirtyStart = Math.min(dirtyStart, byteIndex);
-        dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
-      }
-    }
+    forEachMaskPixel(mask, (pixelX, pixelY) => {
+      const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
+      const currentValue = getLayerPixel(layerData, selection.target, byteIndex);
+      const nextValue =
+        blendLayerPixelFromStrokeStart(selection.target, byteIndex, currentValue, settings, fillOpacity);
+      if (nextValue === currentValue) return;
+      setLayerPixel(layerData, selection.target, byteIndex, nextValue);
+      byteIndices.push(byteIndex);
+      beforeValues.push(currentValue);
+      afterValues.push(nextValue);
+      this.recomposeTargetPixel(selection.target, byteIndex);
+      dirtyStart = Math.min(dirtyStart, byteIndex);
+      dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
+    });
 
     if (byteIndices.length === 0) return false;
     this.markTargetRangeDirty(selection.target, dirtyStart, dirtyEnd);
@@ -1432,23 +1470,18 @@ export class UnitPainterSession {
     let dirtyStart = Number.POSITIVE_INFINITY;
     let dirtyEnd = 0;
 
-    for (let localY = 0; localY < mask.height; localY += 1) {
-      for (let localX = 0; localX < mask.width; localX += 1) {
-        if (mask.pixels[localY * mask.width + localX] === 0) continue;
-        const pixelX = mask.minX + localX;
-        const pixelY = mask.minY + localY;
-        const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
-        const currentValue = getLayerPixel(layerData, selection.target, byteIndex);
-        if (currentValue === 0) continue;
-        setLayerPixel(layerData, selection.target, byteIndex, 0);
-        byteIndices.push(byteIndex);
-        beforeValues.push(currentValue);
-        afterValues.push(0);
-        this.recomposeTargetPixel(selection.target, byteIndex);
-        dirtyStart = Math.min(dirtyStart, byteIndex);
-        dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
-      }
-    }
+    forEachMaskPixel(mask, (pixelX, pixelY) => {
+      const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
+      const currentValue = getLayerPixel(layerData, selection.target, byteIndex);
+      if (currentValue === 0) return;
+      setLayerPixel(layerData, selection.target, byteIndex, 0);
+      byteIndices.push(byteIndex);
+      beforeValues.push(currentValue);
+      afterValues.push(0);
+      this.recomposeTargetPixel(selection.target, byteIndex);
+      dirtyStart = Math.min(dirtyStart, byteIndex);
+      dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
+    });
 
     if (byteIndices.length === 0) return false;
     this.markTargetRangeDirty(selection.target, dirtyStart, dirtyEnd);
@@ -1727,6 +1760,8 @@ export class UnitPainterSession {
     this.currentStroke.clear();
     this.currentStrokeCoverage.clear();
     this.uvMasksByTarget.clear();
+    this.uvMaskCacheLru.clear();
+    this.uvMaskCacheBytes = 0;
     this.selection = undefined;
   }
 
@@ -1744,6 +1779,43 @@ export class UnitPainterSession {
       topologyByMaterial.set(materialIndex, topology);
     }
     return topology;
+  }
+
+  private getCachedUvMask(cache: Map<string, CachedUvMask>, key: string) {
+    const cached = cache.get(key);
+    if (!cached) return undefined;
+    const lruEntry = this.uvMaskCacheLru.get(cached.cacheId);
+    if (lruEntry) {
+      this.uvMaskCacheLru.delete(cached.cacheId);
+      this.uvMaskCacheLru.set(cached.cacheId, lruEntry);
+    }
+    return cached.mask;
+  }
+
+  private cacheUvMask(cache: Map<string, CachedUvMask>, key: string, mask: UvIslandMask) {
+    if (mask.byteSize > MAX_UV_MASK_CACHE_BYTES) return mask;
+
+    while (
+      this.uvMaskCacheBytes + mask.byteSize > MAX_UV_MASK_CACHE_BYTES
+      && this.uvMaskCacheLru.size > 0
+    ) {
+      const oldest = this.uvMaskCacheLru.entries().next().value as
+        | [number, { owner: Map<string, CachedUvMask>; key: string; mask: UvIslandMask }]
+        | undefined;
+      if (!oldest) break;
+      const [cacheId, entry] = oldest;
+      this.uvMaskCacheLru.delete(cacheId);
+      const current = entry.owner.get(entry.key);
+      if (current?.cacheId === cacheId) entry.owner.delete(entry.key);
+      this.uvMaskCacheBytes = Math.max(0, this.uvMaskCacheBytes - entry.mask.byteSize);
+    }
+
+    const cacheId = this.nextUvMaskCacheId++;
+    const cached: CachedUvMask = { cacheId, mask };
+    cache.set(key, cached);
+    this.uvMaskCacheLru.set(cacheId, { owner: cache, key, mask });
+    this.uvMaskCacheBytes += mask.byteSize;
+    return mask;
   }
 
   private getUvMask(
@@ -1768,12 +1840,11 @@ export class UnitPainterSession {
     }
 
     const key = `island:${materialIndex}:${islandId}`;
-    const cached = masks.get(key);
+    const cached = this.getCachedUvMask(masks, key);
     if (cached) return cached;
     const mask = buildUvIslandMask(triangles, target);
     if (!mask) return undefined;
-    masks.set(key, mask);
-    return mask;
+    return this.cacheUvMask(masks, key, mask);
   }
 
   private getMaterialMask(target: PaintableTexture, geometry: THREE.BufferGeometry, materialIndex: number) {
@@ -1792,13 +1863,12 @@ export class UnitPainterSession {
     }
 
     const key = `material:${materialIndex}`;
-    const cached = masks.get(key);
+    const cached = this.getCachedUvMask(masks, key);
     if (cached) return cached;
     const triangles = [...topology.islands.values()].flat();
     const mask = buildUvIslandMask(triangles, target);
     if (!mask) return undefined;
-    masks.set(key, mask);
-    return mask;
+    return this.cacheUvMask(masks, key, mask);
   }
 
   private getUvIslandMask(
