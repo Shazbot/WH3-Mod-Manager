@@ -182,6 +182,26 @@ describe("unit painter", () => {
     }
   });
 
+  it("selects materials and UV islands directly from texture coordinates", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      const island = painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island");
+      expect(island?.textureId).toBe(textureId);
+      expect(island?.hasUvIsland).toBe(true);
+
+      const material = painter.session.selectTexturePoint(textureId, 20.5, 8.5, "material");
+      expect(material?.textureId).toBe(textureId);
+      expect(material?.materialName).toBeTruthy();
+
+      expect(painter.session.selectTexturePoint(textureId, 2.5, 2.5, "island")).toBeUndefined();
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("clips direct texture painting to the selected UV island when requested", () => {
     const painter = makePainter();
     try {
