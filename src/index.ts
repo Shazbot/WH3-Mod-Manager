@@ -3,7 +3,7 @@ import { exec, spawn, spawnSync } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
-import isDev from "electron-is-dev";
+import electronIsDev from "electron-is-dev";
 import * as fs from "fs";
 import { updateAvailable } from "gh-release-fetch";
 import { version } from "../package.json";
@@ -33,6 +33,8 @@ import { isWindowsDeveloperModeEnabled } from "./utility/windowsDeveloperMode";
 // whether you're running in development or production).
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+
+const isDev = electronIsDev || process.env.WHMM_FORCE_DEV !== undefined;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
