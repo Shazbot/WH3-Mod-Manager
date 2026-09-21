@@ -143,14 +143,6 @@ type UnitPainterSelection = {
   islandId?: number;
 };
 
-type SparseStrokeChange = {
-  kind: "sparse";
-  layerId: string;
-  target: PaintableTexture;
-  before: Map<number, number>;
-  after: Map<number, number>;
-};
-
 type PackedStrokeChange = {
   kind: "packed";
   layerId: string;
@@ -160,7 +152,7 @@ type PackedStrokeChange = {
   after: Uint32Array;
 };
 
-type StrokeChange = SparseStrokeChange | PackedStrokeChange;
+type StrokeChange = PackedStrokeChange;
 
 type LayerSnapshot = {
   id: string;
@@ -1563,21 +1555,24 @@ export class UnitPainterSession {
       for (const [target, before] of this.currentStroke) {
         const layerData = this.getLayerTextureData(layer, target);
         if (!layerData) continue;
-        const after = new Map<number, number>();
-        const compactBefore = new Map<number, number>();
+        const byteIndices: number[] = [];
+        const beforeValues: number[] = [];
+        const afterValues: number[] = [];
         for (const [byteIndex, oldValue] of before) {
           const newValue = getLayerPixel(layerData, target, byteIndex);
           if (newValue === oldValue) continue;
-          compactBefore.set(byteIndex, oldValue);
-          after.set(byteIndex, newValue);
+          byteIndices.push(byteIndex);
+          beforeValues.push(oldValue);
+          afterValues.push(newValue);
         }
-        if (after.size > 0) {
+        if (byteIndices.length > 0) {
           changes.push({
-            kind: "sparse",
+            kind: "packed",
             layerId: layer.id,
             target,
-            before: compactBefore,
-            after,
+            byteIndices: Uint32Array.from(byteIndices),
+            before: Uint32Array.from(beforeValues),
+            after: Uint32Array.from(afterValues),
           });
         }
       }
@@ -1900,22 +1895,13 @@ export class UnitPainterSession {
         const layerData = this.getLayerTextureData(layer, pixelChange.target, true)!;
         let dirtyStart = Number.POSITIVE_INFINITY;
         let dirtyEnd = 0;
-        if (pixelChange.kind === "sparse") {
-          for (const [byteIndex, value] of pixelChange[side]) {
-            setLayerPixel(layerData, pixelChange.target, byteIndex, value);
-            this.recomposeTargetPixel(pixelChange.target, byteIndex);
-            dirtyStart = Math.min(dirtyStart, byteIndex);
-            dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
-          }
-        } else {
-          const values = pixelChange[side];
-          for (let index = 0; index < pixelChange.byteIndices.length; index += 1) {
-            const byteIndex = pixelChange.byteIndices[index];
-            setLayerPixel(layerData, pixelChange.target, byteIndex, values[index]);
-            this.recomposeTargetPixel(pixelChange.target, byteIndex);
-            dirtyStart = Math.min(dirtyStart, byteIndex);
-            dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
-          }
+        const values = pixelChange[side];
+        for (let index = 0; index < pixelChange.byteIndices.length; index += 1) {
+          const byteIndex = pixelChange.byteIndices[index];
+          setLayerPixel(layerData, pixelChange.target, byteIndex, values[index]);
+          this.recomposeTargetPixel(pixelChange.target, byteIndex);
+          dirtyStart = Math.min(dirtyStart, byteIndex);
+          dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
         }
         if (dirtyEnd > dirtyStart) this.markTargetRangeDirty(pixelChange.target, dirtyStart, dirtyEnd);
       }
