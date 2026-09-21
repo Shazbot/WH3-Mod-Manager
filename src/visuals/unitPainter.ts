@@ -945,16 +945,17 @@ const blendLayerPixelFromStrokeStart = (
   const sourceB = (sourcePacked >>> 16) & 0xff;
   const sourceA = (sourcePacked >>> 24) & 0xff;
 
+  const blend = clamp01(coverage);
+  if (settings.mode === "restore") {
+    const a = Math.round(sourceA * (1 - blend));
+    if (a === 0) return 0;
+    return (sourceR | (sourceG << 8) | (sourceB << 16) | (a << 24)) >>> 0;
+  }
+
   let targetR = settings.color.r;
   let targetG = settings.color.g;
   let targetB = settings.color.b;
-  let targetA = 255;
-  if (settings.mode === "restore") {
-    targetR = sourceR;
-    targetG = sourceG;
-    targetB = sourceB;
-    targetA = 0;
-  } else if (settings.mode === "recolor") {
+  if (settings.mode === "recolor") {
     const originalValue = Math.max(
       target.originalData[byteIndex],
       target.originalData[byteIndex + 1],
@@ -965,12 +966,16 @@ const blendLayerPixelFromStrokeStart = (
     targetB *= originalValue;
   }
 
-  const blend = clamp01(coverage);
-  const r = Math.round(sourceR + (targetR - sourceR) * blend);
-  const g = Math.round(sourceG + (targetG - sourceG) * blend);
-  const b = Math.round(sourceB + (targetB - sourceB) * blend);
-  const a = Math.round(sourceA + (targetA - sourceA) * blend);
-  if (a === 0) return 0;
+  // Layer tiles store straight-alpha color. Applying brush opacity to both RGB
+  // and alpha would attenuate a fresh stroke twice during layer composition.
+  const sourceAlpha = sourceA / 255;
+  const outputAlpha = blend + sourceAlpha * (1 - blend);
+  if (outputAlpha <= 0) return 0;
+  const sourceWeight = sourceAlpha * (1 - blend);
+  const r = Math.round((targetR * blend + sourceR * sourceWeight) / outputAlpha);
+  const g = Math.round((targetG * blend + sourceG * sourceWeight) / outputAlpha);
+  const b = Math.round((targetB * blend + sourceB * sourceWeight) / outputAlpha);
+  const a = Math.round(outputAlpha * 255);
   return (r | (g << 8) | (b << 16) | (a << 24)) >>> 0;
 };
 
