@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getUnitPainterBrushSpacing,
@@ -125,7 +125,7 @@ const UnitPainterTextureEditor = ({
     });
   };
 
-  const panTexturePointIntoView = (textureX: number, textureY: number, forceCenter = false) => {
+  const panTexturePointIntoView = useCallback((textureX: number, textureY: number, forceCenter = false) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const rect = viewport.getBoundingClientRect();
@@ -146,7 +146,7 @@ const UnitPainterTextureEditor = ({
         y: rect.height / 2 - textureY * current.scale,
       };
     });
-  };
+  }, []);
 
   useEffect(() => {
     if (view && pendingLinkedHoverRef.current?.textureId === view.id) {
@@ -364,7 +364,7 @@ const UnitPainterTextureEditor = ({
     };
 
     const pendingHover = pendingLinkedHoverRef.current;
-    if (pendingHover?.textureId === view.id) linkedHoverSinkRef.current(pendingHover);
+    if (view && pendingHover?.textureId === view.id) linkedHoverSinkRef.current(pendingHover);
 
     return () => {
       linkedHoverSinkRef.current = undefined;
@@ -375,6 +375,7 @@ const UnitPainterTextureEditor = ({
     eyedropperActive,
     linkedHoverSinkRef,
     onSelectedTextureIdChange,
+    panTexturePointIntoView,
     selectMode,
     transform.scale,
     transform.x,
