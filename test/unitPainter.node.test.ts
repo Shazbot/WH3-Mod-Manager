@@ -821,7 +821,7 @@ describe("unit painter", () => {
   });
 
 
-  it("coalesces GPU update ranges across adjacent touched layer tiles", () => {
+  it("keeps touched-tile GPU update ranges within individual texture rows", () => {
     const painter = makePainter();
     try {
       const internal = painter.session as unknown as {
@@ -832,21 +832,58 @@ describe("unit painter", () => {
         }) => Array<{ start: number; count: number }>;
       };
 
-      // 128x128 is a 2x2 tile grid. The two top tiles cover complete rows,
-      // so those 64 rows collapse into one contiguous range. The bottom-left
-      // tile remains one range per row because the right half is untouched.
+      // Three r186 uploads each DataTexture update range as a one-row
+      // texSubImage2D call, so even vertically contiguous rows must remain
+      // separate ranges. Horizontally adjacent tiles still coalesce per row.
       const ranges = internal.getTouchedTileUpdateRanges({
         width: 128,
         height: 128,
         touchedLayerTiles: new Set([0, 1, 2]),
       });
 
-      // The first lower-left half-row begins immediately after the 64 complete
-      // top rows, so it coalesces into that first contiguous byte range.
-      expect(ranges).toHaveLength(64);
-      expect(ranges[0]).toEqual({ start: 0, count: (128 * 64 + 64) * 4 });
-      expect(ranges[1]).toEqual({ start: 128 * 65 * 4, count: 64 * 4 });
+      expect(ranges).toHaveLength(128);
+      expect(ranges[0]).toEqual({ start: 0, count: 128 * 4 });
+      expect(ranges[63]).toEqual({ start: 128 * 63 * 4, count: 128 * 4 });
+      expect(ranges[64]).toEqual({ start: 128 * 64 * 4, count: 64 * 4 });
       expect(ranges.at(-1)).toEqual({ start: 128 * 127 * 4, count: 64 * 4 });
+      expect(ranges.every((range) => {
+        const firstRow = Math.floor(range.start / (128 * 4));
+        const lastRow = Math.floor((range.start + range.count - 1) / (128 * 4));
+        return firstRow === lastRow;
+      })).toBe(true);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("keeps live brush GPU update ranges within individual texture rows", () => {
+    const painter = makePainter();
+    try {
+      const internal = painter.session as unknown as {
+        targetsByEditableTexture: Map<
+          THREE.Texture,
+          {
+            editable: THREE.DataTexture;
+            fullUploadPending: boolean;
+          }
+        >;
+      };
+      const target = [...internal.targetsByEditableTexture.values()][0];
+
+      // Emulate the initial renderer upload so live brush edits use partial ranges.
+      target.fullUploadPending = false;
+      target.editable.clearUpdateRanges();
+
+      paint(painter, { color: { r: 230, g: 40, b: 20 } });
+
+      expect(target.editable.updateRanges.length).toBeGreaterThan(1);
+      expect(target.editable.updateRanges.every((range) => {
+        const firstRow = Math.floor(range.start / (WIDTH * 4));
+        const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
+        return firstRow === lastRow;
+      })).toBe(true);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -880,10 +917,17 @@ describe("unit painter", () => {
       expect(painter.session.setLayerOpacity(painter.session.activeLayerId, 0.5)).toBe(true);
 
       expect(target.fullUploadPending).toBe(false);
-      expect(target.editable.updateRanges.length).toBeGreaterThan(0);
-      expect(target.editable.updateRanges).toEqual([
-        { start: 0, count: WIDTH * HEIGHT * 4 },
-      ]);
+      expect(target.editable.updateRanges).toHaveLength(HEIGHT);
+      expect(target.editable.updateRanges[0]).toEqual({ start: 0, count: WIDTH * 4 });
+      expect(target.editable.updateRanges.at(-1)).toEqual({
+        start: WIDTH * (HEIGHT - 1) * 4,
+        count: WIDTH * 4,
+      });
+      expect(target.editable.updateRanges.every((range) => {
+        const firstRow = Math.floor(range.start / (WIDTH * 4));
+        const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
+        return firstRow === lastRow;
+      })).toBe(true);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
