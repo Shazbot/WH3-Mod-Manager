@@ -280,6 +280,57 @@ describe("unit painter", () => {
   });
 
 
+  it("returns exact material and UV-island triangle surfaces for highlighting", () => {
+    const painter = makePainter();
+    try {
+      const material = painter.session.getIntersectionSurfaceHighlight(painter.intersection, "material");
+      expect(material?.scope).toBe("material");
+      expect(material?.materialIndex).toBe(0);
+      expect(material?.indices).toEqual([0, 1, 2, 3, 4, 5]);
+
+      const island = painter.session.getIntersectionSurfaceHighlight(painter.intersection, "island");
+      expect(island?.scope).toBe("island");
+      expect(island?.indices).toEqual([0, 1, 2]);
+      expect(island?.islandId).toBeDefined();
+
+      const secondIsland = {
+        ...painter.intersection,
+        face: {
+          a: 3,
+          b: 4,
+          c: 5,
+          normal: new THREE.Vector3(0, 0, 1),
+          materialIndex: 0,
+        },
+        faceIndex: 1,
+      } as THREE.Intersection<THREE.Object3D>;
+      const second = painter.session.getIntersectionSurfaceHighlight(secondIsland, "island");
+      expect(second?.indices).toEqual([3, 4, 5]);
+      expect(second?.key).not.toBe(island?.key);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("uses the locked painter selection when resolving highlight scope", () => {
+    const painter = makePainter();
+    try {
+      expect(painter.session.selectIntersection(painter.intersection)).toBeDefined();
+      expect(painter.session.getSelectionSurfaceHighlight("material")?.indices).toEqual([0, 1, 2, 3, 4, 5]);
+      expect(painter.session.getSelectionSurfaceHighlight("island")?.indices).toEqual([0, 1, 2]);
+
+      painter.session.clearSelection();
+      expect(painter.session.getSelectionSurfaceHighlight("material")).toBeUndefined();
+      expect(painter.session.getSelectionSurfaceHighlight("island")).toBeUndefined();
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("mirrors points through the model-local X plane even when the model is transformed", () => {
     const root = new THREE.Object3D();
     root.position.set(3, -2, 5);
