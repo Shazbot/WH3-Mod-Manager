@@ -107,7 +107,9 @@ const adjustRangeFromWheel = (
   setValue: (value: number) => void,
 ) => {
   if (event.currentTarget.disabled || event.deltaY === 0) return;
-  event.preventDefault();
+  // React/Chromium may attach wheel listeners as passive, so preventDefault()
+  // emits a console warning. Stopping propagation is enough to keep the wheel
+  // from reaching the model/texture zoom handlers.
   event.stopPropagation();
 
   const input = event.currentTarget;
