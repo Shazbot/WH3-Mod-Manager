@@ -541,6 +541,74 @@ describe("unit painter", () => {
   });
 
 
+  it("coalesces GPU update ranges across adjacent touched layer tiles", () => {
+    const painter = makePainter();
+    try {
+      const internal = painter.session as unknown as {
+        getTouchedTileUpdateRanges: (target: {
+          width: number;
+          height: number;
+          touchedLayerTiles: Set<number>;
+        }) => Array<{ start: number; count: number }>;
+      };
+
+      // 128x128 is a 2x2 tile grid. The two top tiles cover complete rows,
+      // so those 64 rows collapse into one contiguous range. The bottom-left
+      // tile remains one range per row because the right half is untouched.
+      const ranges = internal.getTouchedTileUpdateRanges({
+        width: 128,
+        height: 128,
+        touchedLayerTiles: new Set([0, 1, 2]),
+      });
+
+      expect(ranges).toHaveLength(65);
+      expect(ranges[0]).toEqual({ start: 0, count: 128 * 64 * 4 });
+      expect(ranges[1]).toEqual({ start: 128 * 64 * 4, count: 64 * 4 });
+      expect(ranges.at(-1)).toEqual({ start: 128 * 127 * 4, count: 64 * 4 });
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("uses sparse GPU ranges for layer recomposition after the initial texture upload", () => {
+    const painter = makePainter();
+    try {
+      paint(painter, { color: { r: 220, g: 30, b: 10 } });
+
+      const internal = painter.session as unknown as {
+        targetsByEditableTexture: Map<
+          THREE.Texture,
+          {
+            editable: THREE.DataTexture;
+            fullUploadPending: boolean;
+            touchedLayerTiles: Set<number>;
+          }
+        >;
+      };
+      const target = [...internal.targetsByEditableTexture.values()][0];
+      expect(target.touchedLayerTiles.size).toBeGreaterThan(0);
+
+      // Vitest has no renderer to consume the initial DataTexture upload, so
+      // emulate Three having completed it before testing the structural update.
+      target.fullUploadPending = false;
+      target.editable.clearUpdateRanges();
+
+      expect(painter.session.setLayerOpacity(painter.session.activeLayerId, 0.5)).toBe(true);
+
+      expect(target.fullUploadPending).toBe(false);
+      expect(target.editable.updateRanges.length).toBeGreaterThan(0);
+      expect(target.editable.updateRanges).toEqual([
+        { start: 0, count: WIDTH * HEIGHT * 4 },
+      ]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("stores cached material masks as sparse 64x64 bitset tiles", () => {
     const painter = makePainter();
     try {
