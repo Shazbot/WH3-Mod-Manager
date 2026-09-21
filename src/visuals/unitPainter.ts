@@ -2018,7 +2018,9 @@ export class UnitPainterSession {
       name: snapshot.name,
       visible: snapshot.visible,
       opacity: snapshot.opacity,
-      textures: new Map(snapshot.textures.map(({ target, data }) => [target, cloneLayerTexture(data)])),
+      textures: new Map<PaintableTexture, LayerTexture>(
+        snapshot.textures.map(({ target, data }) => [target, cloneLayerTexture(data)] as const),
+      ),
     };
   }
 
