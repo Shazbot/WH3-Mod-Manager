@@ -72,6 +72,7 @@ type PaintableTexture = {
   sourceFileName: string;
   sourceVirtualPath?: string;
   touchedLayerTiles: Set<number>;
+  fullUploadPending: boolean;
 };
 
 type LayerTile = {
@@ -391,7 +392,7 @@ const cloneLayerTexture = (source: LayerTexture): LayerTexture => ({
     [...source.tiles].map(([key, tile]) => [
       key,
       { data: new Uint8Array(tile.data), nonZeroPixels: tile.nonZeroPixels },
-    ]),
+    ] as const),
   ),
 });
 
@@ -884,6 +885,11 @@ export class UnitPainterSession {
                 ? original.userData.wh3SourceVirtualPath
                 : undefined,
             touchedLayerTiles: new Set(),
+            fullUploadPending: true,
+          };
+          const paintTarget = target;
+          editable.onUpdate = () => {
+            paintTarget.fullUploadPending = false;
           };
           targetsByOriginal.set(original, target);
           this.targetsByEditableTexture.set(editable, target);
@@ -2055,12 +2061,17 @@ export class UnitPainterSession {
 
   private markTargetRangeDirty(target: PaintableTexture, start: number, endExclusive: number) {
     if (!Number.isFinite(start) || endExclusive <= start) return;
-    target.editable.addUpdateRange(start, endExclusive - start);
+    // If a full upload is already pending, adding a subrange would incorrectly
+    // turn that pending full upload into a partial one before the next render.
+    if (!target.fullUploadPending) {
+      target.editable.addUpdateRange(start, endExclusive - start);
+    }
     target.editable.needsUpdate = true;
   }
 
   private markTargetFullDirty(target: PaintableTexture) {
     target.editable.clearUpdateRanges();
+    target.fullUploadPending = true;
     target.editable.needsUpdate = true;
   }
 
