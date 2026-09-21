@@ -101,6 +101,28 @@ const PAINT_COLOR_HISTORY_LIMIT = 64;
 const DEFAULT_PAINT_COLOR = "#c43030";
 const PREVIEW_GEOMETRY_KEY = "__wh3PreviewGeometryKey";
 
+const adjustRangeFromWheel = (
+  event: React.WheelEvent<HTMLInputElement>,
+  setValue: (value: number) => void,
+) => {
+  if (event.currentTarget.disabled || event.deltaY === 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+
+  const input = event.currentTarget;
+  const min = input.min === "" ? Number.NEGATIVE_INFINITY : Number(input.min);
+  const max = input.max === "" ? Number.POSITIVE_INFINITY : Number(input.max);
+  const step = input.step === "" || input.step === "any" ? 1 : Number(input.step);
+  if (!Number.isFinite(step) || step <= 0) return;
+
+  const current = Number(input.value);
+  if (!Number.isFinite(current)) return;
+  const direction = event.deltaY < 0 ? 1 : -1;
+  const decimals = input.step.includes(".") ? input.step.split(".")[1].length : 0;
+  const next = Math.max(min, Math.min(max, current + direction * step));
+  setValue(Number(next.toFixed(decimals)));
+};
+
 type PreviewResourcePool = {
   geometries: Map<string, THREE.BufferGeometry>;
   textures: Map<string, THREE.Texture>;
@@ -2780,6 +2802,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       step={1}
                       value={paintSimilarTolerance}
                       onChange={(event) => setPaintSimilarTolerance(Number(event.target.value))}
+                      onWheel={(event) => adjustRangeFromWheel(event, setPaintSimilarTolerance)}
                       className="w-20 accent-yellow-500"
                       aria-label="Select Similar tolerance"
                     />
@@ -2795,6 +2818,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     step={1}
                     value={paintBrushRadius}
                     onChange={(event) => setPaintBrushRadius(Number(event.target.value))}
+                    onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushRadius)}
                     className="w-20 accent-blue-500"
                     aria-label="Brush size"
                   />
@@ -2808,6 +2832,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     step={0.05}
                     value={paintBrushOpacity}
                     onChange={(event) => setPaintBrushOpacity(Number(event.target.value))}
+                    onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushOpacity)}
                     className="w-16 accent-blue-500"
                     aria-label="Brush opacity"
                   />
@@ -2821,6 +2846,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     step={0.05}
                     value={paintBrushHardness}
                     onChange={(event) => setPaintBrushHardness(Number(event.target.value))}
+                    onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushHardness)}
                     className="w-16 accent-blue-500"
                     aria-label="Brush hardness"
                   />
@@ -3276,6 +3302,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           step={0.01}
           value={Math.min(currentTime, clipDuration || 1)}
           onChange={(event) => seekAnimation(Number(event.target.value))}
+          onWheel={(event) => adjustRangeFromWheel(event, seekAnimation)}
           aria-label="Animation timeline"
           disabled={!clipDuration}
           className="hidden min-w-24 flex-[2] accent-blue-500 sm:block"
