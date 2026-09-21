@@ -1681,24 +1681,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (pendingProject?.project && pendingProject.packPath) {
       pendingPaintProjectRef.current = null;
       try {
-        if (pendingProject.project.formatVersion === 2) {
-          session.loadProjectLayers({
-            activeLayerId: pendingProject.project.activeLayerId,
-            layers: pendingProject.project.layers,
-          });
-          const restoredColorHistory =
-            pendingProject.project.usedColorHistory?.slice(0, PAINT_COLOR_HISTORY_LIMIT) ?? [];
-          setPaintColorHistory(restoredColorHistory);
-          setPaintColor(
-            pendingProject.project.selectedColor
-            ?? restoredColorHistory[0]
-            ?? DEFAULT_PAINT_COLOR,
-          );
-        } else {
-          session.loadProjectTextures(pendingProject.project.textures);
-          setPaintColorHistory([]);
-          setPaintColor(DEFAULT_PAINT_COLOR);
-        }
+        session.loadProjectLayers({
+          activeLayerId: pendingProject.project.activeLayerId,
+          layers: pendingProject.project.layers,
+        });
+        const restoredColorHistory =
+          pendingProject.project.usedColorHistory?.slice(0, PAINT_COLOR_HISTORY_LIMIT) ?? [];
+        setPaintColorHistory(restoredColorHistory);
+        setPaintColor(
+          pendingProject.project.selectedColor
+          ?? restoredColorHistory[0]
+          ?? DEFAULT_PAINT_COLOR,
+        );
         setPaintPackPath(pendingProject.packPath);
         setPaintExportStatus(`Opened painted mod: ${pendingProject.packPath}`);
       } catch (projectError) {
