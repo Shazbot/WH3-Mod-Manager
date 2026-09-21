@@ -9,6 +9,7 @@ import {
   type UnitPainterSession,
   type UnitPainterTextureHover,
   type UnitPainterTexturePaintResult,
+  type UnitPainterPixelMaskView,
 } from "../visuals/unitPainter";
 
 type UnitPainterTextureEditorProps = {
@@ -22,6 +23,7 @@ type UnitPainterTextureEditorProps = {
   paddingPx: number;
   onPaddingPxChange: (padding: number) => void;
   selectMode?: Exclude<UnitPainterSelectionScope, "all">;
+  similarTolerance: number;
   eyedropperActive: boolean;
   onEyedropperComplete: (color: { r: number; g: number; b: number }) => void;
   onSelectionComplete: (selection: UnitPainterSelectionInfo | undefined, mode: Exclude<UnitPainterSelectionScope, "all">) => void;
@@ -42,6 +44,39 @@ type ViewTransformMode = "fit" | "oneToOne" | "manual";
 type TextureDisplayMode = "textureUv" | "uvOnly" | "selected";
 type TextureBackgroundMode = "checker" | "dark" | "light";
 
+const forEachPixelMaskRun = (
+  mask: UnitPainterPixelMaskView,
+  callback: (x: number, y: number, width: number) => void,
+) => {
+  const tilesPerRow = Math.ceil(mask.width / mask.tileSize);
+  for (const [tileKey, tile] of mask.tiles) {
+    const tileX = tileKey % tilesPerRow;
+    const tileY = Math.floor(tileKey / tilesPerRow);
+    const startX = tileX * mask.tileSize;
+    const startY = tileY * mask.tileSize;
+    const width = Math.min(mask.tileSize, mask.width - startX);
+    const height = Math.min(mask.tileSize, mask.height - startY);
+
+    for (let localY = 0; localY < height; localY += 1) {
+      let runStart = -1;
+      for (let localX = 0; localX <= width; localX += 1) {
+        const selected = localX < width && (() => {
+          const localIndex = localY * mask.tileSize + localX;
+          const byteIndex = localIndex >> 3;
+          return (tile[byteIndex] & (1 << (localIndex & 7))) !== 0;
+        })();
+        if (selected && runStart < 0) {
+          runStart = localX;
+          continue;
+        }
+        if (selected || runStart < 0) continue;
+        callback(startX + runStart, startY + localY, localX - runStart);
+        runStart = -1;
+      }
+    }
+  }
+};
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const UnitPainterTextureEditor = ({
@@ -55,6 +90,7 @@ const UnitPainterTextureEditor = ({
   paddingPx,
   onPaddingPxChange,
   selectMode,
+  similarTolerance,
   eyedropperActive,
   onEyedropperComplete,
   onSelectionComplete,
@@ -248,7 +284,12 @@ const UnitPainterTextureEditor = ({
   }, [backgroundMode, displayMode, transform.scale, view]);
 
   useEffect(() => {
-    if (displayMode === "selected" && view && view.selectedUvTriangles.length === 0) {
+    if (
+      displayMode === "selected"
+      && view
+      && view.selectedUvTriangles.length === 0
+      && !view.selectedPixelMask
+    ) {
       setDisplayMode("textureUv");
     }
   }, [displayMode, view]);
@@ -262,35 +303,53 @@ const UnitPainterTextureEditor = ({
     if (!context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
 
+    const hasGeometrySelection = view.selectedUvTriangles.length > 0;
+    const hasPixelSelection = !!view.selectedPixelMask;
     const shouldDim =
-      view.selectedUvTriangles.length > 0
+      (hasGeometrySelection || hasPixelSelection)
       && (dimOutsideSelection || displayMode === "selected");
-    if (!shouldDim) return;
 
-    context.globalCompositeOperation = "source-over";
-    context.fillStyle = displayMode === "selected"
-      ? "rgba(3,7,18,0.88)"
-      : "rgba(3,7,18,0.58)";
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    if (shouldDim) {
+      context.globalCompositeOperation = "source-over";
+      context.fillStyle = displayMode === "selected"
+        ? "rgba(3,7,18,0.88)"
+        : "rgba(3,7,18,0.58)";
+      context.fillRect(0, 0, canvas.width, canvas.height);
 
-    context.globalCompositeOperation = "destination-out";
-    context.beginPath();
-    for (let index = 0; index + 5 < view.selectedUvTriangles.length; index += 6) {
-      context.moveTo(
-        view.selectedUvTriangles[index] * view.width,
-        view.selectedUvTriangles[index + 1] * view.height,
-      );
-      context.lineTo(
-        view.selectedUvTriangles[index + 2] * view.width,
-        view.selectedUvTriangles[index + 3] * view.height,
-      );
-      context.lineTo(
-        view.selectedUvTriangles[index + 4] * view.width,
-        view.selectedUvTriangles[index + 5] * view.height,
-      );
-      context.closePath();
+      context.globalCompositeOperation = "destination-out";
+      if (view.selectedPixelMask) {
+        context.fillStyle = "#000";
+        forEachPixelMaskRun(view.selectedPixelMask, (x, y, width) => {
+          context.fillRect(x, y, width, 1);
+        });
+      } else {
+        context.beginPath();
+        for (let index = 0; index + 5 < view.selectedUvTriangles.length; index += 6) {
+          context.moveTo(
+            view.selectedUvTriangles[index] * view.width,
+            view.selectedUvTriangles[index + 1] * view.height,
+          );
+          context.lineTo(
+            view.selectedUvTriangles[index + 2] * view.width,
+            view.selectedUvTriangles[index + 3] * view.height,
+          );
+          context.lineTo(
+            view.selectedUvTriangles[index + 4] * view.width,
+            view.selectedUvTriangles[index + 5] * view.height,
+          );
+          context.closePath();
+        }
+        context.fill();
+      }
     }
-    context.fill();
+
+    if (view.selectedPixelMask) {
+      context.globalCompositeOperation = "source-over";
+      context.fillStyle = "rgba(250,204,21,0.24)";
+      forEachPixelMaskRun(view.selectedPixelMask, (x, y, width) => {
+        context.fillRect(x, y, width, 1);
+      });
+    }
     context.globalCompositeOperation = "source-over";
   }, [dimOutsideSelection, displayMode, view]);
 
@@ -312,9 +371,12 @@ const UnitPainterTextureEditor = ({
       context.moveTo(hover.uvSegments[index] * view.width, hover.uvSegments[index + 1] * view.height);
       context.lineTo(hover.uvSegments[index + 2] * view.width, hover.uvSegments[index + 3] * view.height);
     }
-    context.strokeStyle = hover.scope === "island"
-      ? "rgba(196,181,253,0.98)"
-      : "rgba(103,232,249,0.98)";
+    context.strokeStyle =
+      hover.scope === "island"
+        ? "rgba(196,181,253,0.98)"
+        : hover.scope === "similar"
+          ? "rgba(250,204,21,0.98)"
+          : "rgba(103,232,249,0.98)";
     context.lineWidth = Math.max(1, 2 / Math.max(transform.scale, 0.001));
     context.stroke();
   }, [transform.scale, view]);
@@ -350,7 +412,12 @@ const UnitPainterTextureEditor = ({
         const radius = selectMode || eyedropperActive ? 5 : brushSettings.radiusPx;
         const screenX = transform.x + hover.x * transform.scale;
         const screenY = transform.y + hover.y * transform.scale;
-        const color = hover.scope === "island" ? "#c4b5fd" : "#67e8f9";
+        const color =
+          hover.scope === "island"
+            ? "#c4b5fd"
+            : hover.scope === "similar"
+              ? "#facc15"
+              : "#67e8f9";
         cursor.style.display = "block";
         cursor.style.left = `${screenX - radius}px`;
         cursor.style.top = `${screenY - radius}px`;
@@ -490,13 +557,22 @@ const UnitPainterTextureEditor = ({
 
     if (selectMode) {
       const operation = event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
-      const clicked = session.selectTexturePoint(
-        view.id,
-        point.x,
-        point.y,
-        selectMode,
-        operation,
-      );
+      const clicked =
+        selectMode === "similar"
+          ? session.selectSimilarTexturePoint(
+              view.id,
+              point.x,
+              point.y,
+              similarTolerance,
+              operation,
+            )
+          : !!session.selectTexturePoint(
+              view.id,
+              point.x,
+              point.y,
+              selectMode,
+              operation,
+            );
       if (clicked) onSelectionComplete(session.selectionInfo, selectMode);
       return;
     }
@@ -529,7 +605,7 @@ const UnitPainterTextureEditor = ({
 
     const point = pointerToTexture(event.clientX, event.clientY);
     if (point && point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
-      if (selectMode) {
+      if (selectMode && selectMode !== "similar") {
         drawTextureHoverOutline(
           session.getTexturePointHover(view.id, point.x, point.y, selectMode),
         );
@@ -584,7 +660,7 @@ const UnitPainterTextureEditor = ({
       : backgroundMode === "light"
         ? "bg-gray-200"
         : "bg-gray-950";
-  const hasSelection = view.selectedUvTriangles.length > 0;
+  const hasSelection = view.selectedUvTriangles.length > 0 || !!view.selectedPixelMask;
 
   return (
     <div className="absolute inset-0 z-10 bg-gray-950">
@@ -637,7 +713,7 @@ const UnitPainterTextureEditor = ({
           title={
             displayMode === "selected"
               ? "Selected only already dims everything outside the selection"
-              : "Dim texels outside the selected material or UV island"
+              : "Dim texels outside the current selection"
           }
         >
           Dim outside
@@ -645,8 +721,8 @@ const UnitPainterTextureEditor = ({
         <label className="flex items-center gap-1 text-gray-400" title="Extend scoped painting beyond UV boundaries">
           Pad
           <select
-            value={scope === "all" ? 0 : paddingPx}
-            disabled={scope === "all"}
+            value={scope === "all" || scope === "similar" ? 0 : paddingPx}
+            disabled={scope === "all" || scope === "similar"}
             onChange={(event) => onPaddingPxChange(Number(event.target.value))}
             className="rounded border border-gray-600 bg-gray-800 px-1 py-1 text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
           >

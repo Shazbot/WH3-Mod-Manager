@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { MeshBVH, SkinnedMeshBVH, acceleratedRaycast } from "three-mesh-bvh";
 
 export type UnitPainterBrushMode = "recolor" | "paint" | "restore";
-export type UnitPainterSelectionScope = "all" | "material" | "island";
+export type UnitPainterSurfaceSelectionScope = "material" | "island";
+export type UnitPainterSelectionScope = "all" | UnitPainterSurfaceSelectionScope | "similar";
 export type UnitPainterSelectionOperation = "replace" | "add" | "toggle";
 
 export type UnitPainterSelectionInfo = {
@@ -11,6 +12,14 @@ export type UnitPainterSelectionInfo = {
   hasUvIsland: boolean;
   object: THREE.Mesh;
   textureId: string;
+};
+
+export type UnitPainterPixelMaskView = {
+  width: number;
+  height: number;
+  tileSize: number;
+  /** Packed one-bit selection tiles. Treat as read-only. */
+  tiles: ReadonlyMap<number, Uint8Array>;
 };
 
 export type UnitPainterTextureView = {
@@ -26,6 +35,8 @@ export type UnitPainterTextureView = {
   selectedUvSegments: Float32Array;
   /** x1,y1,x2,y2,x3,y3 triangles for clipping/dimming the selected UV footprint. */
   selectedUvTriangles: Float32Array;
+  /** Frozen pixel mask used by Select Similar. */
+  selectedPixelMask?: UnitPainterPixelMaskView;
 };
 
 export type UnitPainterStrokeGpuProfile = {
@@ -895,6 +906,114 @@ const unionUvMasks = (masks: readonly UvIslandMask[]): UvIslandMask | undefined 
   return result.tiles.size > 0 ? result : undefined;
 };
 
+const xorUvMasks = (
+  first: UvIslandMask | undefined,
+  second: UvIslandMask,
+): UvIslandMask | undefined => {
+  if (!first) return second;
+  const result: UvIslandMask = {
+    width: first.width,
+    height: first.height,
+    tiles: new Map(),
+    byteSize: 0,
+  };
+  const tileKeys = new Set([...first.tiles.keys(), ...second.tiles.keys()]);
+  for (const tileKey of tileKeys) {
+    const firstTile = first.tiles.get(tileKey);
+    const secondTile = second.tiles.get(tileKey);
+    const tileLength = firstTile?.length ?? secondTile?.length ?? MASK_TILE_BYTES;
+    const target = new Uint8Array(tileLength);
+    let nonZero = false;
+    for (let index = 0; index < tileLength; index += 1) {
+      target[index] = (firstTile?.[index] ?? 0) ^ (secondTile?.[index] ?? 0);
+      if (target[index] !== 0) nonZero = true;
+    }
+    if (!nonZero) continue;
+    result.tiles.set(tileKey, target);
+    result.byteSize += target.byteLength;
+  }
+  return result.tiles.size > 0 ? result : undefined;
+};
+
+const SRGB_TO_LINEAR = Float32Array.from({ length: 256 }, (_, value) => {
+  const channel = value / 255;
+  return channel <= 0.04045
+    ? channel / 12.92
+    : Math.pow((channel + 0.055) / 1.055, 2.4);
+});
+
+const rgbBytesToOklab = (r: number, g: number, b: number) => {
+  const linearR = SRGB_TO_LINEAR[r];
+  const linearG = SRGB_TO_LINEAR[g];
+  const linearB = SRGB_TO_LINEAR[b];
+
+  const l = 0.4122214708 * linearR + 0.5363325363 * linearG + 0.0514459929 * linearB;
+  const m = 0.2119034982 * linearR + 0.6806995451 * linearG + 0.1073969566 * linearB;
+  const s = 0.0883024619 * linearR + 0.2817188376 * linearG + 0.6299787005 * linearB;
+  const lRoot = Math.cbrt(l);
+  const mRoot = Math.cbrt(m);
+  const sRoot = Math.cbrt(s);
+
+  return {
+    l: 0.2104542553 * lRoot + 0.793617785 * mRoot - 0.0040720468 * sRoot,
+    a: 1.9779984951 * lRoot - 2.428592205 * mRoot + 0.4505937099 * sRoot,
+    b: 0.0259040371 * lRoot + 0.7827717662 * mRoot - 0.808675766 * sRoot,
+  };
+};
+
+const buildSimilarColorMask = (
+  target: PaintableTexture,
+  sampleX: number,
+  sampleY: number,
+  tolerance: number,
+): UvIslandMask | undefined => {
+  const x = Math.max(0, Math.min(target.width - 1, Math.floor(sampleX)));
+  const y = Math.max(0, Math.min(target.height - 1, Math.floor(sampleY)));
+  const sampleByteIndex = (y * target.width + x) * 4;
+  const sampleR = target.data[sampleByteIndex];
+  const sampleG = target.data[sampleByteIndex + 1];
+  const sampleB = target.data[sampleByteIndex + 2];
+  const mask: UvIslandMask = {
+    width: target.width,
+    height: target.height,
+    tiles: new Map(),
+    byteSize: 0,
+  };
+
+  const normalizedTolerance = Math.max(0, Math.min(100, tolerance));
+  if (normalizedTolerance === 0) {
+    for (let byteIndex = 0, pixelIndex = 0; byteIndex < target.data.length; byteIndex += 4, pixelIndex += 1) {
+      if (
+        target.data[byteIndex] !== sampleR
+        || target.data[byteIndex + 1] !== sampleG
+        || target.data[byteIndex + 2] !== sampleB
+      ) {
+        continue;
+      }
+      setMaskPixel(mask, pixelIndex % target.width, Math.floor(pixelIndex / target.width));
+    }
+    return mask.tiles.size > 0 ? mask : undefined;
+  }
+
+  const sample = rgbBytesToOklab(sampleR, sampleG, sampleB);
+  // OKLab's useful sRGB gamut spans roughly this distance for practical paint colors.
+  const threshold = (normalizedTolerance / 100) * 0.45;
+  const thresholdSquared = threshold * threshold;
+  for (let byteIndex = 0, pixelIndex = 0; byteIndex < target.data.length; byteIndex += 4, pixelIndex += 1) {
+    const candidate = rgbBytesToOklab(
+      target.data[byteIndex],
+      target.data[byteIndex + 1],
+      target.data[byteIndex + 2],
+    );
+    const deltaL = candidate.l - sample.l;
+    const deltaA = candidate.a - sample.a;
+    const deltaB = candidate.b - sample.b;
+    if (deltaL * deltaL + deltaA * deltaA + deltaB * deltaB > thresholdSquared) continue;
+    setMaskPixel(mask, pixelIndex % target.width, Math.floor(pixelIndex / target.width));
+  }
+  return mask.tiles.size > 0 ? mask : undefined;
+};
+
 const forEachMaskPixel = (
   mask: UvIslandMask,
   callback: (x: number, y: number) => void,
@@ -1095,6 +1214,8 @@ export class UnitPainterSession {
   private completedStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private isStrokeOpen = false;
   private selections: UnitPainterSelection[] = [];
+  private readonly similarSelectionMasks = new Map<PaintableTexture, UvIslandMask>();
+  private similarSelectionLastTarget?: PaintableTexture;
   private selectionMode?: Exclude<UnitPainterSelectionScope, "all">;
   private paintLayers: PaintLayer[] = [];
   private activePaintLayerId = "";
@@ -1249,7 +1370,7 @@ export class UnitPainterSession {
   private getSelectionKey(
     mesh: THREE.Mesh,
     materialIndex: number,
-    mode: Exclude<UnitPainterSelectionScope, "all">,
+    mode: UnitPainterSurfaceSelectionScope,
     islandId?: number,
   ) {
     return mode === "material"
@@ -1271,7 +1392,7 @@ export class UnitPainterSession {
 
   private applySelection(
     selection: Omit<UnitPainterSelection, "key">,
-    mode: Exclude<UnitPainterSelectionScope, "all">,
+    mode: UnitPainterSurfaceSelectionScope,
     operation: UnitPainterSelectionOperation,
   ) {
     const key = this.getSelectionKey(
@@ -1284,6 +1405,8 @@ export class UnitPainterSession {
 
     if (this.selectionMode !== mode) {
       this.selections = [];
+      this.similarSelectionMasks.clear();
+      this.similarSelectionLastTarget = undefined;
       this.selectionMode = mode;
       this.selectionMaskCache.clear();
       operation = "replace";
@@ -1318,17 +1441,72 @@ export class UnitPainterSession {
     return true;
   }
 
+  private applySimilarSelection(
+    target: PaintableTexture,
+    mask: UvIslandMask,
+    operation: UnitPainterSelectionOperation,
+  ) {
+    if (this.selectionMode !== "similar") {
+      this.selections = [];
+      this.similarSelectionMasks.clear();
+      this.selectionMaskCache.clear();
+      this.selectionMode = "similar";
+      operation = "replace";
+    }
+
+    if (operation === "replace") {
+      this.similarSelectionMasks.clear();
+      this.similarSelectionMasks.set(target, mask);
+    } else if (operation === "add") {
+      const existing = this.similarSelectionMasks.get(target);
+      this.similarSelectionMasks.set(target, unionUvMasks(existing ? [existing, mask] : [mask])!);
+    } else {
+      const toggled = xorUvMasks(this.similarSelectionMasks.get(target), mask);
+      if (toggled) this.similarSelectionMasks.set(target, toggled);
+      else this.similarSelectionMasks.delete(target);
+    }
+
+    this.similarSelectionLastTarget =
+      this.similarSelectionMasks.has(target)
+        ? target
+        : [...this.similarSelectionMasks.keys()].at(-1);
+    if (this.similarSelectionMasks.size === 0) {
+      this.selectionMode = undefined;
+      this.similarSelectionLastTarget = undefined;
+    }
+    return true;
+  }
+
   get selectionCount() {
-    return this.selections.length;
+    return this.selectionMode === "similar"
+      ? this.similarSelectionMasks.size
+      : this.selections.length;
   }
 
   get selectionInfo(): UnitPainterSelectionInfo | undefined {
+    if (this.selectionMode === "similar") {
+      const target = this.similarSelectionLastTarget;
+      const surface = target ? this.surfacesByTarget.get(target)?.[0] : undefined;
+      if (!target || !surface) return undefined;
+      return {
+        objectName: "Similar colors",
+        materialName: "Custom color selection",
+        hasUvIsland: false,
+        object: surface.mesh,
+        textureId: target.textureId,
+      };
+    }
     const selection = this.selections[this.selections.length - 1];
     return selection ? this.createSelectionInfo(selection) : undefined;
   }
 
   get selectionHasUvIsland() {
-    return this.selections.some((selection) => selection.islandId != null);
+    return this.selectionMode !== "similar"
+      && this.selections.some((selection) => selection.islandId != null);
+  }
+
+  get hasSimilarSelection() {
+    return this.similarSelectionMasks.size > 0;
   }
 
   get textureCount() {
@@ -1614,7 +1792,7 @@ export class UnitPainterSession {
     mesh: THREE.Mesh,
     materialIndex: number,
     faceIndex: number,
-    scope: Exclude<UnitPainterSelectionScope, "all">,
+    scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterSurfaceHighlight | undefined {
     if (scope === "material") {
       const indices = getSurfaceTriangleIndices(mesh.geometry, getMaterialFaceIndices(mesh.geometry, materialIndex));
@@ -1681,7 +1859,7 @@ export class UnitPainterSession {
       const selectedUvTriangles: number[] = [];
       const seenSelectedEdges = new Set<string>();
       const seenSelectedFaces = new Set<string>();
-      for (const selection of this.selections) {
+      for (const selection of selectionScope === "similar" ? [] : this.selections) {
         if (selection.target !== target) continue;
         const geometry = selection.mesh.geometry;
         const uv = geometry.getAttribute("uv");
@@ -1727,13 +1905,22 @@ export class UnitPainterSession {
         uvSegments: Float32Array.from(uvSegments),
         selectedUvSegments: Float32Array.from(selectedUvSegments),
         selectedUvTriangles: Float32Array.from(selectedUvTriangles),
+        selectedPixelMask:
+          selectionScope === "similar"
+            ? (() => {
+                const mask = this.similarSelectionMasks.get(target);
+                return mask
+                  ? { width: mask.width, height: mask.height, tileSize: MASK_TILE_SIZE, tiles: mask.tiles }
+                  : undefined;
+              })()
+            : undefined,
       };
     });
   }
 
   getIntersectionTextureHover(
     intersection: THREE.Intersection<THREE.Object3D>,
-    scope: Exclude<UnitPainterSelectionScope, "all">,
+    scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterTextureHover | undefined {
     if (!intersection.uv || !(intersection.object instanceof THREE.Mesh)) return undefined;
     const material = getIntersectionMaterial(intersection);
@@ -1751,7 +1938,7 @@ export class UnitPainterSession {
     let faceIndices: number[] = [];
     if (scope === "material") {
       faceIndices = getMaterialFaceIndices(mesh.geometry, materialIndex);
-    } else if (intersection.faceIndex != null) {
+    } else if (scope === "island" && intersection.faceIndex != null) {
       const topology = this.getUvTopology(mesh.geometry, materialIndex);
       const islandId = topology?.faceToIsland.get(intersection.faceIndex);
       faceIndices =
@@ -1879,7 +2066,7 @@ export class UnitPainterSession {
     textureId: string,
     x: number,
     y: number,
-    mode: Exclude<UnitPainterSelectionScope, "all">,
+    mode: UnitPainterSurfaceSelectionScope,
     operation: UnitPainterSelectionOperation = "replace",
   ): UnitPainterSelectionInfo | undefined {
     const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
@@ -1931,6 +2118,37 @@ export class UnitPainterSession {
       }
     }
     return undefined;
+  }
+
+  selectSimilarTexturePoint(
+    textureId: string,
+    x: number,
+    y: number,
+    tolerance: number,
+    operation: UnitPainterSelectionOperation = "replace",
+  ) {
+    const target = [...this.targetsByEditableTexture.values()].find(
+      (candidate) => candidate.textureId === textureId,
+    );
+    if (!target) return false;
+    const mask = buildSimilarColorMask(target, x, y, tolerance);
+    return !!mask && this.applySimilarSelection(target, mask, operation);
+  }
+
+  selectSimilarIntersection(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    tolerance: number,
+    operation: UnitPainterSelectionOperation = "replace",
+  ) {
+    if (!intersection.uv || !(intersection.object instanceof THREE.Mesh)) return false;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!target) return false;
+    const uv = intersection.uv.clone();
+    target.editable.updateMatrix();
+    target.editable.transformUv(uv);
+    const mask = buildSimilarColorMask(target, uv.x * target.width, uv.y * target.height, tolerance);
+    return !!mask && this.applySimilarSelection(target, mask, operation);
   }
 
   getTextureRevision(textureId: string) {
@@ -1986,7 +2204,7 @@ export class UnitPainterSession {
 
   selectIntersection(
     intersection: THREE.Intersection<THREE.Object3D>,
-    mode: Exclude<UnitPainterSelectionScope, "all"> = "island",
+    mode: UnitPainterSurfaceSelectionScope = "island",
     operation: UnitPainterSelectionOperation = "replace",
   ): UnitPainterSelectionInfo | undefined {
     if (!(intersection.object instanceof THREE.Mesh)) return undefined;
@@ -2013,6 +2231,8 @@ export class UnitPainterSession {
 
   clearSelection() {
     this.selections = [];
+    this.similarSelectionMasks.clear();
+    this.similarSelectionLastTarget = undefined;
     this.selectionMode = undefined;
     this.selectionMaskCache.clear();
   }
@@ -2041,7 +2261,7 @@ export class UnitPainterSession {
   }
 
   getSelectionSurfaceHighlights(
-    scope: Exclude<UnitPainterSelectionScope, "all">,
+    scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterSurfaceHighlight[] {
     const highlights: UnitPainterSurfaceHighlight[] = [];
     const seen = new Set<string>();
@@ -2085,7 +2305,7 @@ export class UnitPainterSession {
   }
 
   getSelectionSurfaceHighlight(
-    scope: Exclude<UnitPainterSelectionScope, "all">,
+    scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterSurfaceHighlight | undefined {
     return this.getSelectionSurfaceHighlights(scope)[0];
   }
@@ -2096,8 +2316,22 @@ export class UnitPainterSession {
   ) {
     if (scope === "all") return true;
     if (!(intersection.object instanceof THREE.Mesh)) return false;
-    if (this.selections.length === 0) return false;
 
+    if (scope === "similar") {
+      if (!intersection.uv) return false;
+      const material = getIntersectionMaterial(intersection);
+      const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+      const mask = target ? this.similarSelectionMasks.get(target) : undefined;
+      if (!target || !mask) return false;
+      const uv = intersection.uv.clone();
+      target.editable.updateMatrix();
+      target.editable.transformUv(uv);
+      const pixelX = wrapCoordinate(Math.floor(uv.x * target.width), target.width, target.editable.wrapS);
+      const pixelY = wrapCoordinate(Math.floor(uv.y * target.height), target.height, target.editable.wrapT);
+      return maskContainsPixel(mask, pixelX, pixelY);
+    }
+
+    if (this.selections.length === 0) return false;
     const mesh = intersection.object;
     const materialIndex =
       intersection.face?.materialIndex
@@ -2138,7 +2372,11 @@ export class UnitPainterSession {
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
     if (!target || !this.matchesSelectionScope(intersection, scope)) return undefined;
 
-    const mask = this.getUvIslandMask(intersection, target);
+    const mask =
+      scope === "similar"
+        ? this.similarSelectionMasks.get(target)
+        : this.getUvIslandMask(intersection, target);
+    if (scope === "similar" && !mask) return undefined;
     const uv = intersection.uv.clone();
     target.editable.transformUv(uv);
     return {
@@ -2360,6 +2598,8 @@ export class UnitPainterSession {
     scope: Exclude<UnitPainterSelectionScope, "all">,
     paddingPx = 0,
   ) {
+    if (scope === "similar") return this.similarSelectionMasks.get(target);
+
     const relevantSelections = this.selections.filter((selection) => selection.target === target);
     if (relevantSelections.length === 0) return undefined;
 
@@ -2407,11 +2647,14 @@ export class UnitPainterSession {
     paddingPx = 0,
   ) {
     const layer = this.getActiveLayer();
-    if (this.selections.length === 0 || !layer) return false;
+    const targets =
+      scope === "similar"
+        ? [...this.similarSelectionMasks.keys()]
+        : [...new Set(this.selections.map((selection) => selection.target))];
+    if (targets.length === 0 || !layer) return false;
     if (this.isStrokeOpen) this.endStroke();
 
     const changes: StrokeChange[] = [];
-    const targets = [...new Set(this.selections.map((selection) => selection.target))];
     for (const target of targets) {
       const mask = this.getSelectionMaskForTarget(target, scope, paddingPx);
       if (!mask) continue;
@@ -2458,12 +2701,15 @@ export class UnitPainterSession {
 
   resetSelection(scope: Exclude<UnitPainterSelectionScope, "all">) {
     const layer = this.getActiveLayer();
-    if (this.selections.length === 0 || !layer) return false;
+    const targets =
+      scope === "similar"
+        ? [...this.similarSelectionMasks.keys()]
+        : [...new Set(this.selections.map((selection) => selection.target))];
+    if (targets.length === 0 || !layer) return false;
     if (this.isStrokeOpen) this.endStroke();
 
     const changes: StrokeChange[] = [];
     const touchedTargets: PaintableTexture[] = [];
-    const targets = [...new Set(this.selections.map((selection) => selection.target))];
     for (const target of targets) {
       const mask = this.getSelectionMaskForTarget(target, scope);
       if (!mask) continue;
@@ -2790,6 +3036,8 @@ export class UnitPainterSession {
     this.uvMasksByTarget.clear();
     this.uvCoverageMasksByTarget.clear();
     this.selectionMaskCache.clear();
+    this.similarSelectionMasks.clear();
+    this.similarSelectionLastTarget = undefined;
     this.uvMaskCacheLru.clear();
     this.uvMaskCacheBytes = 0;
     this.selections = [];

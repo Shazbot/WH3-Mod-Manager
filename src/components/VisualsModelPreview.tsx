@@ -91,7 +91,7 @@ type PreviewAnimation = {
   label: string;
 };
 
-type UnitPainterSelectMode = "material" | "island";
+type UnitPainterSelectMode = "material" | "island" | "similar";
 
 const NONE_ANIMATION: PreviewAnimation = { path: "", label: "None" };
 const ALL_VARIANTS = -1;
@@ -508,6 +508,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintViewModeRef = useRef<"model" | "split" | "texture">("model");
   const eyedropperActiveRef = useRef(false);
   const selectToolModeRef = useRef<UnitPainterSelectMode>();
+  const similarToleranceRef = useRef(8);
   const symmetryEnabledRef = useRef(false);
   const paintScopeRef = useRef<UnitPainterSelectionScope>("all");
   const brushSettingsRef = useRef({
@@ -551,6 +552,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintBrushMode, setPaintBrushMode] = useState<UnitPainterBrushMode>("recolor");
   const [isPaintEyedropperActive, setIsPaintEyedropperActive] = useState(false);
   const [paintSelectMode, setPaintSelectMode] = useState<UnitPainterSelectMode>();
+  const [paintSimilarTolerance, setPaintSimilarTolerance] = useState(8);
   const [isPaintSymmetryEnabled, setIsPaintSymmetryEnabled] = useState(false);
   const [paintScope, setPaintScope] = useState<UnitPainterSelectionScope>("all");
   const [paintSelection, setPaintSelection] = useState<UnitPainterSelectionInfo>();
@@ -607,6 +609,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   paintViewModeRef.current = paintViewMode;
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolModeRef.current = paintSelectMode;
+  similarToleranceRef.current = paintSimilarTolerance;
   symmetryEnabledRef.current = paintViewMode !== "texture" && isPaintSymmetryEnabled;
   paintScopeRef.current = paintScope;
   brushSettingsRef.current = {
@@ -645,7 +648,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
   const refreshPaintSelectionVisual = (scope: UnitPainterSelectionScope = paintScopeRef.current) => {
     clearPaintSelectionVisual();
-    if (scope === "all") return;
+    if (scope === "all" || scope === "similar") return;
     for (const surface of paintSessionRef.current?.getSelectionSurfaceHighlights(scope) ?? []) {
       paintSelectionHelperRef.current.push(createPainterSurfaceOverlay(surface, 0.34));
     }
@@ -653,7 +656,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
   const updatePaintHoverVisual = (intersection?: THREE.Intersection<THREE.Object3D>) => {
     const selectMode = selectToolModeRef.current;
-    if (!selectMode || !intersection) {
+    if (!selectMode || selectMode === "similar" || !intersection) {
       clearPaintHoverVisual();
       return;
     }
@@ -675,6 +678,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const hoverScope =
       selectToolModeRef.current
       ?? (paintScopeRef.current === "all" ? "island" : paintScopeRef.current);
+    if (hoverScope === "similar") {
+      clearPaintHoverVisual();
+      return;
+    }
     showPaintHoverSurface(
       session.getTexturePointSurfaceHighlight(
         hover.textureId,
@@ -704,12 +711,20 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const selectMode = selectToolModeRef.current;
     if (!session || !selectMode) return false;
 
-    // Never fall back from Select Island to the whole material. If the hit has no
-    // resolvable UV island, leave the current selection untouched.
-    const surface = session.getIntersectionSurfaceHighlight(intersection, selectMode);
-    if (!surface) return false;
-
-    const clicked = session.selectIntersection(intersection, selectMode, operation);
+    let clicked = false;
+    if (selectMode === "similar") {
+      clicked = session.selectSimilarIntersection(
+        intersection,
+        similarToleranceRef.current,
+        operation,
+      );
+    } else {
+      // Never fall back from Select Island to the whole material. If the hit has no
+      // resolvable UV island, leave the current selection untouched.
+      const surface = session.getIntersectionSurfaceHighlight(intersection, selectMode);
+      if (!surface) return false;
+      clicked = !!session.selectIntersection(intersection, selectMode, operation);
+    }
     if (!clicked) return false;
 
     clearPaintHoverVisual();
@@ -2253,6 +2268,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               paddingPx={paintTexturePadding}
               onPaddingPxChange={setPaintTexturePadding}
               selectMode={paintSelectMode}
+              similarTolerance={paintSimilarTolerance}
               eyedropperActive={isPaintEyedropperActive}
               onEyedropperComplete={(sampled) => {
                 const toHex = (value: number) =>
@@ -2736,6 +2752,40 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 >
                   Select Island
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = paintSelectMode === "similar" ? undefined : "similar";
+                    selectToolModeRef.current = next;
+                    setPaintSelectMode(next);
+                    setIsPaintEyedropperActive(false);
+                    clearPaintHoverVisual();
+                  }}
+                  className={`rounded border px-2 py-1 ${
+                    paintSelectMode === "similar"
+                      ? "border-yellow-400 bg-yellow-900/60 text-yellow-100"
+                      : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                  }`}
+                  title="Select texels similar to the clicked visible color. Shift adds; Ctrl toggles."
+                >
+                  Select Similar
+                </button>
+                {paintSelectMode === "similar" && (
+                  <label className="flex items-center gap-1 text-gray-400" title="Perceptual OKLab color tolerance">
+                    Tol
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={paintSimilarTolerance}
+                      onChange={(event) => setPaintSimilarTolerance(Number(event.target.value))}
+                      className="w-20 accent-yellow-500"
+                      aria-label="Select Similar tolerance"
+                    />
+                    <span className="min-w-6 text-right tabular-nums text-yellow-200">{paintSimilarTolerance}</span>
+                  </label>
+                )}
                 <label className="flex items-center gap-1 text-gray-400">
                   Size
                   <input
@@ -2818,11 +2868,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                   >
                     <option value="all">All parts</option>
-                    <option value="material" disabled={!paintSelection}>Selected material</option>
+                    <option value="material" disabled={!paintSelection || paintScope === "similar"}>Selected material</option>
                     <option value="island" disabled={!paintSessionRef.current?.selectionHasUvIsland}>Selected UV island</option>
+                    <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>Selected similar colors</option>
                   </select>
                 </label>
-                {paintSelection && (
+                {paintSelection && paintScope !== "similar" && (
                   <label
                     className="flex items-center gap-1 text-gray-400"
                     title="Padding used by Fill and by scoped painting in the Texture view"
@@ -2844,7 +2895,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   <>
                     <span
                       className={`max-w-40 truncate ${
-                        paintScope === "island" ? "text-violet-300" : "text-cyan-300"
+                        paintScope === "island"
+                          ? "text-violet-300"
+                          : paintScope === "similar"
+                            ? "text-yellow-300"
+                            : "text-cyan-300"
                       }`}
                       title={
                         (paintSessionRef.current?.selectionCount ?? 0) > 1
@@ -2852,82 +2907,123 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                           : `${paintSelection.objectName} · ${paintSelection.materialName}`
                       }
                     >
-                      {(paintSessionRef.current?.selectionCount ?? 0) > 1
-                        ? `${paintSessionRef.current?.selectionCount} ${
-                            paintScope === "island" ? "UV islands" : "materials"
-                          } selected`
-                        : `${paintSelection.objectName} · ${paintSelection.materialName}`}
+                      {paintScope === "similar"
+                        ? "Similar colors selected"
+                        : (paintSessionRef.current?.selectionCount ?? 0) > 1
+                          ? `${paintSessionRef.current?.selectionCount} ${
+                              paintScope === "island" ? "UV islands" : "materials"
+                            } selected`
+                          : `${paintSelection.objectName} · ${paintSelection.materialName}`}
                     </span>
-                    <button
-                      type="button"
-                      disabled={paintBrushMode === "restore"}
-                      onClick={() => {
-                        if (paintSessionRef.current?.fillSelection("material", brushSettingsRef.current, paintTexturePadding)) {
-                          rememberUsedPaintColor(paintColor);
-                          setPaintExportStatus("");
-                          setPaintHistoryVersion((value) => value + 1);
-                        }
-                      }}
-                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
-                      title={
-                        paintBrushMode === "restore"
-                          ? "Use Clear material to erase this area from the active layer"
-                          : "Fill the selected material UV footprint with the current color"
-                      }
-                    >
-                      Fill material
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!paintSessionRef.current?.selectionHasUvIsland || paintBrushMode === "restore"}
-                      onClick={() => {
-                        if (paintSessionRef.current?.fillSelection("island", brushSettingsRef.current, paintTexturePadding)) {
-                          rememberUsedPaintColor(paintColor);
-                          setPaintExportStatus("");
-                          setPaintHistoryVersion((value) => value + 1);
-                        }
-                      }}
-                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
-                      title={
-                        paintBrushMode === "restore"
-                          ? "Use Clear island to erase this area from the active layer"
-                          : "Fill only the selected UV island with the current color"
-                      }
-                    >
-                      Fill island
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (paintSessionRef.current?.resetSelection("material")) {
-                          setPaintExportStatus("");
-                          setPaintHistoryVersion((value) => value + 1);
-                        }
-                      }}
-                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
-                      title="Clear the active paint layer inside the selected material"
-                    >
-                      Clear material
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!paintSelection.hasUvIsland}
-                      onClick={() => {
-                        if (paintSessionRef.current?.resetSelection("island")) {
-                          setPaintExportStatus("");
-                          setPaintHistoryVersion((value) => value + 1);
-                        }
-                      }}
-                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Clear the active paint layer inside the selected UV island"
-                    >
-                      Clear island
-                    </button>
+                    {paintScope === "similar" ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={paintBrushMode === "restore"}
+                          onClick={() => {
+                            if (paintSessionRef.current?.fillSelection("similar", brushSettingsRef.current)) {
+                              rememberUsedPaintColor(paintColor);
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={
+                            paintBrushMode === "restore"
+                              ? "Use Clear similar to erase this area from the active layer"
+                              : "Fill the frozen similar-color selection"
+                          }
+                        >
+                          Fill similar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (paintSessionRef.current?.resetSelection("similar")) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
+                          title="Clear the active paint layer inside the similar-color selection"
+                        >
+                          Clear similar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          disabled={paintBrushMode === "restore"}
+                          onClick={() => {
+                            if (paintSessionRef.current?.fillSelection("material", brushSettingsRef.current, paintTexturePadding)) {
+                              rememberUsedPaintColor(paintColor);
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={
+                            paintBrushMode === "restore"
+                              ? "Use Clear material to erase this area from the active layer"
+                              : "Fill the selected material UV footprint with the current color"
+                          }
+                        >
+                          Fill material
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!paintSessionRef.current?.selectionHasUvIsland || paintBrushMode === "restore"}
+                          onClick={() => {
+                            if (paintSessionRef.current?.fillSelection("island", brushSettingsRef.current, paintTexturePadding)) {
+                              rememberUsedPaintColor(paintColor);
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={
+                            paintBrushMode === "restore"
+                              ? "Use Clear island to erase this area from the active layer"
+                              : "Fill only the selected UV island with the current color"
+                          }
+                        >
+                          Fill island
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (paintSessionRef.current?.resetSelection("material")) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
+                          title="Clear the active paint layer inside the selected material"
+                        >
+                          Clear material
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!paintSessionRef.current?.selectionHasUvIsland}
+                          onClick={() => {
+                            if (paintSessionRef.current?.resetSelection("island")) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Clear the active paint layer inside the selected UV island"
+                        >
+                          Clear island
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={clearPaintSelection}
                       className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
-                      title="Clear material and UV-island selection"
+                      title="Clear the current painter selection"
                     >
                       Clear selection
                     </button>

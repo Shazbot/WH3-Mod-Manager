@@ -282,6 +282,100 @@ describe("unit painter", () => {
     }
   });
 
+  it("selects matching visible colors into a frozen similar-color mask", () => {
+    const texture = makeTexture();
+    const image = texture.image as { data: Uint8Array };
+    const setPixel = (x: number, y: number, r: number, g: number, b: number) => {
+      const offset = (y * WIDTH + x) * 4;
+      image.data[offset] = r;
+      image.data[offset + 1] = g;
+      image.data[offset + 2] = b;
+    };
+    setPixel(14, 8, 180, 40, 30);
+    setPixel(20, 8, 180, 40, 30);
+    setPixel(5, 5, 20, 90, 220);
+
+    const painter = makePainter(texture);
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      expect(
+        painter.session.selectSimilarTexturePoint(textureId, 14.5, 8.5, 0, "replace"),
+      ).toBe(true);
+      expect(painter.session.hasSimilarSelection).toBe(true);
+      expect(painter.session.getTextureViews("similar")[0].selectedPixelMask).toBeDefined();
+
+      expect(
+        painter.session.fillSelection("similar", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 10, g: 220, b: 80 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([10, 220, 80, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([10, 220, 80, 255]);
+      expect(getPixel(painter.material, 5, 5)).toEqual([20, 90, 220, 255]);
+
+      // The selection is a snapshot: changing its colors does not change membership.
+      expect(
+        painter.session.fillSelection("similar", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 240, g: 200, b: 20 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([240, 200, 20, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([240, 200, 20, 255]);
+      expect(getPixel(painter.material, 5, 5)).toEqual([20, 90, 220, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("adds and toggles similar-color masks with Shift/Ctrl semantics", () => {
+    const texture = makeTexture();
+    const image = texture.image as { data: Uint8Array };
+    const setPixel = (x: number, y: number, r: number, g: number, b: number) => {
+      const offset = (y * WIDTH + x) * 4;
+      image.data[offset] = r;
+      image.data[offset + 1] = g;
+      image.data[offset + 2] = b;
+    };
+    setPixel(14, 8, 200, 30, 40);
+    setPixel(20, 8, 200, 30, 40);
+    setPixel(5, 5, 30, 80, 210);
+
+    const painter = makePainter(texture);
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      expect(painter.session.selectSimilarTexturePoint(textureId, 14.5, 8.5, 0, "replace")).toBe(true);
+      expect(painter.session.selectSimilarTexturePoint(textureId, 5.5, 5.5, 0, "add")).toBe(true);
+      expect(painter.session.selectSimilarTexturePoint(textureId, 14.5, 8.5, 0, "toggle")).toBe(true);
+
+      expect(
+        painter.session.fillSelection("similar", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 50, g: 220, b: 220 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([200, 30, 40, 255]);
+      expect(getPixel(painter.material, 20, 8)).toEqual([200, 30, 40, 255]);
+      expect(getPixel(painter.material, 5, 5)).toEqual([50, 220, 220, 255]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("selects UV islands from interleaved texture coordinates", () => {
     const painter = makePainter();
     try {
