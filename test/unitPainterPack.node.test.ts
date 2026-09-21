@@ -159,6 +159,8 @@ describe("unit painter pack staging", () => {
       [{ slotPath: "body", choiceIndex: 2 }],
       {
         activeLayerId: "layer-2",
+        usedColorHistory: ["#AABBCC", "#112233", "#aabbcc"],
+        selectedColor: "#445566",
         layers: [
           { id: "layer-1", name: "Cloth", visible: true, opacity: 0.5, textures: [] },
           {
@@ -184,6 +186,8 @@ describe("unit painter pack staging", () => {
     expect(manifest.sourceVariantMeshDefinition).toBe(sourceVmd);
     expect(manifest.variantSelections).toEqual([{ slotPath: "body", choiceIndex: 2 }]);
     expect(manifest.activeLayerId).toBe("layer-2");
+    expect(manifest.usedColorHistory).toEqual(["#aabbcc", "#112233"]);
+    expect(manifest.selectedColor).toBe("#445566");
     expect(manifest.layers.map((layer) => ({
       id: layer.id,
       name: layer.name,
@@ -232,6 +236,42 @@ describe("unit painter pack staging", () => {
     if (manifest.formatVersion !== 2) throw new Error("Expected painter project format v2.");
     expect(manifest.layers).toHaveLength(1);
     expect(manifest.layers[0].textures).toEqual([]);
+  });
+
+  it("keeps older v2 painter manifests valid when color metadata is absent", () => {
+    const manifest = parseUnitPainterProjectManifest(
+      Buffer.from(JSON.stringify({
+        formatVersion: 2,
+        sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+        variantSelections: [],
+        activeLayerId: "layer-1",
+        layers: [
+          { id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] },
+        ],
+      })),
+    );
+    expect(manifest.formatVersion).toBe(2);
+    if (manifest.formatVersion !== 2) throw new Error("Expected painter project format v2.");
+    expect(manifest.usedColorHistory).toBeUndefined();
+    expect(manifest.selectedColor).toBeUndefined();
+  });
+
+  it("rejects malformed optional painter color metadata", () => {
+    expect(() =>
+      parseUnitPainterProjectManifest(
+        Buffer.from(JSON.stringify({
+          formatVersion: 2,
+          sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+          variantSelections: [],
+          activeLayerId: "layer-1",
+          usedColorHistory: ["#123456", "not-a-color"],
+          selectedColor: "#abcdef",
+          layers: [
+            { id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] },
+          ],
+        })),
+      ),
+    ).toThrow(/used color/i);
   });
 
   it("continues to parse v1 painter manifests for backward compatibility", () => {
