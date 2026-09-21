@@ -17,6 +17,7 @@ import {
   type UnitPainterProjectOpenResult,
 } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
+import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
 import { selectDefaultAnimation } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
@@ -512,6 +513,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [animationSpeed, setAnimationSpeed] = useState(1);
   const [isPainterEnabled, setIsPainterEnabled] = useState(false);
+  const [paintViewMode, setPaintViewMode] = useState<"model" | "texture">("model");
+  const [paintTextureViewId, setPaintTextureViewId] = useState<string>();
   const [paintColor, setPaintColor] = useState(DEFAULT_PAINT_COLOR);
   const [paintColorHistory, setPaintColorHistory] = useState<string[]>([]);
   const [isPaintColorHistoryOpen, setIsPaintColorHistoryOpen] = useState(false);
@@ -667,9 +670,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     clearPaintHoverVisual();
     setPaintSelection(selection);
+    setPaintTextureViewId(selection.textureId);
     setPaintScope(selectMode);
     paintScopeRef.current = selectMode;
     showPaintSelectionSurface(session.getSelectionSurfaceHighlight(selectMode) ?? surface);
+    setPaintHistoryVersion((value) => value + 1);
     return true;
   };
 
@@ -1634,6 +1639,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintExcludedPackPaths([]);
     setPaintColorHistory([]);
     setPaintColor(DEFAULT_PAINT_COLOR);
+    setPaintViewMode("model");
+    setPaintTextureViewId(undefined);
     setIsPaintColorHistoryOpen(false);
     pendingPaintProjectRef.current = null;
   }, [assetPath]);
@@ -1703,6 +1710,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }
     }
     setPaintTextureCount(session.textureCount);
+    setPaintTextureViewId((current) =>
+      session.textureViews.some((view) => view.id === current)
+        ? current
+        : session.textureViews[0]?.id,
+    );
     setPaintHistoryVersion((value) => value + 1);
   }, [comparisonModelCount, enablePainting, isPainterEnabled, status]);
 
@@ -1934,7 +1946,38 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-950">
       <div className="relative min-h-0 flex-1 w-full overflow-hidden">
-        <div ref={mountRef} className="absolute inset-0" />
+        <div
+          ref={mountRef}
+          className={`absolute inset-0 ${paintViewMode === "texture" ? "invisible pointer-events-none" : ""}`}
+        />
+        {isPainterEnabled
+          && paintViewMode === "texture"
+          && status === "ready"
+          && comparisonModelCount === 1
+          && paintSessionRef.current && (
+            <UnitPainterTextureEditor
+              session={paintSessionRef.current}
+              historyVersion={paintHistoryVersion}
+              selectionKey={`${paintScope}:${paintSelection?.object.uuid ?? ""}:${paintSelection?.materialName ?? ""}`}
+              selectedTextureId={paintTextureViewId}
+              onSelectedTextureIdChange={setPaintTextureViewId}
+              brushSettings={brushSettingsRef.current}
+              scope={paintScope}
+              eyedropperActive={isPaintEyedropperActive}
+              onEyedropperComplete={(sampled) => {
+                const toHex = (value: number) =>
+                  Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+                choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
+                if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
+              }}
+              onStrokeComplete={(changed) => {
+                if (!changed) return;
+                setPaintExportStatus("");
+                setPaintHistoryVersion((value) => value + 1);
+                if (brushSettingsRef.current.mode !== "restore") rememberUsedPaintColor(paintColor);
+              }}
+            />
+          )}
         {status !== "ready" && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-gray-950/70 text-sm text-gray-200">
             {status === "exporting" &&
@@ -1950,7 +1993,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div
           ref={brushCursorRef}
-          className="pointer-events-none absolute left-0 top-0 z-20 hidden rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.75)]"
+          className={`pointer-events-none absolute left-0 top-0 z-20 rounded-full border border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.75)] ${paintViewMode === "texture" ? "hidden" : "hidden"}`}
         >
           <div
             ref={brushHardnessCursorRef}
@@ -1981,6 +2024,37 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             >
               Paint
             </button>
+            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
+              <div className="flex overflow-hidden rounded border border-gray-600">
+                <button
+                  type="button"
+                  onClick={() => setPaintViewMode("model")}
+                  className={`px-2 py-1 ${
+                    paintViewMode === "model"
+                      ? "bg-blue-700/60 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  }`}
+                  title="Paint directly on the 3D model"
+                >
+                  3D
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaintViewMode("texture");
+                    setIsPaintSymmetryEnabled(false);
+                  }}
+                  className={`border-l border-gray-600 px-2 py-1 ${
+                    paintViewMode === "texture"
+                      ? "bg-blue-700/60 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  }`}
+                  title="Paint directly on the BaseColour texture"
+                >
+                  Texture
+                </button>
+              </div>
+            )}
             <button
               type="button"
               disabled={status !== "ready" || comparisonModelCount !== 1 || isPaintProjectOpening || isPaintExporting}
