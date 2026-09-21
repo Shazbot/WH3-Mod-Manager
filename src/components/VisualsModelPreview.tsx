@@ -791,6 +791,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const orbitOffset = new THREE.Vector3();
     const orbitSpherical = new THREE.Spherical();
     let hasLastPaintPoint = false;
+    let lastPaintIntersection: THREE.Intersection<THREE.Object3D> | undefined;
+    let lastMirroredPaintIntersection: THREE.Intersection<THREE.Object3D> | undefined;
     let distanceSinceLastPaintStamp = 0;
     let isPainting = false;
     let activePointerId: number | undefined;
@@ -863,73 +865,86 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       return hit ? { hit, viewportHeight } : undefined;
     };
 
-    /**
-     * Keep interactive painting to one scene raycast per stamp. Raycasting a composed animated unit
-     * is CPU-heavy because Three must test the skinned meshes; sampling a ring around every brush
-     * position multiplied that work and caused multi-second stalls. Closely spaced center stamps
-     * still cross most visible seams during a drag without blocking the UI.
-     */
-    const paintProjectedBrush = (clientX: number, clientY: number) => {
+    const getMirroredPaintIntersection = (
+      projected: { hit: THREE.Intersection<THREE.Object3D>; viewportHeight: number },
+      scope: UnitPainterSelectionScope,
+    ) => {
       const session = paintSessionRef.current;
       const root = paintRootRef.current;
-      if (!session || !root) return;
-      const projected = getPaintIntersection(clientX, clientY);
-      if (!projected) return;
-
-      const scope = paintScopeRef.current;
-      session.paintIntersection(
-        projected.hit,
-        brushSettingsRef.current,
-        camera,
-        projected.viewportHeight,
-        brushSettingsRef.current.radiusPx,
-        scope,
-      );
-
-      if (!symmetryEnabledRef.current || !session.matchesSelectionScope(projected.hit, scope)) return;
+      if (
+        !session
+        || !root
+        || !symmetryEnabledRef.current
+        || !session.matchesSelectionScope(projected.hit, scope)
+      ) {
+        return undefined;
+      }
 
       mirrorRayAcrossObjectLocalX(raycaster.ray, root, mirroredRay);
       symmetryRaycaster.ray.copy(mirroredRay);
       symmetryRaycaster.near = raycaster.near;
       symmetryRaycaster.far = raycaster.far;
       const mirroredHit = symmetryRaycaster.intersectObject(root, true)[0];
-      if (!mirroredHit) return;
-
+      if (!mirroredHit) return undefined;
       if (
         mirroredHit.object === projected.hit.object
         && mirroredHit.faceIndex === projected.hit.faceIndex
         && mirroredHit.point.distanceToSquared(projected.hit.point) < 1e-8
       ) {
-        return;
+        return undefined;
       }
 
       symmetryCamera.fov = camera.fov;
-      // A PerspectiveCamera ray originates at the camera position, so the mirrored ray origin
-      // is already the mirrored virtual camera position.
       symmetryCamera.position.copy(mirroredRay.origin);
-
-      // The initiating hit has already satisfied the user's selected scope. Let the mirrored
-      // hit target the corresponding material/island on the other side, even when it is a
-      // separate mesh or UV island.
-      session.paintIntersection(
-        mirroredHit,
-        brushSettingsRef.current,
-        symmetryCamera,
-        projected.viewportHeight,
-        brushSettingsRef.current.radiusPx,
-        "all",
-      );
+      symmetryCamera.updateProjectionMatrix();
+      symmetryCamera.updateMatrixWorld(true);
+      return mirroredHit;
     };
 
+    /**
+     * Raycast only the current pointer position. Intermediate brush stamps are
+     * interpolated in texture/UV space when both endpoint hits resolve to the
+     * same texture and UV island. This removes the scene-raycast multiplier from
+     * dense brush spacing while preserving a safe endpoint fallback at seams.
+     */
     const paintToPointer = (event: PointerEvent, flushTail = false) => {
+      const session = paintSessionRef.current;
       const nextX = event.clientX;
       const nextY = event.clientY;
+      const projected = getPaintIntersection(nextX, nextY);
+      const scope = paintScopeRef.current;
+
       if (!hasLastPaintPoint) {
-        paintProjectedBrush(nextX, nextY);
+        if (projected && session) {
+          session.paintIntersection(
+            projected.hit,
+            brushSettingsRef.current,
+            camera,
+            projected.viewportHeight,
+            brushSettingsRef.current.radiusPx,
+            scope,
+          );
+          const mirroredHit = getMirroredPaintIntersection(projected, scope);
+          if (mirroredHit) {
+            session.paintIntersection(
+              mirroredHit,
+              brushSettingsRef.current,
+              symmetryCamera,
+              projected.viewportHeight,
+              brushSettingsRef.current.radiusPx,
+              "all",
+            );
+          }
+          lastPaintIntersection = projected.hit;
+          lastMirroredPaintIntersection = mirroredHit;
+        } else {
+          lastPaintIntersection = undefined;
+          lastMirroredPaintIntersection = undefined;
+        }
         lastPaintPoint.set(nextX, nextY);
         hasLastPaintPoint = true;
         distanceSinceLastPaintStamp = 0;
-        return;
+        return projected;
       }
 
       const sampled = sampleUnitPainterStrokeSegment(
@@ -940,16 +955,69 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         getUnitPainterBrushSpacing(brushSettingsRef.current.radiusPx),
         distanceSinceLastPaintStamp,
       );
-      for (const sample of sampled.samples) paintProjectedBrush(sample.x, sample.y);
-      distanceSinceLastPaintStamp = sampled.distanceSinceLastStamp;
-      lastPaintPoint.set(nextX, nextY);
-
-      // A normal spaced brush deliberately leaves a short tail. Stamp the actual release
-      // position once so quick taps and short drags still end exactly under the pointer.
-      if (flushTail && distanceSinceLastPaintStamp > 0.5) {
-        paintProjectedBrush(nextX, nextY);
+      const sampleAmounts = sampled.samples.map((sample) => sample.amount);
+      if (flushTail && sampled.distanceSinceLastStamp > 0.5) {
+        if (sampleAmounts.at(-1) !== 1) sampleAmounts.push(1);
         distanceSinceLastPaintStamp = 0;
+      } else {
+        distanceSinceLastPaintStamp = sampled.distanceSinceLastStamp;
       }
+
+      if (projected && session && sampleAmounts.length > 0) {
+        if (lastPaintIntersection) {
+          session.paintIntersectionSamples(
+            lastPaintIntersection,
+            projected.hit,
+            sampleAmounts,
+            brushSettingsRef.current,
+            camera,
+            projected.viewportHeight,
+            brushSettingsRef.current.radiusPx,
+            scope,
+          );
+        } else {
+          session.paintIntersection(
+            projected.hit,
+            brushSettingsRef.current,
+            camera,
+            projected.viewportHeight,
+            brushSettingsRef.current.radiusPx,
+            scope,
+          );
+        }
+
+        const mirroredHit = getMirroredPaintIntersection(projected, scope);
+        if (mirroredHit) {
+          if (lastMirroredPaintIntersection) {
+            session.paintIntersectionSamples(
+              lastMirroredPaintIntersection,
+              mirroredHit,
+              sampleAmounts,
+              brushSettingsRef.current,
+              symmetryCamera,
+              projected.viewportHeight,
+              brushSettingsRef.current.radiusPx,
+              "all",
+            );
+          } else {
+            session.paintIntersection(
+              mirroredHit,
+              brushSettingsRef.current,
+              symmetryCamera,
+              projected.viewportHeight,
+              brushSettingsRef.current.radiusPx,
+              "all",
+            );
+          }
+        }
+        lastMirroredPaintIntersection = mirroredHit;
+      } else if (!projected) {
+        lastMirroredPaintIntersection = undefined;
+      }
+
+      lastPaintIntersection = projected?.hit;
+      lastPaintPoint.set(nextX, nextY);
+      return projected;
     };
 
     const brushColorToHex = () => {
@@ -999,6 +1067,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (!isPainting) return;
       isPainting = false;
       hasLastPaintPoint = false;
+      lastPaintIntersection = undefined;
+      lastMirroredPaintIntersection = undefined;
       distanceSinceLastPaintStamp = 0;
       controls.enabled = true;
       const changed = paintSessionRef.current?.endStroke() ?? false;
@@ -1090,8 +1160,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         return;
       }
 
-      const needsSelectionHover = !isPainting && !!selectToolModeRef.current;
       const needsLinkedHover = paintViewModeRef.current === "split";
+      if (isPainting && event.pointerId === activePointerId) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const projected = paintToPointer(event);
+        if (needsLinkedHover) {
+          const session = paintSessionRef.current;
+          const hoverScope =
+            paintScopeRef.current === "all" ? "island" : paintScopeRef.current;
+          textureLinkedHoverSinkRef.current?.(
+            projected?.hit && session
+              ? session.getIntersectionTextureHover(projected.hit, hoverScope)
+              : undefined,
+          );
+        }
+        return;
+      }
+
+      const needsSelectionHover = !!selectToolModeRef.current;
       if (needsSelectionHover || needsLinkedHover) {
         const projected = getPaintIntersection(event.clientX, event.clientY);
         if (needsSelectionHover) updatePaintHoverVisual(projected?.hit);
@@ -1107,11 +1194,6 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           );
         }
       }
-
-      if (!isPainting || event.pointerId !== activePointerId) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      paintToPointer(event);
     };
 
     const onPointerUp = (event: PointerEvent) => {
