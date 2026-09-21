@@ -96,7 +96,10 @@ export interface UnitPainterProjectLayerTransfer {
     sourceVirtualPath: string;
     width: number;
     height: number;
-    rgbaBytes: Uint8Array;
+    tiles: Array<{
+      key: number;
+      rgbaBytes: Uint8Array;
+    }>;
   }>;
 }
 
@@ -107,27 +110,15 @@ export interface UnitPainterProjectStateTransfer {
   selectedColor?: string;
 }
 
-export type UnitPainterOpenedProject =
-  | {
-      formatVersion: 1;
-      sourceVariantMeshDefinition: string;
-      variantSelections: VariantMeshSelection[];
-      textures: Array<{
-        sourceVirtualPath: string;
-        width: number;
-        height: number;
-        rgbaBytes: Uint8Array;
-      }>;
-    }
-  | {
-      formatVersion: 2;
-      sourceVariantMeshDefinition: string;
-      variantSelections: VariantMeshSelection[];
-      activeLayerId: string;
-      layers: UnitPainterProjectLayerTransfer[];
-      usedColorHistory?: string[];
-      selectedColor?: string;
-    };
+export type UnitPainterOpenedProject = {
+  formatVersion: 3;
+  sourceVariantMeshDefinition: string;
+  variantSelections: VariantMeshSelection[];
+  activeLayerId: string;
+  layers: UnitPainterProjectLayerTransfer[];
+  usedColorHistory?: string[];
+  selectedColor?: string;
+};
 
 export interface UnitPainterProjectOpenResult {
   success: boolean;
@@ -236,7 +227,10 @@ export const exportUnitPainterTextures = async (
           sourceVirtualPath: texture.sourceVirtualPath,
           width: texture.width,
           height: texture.height,
-          rgbaBytes: texture.rgbaBytes,
+          tiles: texture.tiles.map((tile) => ({
+            key: tile.key,
+            rgbaBytes: tile.rgbaBytes,
+          })),
         })),
       })),
     },
