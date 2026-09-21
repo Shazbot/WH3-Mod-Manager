@@ -22,6 +22,8 @@ export type UnitPainterTextureView = {
   uvSegments: Float32Array;
   /** Current material/island selection in the same coordinate format. */
   selectedUvSegments: Float32Array;
+  /** x1,y1,x2,y2,x3,y3 triangles for clipping/dimming the selected UV footprint. */
+  selectedUvTriangles: Float32Array;
 };
 
 export type UnitPainterTexturePaintResult = {
@@ -1452,6 +1454,7 @@ export class UnitPainterSession {
       }
 
       const selectedUvSegments: number[] = [];
+      const selectedUvTriangles: number[] = [];
       if (this.selection?.target === target) {
         const geometry = this.selection.mesh.geometry;
         const uv = geometry.getAttribute("uv");
@@ -1469,6 +1472,11 @@ export class UnitPainterSession {
             if (!indices) continue;
             const points = indices.map((index) =>
               new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+            );
+            selectedUvTriangles.push(
+              points[0].x, points[0].y,
+              points[1].x, points[1].y,
+              points[2].x, points[2].y,
             );
             for (const [firstIndex, secondIndex] of [[0, 1], [1, 2], [2, 0]] as const) {
               const first = points[firstIndex];
@@ -1490,6 +1498,7 @@ export class UnitPainterSession {
         data: target.data,
         uvSegments: Float32Array.from(uvSegments),
         selectedUvSegments: Float32Array.from(selectedUvSegments),
+        selectedUvTriangles: Float32Array.from(selectedUvTriangles),
       };
     });
   }
