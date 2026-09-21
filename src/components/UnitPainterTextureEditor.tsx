@@ -721,8 +721,8 @@ const UnitPainterTextureEditor = ({
         <label className="flex items-center gap-1 text-gray-400" title="Extend scoped painting beyond UV boundaries">
           Pad
           <select
-            value={scope === "all" || scope === "similar" ? 0 : paddingPx}
-            disabled={scope === "all" || scope === "similar"}
+            value={scope === "all" || scope === "similar" || !!view.selectedPixelMask ? 0 : paddingPx}
+            disabled={scope === "all" || scope === "similar" || !!view.selectedPixelMask}
             onChange={(event) => onPaddingPxChange(Number(event.target.value))}
             className="rounded border border-gray-600 bg-gray-800 px-1 py-1 text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -858,7 +858,7 @@ const UnitPainterTextureEditor = ({
       <div className="pointer-events-none absolute bottom-2 left-2 z-20 rounded bg-gray-900/90 px-2 py-1 text-[11px] text-gray-400">
         {selectMode ? `LMB select ${selectMode}` : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
         {scope !== "all"
-          ? ` · clipped to selection${scope !== "similar" && paddingPx > 0 ? ` + ${paddingPx}px padding` : ""}`
+          ? ` · clipped to selection${scope !== "similar" && !view.selectedPixelMask && paddingPx > 0 ? ` + ${paddingPx}px padding` : ""}`
           : ""}
       </div>
     </div>

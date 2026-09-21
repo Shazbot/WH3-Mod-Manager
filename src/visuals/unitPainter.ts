@@ -5,6 +5,14 @@ export type UnitPainterBrushMode = "recolor" | "paint" | "restore";
 export type UnitPainterSurfaceSelectionScope = "material" | "island";
 export type UnitPainterSelectionScope = "all" | UnitPainterSurfaceSelectionScope | "similar";
 export type UnitPainterSelectionOperation = "replace" | "add" | "toggle";
+export type UnitPainterSelectionSplitKind = "vertical" | "horizontal" | "slash" | "backslash" | "x";
+
+export type UnitPainterSelectionPartitionInfo = {
+  kind: UnitPainterSelectionSplitKind;
+  sourceScope: Exclude<UnitPainterSelectionScope, "all">;
+  regions: Array<{ id: string; label: string; active: boolean }>;
+  allActive: boolean;
+};
 
 export type UnitPainterSelectionInfo = {
   objectName: string;
@@ -199,6 +207,21 @@ type UnitPainterSelection = {
   target: PaintableTexture;
   islandId?: number;
   key: string;
+};
+
+type UnitPainterSelectionPartitionRegion = {
+  id: string;
+  label: string;
+  masks: Map<PaintableTexture, UvIslandMask>;
+};
+
+type UnitPainterSelectionPartition = {
+  kind: UnitPainterSelectionSplitKind;
+  sourceScope: Exclude<UnitPainterSelectionScope, "all">;
+  sourceMasks: Map<PaintableTexture, UvIslandMask>;
+  regions: UnitPainterSelectionPartitionRegion[];
+  activeRegionIds: Set<string>;
+  activeMasks: Map<PaintableTexture, UvIslandMask>;
 };
 
 type PackedStrokeChange = {
@@ -935,6 +958,92 @@ const xorUvMasks = (
   return result.tiles.size > 0 ? result : undefined;
 };
 
+const getUvMaskBounds = (mask: UvIslandMask) => {
+  let minX = mask.width;
+  let minY = mask.height;
+  let maxX = -1;
+  let maxY = -1;
+  forEachMaskPixel(mask, (x, y) => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  });
+  return maxX >= minX && maxY >= minY ? { minX, minY, maxX, maxY } : undefined;
+};
+
+const getSelectionSplitRegionDefinitions = (
+  kind: UnitPainterSelectionSplitKind,
+): Array<{ id: string; label: string }> => {
+  switch (kind) {
+    case "vertical":
+      return [{ id: "left", label: "Left" }, { id: "right", label: "Right" }];
+    case "horizontal":
+      return [{ id: "top", label: "Top" }, { id: "bottom", label: "Bottom" }];
+    case "slash":
+      return [{ id: "upperLeft", label: "Upper-left" }, { id: "lowerRight", label: "Lower-right" }];
+    case "backslash":
+      return [{ id: "upperRight", label: "Upper-right" }, { id: "lowerLeft", label: "Lower-left" }];
+    case "x":
+      return [
+        { id: "top", label: "Top" },
+        { id: "right", label: "Right" },
+        { id: "bottom", label: "Bottom" },
+        { id: "left", label: "Left" },
+      ];
+  }
+};
+
+const getSelectionSplitRegionId = (
+  kind: UnitPainterSelectionSplitKind,
+  u: number,
+  v: number,
+) => {
+  switch (kind) {
+    case "vertical":
+      return u < 0.5 ? "left" : "right";
+    case "horizontal":
+      return v < 0.5 ? "top" : "bottom";
+    case "slash":
+      return u + v < 1 ? "upperLeft" : "lowerRight";
+    case "backslash":
+      return u >= v ? "upperRight" : "lowerLeft";
+    case "x": {
+      const slash = u + v - 1;
+      const backslash = u - v;
+      if (slash < 0 && backslash >= 0) return "top";
+      if (slash >= 0 && backslash >= 0) return "right";
+      if (slash >= 0 && backslash < 0) return "bottom";
+      return "left";
+    }
+  }
+};
+
+const partitionUvMask = (
+  source: UvIslandMask,
+  kind: UnitPainterSelectionSplitKind,
+) => {
+  const definitions = getSelectionSplitRegionDefinitions(kind);
+  const result = new Map<string, UvIslandMask>(
+    definitions.map(({ id }) => [
+      id,
+      { width: source.width, height: source.height, tiles: new Map(), byteSize: 0 },
+    ]),
+  );
+  const bounds = getUvMaskBounds(source);
+  if (!bounds) return result;
+
+  const width = Math.max(1, bounds.maxX - bounds.minX + 1);
+  const height = Math.max(1, bounds.maxY - bounds.minY + 1);
+  forEachMaskPixel(source, (x, y) => {
+    const u = (x - bounds.minX + 0.5) / width;
+    const v = (y - bounds.minY + 0.5) / height;
+    const region = result.get(getSelectionSplitRegionId(kind, u, v));
+    if (region) setMaskPixel(region, x, y);
+  });
+  return result;
+};
+
 const SRGB_TO_LINEAR = Float32Array.from({ length: 256 }, (_, value) => {
   const channel = value / 255;
   return channel <= 0.04045
@@ -1216,6 +1325,7 @@ export class UnitPainterSession {
   private selections: UnitPainterSelection[] = [];
   private readonly similarSelectionMasks = new Map<PaintableTexture, UvIslandMask>();
   private similarSelectionLastTarget?: PaintableTexture;
+  private selectionPartition?: UnitPainterSelectionPartition;
   private selectionMode?: Exclude<UnitPainterSelectionScope, "all">;
   private paintLayers: PaintLayer[] = [];
   private activePaintLayerId = "";
@@ -1395,6 +1505,7 @@ export class UnitPainterSession {
     mode: UnitPainterSurfaceSelectionScope,
     operation: UnitPainterSelectionOperation,
   ) {
+    this.selectionPartition = undefined;
     const key = this.getSelectionKey(
       selection.mesh,
       selection.materialIndex,
@@ -1446,6 +1557,7 @@ export class UnitPainterSession {
     mask: UvIslandMask,
     operation: UnitPainterSelectionOperation,
   ) {
+    this.selectionPartition = undefined;
     if (this.selectionMode !== "similar") {
       this.selections = [];
       this.similarSelectionMasks.clear();
@@ -1508,6 +1620,126 @@ export class UnitPainterSession {
 
   get hasSimilarSelection() {
     return this.similarSelectionMasks.size > 0;
+  }
+
+  get selectionPartitionInfo(): UnitPainterSelectionPartitionInfo | undefined {
+    const partition = this.selectionPartition;
+    if (!partition) return undefined;
+    return {
+      kind: partition.kind,
+      sourceScope: partition.sourceScope,
+      regions: partition.regions.map((region) => ({
+        id: region.id,
+        label: region.label,
+        active: partition.activeRegionIds.has(region.id),
+      })),
+      allActive:
+        partition.regions.length > 0
+        && partition.regions.every((region) => partition.activeRegionIds.has(region.id)),
+    };
+  }
+
+  private getBaseSelectionTargets(scope: Exclude<UnitPainterSelectionScope, "all">) {
+    return scope === "similar"
+      ? [...this.similarSelectionMasks.keys()]
+      : [...new Set(this.selections.map((selection) => selection.target))];
+  }
+
+  private rebuildSelectionPartitionActiveMasks() {
+    const partition = this.selectionPartition;
+    if (!partition) return;
+
+    partition.activeMasks.clear();
+    const allActive =
+      partition.regions.length > 0
+      && partition.regions.every((region) => partition.activeRegionIds.has(region.id));
+    if (allActive) {
+      for (const [target, mask] of partition.sourceMasks) partition.activeMasks.set(target, mask);
+      return;
+    }
+
+    for (const target of partition.sourceMasks.keys()) {
+      const masks = partition.regions
+        .filter((region) => partition.activeRegionIds.has(region.id))
+        .map((region) => region.masks.get(target))
+        .filter((mask): mask is UvIslandMask => !!mask);
+      const combined = masks.length === 1 ? masks[0] : unionUvMasks(masks);
+      if (combined) partition.activeMasks.set(target, combined);
+    }
+  }
+
+  splitSelection(
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+    kind: UnitPainterSelectionSplitKind,
+  ) {
+    const sourceMasks = new Map<PaintableTexture, UvIslandMask>();
+    for (const target of this.getBaseSelectionTargets(scope)) {
+      const mask = this.getBaseSelectionMaskForTarget(target, scope);
+      if (mask) sourceMasks.set(target, mask);
+    }
+    if (sourceMasks.size === 0) return false;
+
+    const definitions = getSelectionSplitRegionDefinitions(kind);
+    const regions: UnitPainterSelectionPartitionRegion[] = definitions.map(({ id, label }) => ({
+      id,
+      label,
+      masks: new Map(),
+    }));
+
+    for (const [target, sourceMask] of sourceMasks) {
+      const parts = partitionUvMask(sourceMask, kind);
+      for (const region of regions) {
+        const mask = parts.get(region.id);
+        if (mask?.tiles.size) region.masks.set(target, mask);
+      }
+    }
+
+    const nonEmptyRegions = regions.filter((region) => region.masks.size > 0);
+    if (nonEmptyRegions.length < 2) return false;
+    this.selectionPartition = {
+      kind,
+      sourceScope: scope,
+      sourceMasks,
+      regions: nonEmptyRegions,
+      activeRegionIds: new Set([nonEmptyRegions[0].id]),
+      activeMasks: new Map(),
+    };
+    this.rebuildSelectionPartitionActiveMasks();
+    return true;
+  }
+
+  setSelectionPartitionRegion(
+    regionId: string,
+    operation: UnitPainterSelectionOperation = "replace",
+  ) {
+    const partition = this.selectionPartition;
+    if (!partition || !partition.regions.some((region) => region.id === regionId)) return false;
+
+    if (operation === "replace") {
+      partition.activeRegionIds = new Set([regionId]);
+    } else if (operation === "add") {
+      partition.activeRegionIds.add(regionId);
+    } else if (partition.activeRegionIds.has(regionId)) {
+      partition.activeRegionIds.delete(regionId);
+    } else {
+      partition.activeRegionIds.add(regionId);
+    }
+    this.rebuildSelectionPartitionActiveMasks();
+    return true;
+  }
+
+  selectAllSelectionPartitionRegions() {
+    const partition = this.selectionPartition;
+    if (!partition) return false;
+    partition.activeRegionIds = new Set(partition.regions.map((region) => region.id));
+    this.rebuildSelectionPartitionActiveMasks();
+    return true;
+  }
+
+  removeSelectionPartition() {
+    if (!this.selectionPartition) return false;
+    this.selectionPartition = undefined;
+    return true;
   }
 
   get textureCount() {
@@ -1907,14 +2139,21 @@ export class UnitPainterSession {
         selectedUvSegments: Float32Array.from(selectedUvSegments),
         selectedUvTriangles: Float32Array.from(selectedUvTriangles),
         selectedPixelMask:
-          selectionScope === "similar"
+          this.selectionPartition?.sourceScope === selectionScope
             ? (() => {
-                const mask = this.similarSelectionMasks.get(target);
+                const mask = this.selectionPartition?.activeMasks.get(target);
                 return mask
                   ? { width: mask.width, height: mask.height, tileSize: MASK_TILE_SIZE, tiles: mask.tiles }
                   : undefined;
               })()
-            : undefined,
+            : selectionScope === "similar"
+              ? (() => {
+                  const mask = this.similarSelectionMasks.get(target);
+                  return mask
+                    ? { width: mask.width, height: mask.height, tileSize: MASK_TILE_SIZE, tiles: mask.tiles }
+                    : undefined;
+                })()
+              : undefined,
       };
     });
   }
@@ -2232,6 +2471,7 @@ export class UnitPainterSession {
 
   clearSelection() {
     this.selections = [];
+    this.selectionPartition = undefined;
     this.similarSelectionMasks.clear();
     this.similarSelectionLastTarget = undefined;
     this.selectionMode = undefined;
@@ -2318,6 +2558,23 @@ export class UnitPainterSession {
     if (scope === "all") return true;
     if (!(intersection.object instanceof THREE.Mesh)) return false;
 
+    const partitionMask =
+      this.selectionPartition?.sourceScope === scope && intersection.uv
+        ? (() => {
+            const material = getIntersectionMaterial(intersection);
+            const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+            const mask = target ? this.selectionPartition?.activeMasks.get(target) : undefined;
+            if (!target || !mask) return false;
+            const uv = intersection.uv.clone();
+            target.editable.updateMatrix();
+            target.editable.transformUv(uv);
+            const pixelX = wrapCoordinate(Math.floor(uv.x * target.width), target.width, target.editable.wrapS);
+            const pixelY = wrapCoordinate(Math.floor(uv.y * target.height), target.height, target.editable.wrapT);
+            return maskContainsPixel(mask, pixelX, pixelY);
+          })()
+        : undefined;
+    if (partitionMask !== undefined) return partitionMask;
+
     if (scope === "similar") {
       if (!intersection.uv) return false;
       const material = getIntersectionMaterial(intersection);
@@ -2373,11 +2630,16 @@ export class UnitPainterSession {
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
     if (!target || !this.matchesSelectionScope(intersection, scope)) return undefined;
 
+    const partitionMask =
+      this.selectionPartition?.sourceScope === scope
+        ? this.selectionPartition.activeMasks.get(target)
+        : undefined;
     const mask =
-      scope === "similar"
+      partitionMask
+      ?? (scope === "similar"
         ? this.similarSelectionMasks.get(target)
-        : this.getUvIslandMask(intersection, target);
-    if (scope === "similar" && !mask) return undefined;
+        : this.getUvIslandMask(intersection, target));
+    if ((scope === "similar" || this.selectionPartition?.sourceScope === scope) && !mask) return undefined;
     const uv = intersection.uv.clone();
     target.editable.transformUv(uv);
     return {
@@ -2594,7 +2856,7 @@ export class UnitPainterSession {
     };
   }
 
-  private getSelectionMaskForTarget(
+  private getBaseSelectionMaskForTarget(
     target: PaintableTexture,
     scope: Exclude<UnitPainterSelectionScope, "all">,
     paddingPx = 0,
@@ -2642,16 +2904,24 @@ export class UnitPainterSession {
     return combined;
   }
 
+  private getSelectionMaskForTarget(
+    target: PaintableTexture,
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+    paddingPx = 0,
+  ) {
+    if (this.selectionPartition?.sourceScope === scope) {
+      return this.selectionPartition.activeMasks.get(target);
+    }
+    return this.getBaseSelectionMaskForTarget(target, scope, paddingPx);
+  }
+
   fillSelection(
     scope: Exclude<UnitPainterSelectionScope, "all">,
     settings: UnitPainterBrushSettings,
     paddingPx = 0,
   ) {
     const layer = this.getActiveLayer();
-    const targets =
-      scope === "similar"
-        ? [...this.similarSelectionMasks.keys()]
-        : [...new Set(this.selections.map((selection) => selection.target))];
+    const targets = this.getBaseSelectionTargets(scope);
     if (targets.length === 0 || !layer) return false;
     if (this.isStrokeOpen) this.endStroke();
 
@@ -2702,10 +2972,7 @@ export class UnitPainterSession {
 
   resetSelection(scope: Exclude<UnitPainterSelectionScope, "all">) {
     const layer = this.getActiveLayer();
-    const targets =
-      scope === "similar"
-        ? [...this.similarSelectionMasks.keys()]
-        : [...new Set(this.selections.map((selection) => selection.target))];
+    const targets = this.getBaseSelectionTargets(scope);
     if (targets.length === 0 || !layer) return false;
     if (this.isStrokeOpen) this.endStroke();
 
@@ -3037,6 +3304,7 @@ export class UnitPainterSession {
     this.uvMasksByTarget.clear();
     this.uvCoverageMasksByTarget.clear();
     this.selectionMaskCache.clear();
+    this.selectionPartition = undefined;
     this.similarSelectionMasks.clear();
     this.similarSelectionLastTarget = undefined;
     this.uvMaskCacheLru.clear();

@@ -29,6 +29,7 @@ import {
   type UnitPainterLayerInfo,
   type UnitPainterSelectionInfo,
   type UnitPainterSelectionScope,
+  type UnitPainterSelectionSplitKind,
   type UnitPainterSurfaceHighlight,
   type UnitPainterTextureHover,
 } from "../visuals/unitPainter";
@@ -2885,13 +2886,22 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     value={paintScope}
                     onChange={(event) => {
                       const nextScope = event.target.value as UnitPainterSelectionScope;
+                      if (paintSessionRef.current?.selectionPartitionInfo?.sourceScope !== nextScope) {
+                        paintSessionRef.current?.removeSelectionPartition();
+                      }
                       setPaintScope(nextScope);
                       paintScopeRef.current = nextScope;
                       refreshPaintSelectionVisual(nextScope);
                       clearPaintHoverVisual();
                     }}
+                    disabled={!!paintSessionRef.current?.selectionPartitionInfo}
+                    title={
+                      paintSessionRef.current?.selectionPartitionInfo
+                        ? "Remove the split before changing selection scope"
+                        : "Paint scope"
+                    }
                     aria-label="Paint scope"
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="all">All parts</option>
                     <option value="material" disabled={!paintSelection || paintScope === "similar"}>Selected material</option>
@@ -2899,7 +2909,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>Selected similar colors</option>
                   </select>
                 </label>
-                {paintSelection && paintScope !== "similar" && (
+                {paintSelection && paintScope !== "similar" && !paintSessionRef.current?.selectionPartitionInfo && (
                   <label
                     className="flex items-center gap-1 text-gray-400"
                     title="Padding used by Fill and by scoped painting in the Texture view"
@@ -2941,7 +2951,127 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                             } selected`
                           : `${paintSelection.objectName} · ${paintSelection.materialName}`}
                     </span>
-                    {paintScope === "similar" ? (
+                    <span className="text-gray-500">Split</span>
+                    {([
+                      ["vertical", "V", "Vertical split"],
+                      ["horizontal", "H", "Horizontal split"],
+                      ["slash", "/", "Diagonal / split"],
+                      ["backslash", "\\", "Diagonal \\ split"],
+                      ["x", "X", "Both diagonals"],
+                    ] as Array<[UnitPainterSelectionSplitKind, string, string]>).map(([kind, label, title]) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => {
+                          const session = paintSessionRef.current;
+                          if (!session || paintScope === "all") return;
+                          if (session.splitSelection(paintScope, kind)) {
+                            clearPaintSelectionVisual();
+                            setPaintHistoryVersion((value) => value + 1);
+                          }
+                        }}
+                        className={`rounded border px-1.5 py-1 ${
+                          paintSessionRef.current?.selectionPartitionInfo?.kind === kind
+                            ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                            : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                        }`}
+                        title={title}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    {paintSessionRef.current?.selectionPartitionInfo && (
+                      <>
+                        <span className="text-gray-500">Region</span>
+                        {paintSessionRef.current.selectionPartitionInfo.regions.map((region) => (
+                          <button
+                            key={region.id}
+                            type="button"
+                            onClick={(event) => {
+                              const operation =
+                                event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
+                              if (paintSessionRef.current?.setSelectionPartitionRegion(region.id, operation)) {
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className={`rounded border px-1.5 py-1 ${
+                              region.active
+                                ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                                : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                            }`}
+                            title="Click selects this region. Shift adds; Ctrl toggles."
+                          >
+                            {region.label}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (paintSessionRef.current?.selectAllSelectionPartitionRegions()) {
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className={`rounded border px-1.5 py-1 ${
+                            paintSessionRef.current.selectionPartitionInfo.allActive
+                              ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                              : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                          }`}
+                          title="Activate the complete parent selection while keeping the split"
+                        >
+                          {paintSessionRef.current.selectionPartitionInfo.regions.length === 2 ? "Both" : "All"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (paintSessionRef.current?.removeSelectionPartition()) {
+                              refreshPaintSelectionVisual(paintScope);
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-gray-400"
+                          title="Remove the split and return to the parent selection"
+                        >
+                          Unsplit
+                        </button>
+                      </>
+                    )}
+                    {paintSessionRef.current?.selectionPartitionInfo ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={paintBrushMode === "restore"}
+                          onClick={() => {
+                            const scope = paintSessionRef.current?.selectionPartitionInfo?.sourceScope;
+                            if (
+                              scope
+                              && paintSessionRef.current?.fillSelection(scope, brushSettingsRef.current)
+                            ) {
+                              rememberUsedPaintColor(paintColor);
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Fill the currently active split region"
+                        >
+                          Fill region
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const scope = paintSessionRef.current?.selectionPartitionInfo?.sourceScope;
+                            if (scope && paintSessionRef.current?.resetSelection(scope)) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
+                          title="Clear the active paint layer inside the current split region"
+                        >
+                          Clear region
+                        </button>
+                      </>
+                    ) : paintScope === "similar" ? (
                       <>
                         <button
                           type="button"

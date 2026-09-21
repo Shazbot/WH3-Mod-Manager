@@ -376,6 +376,79 @@ describe("unit painter", () => {
     }
   });
 
+  it("keeps both halves of a vertical split and lets the active half switch", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace");
+
+      expect(painter.session.splitSelection("island", "vertical")).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label))
+        .toEqual(["Left", "Right"]);
+      expect(painter.session.selectionPartitionInfo?.regions[0].active).toBe(true);
+
+      expect(
+        painter.session.fillSelection("island", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 220, g: 30, b: 30 },
+        }),
+      ).toBe(true);
+
+      expect(painter.session.setSelectionPartitionRegion("right")).toBe(true);
+      expect(
+        painter.session.fillSelection("island", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 30, g: 60, b: 220 },
+        }),
+      ).toBe(true);
+
+      expect(painter.session.selectAllSelectionPartitionRegions()).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.allActive).toBe(true);
+      expect(painter.session.getTextureViews("island")[0].selectedPixelMask).toBeDefined();
+
+      expect(painter.session.removeSelectionPartition()).toBe(true);
+      expect(painter.session.selectionPartitionInfo).toBeUndefined();
+      expect(painter.session.getTextureViews("island")[0].selectedPixelMask).toBeUndefined();
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("partitions a selection into four persistent X regions", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace");
+
+      expect(painter.session.splitSelection("island", "x")).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label))
+        .toEqual(["Top", "Right", "Bottom", "Left"]);
+
+      expect(painter.session.setSelectionPartitionRegion("right")).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.regions.find(({ id }) => id === "right")?.active)
+        .toBe(true);
+      expect(painter.session.setSelectionPartitionRegion("left", "add")).toBe(true);
+      expect(
+        painter.session.selectionPartitionInfo?.regions
+          .filter(({ active }) => active)
+          .map(({ id }) => id)
+          .sort(),
+      ).toEqual(["left", "right"]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("selects UV islands from interleaved texture coordinates", () => {
     const painter = makePainter();
     try {
