@@ -32,6 +32,14 @@ export type UnitPainterTexturePaintResult = {
   maxY: number;
 };
 
+export type UnitPainterTextureHover = {
+  textureId: string;
+  x: number;
+  y: number;
+  scope: Exclude<UnitPainterSelectionScope, "all">;
+  uvSegments: Float32Array;
+};
+
 export type UnitPainterSurfaceHighlight = {
   object: THREE.Mesh;
   scope: "material" | "island";
@@ -1348,6 +1356,71 @@ export class UnitPainterSession {
     };
   }
 
+  private getUvSegmentsForFaces(
+    target: PaintableTexture,
+    geometry: THREE.BufferGeometry,
+    faceIndices: readonly number[],
+  ) {
+    const uv = geometry.getAttribute("uv");
+    if (!(uv instanceof THREE.BufferAttribute)) return new Float32Array();
+    target.editable.updateMatrix();
+    const segments: number[] = [];
+    const seenEdges = new Set<string>();
+    for (const faceIndex of faceIndices) {
+      const indices = getTriangleVertexIndices(geometry, faceIndex);
+      if (!indices) continue;
+      const points = indices.map((index) =>
+        new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+      );
+      for (const [firstIndex, secondIndex] of [[0, 1], [1, 2], [2, 0]] as const) {
+        const first = points[firstIndex];
+        const second = points[secondIndex];
+        const key = uvEdgeKey(first, second);
+        if (seenEdges.has(key)) continue;
+        seenEdges.add(key);
+        segments.push(first.x, first.y, second.x, second.y);
+      }
+    }
+    return Float32Array.from(segments);
+  }
+
+  private getSurfaceHighlightForFace(
+    mesh: THREE.Mesh,
+    materialIndex: number,
+    faceIndex: number,
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+  ): UnitPainterSurfaceHighlight | undefined {
+    if (scope === "material") {
+      const indices = getSurfaceTriangleIndices(mesh.geometry, getMaterialFaceIndices(mesh.geometry, materialIndex));
+      if (indices.length === 0) return undefined;
+      return {
+        object: mesh,
+        scope,
+        materialIndex,
+        indices,
+        key: `${mesh.uuid}:material:${materialIndex}`,
+      };
+    }
+
+    const topology = this.getUvTopology(mesh.geometry, materialIndex);
+    const islandId = topology?.faceToIsland.get(faceIndex);
+    const triangles = islandId == null ? undefined : topology?.islands.get(islandId);
+    if (islandId == null || !triangles) return undefined;
+    const indices = getSurfaceTriangleIndices(
+      mesh.geometry,
+      triangles.map((triangle) => triangle.faceIndex),
+    );
+    if (indices.length === 0) return undefined;
+    return {
+      object: mesh,
+      scope,
+      materialIndex,
+      islandId,
+      indices,
+      key: `${mesh.uuid}:island:${materialIndex}:${islandId}`,
+    };
+  }
+
   get textureViews(): UnitPainterTextureView[] {
     return this.getTextureViews("island");
   }
@@ -1419,6 +1492,90 @@ export class UnitPainterSession {
         selectedUvSegments: Float32Array.from(selectedUvSegments),
       };
     });
+  }
+
+  getIntersectionTextureHover(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+  ): UnitPainterTextureHover | undefined {
+    if (!intersection.uv || !(intersection.object instanceof THREE.Mesh)) return undefined;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!target) return undefined;
+
+    const mesh = intersection.object;
+    const materialIndex =
+      intersection.face?.materialIndex
+      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+    const transformedUv = intersection.uv.clone();
+    target.editable.updateMatrix();
+    target.editable.transformUv(transformedUv);
+
+    let faceIndices: number[] = [];
+    if (scope === "material") {
+      faceIndices = getMaterialFaceIndices(mesh.geometry, materialIndex);
+    } else if (intersection.faceIndex != null) {
+      const topology = this.getUvTopology(mesh.geometry, materialIndex);
+      const islandId = topology?.faceToIsland.get(intersection.faceIndex);
+      faceIndices =
+        islandId == null
+          ? [intersection.faceIndex]
+          : (topology?.islands.get(islandId) ?? []).map((triangle) => triangle.faceIndex);
+    }
+
+    return {
+      textureId: target.textureId,
+      x: transformedUv.x * target.width,
+      y: transformedUv.y * target.height,
+      scope,
+      uvSegments: this.getUvSegmentsForFaces(target, mesh.geometry, faceIndices),
+    };
+  }
+
+  getTexturePointSurfaceHighlight(
+    textureId: string,
+    x: number,
+    y: number,
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+  ): UnitPainterSurfaceHighlight | undefined {
+    const target = [...this.targetsByEditableTexture.values()].find(
+      (candidate) => candidate.textureId === textureId,
+    );
+    if (!target) return undefined;
+    target.editable.updateMatrix();
+
+    for (const surface of this.surfacesByTarget.get(target) ?? []) {
+      const uv = surface.geometry.getAttribute("uv");
+      if (!(uv instanceof THREE.BufferAttribute)) continue;
+      for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
+        const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
+        if (!indices) continue;
+        const [a, b, c] = indices.map((index) =>
+          new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+        );
+        if (
+          !pointInTriangle(
+            x,
+            y,
+            a.x * target.width,
+            a.y * target.height,
+            b.x * target.width,
+            b.y * target.height,
+            c.x * target.width,
+            c.y * target.height,
+          )
+        ) {
+          continue;
+        }
+        return this.getSurfaceHighlightForFace(
+          surface.mesh,
+          surface.materialIndex,
+          faceIndex,
+          scope,
+        );
+      }
+    }
+    return undefined;
   }
 
   selectTexturePoint(
@@ -1583,34 +1740,14 @@ export class UnitPainterSession {
     const materialIndex =
       intersection.face?.materialIndex
       ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
-
-    if (scope === "material") {
-      const indices = getSurfaceTriangleIndices(mesh.geometry, getMaterialFaceIndices(mesh.geometry, materialIndex));
-      if (indices.length === 0) return undefined;
-      return {
-        object: mesh,
-        scope,
-        materialIndex,
-        indices,
-        key: `${mesh.uuid}:material:${materialIndex}`,
-      };
+    if (intersection.faceIndex == null) {
+      if (scope === "island") return undefined;
+      const firstFace = getMaterialFaceIndices(mesh.geometry, materialIndex)[0];
+      return firstFace == null
+        ? undefined
+        : this.getSurfaceHighlightForFace(mesh, materialIndex, firstFace, scope);
     }
-
-    if (intersection.faceIndex == null) return undefined;
-    const topology = this.getUvTopology(mesh.geometry, materialIndex);
-    const islandId = topology?.faceToIsland.get(intersection.faceIndex);
-    const triangles = islandId == null ? undefined : topology?.islands.get(islandId);
-    if (islandId == null || !triangles) return undefined;
-    const indices = getSurfaceTriangleIndices(mesh.geometry, triangles.map((triangle) => triangle.faceIndex));
-    if (indices.length === 0) return undefined;
-    return {
-      object: mesh,
-      scope,
-      materialIndex,
-      islandId,
-      indices,
-      key: `${mesh.uuid}:island:${materialIndex}:${islandId}`,
-    };
+    return this.getSurfaceHighlightForFace(mesh, materialIndex, intersection.faceIndex, scope);
   }
 
   getSelectionSurfaceHighlight(
