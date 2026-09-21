@@ -16,7 +16,8 @@ import {
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
   buildUnitPainterProjectPackFiles,
-  decodeUnitPainterProjectTexture,
+  decodeUnitPainterProjectTiles,
+  UNIT_PAINTER_PROJECT_TILE_BYTES,
   parseUnitPainterProjectManifest,
   UNIT_PAINTER_PROJECT_MANIFEST_PATH,
 } from "../src/visuals/unitPainterPack";
@@ -146,13 +147,16 @@ describe("unit painter pack staging", () => {
     ).rejects.toThrow(/unsafe generated file path/i);
   });
 
-  it("stores versioned editable layer metadata and compressed layer snapshots in the pack", async () => {
+  it("stores sparse layer tiles and metadata in the pack", async () => {
     const root = await makeTempDirectory();
     const packPath = nodePath.join(root, "editable.pack");
     const sourceVmd = "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition";
-    const rgba = new Uint8Array(4 * 4 * 4);
-    rgba[0] = 123;
-    rgba[3] = 255;
+    const tileA = new Uint8Array(UNIT_PAINTER_PROJECT_TILE_BYTES);
+    const tileB = new Uint8Array(UNIT_PAINTER_PROJECT_TILE_BYTES);
+    tileA[0] = 123;
+    tileA[3] = 255;
+    tileB[4] = 77;
+    tileB[7] = 255;
 
     const projectFiles = await buildUnitPainterProjectPackFiles(
       sourceVmd,
@@ -170,34 +174,29 @@ describe("unit painter pack staging", () => {
             opacity: 1,
             textures: [{
               sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-              width: 4,
-              height: 4,
-              rgbaBytes: rgba,
+              width: 4096,
+              height: 4096,
+              tiles: [
+                { key: 65, rgbaBytes: tileB },
+                { key: 0, rgbaBytes: tileA },
+              ],
             }],
           },
         ],
       },
     );
+
     const manifestFile = projectFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH);
     expect(manifestFile?.buffer).toBeDefined();
     const manifest = parseUnitPainterProjectManifest(manifestFile!.buffer!);
-    expect(manifest.formatVersion).toBe(2);
-    if (manifest.formatVersion !== 2) throw new Error("Expected painter project format v2.");
+    expect(manifest.formatVersion).toBe(3);
     expect(manifest.sourceVariantMeshDefinition).toBe(sourceVmd);
     expect(manifest.variantSelections).toEqual([{ slotPath: "body", choiceIndex: 2 }]);
     expect(manifest.activeLayerId).toBe("layer-2");
     expect(manifest.usedColorHistory).toEqual(["#aabbcc", "#112233"]);
     expect(manifest.selectedColor).toBe("#445566");
-    expect(manifest.layers.map((layer) => ({
-      id: layer.id,
-      name: layer.name,
-      visible: layer.visible,
-      opacity: layer.opacity,
-      textures: layer.textures.length,
-    }))).toEqual([
-      { id: "layer-1", name: "Cloth", visible: true, opacity: 0.5, textures: 0 },
-      { id: "layer-2", name: "Trim", visible: false, opacity: 1, textures: 1 },
-    ]);
+    expect(manifest.layers[1].textures[0].tileKeys).toEqual([0, 65]);
+    expect(manifest.layers[1].textures[0].tileSize).toBe(64);
 
     const storedTexture = manifest.layers[1].textures[0];
     const previousGame = appData.currentGame;
@@ -209,18 +208,21 @@ describe("unit painter pack staging", () => {
         filesToRead: [UNIT_PAINTER_PROJECT_MANIFEST_PATH, storedTexture.filePath],
       });
       const savedManifest = saved.packedFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH)?.buffer;
-      const savedRgba = saved.packedFiles.find((file) => file.name === storedTexture.filePath)?.buffer;
+      const savedTiles = saved.packedFiles.find((file) => file.name === storedTexture.filePath)?.buffer;
       expect(parseUnitPainterProjectManifest(savedManifest!)).toEqual(manifest);
-      const decoded = await decodeUnitPainterProjectTexture(savedRgba!, rgba.length);
+
+      const decoded = await decodeUnitPainterProjectTiles(savedTiles!, 2);
+      expect(decoded.length).toBe(UNIT_PAINTER_PROJECT_TILE_BYTES * 2);
       expect(decoded[0]).toBe(123);
       expect(decoded[3]).toBe(255);
-      expect(decoded.length).toBe(rgba.length);
+      expect(decoded[UNIT_PAINTER_PROJECT_TILE_BYTES + 4]).toBe(77);
+      expect(decoded[UNIT_PAINTER_PROJECT_TILE_BYTES + 7]).toBe(255);
     } finally {
       appData.currentGame = previousGame;
     }
   });
 
-  it("supports a reset-to-original v2 project with empty paint layers", async () => {
+  it("supports a project with empty paint layers", async () => {
     const files = await buildUnitPainterProjectPackFiles(
       "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
       [],
@@ -232,35 +234,62 @@ describe("unit painter pack staging", () => {
     expect(files).toHaveLength(1);
     expect(files[0].name).toBe(UNIT_PAINTER_PROJECT_MANIFEST_PATH);
     const manifest = parseUnitPainterProjectManifest(files[0].buffer!);
-    expect(manifest.formatVersion).toBe(2);
-    if (manifest.formatVersion !== 2) throw new Error("Expected painter project format v2.");
+    expect(manifest.formatVersion).toBe(3);
     expect(manifest.layers).toHaveLength(1);
     expect(manifest.layers[0].textures).toEqual([]);
   });
 
-  it("keeps older v2 painter manifests valid when color metadata is absent", () => {
-    const manifest = parseUnitPainterProjectManifest(
-      Buffer.from(JSON.stringify({
-        formatVersion: 2,
-        sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
-        variantSelections: [],
-        activeLayerId: "layer-1",
-        layers: [
-          { id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] },
-        ],
-      })),
-    );
-    expect(manifest.formatVersion).toBe(2);
-    if (manifest.formatVersion !== 2) throw new Error("Expected painter project format v2.");
-    expect(manifest.usedColorHistory).toBeUndefined();
-    expect(manifest.selectedColor).toBeUndefined();
+  it("rejects old painter project formats instead of carrying compatibility code", () => {
+    for (const formatVersion of [1, 2]) {
+      expect(() =>
+        parseUnitPainterProjectManifest(
+          Buffer.from(JSON.stringify({
+            formatVersion,
+            sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+            variantSelections: [],
+            activeLayerId: "layer-1",
+            layers: [
+              { id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] },
+            ],
+          })),
+        ),
+      ).toThrow(/expected version 3/i);
+    }
+  });
+
+  it("rejects malformed tile metadata", () => {
+    expect(() =>
+      parseUnitPainterProjectManifest(
+        Buffer.from(JSON.stringify({
+          formatVersion: 3,
+          sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+          variantSelections: [],
+          activeLayerId: "layer-1",
+          layers: [{
+            id: "layer-1",
+            name: "Paint 1",
+            visible: true,
+            opacity: 1,
+            textures: [{
+              sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+              width: 4096,
+              height: 4096,
+              tileSize: 64,
+              tileKeys: [0, 0],
+              filePath: "whmm_unit_painter\\layers\\01_layer-1\\textures\\001.tiles.zst",
+              encoding: "zstd",
+            }],
+          }],
+        })),
+      ),
+    ).toThrow(/tile/i);
   });
 
   it("rejects malformed optional painter color metadata", () => {
     expect(() =>
       parseUnitPainterProjectManifest(
         Buffer.from(JSON.stringify({
-          formatVersion: 2,
+          formatVersion: 3,
           sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
           variantSelections: [],
           activeLayerId: "layer-1",
@@ -272,26 +301,6 @@ describe("unit painter pack staging", () => {
         })),
       ),
     ).toThrow(/used color/i);
-  });
-
-  it("continues to parse v1 painter manifests for backward compatibility", () => {
-    const manifest = parseUnitPainterProjectManifest(
-      Buffer.from(JSON.stringify({
-        formatVersion: 1,
-        sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
-        variantSelections: [{ slotPath: "body", choiceIndex: 1 }],
-        paintedTextures: [{
-          sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-          width: 4,
-          height: 4,
-          filePath: "whmm_unit_painter\\textures\\001.rgba.zst",
-          encoding: "zstd",
-        }],
-      })),
-    );
-    expect(manifest.formatVersion).toBe(1);
-    if (manifest.formatVersion !== 1) throw new Error("Expected painter project format v1.");
-    expect(manifest.paintedTextures).toHaveLength(1);
   });
 
 });
