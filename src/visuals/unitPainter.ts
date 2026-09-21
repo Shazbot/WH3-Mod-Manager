@@ -71,6 +71,16 @@ type PaintableTexture = {
   height: number;
   sourceFileName: string;
   sourceVirtualPath?: string;
+  touchedLayerTiles: Set<number>;
+};
+
+type LayerTile = {
+  data: Uint8Array;
+  nonZeroPixels: number;
+};
+
+type LayerTexture = {
+  tiles: Map<number, LayerTile>;
 };
 
 type PaintLayer = {
@@ -78,7 +88,7 @@ type PaintLayer = {
   name: string;
   visible: boolean;
   opacity: number;
-  textures: Map<PaintableTexture, Uint8Array>;
+  textures: Map<PaintableTexture, LayerTexture>;
 };
 
 export type UnitPainterLayerInfo = {
@@ -156,7 +166,7 @@ type LayerSnapshot = {
   name: string;
   visible: boolean;
   opacity: number;
-  textures: Array<{ target: PaintableTexture; data: Uint8Array }>;
+  textures: Array<{ target: PaintableTexture; data: LayerTexture }>;
 };
 
 type LayerMetadata = Pick<PaintLayer, "name" | "visible" | "opacity">;
@@ -216,6 +226,9 @@ type UvIslandMask = {
 
 const MAX_HISTORY_STROKES = 30;
 const MAX_PAINT_LAYERS = 32;
+const LAYER_TILE_SIZE = 64;
+const LAYER_TILE_PIXELS = LAYER_TILE_SIZE * LAYER_TILE_SIZE;
+const LAYER_TILE_BYTES = LAYER_TILE_PIXELS * 4;
 const MIN_BRUSH_RADIUS_TEXELS = 1;
 // A pathological UV/world-area ratio can otherwise turn a small screen brush into a
 // million-pixel CPU stamp. GPU projection can remove this cap later; keep interaction responsive now.
@@ -369,6 +382,119 @@ const unpackPixel = (value: number, data: Uint8Array, byteIndex: number) => {
   data[byteIndex + 1] = (value >>> 8) & 0xff;
   data[byteIndex + 2] = (value >>> 16) & 0xff;
   data[byteIndex + 3] = (value >>> 24) & 0xff;
+};
+
+const createLayerTexture = (): LayerTexture => ({ tiles: new Map() });
+
+const cloneLayerTexture = (source: LayerTexture): LayerTexture => ({
+  tiles: new Map(
+    [...source.tiles].map(([key, tile]) => [
+      key,
+      { data: new Uint8Array(tile.data), nonZeroPixels: tile.nonZeroPixels },
+    ]),
+  ),
+});
+
+const getLayerTileAddress = (target: PaintableTexture, byteIndex: number) => {
+  const pixelIndex = Math.floor(byteIndex / 4);
+  const x = pixelIndex % target.width;
+  const y = Math.floor(pixelIndex / target.width);
+  const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+  const tileX = Math.floor(x / LAYER_TILE_SIZE);
+  const tileY = Math.floor(y / LAYER_TILE_SIZE);
+  const tileKey = tileY * tilesPerRow + tileX;
+  const localX = x - tileX * LAYER_TILE_SIZE;
+  const localY = y - tileY * LAYER_TILE_SIZE;
+  return {
+    tileKey,
+    localByteIndex: (localY * LAYER_TILE_SIZE + localX) * 4,
+  };
+};
+
+const getLayerPixel = (texture: LayerTexture, target: PaintableTexture, byteIndex: number) => {
+  const { tileKey, localByteIndex } = getLayerTileAddress(target, byteIndex);
+  const tile = texture.tiles.get(tileKey);
+  return tile ? packPixel(tile.data, localByteIndex) : 0;
+};
+
+const setLayerPixel = (
+  texture: LayerTexture,
+  target: PaintableTexture,
+  byteIndex: number,
+  packedValue: number,
+) => {
+  const { tileKey, localByteIndex } = getLayerTileAddress(target, byteIndex);
+  const normalizedValue = ((packedValue >>> 24) & 0xff) === 0 ? 0 : packedValue >>> 0;
+  let tile = texture.tiles.get(tileKey);
+  if (!tile) {
+    if (normalizedValue === 0) return;
+    tile = { data: new Uint8Array(LAYER_TILE_BYTES), nonZeroPixels: 0 };
+    texture.tiles.set(tileKey, tile);
+  }
+
+  const oldAlpha = tile.data[localByteIndex + 3];
+  const newAlpha = (normalizedValue >>> 24) & 0xff;
+  if (oldAlpha === 0 && newAlpha !== 0) tile.nonZeroPixels += 1;
+  else if (oldAlpha !== 0 && newAlpha === 0) tile.nonZeroPixels -= 1;
+
+  unpackPixel(normalizedValue, tile.data, localByteIndex);
+  target.touchedLayerTiles.add(tileKey);
+  if (tile.nonZeroPixels === 0) texture.tiles.delete(tileKey);
+};
+
+const expandLayerTexture = (texture: LayerTexture, target: PaintableTexture) => {
+  // v2 project snapshots are still full RGBA arrays; runtime storage stays sparse.
+  const output = new Uint8Array(target.width * target.height * 4);
+  const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+  for (const [tileKey, tile] of texture.tiles) {
+    const tileX = tileKey % tilesPerRow;
+    const tileY = Math.floor(tileKey / tilesPerRow);
+    const startX = tileX * LAYER_TILE_SIZE;
+    const startY = tileY * LAYER_TILE_SIZE;
+    const copyWidth = Math.min(LAYER_TILE_SIZE, target.width - startX);
+    const copyHeight = Math.min(LAYER_TILE_SIZE, target.height - startY);
+    if (copyWidth <= 0 || copyHeight <= 0) continue;
+
+    for (let localY = 0; localY < copyHeight; localY += 1) {
+      const sourceStart = localY * LAYER_TILE_SIZE * 4;
+      const targetStart = ((startY + localY) * target.width + startX) * 4;
+      output.set(tile.data.subarray(sourceStart, sourceStart + copyWidth * 4), targetStart);
+    }
+  }
+  return output;
+};
+
+const layerTextureFromFullRgba = (target: PaintableTexture, data: Uint8Array) => {
+  const texture = createLayerTexture();
+  for (let byteIndex = 0; byteIndex < data.length; byteIndex += 4) {
+    if (data[byteIndex + 3] === 0) continue;
+    setLayerPixel(texture, target, byteIndex, packPixel(data, byteIndex));
+  }
+  return texture;
+};
+
+const forEachLayerPixel = (
+  texture: LayerTexture,
+  target: PaintableTexture,
+  callback: (byteIndex: number, value: number) => void,
+) => {
+  const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+  for (const [tileKey, tile] of texture.tiles) {
+    const tileX = tileKey % tilesPerRow;
+    const tileY = Math.floor(tileKey / tilesPerRow);
+    const startX = tileX * LAYER_TILE_SIZE;
+    const startY = tileY * LAYER_TILE_SIZE;
+    const width = Math.min(LAYER_TILE_SIZE, target.width - startX);
+    const height = Math.min(LAYER_TILE_SIZE, target.height - startY);
+    for (let localY = 0; localY < height; localY += 1) {
+      for (let localX = 0; localX < width; localX += 1) {
+        const localByteIndex = (localY * LAYER_TILE_SIZE + localX) * 4;
+        if (tile.data[localByteIndex + 3] === 0) continue;
+        const byteIndex = ((startY + localY) * target.width + startX + localX) * 4;
+        callback(byteIndex, packPixel(tile.data, localByteIndex));
+      }
+    }
+  }
 };
 
 const wrapCoordinate = (value: number, size: number, wrapping: THREE.Wrapping) => {
@@ -659,7 +785,6 @@ const maskContainsPixel = (mask: UvIslandMask, x: number, y: number) => {
 
 const blendLayerPixelFromStrokeStart = (
   target: PaintableTexture,
-  layerData: Uint8Array,
   byteIndex: number,
   sourcePacked: number,
   settings: UnitPainterBrushSettings,
@@ -675,7 +800,6 @@ const blendLayerPixelFromStrokeStart = (
   let targetB = settings.color.b;
   let targetA = 255;
   if (settings.mode === "restore") {
-    // Restore is an eraser in layer mode: reveal the layers/Base below.
     targetR = sourceR;
     targetG = sourceG;
     targetB = sourceB;
@@ -692,15 +816,12 @@ const blendLayerPixelFromStrokeStart = (
   }
 
   const blend = clamp01(coverage);
-  layerData[byteIndex] = Math.round(sourceR + (targetR - sourceR) * blend);
-  layerData[byteIndex + 1] = Math.round(sourceG + (targetG - sourceG) * blend);
-  layerData[byteIndex + 2] = Math.round(sourceB + (targetB - sourceB) * blend);
-  layerData[byteIndex + 3] = Math.round(sourceA + (targetA - sourceA) * blend);
-  if (layerData[byteIndex + 3] === 0) {
-    layerData[byteIndex] = 0;
-    layerData[byteIndex + 1] = 0;
-    layerData[byteIndex + 2] = 0;
-  }
+  const r = Math.round(sourceR + (targetR - sourceR) * blend);
+  const g = Math.round(sourceG + (targetG - sourceG) * blend);
+  const b = Math.round(sourceB + (targetB - sourceB) * blend);
+  const a = Math.round(sourceA + (targetA - sourceA) * blend);
+  if (a === 0) return 0;
+  return (r | (g << 8) | (b << 16) | (a << 24)) >>> 0;
 };
 
 export class UnitPainterSession {
@@ -762,6 +883,7 @@ export class UnitPainterSession {
               typeof original.userData.wh3SourceVirtualPath === "string"
                 ? original.userData.wh3SourceVirtualPath
                 : undefined,
+            touchedLayerTiles: new Set(),
           };
           targetsByOriginal.set(original, target);
           this.targetsByEditableTexture.set(editable, target);
@@ -826,7 +948,7 @@ export class UnitPainterSession {
     const duplicate = this.createEmptyLayer(`${source.name} copy`);
     duplicate.visible = source.visible;
     duplicate.opacity = source.opacity;
-    for (const [target, data] of source.textures) duplicate.textures.set(target, new Uint8Array(data));
+    for (const [target, data] of source.textures) duplicate.textures.set(target, cloneLayerTexture(data));
     const sourceIndex = this.paintLayers.indexOf(source);
     const index = sourceIndex + 1;
     const beforeActiveLayerId = source.id;
@@ -936,34 +1058,53 @@ export class UnitPainterSession {
     for (const target of targets) {
       const bottomData = bottom.textures.get(target);
       const topData = top.textures.get(target);
-      const output = new Uint8Array(target.width * target.height * 4);
-      let hasPixels = false;
-      for (let byteIndex = 0; byteIndex < output.length; byteIndex += 4) {
-        const bottomAlpha =
-          bottom.visible && bottomData ? (bottomData[byteIndex + 3] / 255) * bottom.opacity : 0;
-        const topAlpha =
-          top.visible && topData ? (topData[byteIndex + 3] / 255) * top.opacity : 0;
-        const alpha = topAlpha + bottomAlpha * (1 - topAlpha);
-        if (alpha <= 0) continue;
+      const output = createLayerTexture();
+      const tileKeys = new Set<number>([
+        ...(bottomData?.tiles.keys() ?? []),
+        ...(topData?.tiles.keys() ?? []),
+      ]);
 
-        const bottomWeight = bottomAlpha * (1 - topAlpha);
-        const topWeight = topAlpha;
-        output[byteIndex] = Math.round(
-          (((topData?.[byteIndex] ?? 0) * topWeight)
-            + ((bottomData?.[byteIndex] ?? 0) * bottomWeight)) / alpha,
-        );
-        output[byteIndex + 1] = Math.round(
-          (((topData?.[byteIndex + 1] ?? 0) * topWeight)
-            + ((bottomData?.[byteIndex + 1] ?? 0) * bottomWeight)) / alpha,
-        );
-        output[byteIndex + 2] = Math.round(
-          (((topData?.[byteIndex + 2] ?? 0) * topWeight)
-            + ((bottomData?.[byteIndex + 2] ?? 0) * bottomWeight)) / alpha,
-        );
-        output[byteIndex + 3] = Math.round(alpha * 255);
-        hasPixels = true;
+      for (const tileKey of tileKeys) {
+        const bottomTile = bottomData?.tiles.get(tileKey);
+        const topTile = topData?.tiles.get(tileKey);
+        const outputTile: LayerTile = {
+          data: new Uint8Array(LAYER_TILE_BYTES),
+          nonZeroPixels: 0,
+        };
+
+        for (let localByteIndex = 0; localByteIndex < LAYER_TILE_BYTES; localByteIndex += 4) {
+          const bottomAlpha =
+            bottom.visible && bottomTile ? (bottomTile.data[localByteIndex + 3] / 255) * bottom.opacity : 0;
+          const topAlpha =
+            top.visible && topTile ? (topTile.data[localByteIndex + 3] / 255) * top.opacity : 0;
+          const alpha = topAlpha + bottomAlpha * (1 - topAlpha);
+          if (alpha <= 0) continue;
+
+          const bottomWeight = bottomAlpha * (1 - topAlpha);
+          const topWeight = topAlpha;
+          outputTile.data[localByteIndex] = Math.round(
+            (((topTile?.data[localByteIndex] ?? 0) * topWeight)
+              + ((bottomTile?.data[localByteIndex] ?? 0) * bottomWeight)) / alpha,
+          );
+          outputTile.data[localByteIndex + 1] = Math.round(
+            (((topTile?.data[localByteIndex + 1] ?? 0) * topWeight)
+              + ((bottomTile?.data[localByteIndex + 1] ?? 0) * bottomWeight)) / alpha,
+          );
+          outputTile.data[localByteIndex + 2] = Math.round(
+            (((topTile?.data[localByteIndex + 2] ?? 0) * topWeight)
+              + ((bottomTile?.data[localByteIndex + 2] ?? 0) * bottomWeight)) / alpha,
+          );
+          outputTile.data[localByteIndex + 3] = Math.round(alpha * 255);
+          outputTile.nonZeroPixels += 1;
+        }
+
+        if (outputTile.nonZeroPixels > 0) {
+          output.tiles.set(tileKey, outputTile);
+          target.touchedLayerTiles.add(tileKey);
+        }
       }
-      if (hasPixels) merged.textures.set(target, output);
+
+      if (output.tiles.size > 0) merged.textures.set(target, output);
     }
 
     const before = [this.snapshotLayer(bottom), this.snapshotLayer(top)];
@@ -1020,19 +1161,21 @@ export class UnitPainterSession {
         throw new Error(`The saved painter data for '${texture.sourceVirtualPath}' has an invalid byte length.`);
       }
 
-      const layerData = new Uint8Array(texture.rgbaBytes.length);
+      const layerData = createLayerTexture();
       for (let byteIndex = 0; byteIndex < texture.rgbaBytes.length; byteIndex += 4) {
         const changed =
           texture.rgbaBytes[byteIndex] !== target.originalData[byteIndex]
           || texture.rgbaBytes[byteIndex + 1] !== target.originalData[byteIndex + 1]
           || texture.rgbaBytes[byteIndex + 2] !== target.originalData[byteIndex + 2];
         if (!changed) continue;
-        layerData[byteIndex] = texture.rgbaBytes[byteIndex];
-        layerData[byteIndex + 1] = texture.rgbaBytes[byteIndex + 1];
-        layerData[byteIndex + 2] = texture.rgbaBytes[byteIndex + 2];
-        layerData[byteIndex + 3] = 255;
+        const value =
+          texture.rgbaBytes[byteIndex]
+          | (texture.rgbaBytes[byteIndex + 1] << 8)
+          | (texture.rgbaBytes[byteIndex + 2] << 16)
+          | (255 << 24);
+        setLayerPixel(layerData, target, byteIndex, value >>> 0);
       }
-      if (this.hasLayerPixels(layerData)) layer.textures.set(target, layerData);
+      if (layerData.tiles.size > 0) layer.textures.set(target, layerData);
     }
 
     this.paintLayers = [layer];
@@ -1243,7 +1386,7 @@ export class UnitPainterSession {
         const pixelY = wrapCoordinate(y, target.height, target.editable.wrapT);
         if (islandMask && !maskContainsPixel(islandMask, pixelX, pixelY)) continue;
         const byteIndex = (pixelY * target.width + pixelX) * 4;
-        const currentLayerValue = packPixel(layerData, byteIndex);
+        const currentLayerValue = getLayerPixel(layerData, target, byteIndex);
         const strokeStartValue = before.get(byteIndex) ?? currentLayerValue;
         if (!before.has(byteIndex)) before.set(byteIndex, strokeStartValue);
 
@@ -1252,8 +1395,10 @@ export class UnitPainterSession {
         const nextCoverage = Math.max(previousCoverage, falloff * clamp01(settings.opacity));
         if (nextCoverage <= previousCoverage) continue;
         coverage.set(byteIndex, nextCoverage);
-        blendLayerPixelFromStrokeStart(target, layerData, byteIndex, strokeStartValue, settings, nextCoverage);
-        if (packPixel(layerData, byteIndex) !== currentLayerValue) {
+        const nextLayerValue =
+          blendLayerPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
+        if (nextLayerValue !== currentLayerValue) {
+          setLayerPixel(layerData, target, byteIndex, nextLayerValue);
           this.recomposeTargetPixel(target, byteIndex);
           dirtyStart = Math.min(dirtyStart, byteIndex);
           dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
@@ -1317,9 +1462,10 @@ export class UnitPainterSession {
         const pixelX = mask.minX + localX;
         const pixelY = mask.minY + localY;
         const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
-        const currentValue = packPixel(layerData, byteIndex);
-        blendLayerPixelFromStrokeStart(selection.target, layerData, byteIndex, currentValue, settings, fillOpacity);
-        const nextValue = packPixel(layerData, byteIndex);
+        const currentValue = getLayerPixel(layerData, selection.target, byteIndex);
+        const nextValue =
+          blendLayerPixelFromStrokeStart(selection.target, byteIndex, currentValue, settings, fillOpacity);
+        if (nextValue !== currentValue) setLayerPixel(layerData, selection.target, byteIndex, nextValue);
         if (nextValue === currentValue) continue;
         byteIndices.push(byteIndex);
         beforeValues.push(currentValue);
@@ -1376,9 +1522,9 @@ export class UnitPainterSession {
         const pixelX = mask.minX + localX;
         const pixelY = mask.minY + localY;
         const byteIndex = (pixelY * selection.target.width + pixelX) * 4;
-        const currentValue = packPixel(layerData, byteIndex);
+        const currentValue = getLayerPixel(layerData, selection.target, byteIndex);
         if (currentValue === 0) continue;
-        unpackPixel(0, layerData, byteIndex);
+        setLayerPixel(layerData, selection.target, byteIndex, 0);
         byteIndices.push(byteIndex);
         beforeValues.push(currentValue);
         afterValues.push(0);
@@ -1414,7 +1560,7 @@ export class UnitPainterSession {
         const after = new Map<number, number>();
         const compactBefore = new Map<number, number>();
         for (const [byteIndex, oldValue] of before) {
-          const newValue = packPixel(layerData, byteIndex);
+          const newValue = getLayerPixel(layerData, target, byteIndex);
           if (newValue === oldValue) continue;
           compactBefore.set(byteIndex, oldValue);
           after.set(byteIndex, newValue);
@@ -1468,23 +1614,20 @@ export class UnitPainterSession {
     for (const [target, layerData] of layer.textures) {
       const byteIndices: number[] = [];
       const beforeValues: number[] = [];
-      const afterValues: number[] = [];
-      for (let byteIndex = 0; byteIndex < layerData.length; byteIndex += 4) {
-        const value = packPixel(layerData, byteIndex);
-        if (layerData[byteIndex + 3] === 0) continue;
+      forEachLayerPixel(layerData, target, (byteIndex, value) => {
         byteIndices.push(byteIndex);
         beforeValues.push(value);
-        afterValues.push(0);
-        unpackPixel(0, layerData, byteIndex);
-      }
+      });
       if (byteIndices.length === 0) continue;
+
+      for (const byteIndex of byteIndices) setLayerPixel(layerData, target, byteIndex, 0);
       changes.push({
         kind: "packed",
         layerId: layer.id,
         target,
         byteIndices: Uint32Array.from(byteIndices),
         before: Uint32Array.from(beforeValues),
-        after: Uint32Array.from(afterValues),
+        after: new Uint32Array(byteIndices.length),
       });
       this.recomposeTarget(target);
     }
@@ -1504,7 +1647,7 @@ export class UnitPainterSession {
         visible: layer.visible,
         opacity: layer.opacity,
         textures: [...layer.textures.entries()]
-          .filter(([, data]) => this.hasLayerPixels(data))
+          .filter(([, data]) => data.tiles.size > 0)
           .map(([target, data]) => {
             if (!target.sourceVirtualPath) {
               throw new Error(
@@ -1515,7 +1658,7 @@ export class UnitPainterSession {
               sourceVirtualPath: target.sourceVirtualPath,
               width: target.width,
               height: target.height,
-              rgbaBytes: new Uint8Array(data),
+              rgbaBytes: expandLayerTexture(data, target),
             };
           }),
       })),
@@ -1561,7 +1704,8 @@ export class UnitPainterSession {
         if (texture.rgbaBytes.length !== target.width * target.height * 4) {
           throw new Error(`The saved layer data for '${texture.sourceVirtualPath}' has an invalid byte length.`);
         }
-        layer.textures.set(target, new Uint8Array(texture.rgbaBytes));
+        const layerTexture = layerTextureFromFullRgba(target, texture.rgbaBytes);
+        if (layerTexture.tiles.size > 0) layer.textures.set(target, layerTexture);
       }
       const numericId = /^layer-(\d+)$/.exec(id);
       if (numericId) this.nextLayerNumber = Math.max(this.nextLayerNumber, Number(numericId[1]) + 1);
@@ -1752,7 +1896,7 @@ export class UnitPainterSession {
         let dirtyEnd = 0;
         if (pixelChange.kind === "sparse") {
           for (const [byteIndex, value] of pixelChange[side]) {
-            unpackPixel(value, layerData, byteIndex);
+            setLayerPixel(layerData, pixelChange.target, byteIndex, value);
             this.recomposeTargetPixel(pixelChange.target, byteIndex);
             dirtyStart = Math.min(dirtyStart, byteIndex);
             dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
@@ -1761,7 +1905,7 @@ export class UnitPainterSession {
           const values = pixelChange[side];
           for (let index = 0; index < pixelChange.byteIndices.length; index += 1) {
             const byteIndex = pixelChange.byteIndices[index];
-            unpackPixel(values[index], layerData, byteIndex);
+            setLayerPixel(layerData, pixelChange.target, byteIndex, values[index]);
             this.recomposeTargetPixel(pixelChange.target, byteIndex);
             dirtyStart = Math.min(dirtyStart, byteIndex);
             dirtyEnd = Math.max(dirtyEnd, byteIndex + 4);
@@ -1850,7 +1994,7 @@ export class UnitPainterSession {
   private getLayerTextureData(layer: PaintLayer, target: PaintableTexture, create = false) {
     let data = layer.textures.get(target);
     if (!data && create) {
-      data = new Uint8Array(target.width * target.height * 4);
+      data = createLayerTexture();
       layer.textures.set(target, data);
     }
     return data;
@@ -1868,63 +2012,45 @@ export class UnitPainterSession {
       opacity: layer.opacity,
       textures: [...layer.textures.entries()].map(([target, data]) => ({
         target,
-        data: new Uint8Array(data),
+        data: cloneLayerTexture(data),
       })),
     };
   }
 
   private layerFromSnapshot(snapshot: LayerSnapshot): PaintLayer {
+    for (const { target, data } of snapshot.textures) {
+      for (const tileKey of data.tiles.keys()) target.touchedLayerTiles.add(tileKey);
+    }
     return {
       id: snapshot.id,
       name: snapshot.name,
       visible: snapshot.visible,
       opacity: snapshot.opacity,
-      textures: new Map(snapshot.textures.map(({ target, data }) => [target, new Uint8Array(data)])),
+      textures: new Map(snapshot.textures.map(({ target, data }) => [target, cloneLayerTexture(data)])),
     };
   }
 
-  private hasLayerPixels(data: Uint8Array) {
-    for (let byteIndex = 3; byteIndex < data.length; byteIndex += 4) {
-      if (data[byteIndex] !== 0) return true;
-    }
-    return false;
-  }
-
-  private getVisibleLayerSources(target: PaintableTexture) {
-    const sources: Array<{ data: Uint8Array; opacity: number }> = [];
-    for (const layer of this.paintLayers) {
-      if (!layer.visible || layer.opacity <= 0) continue;
-      const data = layer.textures.get(target);
-      if (data) sources.push({ data, opacity: layer.opacity });
-    }
-    return sources;
-  }
-
-  private recomposeTargetPixelFromSources(
-    target: PaintableTexture,
-    byteIndex: number,
-    sources: readonly { data: Uint8Array; opacity: number }[],
-  ) {
+  private recomposeTargetPixel(target: PaintableTexture, byteIndex: number) {
+    const { tileKey, localByteIndex } = getLayerTileAddress(target, byteIndex);
     let r = target.originalData[byteIndex];
     let g = target.originalData[byteIndex + 1];
     let b = target.originalData[byteIndex + 2];
 
-    for (const { data, opacity } of sources) {
-      const alpha = (data[byteIndex + 3] / 255) * opacity;
+    for (const layer of this.paintLayers) {
+      if (!layer.visible || layer.opacity <= 0) continue;
+      const tile = layer.textures.get(target)?.tiles.get(tileKey);
+      if (!tile) continue;
+      const alpha = (tile.data[localByteIndex + 3] / 255) * layer.opacity;
       if (alpha <= 0) continue;
-      r += (data[byteIndex] - r) * alpha;
-      g += (data[byteIndex + 1] - g) * alpha;
-      b += (data[byteIndex + 2] - b) * alpha;
+      r += (tile.data[localByteIndex] - r) * alpha;
+      g += (tile.data[localByteIndex + 1] - g) * alpha;
+      b += (tile.data[localByteIndex + 2] - b) * alpha;
     }
 
     target.data[byteIndex] = Math.round(r);
     target.data[byteIndex + 1] = Math.round(g);
     target.data[byteIndex + 2] = Math.round(b);
     target.data[byteIndex + 3] = target.originalData[byteIndex + 3];
-  }
-
-  private recomposeTargetPixel(target: PaintableTexture, byteIndex: number) {
-    this.recomposeTargetPixelFromSources(target, byteIndex, this.getVisibleLayerSources(target));
   }
 
   private markTargetRangeDirty(target: PaintableTexture, start: number, endExclusive: number) {
@@ -1939,9 +2065,21 @@ export class UnitPainterSession {
   }
 
   private recomposeTarget(target: PaintableTexture) {
-    const sources = this.getVisibleLayerSources(target);
-    for (let byteIndex = 0; byteIndex < target.data.length; byteIndex += 4) {
-      this.recomposeTargetPixelFromSources(target, byteIndex, sources);
+    if (target.touchedLayerTiles.size === 0) return;
+    const tilesPerRow = Math.ceil(target.width / LAYER_TILE_SIZE);
+    for (const tileKey of target.touchedLayerTiles) {
+      const tileX = tileKey % tilesPerRow;
+      const tileY = Math.floor(tileKey / tilesPerRow);
+      const startX = tileX * LAYER_TILE_SIZE;
+      const startY = tileY * LAYER_TILE_SIZE;
+      const width = Math.min(LAYER_TILE_SIZE, target.width - startX);
+      const height = Math.min(LAYER_TILE_SIZE, target.height - startY);
+      for (let localY = 0; localY < height; localY += 1) {
+        for (let localX = 0; localX < width; localX += 1) {
+          const byteIndex = ((startY + localY) * target.width + startX + localX) * 4;
+          this.recomposeTargetPixel(target, byteIndex);
+        }
+      }
     }
     this.markTargetFullDirty(target);
   }
