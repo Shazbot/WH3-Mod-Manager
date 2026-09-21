@@ -181,6 +181,46 @@ describe("VisualsTab filtering", () => {
     expect(putPathInClipboard).toHaveBeenCalledWith(materialPath);
   });
 
+  it("offers recursive isolated extraction only from unit rows", async () => {
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          isVisualsSortByCultureEnabled: false,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <VisualsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    const unitRow = await screen.findByText("Empire Lord");
+    fireEvent.contextMenu(unitRow);
+
+    expect(screen.getByRole("button", { name: "Extract isolated" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Extract isolated" }));
+
+    await waitFor(() =>
+      expect(extractVisualsFilesToDirectory).toHaveBeenCalledWith(
+        "visuals-session",
+        "/tmp/visuals-extract",
+        ["variantmeshes\\emp_lord.variantmeshdefinition"],
+        true,
+        undefined,
+        false,
+        true,
+      ),
+    );
+  });
+
   it("offers DDS copy and extraction actions without AssetEditor actions", async () => {
     const ddsPath = "textures\\example.dds";
     searchVisualsFiles.mockReset().mockResolvedValue({
@@ -214,6 +254,7 @@ describe("VisualsTab filtering", () => {
 
     fireEvent.contextMenu(ddsRow);
     expect(screen.queryByRole("button", { name: "Open In New AssetEd Tab" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Extract isolated" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Extract (with folders)" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Copy Full Path to Clipboard" }));
     expect(putPathInClipboard).toHaveBeenCalledWith(ddsPath);
