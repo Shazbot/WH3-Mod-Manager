@@ -74,6 +74,7 @@ type UnitPainterSelectMode = "material" | "island";
 const NONE_ANIMATION: PreviewAnimation = { path: "", label: "None" };
 const ALL_VARIANTS = -1;
 const MAX_COMPARISON_MODELS = 100;
+const ALT_ORBIT_DRAG_THRESHOLD_PX = 4;
 const PREVIEW_GEOMETRY_KEY = "__wh3PreviewGeometryKey";
 
 type PreviewResourcePool = {
@@ -510,7 +511,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [animationSpeed, setAnimationSpeed] = useState(1);
   const [isPainterEnabled, setIsPainterEnabled] = useState(false);
   const [paintColor, setPaintColor] = useState("#c43030");
-  const [paintRecentColors, setPaintRecentColors] = useState<string[]>(["#c43030"]);
+  const [paintColorHistory, setPaintColorHistory] = useState<string[]>([]);
+  const [isPaintColorHistoryOpen, setIsPaintColorHistoryOpen] = useState(false);
   const [paintBrushRadius, setPaintBrushRadius] = useState(24);
   const [paintBrushOpacity, setPaintBrushOpacity] = useState(0.9);
   const [paintBrushHardness, setPaintBrushHardness] = useState(0.8);
@@ -553,18 +555,20 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintActiveLayerId = paintSessionRef.current?.activeLayerId ?? "";
   const paintActiveLayer = paintLayers.find((layer) => layer.id === paintActiveLayerId);
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
+  const paintRecentColors = paintColorHistory.slice(0, 8);
   void paintHistoryVersion;
   if (paintBrushMode !== "restore") lastPaintBrushModeRef.current = paintBrushMode;
 
-  const rememberPaintColor = (color: string) => {
+  const rememberUsedPaintColor = (color: string) => {
     const normalized = color.toLowerCase();
-    setPaintRecentColors((current) => [normalized, ...current.filter((value) => value !== normalized)].slice(0, 8));
+    setPaintColorHistory((current) => [
+      normalized,
+      ...current.filter((value) => value !== normalized),
+    ]);
   };
 
   const choosePaintColor = (color: string) => {
-    const normalized = color.toLowerCase();
-    setPaintColor(normalized);
-    rememberPaintColor(normalized);
+    setPaintColor(color.toLowerCase());
   };
 
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
@@ -743,10 +747,18 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const mirroredRay = new THREE.Ray();
     const pointer = new THREE.Vector2();
     const lastPaintPoint = new THREE.Vector2();
+    const altOrbitStart = new THREE.Vector2();
+    const altOrbitLast = new THREE.Vector2();
+    const orbitOffset = new THREE.Vector3();
+    const orbitSpherical = new THREE.Spherical();
     let hasLastPaintPoint = false;
     let distanceSinceLastPaintStamp = 0;
     let isPainting = false;
     let activePointerId: number | undefined;
+    let activeStrokeColor = "";
+    let activeStrokeMode: UnitPainterBrushMode | undefined;
+    let altOrbitPointerId: number | undefined;
+    let isAltOrbiting = false;
 
     const updateBrushCursor = (event: PointerEvent, visible = true) => {
       const cursor = brushCursorRef.current;
@@ -901,13 +913,64 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }
     };
 
+    const brushColorToHex = () => {
+      const { r, g, b } = brushSettingsRef.current.color;
+      const toHex = (value: number) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    };
+
+    const samplePaintColor = (clientX: number, clientY: number) => {
+      const session = paintSessionRef.current;
+      if (!session) return false;
+      const projected = getPaintIntersection(clientX, clientY);
+      const sampled = projected ? session.sampleIntersection(projected.hit) : undefined;
+      if (!sampled) return false;
+      const toHex = (value: number) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+      choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
+      return true;
+    };
+
+    const orbitPaintCamera = (deltaX: number, deltaY: number) => {
+      const viewportHeight = Math.max(renderer.domElement.clientHeight, 1);
+      orbitOffset.copy(camera.position).sub(controls.target);
+      orbitSpherical.setFromVector3(orbitOffset);
+      const radiansPerPixel = (2 * Math.PI * controls.rotateSpeed) / viewportHeight;
+      orbitSpherical.theta -= deltaX * radiansPerPixel;
+      orbitSpherical.phi -= deltaY * radiansPerPixel;
+      orbitSpherical.makeSafe();
+      orbitOffset.setFromSpherical(orbitSpherical);
+      camera.position.copy(controls.target).add(orbitOffset);
+      camera.lookAt(controls.target);
+      camera.updateMatrixWorld();
+      controls.update();
+    };
+
+    const finishAltOrbitGesture = (event?: PointerEvent, canceled = false) => {
+      if (altOrbitPointerId == null) return;
+      if (!canceled && !isAltOrbiting && event) samplePaintColor(event.clientX, event.clientY);
+      if (renderer.domElement.hasPointerCapture(altOrbitPointerId)) {
+        renderer.domElement.releasePointerCapture(altOrbitPointerId);
+      }
+      altOrbitPointerId = undefined;
+      isAltOrbiting = false;
+      controls.enabled = true;
+    };
+
     const finishPaintStroke = (event?: PointerEvent) => {
       if (!isPainting) return;
       isPainting = false;
       hasLastPaintPoint = false;
       distanceSinceLastPaintStamp = 0;
       controls.enabled = true;
-      if (paintSessionRef.current?.endStroke()) setPaintHistoryVersion((value) => value + 1);
+      const changed = paintSessionRef.current?.endStroke() ?? false;
+      if (changed) {
+        setPaintHistoryVersion((value) => value + 1);
+        if (activeStrokeMode !== "restore" && activeStrokeColor) {
+          rememberUsedPaintColor(activeStrokeColor);
+        }
+      }
+      activeStrokeColor = "";
+      activeStrokeMode = undefined;
       if (
         event &&
         activePointerId != null &&
@@ -923,16 +986,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const session = paintSessionRef.current;
       if (!painterEnabledRef.current || event.button !== 0 || !session) return;
 
-      if (event.altKey || altEyedropperHeldRef.current || eyedropperActiveRef.current) {
+      // Alt+click remains the temporary eyedropper, but Alt+drag crosses a small
+      // threshold and becomes a camera orbit without leaving paint mode.
+      if (event.altKey || altEyedropperHeldRef.current) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        const projected = getPaintIntersection(event.clientX, event.clientY);
-        const sampled = projected ? session.sampleIntersection(projected.hit) : undefined;
-        if (sampled) {
-          const toHex = (value: number) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
-          choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
-          setIsPaintEyedropperActive(false);
-        }
+        altOrbitPointerId = event.pointerId;
+        altOrbitStart.set(event.clientX, event.clientY);
+        altOrbitLast.copy(altOrbitStart);
+        isAltOrbiting = false;
+        controls.enabled = false;
+        renderer.domElement.setPointerCapture(event.pointerId);
+        clearPaintHoverVisual();
+        return;
+      }
+
+      if (eyedropperActiveRef.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (samplePaintColor(event.clientX, event.clientY)) setIsPaintEyedropperActive(false);
         return;
       }
 
@@ -950,13 +1022,34 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       hasLastPaintPoint = false;
       distanceSinceLastPaintStamp = 0;
       activePointerId = event.pointerId;
+      activeStrokeColor = brushColorToHex();
+      activeStrokeMode = brushSettingsRef.current.mode;
       controls.enabled = false;
       renderer.domElement.setPointerCapture(event.pointerId);
       session.beginStroke();
       paintToPointer(event);
     };
+
     const onPointerMove = (event: PointerEvent) => {
       updateBrushCursor(event);
+
+      if (event.pointerId === altOrbitPointerId) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!isAltOrbiting) {
+          const totalDistance = Math.hypot(
+            event.clientX - altOrbitStart.x,
+            event.clientY - altOrbitStart.y,
+          );
+          if (totalDistance >= ALT_ORBIT_DRAG_THRESHOLD_PX) isAltOrbiting = true;
+        }
+        if (isAltOrbiting) {
+          orbitPaintCamera(event.clientX - altOrbitLast.x, event.clientY - altOrbitLast.y);
+        }
+        altOrbitLast.set(event.clientX, event.clientY);
+        return;
+      }
+
       if (!isPainting && selectToolModeRef.current) {
         const projected = getPaintIntersection(event.clientX, event.clientY);
         updatePaintHoverVisual(projected?.hit);
@@ -966,14 +1059,28 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       event.stopImmediatePropagation();
       paintToPointer(event);
     };
+
     const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId === altOrbitPointerId) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        finishAltOrbitGesture(event);
+        return;
+      }
       if (!isPainting || event.pointerId !== activePointerId) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       paintToPointer(event, true);
       finishPaintStroke(event);
     };
-    const onPointerCancel = (event: PointerEvent) => finishPaintStroke(event);
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId === altOrbitPointerId) {
+        finishAltOrbitGesture(event, true);
+        return;
+      }
+      finishPaintStroke(event);
+    };
     const onPointerLeave = (event: PointerEvent) => {
       if (!isPainting) {
         updateBrushCursor(event, false);
@@ -1034,6 +1141,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.actions = [];
       context.afterNextRender = null;
       finishPaintStroke();
+      finishAltOrbitGesture(undefined, true);
       paintSessionRef.current?.dispose();
       paintSessionRef.current = null;
       clearPaintSelectionVisual();
@@ -1535,6 +1643,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (cursor) cursor.style.display = "none";
       if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
       if (isPaintLayersOpen) setIsPaintLayersOpen(false);
+      if (isPaintColorHistoryOpen) setIsPaintColorHistoryOpen(false);
       clearPaintHoverVisual();
       if (paintSelectMode || paintSelection) clearPaintSelection();
     }
@@ -1544,6 +1653,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     isPaintEyedropperActive,
     paintSelectMode,
     isPaintLayersOpen,
+    isPaintColorHistoryOpen,
     paintSelection,
     status,
     comparisonModelCount,
@@ -1647,6 +1757,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }
       if (event.key === "Escape") {
         setIsPaintLayersOpen(false);
+        setIsPaintColorHistoryOpen(false);
         setIsPaintEyedropperActive(false);
         clearPaintSelection();
         event.preventDefault();
@@ -2086,21 +2197,76 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     aria-label="Paint color"
                   />
                 </label>
-                <div className="flex items-center gap-1" aria-label="Recent paint colors">
-                  {paintRecentColors.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      disabled={paintBrushMode === "restore"}
-                      onClick={() => choosePaintColor(color)}
-                      className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
-                        paintColor === color ? "border-white" : "border-gray-600"
-                      }`}
-                      style={{ backgroundColor: color }}
-                      title={`Use recent color ${color}`}
-                      aria-label={`Use recent color ${color}`}
-                    />
-                  ))}
+                <div className="relative">
+                  <div
+                    className="flex min-h-5 items-center gap-1"
+                    aria-label="Recently used paint colors"
+                    title={
+                      paintColorHistory.length > 0
+                        ? "Recently used colors. Right-click to show full color history."
+                        : "Colors appear here after they actually change painted pixels."
+                    }
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      if (paintColorHistory.length > 0) setIsPaintColorHistoryOpen(true);
+                    }}
+                  >
+                    {paintRecentColors.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        disabled={paintBrushMode === "restore"}
+                        onClick={() => choosePaintColor(color)}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          setIsPaintColorHistoryOpen(true);
+                        }}
+                        className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
+                          paintColor === color ? "border-white" : "border-gray-600"
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={`Use recent color ${color}; right-click for full history`}
+                        aria-label={`Use recent color ${color}`}
+                      />
+                    ))}
+                  </div>
+                  {isPaintColorHistoryOpen && paintColorHistory.length > 0 && (
+                    <div
+                      className="absolute left-0 top-full z-50 mt-1 w-56 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl"
+                      onContextMenu={(event) => event.preventDefault()}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-gray-200">Used color history</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsPaintColorHistoryOpen(false)}
+                          className="rounded px-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
+                          aria-label="Close color history"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
+                        {paintColorHistory.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            disabled={paintBrushMode === "restore"}
+                            onClick={() => {
+                              choosePaintColor(color);
+                              setIsPaintColorHistoryOpen(false);
+                            }}
+                            className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
+                              paintColor === color ? "border-white" : "border-gray-600"
+                            }`}
+                            style={{ backgroundColor: color }}
+                            title={`Use color ${color}`}
+                            aria-label={`Use color ${color} from paint history`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -2255,6 +2421,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       disabled={paintBrushMode === "restore"}
                       onClick={() => {
                         if (paintSessionRef.current?.fillSelection("material", brushSettingsRef.current)) {
+                          rememberUsedPaintColor(paintColor);
                           setPaintExportStatus("");
                           setPaintHistoryVersion((value) => value + 1);
                         }
@@ -2273,6 +2440,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       disabled={!paintSelection.hasUvIsland || paintBrushMode === "restore"}
                       onClick={() => {
                         if (paintSessionRef.current?.fillSelection("island", brushSettingsRef.current)) {
+                          rememberUsedPaintColor(paintColor);
                           setPaintExportStatus("");
                           setPaintHistoryVersion((value) => value + 1);
                         }
@@ -2405,7 +2573,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint · B: brush · E: restore · [/]: size · Shift+[/]: hardness · X: symmetry · Hold Alt: pick color · Select Material/Island: hover then click to lock · Esc: clear selection · Ctrl+Z/Y: undo/redo · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint · B: brush · E: restore · [/]: size · Shift+[/]: hardness · X: symmetry · Alt+click: pick color · Alt+drag: orbit · Select Material/Island: hover then click to lock · Esc: clear selection · Ctrl+Z/Y: undo/redo · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
