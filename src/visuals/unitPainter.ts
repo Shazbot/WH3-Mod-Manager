@@ -1960,7 +1960,11 @@ export class UnitPainterSession {
     };
   }
 
-  fillSelection(scope: Exclude<UnitPainterSelectionScope, "all">, settings: UnitPainterBrushSettings) {
+  fillSelection(
+    scope: Exclude<UnitPainterSelectionScope, "all">,
+    settings: UnitPainterBrushSettings,
+    paddingPx = 0,
+  ) {
     const selection = this.selection;
     const layer = this.getActiveLayer();
     if (!selection || !layer) return false;
@@ -1974,8 +1978,14 @@ export class UnitPainterSession {
               selection.mesh.geometry,
               selection.materialIndex,
               selection.islandId,
+              paddingPx,
             )
-        : this.getMaterialMask(selection.target, selection.mesh.geometry, selection.materialIndex);
+        : this.getMaterialMask(
+            selection.target,
+            selection.mesh.geometry,
+            selection.materialIndex,
+            paddingPx,
+          );
     if (!mask) return false;
 
     if (this.isStrokeOpen) this.endStroke();
