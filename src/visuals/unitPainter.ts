@@ -2236,7 +2236,7 @@ export class UnitPainterSession {
     );
     const layer: PaintLayer = {
       id: `layer-${number}`,
-      name: sourceCopy.name.replace(/.[^.]+$/, "").trim().slice(0, 80) || `Decal ${number}`,
+      name: sourceCopy.name.replace(/\.[^.]+$/, "").trim().slice(0, 80) || `Decal ${number}`,
       visible: true,
       opacity: 1,
       kind: "decal",
