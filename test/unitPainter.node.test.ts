@@ -455,6 +455,132 @@ describe("unit painter", () => {
     }
   });
 
+  it("adds, tints, moves, and restores a decal layer", () => {
+    const painter = makePainter();
+    const sourceBytes = new Uint8Array(4 * 4 * 4);
+    for (let index = 0; index < sourceBytes.length; index += 4) {
+      sourceBytes[index] = 255;
+      sourceBytes[index + 1] = 255;
+      sourceBytes[index + 2] = 255;
+      sourceBytes[index + 3] = 255;
+    }
+
+    try {
+      const layerId = painter.session.addDecalLayerAtIntersection(painter.intersection, {
+        name: "eagle.png",
+        width: 4,
+        height: 4,
+        rgbaBytes: sourceBytes,
+      });
+      expect(layerId).toBeTruthy();
+      expect(painter.session.activeDecalInfo?.sourceName).toBe("eagle.png");
+      expect(painter.session.layers.at(-1)?.kind).toBe("decal");
+      expect(getPixel(painter.material, 14, 8)).toEqual([255, 255, 255, 255]);
+
+      expect(
+        painter.session.updateActiveDecal({
+          tintEnabled: true,
+          tint: { r: 220, g: 40, b: 30 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 14, 8)).toEqual([220, 40, 30, 255]);
+
+      expect(painter.session.beginActiveDecalTransform()).toBe(true);
+      const moved = {
+        ...painter.intersection,
+        uv: new THREE.Vector2(0.62, 0.32),
+      } as THREE.Intersection<THREE.Object3D>;
+      expect(painter.session.moveActiveDecalToIntersection(moved, true)).toBe(true);
+      expect(painter.session.endActiveDecalTransform()).toBe(true);
+      expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.62);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.46);
+      expect(painter.session.redo()).toBe(true);
+      expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.62);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("persists decal source and exact normal-map binding in project state", () => {
+    const base = makeTexture();
+    const normalData = new Uint8Array(WIDTH * HEIGHT * 4);
+    for (let index = 0; index < normalData.length; index += 4) {
+      normalData[index] = 128;
+      normalData[index + 1] = 128;
+      normalData[index + 2] = 255;
+      normalData[index + 3] = 255;
+    }
+    const normal = new THREE.DataTexture(
+      normalData,
+      WIDTH,
+      HEIGHT,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType,
+    );
+    normal.flipY = false;
+    normal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
+    normal.needsUpdate = true;
+
+    const painter = makePainter(base);
+    (painter.material as THREE.MeshBasicMaterial & { normalMap?: THREE.Texture }).normalMap = normal;
+    painter.session.dispose();
+
+    // Recreate after attaching the normal so discovery sees it.
+    const replacement = createUnitPainterSession(painter.mesh);
+    try {
+      const sourceBytes = new Uint8Array(4 * 4 * 4);
+      for (let index = 0; index < sourceBytes.length; index += 4) {
+        sourceBytes[index] = 255;
+        sourceBytes[index + 1] = 255;
+        sourceBytes[index + 2] = 255;
+        sourceBytes[index + 3] = 255;
+      }
+
+      expect(
+        replacement.addDecalLayerAtIntersection(painter.intersection, {
+          name: "raised-eagle.png",
+          width: 4,
+          height: 4,
+          rgbaBytes: sourceBytes,
+        }),
+      ).toBeTruthy();
+      expect(replacement.activeDecalInfo?.hasNormalMap).toBe(true);
+      expect(
+        replacement.updateActiveDecal({
+          affectNormal: true,
+          normalStrength: 2,
+          normalHeightSource: "alpha",
+        }),
+      ).toBe(true);
+
+      const project = replacement.exportProjectState();
+      expect(project.layers.at(-1)?.kind).toBe("decal");
+      expect(project.layers.at(-1)?.decal?.sourceName).toBe("raised-eagle.png");
+      expect(project.layers.at(-1)?.decal?.sourceRgbaBytes).toEqual(sourceBytes);
+      expect(project.layers.at(-1)?.decal?.normalSourceVirtualPath)
+        .toBe("variantmeshes\\unit\\body_normal.dds");
+
+      const exported = replacement.exportModifiedTextures();
+      expect(exported.some((texture) =>
+        texture.sourceVirtualPath === "variantmeshes\\unit\\body_base_colour.dds"
+      )).toBe(true);
+      const normalExport = exported.find((texture) =>
+        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
+      );
+      expect(normalExport).toBeDefined();
+      expect(normalExport?.rgbaBytes).not.toEqual(normalData);
+    } finally {
+      replacement.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+      normal.dispose();
+    }
+  });
+
   it("selects UV islands from interleaved texture coordinates", () => {
     const painter = makePainter();
     try {
