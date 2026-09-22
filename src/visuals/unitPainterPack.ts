@@ -706,8 +706,6 @@ const parseStoredMask = (
     seenTiles.add(key);
     tileKeys.push(key);
   }
-  const placementMask =
-    decal.placementMask == null ? undefined : parseStoredMask(decal.placementMask, seenFiles, layerName);
   const fileKey = filePath.toLowerCase();
   if (seenFiles.has(fileKey)) throw new Error("The unit painter project contains duplicate decal payload files.");
   seenFiles.add(fileKey);
@@ -764,6 +762,9 @@ const parseStoredDecal = (
     decal.normalHeightSource === "alpha" || decal.normalHeightSource === "luminance"
       ? decal.normalHeightSource
       : undefined;
+
+  const placementMask =
+    decal.placementMask == null ? undefined : parseStoredMask(decal.placementMask, seenFiles, layerName);
 
   if (
     !targetSourceVirtualPath
