@@ -253,6 +253,7 @@ import {
   mergeMods,
   readFromExistingPack,
   forEachPackedFileBuffer,
+  decompressPackedPayload,
   readPack,
   resolveKeyValue,
   serializePackFileDataToBuffer,
@@ -14186,32 +14187,70 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             };
           }
 
-          const dependencyClosure = await collectVisualDependencyClosure(filePaths[0], async (requestedPath) => {
-            const requestedExtension = getSupportedVisualDependencyExtension(requestedPath);
-            const resolved = await resolveVisualsFileInSession(session, requestedPath, {
-              variantMeshDefinitionFallback: requestedExtension === "variantmeshdefinition",
-              preferredPackPath,
-            });
-            if (!resolved?.pack || !resolved.fileName) return undefined;
+          const dependencyFileIds = new Map<string, number>();
+          const dependencyTextCache = new Map<string, string | undefined>();
+          const getDependencyFileId = (packPath: string) => {
+            const packKey = packPath.replaceAll("\\", "/").toLowerCase();
+            const existing = dependencyFileIds.get(packKey);
+            if (existing !== undefined) return existing;
+            const fileId = fs.openSync(packPath, "r");
+            dependencyFileIds.set(packKey, fileId);
+            return fileId;
+          };
 
-            const resolvedExtension = getSupportedVisualDependencyExtension(resolved.fileName);
-            let text: string | undefined;
-            if (
-              resolvedExtension === "variantmeshdefinition" ||
-              resolvedExtension === "wsmodel" ||
-              resolvedExtension === "xml.material"
-            ) {
-              await readFromExistingPack(resolved.pack, {
-                filesToRead: [resolved.fileName],
-                skipParsingTables: true,
+          let dependencyClosure;
+          try {
+            dependencyClosure = await collectVisualDependencyClosure(filePaths[0], async (requestedPath) => {
+              const requestedExtension = getSupportedVisualDependencyExtension(requestedPath);
+              const resolved = await resolveVisualsFileInSession(session, requestedPath, {
+                variantMeshDefinitionFallback: requestedExtension === "variantmeshdefinition",
+                preferredPackPath,
               });
-              const refreshedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
-              const decoded = refreshedFile ? decodePackedFileText(refreshedFile) : undefined;
-              if (decoded != null) text = decoded;
-            }
+              if (!resolved?.pack || !resolved.packPath || !resolved.fileName) return undefined;
 
-            return { resolvedPath: resolved.fileName, text };
-          });
+              const resolvedExtension = getSupportedVisualDependencyExtension(resolved.fileName);
+              let text: string | undefined;
+              if (
+                resolvedExtension === "variantmeshdefinition" ||
+                resolvedExtension === "wsmodel" ||
+                resolvedExtension === "xml.material"
+              ) {
+                const cacheKey = `${resolved.packPath.replaceAll("\\", "/").toLowerCase()}|${normalizePackFilePathKey(
+                  resolved.fileName,
+                )}`;
+                if (dependencyTextCache.has(cacheKey)) {
+                  text = dependencyTextCache.get(cacheKey);
+                } else {
+                  const packedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+                  if (packedFile) {
+                    let buffer = Buffer.allocUnsafe(packedFile.file_size);
+                    fs.readSync(
+                      getDependencyFileId(resolved.packPath),
+                      buffer,
+                      0,
+                      buffer.length,
+                      packedFile.start_pos,
+                    );
+                    if (packedFile.is_compressed) {
+                      buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+                    }
+                    text = decodePackedAssetText(buffer);
+                  }
+                  dependencyTextCache.set(cacheKey, text);
+                }
+              }
+
+              return { resolvedPath: resolved.fileName, text };
+            });
+          } finally {
+            for (const fileId of dependencyFileIds.values()) {
+              try {
+                fs.closeSync(fileId);
+              } catch (error) {
+                console.warn("Failed to close Visuals dependency pack handle:", error);
+              }
+            }
+          }
 
           filePathsToExtract = dependencyClosure.paths;
           skipped.push(
