@@ -266,8 +266,10 @@ describe("unit painter pack staging", () => {
               tintEnabled: true,
               tint: { r: 180, g: 20, b: 30 },
               affectNormal: true,
-              normalStrength: 1.5,
+              normalStrength: -1.5,
               normalHeightSource: "alpha",
+              flipX: true,
+              flipY: false,
               placementMask: {
                 width: 32,
                 height: 32,
@@ -285,6 +287,9 @@ describe("unit painter pack staging", () => {
     expect(manifest.layers[1].kind).toBe("decal");
     expect(decal?.normalSourceVirtualPath).toBe("variantmeshes\\unit\\body_normal.dds");
     expect(decal?.sourceName).toBe("eagle.png");
+    expect(decal?.normalStrength).toBe(-1.5);
+    expect(decal?.flipX).toBe(true);
+    expect(decal?.flipY).toBe(false);
     expect(decal?.filePath).toMatch(/decal\.rgba\.zst$/i);
     expect(decal?.placementMask?.filePath).toMatch(/decal\.mask\.zst$/i);
     expect(decal?.placementMask?.tileKeys).toEqual([0]);
