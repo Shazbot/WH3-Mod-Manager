@@ -914,6 +914,17 @@ describe("unit painter", () => {
       expect(project.layers.at(-1)?.decal?.placementMask?.width).toBe(WIDTH);
       expect(project.layers.at(-1)?.decal?.placementMask?.height).toBe(HEIGHT);
 
+      expect(replacement.updateActiveDecal({
+        centerU: 0.41,
+        centerV: 0.33,
+        widthU: 0.17,
+        heightV: 0.12,
+        rotationDeg: 31,
+        tintEnabled: true,
+        tint: { r: 180, g: 70, b: 45 },
+      })).toBe(true);
+
+      const finalProject = replacement.exportProjectState();
       const exported = replacement.exportModifiedTextures();
       expect(exported.some((texture) =>
         texture.sourceVirtualPath === "variantmeshes\\unit\\body_base_colour.dds"
@@ -923,6 +934,51 @@ describe("unit painter", () => {
       );
       expect(normalExport).toBeDefined();
       expect(normalExport?.rgbaBytes).not.toEqual(normalData);
+
+      const roundTripBase = makeTexture();
+      const roundTripNormalData = new Uint8Array(normalData);
+      const roundTripNormal = new THREE.DataTexture(
+        roundTripNormalData,
+        WIDTH,
+        HEIGHT,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType,
+      );
+      roundTripNormal.flipY = false;
+      roundTripNormal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
+      roundTripNormal.needsUpdate = true;
+      const roundTripPainter = makePainter(roundTripBase);
+      (
+        roundTripPainter.material as THREE.MeshBasicMaterial & { normalMap?: THREE.Texture }
+      ).normalMap = roundTripNormal;
+      roundTripPainter.session.dispose();
+      const roundTripSession = createUnitPainterSession(roundTripPainter.mesh);
+      try {
+        roundTripSession.loadProjectLayers(finalProject);
+        expect(roundTripSession.activeDecalInfo).toEqual(replacement.activeDecalInfo);
+
+        const roundTripExport = roundTripSession.exportModifiedTextures();
+        const byPath = new Map(exported.map((texture) => [
+          texture.sourceVirtualPath,
+          texture.rgbaBytes,
+        ]));
+        expect(roundTripExport.map((texture) => texture.sourceVirtualPath).toSorted())
+          .toEqual([...byPath.keys()].toSorted());
+        for (const texture of roundTripExport) {
+          expect(texture.rgbaBytes).toEqual(byPath.get(texture.sourceVirtualPath));
+        }
+
+        const reexportedProject = roundTripSession.exportProjectState();
+        expect(reexportedProject.layers.at(-1)?.decal?.sourceName)
+          .toBe(finalProject.layers.at(-1)?.decal?.sourceName);
+        expect(reexportedProject.layers.at(-1)?.decal?.placementMask)
+          .toEqual(finalProject.layers.at(-1)?.decal?.placementMask);
+      } finally {
+        roundTripSession.dispose();
+        roundTripPainter.geometry.dispose();
+        roundTripPainter.material.dispose();
+        roundTripNormal.dispose();
+      }
     } finally {
       replacement.dispose();
       painter.geometry.dispose();
