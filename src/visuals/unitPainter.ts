@@ -4470,26 +4470,27 @@ export class UnitPainterSession {
     }
   }
 
+  private recomposeNormalTarget(normalTarget: PaintableTexture) {
+    normalTarget.data.set(normalTarget.originalData);
+    for (const layer of this.paintLayers) {
+      const decal = layer.kind === "decal" ? layer.decal : undefined;
+      if (!decal || decal.normalTarget !== normalTarget) continue;
+      this.applyDecalToNormalTarget(layer, decal, normalTarget);
+    }
+    normalTarget.revision += 1;
+    normalTarget.editable.clearUpdateRanges();
+    normalTarget.editable.needsUpdate = true;
+  }
+
   private recomposeNormalTargetsForBase(baseTarget: PaintableTexture) {
     const normalTargets = this.normalTargetsByBaseTarget.get(baseTarget);
     if (!normalTargets?.size) return;
-
-    for (const normalTarget of normalTargets) {
-      normalTarget.data.set(normalTarget.originalData);
-      for (const layer of this.paintLayers) {
-        const decal = layer.kind === "decal" ? layer.decal : undefined;
-        if (!decal || decal.target !== baseTarget || decal.normalTarget !== normalTarget) continue;
-        this.applyDecalToNormalTarget(layer, decal, normalTarget);
-      }
-      normalTarget.revision += 1;
-      normalTarget.editable.clearUpdateRanges();
-      normalTarget.editable.needsUpdate = true;
-    }
+    for (const normalTarget of normalTargets) this.recomposeNormalTarget(normalTarget);
   }
 
   private recomposeAllNormalTargets() {
-    for (const baseTarget of this.normalTargetsByBaseTarget.keys()) {
-      this.recomposeNormalTargetsForBase(baseTarget);
+    for (const normalTarget of new Set(this.normalTargetsByOriginal.values())) {
+      this.recomposeNormalTarget(normalTarget);
     }
   }
 
