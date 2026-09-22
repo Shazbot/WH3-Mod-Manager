@@ -212,6 +212,12 @@ export type UnitPainterDecalInfo = {
   hasNormalMap: boolean;
 };
 
+export type UnitPainterDecalPatch = Partial<Pick<
+  UnitPainterDecalInfo,
+  "centerU" | "centerV" | "widthU" | "heightV" | "rotationDeg"
+  | "tintEnabled" | "tint" | "affectNormal" | "normalStrength" | "normalHeightSource"
+>>;
+
 export type UnitPainterProjectTile = {
   key: number;
   rgbaBytes: Uint8Array;
@@ -2332,11 +2338,7 @@ export class UnitPainterSession {
   }
 
   updateActiveDecal(
-    patch: Partial<Pick<
-      UnitPainterDecalInfo,
-      "centerU" | "centerV" | "widthU" | "heightV" | "rotationDeg"
-      | "tintEnabled" | "tint" | "affectNormal" | "normalStrength" | "normalHeightSource"
-    >>,
+    patch: UnitPainterDecalPatch,
     recordHistory = true,
   ) {
     const layer = this.getActiveLayer();
