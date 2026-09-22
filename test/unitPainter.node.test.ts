@@ -540,20 +540,20 @@ describe("unit painter", () => {
         }),
       ).toBeTruthy();
 
-      const originalTop = getPixel(painter.material, 13, 9);
-      const originalBottom = getPixel(painter.material, 13, 13);
+      const originalTop = getPixel(painter.material, 12, 8);
+      const originalBottom = getPixel(painter.material, 12, 11);
       expect(originalTop[0]).toBeGreaterThan(originalTop[2]);
       expect(originalBottom[2]).toBeGreaterThan(originalBottom[0]);
 
       expect(painter.session.updateActiveDecal({ flipY: true })).toBe(true);
-      const flippedTop = getPixel(painter.material, 13, 9);
-      const flippedBottom = getPixel(painter.material, 13, 13);
+      const flippedTop = getPixel(painter.material, 12, 8);
+      const flippedBottom = getPixel(painter.material, 12, 11);
       expect(flippedTop[2]).toBeGreaterThan(flippedTop[0]);
       expect(flippedBottom[0]).toBeGreaterThan(flippedBottom[2]);
 
       expect(painter.session.updateActiveDecal({ flipX: true, flipY: false })).toBe(true);
-      const flippedLeft = getPixel(painter.material, 13, 9);
-      const flippedRight = getPixel(painter.material, 15, 9);
+      const flippedLeft = getPixel(painter.material, 13, 8);
+      const flippedRight = getPixel(painter.material, 15, 8);
       expect(flippedLeft[1]).toBeGreaterThan(flippedLeft[0]);
       expect(flippedRight[0]).toBeGreaterThan(flippedRight[1]);
     } finally {
