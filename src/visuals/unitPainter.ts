@@ -2153,16 +2153,18 @@ export class UnitPainterSession {
     return true;
   }
 
-  setLayerOpacity(layerId: string, opacity: number) {
+  setLayerOpacity(layerId: string, opacity: number, recordHistory = true) {
     if (this.isStrokeOpen) this.endStroke();
     const layer = this.paintLayers.find((candidate) => candidate.id === layerId);
     const nextOpacity = clamp01(opacity);
     if (!layer || Math.abs(layer.opacity - nextOpacity) < 0.0001) return false;
-    const before = this.layerMetadata(layer);
+    const before = recordHistory ? this.layerMetadata(layer) : undefined;
     layer.opacity = nextOpacity;
     this.recomposeTargets(layer.textures.keys());
     if (layer.kind === "decal" && layer.decal) this.recomposeNormalTargetsForBase(layer.decal.target);
-    this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
+    if (before) {
+      this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
+    }
     return true;
   }
 
