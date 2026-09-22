@@ -30,6 +30,7 @@ import { readPack, writePack } from "./packFileSerializer";
 import {
   buildUnitPainterPackFiles,
   buildUnitPainterProjectPackFiles,
+  decodeUnitPainterProjectDecalSource,
   decodeUnitPainterProjectTiles,
   ensureUnitPainterPackExtension,
   getUnitPainterDefaultPackName,
@@ -829,6 +830,8 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
       name?: unknown;
       visible?: unknown;
       opacity?: unknown;
+      kind?: unknown;
+      decal?: unknown;
       textures?: unknown;
     };
     const id = typeof layer.id === "string" ? layer.id.trim() : "";
@@ -849,6 +852,108 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
       return undefined;
     }
     seenLayerIds.add(id);
+    const kind = layer.kind === "decal" ? "decal" : "paint";
+    if (layer.kind != null && layer.kind !== "paint" && layer.kind !== "decal") return undefined;
+
+    let decal:
+      | {
+          targetSourceVirtualPath: string;
+          sourceName: string;
+          sourceWidth: number;
+          sourceHeight: number;
+          sourceRgbaBytes: Buffer;
+          centerU: number;
+          centerV: number;
+          widthU: number;
+          heightV: number;
+          rotationDeg: number;
+          tintEnabled: boolean;
+          tint: { r: number; g: number; b: number };
+          affectNormal: boolean;
+          normalStrength: number;
+          normalHeightSource: "alpha" | "luminance";
+        }
+      | undefined;
+    if (kind === "decal") {
+      if (!layer.decal || typeof layer.decal !== "object" || layer.textures.length !== 0) return undefined;
+      const rawDecal = layer.decal as Record<string, unknown>;
+      const targetSourceVirtualPath = sanitizeUnitPainterSourcePath(rawDecal.targetSourceVirtualPath);
+      const sourceName = typeof rawDecal.sourceName === "string" ? rawDecal.sourceName.trim().slice(0, 160) : "";
+      const sourceWidth = typeof rawDecal.sourceWidth === "number" && Number.isInteger(rawDecal.sourceWidth)
+        ? rawDecal.sourceWidth
+        : 0;
+      const sourceHeight = typeof rawDecal.sourceHeight === "number" && Number.isInteger(rawDecal.sourceHeight)
+        ? rawDecal.sourceHeight
+        : 0;
+      const sourceRgbaBytes =
+        sourceWidth > 0 && sourceHeight > 0 && sourceWidth <= 8192 && sourceHeight <= 8192
+          ? readUnitPainterRgba(rawDecal.sourceRgbaBytes, sourceWidth, sourceHeight)
+          : undefined;
+      const tint = rawDecal.tint && typeof rawDecal.tint === "object"
+        ? rawDecal.tint as Record<string, unknown>
+        : undefined;
+      const readNumber = (input: unknown) =>
+        typeof input === "number" && Number.isFinite(input) ? input : Number.NaN;
+      const centerU = readNumber(rawDecal.centerU);
+      const centerV = readNumber(rawDecal.centerV);
+      const widthU = readNumber(rawDecal.widthU);
+      const heightV = readNumber(rawDecal.heightV);
+      const rotationDeg = readNumber(rawDecal.rotationDeg);
+      const normalStrength = readNumber(rawDecal.normalStrength);
+      const tintR = readNumber(tint?.r);
+      const tintG = readNumber(tint?.g);
+      const tintB = readNumber(tint?.b);
+      if (
+        !targetSourceVirtualPath
+        || !sourceName
+        || !sourceRgbaBytes
+        || !Number.isFinite(centerU)
+        || !Number.isFinite(centerV)
+        || !Number.isFinite(widthU)
+        || widthU <= 0
+        || !Number.isFinite(heightV)
+        || heightV <= 0
+        || !Number.isFinite(rotationDeg)
+        || typeof rawDecal.tintEnabled !== "boolean"
+        || !Number.isFinite(tintR)
+        || tintR < 0
+        || tintR > 255
+        || !Number.isFinite(tintG)
+        || tintG < 0
+        || tintG > 255
+        || !Number.isFinite(tintB)
+        || tintB < 0
+        || tintB > 255
+        || typeof rawDecal.affectNormal !== "boolean"
+        || !Number.isFinite(normalStrength)
+        || normalStrength < 0
+        || normalStrength > 4
+        || (rawDecal.normalHeightSource !== "alpha" && rawDecal.normalHeightSource !== "luminance")
+      ) {
+        return undefined;
+      }
+      totalBytes += sourceRgbaBytes.length;
+      if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) return undefined;
+      decal = {
+        targetSourceVirtualPath,
+        sourceName,
+        sourceWidth,
+        sourceHeight,
+        sourceRgbaBytes,
+        centerU,
+        centerV,
+        widthU,
+        heightV,
+        rotationDeg,
+        tintEnabled: rawDecal.tintEnabled,
+        tint: { r: tintR, g: tintG, b: tintB },
+        affectNormal: rawDecal.affectNormal,
+        normalStrength,
+        normalHeightSource: rawDecal.normalHeightSource,
+      };
+    } else if (layer.decal != null) {
+      return undefined;
+    }
 
     const seenSources = new Set<string>();
     const textures = [];
@@ -904,7 +1009,15 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
       textures.push({ sourceVirtualPath, width, height, tiles });
     }
 
-    layers.push({ id, name, visible: layer.visible, opacity, textures });
+    layers.push({
+      id,
+      name,
+      visible: layer.visible,
+      opacity,
+      ...(kind === "decal" ? { kind } : {}),
+      textures,
+      ...(decal ? { decal } : {}),
+    });
   }
 
   if (!seenLayerIds.has(activeLayerId)) return undefined;
@@ -1239,9 +1352,12 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     }
 
     const textureEntries = manifest.layers.flatMap((layer) => layer.textures);
-    const texturePaths = textureEntries.map((texture) => texture.filePath);
-    const withTextures = texturePaths.length > 0
-      ? await readPack(packPath, { skipParsingTables: true, filesToRead: texturePaths })
+    const payloadPaths = [
+      ...textureEntries.map((texture) => texture.filePath),
+      ...manifest.layers.flatMap((layer) => layer.decal ? [layer.decal.filePath] : []),
+    ];
+    const withTextures = payloadPaths.length > 0
+      ? await readPack(packPath, { skipParsingTables: true, filesToRead: payloadPaths })
       : withManifest;
     const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
     let totalBytes = 0;
@@ -1276,12 +1392,47 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
           tiles,
         });
       }
+      let decal;
+      if (layer.decal) {
+        const packed = byPath.get(layer.decal.filePath.toLowerCase());
+        const compressed = packed?.buffer;
+        if (!compressed) throw new Error(`The saved painter decal '${layer.decal.filePath}' is missing.`);
+        const decoded = await decodeUnitPainterProjectDecalSource(
+          compressed,
+          layer.decal.sourceWidth,
+          layer.decal.sourceHeight,
+        );
+        totalBytes += decoded.length;
+        if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
+          throw new Error("The saved unit painter project is too large.");
+        }
+        decal = {
+          targetSourceVirtualPath: layer.decal.targetSourceVirtualPath,
+          sourceName: layer.decal.sourceName,
+          sourceWidth: layer.decal.sourceWidth,
+          sourceHeight: layer.decal.sourceHeight,
+          sourceRgbaBytes: new Uint8Array(decoded),
+          centerU: layer.decal.centerU,
+          centerV: layer.decal.centerV,
+          widthU: layer.decal.widthU,
+          heightV: layer.decal.heightV,
+          rotationDeg: layer.decal.rotationDeg,
+          tintEnabled: layer.decal.tintEnabled,
+          tint: { ...layer.decal.tint },
+          affectNormal: layer.decal.affectNormal,
+          normalStrength: layer.decal.normalStrength,
+          normalHeightSource: layer.decal.normalHeightSource,
+        };
+      }
+
       layers.push({
         id: layer.id,
         name: layer.name,
         visible: layer.visible,
         opacity: layer.opacity,
+        kind: layer.kind,
         textures,
+        ...(decal ? { decal } : {}),
       });
     }
 
