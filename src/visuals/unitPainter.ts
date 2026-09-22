@@ -177,6 +177,8 @@ type UnitPainterDecalState = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  flipX: boolean;
+  flipY: boolean;
 };
 
 type PaintLayer = {
@@ -211,6 +213,8 @@ export type UnitPainterDecalInfo = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  flipX: boolean;
+  flipY: boolean;
   hasNormalMap: boolean;
 };
 
@@ -218,6 +222,7 @@ export type UnitPainterDecalPatch = Partial<Pick<
   UnitPainterDecalInfo,
   "centerU" | "centerV" | "widthU" | "heightV" | "rotationDeg"
   | "tintEnabled" | "tint" | "affectNormal" | "normalStrength" | "normalHeightSource"
+  | "flipX" | "flipY"
 >>;
 
 export type UnitPainterProjectTile = {
@@ -260,6 +265,8 @@ export type UnitPainterProjectDecal = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  flipX?: boolean;
+  flipY?: boolean;
   placementMask?: UnitPainterProjectMask;
 };
 
@@ -1400,6 +1407,8 @@ const cloneDecalState = (decal: UnitPainterDecalState): UnitPainterDecalState =>
   affectNormal: decal.affectNormal,
   normalStrength: decal.normalStrength,
   normalHeightSource: decal.normalHeightSource,
+  flipX: decal.flipX,
+  flipY: decal.flipY,
 });
 
 const exportProjectMask = (mask: UvIslandMask): UnitPainterProjectMask => ({
@@ -1515,9 +1524,11 @@ const getDecalSourceUv = (
   const dy = textureV - decal.centerV;
   const localX = cos * dx + sin * dy;
   const localY = -sin * dx + cos * dy;
+  const sourceU = localX / Math.max(Math.abs(decal.widthU), 1e-6) + 0.5;
+  const sourceV = localY / Math.max(Math.abs(decal.heightV), 1e-6) + 0.5;
   return {
-    u: localX / Math.max(Math.abs(decal.widthU), 1e-6) + 0.5,
-    v: localY / Math.max(Math.abs(decal.heightV), 1e-6) + 0.5,
+    u: decal.flipX ? 1 - sourceU : sourceU,
+    v: decal.flipY ? 1 - sourceV : sourceV,
   };
 };
 
@@ -2141,6 +2152,8 @@ export class UnitPainterSession {
       affectNormal: decal.affectNormal,
       normalStrength: decal.normalStrength,
       normalHeightSource: decal.normalHeightSource,
+      flipX: decal.flipX,
+      flipY: decal.flipY,
       hasNormalMap: !!decal.normalTarget,
     };
   }
@@ -2353,6 +2366,8 @@ export class UnitPainterSession {
         affectNormal: false,
         normalStrength: 1,
         normalHeightSource: "alpha",
+        flipX: false,
+        flipY: false,
       },
     };
 
@@ -2485,9 +2500,11 @@ export class UnitPainterSession {
     }
     if (patch.affectNormal != null) decal.affectNormal = patch.affectNormal;
     if (patch.normalStrength != null && Number.isFinite(patch.normalStrength)) {
-      decal.normalStrength = Math.max(0, Math.min(4, patch.normalStrength));
+      decal.normalStrength = Math.max(-4, Math.min(4, patch.normalStrength));
     }
     if (patch.normalHeightSource) decal.normalHeightSource = patch.normalHeightSource;
+    if (patch.flipX != null) decal.flipX = patch.flipX;
+    if (patch.flipY != null) decal.flipY = patch.flipY;
 
     this.rasterizeDecalLayer(
       layer,
@@ -3810,6 +3827,8 @@ export class UnitPainterSession {
                 affectNormal: layer.decal.affectNormal,
                 normalStrength: layer.decal.normalStrength,
                 normalHeightSource: layer.decal.normalHeightSource,
+                flipX: layer.decal.flipX,
+                flipY: layer.decal.flipY,
                 ...(layer.decal.placementMask
                   ? { placementMask: exportProjectMask(layer.decal.placementMask) }
                   : {}),
@@ -3917,8 +3936,10 @@ export class UnitPainterSession {
             b: Math.max(0, Math.min(255, Math.round(savedDecal.tint.b))),
           },
           affectNormal: !!savedDecal.affectNormal,
-          normalStrength: Math.max(0, Math.min(4, savedDecal.normalStrength)),
+          normalStrength: Math.max(-4, Math.min(4, savedDecal.normalStrength)),
           normalHeightSource: savedDecal.normalHeightSource === "luminance" ? "luminance" : "alpha",
+          flipX: savedDecal.flipX === true,
+          flipY: savedDecal.flipY === true,
         };
       }
 
@@ -4595,7 +4616,7 @@ export class UnitPainterSession {
       !layer.visible
       || layer.opacity <= 0
       || !decal.affectNormal
-      || decal.normalStrength <= 0
+      || Math.abs(decal.normalStrength) <= 1e-6
     ) {
       return;
     }
