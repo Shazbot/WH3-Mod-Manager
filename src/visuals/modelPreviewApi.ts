@@ -89,6 +89,7 @@ export interface UnitPainterTextureExportResult {
 
 export interface UnitPainterProjectDecalTransfer {
   targetSourceVirtualPath: string;
+  normalSourceVirtualPath?: string;
   sourceName: string;
   sourceWidth: number;
   sourceHeight: number;
@@ -247,6 +248,7 @@ export const exportUnitPainterTextures = async (
         decal: layer.decal
           ? {
               targetSourceVirtualPath: layer.decal.targetSourceVirtualPath,
+              normalSourceVirtualPath: layer.decal.normalSourceVirtualPath,
               sourceName: layer.decal.sourceName,
               sourceWidth: layer.decal.sourceWidth,
               sourceHeight: layer.decal.sourceHeight,
