@@ -14205,6 +14205,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           const dependencyFileIds = new Map<string, number>();
           const dependencyTextCache = new Map<string, string | undefined>();
           const dependencyPackCache = new Map<string, Pack | undefined>();
+          const dependencyDiagnostics = {
+            callbacks: 0,
+            resolveMs: 0,
+            lookupMs: 0,
+            readMs: 0,
+            decompressMs: 0,
+            decodedBytes: 0,
+            textFilesRead: 0,
+            cacheHits: 0,
+          };
           const dependencyResolveStartedAt = performance.now();
           const getDependencyFileId = (packPath: string) => {
             const packKey = packPath.replaceAll("\\", "/").toLowerCase();
@@ -14218,12 +14228,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           let dependencyClosure: VisualDependencyClosure;
           try {
             dependencyClosure = await collectVisualDependencyClosure(filePaths[0], async (requestedPath) => {
+              dependencyDiagnostics.callbacks += 1;
               const requestedExtension = getSupportedVisualDependencyExtension(requestedPath);
+              const resolveStartedAt = performance.now();
               const resolved = await resolveVisualsFileInSession(session, requestedPath, {
                 variantMeshDefinitionFallback: requestedExtension === "variantmeshdefinition",
                 preferredPackPath,
                 packCache: dependencyPackCache,
               });
+              dependencyDiagnostics.resolveMs += performance.now() - resolveStartedAt;
               if (!resolved?.pack || !resolved.packPath || !resolved.fileName) return undefined;
 
               recursivelyResolvedFiles.set(normalizePackFilePathKey(resolved.fileName), {
@@ -14243,11 +14256,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                   resolved.fileName,
                 )}`;
                 if (dependencyTextCache.has(cacheKey)) {
+                  dependencyDiagnostics.cacheHits += 1;
                   text = dependencyTextCache.get(cacheKey);
                 } else {
+                  const lookupStartedAt = performance.now();
                   const packedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+                  dependencyDiagnostics.lookupMs += performance.now() - lookupStartedAt;
                   if (packedFile) {
                     let buffer = Buffer.allocUnsafe(packedFile.file_size);
+                    const readStartedAt = performance.now();
                     fs.readSync(
                       getDependencyFileId(resolved.packPath),
                       buffer,
@@ -14255,9 +14272,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                       buffer.length,
                       packedFile.start_pos,
                     );
+                    dependencyDiagnostics.readMs += performance.now() - readStartedAt;
                     if (packedFile.is_compressed) {
+                      const decompressStartedAt = performance.now();
                       buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+                      dependencyDiagnostics.decompressMs += performance.now() - decompressStartedAt;
                     }
+                    dependencyDiagnostics.decodedBytes += buffer.length;
+                    dependencyDiagnostics.textFilesRead += 1;
                     text = decodePackedAssetText(buffer);
                   }
                   dependencyTextCache.set(cacheKey, text);
@@ -14276,10 +14298,27 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
           }
 
+          const dependencyResolveTotalMs = performance.now() - dependencyResolveStartedAt;
+          const memoryUsage = process.memoryUsage();
           console.log(
-            `[Visuals isolated] resolved ${dependencyClosure.paths.length} supported file(s) from ${filePaths[0]} in ${(
-              performance.now() - dependencyResolveStartedAt
-            ).toFixed(0)}ms`,
+            `[Visuals isolated] resolved ${dependencyClosure.paths.length} supported file(s) from ${filePaths[0]} in ${dependencyResolveTotalMs.toFixed(
+              0,
+            )}ms; callbacks=${dependencyDiagnostics.callbacks}, resolve=${dependencyDiagnostics.resolveMs.toFixed(
+              0,
+            )}ms, lookup=${dependencyDiagnostics.lookupMs.toFixed(0)}ms, read=${dependencyDiagnostics.readMs.toFixed(
+              0,
+            )}ms, decompress=${dependencyDiagnostics.decompressMs.toFixed(
+              0,
+            )}ms, textFiles=${dependencyDiagnostics.textFilesRead}, decoded=${(
+              dependencyDiagnostics.decodedBytes /
+              (1024 * 1024)
+            ).toFixed(1)}MB, textCacheHits=${dependencyDiagnostics.cacheHits}, packCache=${dependencyPackCache.size}, heap=${(
+              memoryUsage.heapUsed /
+              (1024 * 1024)
+            ).toFixed(0)}MB, external=${(memoryUsage.external / (1024 * 1024)).toFixed(0)}MB, rss=${(
+              memoryUsage.rss /
+              (1024 * 1024)
+            ).toFixed(0)}MB`,
           );
           filePathsToExtract = dependencyClosure.paths;
           skipped.push(
