@@ -2653,7 +2653,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   {isPaintLayersOpen && (
                     <div className="absolute left-0 top-full z-40 mt-1 w-80 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
                       <div className="mb-1 flex items-center justify-between text-[11px]">
-                        <span className="font-semibold text-gray-200">BaseColour layers</span>
+                        <span className="font-semibold text-gray-200">Painter layers</span>
                         <span className="text-gray-500">top → bottom</span>
                       </div>
                       <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
@@ -2674,6 +2674,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                                 }
                               }}
                             >
+                              <span
+                                className={`w-4 shrink-0 text-center text-[10px] font-semibold ${
+                                  layer.kind === "decal" ? "text-yellow-300" : "text-blue-300"
+                                }`}
+                                title={layer.kind === "decal" ? "Decal layer" : "Paint layer"}
+                              >
+                                {layer.kind === "decal" ? "D" : "P"}
+                              </span>
                               <input
                                 type="checkbox"
                                 checked={layer.visible}
@@ -2823,7 +2831,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         </button>
                         <button
                           type="button"
-                          disabled={paintActiveLayerIndex <= 0}
+                          disabled={
+                            paintActiveLayerIndex <= 0
+                            || paintActiveLayer?.kind !== "paint"
+                            || paintLayers[paintActiveLayerIndex - 1]?.kind !== "paint"
+                          }
                           onClick={() => {
                             if (paintSessionRef.current?.mergeActiveLayerDown()) {
                               setPaintExportStatus("");
@@ -2839,6 +2851,216 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     </div>
                   )}
                 </div>
+                <input
+                  ref={decalFileInputRef}
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => loadDecalFile(event.target.files?.[0])}
+                />
+                <button
+                  type="button"
+                  disabled={paintLayers.length >= 32}
+                  onClick={() => decalFileInputRef.current?.click()}
+                  className={`rounded border px-2 py-1 ${
+                    pendingDecal
+                      ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                      : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                  title="Choose a PNG, JPEG, or WebP image, then click the model or texture to place it"
+                >
+                  {pendingDecal ? "Place Decal…" : "+ Decal"}
+                </button>
+                {pendingDecal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pendingDecalRef.current = undefined;
+                      setPendingDecal(undefined);
+                      setPaintExportStatus("");
+                    }}
+                    className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
+                    title="Cancel decal placement"
+                  >
+                    Cancel
+                  </button>
+                )}
+                {paintActiveDecal && paintActiveLayer && (
+                  <div className="flex flex-wrap items-center gap-2 rounded border border-yellow-700/70 bg-yellow-950/30 px-2 py-1">
+                    <span className="max-w-32 truncate text-yellow-200" title={paintActiveDecal.sourceName}>
+                      Decal · {paintActiveDecal.sourceName}
+                    </span>
+                    <label className="flex items-center gap-1 text-gray-300" title="Tint the decal by its source luminance">
+                      <input
+                        type="checkbox"
+                        checked={paintActiveDecal.tintEnabled}
+                        onChange={(event) => updateDecalAndRefresh({ tintEnabled: event.target.checked })}
+                      />
+                      Tint
+                    </label>
+                    <input
+                      type="color"
+                      value={paintActiveDecalTint}
+                      disabled={!paintActiveDecal.tintEnabled}
+                      onChange={(event) => {
+                        const value = Number.parseInt(event.target.value.slice(1), 16);
+                        updateDecalAndRefresh({
+                          tint: {
+                            r: (value >> 16) & 0xff,
+                            g: (value >> 8) & 0xff,
+                            b: value & 0xff,
+                          },
+                        });
+                      }}
+                      className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Decal tint color"
+                    />
+                    <label className="flex items-center gap-1 text-gray-400" title="Decal layer opacity">
+                      Opacity
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={paintActiveLayer.opacity}
+                        onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                        onChange={(event) => {
+                          if (
+                            paintSessionRef.current?.setLayerOpacity(
+                              paintActiveLayer.id,
+                              Number(event.target.value),
+                              false,
+                            )
+                          ) {
+                            setPaintExportStatus("");
+                            setPaintHistoryVersion((value) => value + 1);
+                          }
+                        }}
+                        onPointerUp={finishActiveDecalControlGesture}
+                        onPointerCancel={finishActiveDecalControlGesture}
+                        onWheel={(event) =>
+                          adjustRangeFromWheel(event, (value) => {
+                            if (paintSessionRef.current?.setLayerOpacity(paintActiveLayer.id, value)) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((current) => current + 1);
+                            }
+                          })
+                        }
+                        className="w-16 accent-yellow-500"
+                        aria-label="Decal opacity"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-gray-400" title="Decal width as a fraction of the texture; aspect ratio is preserved">
+                      Size
+                      <input
+                        type="range"
+                        min={0.01}
+                        max={1}
+                        step={0.01}
+                        value={paintActiveDecal.widthU}
+                        onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                        onChange={(event) => resizeActiveDecal(Number(event.target.value), false)}
+                        onPointerUp={finishActiveDecalControlGesture}
+                        onPointerCancel={finishActiveDecalControlGesture}
+                        onWheel={(event) =>
+                          adjustRangeFromWheel(event, (value) => {
+                            resizeActiveDecal(value);
+                          })
+                        }
+                        className="w-20 accent-yellow-500"
+                        aria-label="Decal size"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-gray-400">
+                      Rotate
+                      <input
+                        type="range"
+                        min={-180}
+                        max={180}
+                        step={1}
+                        value={paintActiveDecal.rotationDeg}
+                        onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                        onChange={(event) => updateDecalAndRefresh(
+                          { rotationDeg: Number(event.target.value) },
+                          false,
+                        )}
+                        onPointerUp={finishActiveDecalControlGesture}
+                        onPointerCancel={finishActiveDecalControlGesture}
+                        onWheel={(event) =>
+                          adjustRangeFromWheel(event, (value) => {
+                            updateDecalAndRefresh({ rotationDeg: value });
+                          })
+                        }
+                        className="w-20 accent-yellow-500"
+                        aria-label="Decal rotation"
+                      />
+                      <span className="min-w-8 text-right tabular-nums text-yellow-200">
+                        {Math.round(paintActiveDecal.rotationDeg)}°
+                      </span>
+                    </label>
+                    <label
+                      className={`flex items-center gap-1 ${
+                        paintActiveDecal.hasNormalMap ? "text-gray-300" : "text-gray-600"
+                      }`}
+                      title={
+                        paintActiveDecal.hasNormalMap
+                          ? "Generate a tangent-space normal contribution from the decal"
+                          : "This material has no decoded normal map"
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={paintActiveDecal.affectNormal && paintActiveDecal.hasNormalMap}
+                        disabled={!paintActiveDecal.hasNormalMap}
+                        onChange={(event) => updateDecalAndRefresh({ affectNormal: event.target.checked })}
+                      />
+                      Normal
+                    </label>
+                    {paintActiveDecal.hasNormalMap && paintActiveDecal.affectNormal && (
+                      <>
+                        <label className="flex items-center gap-1 text-gray-400">
+                          Strength
+                          <input
+                            type="range"
+                            min={0}
+                            max={4}
+                            step={0.1}
+                            value={paintActiveDecal.normalStrength}
+                            onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                            onChange={(event) => updateDecalAndRefresh(
+                              { normalStrength: Number(event.target.value) },
+                              false,
+                            )}
+                            onPointerUp={finishActiveDecalControlGesture}
+                            onPointerCancel={finishActiveDecalControlGesture}
+                            onWheel={(event) =>
+                              adjustRangeFromWheel(event, (value) => {
+                                updateDecalAndRefresh({ normalStrength: value });
+                              })
+                            }
+                            className="w-16 accent-yellow-500"
+                            aria-label="Decal normal strength"
+                          />
+                          <span className="min-w-7 text-right tabular-nums text-yellow-200">
+                            {paintActiveDecal.normalStrength.toFixed(1)}
+                          </span>
+                        </label>
+                        <select
+                          value={paintActiveDecal.normalHeightSource}
+                          onChange={(event) => updateDecalAndRefresh({
+                            normalHeightSource: event.target.value as "alpha" | "luminance",
+                          })}
+                          className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                          title="Height source used to generate the decal normal"
+                        >
+                          <option value="alpha">Height: Alpha</option>
+                          <option value="luminance">Height: Luminance</option>
+                        </select>
+                      </>
+                    )}
+                    <span className="text-[10px] text-gray-500">Drag on model/texture to move</span>
+                  </div>
+                )}
                 <label className="flex items-center gap-1 text-gray-400">
                   Color
                   <input
