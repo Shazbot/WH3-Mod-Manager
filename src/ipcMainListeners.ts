@@ -14405,12 +14405,33 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         };
 
         const extractionStartedAt = performance.now();
+        let extractionLookupFallbacks = 0;
+        let extractionFallbackEntriesScanned = 0;
+        let extractionLookupMs = 0;
         for (const group of filesByPack.values()) {
           let fileId = -1;
           try {
             fileId = fs.openSync(group.packPath, "r");
             for (const target of group.files) {
-              const packedFile = findPackedFileCaseInsensitive(group.pack, target.fileName);
+              const lookupStartedAt = performance.now();
+              const exactIndex = bs(
+                group.pack.packedFiles,
+                target.fileName,
+                (a: PackedFile, b: string) => collator.compare(a.name, b),
+              );
+              let packedFile = exactIndex >= 0 ? group.pack.packedFiles[exactIndex] : undefined;
+              if (!packedFile) {
+                extractionLookupFallbacks += 1;
+                const normalizedTarget = normalizePackFilePathKey(target.fileName);
+                for (const candidate of group.pack.packedFiles) {
+                  extractionFallbackEntriesScanned += 1;
+                  if (normalizePackFilePathKey(candidate.name) === normalizedTarget) {
+                    packedFile = candidate;
+                    break;
+                  }
+                }
+              }
+              extractionLookupMs += performance.now() - lookupStartedAt;
               if (!packedFile) {
                 skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
                 continue;
@@ -14445,10 +14466,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
         if (recursive) {
+          const extractionMemoryUsage = process.memoryUsage();
           console.log(
             `[Visuals isolated] wrote ${writtenCount} file(s) from ${filesByPack.size} pack(s) in ${(
               performance.now() - extractionStartedAt
-            ).toFixed(0)}ms`,
+            ).toFixed(0)}ms; lookup=${extractionLookupMs.toFixed(
+              0,
+            )}ms, fallbackLookups=${extractionLookupFallbacks}, fallbackEntries=${extractionFallbackEntriesScanned}, heap=${(
+              extractionMemoryUsage.heapUsed /
+              (1024 * 1024)
+            ).toFixed(0)}MB, external=${(extractionMemoryUsage.external / (1024 * 1024)).toFixed(0)}MB, rss=${(
+              extractionMemoryUsage.rss /
+              (1024 * 1024)
+            ).toFixed(0)}MB`,
           );
         }
 
