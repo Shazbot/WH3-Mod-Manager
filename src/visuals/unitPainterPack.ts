@@ -290,7 +290,7 @@ const validateProjectDecalInput = (
     || !Number.isFinite(decal.heightV)
     || decal.heightV <= 0
     || !Number.isFinite(decal.rotationDeg)
-    || tintEnabled == null
+    || typeof decal.tintEnabled !== "boolean"
     || !decal.tint
     || !Number.isFinite(decal.tint.r)
     || !Number.isFinite(decal.tint.g)
@@ -301,11 +301,11 @@ const validateProjectDecalInput = (
     || decal.tint.g > 255
     || decal.tint.b < 0
     || decal.tint.b > 255
-    || affectNormal == null
+    || typeof decal.affectNormal !== "boolean"
     || !Number.isFinite(decal.normalStrength)
     || decal.normalStrength < 0
     || decal.normalStrength > 4
-    || !normalHeightSource
+    || (decal.normalHeightSource !== "alpha" && decal.normalHeightSource !== "luminance")
   ) {
     throw new Error(`Decal layer '${layerName}' contains invalid decal metadata.`);
   }
@@ -636,7 +636,7 @@ const parseStoredDecal = (
     || !Number.isFinite(heightV)
     || heightV <= 0
     || !Number.isFinite(rotationDeg)
-    || typeof decal.tintEnabled !== "boolean"
+    || tintEnabled == null
     || !Number.isFinite(tintR)
     || tintR < 0
     || tintR > 255
@@ -646,11 +646,11 @@ const parseStoredDecal = (
     || !Number.isFinite(tintB)
     || tintB < 0
     || tintB > 255
-    || typeof decal.affectNormal !== "boolean"
+    || affectNormal == null
     || !Number.isFinite(normalStrength)
     || normalStrength < 0
     || normalStrength > 4
-    || (decal.normalHeightSource !== "alpha" && decal.normalHeightSource !== "luminance")
+    || !normalHeightSource
   ) {
     throw new Error(`Decal layer '${layerName}' contains invalid decal data.`);
   }
