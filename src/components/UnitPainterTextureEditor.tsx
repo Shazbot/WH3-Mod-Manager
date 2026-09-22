@@ -56,7 +56,7 @@ type DecalGesture = {
   startHeightV: number;
   startPointerU: number;
   startPointerV: number;
-  startDistanceUv: number;
+  startDistancePx: number;
   startAngleRad: number;
   startRotationDeg: number;
 };
@@ -511,11 +511,11 @@ const UnitPainterTextureEditor = ({
       y: transform.y + activeDecal.centerV * view.height * transform.scale,
     };
     const localToScreen = (localU: number, localV: number) => {
-      const u = activeDecal.centerU + cos * localU - sin * localV;
-      const v = activeDecal.centerV + sin * localU + cos * localV;
+      const localX = localU * view.width * transform.scale;
+      const localY = localV * view.height * transform.scale;
       return {
-        x: transform.x + u * view.width * transform.scale,
-        y: transform.y + v * view.height * transform.scale,
+        x: center.x + cos * localX - sin * localY,
+        y: center.y + sin * localX + cos * localY,
       };
     };
     const halfU = activeDecal.widthU * 0.5;
@@ -550,13 +550,13 @@ const UnitPainterTextureEditor = ({
     const radians = activeDecal.rotationDeg * Math.PI / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
-    const dx = u - activeDecal.centerU;
-    const dy = v - activeDecal.centerV;
-    const localU = cos * dx + sin * dy;
-    const localV = -sin * dx + cos * dy;
+    const dxPx = (u - activeDecal.centerU) * view.width;
+    const dyPx = (v - activeDecal.centerV) * view.height;
+    const localX = cos * dxPx + sin * dyPx;
+    const localY = -sin * dxPx + cos * dyPx;
     return (
-      Math.abs(localU) <= activeDecal.widthU * 0.5
-      && Math.abs(localV) <= activeDecal.heightV * 0.5
+      Math.abs(localX) <= activeDecal.widthU * view.width * 0.5
+      && Math.abs(localY) <= activeDecal.heightV * view.height * 0.5
     );
   };
 
@@ -578,11 +578,17 @@ const UnitPainterTextureEditor = ({
       startHeightV: activeDecal.heightV,
       startPointerU: u,
       startPointerV: v,
-      startDistanceUv: Math.max(
+      startDistancePx: Math.max(
         1e-6,
-        Math.hypot(u - activeDecal.centerU, v - activeDecal.centerV),
+        Math.hypot(
+          (u - activeDecal.centerU) * view.width,
+          (v - activeDecal.centerV) * view.height,
+        ),
       ),
-      startAngleRad: Math.atan2(v - activeDecal.centerV, u - activeDecal.centerU),
+      startAngleRad: Math.atan2(
+        (v - activeDecal.centerV) * view.height,
+        (u - activeDecal.centerU) * view.width,
+      ),
       startRotationDeg: activeDecal.rotationDeg,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -792,14 +798,20 @@ const UnitPainterTextureEditor = ({
           const u = point.x / view.width;
           const v = point.y / view.height;
           if (decalGesture.mode === "scale") {
-            const distance = Math.hypot(u - decalGesture.centerU, v - decalGesture.centerV);
-            const factor = Math.max(0.01, distance / decalGesture.startDistanceUv);
+            const distance = Math.hypot(
+              (u - decalGesture.centerU) * view.width,
+              (v - decalGesture.centerV) * view.height,
+            );
+            const factor = Math.max(0.01, distance / decalGesture.startDistancePx);
             session.updateActiveDecal({
               widthU: decalGesture.startWidthU * factor,
               heightV: decalGesture.startHeightV * factor,
             }, false);
           } else {
-            const angle = Math.atan2(v - decalGesture.centerV, u - decalGesture.centerU);
+            const angle = Math.atan2(
+              (v - decalGesture.centerV) * view.height,
+              (u - decalGesture.centerU) * view.width,
+            );
             let rotationDeg =
               decalGesture.startRotationDeg
               + (angle - decalGesture.startAngleRad) * 180 / Math.PI;
