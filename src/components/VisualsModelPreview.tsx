@@ -944,6 +944,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     let activeStrokeColor = "";
     let activeStrokeMode: UnitPainterBrushMode | undefined;
     let activeStrokeProfile: PainterStrokeRuntimeProfile | undefined;
+    let activeDecalPointerId: number | undefined;
     let altOrbitPointerId: number | undefined;
     let isAltOrbiting = false;
 
@@ -959,11 +960,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const rect = renderer.domElement.getBoundingClientRect();
       const eyedropperActive = event.altKey || altEyedropperHeldRef.current || eyedropperActiveRef.current;
       const selectMode = selectToolModeRef.current;
-      const precisionToolActive = eyedropperActive || !!selectMode;
+      const decalToolActive = !!pendingDecalRef.current || !!paintSessionRef.current?.activeDecalInfo;
+      const precisionToolActive = eyedropperActive || !!selectMode || decalToolActive;
       const radius = precisionToolActive ? 5 : brushSettingsRef.current.radiusPx;
       const cursorColor = eyedropperActive
         ? "#67e8f9"
-        : selectMode === "island"
+        : decalToolActive
+          ? "#facc15"
+          : selectMode === "island"
           ? "#a78bfa"
           : selectMode === "material"
             ? "#22d3ee"
@@ -1309,6 +1313,22 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       activePointerId = undefined;
     };
 
+    const finishDecalTransform = (event?: PointerEvent) => {
+      if (activeDecalPointerId == null) return;
+      if (
+        renderer.domElement.hasPointerCapture(activeDecalPointerId)
+      ) {
+        renderer.domElement.releasePointerCapture(activeDecalPointerId);
+      }
+      activeDecalPointerId = undefined;
+      controls.enabled = true;
+      if (paintSessionRef.current?.endActiveDecalTransform()) {
+        setPaintExportStatus("");
+        setPaintHistoryVersion((value) => value + 1);
+      }
+      if (event) updateBrushCursor(event);
+    };
+
     const onPointerDown = (event: PointerEvent) => {
       updateBrushCursor(event);
       const session = paintSessionRef.current;
@@ -1342,6 +1362,39 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const projected = getPaintIntersection(event.clientX, event.clientY);
         const operation = event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
         if (projected) selectPaintIntersection(projected.hit, operation);
+        return;
+      }
+
+      const pendingDecal = pendingDecalRef.current;
+      if (pendingDecal) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const projected = getPaintIntersection(event.clientX, event.clientY);
+        const layerId = projected
+          ? session.addDecalLayerAtIntersection(projected.hit, pendingDecal)
+          : undefined;
+        if (layerId) {
+          pendingDecalRef.current = undefined;
+          setPendingDecal(undefined);
+          setPaintExportStatus("");
+          setPaintHistoryVersion((value) => value + 1);
+        }
+        return;
+      }
+
+      if (session.activeDecalInfo) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const projected = getPaintIntersection(event.clientX, event.clientY);
+        if (!projected || !session.beginActiveDecalTransform()) return;
+        if (!session.moveActiveDecalToIntersection(projected.hit, true)) {
+          session.endActiveDecalTransform();
+          return;
+        }
+        activeDecalPointerId = event.pointerId;
+        controls.enabled = false;
+        renderer.domElement.setPointerCapture(event.pointerId);
+        setPaintExportStatus("");
         return;
       }
 
@@ -1399,6 +1452,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         return;
       }
 
+      if (event.pointerId === activeDecalPointerId) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const projected = getPaintIntersection(event.clientX, event.clientY);
+        if (projected && paintSessionRef.current?.moveActiveDecalToIntersection(projected.hit, true)) {
+          setPaintExportStatus("");
+        }
+        return;
+      }
+
       const needsLinkedHover = paintViewModeRef.current === "split";
       if (isPainting && event.pointerId === activePointerId) {
         event.preventDefault();
@@ -1442,6 +1505,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         finishAltOrbitGesture(event);
         return;
       }
+      if (event.pointerId === activeDecalPointerId) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        finishDecalTransform(event);
+        return;
+      }
       if (!isPainting || event.pointerId !== activePointerId) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -1454,11 +1523,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         finishAltOrbitGesture(event, true);
         return;
       }
+      if (event.pointerId === activeDecalPointerId) {
+        finishDecalTransform(event);
+        return;
+      }
       finishPaintStroke(event);
     };
     const onPointerLeave = (event: PointerEvent) => {
       textureLinkedHoverSinkRef.current?.(undefined);
-      if (!isPainting) {
+      if (!isPainting && activeDecalPointerId == null) {
         updateBrushCursor(event, false);
         clearPaintHoverVisual();
       }
@@ -1541,6 +1614,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       context.actions = [];
       context.afterNextRender = null;
       finishPaintStroke();
+      finishDecalTransform();
       finishAltOrbitGesture(undefined, true);
       paintSessionRef.current?.dispose();
       paintSessionRef.current = null;
