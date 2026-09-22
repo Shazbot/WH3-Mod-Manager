@@ -1,5 +1,4 @@
-import { readFromExistingPack, readPack } from "../packFileSerializer";
-import type { Pack } from "../packFileTypes";
+import { readPack, readPackedFileBuffersFromIndex } from "../packFileSerializer";
 import appData from "../appData";
 import { getVanillaPackPathsInLoadOrder } from "../utility/vanillaPackPaths";
 import { getVanillaLocalisationPackPaths } from "../vanillaLocCache/packs";
@@ -382,26 +381,21 @@ const readPackedFileBuffers = async (
     [...candidatesByPack].map(async ([packPath, packCandidates]) => {
       try {
         const retainedPack = appData.packsData.find((pack) => pack.path === packPath);
-        const pack: Pack = retainedPack
-          ? await readFromExistingPack(retainedPack, {
-              filesToRead: packCandidates.map((candidate) => candidate.fileName),
-              skipParsingTables: true,
-            })
-          : await readPack(packPath, {
-              filesToRead: packCandidates.map((candidate) => candidate.fileName),
-              skipParsingTables: true,
-            });
+        const pack = retainedPack ?? (await readPack(packPath, { skipParsingTables: true }));
+        const payloads = await readPackedFileBuffersFromIndex(
+          pack,
+          packCandidates.map((candidate) => candidate.fileName),
+        );
 
         for (const candidate of packCandidates) {
-          const normalized = normalizePackPath(candidate.fileName);
-          const packedFile = pack.packedFiles.find((file) => normalizePackPath(file.name) === normalized);
-          if (!packedFile?.buffer) {
+          const buffer = payloads.get(candidate.fileName);
+          if (!buffer) {
             if (!allowMissing) {
               throw new Error(`Could not read ${candidate.fileName} from ${candidate.packPath}.`);
             }
             continue;
           }
-          buffers.set(candidate, Buffer.from(packedFile.buffer));
+          buffers.set(candidate, Buffer.from(buffer));
         }
       } catch (error) {
         if (!allowMissing) throw error;
