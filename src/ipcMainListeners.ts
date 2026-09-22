@@ -14352,8 +14352,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
         const filesByPack = new Map<
           string,
-          { pack: Pack; packPath: string; files: Array<{ requestedPath: string; fileName: string }> }
+          {
+            pack: Pack;
+            packPath: string;
+            files: Array<{ requestedPath: string; fileName: string; outputPath: string }>;
+          }
         >();
+        const outputDirectories = new Set<string>();
         const flatOutputNames = new Set<string>();
 
         for (const requestedPath of uniqueRequestedPaths) {
@@ -14383,14 +14388,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             flatOutputNames.add(flatKey);
           }
 
+          const normalizedPath = resolved.fileName.replaceAll("\\", "/");
+          const relativePath = preserveFolders ? normalizedPath : nodePath.posix.basename(normalizedPath);
+          const outputPath = resolveExportOutputPath(outputDirectory, relativePath);
+          if (!outputPath) {
+            skipped.push({ name: requestedPath, reason: "Invalid output path" });
+            continue;
+          }
+          outputDirectories.add(nodePath.dirname(outputPath));
+
           const packKey = resolved.packPath.replaceAll("\\", "/").toLowerCase();
           const group = filesByPack.get(packKey);
-          if (group) group.files.push({ requestedPath, fileName: resolved.fileName });
+          if (group) group.files.push({ requestedPath, fileName: resolved.fileName, outputPath });
           else {
             filesByPack.set(packKey, {
               pack: resolved.pack,
               packPath: resolved.packPath,
-              files: [{ requestedPath, fileName: resolved.fileName }],
+              files: [{ requestedPath, fileName: resolved.fileName, outputPath }],
             });
           }
         }
@@ -14402,16 +14416,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           writeMs: 0,
           bytesWritten: 0,
         };
-        const writeOutput = async (name: string, relativePath: string, contents: Buffer) => {
-          const outputPath = resolveExportOutputPath(outputDirectory, relativePath);
-          if (!outputPath) {
-            skipped.push({ name, reason: "Invalid output path" });
-            return;
-          }
+        const writeOutput = async (name: string, outputPath: string, contents: Buffer) => {
           try {
-            const ensureDirStartedAt = performance.now();
-            await fsExtra.ensureDir(nodePath.dirname(outputPath));
-            extractionDiagnostics.ensureDirMs += performance.now() - ensureDirStartedAt;
             const writeStartedAt = performance.now();
             await fs.promises.writeFile(outputPath, contents);
             extractionDiagnostics.writeMs += performance.now() - writeStartedAt;
@@ -14424,6 +14430,29 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
         const extractionStartedAt = performance.now();
         const extractionStartMemory = process.memoryUsage();
+        const ensureDirStartedAt = performance.now();
+        const ensureDirResults = await Promise.allSettled(
+          Array.from(outputDirectories, (directory) => fsExtra.ensureDir(directory)),
+        );
+        extractionDiagnostics.ensureDirMs += performance.now() - ensureDirStartedAt;
+        for (const result of ensureDirResults) {
+          if (result.status === "rejected") {
+            errors.push(result.reason instanceof Error ? result.reason.message : "Failed to create extraction directory");
+          }
+        }
+
+        const maxConcurrentWrites = 8;
+        const pendingWrites = new Set<Promise<void>>();
+        const enqueueWrite = async (name: string, outputPath: string, contents: Buffer) => {
+          let writePromise!: Promise<void>;
+          writePromise = writeOutput(name, outputPath, contents).finally(() => {
+            pendingWrites.delete(writePromise);
+          });
+          pendingWrites.add(writePromise);
+          if (pendingWrites.size >= maxConcurrentWrites) {
+            await Promise.race(pendingWrites);
+          }
+        };
         let extractionLookupFallbacks = 0;
         let extractionFallbackEntriesScanned = 0;
         let extractionLookupMs = 0;
@@ -14466,9 +14495,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                   buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
                   extractionDiagnostics.decompressMs += performance.now() - decompressStartedAt;
                 }
-                const normalizedPath = packedFile.name.replaceAll("\\", "/");
-                const relativePath = preserveFolders ? normalizedPath : nodePath.posix.basename(normalizedPath);
-                await writeOutput(target.requestedPath, relativePath, buffer);
+                await enqueueWrite(target.requestedPath, target.outputPath, buffer);
               } catch (error) {
                 skipped.push({
                   name: target.requestedPath,
@@ -14488,6 +14515,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
           }
         }
+        await Promise.all(pendingWrites);
         if (recursive) {
           const extractionMemoryUsage = process.memoryUsage();
           console.log(
