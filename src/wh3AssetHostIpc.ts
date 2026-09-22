@@ -972,9 +972,11 @@ const sanitizeUnitPainterProjectState = (
         || tintB > 255
         || affectNormal == null
         || !Number.isFinite(normalStrength)
-        || normalStrength < 0
+        || normalStrength < -4
         || normalStrength > 4
         || !normalHeightSource
+        || (rawDecal.flipX != null && typeof rawDecal.flipX !== "boolean")
+        || (rawDecal.flipY != null && typeof rawDecal.flipY !== "boolean")
       ) {
         return undefined;
       }
@@ -1000,6 +1002,8 @@ const sanitizeUnitPainterProjectState = (
         affectNormal,
         normalStrength,
         normalHeightSource,
+        flipX: rawDecal.flipX === true,
+        flipY: rawDecal.flipY === true,
         ...(placementMask ? { placementMask } : {}),
       };
     } else if (layer.decal != null) {
@@ -1508,6 +1512,8 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
           affectNormal: layer.decal.affectNormal,
           normalStrength: layer.decal.normalStrength,
           normalHeightSource: layer.decal.normalHeightSource,
+          flipX: layer.decal.flipX === true,
+          flipY: layer.decal.flipY === true,
           ...(placementMask ? { placementMask } : {}),
         };
       }
