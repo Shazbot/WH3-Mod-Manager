@@ -31,16 +31,20 @@ import {
   buildUnitPainterPackFiles,
   buildUnitPainterProjectPackFiles,
   decodeUnitPainterProjectDecalSource,
+  decodeUnitPainterProjectMaskTiles,
   decodeUnitPainterProjectTiles,
   ensureUnitPainterPackExtension,
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
   parseUnitPainterProjectManifest,
   UNIT_PAINTER_PROJECT_MANIFEST_PATH,
+  UNIT_PAINTER_PROJECT_MASK_TILE_BYTES,
   UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY,
   UNIT_PAINTER_PROJECT_TILE_BYTES,
   UNIT_PAINTER_PROJECT_TILE_SIZE,
+  type UnitPainterProjectDecalInput,
   type UnitPainterProjectLayerInput,
+  type UnitPainterProjectMaskInput,
   type UnitPainterProjectStateInput,
 } from "./visuals/unitPainterPack";
 
@@ -804,6 +808,45 @@ const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
 };
 
 
+const sanitizeUnitPainterProjectMask = (value: unknown): UnitPainterProjectMaskInput | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as { width?: unknown; height?: unknown; tiles?: unknown };
+  const width = typeof raw.width === "number" && Number.isInteger(raw.width) ? raw.width : 0;
+  const height = typeof raw.height === "number" && Number.isInteger(raw.height) ? raw.height : 0;
+  if (
+    width <= 0
+    || height <= 0
+    || width > 16384
+    || height > 16384
+    || !Array.isArray(raw.tiles)
+    || raw.tiles.length === 0
+  ) {
+    return undefined;
+  }
+  const tilesPerRow = Math.ceil(width / 64);
+  const tileRows = Math.ceil(height / 64);
+  const maxTileKey = tilesPerRow * tileRows;
+  const seen = new Set<number>();
+  const tiles = [];
+  for (const rawTile of raw.tiles) {
+    if (!rawTile || typeof rawTile !== "object") return undefined;
+    const tile = rawTile as { key?: unknown; maskBytes?: unknown };
+    const key = typeof tile.key === "number" && Number.isInteger(tile.key) ? tile.key : -1;
+    if (key < 0 || key >= maxTileKey || seen.has(key) || !ArrayBuffer.isView(tile.maskBytes)) {
+      return undefined;
+    }
+    const maskBytes = Buffer.from(
+      tile.maskBytes.buffer,
+      tile.maskBytes.byteOffset,
+      tile.maskBytes.byteLength,
+    );
+    if (maskBytes.length !== UNIT_PAINTER_PROJECT_MASK_TILE_BYTES) return undefined;
+    seen.add(key);
+    tiles.push({ key, maskBytes });
+  }
+  return { width, height, tiles };
+};
+
 const sanitizeUnitPainterProjectState = (
   value: unknown,
 ): UnitPainterProjectStateInput | undefined => {
@@ -859,26 +902,7 @@ const sanitizeUnitPainterProjectState = (
     const kind = layer.kind === "decal" ? "decal" : "paint";
     if (layer.kind != null && layer.kind !== "paint" && layer.kind !== "decal") return undefined;
 
-    let decal:
-      | {
-          targetSourceVirtualPath: string;
-          normalSourceVirtualPath?: string;
-          sourceName: string;
-          sourceWidth: number;
-          sourceHeight: number;
-          sourceRgbaBytes: Buffer;
-          centerU: number;
-          centerV: number;
-          widthU: number;
-          heightV: number;
-          rotationDeg: number;
-          tintEnabled: boolean;
-          tint: { r: number; g: number; b: number };
-          affectNormal: boolean;
-          normalStrength: number;
-          normalHeightSource: "alpha" | "luminance";
-        }
-      | undefined;
+    let decal: UnitPainterProjectDecalInput | undefined;
     if (kind === "decal") {
       if (!layer.decal || typeof layer.decal !== "object" || layer.textures.length !== 0) return undefined;
       const rawDecal = layer.decal as Record<string, unknown>;
@@ -915,6 +939,11 @@ const sanitizeUnitPainterProjectState = (
         rawDecal.normalHeightSource === "alpha" || rawDecal.normalHeightSource === "luminance"
           ? rawDecal.normalHeightSource
           : undefined;
+      const placementMask =
+        rawDecal.placementMask == null
+          ? undefined
+          : sanitizeUnitPainterProjectMask(rawDecal.placementMask);
+      if (rawDecal.placementMask != null && !placementMask) return undefined;
       const tintR = readNumber(tint?.r);
       const tintG = readNumber(tint?.g);
       const tintB = readNumber(tint?.b);
@@ -949,6 +978,9 @@ const sanitizeUnitPainterProjectState = (
         return undefined;
       }
       totalBytes += sourceRgbaBytes.length;
+      if (placementMask) {
+        totalBytes += placementMask.tiles.length * UNIT_PAINTER_PROJECT_MASK_TILE_BYTES;
+      }
       if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) return undefined;
       decal = {
         targetSourceVirtualPath,
@@ -967,6 +999,7 @@ const sanitizeUnitPainterProjectState = (
         affectNormal,
         normalStrength,
         normalHeightSource,
+        ...(placementMask ? { placementMask } : {}),
       };
     } else if (layer.decal != null) {
       return undefined;
@@ -1371,7 +1404,14 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     const textureEntries = manifest.layers.flatMap((layer) => layer.textures);
     const payloadPaths = [
       ...textureEntries.map((texture) => texture.filePath),
-      ...manifest.layers.flatMap((layer) => layer.decal ? [layer.decal.filePath] : []),
+      ...manifest.layers.flatMap((layer) =>
+        layer.decal
+          ? [
+              layer.decal.filePath,
+              ...(layer.decal.placementMask ? [layer.decal.placementMask.filePath] : []),
+            ]
+          : []
+      ),
     ];
     const withTextures = payloadPaths.length > 0
       ? await readPack(packPath, { skipParsingTables: true, filesToRead: payloadPaths })
@@ -1420,6 +1460,33 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
           layer.decal.sourceHeight,
         );
         totalBytes += decoded.length;
+        let placementMask;
+        if (layer.decal.placementMask) {
+          const maskPacked = byPath.get(layer.decal.placementMask.filePath.toLowerCase());
+          const maskCompressed = maskPacked?.buffer;
+          if (!maskCompressed) {
+            throw new Error(
+              `The saved painter decal mask '${layer.decal.placementMask.filePath}' is missing.`,
+            );
+          }
+          const maskDecoded = await decodeUnitPainterProjectMaskTiles(
+            maskCompressed,
+            layer.decal.placementMask.tileKeys.length,
+          );
+          totalBytes += maskDecoded.length;
+          placementMask = {
+            width: layer.decal.placementMask.width,
+            height: layer.decal.placementMask.height,
+            tiles: layer.decal.placementMask.tileKeys.map((key, index) => ({
+              key,
+              maskBytes: new Uint8Array(
+                maskDecoded.buffer,
+                maskDecoded.byteOffset + index * UNIT_PAINTER_PROJECT_MASK_TILE_BYTES,
+                UNIT_PAINTER_PROJECT_MASK_TILE_BYTES,
+              ),
+            })),
+          };
+        }
         if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) {
           throw new Error("The saved unit painter project is too large.");
         }
@@ -1440,6 +1507,7 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
           affectNormal: layer.decal.affectNormal,
           normalStrength: layer.decal.normalStrength,
           normalHeightSource: layer.decal.normalHeightSource,
+          ...(placementMask ? { placementMask } : {}),
         };
       }
 
