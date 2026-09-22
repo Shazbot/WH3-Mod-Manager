@@ -574,6 +574,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintRootRef = useRef<THREE.Object3D | null>(null);
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
   const decalFileInputRef = useRef<HTMLInputElement>(null);
+  const decalReplaceFileInputRef = useRef<HTMLInputElement>(null);
   const pendingDecalRef = useRef<UnitPainterDecalSource>();
   const paintSelectionHelperRef = useRef<THREE.Mesh[]>([]);
   const paintHoverHelperRef = useRef<THREE.Mesh | null>(null);
@@ -709,6 +710,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         );
       } finally {
         if (decalFileInputRef.current) decalFileInputRef.current.value = "";
+      }
+    })();
+  };
+
+  const replaceActiveDecalFile = (file?: File) => {
+    if (!file) return;
+    void (async () => {
+      try {
+        const source = await decodeUnitPainterDecalFile(file);
+        if (paintSessionRef.current?.replaceActiveDecalSource(source)) {
+          setPaintExportStatus("");
+          setPaintHistoryVersion((value) => value + 1);
+        }
+      } catch (decalError) {
+        setPaintExportStatus(
+          decalError instanceof Error ? decalError.message : "Failed to replace decal image.",
+        );
+      } finally {
+        if (decalReplaceFileInputRef.current) decalReplaceFileInputRef.current.value = "";
       }
     })();
   };
@@ -2864,6 +2884,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   className="hidden"
                   onChange={(event) => loadDecalFile(event.target.files?.[0])}
                 />
+                <input
+                  ref={decalReplaceFileInputRef}
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => replaceActiveDecalFile(event.target.files?.[0])}
+                />
                 <button
                   type="button"
                   disabled={paintLayers.length >= 32}
@@ -2896,6 +2923,27 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     <span className="max-w-32 truncate text-yellow-200" title={paintActiveDecal.sourceName}>
                       Decal · {paintActiveDecal.sourceName}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => decalReplaceFileInputRef.current?.click()}
+                      className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-gray-300 hover:border-yellow-500"
+                      title="Replace the source image while preserving this decal's placement and settings"
+                    >
+                      Replace Image
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (paintSessionRef.current?.resetActiveDecalTransform()) {
+                          setPaintExportStatus("");
+                          setPaintHistoryVersion((value) => value + 1);
+                        }
+                      }}
+                      className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-gray-300 hover:border-yellow-500"
+                      title="Reset size to 20%, restore natural image aspect, clear rotation and flips"
+                    >
+                      Reset Transform
+                    </button>
                     <label className="flex items-center gap-1 text-gray-300" title="Tint the decal by its source luminance">
                       <input
                         type="checkbox"
