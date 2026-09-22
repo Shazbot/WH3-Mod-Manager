@@ -493,17 +493,29 @@ describe("unit painter", () => {
       const moved = {
         ...painter.intersection,
         uv: new THREE.Vector2(0.62, 0.32),
+        face: {
+          a: 3,
+          b: 4,
+          c: 5,
+          normal: new THREE.Vector3(0, 0, 1),
+          materialIndex: 0,
+        },
+        faceIndex: 1,
       } as THREE.Intersection<THREE.Object3D>;
       expect(painter.session.moveActiveDecalToIntersection(moved, true)).toBe(true);
       expect(painter.session.endActiveDecalTransform()).toBe(true);
       expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.62);
-      // Moving in 3D onto face 0 keeps/rebinds the decal to that face's UV island.
       expect(getPixel(painter.material, 14, 9)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 10)).toEqual([220, 40, 30, 255]);
 
       expect(painter.session.undo()).toBe(true);
       expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.46);
+      expect(getPixel(painter.material, 14, 9)).toEqual([220, 40, 30, 255]);
+      expect(getPixel(painter.material, 20, 10)).toEqual([0, 0, 0, 255]);
       expect(painter.session.redo()).toBe(true);
       expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.62);
+      expect(getPixel(painter.material, 14, 9)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(painter.material, 20, 10)).toEqual([220, 40, 30, 255]);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
