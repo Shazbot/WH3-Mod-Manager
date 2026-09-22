@@ -53,7 +53,9 @@ export type UnitPainterProjectDecalInput = {
   tint: { r: number; g: number; b: number };
   affectNormal: boolean;
   normalStrength: number;
-  normalHeightSource: "alpha" | "luminance";
+  normalHeightSource: "alpha" | "luminance" | "emboss";
+  normalBevelPx?: number;
+  normalSoftnessPx?: number;
   flipX?: boolean;
   flipY?: boolean;
   placementMask?: UnitPainterProjectMaskInput;
@@ -371,7 +373,19 @@ const validateProjectDecalInput = (
     || !Number.isFinite(decal.normalStrength)
     || decal.normalStrength < -4
     || decal.normalStrength > 4
-    || (decal.normalHeightSource !== "alpha" && decal.normalHeightSource !== "luminance")
+    || (
+      decal.normalHeightSource !== "alpha"
+      && decal.normalHeightSource !== "luminance"
+      && decal.normalHeightSource !== "emboss"
+    )
+    || (
+      decal.normalBevelPx != null
+      && (!Number.isFinite(decal.normalBevelPx) || decal.normalBevelPx < 1 || decal.normalBevelPx > 32)
+    )
+    || (
+      decal.normalSoftnessPx != null
+      && (!Number.isFinite(decal.normalSoftnessPx) || decal.normalSoftnessPx < 0 || decal.normalSoftnessPx > 8)
+    )
     || (decal.flipX != null && typeof decal.flipX !== "boolean")
     || (decal.flipY != null && typeof decal.flipY !== "boolean")
   ) {
@@ -519,6 +533,8 @@ export const buildUnitPainterProjectPackFiles = async (
         affectNormal: layer.decal.affectNormal,
         normalStrength: layer.decal.normalStrength,
         normalHeightSource: layer.decal.normalHeightSource,
+        normalBevelPx: layer.decal.normalBevelPx ?? 6,
+        normalSoftnessPx: layer.decal.normalSoftnessPx ?? 1,
         flipX: layer.decal.flipX === true,
         flipY: layer.decal.flipY === true,
         ...(storedPlacementMask ? { placementMask: storedPlacementMask } : {}),
@@ -765,9 +781,13 @@ const parseStoredDecal = (
   const tintEnabled = typeof decal.tintEnabled === "boolean" ? decal.tintEnabled : undefined;
   const affectNormal = typeof decal.affectNormal === "boolean" ? decal.affectNormal : undefined;
   const normalHeightSource =
-    decal.normalHeightSource === "alpha" || decal.normalHeightSource === "luminance"
+    decal.normalHeightSource === "alpha"
+    || decal.normalHeightSource === "luminance"
+    || decal.normalHeightSource === "emboss"
       ? decal.normalHeightSource
       : undefined;
+  const normalBevelPx = decal.normalBevelPx == null ? 6 : number(decal.normalBevelPx);
+  const normalSoftnessPx = decal.normalSoftnessPx == null ? 1 : number(decal.normalSoftnessPx);
 
   const placementMask =
     decal.placementMask == null ? undefined : parseStoredMask(decal.placementMask, seenFiles, layerName);
@@ -812,6 +832,12 @@ const parseStoredDecal = (
     || normalStrength < -4
     || normalStrength > 4
     || !normalHeightSource
+    || !Number.isFinite(normalBevelPx)
+    || normalBevelPx < 1
+    || normalBevelPx > 32
+    || !Number.isFinite(normalSoftnessPx)
+    || normalSoftnessPx < 0
+    || normalSoftnessPx > 8
     || (decal.flipX != null && typeof decal.flipX !== "boolean")
     || (decal.flipY != null && typeof decal.flipY !== "boolean")
   ) {
@@ -837,6 +863,8 @@ const parseStoredDecal = (
     affectNormal,
     normalStrength,
     normalHeightSource,
+    normalBevelPx,
+    normalSoftnessPx,
     flipX: decal.flipX === true,
     flipY: decal.flipY === true,
     ...(placementMask ? { placementMask } : {}),

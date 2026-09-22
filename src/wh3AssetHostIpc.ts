@@ -937,9 +937,15 @@ const sanitizeUnitPainterProjectState = (
       const tintEnabled = typeof rawDecal.tintEnabled === "boolean" ? rawDecal.tintEnabled : undefined;
       const affectNormal = typeof rawDecal.affectNormal === "boolean" ? rawDecal.affectNormal : undefined;
       const normalHeightSource =
-        rawDecal.normalHeightSource === "alpha" || rawDecal.normalHeightSource === "luminance"
+        rawDecal.normalHeightSource === "alpha"
+        || rawDecal.normalHeightSource === "luminance"
+        || rawDecal.normalHeightSource === "emboss"
           ? rawDecal.normalHeightSource
           : undefined;
+      const normalBevelPx =
+        rawDecal.normalBevelPx == null ? 6 : readNumber(rawDecal.normalBevelPx);
+      const normalSoftnessPx =
+        rawDecal.normalSoftnessPx == null ? 1 : readNumber(rawDecal.normalSoftnessPx);
       const placementMask =
         rawDecal.placementMask == null
           ? undefined
@@ -975,6 +981,12 @@ const sanitizeUnitPainterProjectState = (
         || normalStrength < -4
         || normalStrength > 4
         || !normalHeightSource
+        || !Number.isFinite(normalBevelPx)
+        || normalBevelPx < 1
+        || normalBevelPx > 32
+        || !Number.isFinite(normalSoftnessPx)
+        || normalSoftnessPx < 0
+        || normalSoftnessPx > 8
         || (rawDecal.flipX != null && typeof rawDecal.flipX !== "boolean")
         || (rawDecal.flipY != null && typeof rawDecal.flipY !== "boolean")
       ) {
@@ -1002,6 +1014,8 @@ const sanitizeUnitPainterProjectState = (
         affectNormal,
         normalStrength,
         normalHeightSource,
+        normalBevelPx,
+        normalSoftnessPx,
         flipX: rawDecal.flipX === true,
         flipY: rawDecal.flipY === true,
         ...(placementMask ? { placementMask } : {}),
@@ -1512,6 +1526,8 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
           affectNormal: layer.decal.affectNormal,
           normalStrength: layer.decal.normalStrength,
           normalHeightSource: layer.decal.normalHeightSource,
+          normalBevelPx: layer.decal.normalBevelPx ?? 6,
+          normalSoftnessPx: layer.decal.normalSoftnessPx ?? 1,
           flipX: layer.decal.flipX === true,
           flipY: layer.decal.flipY === true,
           ...(placementMask ? { placementMask } : {}),

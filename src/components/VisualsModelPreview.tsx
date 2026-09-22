@@ -3127,14 +3127,73 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         <select
                           value={paintActiveDecal.normalHeightSource}
                           onChange={(event) => updateDecalAndRefresh({
-                            normalHeightSource: event.target.value as "alpha" | "luminance",
+                            normalHeightSource: event.target.value as "alpha" | "luminance" | "emboss",
                           })}
                           className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                           title="Height source used to generate the decal normal"
                         >
+                          <option value="emboss">Relief: Emboss</option>
                           <option value="alpha">Height: Alpha</option>
                           <option value="luminance">Height: Luminance</option>
                         </select>
+                        {paintActiveDecal.normalHeightSource === "emboss" && (
+                          <>
+                            <label className="flex items-center gap-1 text-gray-400" title="Width of the rounded emboss edge in source-image pixels">
+                              Bevel
+                              <input
+                                type="range"
+                                min={1}
+                                max={32}
+                                step={1}
+                                value={paintActiveDecal.normalBevelPx}
+                                onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                                onChange={(event) => updateDecalAndRefresh(
+                                  { normalBevelPx: Number(event.target.value) },
+                                  false,
+                                )}
+                                onPointerUp={finishActiveDecalControlGesture}
+                                onPointerCancel={finishActiveDecalControlGesture}
+                                onWheel={(event) =>
+                                  adjustRangeFromWheel(event, (value) => {
+                                    updateDecalAndRefresh({ normalBevelPx: value });
+                                  })
+                                }
+                                className="w-16 accent-yellow-500"
+                                aria-label="Decal emboss bevel"
+                              />
+                              <span className="min-w-5 text-right tabular-nums text-yellow-200">
+                                {Math.round(paintActiveDecal.normalBevelPx)}
+                              </span>
+                            </label>
+                            <label className="flex items-center gap-1 text-gray-400" title="Smooth the generated emboss height field before converting it to normals">
+                              Soft
+                              <input
+                                type="range"
+                                min={0}
+                                max={8}
+                                step={1}
+                                value={paintActiveDecal.normalSoftnessPx}
+                                onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                                onChange={(event) => updateDecalAndRefresh(
+                                  { normalSoftnessPx: Number(event.target.value) },
+                                  false,
+                                )}
+                                onPointerUp={finishActiveDecalControlGesture}
+                                onPointerCancel={finishActiveDecalControlGesture}
+                                onWheel={(event) =>
+                                  adjustRangeFromWheel(event, (value) => {
+                                    updateDecalAndRefresh({ normalSoftnessPx: value });
+                                  })
+                                }
+                                className="w-14 accent-yellow-500"
+                                aria-label="Decal emboss softness"
+                              />
+                              <span className="min-w-4 text-right tabular-nums text-yellow-200">
+                                {Math.round(paintActiveDecal.normalSoftnessPx)}
+                              </span>
+                            </label>
+                          </>
+                        )}
                       </>
                     )}
                     <span className="text-[10px] text-gray-500">

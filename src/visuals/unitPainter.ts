@@ -159,7 +159,12 @@ export type UnitPainterDecalSource = {
   rgbaBytes: Uint8Array;
 };
 
-export type UnitPainterDecalHeightSource = "alpha" | "luminance";
+export type UnitPainterDecalHeightSource = "alpha" | "luminance" | "emboss";
+
+const DEFAULT_DECAL_NORMAL_BEVEL_PX = 6;
+const DEFAULT_DECAL_NORMAL_SOFTNESS_PX = 1;
+const MAX_DECAL_NORMAL_BEVEL_PX = 32;
+const MAX_DECAL_NORMAL_SOFTNESS_PX = 8;
 
 type UnitPainterDecalState = {
   target: PaintableTexture;
@@ -177,6 +182,8 @@ type UnitPainterDecalState = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  normalBevelPx: number;
+  normalSoftnessPx: number;
   flipX: boolean;
   flipY: boolean;
 };
@@ -213,6 +220,8 @@ export type UnitPainterDecalInfo = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  normalBevelPx: number;
+  normalSoftnessPx: number;
   flipX: boolean;
   flipY: boolean;
   hasNormalMap: boolean;
@@ -222,7 +231,7 @@ export type UnitPainterDecalPatch = Partial<Pick<
   UnitPainterDecalInfo,
   "centerU" | "centerV" | "widthU" | "heightV" | "rotationDeg"
   | "tintEnabled" | "tint" | "affectNormal" | "normalStrength" | "normalHeightSource"
-  | "flipX" | "flipY"
+  | "normalBevelPx" | "normalSoftnessPx" | "flipX" | "flipY"
 >>;
 
 export type UnitPainterProjectTile = {
@@ -265,6 +274,8 @@ export type UnitPainterProjectDecal = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  normalBevelPx?: number;
+  normalSoftnessPx?: number;
   flipX?: boolean;
   flipY?: boolean;
   placementMask?: UnitPainterProjectMask;
@@ -1407,6 +1418,8 @@ const cloneDecalState = (decal: UnitPainterDecalState): UnitPainterDecalState =>
   affectNormal: decal.affectNormal,
   normalStrength: decal.normalStrength,
   normalHeightSource: decal.normalHeightSource,
+  normalBevelPx: decal.normalBevelPx,
+  normalSoftnessPx: decal.normalSoftnessPx,
   flipX: decal.flipX,
   flipY: decal.flipY,
 });
@@ -1552,16 +1565,143 @@ const getDecalBounds = (
   };
 };
 
+const sampleHeightField = (
+  field: Float32Array,
+  width: number,
+  height: number,
+  u: number,
+  v: number,
+) => {
+  if (u < 0 || u > 1 || v < 0 || v > 1 || width <= 0 || height <= 0) return 0;
+  const x = u * Math.max(0, width - 1);
+  const y = v * Math.max(0, height - 1);
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(width - 1, x0 + 1);
+  const y1 = Math.min(height - 1, y0 + 1);
+  const tx = x - x0;
+  const ty = y - y0;
+  const top = field[y0 * width + x0] * (1 - tx) + field[y0 * width + x1] * tx;
+  const bottom = field[y1 * width + x0] * (1 - tx) + field[y1 * width + x1] * tx;
+  return top * (1 - ty) + bottom * ty;
+};
+
+const buildEmbossHeightField = (
+  source: UnitPainterDecalSource,
+  bevelPx: number,
+  softnessPx: number,
+) => {
+  const { width, height, rgbaBytes } = source;
+  const count = width * height;
+  const distance = new Float32Array(count);
+  const bevel = Math.max(1, Math.min(MAX_DECAL_NORMAL_BEVEL_PX, bevelPx));
+  const diagonal = Math.SQRT2;
+
+  // Treat transparent texels and the image boundary as the outside of the
+  // relief. Two chamfer passes approximate distance-to-edge in O(width*height).
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      const alpha = rgbaBytes[index * 4 + 3] / 255;
+      distance[index] = alpha <= 1 / 255
+        ? 0
+        : Math.min(bevel, x + 1, y + 1, width - x, height - y);
+    }
+  }
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if (distance[index] === 0) continue;
+      let value = distance[index];
+      if (x > 0) value = Math.min(value, distance[index - 1] + 1);
+      if (y > 0) {
+        value = Math.min(value, distance[index - width] + 1);
+        if (x > 0) value = Math.min(value, distance[index - width - 1] + diagonal);
+        if (x + 1 < width) value = Math.min(value, distance[index - width + 1] + diagonal);
+      }
+      distance[index] = Math.min(bevel, value);
+    }
+  }
+  for (let y = height - 1; y >= 0; y -= 1) {
+    for (let x = width - 1; x >= 0; x -= 1) {
+      const index = y * width + x;
+      if (distance[index] === 0) continue;
+      let value = distance[index];
+      if (x + 1 < width) value = Math.min(value, distance[index + 1] + 1);
+      if (y + 1 < height) {
+        value = Math.min(value, distance[index + width] + 1);
+        if (x > 0) value = Math.min(value, distance[index + width - 1] + diagonal);
+        if (x + 1 < width) value = Math.min(value, distance[index + width + 1] + diagonal);
+      }
+      distance[index] = Math.min(bevel, value);
+    }
+  }
+
+  for (let index = 0; index < count; index += 1) {
+    const alpha = rgbaBytes[index * 4 + 3] / 255;
+    const t = Math.max(0, Math.min(1, distance[index] / bevel));
+    const smooth = t * t * (3 - 2 * t);
+    distance[index] = smooth * alpha;
+  }
+
+  const radius = Math.max(
+    0,
+    Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, Math.round(softnessPx)),
+  );
+  if (radius === 0 || count === 0) return distance;
+
+  const temp = new Float32Array(count);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * width;
+    let sum = 0;
+    let start = 0;
+    let end = Math.min(width - 1, radius);
+    for (let x = start; x <= end; x += 1) sum += distance[row + x];
+    for (let x = 0; x < width; x += 1) {
+      temp[row + x] = sum / (end - start + 1);
+      const nextStart = Math.max(0, x + 1 - radius);
+      const nextEnd = Math.min(width - 1, x + 1 + radius);
+      while (start < nextStart) sum -= distance[row + start++];
+      while (end < nextEnd) sum += distance[row + ++end];
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    let sum = 0;
+    let start = 0;
+    let end = Math.min(height - 1, radius);
+    for (let y = start; y <= end; y += 1) sum += temp[y * width + x];
+    for (let y = 0; y < height; y += 1) {
+      distance[y * width + x] = sum / (end - start + 1);
+      const nextStart = Math.max(0, y + 1 - radius);
+      const nextEnd = Math.min(height - 1, y + 1 + radius);
+      while (start < nextStart) sum -= temp[start++ * width + x];
+      while (end < nextEnd) sum += temp[++end * width + x];
+    }
+  }
+  return distance;
+};
+
 const getDecalHeight = (
   decal: UnitPainterDecalState,
   textureU: number,
   textureV: number,
+  embossHeight?: Float32Array,
 ) => {
   const sourceUv = getDecalSourceUv(decal, textureU, textureV);
+  if (decal.normalHeightSource === "emboss" && embossHeight) {
+    return sampleHeightField(
+      embossHeight,
+      decal.source.width,
+      decal.source.height,
+      sourceUv.u,
+      sourceUv.v,
+    );
+  }
   const pixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
   if (!pixel) return 0;
   const alpha = pixel.a / 255;
-  if (decal.normalHeightSource === "alpha") return alpha;
+  if (decal.normalHeightSource === "alpha" || decal.normalHeightSource === "emboss") return alpha;
   const luminance = (0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b) / 255;
   return luminance * alpha;
 };
@@ -1637,6 +1777,10 @@ export class UnitPainterSession {
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeLayerId = "";
   private activeDecalTransformBefore?: LayerSnapshot;
+  private readonly decalEmbossHeightCache = new WeakMap<
+    Uint8Array,
+    { key: string; data: Float32Array }
+  >();
   private currentStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private completedStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private isStrokeOpen = false;
@@ -2152,6 +2296,8 @@ export class UnitPainterSession {
       affectNormal: decal.affectNormal,
       normalStrength: decal.normalStrength,
       normalHeightSource: decal.normalHeightSource,
+      normalBevelPx: decal.normalBevelPx,
+      normalSoftnessPx: decal.normalSoftnessPx,
       flipX: decal.flipX,
       flipY: decal.flipY,
       hasNormalMap: !!decal.normalTarget,
@@ -2365,7 +2511,9 @@ export class UnitPainterSession {
         tint: { r: 255, g: 255, b: 255 },
         affectNormal: false,
         normalStrength: 1,
-        normalHeightSource: "alpha",
+        normalHeightSource: "emboss",
+        normalBevelPx: DEFAULT_DECAL_NORMAL_BEVEL_PX,
+        normalSoftnessPx: DEFAULT_DECAL_NORMAL_SOFTNESS_PX,
         flipX: false,
         flipY: false,
       },
@@ -2564,6 +2712,15 @@ export class UnitPainterSession {
       decal.normalStrength = Math.max(-4, Math.min(4, patch.normalStrength));
     }
     if (patch.normalHeightSource) decal.normalHeightSource = patch.normalHeightSource;
+    if (patch.normalBevelPx != null && Number.isFinite(patch.normalBevelPx)) {
+      decal.normalBevelPx = Math.max(1, Math.min(MAX_DECAL_NORMAL_BEVEL_PX, patch.normalBevelPx));
+    }
+    if (patch.normalSoftnessPx != null && Number.isFinite(patch.normalSoftnessPx)) {
+      decal.normalSoftnessPx = Math.max(
+        0,
+        Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, patch.normalSoftnessPx),
+      );
+    }
     if (patch.flipX != null) decal.flipX = patch.flipX;
     if (patch.flipY != null) decal.flipY = patch.flipY;
 
@@ -3888,6 +4045,8 @@ export class UnitPainterSession {
                 affectNormal: layer.decal.affectNormal,
                 normalStrength: layer.decal.normalStrength,
                 normalHeightSource: layer.decal.normalHeightSource,
+                normalBevelPx: layer.decal.normalBevelPx,
+                normalSoftnessPx: layer.decal.normalSoftnessPx,
                 flipX: layer.decal.flipX,
                 flipY: layer.decal.flipY,
                 ...(layer.decal.placementMask
@@ -3998,7 +4157,30 @@ export class UnitPainterSession {
           },
           affectNormal: !!savedDecal.affectNormal,
           normalStrength: Math.max(-4, Math.min(4, savedDecal.normalStrength)),
-          normalHeightSource: savedDecal.normalHeightSource === "luminance" ? "luminance" : "alpha",
+          normalHeightSource:
+            savedDecal.normalHeightSource === "emboss"
+              ? "emboss"
+              : savedDecal.normalHeightSource === "luminance"
+                ? "luminance"
+                : "alpha",
+          normalBevelPx: Math.max(
+            1,
+            Math.min(
+              MAX_DECAL_NORMAL_BEVEL_PX,
+              Number.isFinite(savedDecal.normalBevelPx)
+                ? savedDecal.normalBevelPx!
+                : DEFAULT_DECAL_NORMAL_BEVEL_PX,
+            ),
+          ),
+          normalSoftnessPx: Math.max(
+            0,
+            Math.min(
+              MAX_DECAL_NORMAL_SOFTNESS_PX,
+              Number.isFinite(savedDecal.normalSoftnessPx)
+                ? savedDecal.normalSoftnessPx!
+                : DEFAULT_DECAL_NORMAL_SOFTNESS_PX,
+            ),
+          ),
           flipX: savedDecal.flipX === true,
           flipY: savedDecal.flipY === true,
         };
@@ -4668,6 +4850,20 @@ export class UnitPainterSession {
     if (updateNormal) this.recomposeNormalTargetsForBase(decal.target);
   }
 
+  private getDecalEmbossHeight(decal: UnitPainterDecalState) {
+    const bevel = Math.max(1, Math.min(MAX_DECAL_NORMAL_BEVEL_PX, decal.normalBevelPx));
+    const softness = Math.max(
+      0,
+      Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, decal.normalSoftnessPx),
+    );
+    const key = `${decal.source.width}x${decal.source.height}:${bevel}:${softness}`;
+    const cached = this.decalEmbossHeightCache.get(decal.source.rgbaBytes);
+    if (cached?.key === key) return cached.data;
+    const data = buildEmbossHeightField(decal.source, bevel, softness);
+    this.decalEmbossHeightCache.set(decal.source.rgbaBytes, { key, data });
+    return data;
+  }
+
   private applyDecalToNormalTarget(
     layer: PaintLayer,
     decal: UnitPainterDecalState,
@@ -4684,6 +4880,8 @@ export class UnitPainterSession {
 
     const bounds = getDecalBounds(decal, normalTarget.width, normalTarget.height);
     const coverageMask = decal.placementMask ?? this.getTargetUvCoverageMask(decal.target);
+    const embossHeight =
+      decal.normalHeightSource === "emboss" ? this.getDecalEmbossHeight(decal) : undefined;
     const du = 1 / normalTarget.width;
     const dv = 1 / normalTarget.height;
     for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
@@ -4699,10 +4897,10 @@ export class UnitPainterSession {
         const sourcePixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
         if (!sourcePixel || sourcePixel.a === 0) continue;
 
-        const left = getDecalHeight(decal, textureU - du, textureV);
-        const right = getDecalHeight(decal, textureU + du, textureV);
-        const up = getDecalHeight(decal, textureU, textureV - dv);
-        const down = getDecalHeight(decal, textureU, textureV + dv);
+        const left = getDecalHeight(decal, textureU - du, textureV, embossHeight);
+        const right = getDecalHeight(decal, textureU + du, textureV, embossHeight);
+        const up = getDecalHeight(decal, textureU, textureV - dv, embossHeight);
+        const down = getDecalHeight(decal, textureU, textureV + dv, embossHeight);
         const slope = decal.normalStrength * 4;
         let detailX = -(right - left) * slope;
         let detailY = -(down - up) * slope;

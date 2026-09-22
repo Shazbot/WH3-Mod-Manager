@@ -608,7 +608,11 @@ describe("unit painter", () => {
           rgbaBytes: sourceBytes,
         }),
       ).toBeTruthy();
-      expect(replacement.updateActiveDecal({ affectNormal: true, normalStrength: 2 })).toBe(true);
+      expect(replacement.updateActiveDecal({
+        affectNormal: true,
+        normalStrength: 2,
+        normalHeightSource: "alpha",
+      })).toBe(true);
       const positive = replacement.exportModifiedTextures().find((texture) =>
         texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
       )?.rgbaBytes;
@@ -635,6 +639,83 @@ describe("unit painter", () => {
       expect(foundOppositeSlope).toBe(true);
     } finally {
       replacement.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+      normal.dispose();
+    }
+  });
+
+  it("generates a distinct cached emboss relief from opaque decal alpha", () => {
+    const base = makeTexture();
+    const normalData = new Uint8Array(WIDTH * HEIGHT * 4);
+    for (let index = 0; index < normalData.length; index += 4) {
+      normalData[index] = 128;
+      normalData[index + 1] = 128;
+      normalData[index + 2] = 255;
+      normalData[index + 3] = 255;
+    }
+    const normal = new THREE.DataTexture(
+      normalData,
+      WIDTH,
+      HEIGHT,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType,
+    );
+    normal.flipY = false;
+    normal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
+    normal.needsUpdate = true;
+
+    const painter = makePainter(base);
+    (painter.material as THREE.MeshBasicMaterial & { normalMap?: THREE.Texture }).normalMap = normal;
+    painter.session.dispose();
+    const session = createUnitPainterSession(painter.mesh);
+    const sourceBytes = new Uint8Array(16 * 16 * 4);
+    for (let index = 0; index < sourceBytes.length; index += 4) {
+      sourceBytes[index] = 255;
+      sourceBytes[index + 1] = 255;
+      sourceBytes[index + 2] = 255;
+      sourceBytes[index + 3] = 255;
+    }
+
+    try {
+      expect(session.addDecalLayerAtIntersection(painter.intersection, {
+        name: "solid-badge.png",
+        width: 16,
+        height: 16,
+        rgbaBytes: sourceBytes,
+      })).toBeTruthy();
+      expect(session.updateActiveDecal({
+        affectNormal: true,
+        normalStrength: 2,
+        normalHeightSource: "alpha",
+      })).toBe(true);
+      const alphaNormal = session.exportModifiedTextures().find((texture) =>
+        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
+      )?.rgbaBytes;
+      expect(alphaNormal).toBeDefined();
+
+      expect(session.updateActiveDecal({
+        normalHeightSource: "emboss",
+        normalBevelPx: 6,
+        normalSoftnessPx: 1,
+      })).toBe(true);
+      const embossNormal = session.exportModifiedTextures().find((texture) =>
+        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
+      )?.rgbaBytes;
+      expect(embossNormal).toBeDefined();
+      expect(embossNormal).not.toEqual(alphaNormal);
+      expect(session.activeDecalInfo?.normalBevelPx).toBe(6);
+      expect(session.activeDecalInfo?.normalSoftnessPx).toBe(1);
+
+      // Reapplying the same emboss settings exercises the cached height field
+      // and must be deterministic.
+      expect(session.updateActiveDecal({ normalStrength: 2 })).toBe(true);
+      const secondEmboss = session.exportModifiedTextures().find((texture) =>
+        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
+      )?.rgbaBytes;
+      expect(secondEmboss).toEqual(embossNormal);
+    } finally {
+      session.dispose();
       painter.geometry.dispose();
       painter.material.dispose();
       normal.dispose();
@@ -895,7 +976,9 @@ describe("unit painter", () => {
         replacement.updateActiveDecal({
           affectNormal: true,
           normalStrength: -2,
-          normalHeightSource: "alpha",
+          normalHeightSource: "emboss",
+          normalBevelPx: 9,
+          normalSoftnessPx: 2,
           flipX: true,
           flipY: true,
         }),
@@ -906,6 +989,9 @@ describe("unit painter", () => {
       expect(project.layers.at(-1)?.decal?.sourceName).toBe("raised-eagle.png");
       expect(project.layers.at(-1)?.decal?.sourceRgbaBytes).toEqual(sourceBytes);
       expect(project.layers.at(-1)?.decal?.normalStrength).toBe(-2);
+      expect(project.layers.at(-1)?.decal?.normalHeightSource).toBe("emboss");
+      expect(project.layers.at(-1)?.decal?.normalBevelPx).toBe(9);
+      expect(project.layers.at(-1)?.decal?.normalSoftnessPx).toBe(2);
       expect(project.layers.at(-1)?.decal?.flipX).toBe(true);
       expect(project.layers.at(-1)?.decal?.flipY).toBe(true);
       expect(project.layers.at(-1)?.decal?.normalSourceVirtualPath)
