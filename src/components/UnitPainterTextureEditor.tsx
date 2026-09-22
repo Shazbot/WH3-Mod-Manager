@@ -54,6 +54,8 @@ type DecalGesture = {
   centerV: number;
   startWidthU: number;
   startHeightV: number;
+  startPointerU: number;
+  startPointerV: number;
   startDistanceUv: number;
   startAngleRad: number;
   startRotationDeg: number;
@@ -540,6 +542,23 @@ const UnitPainterTextureEditor = ({
     };
   };
 
+  const pointIsInsideActiveDecal = (point: { x: number; y: number }) => {
+    if (!activeDecal || activeDecal.targetTextureId !== view.id) return false;
+    const u = point.x / view.width;
+    const v = point.y / view.height;
+    const radians = activeDecal.rotationDeg * Math.PI / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const dx = u - activeDecal.centerU;
+    const dy = v - activeDecal.centerV;
+    const localU = cos * dx + sin * dy;
+    const localV = -sin * dx + cos * dy;
+    return (
+      Math.abs(localU) <= activeDecal.widthU * 0.5
+      && Math.abs(localV) <= activeDecal.heightV * 0.5
+    );
+  };
+
   const beginDecalGesture = (
     event: React.PointerEvent<HTMLDivElement>,
     mode: DecalGesture["mode"],
@@ -556,6 +575,8 @@ const UnitPainterTextureEditor = ({
       centerV: activeDecal.centerV,
       startWidthU: activeDecal.widthU,
       startHeightV: activeDecal.heightV,
+      startPointerU: u,
+      startPointerV: v,
       startDistanceUv: Math.max(
         1e-6,
         Math.hypot(u - activeDecal.centerU, v - activeDecal.centerV),
@@ -711,9 +732,8 @@ const UnitPainterTextureEditor = ({
     }
 
     if (activeDecal) {
-      if (activeDecal.targetTextureId !== view.id) return;
+      if (activeDecal.targetTextureId !== view.id || !pointIsInsideActiveDecal(point)) return;
       if (!beginDecalGesture(event, "move", point)) return;
-      session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
       onDecalChanged(false);
       return;
     }
@@ -749,10 +769,13 @@ const UnitPainterTextureEditor = ({
     if (decalGesture?.pointerId === event.pointerId) {
       if (point) {
         if (decalGesture.mode === "move") {
-          if (point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
-            session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
-            onDecalChanged(false);
-          }
+          const u = point.x / view.width;
+          const v = point.y / view.height;
+          session.updateActiveDecal({
+            centerU: decalGesture.centerU + (u - decalGesture.startPointerU),
+            centerV: decalGesture.centerV + (v - decalGesture.startPointerV),
+          }, false);
+          onDecalChanged(false);
         } else {
           const u = point.x / view.width;
           const v = point.y / view.height;
@@ -1080,7 +1103,7 @@ const UnitPainterTextureEditor = ({
         {pendingDecal
           ? "LMB place decal"
           : activeDecal
-            ? "LMB drag decal · square handle scale · round handle rotate"
+            ? "Drag inside decal to move · square handle scale · round handle rotate"
             : selectMode
               ? `LMB select ${selectMode}`
               : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
