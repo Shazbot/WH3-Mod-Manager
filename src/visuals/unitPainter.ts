@@ -2339,6 +2339,8 @@ export class UnitPainterSession {
     this.activeDecalTransformBefore = undefined;
     const layer = this.getActiveLayer();
     if (!before || !layer || layer.kind !== "decal" || !layer.decal) return false;
+    // Live transform updates defer normal recomposition; finalize it once when
+    // the gesture ends, then record the whole gesture as one history entry.
     this.rasterizeDecalLayer(
       layer,
       recordHistory || !this.activeDecalTransformBefore,

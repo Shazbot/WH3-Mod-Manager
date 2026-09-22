@@ -40,6 +40,8 @@ import {
   UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY,
   UNIT_PAINTER_PROJECT_TILE_BYTES,
   UNIT_PAINTER_PROJECT_TILE_SIZE,
+  type UnitPainterProjectLayerInput,
+  type UnitPainterProjectStateInput,
 } from "./visuals/unitPainterPack";
 
 const MODEL_PREVIEW_OUTPUT_DIR = "model-previews";
@@ -802,7 +804,9 @@ const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
 };
 
 
-const sanitizeUnitPainterProjectState = (value: unknown) => {
+const sanitizeUnitPainterProjectState = (
+  value: unknown,
+): UnitPainterProjectStateInput | undefined => {
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as {
     activeLayerId?: unknown;
@@ -822,7 +826,7 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
 
   let totalBytes = 0;
   const seenLayerIds = new Set<string>();
-  const layers = [];
+  const layers: UnitPainterProjectLayerInput[] = [];
   for (const rawLayer of candidate.layers) {
     if (!rawLayer || typeof rawLayer !== "object") return undefined;
     const layer = rawLayer as {
