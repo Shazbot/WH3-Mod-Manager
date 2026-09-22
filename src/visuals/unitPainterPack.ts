@@ -54,6 +54,8 @@ export type UnitPainterProjectDecalInput = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: "alpha" | "luminance";
+  flipX?: boolean;
+  flipY?: boolean;
   placementMask?: UnitPainterProjectMaskInput;
 };
 
@@ -367,9 +369,11 @@ const validateProjectDecalInput = (
     || decal.tint.b > 255
     || typeof decal.affectNormal !== "boolean"
     || !Number.isFinite(decal.normalStrength)
-    || decal.normalStrength < 0
+    || decal.normalStrength < -4
     || decal.normalStrength > 4
     || (decal.normalHeightSource !== "alpha" && decal.normalHeightSource !== "luminance")
+    || (decal.flipX != null && typeof decal.flipX !== "boolean")
+    || (decal.flipY != null && typeof decal.flipY !== "boolean")
   ) {
     throw new Error(`Decal layer '${layerName}' contains invalid decal metadata.`);
   }
@@ -515,6 +519,8 @@ export const buildUnitPainterProjectPackFiles = async (
         affectNormal: layer.decal.affectNormal,
         normalStrength: layer.decal.normalStrength,
         normalHeightSource: layer.decal.normalHeightSource,
+        flipX: layer.decal.flipX === true,
+        flipY: layer.decal.flipY === true,
         ...(storedPlacementMask ? { placementMask: storedPlacementMask } : {}),
         filePath,
         encoding: "zstd",
@@ -803,9 +809,11 @@ const parseStoredDecal = (
     || tintB > 255
     || affectNormal == null
     || !Number.isFinite(normalStrength)
-    || normalStrength < 0
+    || normalStrength < -4
     || normalStrength > 4
     || !normalHeightSource
+    || (decal.flipX != null && typeof decal.flipX !== "boolean")
+    || (decal.flipY != null && typeof decal.flipY !== "boolean")
   ) {
     throw new Error(`Decal layer '${layerName}' contains invalid decal data.`);
   }
@@ -829,6 +837,8 @@ const parseStoredDecal = (
     affectNormal,
     normalStrength,
     normalHeightSource,
+    flipX: decal.flipX === true,
+    flipY: decal.flipY === true,
     ...(placementMask ? { placementMask } : {}),
     filePath,
     encoding: "zstd",
