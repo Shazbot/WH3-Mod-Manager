@@ -669,6 +669,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
   const paintActiveDecal = paintSessionRef.current?.activeDecalInfo;
   const paintRecentColors = paintColorHistory.slice(0, 8);
+  const paintActiveDecalTint = paintActiveDecal
+    ? `#${[paintActiveDecal.tint.r, paintActiveDecal.tint.g, paintActiveDecal.tint.b]
+        .map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0"))
+        .join("")}`
+    : "#ffffff";
   void paintHistoryVersion;
   if (paintBrushMode !== "restore") lastPaintBrushModeRef.current = paintBrushMode;
 
@@ -712,6 +717,35 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPendingDecal(undefined);
     setPaintExportStatus("");
     setPaintHistoryVersion((value) => value + 1);
+  };
+
+  const updateDecalAndRefresh = (
+    patch: Parameters<NonNullable<typeof paintSessionRef.current>["updateActiveDecal"]>[0],
+    recordHistory = true,
+  ) => {
+    if (paintSessionRef.current?.updateActiveDecal(patch, recordHistory)) {
+      setPaintExportStatus("");
+      setPaintHistoryVersion((value) => value + 1);
+      return true;
+    }
+    return false;
+  };
+
+  const resizeActiveDecal = (widthU: number, recordHistory = true) => {
+    const decal = paintSessionRef.current?.activeDecalInfo;
+    if (!decal) return false;
+    const aspect = decal.heightV / Math.max(decal.widthU, 0.001);
+    return updateDecalAndRefresh(
+      { widthU, heightV: Math.max(0.001, widthU * aspect) },
+      recordHistory,
+    );
+  };
+
+  const finishActiveDecalControlGesture = () => {
+    if (paintSessionRef.current?.endActiveDecalTransform()) {
+      setPaintExportStatus("");
+      setPaintHistoryVersion((value) => value + 1);
+    }
   };
 
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
