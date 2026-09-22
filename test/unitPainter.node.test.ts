@@ -667,6 +667,9 @@ describe("unit painter", () => {
       expect(project.layers.at(-1)?.decal?.sourceRgbaBytes).toEqual(sourceBytes);
       expect(project.layers.at(-1)?.decal?.normalSourceVirtualPath)
         .toBe("variantmeshes\\unit\\body_normal.dds");
+      expect(project.layers.at(-1)?.decal?.placementMask?.tiles.length).toBeGreaterThan(0);
+      expect(project.layers.at(-1)?.decal?.placementMask?.width).toBe(WIDTH);
+      expect(project.layers.at(-1)?.decal?.placementMask?.height).toBe(HEIGHT);
 
       const exported = replacement.exportModifiedTextures();
       expect(exported.some((texture) =>
