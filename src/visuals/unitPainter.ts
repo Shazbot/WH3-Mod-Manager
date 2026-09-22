@@ -2341,22 +2341,17 @@ export class UnitPainterSession {
     if (!before || !layer || layer.kind !== "decal" || !layer.decal) return false;
     // Live transform updates defer normal recomposition; finalize it once when
     // the gesture ends, then record the whole gesture as one history entry.
-    this.rasterizeDecalLayer(
-      layer,
-      recordHistory || !this.activeDecalTransformBefore,
-    );
-    if (before) {
-      const after = this.snapshotLayer(layer);
-      const index = this.paintLayers.indexOf(layer);
-      this.pushHistoryChange({
-        kind: "layer-replace",
-        index,
-        before: [before],
-        after: [after],
-        beforeActiveLayerId: layer.id,
-        afterActiveLayerId: layer.id,
-      });
-    }
+    this.rasterizeDecalLayer(layer, true);
+    const after = this.snapshotLayer(layer);
+    const index = this.paintLayers.indexOf(layer);
+    this.pushHistoryChange({
+      kind: "layer-replace",
+      index,
+      before: [before],
+      after: [after],
+      beforeActiveLayerId: layer.id,
+      afterActiveLayerId: layer.id,
+    });
     return true;
   }
 
@@ -2389,17 +2384,22 @@ export class UnitPainterSession {
     }
     if (patch.normalHeightSource) decal.normalHeightSource = patch.normalHeightSource;
 
-    this.rasterizeDecalLayer(layer, true);
-    const after = this.snapshotLayer(layer);
-    const index = this.paintLayers.indexOf(layer);
-    this.pushHistoryChange({
-      kind: "layer-replace",
-      index,
-      before: [before],
-      after: [after],
-      beforeActiveLayerId: layer.id,
-      afterActiveLayerId: layer.id,
-    });
+    this.rasterizeDecalLayer(
+      layer,
+      recordHistory || !this.activeDecalTransformBefore,
+    );
+    if (before) {
+      const after = this.snapshotLayer(layer);
+      const index = this.paintLayers.indexOf(layer);
+      this.pushHistoryChange({
+        kind: "layer-replace",
+        index,
+        before: [before],
+        after: [after],
+        beforeActiveLayerId: layer.id,
+        afterActiveLayerId: layer.id,
+      });
+    }
     return true;
   }
 
