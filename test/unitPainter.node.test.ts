@@ -493,6 +493,7 @@ describe("unit painter", () => {
       expect(painter.session.moveActiveDecalToIntersection(moved, true)).toBe(true);
       expect(painter.session.endActiveDecalTransform()).toBe(true);
       expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.62);
+      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
 
       expect(painter.session.undo()).toBe(true);
       expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.46);
@@ -502,6 +503,104 @@ describe("unit painter", () => {
       painter.session.dispose();
       painter.geometry.dispose();
       painter.material.dispose();
+    }
+  });
+
+  it("moves one decal layer across materials without leaving the old footprint", () => {
+    const textureA = makeTexture();
+    textureA.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\decal_a_base_colour.dds";
+    const textureB = makeTexture();
+    textureB.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\decal_b_base_colour.dds";
+
+    const makeTriangle = (u0: number, v0: number, u1: number, v1: number, u2: number, v2: number) => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3),
+      );
+      geometry.setAttribute(
+        "uv",
+        new THREE.Float32BufferAttribute([u0, v0, u1, v1, u2, v2], 2),
+      );
+      return geometry;
+    };
+
+    const geometryA = makeTriangle(0.15, 0.2, 0.45, 0.2, 0.15, 0.5);
+    const geometryB = makeTriangle(0.55, 0.2, 0.85, 0.2, 0.55, 0.5);
+    const materialA = new THREE.MeshBasicMaterial({ map: textureA });
+    const materialB = new THREE.MeshBasicMaterial({ map: textureB });
+    const meshA = new THREE.Mesh(geometryA, materialA);
+    const meshB = new THREE.Mesh(geometryB, materialB);
+    const root = new THREE.Group();
+    root.add(meshA, meshB);
+    root.updateMatrixWorld(true);
+    const session = createUnitPainterSession(root);
+
+    const hit = (
+      mesh: THREE.Mesh,
+      uv: THREE.Vector2,
+    ) => ({
+      distance: 1,
+      point: new THREE.Vector3(),
+      object: mesh,
+      uv,
+      face: {
+        a: 0,
+        b: 1,
+        c: 2,
+        normal: new THREE.Vector3(0, 0, 1),
+        materialIndex: 0,
+      },
+      faceIndex: 0,
+    }) as THREE.Intersection<THREE.Object3D>;
+
+    const sourceBytes = new Uint8Array(4 * 4 * 4);
+    for (let index = 0; index < sourceBytes.length; index += 4) {
+      sourceBytes[index] = 255;
+      sourceBytes[index + 1] = 255;
+      sourceBytes[index + 2] = 255;
+      sourceBytes[index + 3] = 255;
+    }
+
+    try {
+      expect(
+        session.addDecalLayerAtIntersection(hit(meshA, new THREE.Vector2(0.3, 0.3)), {
+          name: "eagle.png",
+          width: 4,
+          height: 4,
+          rgbaBytes: sourceBytes,
+        }),
+      ).toBeTruthy();
+      const firstTextureId = session.activeDecalInfo?.targetTextureId;
+      expect(getPixel(materialA, 9, 9)).toEqual([255, 255, 255, 255]);
+
+      expect(session.beginActiveDecalTransform()).toBe(true);
+      expect(
+        session.moveActiveDecalToIntersection(
+          hit(meshB, new THREE.Vector2(0.7, 0.3)),
+          true,
+        ),
+      ).toBe(true);
+      expect(session.endActiveDecalTransform()).toBe(true);
+
+      expect(session.activeDecalInfo?.targetTextureId).not.toBe(firstTextureId);
+      expect(getPixel(materialA, 9, 9)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(materialB, 22, 9)).toEqual([255, 255, 255, 255]);
+
+      expect(session.undo()).toBe(true);
+      expect(getPixel(materialA, 9, 9)).toEqual([255, 255, 255, 255]);
+      expect(getPixel(materialB, 22, 9)).toEqual([0, 0, 0, 255]);
+      expect(session.redo()).toBe(true);
+      expect(getPixel(materialA, 9, 9)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(materialB, 22, 9)).toEqual([255, 255, 255, 255]);
+    } finally {
+      session.dispose();
+      geometryA.dispose();
+      geometryB.dispose();
+      materialA.dispose();
+      materialB.dispose();
+      textureA.dispose();
+      textureB.dispose();
     }
   });
 

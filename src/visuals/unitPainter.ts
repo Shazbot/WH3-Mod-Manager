@@ -2324,13 +2324,38 @@ export class UnitPainterSession {
     const decal = layer?.kind === "decal" ? layer.decal : undefined;
     const material = getIntersectionMaterial(intersection);
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
-    if (!layer || !decal || !target || target !== decal.target) return false;
+    if (!layer || !decal || !target || !material) return false;
+
+    const previousTarget = decal.target;
+    const previousNormalTarget = decal.normalTarget;
+    const nextNormalTarget = this.normalTargetByMaterial.get(material);
+    if (target !== previousTarget) {
+      decal.target = target;
+      // Width is stored as a fraction of the target texture. Recompute height
+      // for the new texture aspect so the source image keeps its proportions.
+      decal.heightV = Math.max(
+        0.001,
+        decal.widthU * (decal.source.height / decal.source.width) * (target.width / target.height),
+      );
+    }
+    decal.normalTarget = nextNormalTarget;
+
     const uv = intersection.uv.clone();
     target.editable.updateMatrix();
     target.editable.transformUv(uv);
     decal.centerU = uv.x;
     decal.centerV = uv.y;
     this.rasterizeDecalLayer(layer, !live);
+
+    // Crossing to another material can also change the exact normal map. Clear
+    // the previous material's normal contribution immediately; the new normal
+    // is rebuilt now for committed moves or once at gesture end for live moves.
+    if (
+      previousNormalTarget
+      && (target !== previousTarget || previousNormalTarget !== nextNormalTarget)
+    ) {
+      this.recomposeNormalTarget(previousNormalTarget);
+    }
     return true;
   }
 
@@ -2342,6 +2367,10 @@ export class UnitPainterSession {
     // Live transform updates defer normal recomposition; finalize it once when
     // the gesture ends, then record the whole gesture as one history entry.
     this.rasterizeDecalLayer(layer, true);
+    const previousNormalTarget = before.decal?.normalTarget;
+    if (previousNormalTarget && previousNormalTarget !== layer.decal.normalTarget) {
+      this.recomposeNormalTarget(previousNormalTarget);
+    }
     const after = this.snapshotLayer(layer);
     const index = this.paintLayers.indexOf(layer);
     this.pushHistoryChange({
