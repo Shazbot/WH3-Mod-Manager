@@ -966,7 +966,11 @@ const getVisualsFilesForSession = async (session: VisualsSession): Promise<Visua
 const resolveVisualsFileInSession = async (
   session: VisualsSession,
   fileName: string,
-  options?: { variantMeshDefinitionFallback?: boolean; preferredPackPath?: string },
+  options?: {
+    variantMeshDefinitionFallback?: boolean;
+    preferredPackPath?: string;
+    packCache?: Map<string, Pack | undefined>;
+  },
 ) => {
   let requestedPath = normalizePackFilePath(fileName);
   if (!requestedPath) return undefined;
@@ -986,7 +990,13 @@ const resolveVisualsFileInSession = async (
       ? [preferredPackPath, ...searchPackPaths.filter((packPath) => packPath !== preferredPackPath)]
       : searchPackPaths;
   for (const packPath of prioritizedPackPaths) {
-    const pack = await getOrLoadPackFromAppData(packPath);
+    let pack: Pack | undefined;
+    if (options?.packCache?.has(packPath)) {
+      pack = options.packCache.get(packPath);
+    } else {
+      pack = await getOrLoadPackFromAppData(packPath);
+      options?.packCache?.set(packPath, pack);
+    }
     if (!pack) continue;
     const matchedFile = findPackedFileCaseInsensitive(pack, requestedPath);
     if (!matchedFile) continue;
@@ -14190,6 +14200,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
           const dependencyFileIds = new Map<string, number>();
           const dependencyTextCache = new Map<string, string | undefined>();
+          const dependencyPackCache = new Map<string, Pack | undefined>();
           const recursivelyResolvedFiles = new Map<
             string,
             { pack: Pack; packPath: string; fileName: string }
@@ -14211,6 +14222,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               const resolved = await resolveVisualsFileInSession(session, requestedPath, {
                 variantMeshDefinitionFallback: requestedExtension === "variantmeshdefinition",
                 preferredPackPath,
+                packCache: dependencyPackCache,
               });
               if (!resolved?.pack || !resolved.packPath || !resolved.fileName) return undefined;
 
@@ -14358,8 +14370,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           let fileId = -1;
           try {
             fileId = fs.openSync(group.packPath, "r");
+            const packedFilesByKey = new Map(
+              group.pack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile] as const),
+            );
             for (const target of group.files) {
-              const packedFile = findPackedFileCaseInsensitive(group.pack, target.fileName);
+              const packedFile = packedFilesByKey.get(normalizePackFilePathKey(target.fileName));
               if (!packedFile) {
                 skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
                 continue;
