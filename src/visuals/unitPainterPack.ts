@@ -23,12 +23,32 @@ export type UnitPainterProjectTexture = {
   tiles: UnitPainterProjectTileInput[];
 };
 
+export type UnitPainterProjectDecalInput = {
+  targetSourceVirtualPath: string;
+  sourceName: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  sourceRgbaBytes: Uint8Array;
+  centerU: number;
+  centerV: number;
+  widthU: number;
+  heightV: number;
+  rotationDeg: number;
+  tintEnabled: boolean;
+  tint: { r: number; g: number; b: number };
+  affectNormal: boolean;
+  normalStrength: number;
+  normalHeightSource: "alpha" | "luminance";
+};
+
 export type UnitPainterProjectLayerInput = {
   id: string;
   name: string;
   visible: boolean;
   opacity: number;
+  kind?: "paint" | "decal";
   textures: UnitPainterProjectTexture[];
+  decal?: UnitPainterProjectDecalInput;
 };
 
 export type UnitPainterProjectStateInput = {
@@ -48,6 +68,11 @@ export type UnitPainterProjectStoredTexture = {
   encoding: "zstd";
 };
 
+export type UnitPainterProjectStoredDecal = Omit<UnitPainterProjectDecalInput, "sourceRgbaBytes"> & {
+  filePath: string;
+  encoding: "zstd";
+};
+
 export type UnitPainterProjectManifest = {
   formatVersion: 3;
   sourceVariantMeshDefinition: string;
@@ -60,7 +85,9 @@ export type UnitPainterProjectManifest = {
     name: string;
     visible: boolean;
     opacity: number;
+    kind?: "paint" | "decal";
     textures: UnitPainterProjectStoredTexture[];
+    decal?: UnitPainterProjectStoredDecal;
   }>;
 };
 
@@ -229,6 +256,56 @@ const validateProjectTextureInput = (texture: UnitPainterProjectTexture) => {
   return sourceVirtualPath;
 };
 
+const validateProjectDecalInput = (
+  decal: UnitPainterProjectDecalInput,
+  layerName: string,
+) => {
+  const targetSourceVirtualPath = normalizeProjectSourcePath(decal.targetSourceVirtualPath);
+  const expectedBytes = decal.sourceWidth * decal.sourceHeight * 4;
+  if (
+    !isSafePackPath(targetSourceVirtualPath)
+    || !targetSourceVirtualPath.toLowerCase().endsWith(".dds")
+    || !decal.sourceName.trim()
+    || !Number.isInteger(decal.sourceWidth)
+    || !Number.isInteger(decal.sourceHeight)
+    || decal.sourceWidth <= 0
+    || decal.sourceHeight <= 0
+    || decal.sourceWidth > 8192
+    || decal.sourceHeight > 8192
+    || !Number.isSafeInteger(expectedBytes)
+    || expectedBytes <= 0
+    || expectedBytes > 64 * 1024 * 1024
+    || !(decal.sourceRgbaBytes instanceof Uint8Array)
+    || decal.sourceRgbaBytes.length !== expectedBytes
+    || !Number.isFinite(decal.centerU)
+    || !Number.isFinite(decal.centerV)
+    || !Number.isFinite(decal.widthU)
+    || decal.widthU <= 0
+    || !Number.isFinite(decal.heightV)
+    || decal.heightV <= 0
+    || !Number.isFinite(decal.rotationDeg)
+    || typeof decal.tintEnabled !== "boolean"
+    || !decal.tint
+    || !Number.isFinite(decal.tint.r)
+    || !Number.isFinite(decal.tint.g)
+    || !Number.isFinite(decal.tint.b)
+    || decal.tint.r < 0
+    || decal.tint.r > 255
+    || decal.tint.g < 0
+    || decal.tint.g > 255
+    || decal.tint.b < 0
+    || decal.tint.b > 255
+    || typeof decal.affectNormal !== "boolean"
+    || !Number.isFinite(decal.normalStrength)
+    || decal.normalStrength < 0
+    || decal.normalStrength > 4
+    || (decal.normalHeightSource !== "alpha" && decal.normalHeightSource !== "luminance")
+  ) {
+    throw new Error(`Decal layer '${layerName}' contains invalid decal metadata.`);
+  }
+  return targetSourceVirtualPath;
+};
+
 export const buildUnitPainterProjectPackFiles = async (
   sourceVariantMeshDefinition: string,
   variantSelections: readonly VariantMeshSelection[],
@@ -257,6 +334,16 @@ export const buildUnitPainterProjectPackFiles = async (
       throw new Error(`Paint layer '${name}' has an invalid opacity.`);
     }
     seenLayerIds.add(id);
+    const kind = layer.kind === "decal" ? "decal" : "paint";
+    if (kind === "decal" && !layer.decal) {
+      throw new Error(`Decal layer '${name}' is missing its source image.`);
+    }
+    if (kind === "paint" && layer.decal) {
+      throw new Error(`Paint layer '${name}' contains unexpected decal metadata.`);
+    }
+    if (kind === "decal" && layer.textures.length > 0) {
+      throw new Error(`Decal layer '${name}' contains unexpected raster paint tiles.`);
+    }
 
     const seenSources = new Set<string>();
     const storedTextures: UnitPainterProjectStoredTexture[] = [];
@@ -296,12 +383,49 @@ export const buildUnitPainterProjectPackFiles = async (
       });
     }
 
+    let storedDecal: UnitPainterProjectStoredDecal | undefined;
+    if (kind === "decal" && layer.decal) {
+      const targetSourceVirtualPath = validateProjectDecalInput(layer.decal, name);
+      const filePath =
+        `whmm_unit_painter\\layers\\${String(layerIndex + 1).padStart(2, "0")}_${id}\\decal.rgba.zst`;
+      const buffer = await zstdCompress(Buffer.from(
+        layer.decal.sourceRgbaBytes.buffer,
+        layer.decal.sourceRgbaBytes.byteOffset,
+        layer.decal.sourceRgbaBytes.byteLength,
+      ), 1);
+      packedTextureFiles.push({ name: filePath, buffer, file_size: buffer.length });
+      storedDecal = {
+        targetSourceVirtualPath,
+        sourceName: layer.decal.sourceName.trim().slice(0, 160),
+        sourceWidth: layer.decal.sourceWidth,
+        sourceHeight: layer.decal.sourceHeight,
+        centerU: layer.decal.centerU,
+        centerV: layer.decal.centerV,
+        widthU: layer.decal.widthU,
+        heightV: layer.decal.heightV,
+        rotationDeg: layer.decal.rotationDeg,
+        tintEnabled: layer.decal.tintEnabled,
+        tint: {
+          r: Math.round(layer.decal.tint.r),
+          g: Math.round(layer.decal.tint.g),
+          b: Math.round(layer.decal.tint.b),
+        },
+        affectNormal: layer.decal.affectNormal,
+        normalStrength: layer.decal.normalStrength,
+        normalHeightSource: layer.decal.normalHeightSource,
+        filePath,
+        encoding: "zstd",
+      };
+    }
+
     storedLayers.push({
       id,
       name,
       visible: !!layer.visible,
       opacity: layer.opacity,
+      ...(kind === "decal" ? { kind } : {}),
       textures: storedTextures,
+      ...(storedDecal ? { decal: storedDecal } : {}),
     });
   }
 
@@ -434,6 +558,105 @@ const parseStoredTexture = (
   };
 };
 
+const parseStoredDecal = (
+  raw: unknown,
+  seenFiles: Set<string>,
+  layerName: string,
+): UnitPainterProjectStoredDecal => {
+  if (!raw || typeof raw !== "object") throw new Error(`Decal layer '${layerName}' is missing its decal data.`);
+  const decal = raw as Record<string, unknown>;
+  const targetSourceVirtualPath =
+    typeof decal.targetSourceVirtualPath === "string"
+      ? normalizeProjectSourcePath(decal.targetSourceVirtualPath)
+      : "";
+  const sourceName = typeof decal.sourceName === "string" ? decal.sourceName.trim().slice(0, 160) : "";
+  const sourceWidth = typeof decal.sourceWidth === "number" && Number.isInteger(decal.sourceWidth)
+    ? decal.sourceWidth
+    : 0;
+  const sourceHeight = typeof decal.sourceHeight === "number" && Number.isInteger(decal.sourceHeight)
+    ? decal.sourceHeight
+    : 0;
+  const expectedBytes = sourceWidth * sourceHeight * 4;
+  const filePath = typeof decal.filePath === "string" ? normalizePackPath(decal.filePath) : "";
+  const tint = decal.tint && typeof decal.tint === "object"
+    ? decal.tint as Record<string, unknown>
+    : undefined;
+  const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : Number.NaN;
+  const tintR = number(tint?.r);
+  const tintG = number(tint?.g);
+  const tintB = number(tint?.b);
+  const centerU = number(decal.centerU);
+  const centerV = number(decal.centerV);
+  const widthU = number(decal.widthU);
+  const heightV = number(decal.heightV);
+  const rotationDeg = number(decal.rotationDeg);
+  const normalStrength = number(decal.normalStrength);
+
+  if (
+    !targetSourceVirtualPath
+    || !isSafePackPath(targetSourceVirtualPath)
+    || !targetSourceVirtualPath.toLowerCase().endsWith(".dds")
+    || !sourceName
+    || sourceWidth <= 0
+    || sourceHeight <= 0
+    || sourceWidth > 8192
+    || sourceHeight > 8192
+    || !Number.isSafeInteger(expectedBytes)
+    || expectedBytes <= 0
+    || expectedBytes > 64 * 1024 * 1024
+    || !filePath
+    || !isSafePackPath(filePath)
+    || !/^whmm_unit_painter\\layers\\.+\\decal\.rgba\.zst$/i.test(filePath)
+    || decal.encoding !== "zstd"
+    || !Number.isFinite(centerU)
+    || !Number.isFinite(centerV)
+    || !Number.isFinite(widthU)
+    || widthU <= 0
+    || !Number.isFinite(heightV)
+    || heightV <= 0
+    || !Number.isFinite(rotationDeg)
+    || typeof decal.tintEnabled !== "boolean"
+    || !Number.isFinite(tintR)
+    || tintR < 0
+    || tintR > 255
+    || !Number.isFinite(tintG)
+    || tintG < 0
+    || tintG > 255
+    || !Number.isFinite(tintB)
+    || tintB < 0
+    || tintB > 255
+    || typeof decal.affectNormal !== "boolean"
+    || !Number.isFinite(normalStrength)
+    || normalStrength < 0
+    || normalStrength > 4
+    || (decal.normalHeightSource !== "alpha" && decal.normalHeightSource !== "luminance")
+  ) {
+    throw new Error(`Decal layer '${layerName}' contains invalid decal data.`);
+  }
+
+  const fileKey = filePath.toLowerCase();
+  if (seenFiles.has(fileKey)) throw new Error("The unit painter project contains duplicate decal payload files.");
+  seenFiles.add(fileKey);
+  return {
+    targetSourceVirtualPath,
+    sourceName,
+    sourceWidth,
+    sourceHeight,
+    centerU,
+    centerV,
+    widthU,
+    heightV,
+    rotationDeg,
+    tintEnabled: decal.tintEnabled,
+    tint: { r: tintR, g: tintG, b: tintB },
+    affectNormal: decal.affectNormal,
+    normalStrength,
+    normalHeightSource: decal.normalHeightSource,
+    filePath,
+    encoding: "zstd",
+  };
+};
+
 export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainterProjectManifest => {
   let value: unknown;
   try {
@@ -478,9 +701,28 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
       throw new Error("The unit painter project contains an invalid paint layer.");
     }
     seenLayerIds.add(id);
+    const kind = layer.kind === "decal" ? "decal" : "paint";
+    if (layer.kind != null && layer.kind !== "paint" && layer.kind !== "decal") {
+      throw new Error("The unit painter project contains an invalid paint layer kind.");
+    }
     const seenSources = new Set<string>();
     const textures = layer.textures.map((raw) => parseStoredTexture(raw, seenSources, seenFiles));
-    layers.push({ id, name, visible: layer.visible, opacity, textures });
+    if (kind === "decal" && textures.length > 0) {
+      throw new Error(`Decal layer '${name}' contains unexpected raster paint tiles.`);
+    }
+    const decal = kind === "decal" ? parseStoredDecal(layer.decal, seenFiles, name) : undefined;
+    if (kind === "paint" && layer.decal != null) {
+      throw new Error(`Paint layer '${name}' contains unexpected decal data.`);
+    }
+    layers.push({
+      id,
+      name,
+      visible: layer.visible,
+      opacity,
+      ...(kind === "decal" ? { kind } : {}),
+      textures,
+      ...(decal ? { decal } : {}),
+    });
   }
 
   if (!activeLayerId || !seenLayerIds.has(activeLayerId)) {
@@ -502,6 +744,26 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     ...(selectedColor ? { selectedColor } : {}),
     layers,
   };
+};
+
+export const decodeUnitPainterProjectDecalSource = async (
+  compressed: Uint8Array,
+  width: number,
+  height: number,
+): Promise<Buffer> => {
+  const expectedBytes = width * height * 4;
+  if (
+    !Number.isSafeInteger(expectedBytes)
+    || expectedBytes <= 0
+    || expectedBytes > 64 * 1024 * 1024
+  ) {
+    throw new Error("The saved painter decal dimensions are invalid.");
+  }
+  const decoded = await zstdDecompress(Buffer.from(compressed));
+  if (decoded.length !== expectedBytes) {
+    throw new Error(`The saved painter decal decoded to ${decoded.length} bytes; expected ${expectedBytes}.`);
+  }
+  return decoded;
 };
 
 export const decodeUnitPainterProjectTiles = async (
