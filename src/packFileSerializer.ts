@@ -104,7 +104,7 @@ const tryZlibDecompress = (payload: Buffer): Buffer => {
     return Buffer.from(zlib.inflateSync(payload));
   }
 };
-const decompressPackedPayload = async (buffer: Buffer, context?: string): Promise<Buffer> => {
+export const decompressPackedPayload = async (buffer: Buffer, context?: string): Promise<Buffer> => {
   const offsets = [] as number[];
   const addOffset = (offset: number) => {
     if (offset < 0 || offset >= buffer.length) return;
