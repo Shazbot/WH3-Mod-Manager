@@ -523,6 +523,124 @@ describe("unit painter", () => {
     }
   });
 
+  it("flips decal source sampling without changing its placement", () => {
+    const painter = makePainter();
+    const sourceBytes = new Uint8Array([
+      255, 0, 0, 255,     0, 255, 0, 255,
+      0, 0, 255, 255,     255, 255, 255, 255,
+    ]);
+
+    try {
+      expect(
+        painter.session.addDecalLayerAtIntersection(painter.intersection, {
+          name: "quadrants.png",
+          width: 2,
+          height: 2,
+          rgbaBytes: sourceBytes,
+        }),
+      ).toBeTruthy();
+
+      const originalTop = getPixel(painter.material, 13, 9);
+      const originalBottom = getPixel(painter.material, 13, 13);
+      expect(originalTop[0]).toBeGreaterThan(originalTop[2]);
+      expect(originalBottom[2]).toBeGreaterThan(originalBottom[0]);
+
+      expect(painter.session.updateActiveDecal({ flipY: true })).toBe(true);
+      const flippedTop = getPixel(painter.material, 13, 9);
+      const flippedBottom = getPixel(painter.material, 13, 13);
+      expect(flippedTop[2]).toBeGreaterThan(flippedTop[0]);
+      expect(flippedBottom[0]).toBeGreaterThan(flippedBottom[2]);
+
+      expect(painter.session.updateActiveDecal({ flipX: true, flipY: false })).toBe(true);
+      const flippedLeft = getPixel(painter.material, 13, 9);
+      const flippedRight = getPixel(painter.material, 15, 9);
+      expect(flippedLeft[1]).toBeGreaterThan(flippedLeft[0]);
+      expect(flippedRight[0]).toBeGreaterThan(flippedRight[1]);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("reverses decal normal relief for negative strength", () => {
+    const base = makeTexture();
+    const normalData = new Uint8Array(WIDTH * HEIGHT * 4);
+    for (let index = 0; index < normalData.length; index += 4) {
+      normalData[index] = 128;
+      normalData[index + 1] = 128;
+      normalData[index + 2] = 255;
+      normalData[index + 3] = 255;
+    }
+    const normal = new THREE.DataTexture(
+      normalData,
+      WIDTH,
+      HEIGHT,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType,
+    );
+    normal.flipY = false;
+    normal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
+    normal.needsUpdate = true;
+
+    const painter = makePainter(base);
+    (painter.material as THREE.MeshBasicMaterial & { normalMap?: THREE.Texture }).normalMap = normal;
+    painter.session.dispose();
+    const replacement = createUnitPainterSession(painter.mesh);
+
+    const sourceBytes = new Uint8Array(4 * 4 * 4);
+    for (let y = 0; y < 4; y += 1) {
+      for (let x = 0; x < 4; x += 1) {
+        const offset = (y * 4 + x) * 4;
+        sourceBytes[offset] = 255;
+        sourceBytes[offset + 1] = 255;
+        sourceBytes[offset + 2] = 255;
+        sourceBytes[offset + 3] = Math.round((x / 3) * 255);
+      }
+    }
+
+    try {
+      expect(
+        replacement.addDecalLayerAtIntersection(painter.intersection, {
+          name: "gradient.png",
+          width: 4,
+          height: 4,
+          rgbaBytes: sourceBytes,
+        }),
+      ).toBeTruthy();
+      expect(replacement.updateActiveDecal({ affectNormal: true, normalStrength: 2 })).toBe(true);
+      const positive = replacement.exportModifiedTextures().find((texture) =>
+        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
+      )?.rgbaBytes;
+      expect(positive).toBeDefined();
+
+      expect(replacement.updateActiveDecal({ normalStrength: -2 })).toBe(true);
+      const negative = replacement.exportModifiedTextures().find((texture) =>
+        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
+      )?.rgbaBytes;
+      expect(negative).toBeDefined();
+
+      let foundOppositeSlope = false;
+      for (let index = 0; index < normalData.length; index += 4) {
+        for (const channel of [0, 1]) {
+          const positiveDelta = positive![index + channel] - normalData[index + channel];
+          const negativeDelta = negative![index + channel] - normalData[index + channel];
+          if (positiveDelta * negativeDelta < 0) {
+            foundOppositeSlope = true;
+            break;
+          }
+        }
+        if (foundOppositeSlope) break;
+      }
+      expect(foundOppositeSlope).toBe(true);
+    } finally {
+      replacement.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+      normal.dispose();
+    }
+  });
+
   it("moves one decal layer across materials without leaving the old footprint", () => {
     const textureA = makeTexture();
     textureA.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\decal_a_base_colour.dds";
