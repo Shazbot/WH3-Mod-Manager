@@ -475,7 +475,10 @@ describe("unit painter", () => {
       expect(layerId).toBeTruthy();
       expect(painter.session.activeDecalInfo?.sourceName).toBe("eagle.png");
       expect(painter.session.layers.at(-1)?.kind).toBe("decal");
-      expect(getPixel(painter.material, 14, 8)).toEqual([255, 255, 255, 255]);
+      expect(getPixel(painter.material, 14, 9)).toEqual([255, 255, 255, 255]);
+      // The decal rectangle reaches the adjacent second UV island, but placement
+      // on face 0 must clip it to the first island only.
+      expect(getPixel(painter.material, 17, 9)).toEqual([0, 0, 0, 255]);
 
       expect(
         painter.session.updateActiveDecal({
@@ -483,7 +486,8 @@ describe("unit painter", () => {
           tint: { r: 220, g: 40, b: 30 },
         }),
       ).toBe(true);
-      expect(getPixel(painter.material, 14, 8)).toEqual([220, 40, 30, 255]);
+      expect(getPixel(painter.material, 14, 9)).toEqual([220, 40, 30, 255]);
+      expect(getPixel(painter.material, 17, 9)).toEqual([0, 0, 0, 255]);
 
       expect(painter.session.beginActiveDecalTransform()).toBe(true);
       const moved = {
@@ -493,7 +497,8 @@ describe("unit painter", () => {
       expect(painter.session.moveActiveDecalToIntersection(moved, true)).toBe(true);
       expect(painter.session.endActiveDecalTransform()).toBe(true);
       expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.62);
-      expect(getPixel(painter.material, 14, 8)).toEqual([0, 0, 0, 255]);
+      // Moving in 3D onto face 0 keeps/rebinds the decal to that face's UV island.
+      expect(getPixel(painter.material, 14, 9)).toEqual([0, 0, 0, 255]);
 
       expect(painter.session.undo()).toBe(true);
       expect(painter.session.activeDecalInfo?.centerU).toBeCloseTo(0.46);
