@@ -172,6 +172,7 @@ import { toVariantMeshDefinitionPath } from "./visuals/paths";
 import {
   collectVisualDependencyClosure,
   getSupportedVisualDependencyExtension,
+  type VisualDependencyClosure,
 } from "./visuals/dependencies";
 import {
   canUseVanillaDbCacheForPack,
@@ -14198,7 +14199,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             return fileId;
           };
 
-          let dependencyClosure;
+          let dependencyClosure: VisualDependencyClosure;
           try {
             dependencyClosure = await collectVisualDependencyClosure(filePaths[0], async (requestedPath) => {
               const requestedExtension = getSupportedVisualDependencyExtension(requestedPath);
