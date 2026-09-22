@@ -14190,6 +14190,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
           const dependencyFileIds = new Map<string, number>();
           const dependencyTextCache = new Map<string, string | undefined>();
+          const recursivelyResolvedFiles = new Map<
+            string,
+            { pack: Pack; packPath: string; fileName: string }
+          >();
+          const dependencyResolveStartedAt = performance.now();
           const getDependencyFileId = (packPath: string) => {
             const packKey = packPath.replaceAll("\\", "/").toLowerCase();
             const existing = dependencyFileIds.get(packKey);
@@ -14208,6 +14213,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 preferredPackPath,
               });
               if (!resolved?.pack || !resolved.packPath || !resolved.fileName) return undefined;
+
+              recursivelyResolvedFiles.set(normalizePackFilePathKey(resolved.fileName), {
+                pack: resolved.pack,
+                packPath: resolved.packPath,
+                fileName: resolved.fileName,
+              });
 
               const resolvedExtension = getSupportedVisualDependencyExtension(resolved.fileName);
               let text: string | undefined;
@@ -14253,6 +14264,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
           }
 
+          console.log(
+            `[Visuals isolated] resolved ${dependencyClosure.paths.length} supported file(s) from ${filePaths[0]} in ${(
+              performance.now() - dependencyResolveStartedAt
+            ).toFixed(0)}ms`,
+          );
           filePathsToExtract = dependencyClosure.paths;
           skipped.push(
             ...dependencyClosure.missing.map((name) => ({
@@ -14279,13 +14295,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
         const filesByPack = new Map<
           string,
-          { packPath: string; files: Array<{ requestedPath: string; fileName: string }> }
+          { pack: Pack; packPath: string; files: Array<{ requestedPath: string; fileName: string }> }
         >();
         const flatOutputNames = new Set<string>();
 
         for (const requestedPath of uniqueRequestedPaths) {
-          const resolved = await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath });
-          if (!resolved?.packPath || !resolved.fileName) {
+          const recursiveResolved = recursive
+            ? recursivelyResolvedFiles.get(normalizePackFilePathKey(requestedPath))
+            : undefined;
+          const resolved =
+            recursiveResolved ??
+            (await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath }));
+          if (!resolved?.pack || !resolved.packPath || !resolved.fileName) {
             skipped.push({ name: requestedPath, reason: "File was not found in the visuals packs" });
             continue;
           }
@@ -14310,6 +14331,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           if (group) group.files.push({ requestedPath, fileName: resolved.fileName });
           else {
             filesByPack.set(packKey, {
+              pack: resolved.pack,
               packPath: resolved.packPath,
               files: [{ requestedPath, fileName: resolved.fileName }],
             });
@@ -14331,38 +14353,52 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         };
 
+        const extractionStartedAt = performance.now();
         for (const group of filesByPack.values()) {
-          const remaining = new Map(group.files.map((file) => [normalizePackFilePathKey(file.fileName), file]));
+          let fileId = -1;
           try {
-            await forEachPackedFileBuffer(
-              group.packPath,
-              (name) => remaining.has(normalizePackFilePathKey(name)),
-              async (packedFile, buffer) => {
-                const target = remaining.get(normalizePackFilePathKey(packedFile.name));
-                if (!target) return;
+            fileId = fs.openSync(group.packPath, "r");
+            for (const target of group.files) {
+              const packedFile = findPackedFileCaseInsensitive(group.pack, target.fileName);
+              if (!packedFile) {
+                skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
+                continue;
+              }
+
+              try {
+                let buffer = Buffer.allocUnsafe(packedFile.file_size);
+                fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
+                if (packedFile.is_compressed) {
+                  buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+                }
                 const normalizedPath = packedFile.name.replaceAll("\\", "/");
                 const relativePath = preserveFolders ? normalizedPath : nodePath.posix.basename(normalizedPath);
                 await writeOutput(target.requestedPath, relativePath, buffer);
-                remaining.delete(normalizePackFilePathKey(packedFile.name));
-              },
-              {
-                onSkipped: (packedFile, reason) => {
-                  const target = remaining.get(normalizePackFilePathKey(packedFile.name));
-                  if (!target) return;
-                  remaining.delete(normalizePackFilePathKey(packedFile.name));
-                  skipped.push({
-                    name: target.requestedPath,
-                    reason: reason === "tooLarge" ? "File is too large" : "Could not read payload",
-                  });
-                },
-              },
-            );
+              } catch (error) {
+                skipped.push({
+                  name: target.requestedPath,
+                  reason: error instanceof Error ? error.message : "Could not read payload",
+                });
+              }
+            }
           } catch (error) {
             errors.push(error instanceof Error ? error.message : "Could not read visual files");
+          } finally {
+            if (fileId >= 0) {
+              try {
+                fs.closeSync(fileId);
+              } catch (error) {
+                console.warn("Failed to close Visuals extraction pack handle:", error);
+              }
+            }
           }
-          for (const target of remaining.values()) {
-            skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
-          }
+        }
+        if (recursive) {
+          console.log(
+            `[Visuals isolated] wrote ${writtenCount} file(s) from ${filesByPack.size} pack(s) in ${(
+              performance.now() - extractionStartedAt
+            ).toFixed(0)}ms`,
+          );
         }
 
         const error = errors.length > 0 ? errors.join("\n") : undefined;
