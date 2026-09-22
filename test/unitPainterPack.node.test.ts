@@ -17,7 +17,9 @@ import {
   getUnitPainterNamespaceName,
   buildUnitPainterProjectPackFiles,
   decodeUnitPainterProjectDecalSource,
+  decodeUnitPainterProjectMaskTiles,
   decodeUnitPainterProjectTiles,
+  UNIT_PAINTER_PROJECT_MASK_TILE_BYTES,
   UNIT_PAINTER_PROJECT_TILE_BYTES,
   parseUnitPainterProjectManifest,
   UNIT_PAINTER_PROJECT_MANIFEST_PATH,
@@ -232,6 +234,9 @@ describe("unit painter pack staging", () => {
       decalBytes[index + 3] = 255;
     }
 
+    const maskTile = new Uint8Array(UNIT_PAINTER_PROJECT_MASK_TILE_BYTES);
+    maskTile[0] = 0b00000101;
+
     const files = await buildUnitPainterProjectPackFiles(
       "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
       [],
@@ -263,6 +268,11 @@ describe("unit painter pack staging", () => {
               affectNormal: true,
               normalStrength: 1.5,
               normalHeightSource: "alpha",
+              placementMask: {
+                width: 32,
+                height: 32,
+                tiles: [{ key: 0, maskBytes: maskTile }],
+              },
             },
           },
         ],
@@ -276,6 +286,13 @@ describe("unit painter pack staging", () => {
     expect(decal?.normalSourceVirtualPath).toBe("variantmeshes\\unit\\body_normal.dds");
     expect(decal?.sourceName).toBe("eagle.png");
     expect(decal?.filePath).toMatch(/decal\.rgba\.zst$/i);
+    expect(decal?.placementMask?.filePath).toMatch(/decal\.mask\.zst$/i);
+    expect(decal?.placementMask?.tileKeys).toEqual([0]);
+
+    const maskPayload = files.find((file) => file.name === decal?.placementMask?.filePath)?.buffer;
+    expect(maskPayload).toBeDefined();
+    const decodedMask = await decodeUnitPainterProjectMaskTiles(maskPayload!, 1);
+    expect(new Uint8Array(decodedMask)).toEqual(maskTile);
 
     const payload = files.find((file) => file.name === decal?.filePath)?.buffer;
     expect(payload).toBeDefined();
