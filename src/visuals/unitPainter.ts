@@ -2475,6 +2475,67 @@ export class UnitPainterSession {
     return true;
   }
 
+  replaceActiveDecalSource(
+    source: UnitPainterDecalSource,
+    recordHistory = true,
+  ) {
+    const layer = this.getActiveLayer();
+    const decal = layer?.kind === "decal" ? layer.decal : undefined;
+    if (!layer || !decal || !validateDecalSource(source)) return false;
+    if (this.isStrokeOpen) this.endStroke();
+    const before = recordHistory ? this.snapshotLayer(layer) : undefined;
+
+    // Preserve target, island binding and the entire transform box. Replacing
+    // with a different aspect ratio intentionally fits the new image into the
+    // existing box; Reset Transform restores the source's natural aspect.
+    decal.source = cloneDecalSource(source);
+    this.rasterizeDecalLayer(layer, true);
+
+    if (before) {
+      const after = this.snapshotLayer(layer);
+      const index = this.paintLayers.indexOf(layer);
+      this.pushHistoryChange({
+        kind: "layer-replace",
+        index,
+        before: [before],
+        after: [after],
+        beforeActiveLayerId: layer.id,
+        afterActiveLayerId: layer.id,
+      });
+    }
+    return true;
+  }
+
+  resetActiveDecalTransform() {
+    const layer = this.getActiveLayer();
+    const decal = layer?.kind === "decal" ? layer.decal : undefined;
+    if (!layer || !decal) return false;
+    if (this.isStrokeOpen) this.endStroke();
+    const before = this.snapshotLayer(layer);
+    decal.widthU = 0.2;
+    decal.heightV = Math.max(
+      0.01,
+      decal.widthU
+        * (decal.source.height / decal.source.width)
+        * (decal.target.width / decal.target.height),
+    );
+    decal.rotationDeg = 0;
+    decal.flipX = false;
+    decal.flipY = false;
+    this.rasterizeDecalLayer(layer, true);
+    const after = this.snapshotLayer(layer);
+    const index = this.paintLayers.indexOf(layer);
+    this.pushHistoryChange({
+      kind: "layer-replace",
+      index,
+      before: [before],
+      after: [after],
+      beforeActiveLayerId: layer.id,
+      afterActiveLayerId: layer.id,
+    });
+    return true;
+  }
+
   updateActiveDecal(
     patch: UnitPainterDecalPatch,
     recordHistory = true,
