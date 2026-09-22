@@ -16,6 +16,7 @@ import {
   getUnitPainterDefaultPackName,
   getUnitPainterNamespaceName,
   buildUnitPainterProjectPackFiles,
+  decodeUnitPainterProjectDecalSource,
   decodeUnitPainterProjectTiles,
   UNIT_PAINTER_PROJECT_TILE_BYTES,
   parseUnitPainterProjectManifest,
@@ -220,6 +221,66 @@ describe("unit painter pack staging", () => {
     } finally {
       appData.currentGame = previousGame;
     }
+  });
+
+  it("stores decal source pixels and normal-map binding in the editable project", async () => {
+    const decalBytes = new Uint8Array(4 * 3 * 4);
+    for (let index = 0; index < decalBytes.length; index += 4) {
+      decalBytes[index] = 220;
+      decalBytes[index + 1] = 180;
+      decalBytes[index + 2] = 40;
+      decalBytes[index + 3] = 255;
+    }
+
+    const files = await buildUnitPainterProjectPackFiles(
+      "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+      [],
+      {
+        activeLayerId: "layer-2",
+        layers: [
+          { id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] },
+          {
+            id: "layer-2",
+            name: "Eagle",
+            visible: true,
+            opacity: 0.8,
+            kind: "decal",
+            textures: [],
+            decal: {
+              targetSourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+              normalSourceVirtualPath: "variantmeshes\\unit\\body_normal.dds",
+              sourceName: "eagle.png",
+              sourceWidth: 4,
+              sourceHeight: 3,
+              sourceRgbaBytes: decalBytes,
+              centerU: 0.5,
+              centerV: 0.4,
+              widthU: 0.2,
+              heightV: 0.15,
+              rotationDeg: 25,
+              tintEnabled: true,
+              tint: { r: 180, g: 20, b: 30 },
+              affectNormal: true,
+              normalStrength: 1.5,
+              normalHeightSource: "alpha",
+            },
+          },
+        ],
+      },
+    );
+
+    const manifestFile = files.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH);
+    const manifest = parseUnitPainterProjectManifest(manifestFile!.buffer!);
+    const decal = manifest.layers[1].decal;
+    expect(manifest.layers[1].kind).toBe("decal");
+    expect(decal?.normalSourceVirtualPath).toBe("variantmeshes\\unit\\body_normal.dds");
+    expect(decal?.sourceName).toBe("eagle.png");
+    expect(decal?.filePath).toMatch(/decal\.rgba\.zst$/i);
+
+    const payload = files.find((file) => file.name === decal?.filePath)?.buffer;
+    expect(payload).toBeDefined();
+    const decoded = await decodeUnitPainterProjectDecalSource(payload!, 4, 3);
+    expect(new Uint8Array(decoded)).toEqual(decalBytes);
   });
 
   it("supports a project with empty paint layers", async () => {
