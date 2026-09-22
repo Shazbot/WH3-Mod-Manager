@@ -26,6 +26,7 @@ import {
   mirrorRayAcrossObjectLocalX,
   sampleUnitPainterStrokeSegment,
   type UnitPainterBrushMode,
+  type UnitPainterDecalSource,
   type UnitPainterLayerInfo,
   type UnitPainterSelectionInfo,
   type UnitPainterSelectionScope,
@@ -124,6 +125,55 @@ const adjustRangeFromWheel = (
   const decimals = input.step.includes(".") ? input.step.split(".")[1].length : 0;
   const next = Math.max(min, Math.min(max, current + direction * step));
   setValue(Number(next.toFixed(decimals)));
+};
+
+const decodeUnitPainterDecalFile = async (file: File): Promise<UnitPainterDecalSource> => {
+  const supportedType = ["image/png", "image/jpeg", "image/webp"].includes(file.type);
+  const supportedName = /\.(png|jpe?g|webp)$/i.test(file.name);
+  if (!supportedType && !supportedName) {
+    throw new Error("Decals must be PNG, JPEG, or WebP images.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("The decal image could not be decoded."));
+      element.src = objectUrl;
+    });
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+    const byteLength = width * height * 4;
+    if (
+      !Number.isInteger(width)
+      || !Number.isInteger(height)
+      || width <= 0
+      || height <= 0
+      || width > 8192
+      || height > 8192
+      || !Number.isSafeInteger(byteLength)
+      || byteLength > 64 * 1024 * 1024
+    ) {
+      throw new Error("Decal images must be at most 8192×8192 and 64 MiB decoded.");
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("The decal image could not be decoded.");
+    context.drawImage(image, 0, 0);
+    const imageData = context.getImageData(0, 0, width, height);
+    return {
+      name: file.name.slice(0, 160),
+      width,
+      height,
+      rgbaBytes: new Uint8Array(imageData.data),
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 };
 
 type PreviewResourcePool = {
@@ -522,6 +572,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
   const paintRootRef = useRef<THREE.Object3D | null>(null);
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
+  const decalFileInputRef = useRef<HTMLInputElement>(null);
+  const pendingDecalRef = useRef<UnitPainterDecalSource>();
   const paintSelectionHelperRef = useRef<THREE.Mesh[]>([]);
   const paintHoverHelperRef = useRef<THREE.Mesh | null>(null);
   const paintHoverKeyRef = useRef("");
@@ -578,6 +630,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPaintEyedropperActive, setIsPaintEyedropperActive] = useState(false);
   const [paintSelectMode, setPaintSelectMode] = useState<UnitPainterSelectMode>();
   const [paintSimilarTolerance, setPaintSimilarTolerance] = useState(8);
+  const [pendingDecal, setPendingDecal] = useState<UnitPainterDecalSource>();
   const [isPaintSymmetryEnabled, setIsPaintSymmetryEnabled] = useState(false);
   const [paintScope, setPaintScope] = useState<UnitPainterSelectionScope>("all");
   const [paintSelection, setPaintSelection] = useState<UnitPainterSelectionInfo>();
@@ -614,6 +667,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintActiveLayerId = paintSessionRef.current?.activeLayerId ?? "";
   const paintActiveLayer = paintLayers.find((layer) => layer.id === paintActiveLayerId);
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
+  const paintActiveDecal = paintSessionRef.current?.activeDecalInfo;
   const paintRecentColors = paintColorHistory.slice(0, 8);
   void paintHistoryVersion;
   if (paintBrushMode !== "restore") lastPaintBrushModeRef.current = paintBrushMode;
@@ -635,6 +689,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolModeRef.current = paintSelectMode;
   similarToleranceRef.current = paintSimilarTolerance;
+  pendingDecalRef.current = pendingDecal;
   symmetryEnabledRef.current = paintViewMode !== "texture" && isPaintSymmetryEnabled;
   paintScopeRef.current = paintScope;
   brushSettingsRef.current = {
