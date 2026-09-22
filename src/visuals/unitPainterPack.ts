@@ -290,7 +290,7 @@ const validateProjectDecalInput = (
     || !Number.isFinite(decal.heightV)
     || decal.heightV <= 0
     || !Number.isFinite(decal.rotationDeg)
-    || typeof decal.tintEnabled !== "boolean"
+    || tintEnabled == null
     || !decal.tint
     || !Number.isFinite(decal.tint.r)
     || !Number.isFinite(decal.tint.g)
@@ -301,11 +301,11 @@ const validateProjectDecalInput = (
     || decal.tint.g > 255
     || decal.tint.b < 0
     || decal.tint.b > 255
-    || typeof decal.affectNormal !== "boolean"
+    || affectNormal == null
     || !Number.isFinite(decal.normalStrength)
     || decal.normalStrength < 0
     || decal.normalStrength > 4
-    || (decal.normalHeightSource !== "alpha" && decal.normalHeightSource !== "luminance")
+    || !normalHeightSource
   ) {
     throw new Error(`Decal layer '${layerName}' contains invalid decal metadata.`);
   }
@@ -604,6 +604,12 @@ const parseStoredDecal = (
   const heightV = number(decal.heightV);
   const rotationDeg = number(decal.rotationDeg);
   const normalStrength = number(decal.normalStrength);
+  const tintEnabled = typeof decal.tintEnabled === "boolean" ? decal.tintEnabled : undefined;
+  const affectNormal = typeof decal.affectNormal === "boolean" ? decal.affectNormal : undefined;
+  const normalHeightSource =
+    decal.normalHeightSource === "alpha" || decal.normalHeightSource === "luminance"
+      ? decal.normalHeightSource
+      : undefined;
 
   if (
     !targetSourceVirtualPath
@@ -663,11 +669,11 @@ const parseStoredDecal = (
     widthU,
     heightV,
     rotationDeg,
-    tintEnabled: decal.tintEnabled,
+    tintEnabled,
     tint: { r: tintR, g: tintG, b: tintB },
-    affectNormal: decal.affectNormal,
+    affectNormal,
     normalStrength,
-    normalHeightSource: decal.normalHeightSource,
+    normalHeightSource,
     filePath,
     encoding: "zstd",
   };
