@@ -641,6 +641,114 @@ describe("unit painter", () => {
     }
   });
 
+  it("replaces a decal image without changing its transform or placement", () => {
+    const painter = makePainter();
+    const original = new Uint8Array(4 * 4 * 4);
+    const replacement = new Uint8Array(2 * 6 * 4);
+    for (let index = 0; index < original.length; index += 4) {
+      original[index] = 255;
+      original[index + 3] = 255;
+    }
+    for (let index = 0; index < replacement.length; index += 4) {
+      replacement[index + 1] = 255;
+      replacement[index + 3] = 255;
+    }
+
+    try {
+      expect(painter.session.addDecalLayerAtIntersection(painter.intersection, {
+        name: "old.png",
+        width: 4,
+        height: 4,
+        rgbaBytes: original,
+      })).toBeTruthy();
+      expect(painter.session.updateActiveDecal({
+        centerU: 0.44,
+        centerV: 0.34,
+        widthU: 0.13,
+        heightV: 0.09,
+        rotationDeg: 27,
+        tintEnabled: true,
+        tint: { r: 90, g: 120, b: 210 },
+        affectNormal: true,
+        normalStrength: -1.5,
+        flipX: true,
+      })).toBe(true);
+      const before = painter.session.activeDecalInfo!;
+
+      expect(painter.session.replaceActiveDecalSource({
+        name: "new.png",
+        width: 2,
+        height: 6,
+        rgbaBytes: replacement,
+      })).toBe(true);
+
+      const after = painter.session.activeDecalInfo!;
+      expect(after.sourceName).toBe("new.png");
+      expect(after.targetTextureId).toBe(before.targetTextureId);
+      expect(after.centerU).toBe(before.centerU);
+      expect(after.centerV).toBe(before.centerV);
+      expect(after.widthU).toBe(before.widthU);
+      expect(after.heightV).toBe(before.heightV);
+      expect(after.rotationDeg).toBe(before.rotationDeg);
+      expect(after.tintEnabled).toBe(before.tintEnabled);
+      expect(after.tint).toEqual(before.tint);
+      expect(after.affectNormal).toBe(before.affectNormal);
+      expect(after.normalStrength).toBe(before.normalStrength);
+      expect(after.flipX).toBe(before.flipX);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(painter.session.activeDecalInfo?.sourceName).toBe("old.png");
+      expect(painter.session.redo()).toBe(true);
+      expect(painter.session.activeDecalInfo?.sourceName).toBe("new.png");
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
+  it("resets decal transform while keeping its center and placement", () => {
+    const painter = makePainter();
+    const source = new Uint8Array(2 * 4 * 4);
+    for (let index = 0; index < source.length; index += 4) source[index + 3] = 255;
+
+    try {
+      expect(painter.session.addDecalLayerAtIntersection(painter.intersection, {
+        name: "tall.png",
+        width: 2,
+        height: 4,
+        rgbaBytes: source,
+      })).toBeTruthy();
+      expect(painter.session.updateActiveDecal({
+        widthU: 0.47,
+        heightV: 0.11,
+        rotationDeg: -83,
+        flipX: true,
+        flipY: true,
+      })).toBe(true);
+      const centerU = painter.session.activeDecalInfo!.centerU;
+      const centerV = painter.session.activeDecalInfo!.centerV;
+
+      expect(painter.session.resetActiveDecalTransform()).toBe(true);
+      const reset = painter.session.activeDecalInfo!;
+      expect(reset.centerU).toBe(centerU);
+      expect(reset.centerV).toBe(centerV);
+      expect(reset.widthU).toBeCloseTo(0.2);
+      expect(reset.heightV).toBeCloseTo(0.4);
+      expect(reset.rotationDeg).toBe(0);
+      expect(reset.flipX).toBe(false);
+      expect(reset.flipY).toBe(false);
+
+      expect(painter.session.undo()).toBe(true);
+      expect(painter.session.activeDecalInfo?.rotationDeg).toBe(-83);
+      expect(painter.session.activeDecalInfo?.flipX).toBe(true);
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("moves one decal layer across materials without leaving the old footprint", () => {
     const textureA = makeTexture();
     textureA.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\decal_a_base_colour.dds";
