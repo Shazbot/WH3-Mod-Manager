@@ -163,6 +163,7 @@ export type UnitPainterDecalHeightSource = "alpha" | "luminance";
 
 type UnitPainterDecalState = {
   target: PaintableTexture;
+  normalTarget?: PaintableTexture;
   source: UnitPainterDecalSource;
   centerU: number;
   centerV: number;
@@ -225,6 +226,7 @@ export type UnitPainterProjectLayerTexture = {
 
 export type UnitPainterProjectDecal = {
   targetSourceVirtualPath: string;
+  normalSourceVirtualPath?: string;
   sourceName: string;
   sourceWidth: number;
   sourceHeight: number;
@@ -1360,6 +1362,7 @@ const cloneDecalSource = (source: UnitPainterDecalSource): UnitPainterDecalSourc
 
 const cloneDecalState = (decal: UnitPainterDecalState): UnitPainterDecalState => ({
   target: decal.target,
+  normalTarget: decal.normalTarget,
   // Source bytes are immutable after import; history snapshots share them instead
   // of cloning a potentially multi-megabyte bitmap for every transform step.
   source: decal.source,
@@ -1505,6 +1508,8 @@ export class UnitPainterSession {
   private readonly targetsByEditableTexture = new Map<THREE.Texture, PaintableTexture>();
   private readonly targetsBySourcePath = new Map<string, PaintableTexture>();
   private readonly normalTargetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
+  private readonly normalTargetsBySourcePath = new Map<string, PaintableTexture>();
+  private readonly normalTargetByMaterial = new Map<PaintableMaterial, PaintableTexture>();
   private readonly normalTargetsByBaseTarget = new Map<PaintableTexture, Set<PaintableTexture>>();
   private readonly restores: MaterialRestore[] = [];
   private readonly surfacesByTarget = new Map<PaintableTexture, PaintableSurface[]>();
@@ -1644,6 +1649,12 @@ export class UnitPainterSession {
                 paintNormalTarget.fullUploadPending = false;
               };
               this.normalTargetsByOriginal.set(normalOriginal, normalTarget);
+              if (normalTarget.sourceVirtualPath) {
+                this.normalTargetsBySourcePath.set(
+                  normalTarget.sourceVirtualPath.replace(/\//g, "\\").toLowerCase(),
+                  normalTarget,
+                );
+              }
             } else {
               editableNormal.dispose();
             }
@@ -1655,6 +1666,7 @@ export class UnitPainterSession {
               this.normalTargetsByBaseTarget.set(target, normalTargets);
             }
             normalTargets.add(normalTarget);
+            this.normalTargetByMaterial.set(material, normalTarget);
             this.restores.push({ material, property: "normalMap", original: normalOriginal });
             material.normalMap = normalTarget.editable;
           }
@@ -2039,7 +2051,7 @@ export class UnitPainterSession {
       affectNormal: decal.affectNormal,
       normalStrength: decal.normalStrength,
       normalHeightSource: decal.normalHeightSource,
-      hasNormalMap: (this.normalTargetsByBaseTarget.get(decal.target)?.size ?? 0) > 0,
+      hasNormalMap: !!decal.normalTarget,
     };
   }
 
@@ -2178,7 +2190,14 @@ export class UnitPainterSession {
       (candidate) => candidate.textureId === textureId,
     );
     if (!target) return undefined;
-    return this.addDecalLayer(target, x / target.width, y / target.height, source);
+    const normalTargets = [...(this.normalTargetsByBaseTarget.get(target) ?? [])];
+    return this.addDecalLayer(
+      target,
+      x / target.width,
+      y / target.height,
+      source,
+      normalTargets.length === 1 ? normalTargets[0] : undefined,
+    );
   }
 
   addDecalLayerAtIntersection(
@@ -2188,11 +2207,12 @@ export class UnitPainterSession {
     if (!intersection.uv) return undefined;
     const material = getIntersectionMaterial(intersection);
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
-    if (!target) return undefined;
+    if (!target || !material) return undefined;
+    const normalTarget = this.normalTargetByMaterial.get(material);
     const uv = intersection.uv.clone();
     target.editable.updateMatrix();
     target.editable.transformUv(uv);
-    return this.addDecalLayer(target, uv.x, uv.y, source);
+    return this.addDecalLayer(target, uv.x, uv.y, source, normalTarget);
   }
 
   private addDecalLayer(
@@ -2200,6 +2220,7 @@ export class UnitPainterSession {
     centerU: number,
     centerV: number,
     source: UnitPainterDecalSource,
+    normalTarget?: PaintableTexture,
   ) {
     if (this.paintLayers.length >= MAX_PAINT_LAYERS || !validateDecalSource(source)) return undefined;
     if (this.isStrokeOpen) this.endStroke();
@@ -2220,6 +2241,7 @@ export class UnitPainterSession {
       textures: new Map(),
       decal: {
         target,
+        normalTarget,
         source: sourceCopy,
         centerU,
         centerV,
@@ -3639,6 +3661,9 @@ export class UnitPainterSession {
           ? {
               decal: {
                 targetSourceVirtualPath: layer.decal.target.sourceVirtualPath ?? "",
+                ...(layer.decal.normalTarget?.sourceVirtualPath
+                  ? { normalSourceVirtualPath: layer.decal.normalTarget.sourceVirtualPath }
+                  : {}),
                 sourceName: layer.decal.source.name,
                 sourceWidth: layer.decal.source.width,
                 sourceHeight: layer.decal.source.height,
@@ -3709,6 +3734,8 @@ export class UnitPainterSession {
         const savedDecal = savedLayer.decal;
         const targetKey = savedDecal?.targetSourceVirtualPath.replace(/\//g, "\\").toLowerCase();
         const target = targetKey ? this.targetsBySourcePath.get(targetKey) : undefined;
+        const normalKey = savedDecal?.normalSourceVirtualPath?.replace(/\//g, "\\").toLowerCase();
+        const normalTarget = normalKey ? this.normalTargetsBySourcePath.get(normalKey) : undefined;
         if (
           !savedDecal
           || !target
@@ -3733,6 +3760,7 @@ export class UnitPainterSession {
         }
         layer.decal = {
           target,
+          normalTarget,
           source: {
             name: savedDecal.sourceName,
             width: savedDecal.sourceWidth,
@@ -3884,6 +3912,8 @@ export class UnitPainterSession {
     this.targetsByEditableTexture.clear();
     this.targetsBySourcePath.clear();
     this.normalTargetsByOriginal.clear();
+    this.normalTargetsBySourcePath.clear();
+    this.normalTargetByMaterial.clear();
     this.normalTargetsByBaseTarget.clear();
     this.surfacesByTarget.clear();
     this.textureChangeListeners.clear();
@@ -4442,7 +4472,7 @@ export class UnitPainterSession {
       normalTarget.data.set(normalTarget.originalData);
       for (const layer of this.paintLayers) {
         const decal = layer.kind === "decal" ? layer.decal : undefined;
-        if (!decal || decal.target !== baseTarget) continue;
+        if (!decal || decal.target !== baseTarget || decal.normalTarget !== normalTarget) continue;
         this.applyDecalToNormalTarget(layer, decal, normalTarget);
       }
       normalTarget.revision += 1;
