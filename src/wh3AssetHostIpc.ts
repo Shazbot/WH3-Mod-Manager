@@ -39,6 +39,7 @@ import {
   parseUnitPainterProjectManifest,
   UNIT_PAINTER_PROJECT_MANIFEST_PATH,
   UNIT_PAINTER_PROJECT_MASK_TILE_BYTES,
+  UNIT_PAINTER_PROJECT_MASK_TILE_SIZE,
   UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY,
   UNIT_PAINTER_PROJECT_TILE_BYTES,
   UNIT_PAINTER_PROJECT_TILE_SIZE,
@@ -823,8 +824,8 @@ const sanitizeUnitPainterProjectMask = (value: unknown): UnitPainterProjectMaskI
   ) {
     return undefined;
   }
-  const tilesPerRow = Math.ceil(width / 64);
-  const tileRows = Math.ceil(height / 64);
+  const tilesPerRow = Math.ceil(width / UNIT_PAINTER_PROJECT_MASK_TILE_SIZE);
+  const tileRows = Math.ceil(height / UNIT_PAINTER_PROJECT_MASK_TILE_SIZE);
   const maxTileKey = tilesPerRow * tileRows;
   const seen = new Set<number>();
   const tiles = [];
