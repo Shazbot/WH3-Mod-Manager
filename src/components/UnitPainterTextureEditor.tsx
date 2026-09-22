@@ -47,6 +47,17 @@ type ViewTransformMode = "fit" | "oneToOne" | "manual";
 
 type TextureDisplayMode = "textureUv" | "uvOnly" | "selected";
 type TextureBackgroundMode = "checker" | "dark" | "light";
+type DecalGesture = {
+  pointerId: number;
+  mode: "move" | "scale" | "rotate";
+  centerU: number;
+  centerV: number;
+  startWidthU: number;
+  startHeightV: number;
+  startDistanceUv: number;
+  startAngleRad: number;
+  startRotationDeg: number;
+};
 
 const forEachPixelMaskRun = (
   mask: UnitPainterPixelMaskView,
@@ -114,7 +125,7 @@ const UnitPainterTextureEditor = ({
   const linkedHoverCursorRef = useRef<HTMLDivElement>(null);
   const linkedHoverHardnessRef = useRef<HTMLDivElement>(null);
   const activePaintPointerRef = useRef<number>();
-  const activeDecalPointerRef = useRef<number>();
+  const activeDecalGestureRef = useRef<DecalGesture>();
   const activePanPointerRef = useRef<number>();
   const lastPaintPointRef = useRef<{ x: number; y: number }>();
   const lastPanPointRef = useRef<{ x: number; y: number }>();
@@ -137,6 +148,7 @@ const UnitPainterTextureEditor = ({
     [session, historyVersion, selectionKey, scope],
   );
   const view = views.find((candidate) => candidate.id === selectedTextureId) ?? views[0];
+  const activeDecal = session.activeDecalInfo;
 
   useEffect(() => {
     if (view && view.id !== selectedTextureId) onSelectedTextureIdChange(view.id);
@@ -486,6 +498,86 @@ const UnitPainterTextureEditor = ({
     };
   };
 
+  const getActiveDecalScreenGeometry = () => {
+    if (!activeDecal || activeDecal.targetTextureId !== view.id) return undefined;
+    const radians = activeDecal.rotationDeg * Math.PI / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const center = {
+      x: transform.x + activeDecal.centerU * view.width * transform.scale,
+      y: transform.y + activeDecal.centerV * view.height * transform.scale,
+    };
+    const localToScreen = (localU: number, localV: number) => {
+      const u = activeDecal.centerU + cos * localU - sin * localV;
+      const v = activeDecal.centerV + sin * localU + cos * localV;
+      return {
+        x: transform.x + u * view.width * transform.scale,
+        y: transform.y + v * view.height * transform.scale,
+      };
+    };
+    const halfU = activeDecal.widthU * 0.5;
+    const halfV = activeDecal.heightV * 0.5;
+    const corners = [
+      localToScreen(-halfU, -halfV),
+      localToScreen(halfU, -halfV),
+      localToScreen(halfU, halfV),
+      localToScreen(-halfU, halfV),
+    ];
+    const topMid = localToScreen(0, -halfV);
+    const topDx = topMid.x - center.x;
+    const topDy = topMid.y - center.y;
+    const topLength = Math.hypot(topDx, topDy) || 1;
+    const rotationHandle = {
+      x: topMid.x + (topDx / topLength) * 28,
+      y: topMid.y + (topDy / topLength) * 28,
+    };
+    return {
+      center,
+      corners,
+      scaleHandle: corners[2],
+      topMid,
+      rotationHandle,
+    };
+  };
+
+  const beginDecalGesture = (
+    event: React.PointerEvent<HTMLDivElement>,
+    mode: DecalGesture["mode"],
+    point: { x: number; y: number },
+  ) => {
+    if (!activeDecal || activeDecal.targetTextureId !== view.id) return false;
+    if (!session.beginActiveDecalTransform()) return false;
+    const u = point.x / view.width;
+    const v = point.y / view.height;
+    activeDecalGestureRef.current = {
+      pointerId: event.pointerId,
+      mode,
+      centerU: activeDecal.centerU,
+      centerV: activeDecal.centerV,
+      startWidthU: activeDecal.widthU,
+      startHeightV: activeDecal.heightV,
+      startDistanceUv: Math.max(
+        1e-6,
+        Math.hypot(u - activeDecal.centerU, v - activeDecal.centerV),
+      ),
+      startAngleRad: Math.atan2(v - activeDecal.centerV, u - activeDecal.centerU),
+      startRotationDeg: activeDecal.rotationDeg,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    return true;
+  };
+
+  const finishDecalGesture = (event: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = activeDecalGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    activeDecalGestureRef.current = undefined;
+    if (session.endActiveDecalTransform()) onDecalChanged(true);
+    return true;
+  };
+
   const paintAt = (clientX: number, clientY: number) => {
     const point = pointerToTexture(clientX, clientY);
     if (!point || point.x < 0 || point.y < 0 || point.x >= view.width || point.y >= view.height) return false;
@@ -554,6 +646,25 @@ const UnitPainterTextureEditor = ({
     if (event.button !== 0) return;
 
     const point = pointerToTexture(event.clientX, event.clientY);
+    const decalGeometry = getActiveDecalScreenGeometry();
+    if (point && decalGeometry && activeDecal?.targetTextureId === view.id) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const screenPoint = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      const near = (target: { x: number; y: number }, radius: number) =>
+        Math.hypot(screenPoint.x - target.x, screenPoint.y - target.y) <= radius;
+      const handleMode =
+        near(decalGeometry.rotationHandle, 11)
+          ? "rotate"
+          : near(decalGeometry.scaleHandle, 11)
+            ? "scale"
+            : undefined;
+      if (handleMode) {
+        event.preventDefault();
+        if (beginDecalGesture(event, handleMode, point)) onDecalChanged(false);
+        return;
+      }
+    }
+
     if (!point || point.x < 0 || point.y < 0 || point.x >= view.width || point.y >= view.height) return;
     event.preventDefault();
 
@@ -599,12 +710,9 @@ const UnitPainterTextureEditor = ({
       return;
     }
 
-    const activeDecal = session.activeDecalInfo;
     if (activeDecal) {
       if (activeDecal.targetTextureId !== view.id) return;
-      if (!session.beginActiveDecalTransform()) return;
-      activeDecalPointerRef.current = event.pointerId;
-      event.currentTarget.setPointerCapture(event.pointerId);
+      if (!beginDecalGesture(event, "move", point)) return;
       session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
       onDecalChanged(false);
       return;
@@ -637,10 +745,34 @@ const UnitPainterTextureEditor = ({
     }
 
     const point = pointerToTexture(event.clientX, event.clientY);
-    if (event.pointerId === activeDecalPointerRef.current) {
-      if (point && point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
-        session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
-        onDecalChanged(false);
+    const decalGesture = activeDecalGestureRef.current;
+    if (decalGesture?.pointerId === event.pointerId) {
+      if (point) {
+        if (decalGesture.mode === "move") {
+          if (point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
+            session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
+            onDecalChanged(false);
+          }
+        } else {
+          const u = point.x / view.width;
+          const v = point.y / view.height;
+          if (decalGesture.mode === "scale") {
+            const distance = Math.hypot(u - decalGesture.centerU, v - decalGesture.centerV);
+            const factor = Math.max(0.01, distance / decalGesture.startDistanceUv);
+            session.updateActiveDecal({
+              widthU: decalGesture.startWidthU * factor,
+              heightV: decalGesture.startHeightV * factor,
+            }, false);
+          } else {
+            const angle = Math.atan2(v - decalGesture.centerV, u - decalGesture.centerU);
+            let rotationDeg =
+              decalGesture.startRotationDeg
+              + (angle - decalGesture.startAngleRad) * 180 / Math.PI;
+            rotationDeg = ((rotationDeg + 180) % 360 + 360) % 360 - 180;
+            session.updateActiveDecal({ rotationDeg }, false);
+          }
+          onDecalChanged(false);
+        }
       }
       return;
     }
@@ -671,12 +803,8 @@ const UnitPainterTextureEditor = ({
       lastPanPointRef.current = undefined;
       return;
     }
-    if (event.pointerId === activeDecalPointerRef.current) {
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-      activeDecalPointerRef.current = undefined;
-      if (session.endActiveDecalTransform()) onDecalChanged(true);
+    if (activeDecalGestureRef.current?.pointerId === event.pointerId) {
+      finishDecalGesture(event);
       return;
     }
     if (event.pointerId !== activePaintPointerRef.current) return;
@@ -710,6 +838,7 @@ const UnitPainterTextureEditor = ({
         ? "bg-gray-200"
         : "bg-gray-950";
   const hasSelection = view.selectedUvTriangles.length > 0 || !!view.selectedPixelMask;
+  const decalGeometry = getActiveDecalScreenGeometry();
 
   return (
     <div className="absolute inset-0 z-10 bg-gray-950">
@@ -813,9 +942,8 @@ const UnitPainterTextureEditor = ({
             activePanPointerRef.current = undefined;
             lastPanPointRef.current = undefined;
           }
-          if (event.pointerId === activeDecalPointerRef.current) {
-            activeDecalPointerRef.current = undefined;
-            if (session.endActiveDecalTransform()) onDecalChanged(true);
+          if (activeDecalGestureRef.current?.pointerId === event.pointerId) {
+            finishDecalGesture(event);
           }
           if (event.pointerId === activePaintPointerRef.current) finishStroke(event.pointerId);
         }}
@@ -860,6 +988,46 @@ const UnitPainterTextureEditor = ({
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           }}
         />
+        {decalGeometry && (
+          <svg
+            className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
+            aria-hidden="true"
+          >
+            <polygon
+              points={decalGeometry.corners.map((point) => `${point.x},${point.y}`).join(" ")}
+              fill="rgba(250,204,21,0.05)"
+              stroke="rgba(250,204,21,0.95)"
+              strokeWidth="1.5"
+              strokeDasharray="5 3"
+            />
+            <line
+              x1={decalGeometry.topMid.x}
+              y1={decalGeometry.topMid.y}
+              x2={decalGeometry.rotationHandle.x}
+              y2={decalGeometry.rotationHandle.y}
+              stroke="rgba(250,204,21,0.9)"
+              strokeWidth="1.5"
+            />
+            <rect
+              x={decalGeometry.scaleHandle.x - 5}
+              y={decalGeometry.scaleHandle.y - 5}
+              width="10"
+              height="10"
+              rx="1"
+              fill="#facc15"
+              stroke="#111827"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx={decalGeometry.rotationHandle.x}
+              cy={decalGeometry.rotationHandle.y}
+              r="6"
+              fill="#111827"
+              stroke="#facc15"
+              strokeWidth="2"
+            />
+          </svg>
+        )}
         <div
           ref={linkedHoverCursorRef}
           className="pointer-events-none absolute hidden rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
@@ -869,7 +1037,7 @@ const UnitPainterTextureEditor = ({
             className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed"
           />
         </div>
-        {cursor.visible && activePanPointerRef.current == null && (() => {
+        {cursor.visible && activePanPointerRef.current == null && !activeDecal && (() => {
           const precisionToolActive = !!selectMode || eyedropperActive;
           const radius = precisionToolActive ? 5 : brushSettings.radiusPx;
           const cursorColor =
@@ -911,8 +1079,8 @@ const UnitPainterTextureEditor = ({
       <div className="pointer-events-none absolute bottom-2 left-2 z-20 rounded bg-gray-900/90 px-2 py-1 text-[11px] text-gray-400">
         {pendingDecal
           ? "LMB place decal"
-          : session.activeDecalInfo
-            ? "LMB drag decal"
+          : activeDecal
+            ? "LMB drag decal · square handle scale · round handle rotate"
             : selectMode
               ? `LMB select ${selectMode}`
               : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
