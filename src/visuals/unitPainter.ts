@@ -243,7 +243,9 @@ export type UnitPainterProjectDecal = {
   normalHeightSource: UnitPainterDecalHeightSource;
 };
 
-export type UnitPainterProjectLayer = UnitPainterLayerInfo & {
+export type UnitPainterProjectLayer = Omit<UnitPainterLayerInfo, "kind"> & {
+  /** Missing kind is an older format-3 paint layer. */
+  kind?: "paint" | "decal";
   textures: UnitPainterProjectLayerTexture[];
   decal?: UnitPainterProjectDecal;
 };
