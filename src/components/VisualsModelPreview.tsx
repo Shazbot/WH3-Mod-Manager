@@ -1410,6 +1410,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         if (layerId) {
           pendingDecalRef.current = undefined;
           setPendingDecal(undefined);
+          const decal = session.activeDecalInfo;
+          if (decal) setPaintTextureViewId(decal.targetTextureId);
           setPaintExportStatus("");
           setPaintHistoryVersion((value) => value + 1);
         }
@@ -2669,7 +2671,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                                   : "border-gray-700 bg-gray-900/80 hover:border-gray-500"
                               }`}
                               onClick={() => {
-                                if (paintSessionRef.current?.setActiveLayer(layer.id)) {
+                                const session = paintSessionRef.current;
+                                if (session?.setActiveLayer(layer.id)) {
+                                  const decal = session.activeDecalInfo;
+                                  if (decal) setPaintTextureViewId(decal.targetTextureId);
                                   setPaintHistoryVersion((value) => value + 1);
                                 }
                               }}
