@@ -557,31 +557,6 @@ const UnitPainterTextureEditor = ({
     if (!point || point.x < 0 || point.y < 0 || point.x >= view.width || point.y >= view.height) return;
     event.preventDefault();
 
-    if (pendingDecal) {
-      const layerId = session.addDecalLayerAtTexturePoint(
-        view.id,
-        point.x,
-        point.y,
-        pendingDecal,
-      );
-      if (layerId) {
-        onDecalPlaced();
-        onDecalChanged(true);
-      }
-      return;
-    }
-
-    const activeDecal = session.activeDecalInfo;
-    if (activeDecal) {
-      if (activeDecal.targetTextureId !== view.id) return;
-      if (!session.beginActiveDecalTransform()) return;
-      activeDecalPointerRef.current = event.pointerId;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
-      onDecalChanged(false);
-      return;
-    }
-
     if (eyedropperActive || event.altKey) {
       const sampled = session.sampleTexturePoint(view.id, point.x, point.y);
       if (sampled) onEyedropperComplete(sampled);
@@ -607,6 +582,31 @@ const UnitPainterTextureEditor = ({
               operation,
             );
       if (clicked) onSelectionComplete(session.selectionInfo, selectMode);
+      return;
+    }
+
+    if (pendingDecal) {
+      const layerId = session.addDecalLayerAtTexturePoint(
+        view.id,
+        point.x,
+        point.y,
+        pendingDecal,
+      );
+      if (layerId) {
+        onDecalPlaced();
+        onDecalChanged(true);
+      }
+      return;
+    }
+
+    const activeDecal = session.activeDecalInfo;
+    if (activeDecal) {
+      if (activeDecal.targetTextureId !== view.id) return;
+      if (!session.beginActiveDecalTransform()) return;
+      activeDecalPointerRef.current = event.pointerId;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
+      onDecalChanged(false);
       return;
     }
 
