@@ -14205,18 +14205,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           const dependencyFileIds = new Map<string, number>();
           const dependencyTextCache = new Map<string, string | undefined>();
           const dependencyPackCache = new Map<string, Pack | undefined>();
-          const dependencyDiagnostics = {
-            callbacks: 0,
-            resolveMs: 0,
-            lookupMs: 0,
-            readMs: 0,
-            decompressMs: 0,
-            decodedBytes: 0,
-            textFilesRead: 0,
-            cacheHits: 0,
-          };
           const dependencyResolveStartedAt = performance.now();
-          const dependencyResolveStartMemory = process.memoryUsage();
           const getDependencyFileId = (packPath: string) => {
             const packKey = packPath.replaceAll("\\", "/").toLowerCase();
             const existing = dependencyFileIds.get(packKey);
@@ -14229,15 +14218,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           let dependencyClosure: VisualDependencyClosure;
           try {
             dependencyClosure = await collectVisualDependencyClosure(filePaths[0], async (requestedPath) => {
-              dependencyDiagnostics.callbacks += 1;
               const requestedExtension = getSupportedVisualDependencyExtension(requestedPath);
-              const resolveStartedAt = performance.now();
               const resolved = await resolveVisualsFileInSession(session, requestedPath, {
                 variantMeshDefinitionFallback: requestedExtension === "variantmeshdefinition",
                 preferredPackPath,
                 packCache: dependencyPackCache,
               });
-              dependencyDiagnostics.resolveMs += performance.now() - resolveStartedAt;
               if (!resolved?.pack || !resolved.packPath || !resolved.fileName) return undefined;
 
               recursivelyResolvedFiles.set(normalizePackFilePathKey(resolved.fileName), {
@@ -14257,15 +14243,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                   resolved.fileName,
                 )}`;
                 if (dependencyTextCache.has(cacheKey)) {
-                  dependencyDiagnostics.cacheHits += 1;
                   text = dependencyTextCache.get(cacheKey);
                 } else {
-                  const lookupStartedAt = performance.now();
                   const packedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
-                  dependencyDiagnostics.lookupMs += performance.now() - lookupStartedAt;
                   if (packedFile) {
                     let buffer = Buffer.allocUnsafe(packedFile.file_size);
-                    const readStartedAt = performance.now();
                     fs.readSync(
                       getDependencyFileId(resolved.packPath),
                       buffer,
@@ -14273,14 +14255,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                       buffer.length,
                       packedFile.start_pos,
                     );
-                    dependencyDiagnostics.readMs += performance.now() - readStartedAt;
                     if (packedFile.is_compressed) {
-                      const decompressStartedAt = performance.now();
                       buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
-                      dependencyDiagnostics.decompressMs += performance.now() - decompressStartedAt;
                     }
-                    dependencyDiagnostics.decodedBytes += buffer.length;
-                    dependencyDiagnostics.textFilesRead += 1;
                     text = decodePackedAssetText(buffer);
                   }
                   dependencyTextCache.set(cacheKey, text);
@@ -14299,32 +14276,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
           }
 
-          const dependencyResolveTotalMs = performance.now() - dependencyResolveStartedAt;
-          const memoryUsage = process.memoryUsage();
           console.log(
-            `[Visuals isolated] resolved ${dependencyClosure.paths.length} supported file(s) from ${filePaths[0]} in ${dependencyResolveTotalMs.toFixed(
-              0,
-            )}ms; callbacks=${dependencyDiagnostics.callbacks}, resolve=${dependencyDiagnostics.resolveMs.toFixed(
-              0,
-            )}ms, lookup=${dependencyDiagnostics.lookupMs.toFixed(0)}ms, read=${dependencyDiagnostics.readMs.toFixed(
-              0,
-            )}ms, decompress=${dependencyDiagnostics.decompressMs.toFixed(
-              0,
-            )}ms, textFiles=${dependencyDiagnostics.textFilesRead}, decoded=${(
-              dependencyDiagnostics.decodedBytes /
-              (1024 * 1024)
-            ).toFixed(1)}MB, textCacheHits=${dependencyDiagnostics.cacheHits}, packCache=${dependencyPackCache.size}, startHeap=${(
-              dependencyResolveStartMemory.heapUsed /
-              (1024 * 1024)
-            ).toFixed(0)}MB, startExternal=${(dependencyResolveStartMemory.external / (1024 * 1024)).toFixed(
-              0,
-            )}MB, startRss=${(dependencyResolveStartMemory.rss / (1024 * 1024)).toFixed(0)}MB, heap=${(
-              memoryUsage.heapUsed /
-              (1024 * 1024)
-            ).toFixed(0)}MB, external=${(memoryUsage.external / (1024 * 1024)).toFixed(0)}MB, rss=${(
-              memoryUsage.rss /
-              (1024 * 1024)
-            ).toFixed(0)}MB`,
+            `[Visuals isolated] resolved ${dependencyClosure.paths.length} supported file(s) from ${filePaths[0]} in ${(
+              performance.now() - dependencyResolveStartedAt
+            ).toFixed(0)}ms`,
           );
           filePathsToExtract = dependencyClosure.paths;
           skipped.push(
@@ -14409,19 +14364,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
 
-        const extractionDiagnostics = {
-          readMs: 0,
-          decompressMs: 0,
-          ensureDirMs: 0,
-          writeMs: 0,
-          bytesWritten: 0,
-        };
         const writeOutput = async (name: string, outputPath: string, contents: Buffer) => {
           try {
-            const writeStartedAt = performance.now();
             await fs.promises.writeFile(outputPath, contents);
-            extractionDiagnostics.writeMs += performance.now() - writeStartedAt;
-            extractionDiagnostics.bytesWritten += contents.length;
             writtenCount += 1;
           } catch (error) {
             errors.push(`${name}: ${error instanceof Error ? error.message : "Failed to write file"}`);
@@ -14429,12 +14374,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         };
 
         const extractionStartedAt = performance.now();
-        const extractionStartMemory = process.memoryUsage();
-        const ensureDirStartedAt = performance.now();
         const ensureDirResults = await Promise.allSettled(
           Array.from(outputDirectories, (directory) => fsExtra.ensureDir(directory)),
         );
-        extractionDiagnostics.ensureDirMs += performance.now() - ensureDirStartedAt;
         for (const result of ensureDirResults) {
           if (result.status === "rejected") {
             errors.push(result.reason instanceof Error ? result.reason.message : "Failed to create extraction directory");
@@ -14453,33 +14395,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             await Promise.race(pendingWrites);
           }
         };
-        let extractionLookupFallbacks = 0;
-        let extractionFallbackEntriesScanned = 0;
-        let extractionLookupMs = 0;
         for (const group of filesByPack.values()) {
           let fileId = -1;
           try {
             fileId = fs.openSync(group.packPath, "r");
             for (const target of group.files) {
-              const lookupStartedAt = performance.now();
-              const exactIndex = bs(
-                group.pack.packedFiles,
-                target.fileName,
-                (a: PackedFile, b: string) => collator.compare(a.name, b),
-              );
-              let packedFile = exactIndex >= 0 ? group.pack.packedFiles[exactIndex] : undefined;
-              if (!packedFile) {
-                extractionLookupFallbacks += 1;
-                const normalizedTarget = normalizePackFilePathKey(target.fileName);
-                for (const candidate of group.pack.packedFiles) {
-                  extractionFallbackEntriesScanned += 1;
-                  if (normalizePackFilePathKey(candidate.name) === normalizedTarget) {
-                    packedFile = candidate;
-                    break;
-                  }
-                }
-              }
-              extractionLookupMs += performance.now() - lookupStartedAt;
+              const packedFile = findPackedFileCaseInsensitive(group.pack, target.fileName);
               if (!packedFile) {
                 skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
                 continue;
@@ -14487,13 +14408,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
               try {
                 let buffer = Buffer.allocUnsafe(packedFile.file_size);
-                const readStartedAt = performance.now();
                 fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
-                extractionDiagnostics.readMs += performance.now() - readStartedAt;
                 if (packedFile.is_compressed) {
-                  const decompressStartedAt = performance.now();
                   buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
-                  extractionDiagnostics.decompressMs += performance.now() - decompressStartedAt;
                 }
                 await enqueueWrite(target.requestedPath, target.outputPath, buffer);
               } catch (error) {
@@ -14517,30 +14434,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
         await Promise.all(pendingWrites);
         if (recursive) {
-          const extractionMemoryUsage = process.memoryUsage();
           console.log(
             `[Visuals isolated] wrote ${writtenCount} file(s) from ${filesByPack.size} pack(s) in ${(
               performance.now() - extractionStartedAt
-            ).toFixed(0)}ms; lookup=${extractionLookupMs.toFixed(
-              0,
-            )}ms, fallbackLookups=${extractionLookupFallbacks}, fallbackEntries=${extractionFallbackEntriesScanned}, read=${extractionDiagnostics.readMs.toFixed(
-              0,
-            )}ms, decompress=${extractionDiagnostics.decompressMs.toFixed(
-              0,
-            )}ms, ensureDir=${extractionDiagnostics.ensureDirMs.toFixed(0)}ms, writeFile=${extractionDiagnostics.writeMs.toFixed(
-              0,
-            )}ms, bytes=${(extractionDiagnostics.bytesWritten / (1024 * 1024)).toFixed(1)}MB, startHeap=${(
-              extractionStartMemory.heapUsed /
-              (1024 * 1024)
-            ).toFixed(0)}MB, startExternal=${(extractionStartMemory.external / (1024 * 1024)).toFixed(
-              0,
-            )}MB, startRss=${(extractionStartMemory.rss / (1024 * 1024)).toFixed(0)}MB, heap=${(
-              extractionMemoryUsage.heapUsed /
-              (1024 * 1024)
-            ).toFixed(0)}MB, external=${(extractionMemoryUsage.external / (1024 * 1024)).toFixed(0)}MB, rss=${(
-              extractionMemoryUsage.rss /
-              (1024 * 1024)
-            ).toFixed(0)}MB`,
+            ).toFixed(0)}ms`,
           );
         }
 
