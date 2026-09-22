@@ -116,6 +116,7 @@ export type UnitPainterBrushSettings = {
 
 type PaintableMaterial = THREE.Material & {
   map?: THREE.Texture | null;
+  normalMap?: THREE.Texture | null;
   needsUpdate: boolean;
 };
 
@@ -151,12 +152,38 @@ type LayerTexture = {
   tiles: Map<number, LayerTile>;
 };
 
+export type UnitPainterDecalSource = {
+  name: string;
+  width: number;
+  height: number;
+  rgbaBytes: Uint8Array;
+};
+
+export type UnitPainterDecalHeightSource = "alpha" | "luminance";
+
+type UnitPainterDecalState = {
+  target: PaintableTexture;
+  source: UnitPainterDecalSource;
+  centerU: number;
+  centerV: number;
+  widthU: number;
+  heightV: number;
+  rotationDeg: number;
+  tintEnabled: boolean;
+  tint: { r: number; g: number; b: number };
+  affectNormal: boolean;
+  normalStrength: number;
+  normalHeightSource: UnitPainterDecalHeightSource;
+};
+
 type PaintLayer = {
   id: string;
   name: string;
   visible: boolean;
   opacity: number;
+  kind: "paint" | "decal";
   textures: Map<PaintableTexture, LayerTexture>;
+  decal?: UnitPainterDecalState;
 };
 
 export type UnitPainterLayerInfo = {
@@ -164,6 +191,24 @@ export type UnitPainterLayerInfo = {
   name: string;
   visible: boolean;
   opacity: number;
+  kind: "paint" | "decal";
+};
+
+export type UnitPainterDecalInfo = {
+  layerId: string;
+  targetTextureId: string;
+  sourceName: string;
+  centerU: number;
+  centerV: number;
+  widthU: number;
+  heightV: number;
+  rotationDeg: number;
+  tintEnabled: boolean;
+  tint: { r: number; g: number; b: number };
+  affectNormal: boolean;
+  normalStrength: number;
+  normalHeightSource: UnitPainterDecalHeightSource;
+  hasNormalMap: boolean;
 };
 
 export type UnitPainterProjectTile = {
@@ -178,8 +223,27 @@ export type UnitPainterProjectLayerTexture = {
   tiles: UnitPainterProjectTile[];
 };
 
+export type UnitPainterProjectDecal = {
+  targetSourceVirtualPath: string;
+  sourceName: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  sourceRgbaBytes: Uint8Array;
+  centerU: number;
+  centerV: number;
+  widthU: number;
+  heightV: number;
+  rotationDeg: number;
+  tintEnabled: boolean;
+  tint: { r: number; g: number; b: number };
+  affectNormal: boolean;
+  normalStrength: number;
+  normalHeightSource: UnitPainterDecalHeightSource;
+};
+
 export type UnitPainterProjectLayer = UnitPainterLayerInfo & {
   textures: UnitPainterProjectLayerTexture[];
+  decal?: UnitPainterProjectDecal;
 };
 
 export type UnitPainterProjectState = {
@@ -197,6 +261,7 @@ export type UnitPainterExportTexture = {
 
 type MaterialRestore = {
   material: PaintableMaterial;
+  property: "map" | "normalMap";
   original: THREE.DataTexture;
 };
 
@@ -240,7 +305,9 @@ type LayerSnapshot = {
   name: string;
   visible: boolean;
   opacity: number;
+  kind: "paint" | "decal";
   textures: Array<{ target: PaintableTexture; data: LayerTexture }>;
+  decal?: UnitPainterDecalState;
 };
 
 type LayerMetadata = Pick<PaintLayer, "name" | "visible" | "opacity">;
@@ -323,6 +390,8 @@ const MIN_BRUSH_RADIUS_TEXELS = 1;
 const MAX_BRUSH_RADIUS_TEXELS = 192;
 const MAX_BRUSH_TEXTURE_FRACTION = 0.15;
 const BRUSH_SPACING_RATIO = 0.35;
+const MAX_DECAL_SOURCE_DIMENSION = 8192;
+const MAX_DECAL_SOURCE_BYTES = 64 * 1024 * 1024;
 
 export const getUnitPainterBrushSpacing = (radiusPx: number) =>
   Math.max(2, Math.max(1, radiusPx) * BRUSH_SPACING_RATIO);
@@ -1282,6 +1351,144 @@ const blendLayerPixelFromStrokeStart = (
   return (r | (g << 8) | (b << 16) | (a << 24)) >>> 0;
 };
 
+const cloneDecalSource = (source: UnitPainterDecalSource): UnitPainterDecalSource => ({
+  name: source.name,
+  width: source.width,
+  height: source.height,
+  rgbaBytes: new Uint8Array(source.rgbaBytes),
+});
+
+const cloneDecalState = (decal: UnitPainterDecalState): UnitPainterDecalState => ({
+  target: decal.target,
+  source: cloneDecalSource(decal.source),
+  centerU: decal.centerU,
+  centerV: decal.centerV,
+  widthU: decal.widthU,
+  heightV: decal.heightV,
+  rotationDeg: decal.rotationDeg,
+  tintEnabled: decal.tintEnabled,
+  tint: { ...decal.tint },
+  affectNormal: decal.affectNormal,
+  normalStrength: decal.normalStrength,
+  normalHeightSource: decal.normalHeightSource,
+});
+
+const validateDecalSource = (source: UnitPainterDecalSource) => {
+  const expectedBytes = source.width * source.height * 4;
+  return (
+    !!source.name.trim()
+    && Number.isInteger(source.width)
+    && Number.isInteger(source.height)
+    && source.width > 0
+    && source.height > 0
+    && source.width <= MAX_DECAL_SOURCE_DIMENSION
+    && source.height <= MAX_DECAL_SOURCE_DIMENSION
+    && Number.isSafeInteger(expectedBytes)
+    && expectedBytes > 0
+    && expectedBytes <= MAX_DECAL_SOURCE_BYTES
+    && source.rgbaBytes instanceof Uint8Array
+    && source.rgbaBytes.length === expectedBytes
+  );
+};
+
+const sampleDecalSource = (
+  source: UnitPainterDecalSource,
+  u: number,
+  v: number,
+) => {
+  if (u < 0 || v < 0 || u > 1 || v > 1) return undefined;
+  const x = Math.max(0, Math.min(source.width - 1, Math.round(u * (source.width - 1))));
+  const y = Math.max(0, Math.min(source.height - 1, Math.round(v * (source.height - 1))));
+  const byteIndex = (y * source.width + x) * 4;
+  return {
+    r: source.rgbaBytes[byteIndex],
+    g: source.rgbaBytes[byteIndex + 1],
+    b: source.rgbaBytes[byteIndex + 2],
+    a: source.rgbaBytes[byteIndex + 3],
+  };
+};
+
+const getDecalSourceUv = (
+  decal: UnitPainterDecalState,
+  textureU: number,
+  textureV: number,
+) => {
+  const radians = THREE.MathUtils.degToRad(decal.rotationDeg);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = textureU - decal.centerU;
+  const dy = textureV - decal.centerV;
+  const localX = cos * dx + sin * dy;
+  const localY = -sin * dx + cos * dy;
+  return {
+    u: localX / Math.max(Math.abs(decal.widthU), 1e-6) + 0.5,
+    v: localY / Math.max(Math.abs(decal.heightV), 1e-6) + 0.5,
+  };
+};
+
+const getDecalBounds = (
+  decal: UnitPainterDecalState,
+  width: number,
+  height: number,
+) => {
+  const radians = THREE.MathUtils.degToRad(decal.rotationDeg);
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const halfU = Math.abs(decal.widthU) * 0.5;
+  const halfV = Math.abs(decal.heightV) * 0.5;
+  const extentU = halfU * cos + halfV * sin;
+  const extentV = halfU * sin + halfV * cos;
+  return {
+    minX: Math.max(0, Math.floor((decal.centerU - extentU) * width) - 1),
+    maxX: Math.min(width - 1, Math.ceil((decal.centerU + extentU) * width) + 1),
+    minY: Math.max(0, Math.floor((decal.centerV - extentV) * height) - 1),
+    maxY: Math.min(height - 1, Math.ceil((decal.centerV + extentV) * height) + 1),
+  };
+};
+
+const getDecalHeight = (
+  decal: UnitPainterDecalState,
+  textureU: number,
+  textureV: number,
+) => {
+  const sourceUv = getDecalSourceUv(decal, textureU, textureV);
+  const pixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
+  if (!pixel) return 0;
+  const alpha = pixel.a / 255;
+  if (decal.normalHeightSource === "alpha") return alpha;
+  const luminance = (0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b) / 255;
+  return luminance * alpha;
+};
+
+const decodeNormalByte = (value: number) => value / 127.5 - 1;
+const encodeNormalByte = (value: number) => Math.round(clamp01(value * 0.5 + 0.5) * 255);
+
+const blendReorientedNormal = (
+  baseX: number,
+  baseY: number,
+  baseZ: number,
+  detailX: number,
+  detailY: number,
+  detailZ: number,
+) => {
+  const tx = baseX;
+  const ty = baseY;
+  const tz = baseZ + 1;
+  const ux = -detailX;
+  const uy = -detailY;
+  const uz = detailZ;
+  const dot = tx * ux + ty * uy + tz * uz;
+  const scale = dot / Math.max(tz, 1e-5);
+  let x = tx * scale - ux;
+  let y = ty * scale - uy;
+  let z = tz * scale - uz;
+  const length = Math.hypot(x, y, z) || 1;
+  x /= length;
+  y /= length;
+  z /= length;
+  return { x, y, z };
+};
+
 type ResolvedBrushIntersection = {
   target: PaintableTexture;
   mask: UvIslandMask | undefined;
@@ -1295,6 +1502,8 @@ type DirtyRowSpan = { minX: number; maxX: number };
 export class UnitPainterSession {
   private readonly targetsByEditableTexture = new Map<THREE.Texture, PaintableTexture>();
   private readonly targetsBySourcePath = new Map<string, PaintableTexture>();
+  private readonly normalTargetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
+  private readonly normalTargetsByBaseTarget = new Map<PaintableTexture, Set<PaintableTexture>>();
   private readonly restores: MaterialRestore[] = [];
   private readonly surfacesByTarget = new Map<PaintableTexture, PaintableSurface[]>();
   private readonly textureChangeListeners = new Set<
@@ -1319,6 +1528,7 @@ export class UnitPainterSession {
   private currentStroke = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeLayerId = "";
+  private activeDecalTransformBefore?: LayerSnapshot;
   private currentStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private completedStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private isStrokeOpen = false;
@@ -1392,8 +1602,61 @@ export class UnitPainterSession {
           }
         }
 
-        this.restores.push({ material, original });
+        this.restores.push({ material, property: "map", original });
         material.map = target.editable;
+
+        const normalOriginal = material.normalMap instanceof THREE.DataTexture
+          ? material.normalMap
+          : undefined;
+        const normalImage = normalOriginal ? getDataTextureImage(normalOriginal) : undefined;
+        if (normalOriginal && normalImage) {
+          let normalTarget = this.normalTargetsByOriginal.get(normalOriginal);
+          if (!normalTarget) {
+            const editableNormal = cloneEditableDataTexture(
+              normalOriginal,
+              normalImage.data,
+              normalImage.width,
+              normalImage.height,
+            );
+            const editableNormalImage = getDataTextureImage(editableNormal);
+            if (editableNormalImage) {
+              normalTarget = {
+                original: normalOriginal,
+                editable: editableNormal,
+                data: editableNormalImage.data,
+                originalData: normalImage.data,
+                width: normalImage.width,
+                height: normalImage.height,
+                sourceFileName: getTextureExportFileName(normalOriginal, textureIndex++),
+                sourceVirtualPath:
+                  typeof normalOriginal.userData.wh3SourceVirtualPath === "string"
+                    ? normalOriginal.userData.wh3SourceVirtualPath
+                    : undefined,
+                textureId: `normal-${textureIndex}`,
+                revision: 0,
+                touchedLayerTiles: new Set(),
+                fullUploadPending: true,
+              };
+              const paintNormalTarget = normalTarget;
+              editableNormal.onUpdate = () => {
+                paintNormalTarget.fullUploadPending = false;
+              };
+              this.normalTargetsByOriginal.set(normalOriginal, normalTarget);
+            } else {
+              editableNormal.dispose();
+            }
+          }
+          if (normalTarget) {
+            let normalTargets = this.normalTargetsByBaseTarget.get(target);
+            if (!normalTargets) {
+              normalTargets = new Set();
+              this.normalTargetsByBaseTarget.set(target, normalTargets);
+            }
+            normalTargets.add(normalTarget);
+            this.restores.push({ material, property: "normalMap", original: normalOriginal });
+            material.normalMap = normalTarget.editable;
+          }
+        }
         material.needsUpdate = true;
       }
     });
@@ -1747,7 +2010,35 @@ export class UnitPainterSession {
   }
 
   get layers(): UnitPainterLayerInfo[] {
-    return this.paintLayers.map(({ id, name, visible, opacity }) => ({ id, name, visible, opacity }));
+    return this.paintLayers.map(({ id, name, visible, opacity, kind }) => ({
+      id,
+      name,
+      visible,
+      opacity,
+      kind,
+    }));
+  }
+
+  get activeDecalInfo(): UnitPainterDecalInfo | undefined {
+    const layer = this.getActiveLayer();
+    const decal = layer?.kind === "decal" ? layer.decal : undefined;
+    if (!layer || !decal) return undefined;
+    return {
+      layerId: layer.id,
+      targetTextureId: decal.target.textureId,
+      sourceName: decal.source.name,
+      centerU: decal.centerU,
+      centerV: decal.centerV,
+      widthU: decal.widthU,
+      heightV: decal.heightV,
+      rotationDeg: decal.rotationDeg,
+      tintEnabled: decal.tintEnabled,
+      tint: { ...decal.tint },
+      affectNormal: decal.affectNormal,
+      normalStrength: decal.normalStrength,
+      normalHeightSource: decal.normalHeightSource,
+      hasNormalMap: (this.normalTargetsByBaseTarget.get(decal.target)?.size ?? 0) > 0,
+    };
   }
 
   get activeLayerId() {
@@ -1787,6 +2078,8 @@ export class UnitPainterSession {
     const duplicate = this.createEmptyLayer(`${source.name} copy`);
     duplicate.visible = source.visible;
     duplicate.opacity = source.opacity;
+    duplicate.kind = source.kind;
+    duplicate.decal = source.decal ? cloneDecalState(source.decal) : undefined;
     for (const [target, data] of source.textures) duplicate.textures.set(target, cloneLayerTexture(data));
     const sourceIndex = this.paintLayers.indexOf(source);
     const index = sourceIndex + 1;
@@ -1846,6 +2139,7 @@ export class UnitPainterSession {
     const before = this.layerMetadata(layer);
     layer.visible = visible;
     this.recomposeTargets(layer.textures.keys());
+    if (layer.kind === "decal" && layer.decal) this.recomposeNormalTargetsForBase(layer.decal.target);
     this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
     return true;
   }
@@ -1858,7 +2152,191 @@ export class UnitPainterSession {
     const before = this.layerMetadata(layer);
     layer.opacity = nextOpacity;
     this.recomposeTargets(layer.textures.keys());
+    if (layer.kind === "decal" && layer.decal) this.recomposeNormalTargetsForBase(layer.decal.target);
     this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
+    return true;
+  }
+
+  addDecalLayerAtTexturePoint(
+    textureId: string,
+    x: number,
+    y: number,
+    source: UnitPainterDecalSource,
+  ) {
+    const target = [...this.targetsByEditableTexture.values()].find(
+      (candidate) => candidate.textureId === textureId,
+    );
+    if (!target) return undefined;
+    return this.addDecalLayer(target, x / target.width, y / target.height, source);
+  }
+
+  addDecalLayerAtIntersection(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    source: UnitPainterDecalSource,
+  ) {
+    if (!intersection.uv) return undefined;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!target) return undefined;
+    const uv = intersection.uv.clone();
+    target.editable.updateMatrix();
+    target.editable.transformUv(uv);
+    return this.addDecalLayer(target, uv.x, uv.y, source);
+  }
+
+  private addDecalLayer(
+    target: PaintableTexture,
+    centerU: number,
+    centerV: number,
+    source: UnitPainterDecalSource,
+  ) {
+    if (this.paintLayers.length >= MAX_PAINT_LAYERS || !validateDecalSource(source)) return undefined;
+    if (this.isStrokeOpen) this.endStroke();
+
+    const sourceCopy = cloneDecalSource(source);
+    const number = this.nextLayerNumber++;
+    const widthU = 0.2;
+    const heightV = Math.max(
+      0.01,
+      widthU * (sourceCopy.height / sourceCopy.width) * (target.width / target.height),
+    );
+    const layer: PaintLayer = {
+      id: `layer-${number}`,
+      name: sourceCopy.name.replace(/.[^.]+$/, "").trim().slice(0, 80) || `Decal ${number}`,
+      visible: true,
+      opacity: 1,
+      kind: "decal",
+      textures: new Map(),
+      decal: {
+        target,
+        source: sourceCopy,
+        centerU,
+        centerV,
+        widthU,
+        heightV,
+        rotationDeg: 0,
+        tintEnabled: false,
+        tint: { r: 255, g: 255, b: 255 },
+        affectNormal: false,
+        normalStrength: 1,
+        normalHeightSource: "alpha",
+      },
+    };
+
+    const beforeActiveLayerId = this.activePaintLayerId;
+    const index = this.paintLayers.length;
+    this.paintLayers.push(layer);
+    this.activePaintLayerId = layer.id;
+    this.rasterizeDecalLayer(layer, true);
+    this.pushHistoryChange({
+      kind: "layer-add",
+      layer: this.snapshotLayer(layer),
+      index,
+      beforeActiveLayerId,
+      afterActiveLayerId: layer.id,
+    });
+    return layer.id;
+  }
+
+  beginActiveDecalTransform() {
+    const layer = this.getActiveLayer();
+    if (!layer || layer.kind !== "decal" || !layer.decal || this.activeDecalTransformBefore) return false;
+    if (this.isStrokeOpen) this.endStroke();
+    this.activeDecalTransformBefore = this.snapshotLayer(layer);
+    return true;
+  }
+
+  moveActiveDecalToTexturePoint(textureId: string, x: number, y: number, live = false) {
+    const layer = this.getActiveLayer();
+    const decal = layer?.kind === "decal" ? layer.decal : undefined;
+    if (!layer || !decal || decal.target.textureId !== textureId) return false;
+    decal.centerU = x / decal.target.width;
+    decal.centerV = y / decal.target.height;
+    this.rasterizeDecalLayer(layer, !live);
+    return true;
+  }
+
+  moveActiveDecalToIntersection(
+    intersection: THREE.Intersection<THREE.Object3D>,
+    live = false,
+  ) {
+    if (!intersection.uv) return false;
+    const layer = this.getActiveLayer();
+    const decal = layer?.kind === "decal" ? layer.decal : undefined;
+    const material = getIntersectionMaterial(intersection);
+    const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
+    if (!layer || !decal || !target || target !== decal.target) return false;
+    const uv = intersection.uv.clone();
+    target.editable.updateMatrix();
+    target.editable.transformUv(uv);
+    decal.centerU = uv.x;
+    decal.centerV = uv.y;
+    this.rasterizeDecalLayer(layer, !live);
+    return true;
+  }
+
+  endActiveDecalTransform() {
+    const before = this.activeDecalTransformBefore;
+    this.activeDecalTransformBefore = undefined;
+    const layer = this.getActiveLayer();
+    if (!before || !layer || layer.kind !== "decal" || !layer.decal) return false;
+    this.rasterizeDecalLayer(layer, true);
+    const after = this.snapshotLayer(layer);
+    const index = this.paintLayers.indexOf(layer);
+    this.pushHistoryChange({
+      kind: "layer-replace",
+      index,
+      before: [before],
+      after: [after],
+      beforeActiveLayerId: layer.id,
+      afterActiveLayerId: layer.id,
+    });
+    return true;
+  }
+
+  updateActiveDecal(
+    patch: Partial<Pick<
+      UnitPainterDecalInfo,
+      "centerU" | "centerV" | "widthU" | "heightV" | "rotationDeg"
+      | "tintEnabled" | "tint" | "affectNormal" | "normalStrength" | "normalHeightSource"
+    >>,
+  ) {
+    const layer = this.getActiveLayer();
+    const decal = layer?.kind === "decal" ? layer.decal : undefined;
+    if (!layer || !decal) return false;
+    if (this.isStrokeOpen) this.endStroke();
+    const before = this.snapshotLayer(layer);
+
+    if (patch.centerU != null) decal.centerU = patch.centerU;
+    if (patch.centerV != null) decal.centerV = patch.centerV;
+    if (patch.widthU != null) decal.widthU = Math.max(0.001, Math.abs(patch.widthU));
+    if (patch.heightV != null) decal.heightV = Math.max(0.001, Math.abs(patch.heightV));
+    if (patch.rotationDeg != null && Number.isFinite(patch.rotationDeg)) decal.rotationDeg = patch.rotationDeg;
+    if (patch.tintEnabled != null) decal.tintEnabled = patch.tintEnabled;
+    if (patch.tint) {
+      decal.tint = {
+        r: Math.max(0, Math.min(255, Math.round(patch.tint.r))),
+        g: Math.max(0, Math.min(255, Math.round(patch.tint.g))),
+        b: Math.max(0, Math.min(255, Math.round(patch.tint.b))),
+      };
+    }
+    if (patch.affectNormal != null) decal.affectNormal = patch.affectNormal;
+    if (patch.normalStrength != null && Number.isFinite(patch.normalStrength)) {
+      decal.normalStrength = Math.max(0, Math.min(4, patch.normalStrength));
+    }
+    if (patch.normalHeightSource) decal.normalHeightSource = patch.normalHeightSource;
+
+    this.rasterizeDecalLayer(layer, true);
+    const after = this.snapshotLayer(layer);
+    const index = this.paintLayers.indexOf(layer);
+    this.pushHistoryChange({
+      kind: "layer-replace",
+      index,
+      before: [before],
+      after: [after],
+      beforeActiveLayerId: layer.id,
+      afterActiveLayerId: layer.id,
+    });
     return true;
   }
 
@@ -1884,11 +2362,13 @@ export class UnitPainterSession {
 
     const bottom = this.paintLayers[topIndex - 1];
     const top = this.paintLayers[topIndex];
+    if (bottom.kind !== "paint" || top.kind !== "paint") return false;
     const merged: PaintLayer = {
       id: bottom.id,
       name: bottom.name,
       visible: true,
       opacity: 1,
+      kind: "paint",
       textures: new Map(),
     };
 
@@ -2606,6 +3086,7 @@ export class UnitPainterSession {
   }
 
   beginStroke() {
+    if (this.getActiveLayer()?.kind !== "paint") return;
     if (this.isStrokeOpen) this.endStroke();
     this.currentStroke = new Map();
     this.currentStrokeCoverage = new Map();
@@ -3129,7 +3610,31 @@ export class UnitPainterSession {
         name: layer.name,
         visible: layer.visible,
         opacity: layer.opacity,
-        textures: [...layer.textures.entries()]
+        kind: layer.kind,
+        ...(layer.decal
+          ? {
+              decal: {
+                targetSourceVirtualPath: layer.decal.target.sourceVirtualPath ?? "",
+                sourceName: layer.decal.source.name,
+                sourceWidth: layer.decal.source.width,
+                sourceHeight: layer.decal.source.height,
+                sourceRgbaBytes: new Uint8Array(layer.decal.source.rgbaBytes),
+                centerU: layer.decal.centerU,
+                centerV: layer.decal.centerV,
+                widthU: layer.decal.widthU,
+                heightV: layer.decal.heightV,
+                rotationDeg: layer.decal.rotationDeg,
+                tintEnabled: layer.decal.tintEnabled,
+                tint: { ...layer.decal.tint },
+                affectNormal: layer.decal.affectNormal,
+                normalStrength: layer.decal.normalStrength,
+                normalHeightSource: layer.decal.normalHeightSource,
+              },
+            }
+          : {}),
+        textures: layer.kind === "decal"
+          ? []
+          : [...layer.textures.entries()]
           .filter(([, data]) => data.tiles.size > 0)
           .map(([target, data]) => {
             if (!target.sourceVirtualPath) {
@@ -3172,8 +3677,50 @@ export class UnitPainterSession {
         name: name.slice(0, 80),
         visible: !!savedLayer.visible,
         opacity: clamp01(savedLayer.opacity),
+        kind: savedLayer.kind === "decal" ? "decal" : "paint",
         textures: new Map(),
       };
+
+      if (layer.kind === "decal") {
+        const savedDecal = savedLayer.decal;
+        const targetKey = savedDecal?.targetSourceVirtualPath.replace(///g, "\\").toLowerCase();
+        const target = targetKey ? this.targetsBySourcePath.get(targetKey) : undefined;
+        if (
+          !savedDecal
+          || !target
+          || !validateDecalSource({
+            name: savedDecal.sourceName,
+            width: savedDecal.sourceWidth,
+            height: savedDecal.sourceHeight,
+            rgbaBytes: savedDecal.sourceRgbaBytes,
+          })
+        ) {
+          throw new Error(`The decal layer '${name}' is invalid or its target texture is no longer present.`);
+        }
+        layer.decal = {
+          target,
+          source: {
+            name: savedDecal.sourceName,
+            width: savedDecal.sourceWidth,
+            height: savedDecal.sourceHeight,
+            rgbaBytes: new Uint8Array(savedDecal.sourceRgbaBytes),
+          },
+          centerU: savedDecal.centerU,
+          centerV: savedDecal.centerV,
+          widthU: Math.max(0.001, Math.abs(savedDecal.widthU)),
+          heightV: Math.max(0.001, Math.abs(savedDecal.heightV)),
+          rotationDeg: savedDecal.rotationDeg,
+          tintEnabled: !!savedDecal.tintEnabled,
+          tint: {
+            r: Math.max(0, Math.min(255, Math.round(savedDecal.tint.r))),
+            g: Math.max(0, Math.min(255, Math.round(savedDecal.tint.g))),
+            b: Math.max(0, Math.min(255, Math.round(savedDecal.tint.b))),
+          },
+          affectNormal: !!savedDecal.affectNormal,
+          normalStrength: Math.max(0, Math.min(4, savedDecal.normalStrength)),
+          normalHeightSource: savedDecal.normalHeightSource === "luminance" ? "luminance" : "alpha",
+        };
+      }
 
       for (const texture of savedLayer.textures ?? []) {
         const sourceKey = texture.sourceVirtualPath.replace(/\//g, "\\").toLowerCase();
@@ -3231,7 +3778,11 @@ export class UnitPainterSession {
     this.activePaintLayerId = seenLayerIds.has(project.activeLayerId)
       ? project.activeLayerId
       : layers[layers.length - 1].id;
+    for (const layer of this.paintLayers) {
+      if (layer.kind === "decal") this.rasterizeDecalLayer(layer, false);
+    }
     this.recomposeAllTargets();
+    this.recomposeAllNormalTargets();
     this.history.length = 0;
     this.redoHistory.length = 0;
     this.retainedHistoryBytes = 0;
@@ -3245,9 +3796,10 @@ export class UnitPainterSession {
 
   exportModifiedTextures(): UnitPainterExportTexture[] {
     if (this.isStrokeOpen) this.endStroke();
-    const modifiedTargets = [...this.targetsByEditableTexture.values()].filter((target) =>
-      this.hasCompositeChanges(target),
-    );
+    const modifiedTargets = [
+      ...[...this.targetsByEditableTexture.values()].filter((target) => this.hasCompositeChanges(target)),
+      ...[...this.normalTargetsByOriginal.values()].filter((target) => this.hasAnyDataChanges(target)),
+    ];
 
     const usedNames = new Map<string, number>();
     const output: UnitPainterExportTexture[] = [];
@@ -3284,14 +3836,17 @@ export class UnitPainterSession {
     this.raycastRestores.length = 0;
     this.dynamicRaycastBvhs.length = 0;
     this.ownedStaticBoundsTrees.clear();
-    for (const { material, original } of this.restores) {
-      material.map = original;
+    for (const { material, property, original } of this.restores) {
+      material[property] = original;
       material.needsUpdate = true;
     }
     for (const target of this.targetsByEditableTexture.values()) target.editable.dispose();
+    for (const target of this.normalTargetsByOriginal.values()) target.editable.dispose();
     this.restores.length = 0;
     this.targetsByEditableTexture.clear();
     this.targetsBySourcePath.clear();
+    this.normalTargetsByOriginal.clear();
+    this.normalTargetsByBaseTarget.clear();
     this.surfacesByTarget.clear();
     this.textureChangeListeners.clear();
     this.paintLayers.length = 0;
@@ -3492,6 +4047,7 @@ export class UnitPainterSession {
         bytes += HISTORY_TILE_OVERHEAD_BYTES + tile.data.byteLength;
       }
     }
+    if (snapshot.decal) bytes += snapshot.decal.source.rgbaBytes.byteLength + 256;
     return bytes;
   }
 
@@ -3611,6 +4167,7 @@ export class UnitPainterSession {
       const affectedTargets = change.layer.textures.map(({ target }) => target);
       this.recomposeTargets(affectedTargets);
       this.pruneTouchedLayerTiles(affectedTargets);
+      this.recomposeAllNormalTargets();
       return;
     }
 
@@ -3625,6 +4182,7 @@ export class UnitPainterSession {
       const affectedTargets = change.layer.textures.map(({ target }) => target);
       this.recomposeTargets(affectedTargets);
       this.pruneTouchedLayerTiles(affectedTargets);
+      this.recomposeAllNormalTargets();
       return;
     }
 
@@ -3637,7 +4195,10 @@ export class UnitPainterSession {
       layer.name = metadata.name;
       layer.visible = metadata.visible;
       layer.opacity = metadata.opacity;
-      if (appearanceChanged) this.recomposeTargets(layer.textures.keys());
+      if (appearanceChanged) {
+        this.recomposeTargets(layer.textures.keys());
+        if (layer.kind === "decal" && layer.decal) this.recomposeNormalTargetsForBase(layer.decal.target);
+      }
       return;
     }
 
@@ -3654,6 +4215,7 @@ export class UnitPainterSession {
       );
       this.recomposeTargets(affectedTargets);
       this.pruneTouchedLayerTiles(affectedTargets);
+      this.recomposeAllNormalTargets();
       return;
     }
 
@@ -3662,6 +4224,7 @@ export class UnitPainterSession {
     const reordered = order.map((id) => byId.get(id)).filter((layer): layer is PaintLayer => !!layer);
     if (reordered.length === this.paintLayers.length) this.paintLayers = reordered;
     this.recomposeAllTargets();
+    this.recomposeAllNormalTargets();
   }
 
   private createEmptyLayer(name?: string): PaintLayer {
@@ -3671,6 +4234,7 @@ export class UnitPainterSession {
       name: (name?.trim() || `Paint ${number}`).slice(0, 80),
       visible: true,
       opacity: 1,
+      kind: "paint",
       textures: new Map(),
     };
   }
@@ -3698,6 +4262,8 @@ export class UnitPainterSession {
       name: layer.name,
       visible: layer.visible,
       opacity: layer.opacity,
+      kind: layer.kind,
+      decal: layer.decal ? cloneDecalState(layer.decal) : undefined,
       textures: [...layer.textures.entries()].map(([target, data]) => ({
         target,
         data: cloneLayerTexture(data),
@@ -3714,10 +4280,151 @@ export class UnitPainterSession {
       name: snapshot.name,
       visible: snapshot.visible,
       opacity: snapshot.opacity,
+      kind: snapshot.kind,
+      decal: snapshot.decal ? cloneDecalState(snapshot.decal) : undefined,
       textures: new Map<PaintableTexture, LayerTexture>(
         snapshot.textures.map(({ target, data }) => [target, cloneLayerTexture(data)] as const),
       ),
     };
+  }
+
+  private rasterizeDecalLayer(layer: PaintLayer, updateNormal: boolean) {
+    const decal = layer.decal;
+    if (layer.kind !== "decal" || !decal) return;
+
+    const affectedTargets = new Set<PaintableTexture>([...layer.textures.keys(), decal.target]);
+    layer.textures = new Map();
+    const output = createLayerTexture();
+    layer.textures.set(decal.target, output);
+
+    const coverageMask = this.getTargetUvCoverageMask(decal.target);
+    const bounds = getDecalBounds(decal, decal.target.width, decal.target.height);
+    for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+        if (coverageMask && !maskContainsPixel(coverageMask, x, y)) continue;
+        const sourceUv = getDecalSourceUv(
+          decal,
+          (x + 0.5) / decal.target.width,
+          (y + 0.5) / decal.target.height,
+        );
+        const sourcePixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
+        if (!sourcePixel || sourcePixel.a === 0) continue;
+
+        let r = sourcePixel.r;
+        let g = sourcePixel.g;
+        let b = sourcePixel.b;
+        if (decal.tintEnabled) {
+          const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+          r = Math.round(decal.tint.r * luminance);
+          g = Math.round(decal.tint.g * luminance);
+          b = Math.round(decal.tint.b * luminance);
+        }
+        const byteIndex = (y * decal.target.width + x) * 4;
+        setLayerPixel(
+          output,
+          decal.target,
+          byteIndex,
+          (r | (g << 8) | (b << 16) | (sourcePixel.a << 24)) >>> 0,
+        );
+      }
+    }
+
+    this.recomposeTargets(affectedTargets);
+    this.pruneTouchedLayerTiles(affectedTargets);
+    if (updateNormal) this.recomposeNormalTargetsForBase(decal.target);
+  }
+
+  private applyDecalToNormalTarget(
+    layer: PaintLayer,
+    decal: UnitPainterDecalState,
+    normalTarget: PaintableTexture,
+  ) {
+    if (
+      !layer.visible
+      || layer.opacity <= 0
+      || !decal.affectNormal
+      || decal.normalStrength <= 0
+    ) {
+      return;
+    }
+
+    const bounds = getDecalBounds(decal, normalTarget.width, normalTarget.height);
+    const du = 1 / normalTarget.width;
+    const dv = 1 / normalTarget.height;
+    for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+        const textureU = (x + 0.5) / normalTarget.width;
+        const textureV = (y + 0.5) / normalTarget.height;
+        const sourceUv = getDecalSourceUv(decal, textureU, textureV);
+        const sourcePixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
+        if (!sourcePixel || sourcePixel.a === 0) continue;
+
+        const left = getDecalHeight(decal, textureU - du, textureV);
+        const right = getDecalHeight(decal, textureU + du, textureV);
+        const up = getDecalHeight(decal, textureU, textureV - dv);
+        const down = getDecalHeight(decal, textureU, textureV + dv);
+        const slope = decal.normalStrength * 4;
+        let detailX = -(right - left) * slope;
+        let detailY = -(down - up) * slope;
+        let detailZ = 1;
+        const detailLength = Math.hypot(detailX, detailY, detailZ) || 1;
+        detailX /= detailLength;
+        detailY /= detailLength;
+        detailZ /= detailLength;
+
+        const byteIndex = (y * normalTarget.width + x) * 4;
+        const baseX = decodeNormalByte(normalTarget.data[byteIndex]);
+        const baseY = decodeNormalByte(normalTarget.data[byteIndex + 1]);
+        const baseZ = decodeNormalByte(normalTarget.data[byteIndex + 2]);
+        const composed = blendReorientedNormal(
+          baseX,
+          baseY,
+          baseZ,
+          detailX,
+          detailY,
+          detailZ,
+        );
+        const alpha = (sourcePixel.a / 255) * layer.opacity;
+        const outX = baseX + (composed.x - baseX) * alpha;
+        const outY = baseY + (composed.y - baseY) * alpha;
+        const outZ = baseZ + (composed.z - baseZ) * alpha;
+        const length = Math.hypot(outX, outY, outZ) || 1;
+        normalTarget.data[byteIndex] = encodeNormalByte(outX / length);
+        normalTarget.data[byteIndex + 1] = encodeNormalByte(outY / length);
+        normalTarget.data[byteIndex + 2] = encodeNormalByte(outZ / length);
+      }
+    }
+  }
+
+  private recomposeNormalTargetsForBase(baseTarget: PaintableTexture) {
+    const normalTargets = this.normalTargetsByBaseTarget.get(baseTarget);
+    if (!normalTargets?.size) return;
+
+    for (const normalTarget of normalTargets) {
+      normalTarget.data.set(normalTarget.originalData);
+      for (const layer of this.paintLayers) {
+        const decal = layer.kind === "decal" ? layer.decal : undefined;
+        if (!decal || decal.target !== baseTarget) continue;
+        this.applyDecalToNormalTarget(layer, decal, normalTarget);
+      }
+      normalTarget.revision += 1;
+      normalTarget.editable.clearUpdateRanges();
+      normalTarget.editable.needsUpdate = true;
+    }
+  }
+
+  private recomposeAllNormalTargets() {
+    for (const baseTarget of this.normalTargetsByBaseTarget.keys()) {
+      this.recomposeNormalTargetsForBase(baseTarget);
+    }
+  }
+
+  private hasAnyDataChanges(target: PaintableTexture) {
+    if (target.data.length !== target.originalData.length) return true;
+    for (let index = 0; index < target.data.length; index += 1) {
+      if (target.data[index] !== target.originalData[index]) return true;
+    }
+    return false;
   }
 
   private recomposeTargetPixel(target: PaintableTexture, byteIndex: number) {
