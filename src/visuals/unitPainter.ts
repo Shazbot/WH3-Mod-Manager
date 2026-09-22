@@ -4119,7 +4119,9 @@ export class UnitPainterSession {
         bytes += HISTORY_TILE_OVERHEAD_BYTES + tile.data.byteLength;
       }
     }
-    if (snapshot.decal) bytes += snapshot.decal.source.rgbaBytes.byteLength + 256;
+    // Decal source bytes are immutable and shared by snapshots, so history
+    // only owns the transform metadata plus the cloned sparse raster tiles.
+    if (snapshot.decal) bytes += 256;
     return bytes;
   }
 
