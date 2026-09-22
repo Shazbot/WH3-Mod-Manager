@@ -164,6 +164,8 @@ export type UnitPainterDecalHeightSource = "alpha" | "luminance";
 type UnitPainterDecalState = {
   target: PaintableTexture;
   normalTarget?: PaintableTexture;
+  /** UV island chosen when the decal is placed in 3D/texture space. Immutable between retargets. */
+  placementMask?: UvIslandMask;
   source: UnitPainterDecalSource;
   centerU: number;
   centerV: number;
@@ -1371,6 +1373,8 @@ const cloneDecalSource = (source: UnitPainterDecalSource): UnitPainterDecalSourc
 const cloneDecalState = (decal: UnitPainterDecalState): UnitPainterDecalState => ({
   target: decal.target,
   normalTarget: decal.normalTarget,
+  // Placement masks are immutable cached/project masks, so snapshots can share them.
+  placementMask: decal.placementMask,
   // Source bytes are immutable after import; history snapshots share them instead
   // of cloning a potentially multi-megabyte bitmap for every transform step.
   source: decal.source,
@@ -2223,6 +2227,7 @@ export class UnitPainterSession {
       y / target.height,
       source,
       normalTargets.length === 1 ? normalTargets[0] : undefined,
+      this.getUvIslandMaskAtTexturePoint(target, x, y),
     );
   }
 
@@ -2235,10 +2240,11 @@ export class UnitPainterSession {
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
     if (!target || !material) return undefined;
     const normalTarget = this.normalTargetByMaterial.get(material);
+    const placementMask = this.getUvIslandMask(intersection, target);
     const uv = intersection.uv.clone();
     target.editable.updateMatrix();
     target.editable.transformUv(uv);
-    return this.addDecalLayer(target, uv.x, uv.y, source, normalTarget);
+    return this.addDecalLayer(target, uv.x, uv.y, source, normalTarget, placementMask);
   }
 
   private addDecalLayer(
@@ -2247,6 +2253,7 @@ export class UnitPainterSession {
     centerV: number,
     source: UnitPainterDecalSource,
     normalTarget?: PaintableTexture,
+    placementMask?: UvIslandMask,
   ) {
     if (this.paintLayers.length >= MAX_PAINT_LAYERS || !validateDecalSource(source)) return undefined;
     if (this.isStrokeOpen) this.endStroke();
@@ -2268,6 +2275,7 @@ export class UnitPainterSession {
       decal: {
         target,
         normalTarget,
+        placementMask,
         source: sourceCopy,
         centerU,
         centerV,
@@ -2329,6 +2337,7 @@ export class UnitPainterSession {
     const previousTarget = decal.target;
     const previousNormalTarget = decal.normalTarget;
     const nextNormalTarget = this.normalTargetByMaterial.get(material);
+    const nextPlacementMask = this.getUvIslandMask(intersection, target);
     if (target !== previousTarget) {
       decal.target = target;
       // Width is stored as a fraction of the target texture. Recompute height
@@ -2339,6 +2348,7 @@ export class UnitPainterSession {
       );
     }
     decal.normalTarget = nextNormalTarget;
+    decal.placementMask = nextPlacementMask;
 
     const uv = intersection.uv.clone();
     target.editable.updateMatrix();
@@ -4148,6 +4158,44 @@ export class UnitPainterSession {
     return this.cacheUvMask(masks, key, mask);
   }
 
+  private getUvIslandMaskAtTexturePoint(
+    target: PaintableTexture,
+    x: number,
+    y: number,
+  ): UvIslandMask | undefined {
+    target.editable.updateMatrix();
+    for (const surface of this.surfacesByTarget.get(target) ?? []) {
+      const uv = surface.geometry.getAttribute("uv");
+      if (!uv) continue;
+      for (const faceIndex of getMaterialFaceIndices(surface.geometry, surface.materialIndex)) {
+        const indices = getTriangleVertexIndices(surface.geometry, faceIndex);
+        if (!indices) continue;
+        const [a, b, c] = indices.map((index) =>
+          new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
+        );
+        if (
+          !pointInTriangle(
+            x,
+            y,
+            a.x * target.width,
+            a.y * target.height,
+            b.x * target.width,
+            b.y * target.height,
+            c.x * target.width,
+            c.y * target.height,
+          )
+        ) {
+          continue;
+        }
+        const topology = this.getUvTopology(surface.geometry, surface.materialIndex);
+        const islandId = topology?.faceToIsland.get(faceIndex);
+        if (islandId == null) continue;
+        return this.getUvMask(target, surface.geometry, surface.materialIndex, islandId);
+      }
+    }
+    return undefined;
+  }
+
   private getUvIslandMask(
     intersection: THREE.Intersection<THREE.Object3D>,
     target: PaintableTexture,
@@ -4424,7 +4472,7 @@ export class UnitPainterSession {
     const output = createLayerTexture();
     layer.textures.set(decal.target, output);
 
-    const coverageMask = this.getTargetUvCoverageMask(decal.target);
+    const coverageMask = decal.placementMask ?? this.getTargetUvCoverageMask(decal.target);
     const bounds = getDecalBounds(decal, decal.target.width, decal.target.height);
     for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
       for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
@@ -4482,7 +4530,7 @@ export class UnitPainterSession {
     }
 
     const bounds = getDecalBounds(decal, normalTarget.width, normalTarget.height);
-    const coverageMask = this.getTargetUvCoverageMask(decal.target);
+    const coverageMask = decal.placementMask ?? this.getTargetUvCoverageMask(decal.target);
     const du = 1 / normalTarget.width;
     const dv = 1 / normalTarget.height;
     for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
