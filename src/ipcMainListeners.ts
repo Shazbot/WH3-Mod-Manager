@@ -14216,6 +14216,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             cacheHits: 0,
           };
           const dependencyResolveStartedAt = performance.now();
+          const dependencyResolveStartMemory = process.memoryUsage();
           const getDependencyFileId = (packPath: string) => {
             const packKey = packPath.replaceAll("\\", "/").toLowerCase();
             const existing = dependencyFileIds.get(packKey);
@@ -14312,7 +14313,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             )}ms, textFiles=${dependencyDiagnostics.textFilesRead}, decoded=${(
               dependencyDiagnostics.decodedBytes /
               (1024 * 1024)
-            ).toFixed(1)}MB, textCacheHits=${dependencyDiagnostics.cacheHits}, packCache=${dependencyPackCache.size}, heap=${(
+            ).toFixed(1)}MB, textCacheHits=${dependencyDiagnostics.cacheHits}, packCache=${dependencyPackCache.size}, startHeap=${(
+              dependencyResolveStartMemory.heapUsed /
+              (1024 * 1024)
+            ).toFixed(0)}MB, startExternal=${(dependencyResolveStartMemory.external / (1024 * 1024)).toFixed(
+              0,
+            )}MB, startRss=${(dependencyResolveStartMemory.rss / (1024 * 1024)).toFixed(0)}MB, heap=${(
               memoryUsage.heapUsed /
               (1024 * 1024)
             ).toFixed(0)}MB, external=${(memoryUsage.external / (1024 * 1024)).toFixed(0)}MB, rss=${(
@@ -14389,6 +14395,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
 
+        const extractionDiagnostics = {
+          readMs: 0,
+          decompressMs: 0,
+          ensureDirMs: 0,
+          writeMs: 0,
+          bytesWritten: 0,
+        };
         const writeOutput = async (name: string, relativePath: string, contents: Buffer) => {
           const outputPath = resolveExportOutputPath(outputDirectory, relativePath);
           if (!outputPath) {
@@ -14396,8 +14409,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             return;
           }
           try {
+            const ensureDirStartedAt = performance.now();
             await fsExtra.ensureDir(nodePath.dirname(outputPath));
+            extractionDiagnostics.ensureDirMs += performance.now() - ensureDirStartedAt;
+            const writeStartedAt = performance.now();
             await fs.promises.writeFile(outputPath, contents);
+            extractionDiagnostics.writeMs += performance.now() - writeStartedAt;
+            extractionDiagnostics.bytesWritten += contents.length;
             writtenCount += 1;
           } catch (error) {
             errors.push(`${name}: ${error instanceof Error ? error.message : "Failed to write file"}`);
@@ -14405,6 +14423,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         };
 
         const extractionStartedAt = performance.now();
+        const extractionStartMemory = process.memoryUsage();
         let extractionLookupFallbacks = 0;
         let extractionFallbackEntriesScanned = 0;
         let extractionLookupMs = 0;
@@ -14439,9 +14458,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
               try {
                 let buffer = Buffer.allocUnsafe(packedFile.file_size);
+                const readStartedAt = performance.now();
                 fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
+                extractionDiagnostics.readMs += performance.now() - readStartedAt;
                 if (packedFile.is_compressed) {
+                  const decompressStartedAt = performance.now();
                   buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+                  extractionDiagnostics.decompressMs += performance.now() - decompressStartedAt;
                 }
                 const normalizedPath = packedFile.name.replaceAll("\\", "/");
                 const relativePath = preserveFolders ? normalizedPath : nodePath.posix.basename(normalizedPath);
@@ -14472,7 +14495,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               performance.now() - extractionStartedAt
             ).toFixed(0)}ms; lookup=${extractionLookupMs.toFixed(
               0,
-            )}ms, fallbackLookups=${extractionLookupFallbacks}, fallbackEntries=${extractionFallbackEntriesScanned}, heap=${(
+            )}ms, fallbackLookups=${extractionLookupFallbacks}, fallbackEntries=${extractionFallbackEntriesScanned}, read=${extractionDiagnostics.readMs.toFixed(
+              0,
+            )}ms, decompress=${extractionDiagnostics.decompressMs.toFixed(
+              0,
+            )}ms, ensureDir=${extractionDiagnostics.ensureDirMs.toFixed(0)}ms, writeFile=${extractionDiagnostics.writeMs.toFixed(
+              0,
+            )}ms, bytes=${(extractionDiagnostics.bytesWritten / (1024 * 1024)).toFixed(1)}MB, startHeap=${(
+              extractionStartMemory.heapUsed /
+              (1024 * 1024)
+            ).toFixed(0)}MB, startExternal=${(extractionStartMemory.external / (1024 * 1024)).toFixed(
+              0,
+            )}MB, startRss=${(extractionStartMemory.rss / (1024 * 1024)).toFixed(0)}MB, heap=${(
               extractionMemoryUsage.heapUsed /
               (1024 * 1024)
             ).toFixed(0)}MB, external=${(extractionMemoryUsage.external / (1024 * 1024)).toFixed(0)}MB, rss=${(
