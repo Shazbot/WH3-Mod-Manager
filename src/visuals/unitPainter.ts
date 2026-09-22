@@ -1410,14 +1410,26 @@ const sampleDecalSource = (
   v: number,
 ) => {
   if (u < 0 || v < 0 || u > 1 || v > 1) return undefined;
-  const x = Math.max(0, Math.min(source.width - 1, Math.round(u * (source.width - 1))));
-  const y = Math.max(0, Math.min(source.height - 1, Math.round(v * (source.height - 1))));
-  const byteIndex = (y * source.width + x) * 4;
+  const x = Math.max(0, Math.min(source.width - 1, u * (source.width - 1)));
+  const y = Math.max(0, Math.min(source.height - 1, v * (source.height - 1)));
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(source.width - 1, x0 + 1);
+  const y1 = Math.min(source.height - 1, y0 + 1);
+  const tx = x - x0;
+  const ty = y - y0;
+  const sample = (pixelX: number, pixelY: number, channel: number) =>
+    source.rgbaBytes[(pixelY * source.width + pixelX) * 4 + channel];
+  const interpolate = (channel: number) => {
+    const top = sample(x0, y0, channel) * (1 - tx) + sample(x1, y0, channel) * tx;
+    const bottom = sample(x0, y1, channel) * (1 - tx) + sample(x1, y1, channel) * tx;
+    return top * (1 - ty) + bottom * ty;
+  };
   return {
-    r: source.rgbaBytes[byteIndex],
-    g: source.rgbaBytes[byteIndex + 1],
-    b: source.rgbaBytes[byteIndex + 2],
-    a: source.rgbaBytes[byteIndex + 3],
+    r: interpolate(0),
+    g: interpolate(1),
+    b: interpolate(2),
+    a: interpolate(3),
   };
 };
 
@@ -4395,11 +4407,17 @@ export class UnitPainterSession {
           b = Math.round(decal.tint.b * luminance);
         }
         const byteIndex = (y * decal.target.width + x) * 4;
+        const alpha = Math.max(0, Math.min(255, Math.round(sourcePixel.a)));
         setLayerPixel(
           output,
           decal.target,
           byteIndex,
-          (r | (g << 8) | (b << 16) | (sourcePixel.a << 24)) >>> 0,
+          (
+            Math.max(0, Math.min(255, Math.round(r)))
+            | (Math.max(0, Math.min(255, Math.round(g))) << 8)
+            | (Math.max(0, Math.min(255, Math.round(b))) << 16)
+            | (alpha << 24)
+          ) >>> 0,
         );
       }
     }
