@@ -1,13 +1,11 @@
-import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as nodePath from "path";
 import appData from "../appData";
-import { readFromExistingPack } from "../packFileSerializer";
-import { Pack, PackedFile } from "../packFileTypes";
+import { readPackedFileBuffersFromIndex } from "../packFileSerializer";
+import { Pack } from "../packFileTypes";
 import { normalizeSkillIconPath, SkillAndIcons } from "../skills";
 import { gameToPackWithDBTablesName, SupportedGames } from "../supportedGames";
-import { collator } from "../utility/packFileSorting";
 import { getPackedFileMimeType } from "../utility/packFileViewing";
 import { iconAssetUrl, type AssetBytes } from "../assetUrls";
 import Trie, { type KeyedLookup } from "../utility/trie";
@@ -114,20 +112,15 @@ export const getLocsFromPacks = (packs: Pack[], getLocsTrie: (pack: Pack) => Tri
  * and encoding them was both a third more memory and a string per icon that nothing could evict.
  */
 export const loadIconsFromPacks = async (packs: Pack[], iconPaths: string[]) => {
-  for (const pack of packs) {
-    await readFromExistingPack(pack, { filesToRead: iconPaths, skipParsingTables: true });
-  }
-
   const icons: Record<string, AssetBytes> = {};
   for (const pack of packs) {
+    const payloads = await readPackedFileBuffersFromIndex(pack, iconPaths);
     for (const iconPath of iconPaths) {
-      const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
-      if (iconIndex < 0) continue;
-      const iconPackedFile = pack.packedFiles[iconIndex];
-      if (!iconPackedFile.buffer) continue;
+      const buffer = payloads.get(iconPath);
+      if (!buffer) continue;
       icons[iconPath] = {
-        buffer: iconPackedFile.buffer,
-        mimeType: getPackedFileMimeType(iconPackedFile.name) || "image/png",
+        buffer,
+        mimeType: getPackedFileMimeType(iconPath) || "image/png",
       };
     }
   }
