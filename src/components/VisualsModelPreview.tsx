@@ -684,6 +684,36 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintColor(color.toLowerCase());
   };
 
+  const loadDecalFile = (file?: File) => {
+    if (!file) return;
+    void (async () => {
+      try {
+        const source = await decodeUnitPainterDecalFile(file);
+        pendingDecalRef.current = source;
+        setPendingDecal(source);
+        selectToolModeRef.current = undefined;
+        setPaintSelectMode(undefined);
+        setIsPaintEyedropperActive(false);
+        setPaintExportStatus(`Click the model or texture to place '${source.name}'.`);
+      } catch (decalError) {
+        pendingDecalRef.current = undefined;
+        setPendingDecal(undefined);
+        setPaintExportStatus(
+          decalError instanceof Error ? decalError.message : "Failed to load decal image.",
+        );
+      } finally {
+        if (decalFileInputRef.current) decalFileInputRef.current.value = "";
+      }
+    })();
+  };
+
+  const finishDecalPlacement = () => {
+    pendingDecalRef.current = undefined;
+    setPendingDecal(undefined);
+    setPaintExportStatus("");
+    setPaintHistoryVersion((value) => value + 1);
+  };
+
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   paintViewModeRef.current = paintViewMode;
   eyedropperActiveRef.current = isPaintEyedropperActive;
