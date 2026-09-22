@@ -4,6 +4,7 @@ import {
   getUnitPainterBrushSpacing,
   sampleUnitPainterStrokeSegment,
   type UnitPainterBrushSettings,
+  type UnitPainterDecalSource,
   type UnitPainterSelectionScope,
   type UnitPainterSelectionInfo,
   type UnitPainterSession,
@@ -24,6 +25,9 @@ type UnitPainterTextureEditorProps = {
   onPaddingPxChange: (padding: number) => void;
   selectMode?: Exclude<UnitPainterSelectionScope, "all">;
   similarTolerance: number;
+  pendingDecal?: UnitPainterDecalSource;
+  onDecalPlaced: () => void;
+  onDecalChanged: (committed: boolean) => void;
   eyedropperActive: boolean;
   onEyedropperComplete: (color: { r: number; g: number; b: number }) => void;
   onSelectionComplete: (selection: UnitPainterSelectionInfo | undefined, mode: Exclude<UnitPainterSelectionScope, "all">) => void;
@@ -91,6 +95,9 @@ const UnitPainterTextureEditor = ({
   onPaddingPxChange,
   selectMode,
   similarTolerance,
+  pendingDecal,
+  onDecalPlaced,
+  onDecalChanged,
   eyedropperActive,
   onEyedropperComplete,
   onSelectionComplete,
@@ -107,6 +114,7 @@ const UnitPainterTextureEditor = ({
   const linkedHoverCursorRef = useRef<HTMLDivElement>(null);
   const linkedHoverHardnessRef = useRef<HTMLDivElement>(null);
   const activePaintPointerRef = useRef<number>();
+  const activeDecalPointerRef = useRef<number>();
   const activePanPointerRef = useRef<number>();
   const lastPaintPointRef = useRef<{ x: number; y: number }>();
   const lastPanPointRef = useRef<{ x: number; y: number }>();
@@ -549,6 +557,31 @@ const UnitPainterTextureEditor = ({
     if (!point || point.x < 0 || point.y < 0 || point.x >= view.width || point.y >= view.height) return;
     event.preventDefault();
 
+    if (pendingDecal) {
+      const layerId = session.addDecalLayerAtTexturePoint(
+        view.id,
+        point.x,
+        point.y,
+        pendingDecal,
+      );
+      if (layerId) {
+        onDecalPlaced();
+        onDecalChanged(true);
+      }
+      return;
+    }
+
+    const activeDecal = session.activeDecalInfo;
+    if (activeDecal) {
+      if (activeDecal.targetTextureId !== view.id) return;
+      if (!session.beginActiveDecalTransform()) return;
+      activeDecalPointerRef.current = event.pointerId;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
+      onDecalChanged(false);
+      return;
+    }
+
     if (eyedropperActive || event.altKey) {
       const sampled = session.sampleTexturePoint(view.id, point.x, point.y);
       if (sampled) onEyedropperComplete(sampled);
@@ -604,6 +637,14 @@ const UnitPainterTextureEditor = ({
     }
 
     const point = pointerToTexture(event.clientX, event.clientY);
+    if (event.pointerId === activeDecalPointerRef.current) {
+      if (point && point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
+        session.moveActiveDecalToTexturePoint(view.id, point.x, point.y, true);
+        onDecalChanged(false);
+      }
+      return;
+    }
+
     if (point && point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
       if (selectMode && selectMode !== "similar") {
         drawTextureHoverOutline(
@@ -628,6 +669,14 @@ const UnitPainterTextureEditor = ({
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
       activePanPointerRef.current = undefined;
       lastPanPointRef.current = undefined;
+      return;
+    }
+    if (event.pointerId === activeDecalPointerRef.current) {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      activeDecalPointerRef.current = undefined;
+      if (session.endActiveDecalTransform()) onDecalChanged(true);
       return;
     }
     if (event.pointerId !== activePaintPointerRef.current) return;
@@ -764,6 +813,10 @@ const UnitPainterTextureEditor = ({
             activePanPointerRef.current = undefined;
             lastPanPointRef.current = undefined;
           }
+          if (event.pointerId === activeDecalPointerRef.current) {
+            activeDecalPointerRef.current = undefined;
+            if (session.endActiveDecalTransform()) onDecalChanged(true);
+          }
           if (event.pointerId === activePaintPointerRef.current) finishStroke(event.pointerId);
         }}
         onPointerLeave={() => {
@@ -856,7 +909,13 @@ const UnitPainterTextureEditor = ({
       </div>
 
       <div className="pointer-events-none absolute bottom-2 left-2 z-20 rounded bg-gray-900/90 px-2 py-1 text-[11px] text-gray-400">
-        {selectMode ? `LMB select ${selectMode}` : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
+        {pendingDecal
+          ? "LMB place decal"
+          : session.activeDecalInfo
+            ? "LMB drag decal"
+            : selectMode
+              ? `LMB select ${selectMode}`
+              : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
         {scope !== "all"
           ? ` · clipped to selection${scope !== "similar" && !view.selectedPixelMask && paddingPx > 0 ? ` + ${paddingPx}px padding` : ""}`
           : ""}
