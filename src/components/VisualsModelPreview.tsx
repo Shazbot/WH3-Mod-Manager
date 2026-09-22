@@ -26,6 +26,7 @@ import {
   mirrorRayAcrossObjectLocalX,
   sampleUnitPainterStrokeSegment,
   type UnitPainterBrushMode,
+  type UnitPainterDecalPatch,
   type UnitPainterDecalSource,
   type UnitPainterLayerInfo,
   type UnitPainterSelectionInfo,
@@ -720,7 +721,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   };
 
   const updateDecalAndRefresh = (
-    patch: Parameters<NonNullable<typeof paintSessionRef.current>["updateActiveDecal"]>[0],
+    patch: UnitPainterDecalPatch,
     recordHistory = true,
   ) => {
     if (paintSessionRef.current?.updateActiveDecal(patch, recordHistory)) {
