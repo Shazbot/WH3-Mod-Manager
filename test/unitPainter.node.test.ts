@@ -668,8 +668,10 @@ describe("unit painter", () => {
       expect(
         replacement.updateActiveDecal({
           affectNormal: true,
-          normalStrength: 2,
+          normalStrength: -2,
           normalHeightSource: "alpha",
+          flipX: true,
+          flipY: true,
         }),
       ).toBe(true);
 
@@ -677,6 +679,9 @@ describe("unit painter", () => {
       expect(project.layers.at(-1)?.kind).toBe("decal");
       expect(project.layers.at(-1)?.decal?.sourceName).toBe("raised-eagle.png");
       expect(project.layers.at(-1)?.decal?.sourceRgbaBytes).toEqual(sourceBytes);
+      expect(project.layers.at(-1)?.decal?.normalStrength).toBe(-2);
+      expect(project.layers.at(-1)?.decal?.flipX).toBe(true);
+      expect(project.layers.at(-1)?.decal?.flipY).toBe(true);
       expect(project.layers.at(-1)?.decal?.normalSourceVirtualPath)
         .toBe("variantmeshes\\unit\\body_normal.dds");
       expect(project.layers.at(-1)?.decal?.placementMask?.tiles.length).toBeGreaterThan(0);
