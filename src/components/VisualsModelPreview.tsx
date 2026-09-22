@@ -2455,6 +2455,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               onPaddingPxChange={setPaintTexturePadding}
               selectMode={paintSelectMode}
               similarTolerance={paintSimilarTolerance}
+              pendingDecal={pendingDecal}
+              onDecalPlaced={finishDecalPlacement}
+              onDecalChanged={(committed) => {
+                setPaintExportStatus("");
+                if (committed) setPaintHistoryVersion((value) => value + 1);
+              }}
               eyedropperActive={isPaintEyedropperActive}
               onEyedropperComplete={(sampled) => {
                 const toHex = (value: number) =>
