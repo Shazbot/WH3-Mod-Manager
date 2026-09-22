@@ -25,6 +25,7 @@ export type UnitPainterProjectTexture = {
 
 export type UnitPainterProjectDecalInput = {
   targetSourceVirtualPath: string;
+  normalSourceVirtualPath?: string;
   sourceName: string;
   sourceWidth: number;
   sourceHeight: number;
@@ -261,10 +262,15 @@ const validateProjectDecalInput = (
   layerName: string,
 ) => {
   const targetSourceVirtualPath = normalizeProjectSourcePath(decal.targetSourceVirtualPath);
+  const normalSourceVirtualPath = decal.normalSourceVirtualPath
+    ? normalizeProjectSourcePath(decal.normalSourceVirtualPath)
+    : undefined;
   const expectedBytes = decal.sourceWidth * decal.sourceHeight * 4;
   if (
     !isSafePackPath(targetSourceVirtualPath)
     || !targetSourceVirtualPath.toLowerCase().endsWith(".dds")
+    || (normalSourceVirtualPath != null
+      && (!isSafePackPath(normalSourceVirtualPath) || !normalSourceVirtualPath.toLowerCase().endsWith(".dds")))
     || !decal.sourceName.trim()
     || !Number.isInteger(decal.sourceWidth)
     || !Number.isInteger(decal.sourceHeight)
@@ -396,6 +402,9 @@ export const buildUnitPainterProjectPackFiles = async (
       packedTextureFiles.push({ name: filePath, buffer, file_size: buffer.length });
       storedDecal = {
         targetSourceVirtualPath,
+        ...(layer.decal.normalSourceVirtualPath
+          ? { normalSourceVirtualPath: normalizeProjectSourcePath(layer.decal.normalSourceVirtualPath) }
+          : {}),
         sourceName: layer.decal.sourceName.trim().slice(0, 160),
         sourceWidth: layer.decal.sourceWidth,
         sourceHeight: layer.decal.sourceHeight,
@@ -569,6 +578,10 @@ const parseStoredDecal = (
     typeof decal.targetSourceVirtualPath === "string"
       ? normalizeProjectSourcePath(decal.targetSourceVirtualPath)
       : "";
+  const normalSourceVirtualPath =
+    typeof decal.normalSourceVirtualPath === "string" && decal.normalSourceVirtualPath.trim()
+      ? normalizeProjectSourcePath(decal.normalSourceVirtualPath)
+      : undefined;
   const sourceName = typeof decal.sourceName === "string" ? decal.sourceName.trim().slice(0, 160) : "";
   const sourceWidth = typeof decal.sourceWidth === "number" && Number.isInteger(decal.sourceWidth)
     ? decal.sourceWidth
@@ -596,6 +609,8 @@ const parseStoredDecal = (
     !targetSourceVirtualPath
     || !isSafePackPath(targetSourceVirtualPath)
     || !targetSourceVirtualPath.toLowerCase().endsWith(".dds")
+    || (normalSourceVirtualPath != null
+      && (!isSafePackPath(normalSourceVirtualPath) || !normalSourceVirtualPath.toLowerCase().endsWith(".dds")))
     || !sourceName
     || sourceWidth <= 0
     || sourceHeight <= 0
@@ -639,6 +654,7 @@ const parseStoredDecal = (
   seenFiles.add(fileKey);
   return {
     targetSourceVirtualPath,
+    ...(normalSourceVirtualPath ? { normalSourceVirtualPath } : {}),
     sourceName,
     sourceWidth,
     sourceHeight,
