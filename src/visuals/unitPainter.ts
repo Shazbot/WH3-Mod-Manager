@@ -177,7 +177,6 @@ type UnitPainterDecalState = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
-  placementMask?: UnitPainterProjectMask;
 };
 
 type PaintLayer = {
@@ -261,6 +260,7 @@ export type UnitPainterProjectDecal = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  placementMask?: UnitPainterProjectMask;
 };
 
 export type UnitPainterProjectLayer = Omit<UnitPainterLayerInfo, "kind"> & {
