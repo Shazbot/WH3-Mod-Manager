@@ -523,6 +523,101 @@ describe("unit painter", () => {
     }
   });
 
+  it("preserves decal aspect when rotating on a non-square texture", () => {
+    const width = 64;
+    const height = 32;
+    const data = new Uint8Array(width * height * 4);
+    for (let index = 3; index < data.length; index += 4) data[index] = 255;
+    const texture = new THREE.DataTexture(
+      data,
+      width,
+      height,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType,
+    );
+    texture.flipY = false;
+    texture.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\wide_base_colour.dds";
+    texture.needsUpdate = true;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute([
+        0, 0, 0,
+        1, 0, 0,
+        0, 1, 0,
+        1, 1, 0,
+      ], 3),
+    );
+    geometry.setAttribute(
+      "uv",
+      new THREE.Float32BufferAttribute([
+        0, 0,
+        1, 0,
+        0, 1,
+        1, 1,
+      ], 2),
+    );
+    geometry.setIndex([0, 1, 2, 1, 3, 2]);
+    const material = new THREE.MeshBasicMaterial({ map: texture });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.updateMatrixWorld(true);
+    const session = createUnitPainterSession(mesh);
+
+    const sourceBytes = new Uint8Array(8 * 4 * 4);
+    for (let index = 0; index < sourceBytes.length; index += 4) {
+      sourceBytes[index] = 255;
+      sourceBytes[index + 1] = 255;
+      sourceBytes[index + 2] = 255;
+      sourceBytes[index + 3] = 255;
+    }
+
+    const getPaintBounds = () => {
+      const pixels = ((material.map as THREE.DataTexture).image as { data: Uint8Array }).data;
+      let minX = width;
+      let minY = height;
+      let maxX = -1;
+      let maxY = -1;
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          if (pixels[(y * width + x) * 4] === 0) continue;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+      return {
+        width: maxX >= minX ? maxX - minX + 1 : 0,
+        height: maxY >= minY ? maxY - minY + 1 : 0,
+      };
+    };
+
+    try {
+      const textureId = session.textureViews[0].id;
+      expect(session.addDecalLayerAtTexturePoint(textureId, width / 2, height / 2, {
+        name: "wide-mark.png",
+        width: 8,
+        height: 4,
+        rgbaBytes: sourceBytes,
+      })).toBeTruthy();
+
+      const zero = getPaintBounds();
+      expect(zero.width).toBeGreaterThan(zero.height);
+
+      expect(session.updateActiveDecal({ rotationDeg: 90 })).toBe(true);
+      const ninety = getPaintBounds();
+      expect(ninety.height).toBeGreaterThan(ninety.width);
+      expect(Math.abs(zero.width - ninety.height)).toBeLessThanOrEqual(2);
+      expect(Math.abs(zero.height - ninety.width)).toBeLessThanOrEqual(2);
+    } finally {
+      session.dispose();
+      geometry.dispose();
+      material.dispose();
+      texture.dispose();
+    }
+  });
+
   it("flips decal source sampling without changing its placement", () => {
     const painter = makePainter();
     const sourceBytes = new Uint8Array([
