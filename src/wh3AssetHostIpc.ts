@@ -858,6 +858,7 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
     let decal:
       | {
           targetSourceVirtualPath: string;
+          normalSourceVirtualPath?: string;
           sourceName: string;
           sourceWidth: number;
           sourceHeight: number;
@@ -878,6 +879,10 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
       if (!layer.decal || typeof layer.decal !== "object" || layer.textures.length !== 0) return undefined;
       const rawDecal = layer.decal as Record<string, unknown>;
       const targetSourceVirtualPath = sanitizeUnitPainterSourcePath(rawDecal.targetSourceVirtualPath);
+      const normalSourceVirtualPath =
+        rawDecal.normalSourceVirtualPath == null
+          ? undefined
+          : sanitizeUnitPainterSourcePath(rawDecal.normalSourceVirtualPath);
       const sourceName = typeof rawDecal.sourceName === "string" ? rawDecal.sourceName.trim().slice(0, 160) : "";
       const sourceWidth = typeof rawDecal.sourceWidth === "number" && Number.isInteger(rawDecal.sourceWidth)
         ? rawDecal.sourceWidth
@@ -905,6 +910,7 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
       const tintB = readNumber(tint?.b);
       if (
         !targetSourceVirtualPath
+        || (rawDecal.normalSourceVirtualPath != null && !normalSourceVirtualPath)
         || !sourceName
         || !sourceRgbaBytes
         || !Number.isFinite(centerU)
@@ -936,6 +942,7 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
       if (totalBytes > MAX_UNIT_PAINTER_TOTAL_BYTES) return undefined;
       decal = {
         targetSourceVirtualPath,
+        ...(normalSourceVirtualPath ? { normalSourceVirtualPath } : {}),
         sourceName,
         sourceWidth,
         sourceHeight,
@@ -1408,6 +1415,7 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
         }
         decal = {
           targetSourceVirtualPath: layer.decal.targetSourceVirtualPath,
+          normalSourceVirtualPath: layer.decal.normalSourceVirtualPath,
           sourceName: layer.decal.sourceName,
           sourceWidth: layer.decal.sourceWidth,
           sourceHeight: layer.decal.sourceHeight,
