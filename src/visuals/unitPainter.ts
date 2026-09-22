@@ -1360,7 +1360,9 @@ const cloneDecalSource = (source: UnitPainterDecalSource): UnitPainterDecalSourc
 
 const cloneDecalState = (decal: UnitPainterDecalState): UnitPainterDecalState => ({
   target: decal.target,
-  source: cloneDecalSource(decal.source),
+  // Source bytes are immutable after import; history snapshots share them instead
+  // of cloning a potentially multi-megabyte bitmap for every transform step.
+  source: decal.source,
   centerU: decal.centerU,
   centerV: decal.centerV,
   widthU: decal.widthU,
@@ -2087,6 +2089,9 @@ export class UnitPainterSession {
     this.paintLayers.splice(index, 0, duplicate);
     this.activePaintLayerId = duplicate.id;
     this.recomposeTargets(duplicate.textures.keys());
+    if (duplicate.kind === "decal" && duplicate.decal) {
+      this.recomposeNormalTargetsForBase(duplicate.decal.target);
+    }
     this.pushHistoryChange({
       kind: "layer-add",
       layer: this.snapshotLayer(duplicate),
@@ -2111,6 +2116,9 @@ export class UnitPainterSession {
     const affectedTargets = [...layer.textures.keys()];
     this.recomposeTargets(affectedTargets);
     this.pruneTouchedLayerTiles(affectedTargets);
+    if (layer.kind === "decal" && layer.decal) {
+      this.recomposeNormalTargetsForBase(layer.decal.target);
+    }
     this.pushHistoryChange({
       kind: "layer-delete",
       layer: snapshot,
@@ -2351,6 +2359,9 @@ export class UnitPainterSession {
     this.paintLayers.splice(nextIndex, 0, layer);
     const after = this.paintLayers.map((candidate) => candidate.id);
     this.recomposeTargets(layer.textures.keys());
+    if (layer.kind === "decal" && layer.decal) {
+      this.recomposeNormalTargetsForBase(layer.decal.target);
+    }
     this.pushHistoryChange({ kind: "layer-order", before, after });
     return true;
   }
@@ -3403,7 +3414,7 @@ export class UnitPainterSession {
   ) {
     const layer = this.getActiveLayer();
     const targets = this.getBaseSelectionTargets(scope);
-    if (targets.length === 0 || !layer) return false;
+    if (targets.length === 0 || !layer || layer.kind !== "paint") return false;
     if (this.isStrokeOpen) this.endStroke();
 
     const changes: StrokeChange[] = [];
@@ -3454,7 +3465,7 @@ export class UnitPainterSession {
   resetSelection(scope: Exclude<UnitPainterSelectionScope, "all">) {
     const layer = this.getActiveLayer();
     const targets = this.getBaseSelectionTargets(scope);
-    if (targets.length === 0 || !layer) return false;
+    if (targets.length === 0 || !layer || layer.kind !== "paint") return false;
     if (this.isStrokeOpen) this.endStroke();
 
     const changes: StrokeChange[] = [];
@@ -3571,7 +3582,7 @@ export class UnitPainterSession {
   reset() {
     if (this.isStrokeOpen) this.endStroke();
     const layer = this.getActiveLayer();
-    if (!layer) return false;
+    if (!layer || layer.kind !== "paint") return false;
     const changes: StrokeChange[] = [];
 
     for (const [target, layerData] of layer.textures) {
@@ -3603,6 +3614,13 @@ export class UnitPainterSession {
 
   exportProjectState(): UnitPainterProjectState {
     if (this.isStrokeOpen) this.endStroke();
+    for (const layer of this.paintLayers) {
+      if (layer.decal && !layer.decal.target.sourceVirtualPath) {
+        throw new Error(
+          `The decal '${layer.name}' targets a texture without its original WH3 texture path.`,
+        );
+      }
+    }
     return {
       activeLayerId: this.activePaintLayerId,
       layers: this.paintLayers.map((layer) => ({
@@ -3683,11 +3701,21 @@ export class UnitPainterSession {
 
       if (layer.kind === "decal") {
         const savedDecal = savedLayer.decal;
-        const targetKey = savedDecal?.targetSourceVirtualPath.replace(///g, "\\").toLowerCase();
+        const targetKey = savedDecal?.targetSourceVirtualPath.replace(/\//g, "\\").toLowerCase();
         const target = targetKey ? this.targetsBySourcePath.get(targetKey) : undefined;
         if (
           !savedDecal
           || !target
+          || !Number.isFinite(savedDecal.centerU)
+          || !Number.isFinite(savedDecal.centerV)
+          || !Number.isFinite(savedDecal.widthU)
+          || !Number.isFinite(savedDecal.heightV)
+          || !Number.isFinite(savedDecal.rotationDeg)
+          || !Number.isFinite(savedDecal.normalStrength)
+          || !savedDecal.tint
+          || !Number.isFinite(savedDecal.tint.r)
+          || !Number.isFinite(savedDecal.tint.g)
+          || !Number.isFinite(savedDecal.tint.b)
           || !validateDecalSource({
             name: savedDecal.sourceName,
             width: savedDecal.sourceWidth,
@@ -3720,6 +3748,10 @@ export class UnitPainterSession {
           normalStrength: Math.max(0, Math.min(4, savedDecal.normalStrength)),
           normalHeightSource: savedDecal.normalHeightSource === "luminance" ? "luminance" : "alpha",
         };
+      }
+
+      if (layer.kind === "decal" && (savedLayer.textures?.length ?? 0) > 0) {
+        throw new Error(`The decal layer '${name}' contains unexpected raster paint tiles.`);
       }
 
       for (const texture of savedLayer.textures ?? []) {
