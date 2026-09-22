@@ -177,6 +177,7 @@ type UnitPainterDecalState = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: UnitPainterDecalHeightSource;
+  placementMask?: UnitPainterProjectMask;
 };
 
 type PaintLayer = {
@@ -230,6 +231,17 @@ export type UnitPainterProjectLayerTexture = {
   width: number;
   height: number;
   tiles: UnitPainterProjectTile[];
+};
+
+export type UnitPainterProjectMaskTile = {
+  key: number;
+  maskBytes: Uint8Array;
+};
+
+export type UnitPainterProjectMask = {
+  width: number;
+  height: number;
+  tiles: UnitPainterProjectMaskTile[];
 };
 
 export type UnitPainterProjectDecal = {
@@ -1389,6 +1401,60 @@ const cloneDecalState = (decal: UnitPainterDecalState): UnitPainterDecalState =>
   normalStrength: decal.normalStrength,
   normalHeightSource: decal.normalHeightSource,
 });
+
+const exportProjectMask = (mask: UvIslandMask): UnitPainterProjectMask => ({
+  width: mask.width,
+  height: mask.height,
+  tiles: [...mask.tiles.entries()].map(([key, bytes]) => ({
+    key,
+    maskBytes: new Uint8Array(bytes),
+  })),
+});
+
+const importProjectMask = (
+  saved: UnitPainterProjectMask | undefined,
+  target: PaintableTexture,
+): UvIslandMask | undefined => {
+  if (!saved) return undefined;
+  if (
+    saved.width !== target.width
+    || saved.height !== target.height
+    || !Array.isArray(saved.tiles)
+    || saved.tiles.length === 0
+  ) {
+    throw new Error("The decal UV-island mask no longer matches its target texture.");
+  }
+
+  const tilesPerRow = Math.ceil(saved.width / MASK_TILE_SIZE);
+  const tileRows = Math.ceil(saved.height / MASK_TILE_SIZE);
+  const maxTileKey = tilesPerRow * tileRows;
+  const seen = new Set<number>();
+  const mask: UvIslandMask = {
+    width: saved.width,
+    height: saved.height,
+    tiles: new Map(),
+    byteSize: 0,
+  };
+  for (const tile of saved.tiles) {
+    if (
+      !Number.isInteger(tile.key)
+      || tile.key < 0
+      || tile.key >= maxTileKey
+      || seen.has(tile.key)
+      || !(tile.maskBytes instanceof Uint8Array)
+      || tile.maskBytes.length !== MASK_TILE_BYTES
+    ) {
+      throw new Error("The decal UV-island mask is invalid.");
+    }
+    seen.add(tile.key);
+    const bytes = new Uint8Array(tile.maskBytes);
+    if (!bytes.some((value) => value !== 0)) continue;
+    mask.tiles.set(tile.key, bytes);
+    mask.byteSize += bytes.byteLength;
+  }
+  if (mask.tiles.size === 0) throw new Error("The decal UV-island mask is empty.");
+  return mask;
+};
 
 const validateDecalSource = (source: UnitPainterDecalSource) => {
   const expectedBytes = source.width * source.height * 4;
@@ -3744,6 +3810,9 @@ export class UnitPainterSession {
                 affectNormal: layer.decal.affectNormal,
                 normalStrength: layer.decal.normalStrength,
                 normalHeightSource: layer.decal.normalHeightSource,
+                ...(layer.decal.placementMask
+                  ? { placementMask: exportProjectMask(layer.decal.placementMask) }
+                  : {}),
               },
             }
           : {}),
@@ -3825,9 +3894,11 @@ export class UnitPainterSession {
         ) {
           throw new Error(`The decal layer '${name}' is invalid or its target texture is no longer present.`);
         }
+        const placementMask = importProjectMask(savedDecal.placementMask, target);
         layer.decal = {
           target,
           normalTarget,
+          placementMask,
           source: {
             name: savedDecal.sourceName,
             width: savedDecal.sourceWidth,
