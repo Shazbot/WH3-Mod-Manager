@@ -1533,12 +1533,16 @@ const getDecalSourceUv = (
   const radians = THREE.MathUtils.degToRad(decal.rotationDeg);
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
-  const dx = textureU - decal.centerU;
-  const dy = textureV - decal.centerV;
-  const localX = cos * dx + sin * dy;
-  const localY = -sin * dx + cos * dy;
-  const sourceU = localX / Math.max(Math.abs(decal.widthU), 1e-6) + 0.5;
-  const sourceV = localY / Math.max(Math.abs(decal.heightV), 1e-6) + 0.5;
+  // Rotation must happen in equal physical texture-pixel units. Rotating
+  // normalized U/V directly stretches decals whenever the target is not square.
+  const dxPx = (textureU - decal.centerU) * decal.target.width;
+  const dyPx = (textureV - decal.centerV) * decal.target.height;
+  const localX = cos * dxPx + sin * dyPx;
+  const localY = -sin * dxPx + cos * dyPx;
+  const sourceU =
+    localX / Math.max(Math.abs(decal.widthU) * decal.target.width, 1e-6) + 0.5;
+  const sourceV =
+    localY / Math.max(Math.abs(decal.heightV) * decal.target.height, 1e-6) + 0.5;
   return {
     u: decal.flipX ? 1 - sourceU : sourceU,
     v: decal.flipY ? 1 - sourceV : sourceV,
@@ -1553,10 +1557,12 @@ const getDecalBounds = (
   const radians = THREE.MathUtils.degToRad(decal.rotationDeg);
   const cos = Math.abs(Math.cos(radians));
   const sin = Math.abs(Math.sin(radians));
-  const halfU = Math.abs(decal.widthU) * 0.5;
-  const halfV = Math.abs(decal.heightV) * 0.5;
-  const extentU = halfU * cos + halfV * sin;
-  const extentV = halfU * sin + halfV * cos;
+  const halfWidthPx = Math.abs(decal.widthU) * decal.target.width * 0.5;
+  const halfHeightPx = Math.abs(decal.heightV) * decal.target.height * 0.5;
+  const extentU =
+    (halfWidthPx * cos + halfHeightPx * sin) / Math.max(1, decal.target.width);
+  const extentV =
+    (halfWidthPx * sin + halfHeightPx * cos) / Math.max(1, decal.target.height);
   return {
     minX: Math.max(0, Math.floor((decal.centerU - extentU) * width) - 1),
     maxX: Math.min(width - 1, Math.ceil((decal.centerU + extentU) * width) + 1),
