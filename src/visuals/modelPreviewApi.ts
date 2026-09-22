@@ -103,7 +103,19 @@ export interface UnitPainterProjectDecalTransfer {
   tint: { r: number; g: number; b: number };
   affectNormal: boolean;
   normalStrength: number;
-  normalHeightSource: "alpha" | "luminance";
+  normalHeightSource: "alpha" | "luminance" | "emboss";
+  normalBevelPx?: number;
+  normalSoftnessPx?: number;
+  flipX?: boolean;
+  flipY?: boolean;
+  placementMask?: {
+    width: number;
+    height: number;
+    tiles: Array<{
+      key: number;
+      maskBytes: Uint8Array;
+    }>;
+  };
 }
 
 export interface UnitPainterProjectLayerTransfer {
@@ -263,6 +275,20 @@ export const exportUnitPainterTextures = async (
               affectNormal: layer.decal.affectNormal,
               normalStrength: layer.decal.normalStrength,
               normalHeightSource: layer.decal.normalHeightSource,
+              normalBevelPx: layer.decal.normalBevelPx,
+              normalSoftnessPx: layer.decal.normalSoftnessPx,
+              flipX: layer.decal.flipX,
+              flipY: layer.decal.flipY,
+              placementMask: layer.decal.placementMask
+                ? {
+                    width: layer.decal.placementMask.width,
+                    height: layer.decal.placementMask.height,
+                    tiles: layer.decal.placementMask.tiles.map((tile) => ({
+                      key: tile.key,
+                      maskBytes: tile.maskBytes,
+                    })),
+                  }
+                : undefined,
             }
           : undefined,
         textures: layer.textures.map((texture) => ({
