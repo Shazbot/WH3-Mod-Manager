@@ -905,6 +905,12 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
       const heightV = readNumber(rawDecal.heightV);
       const rotationDeg = readNumber(rawDecal.rotationDeg);
       const normalStrength = readNumber(rawDecal.normalStrength);
+      const tintEnabled = typeof rawDecal.tintEnabled === "boolean" ? rawDecal.tintEnabled : undefined;
+      const affectNormal = typeof rawDecal.affectNormal === "boolean" ? rawDecal.affectNormal : undefined;
+      const normalHeightSource =
+        rawDecal.normalHeightSource === "alpha" || rawDecal.normalHeightSource === "luminance"
+          ? rawDecal.normalHeightSource
+          : undefined;
       const tintR = readNumber(tint?.r);
       const tintG = readNumber(tint?.g);
       const tintB = readNumber(tint?.b);
@@ -920,7 +926,7 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
         || !Number.isFinite(heightV)
         || heightV <= 0
         || !Number.isFinite(rotationDeg)
-        || typeof rawDecal.tintEnabled !== "boolean"
+        || tintEnabled == null
         || !Number.isFinite(tintR)
         || tintR < 0
         || tintR > 255
@@ -930,11 +936,11 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
         || !Number.isFinite(tintB)
         || tintB < 0
         || tintB > 255
-        || typeof rawDecal.affectNormal !== "boolean"
+        || affectNormal == null
         || !Number.isFinite(normalStrength)
         || normalStrength < 0
         || normalStrength > 4
-        || (rawDecal.normalHeightSource !== "alpha" && rawDecal.normalHeightSource !== "luminance")
+        || !normalHeightSource
       ) {
         return undefined;
       }
@@ -952,11 +958,11 @@ const sanitizeUnitPainterProjectState = (value: unknown) => {
         widthU,
         heightV,
         rotationDeg,
-        tintEnabled: rawDecal.tintEnabled,
+        tintEnabled,
         tint: { r: tintR, g: tintG, b: tintB },
-        affectNormal: rawDecal.affectNormal,
+        affectNormal,
         normalStrength,
-        normalHeightSource: rawDecal.normalHeightSource,
+        normalHeightSource,
       };
     } else if (layer.decal != null) {
       return undefined;
