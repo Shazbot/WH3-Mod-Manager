@@ -3743,6 +3743,7 @@ export class UnitPainterSession {
         if (
           !savedDecal
           || !target
+          || (!!savedDecal.normalSourceVirtualPath && !normalTarget)
           || !Number.isFinite(savedDecal.centerU)
           || !Number.isFinite(savedDecal.centerV)
           || !Number.isFinite(savedDecal.widthU)
@@ -4423,12 +4424,18 @@ export class UnitPainterSession {
     }
 
     const bounds = getDecalBounds(decal, normalTarget.width, normalTarget.height);
+    const coverageMask = this.getTargetUvCoverageMask(decal.target);
     const du = 1 / normalTarget.width;
     const dv = 1 / normalTarget.height;
     for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
       for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
         const textureU = (x + 0.5) / normalTarget.width;
         const textureV = (y + 0.5) / normalTarget.height;
+        if (coverageMask) {
+          const baseX = Math.max(0, Math.min(decal.target.width - 1, Math.floor(textureU * decal.target.width)));
+          const baseY = Math.max(0, Math.min(decal.target.height - 1, Math.floor(textureV * decal.target.height)));
+          if (!maskContainsPixel(coverageMask, baseX, baseY)) continue;
+        }
         const sourceUv = getDecalSourceUv(decal, textureU, textureV);
         const sourcePixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
         if (!sourcePixel || sourcePixel.a === 0) continue;
