@@ -2193,7 +2193,13 @@ export class UnitPainterSession {
     const before = recordHistory ? this.layerMetadata(layer) : undefined;
     layer.opacity = nextOpacity;
     this.recomposeTargets(layer.textures.keys());
-    if (layer.kind === "decal" && layer.decal) this.recomposeNormalTargetsForBase(layer.decal.target);
+    if (
+      layer.kind === "decal"
+      && layer.decal
+      && (recordHistory || !this.activeDecalTransformBefore)
+    ) {
+      this.recomposeNormalTargetsForBase(layer.decal.target);
+    }
     if (before) {
       this.pushHistoryChange({ kind: "layer-meta", layerId, before, after: this.layerMetadata(layer) });
     }
@@ -2333,7 +2339,10 @@ export class UnitPainterSession {
     this.activeDecalTransformBefore = undefined;
     const layer = this.getActiveLayer();
     if (!before || !layer || layer.kind !== "decal" || !layer.decal) return false;
-    this.rasterizeDecalLayer(layer, recordHistory);
+    this.rasterizeDecalLayer(
+      layer,
+      recordHistory || !this.activeDecalTransformBefore,
+    );
     if (before) {
       const after = this.snapshotLayer(layer);
       const index = this.paintLayers.indexOf(layer);
