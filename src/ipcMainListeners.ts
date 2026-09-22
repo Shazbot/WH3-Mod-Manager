@@ -14409,11 +14409,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           let fileId = -1;
           try {
             fileId = fs.openSync(group.packPath, "r");
-            const packedFilesByKey = new Map(
-              group.pack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile] as const),
-            );
             for (const target of group.files) {
-              const packedFile = packedFilesByKey.get(normalizePackFilePathKey(target.fileName));
+              const packedFile = findPackedFileCaseInsensitive(group.pack, target.fileName);
               if (!packedFile) {
                 skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
                 continue;
