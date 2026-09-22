@@ -3,11 +3,13 @@ import { binarySearchIncludes } from "../utility/packFileSorting";
 import appData from "../appData";
 
 const packFileToFileReferences: Record<string, Record<DBFileName, FileToFileReference[]>> = {};
+const lowercasedPackedFileNamesByPack = new Map<Pack, string[]>();
 
 export const emptyPackFileToFileReferences = () => {
   for (const packName of Object.keys(packFileToFileReferences)) {
     delete packFileToFileReferences[packName];
   }
+  lowercasedPackedFileNamesByPack.clear();
 };
 
 export function findMissingFileReferences(packsData: Pack[]) {
@@ -39,6 +41,7 @@ export function findMissingFileReferences(packsData: Pack[]) {
       });
     }
   }
+  lowercasedPackedFileNamesByPack.clear();
   console.timeEnd("findMissingFileReferences");
   return packFileToFileReferences;
 }
@@ -47,7 +50,11 @@ export function appendToFileToFileRegistry(pack: Pack, packFile: PackedFile, ref
   // console.log(xmlAsObject);
   referencedFiles = referencedFiles.map((refFile) => refFile.replaceAll("/", "\\").toLowerCase());
   // console.log("packFile:", packFile.name, "referencedFiles:", referencedFiles);
-  const packedFilesNames = pack.packedFiles.map((pF) => pF.name.toLowerCase());
+  let packedFilesNames = lowercasedPackedFileNamesByPack.get(pack);
+  if (!packedFilesNames) {
+    packedFilesNames = pack.packedFiles.map((pF) => pF.name.toLowerCase());
+    lowercasedPackedFileNamesByPack.set(pack, packedFilesNames);
+  }
   // console.log(packedFilesNames);
   for (const referencedFile of referencedFiles) {
     if (!binarySearchIncludes(packedFilesNames, referencedFile)) {
