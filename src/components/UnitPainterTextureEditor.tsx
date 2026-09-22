@@ -137,6 +137,7 @@ const UnitPainterTextureEditor = ({
   const pendingLinkedHoverRef = useRef<UnitPainterTextureHover>();
   const [displayMode, setDisplayMode] = useState<TextureDisplayMode>("textureUv");
   const [backgroundMode, setBackgroundMode] = useState<TextureBackgroundMode>("checker");
+  const [, setDecalPreviewVersion] = useState(0);
   const [dimOutsideSelection, setDimOutsideSelection] = useState(false);
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 });
   const [cursor, setCursor] = useState<{ x: number; y: number; visible: boolean }>({
@@ -668,7 +669,15 @@ const UnitPainterTextureEditor = ({
 
     const point = pointerToTexture(event.clientX, event.clientY);
     const decalGeometry = getActiveDecalScreenGeometry();
-    if (point && decalGeometry && activeDecal?.targetTextureId === view.id) {
+    if (
+      !eyedropperActive
+      && !event.altKey
+      && !selectMode
+      && !pendingDecal
+      && point
+      && decalGeometry
+      && activeDecal?.targetTextureId === view.id
+    ) {
       const rect = event.currentTarget.getBoundingClientRect();
       const screenPoint = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const near = (target: { x: number; y: number }, radius: number) =>
@@ -769,13 +778,16 @@ const UnitPainterTextureEditor = ({
     if (decalGesture?.pointerId === event.pointerId) {
       if (point) {
         if (decalGesture.mode === "move") {
-          const u = point.x / view.width;
-          const v = point.y / view.height;
-          session.updateActiveDecal({
-            centerU: decalGesture.centerU + (u - decalGesture.startPointerU),
-            centerV: decalGesture.centerV + (v - decalGesture.startPointerV),
-          }, false);
-          onDecalChanged(false);
+          if (point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
+            const u = point.x / view.width;
+            const v = point.y / view.height;
+            session.updateActiveDecal({
+              centerU: decalGesture.centerU + (u - decalGesture.startPointerU),
+              centerV: decalGesture.centerV + (v - decalGesture.startPointerV),
+            }, false);
+            setDecalPreviewVersion((value) => value + 1);
+            onDecalChanged(false);
+          }
         } else {
           const u = point.x / view.width;
           const v = point.y / view.height;
@@ -794,6 +806,7 @@ const UnitPainterTextureEditor = ({
             rotationDeg = ((rotationDeg + 180) % 360 + 360) % 360 - 180;
             session.updateActiveDecal({ rotationDeg }, false);
           }
+          setDecalPreviewVersion((value) => value + 1);
           onDecalChanged(false);
         }
       }
