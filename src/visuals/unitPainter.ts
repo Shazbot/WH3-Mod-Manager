@@ -2050,6 +2050,7 @@ export class UnitPainterSession {
   setActiveLayer(layerId: string) {
     if (!this.paintLayers.some((layer) => layer.id === layerId)) return false;
     if (this.isStrokeOpen) this.endStroke();
+    if (this.activeDecalTransformBefore) this.endActiveDecalTransform();
     this.activePaintLayerId = layerId;
     return true;
   }
@@ -2288,17 +2289,19 @@ export class UnitPainterSession {
     this.activeDecalTransformBefore = undefined;
     const layer = this.getActiveLayer();
     if (!before || !layer || layer.kind !== "decal" || !layer.decal) return false;
-    this.rasterizeDecalLayer(layer, true);
-    const after = this.snapshotLayer(layer);
-    const index = this.paintLayers.indexOf(layer);
-    this.pushHistoryChange({
-      kind: "layer-replace",
-      index,
-      before: [before],
-      after: [after],
-      beforeActiveLayerId: layer.id,
-      afterActiveLayerId: layer.id,
-    });
+    this.rasterizeDecalLayer(layer, recordHistory);
+    if (before) {
+      const after = this.snapshotLayer(layer);
+      const index = this.paintLayers.indexOf(layer);
+      this.pushHistoryChange({
+        kind: "layer-replace",
+        index,
+        before: [before],
+        after: [after],
+        beforeActiveLayerId: layer.id,
+        afterActiveLayerId: layer.id,
+      });
+    }
     return true;
   }
 
@@ -2308,12 +2311,13 @@ export class UnitPainterSession {
       "centerU" | "centerV" | "widthU" | "heightV" | "rotationDeg"
       | "tintEnabled" | "tint" | "affectNormal" | "normalStrength" | "normalHeightSource"
     >>,
+    recordHistory = true,
   ) {
     const layer = this.getActiveLayer();
     const decal = layer?.kind === "decal" ? layer.decal : undefined;
     if (!layer || !decal) return false;
     if (this.isStrokeOpen) this.endStroke();
-    const before = this.snapshotLayer(layer);
+    const before = recordHistory ? this.snapshotLayer(layer) : undefined;
 
     if (patch.centerU != null) decal.centerU = patch.centerU;
     if (patch.centerV != null) decal.centerV = patch.centerV;
