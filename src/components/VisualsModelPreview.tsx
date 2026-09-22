@@ -3004,6 +3004,30 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         {Math.round(paintActiveDecal.rotationDeg)}°
                       </span>
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => updateDecalAndRefresh({ flipX: !paintActiveDecal.flipX })}
+                      className={`rounded border px-1.5 py-1 ${
+                        paintActiveDecal.flipX
+                          ? "border-yellow-500 bg-yellow-900/50 text-yellow-100"
+                          : "border-gray-600 bg-gray-800 text-gray-300 hover:border-yellow-500"
+                      }`}
+                      title="Flip the decal image horizontally"
+                    >
+                      Flip X
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateDecalAndRefresh({ flipY: !paintActiveDecal.flipY })}
+                      className={`rounded border px-1.5 py-1 ${
+                        paintActiveDecal.flipY
+                          ? "border-yellow-500 bg-yellow-900/50 text-yellow-100"
+                          : "border-gray-600 bg-gray-800 text-gray-300 hover:border-yellow-500"
+                      }`}
+                      title="Flip the decal image vertically"
+                    >
+                      Flip Y
+                    </button>
                     <label
                       className={`flex items-center gap-1 ${
                         paintActiveDecal.hasNormalMap ? "text-gray-300" : "text-gray-600"
@@ -3028,7 +3052,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                           Strength
                           <input
                             type="range"
-                            min={0}
+                            min={-4}
                             max={4}
                             step={0.1}
                             value={paintActiveDecal.normalStrength}
@@ -3044,8 +3068,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                                 updateDecalAndRefresh({ normalStrength: value });
                               })
                             }
-                            className="w-16 accent-yellow-500"
+                            className="w-20 accent-yellow-500"
                             aria-label="Decal normal strength"
+                            title="Negative values engrave the decal; positive values raise it"
                           />
                           <span className="min-w-7 text-right tabular-nums text-yellow-200">
                             {paintActiveDecal.normalStrength.toFixed(1)}
@@ -3064,7 +3089,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         </select>
                       </>
                     )}
-                    <span className="text-[10px] text-gray-500">Drag on model/texture to move</span>
+                    <span className="text-[10px] text-gray-500">
+                      Drag to move · texture corner scales · round handle rotates
+                    </span>
                   </div>
                 )}
                 <label className="flex items-center gap-1 text-gray-400">
