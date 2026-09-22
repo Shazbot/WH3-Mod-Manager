@@ -14188,6 +14188,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
 
         let filePathsToExtract = filePaths;
+        const recursivelyResolvedFiles = new Map<
+          string,
+          { pack: Pack; packPath: string; fileName: string }
+        >();
         if (recursive) {
           if (filePaths.length !== 1) {
             return {
@@ -14201,10 +14205,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           const dependencyFileIds = new Map<string, number>();
           const dependencyTextCache = new Map<string, string | undefined>();
           const dependencyPackCache = new Map<string, Pack | undefined>();
-          const recursivelyResolvedFiles = new Map<
-            string,
-            { pack: Pack; packPath: string; fileName: string }
-          >();
           const dependencyResolveStartedAt = performance.now();
           const getDependencyFileId = (packPath: string) => {
             const packKey = packPath.replaceAll("\\", "/").toLowerCase();
