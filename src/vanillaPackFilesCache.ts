@@ -230,17 +230,16 @@ const encodeHeader = (packHeader: PackHeader): VanillaCachedPackHeader => ({
   header_buffer: Buffer.from(packHeader.header_buffer),
 });
 
+const isValidCachedHeader = (packHeader: VanillaCachedPackHeader): boolean =>
+  Buffer.isBuffer(packHeader.header) &&
+  Buffer.isBuffer(packHeader.header_buffer) &&
+  typeof packHeader.byteMask === "number" &&
+  typeof packHeader.refFileCount === "number" &&
+  typeof packHeader.pack_file_index_size === "number" &&
+  typeof packHeader.pack_file_count === "number";
+
 const decodeHeader = (packHeader: VanillaCachedPackHeader): PackHeader | undefined => {
-  if (
-    !Buffer.isBuffer(packHeader.header) ||
-    !Buffer.isBuffer(packHeader.header_buffer) ||
-    typeof packHeader.byteMask !== "number" ||
-    typeof packHeader.refFileCount !== "number" ||
-    typeof packHeader.pack_file_index_size !== "number" ||
-    typeof packHeader.pack_file_count !== "number"
-  ) {
-    return undefined;
-  }
+  if (!isValidCachedHeader(packHeader)) return undefined;
 
   return {
     header: Buffer.from(packHeader.header),
@@ -252,20 +251,18 @@ const decodeHeader = (packHeader: VanillaCachedPackHeader): PackHeader | undefin
   };
 };
 
-const decodePackedFiles = (packedFiles: VanillaCachedPackedFile[]): PackedFile[] | undefined => {
-  if (
-    packedFiles.some(
-      (packedFile) =>
-        !packedFile ||
-        typeof packedFile.name !== "string" ||
-        typeof packedFile.file_size !== "number" ||
-        typeof packedFile.start_pos !== "number" ||
-        typeof packedFile.is_compressed !== "boolean",
-    )
-  ) {
-    return undefined;
-  }
+const areValidCachedPackedFiles = (packedFiles: VanillaCachedPackedFile[]): boolean =>
+  !packedFiles.some(
+    (packedFile) =>
+      !packedFile ||
+      typeof packedFile.name !== "string" ||
+      typeof packedFile.file_size !== "number" ||
+      typeof packedFile.start_pos !== "number" ||
+      typeof packedFile.is_compressed !== "boolean",
+  );
 
+const decodePackedFiles = (packedFiles: VanillaCachedPackedFile[]): PackedFile[] | undefined => {
+  if (!areValidCachedPackedFiles(packedFiles)) return undefined;
   return packedFiles.map((packedFile) => ({ ...packedFile }));
 };
 
@@ -283,6 +280,15 @@ export const getCachedVanillaPackIndexFromEntry = (
     dependencyPacks: [...entry.dependencyPacks],
   };
 };
+
+const hasValidExpandedIndex = (entry: VanillaPackFilesCacheEntry | undefined): boolean =>
+  !!entry &&
+  isCacheEntry(entry) &&
+  !!entry.packedFiles &&
+  !!entry.packHeader &&
+  !!entry.dependencyPacks &&
+  areValidCachedPackedFiles(entry.packedFiles) &&
+  isValidCachedHeader(entry.packHeader);
 
 export const getVanillaPackFilesCacheEntry = (
   cache: VanillaPackFilesCache,
@@ -305,7 +311,7 @@ export const getCurrentVanillaPackFilesCacheEntry = async (
   const cache = await loadVanillaPackFilesCache();
   const entry = getVanillaPackFilesCacheEntry(cache, packPath);
   if (!entry || entry.size !== stat.size || entry.lastChangedLocal !== stat.mtimeMs) return undefined;
-  return getCachedVanillaPackIndexFromEntry(entry) ? entry : undefined;
+  return hasValidExpandedIndex(entry) ? entry : undefined;
 };
 
 /**
