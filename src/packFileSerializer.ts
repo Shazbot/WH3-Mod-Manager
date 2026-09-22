@@ -2745,6 +2745,42 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
   return [];
 };
 let toRead: Mod[];
+
+/**
+ * Reads selected payloads through an existing pack index without attaching the resulting bytes to
+ * the Pack/PackedFile objects. This is safe for long-lived indexes stored in appData.
+ */
+export const readPackedFileBuffersFromIndex = async (
+  pack: Pick<Pack, "path" | "packedFiles">,
+  fileNames: readonly string[],
+): Promise<Map<string, Buffer>> => {
+  const buffers = new Map<string, Buffer>();
+  if (fileNames.length === 0) return buffers;
+
+  let fileId = -1;
+  try {
+    fileId = fs.openSync(pack.path, "r");
+    for (const fileName of fileNames) {
+      const index = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) => collator.compare(a.name, b));
+      if (index < 0) continue;
+
+      const packedFile = pack.packedFiles[index];
+      let buffer = Buffer.allocUnsafe(packedFile.file_size);
+      fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
+      if (packedFile.is_compressed) {
+        buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+      }
+      buffers.set(fileName, buffer);
+    }
+  } catch (error) {
+    console.log(error);
+  } finally {
+    if (fileId >= 0) fs.closeSync(fileId);
+  }
+
+  return buffers;
+};
+
 export const readFromExistingPack = async (
   pack: Pack,
   packReadingOptions: PackReadingOptions = { skipParsingTables: false },
