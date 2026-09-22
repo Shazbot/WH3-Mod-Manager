@@ -87,11 +87,31 @@ export interface UnitPainterTextureExportResult {
   error?: string;
 }
 
+export interface UnitPainterProjectDecalTransfer {
+  targetSourceVirtualPath: string;
+  sourceName: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  sourceRgbaBytes: Uint8Array;
+  centerU: number;
+  centerV: number;
+  widthU: number;
+  heightV: number;
+  rotationDeg: number;
+  tintEnabled: boolean;
+  tint: { r: number; g: number; b: number };
+  affectNormal: boolean;
+  normalStrength: number;
+  normalHeightSource: "alpha" | "luminance";
+}
+
 export interface UnitPainterProjectLayerTransfer {
   id: string;
   name: string;
   visible: boolean;
   opacity: number;
+  kind?: "paint" | "decal";
+  decal?: UnitPainterProjectDecalTransfer;
   textures: Array<{
     sourceVirtualPath: string;
     width: number;
@@ -223,6 +243,26 @@ export const exportUnitPainterTextures = async (
         name: layer.name,
         visible: layer.visible,
         opacity: layer.opacity,
+        kind: layer.kind,
+        decal: layer.decal
+          ? {
+              targetSourceVirtualPath: layer.decal.targetSourceVirtualPath,
+              sourceName: layer.decal.sourceName,
+              sourceWidth: layer.decal.sourceWidth,
+              sourceHeight: layer.decal.sourceHeight,
+              sourceRgbaBytes: layer.decal.sourceRgbaBytes,
+              centerU: layer.decal.centerU,
+              centerV: layer.decal.centerV,
+              widthU: layer.decal.widthU,
+              heightV: layer.decal.heightV,
+              rotationDeg: layer.decal.rotationDeg,
+              tintEnabled: layer.decal.tintEnabled,
+              tint: { ...layer.decal.tint },
+              affectNormal: layer.decal.affectNormal,
+              normalStrength: layer.decal.normalStrength,
+              normalHeightSource: layer.decal.normalHeightSource,
+            }
+          : undefined,
         textures: layer.textures.map((texture) => ({
           sourceVirtualPath: texture.sourceVirtualPath,
           width: texture.width,
