@@ -10,6 +10,9 @@ export const UNIT_PAINTER_PROJECT_FORMAT_VERSION = 3;
 export const UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY = 64;
 export const UNIT_PAINTER_PROJECT_TILE_SIZE = 64;
 export const UNIT_PAINTER_PROJECT_TILE_BYTES = UNIT_PAINTER_PROJECT_TILE_SIZE * UNIT_PAINTER_PROJECT_TILE_SIZE * 4;
+export const UNIT_PAINTER_PROJECT_MASK_TILE_SIZE = 64;
+export const UNIT_PAINTER_PROJECT_MASK_TILE_BYTES =
+  (UNIT_PAINTER_PROJECT_MASK_TILE_SIZE * UNIT_PAINTER_PROJECT_MASK_TILE_SIZE) / 8;
 
 export type UnitPainterProjectTileInput = {
   key: number;
@@ -21,6 +24,17 @@ export type UnitPainterProjectTexture = {
   width: number;
   height: number;
   tiles: UnitPainterProjectTileInput[];
+};
+
+export type UnitPainterProjectMaskTileInput = {
+  key: number;
+  maskBytes: Uint8Array;
+};
+
+export type UnitPainterProjectMaskInput = {
+  width: number;
+  height: number;
+  tiles: UnitPainterProjectMaskTileInput[];
 };
 
 export type UnitPainterProjectDecalInput = {
@@ -40,6 +54,7 @@ export type UnitPainterProjectDecalInput = {
   affectNormal: boolean;
   normalStrength: number;
   normalHeightSource: "alpha" | "luminance";
+  placementMask?: UnitPainterProjectMaskInput;
 };
 
 export type UnitPainterProjectLayerInput = {
@@ -69,7 +84,20 @@ export type UnitPainterProjectStoredTexture = {
   encoding: "zstd";
 };
 
-export type UnitPainterProjectStoredDecal = Omit<UnitPainterProjectDecalInput, "sourceRgbaBytes"> & {
+export type UnitPainterProjectStoredMask = {
+  width: number;
+  height: number;
+  tileSize: 64;
+  tileKeys: number[];
+  filePath: string;
+  encoding: "zstd";
+};
+
+export type UnitPainterProjectStoredDecal = Omit<
+  UnitPainterProjectDecalInput,
+  "sourceRgbaBytes" | "placementMask"
+> & {
+  placementMask?: UnitPainterProjectStoredMask;
   filePath: string;
   encoding: "zstd";
 };
@@ -257,6 +285,41 @@ const validateProjectTextureInput = (texture: UnitPainterProjectTexture) => {
   return sourceVirtualPath;
 };
 
+const validateProjectMaskInput = (
+  mask: UnitPainterProjectMaskInput,
+  layerName: string,
+) => {
+  if (
+    !Number.isInteger(mask.width)
+    || !Number.isInteger(mask.height)
+    || mask.width <= 0
+    || mask.height <= 0
+    || mask.width > 16384
+    || mask.height > 16384
+    || !Array.isArray(mask.tiles)
+    || mask.tiles.length === 0
+  ) {
+    throw new Error(`Decal layer '${layerName}' contains an invalid UV-island mask.`);
+  }
+  const tilesPerRow = Math.ceil(mask.width / UNIT_PAINTER_PROJECT_MASK_TILE_SIZE);
+  const tileRows = Math.ceil(mask.height / UNIT_PAINTER_PROJECT_MASK_TILE_SIZE);
+  const maxTileKey = tilesPerRow * tileRows;
+  const seen = new Set<number>();
+  for (const tile of mask.tiles) {
+    if (
+      !Number.isInteger(tile.key)
+      || tile.key < 0
+      || tile.key >= maxTileKey
+      || seen.has(tile.key)
+      || !(tile.maskBytes instanceof Uint8Array)
+      || tile.maskBytes.length !== UNIT_PAINTER_PROJECT_MASK_TILE_BYTES
+    ) {
+      throw new Error(`Decal layer '${layerName}' contains an invalid UV-island mask.`);
+    }
+    seen.add(tile.key);
+  }
+};
+
 const validateProjectDecalInput = (
   decal: UnitPainterProjectDecalInput,
   layerName: string,
@@ -266,6 +329,7 @@ const validateProjectDecalInput = (
     ? normalizeProjectSourcePath(decal.normalSourceVirtualPath)
     : undefined;
   const expectedBytes = decal.sourceWidth * decal.sourceHeight * 4;
+  if (decal.placementMask) validateProjectMaskInput(decal.placementMask, layerName);
   if (
     !isSafePackPath(targetSourceVirtualPath)
     || !targetSourceVirtualPath.toLowerCase().endsWith(".dds")
@@ -400,6 +464,35 @@ export const buildUnitPainterProjectPackFiles = async (
         layer.decal.sourceRgbaBytes.byteLength,
       ), 1);
       packedTextureFiles.push({ name: filePath, buffer, file_size: buffer.length });
+
+      let storedPlacementMask: UnitPainterProjectStoredMask | undefined;
+      if (layer.decal.placementMask) {
+        validateProjectMaskInput(layer.decal.placementMask, name);
+        const sortedMaskTiles = [...layer.decal.placementMask.tiles].sort((a, b) => a.key - b.key);
+        const maskPayload = Buffer.allocUnsafe(
+          sortedMaskTiles.length * UNIT_PAINTER_PROJECT_MASK_TILE_BYTES,
+        );
+        for (let maskIndex = 0; maskIndex < sortedMaskTiles.length; maskIndex += 1) {
+          Buffer.from(
+            sortedMaskTiles[maskIndex].maskBytes.buffer,
+            sortedMaskTiles[maskIndex].maskBytes.byteOffset,
+            sortedMaskTiles[maskIndex].maskBytes.byteLength,
+          ).copy(maskPayload, maskIndex * UNIT_PAINTER_PROJECT_MASK_TILE_BYTES);
+        }
+        const maskFilePath =
+          `whmm_unit_painter\\layers\\${String(layerIndex + 1).padStart(2, "0")}_${id}\\decal.mask.zst`;
+        const maskBuffer = await zstdCompress(maskPayload, 1);
+        packedTextureFiles.push({ name: maskFilePath, buffer: maskBuffer, file_size: maskBuffer.length });
+        storedPlacementMask = {
+          width: layer.decal.placementMask.width,
+          height: layer.decal.placementMask.height,
+          tileSize: UNIT_PAINTER_PROJECT_MASK_TILE_SIZE,
+          tileKeys: sortedMaskTiles.map((tile) => tile.key),
+          filePath: maskFilePath,
+          encoding: "zstd",
+        };
+      }
+
       storedDecal = {
         targetSourceVirtualPath,
         ...(layer.decal.normalSourceVirtualPath
@@ -422,6 +515,7 @@ export const buildUnitPainterProjectPackFiles = async (
         affectNormal: layer.decal.affectNormal,
         normalStrength: layer.decal.normalStrength,
         normalHeightSource: layer.decal.normalHeightSource,
+        ...(storedPlacementMask ? { placementMask: storedPlacementMask } : {}),
         filePath,
         encoding: "zstd",
       };
@@ -567,6 +661,66 @@ const parseStoredTexture = (
   };
 };
 
+const parseStoredMask = (
+  raw: unknown,
+  seenFiles: Set<string>,
+  layerName: string,
+): UnitPainterProjectStoredMask => {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`Decal layer '${layerName}' contains an invalid UV-island mask.`);
+  }
+  const mask = raw as Partial<UnitPainterProjectStoredMask>;
+  const width = typeof mask.width === "number" && Number.isInteger(mask.width) ? mask.width : 0;
+  const height = typeof mask.height === "number" && Number.isInteger(mask.height) ? mask.height : 0;
+  const filePath = typeof mask.filePath === "string" ? normalizePackPath(mask.filePath) : "";
+  if (
+    width <= 0
+    || height <= 0
+    || width > 16384
+    || height > 16384
+    || mask.tileSize !== UNIT_PAINTER_PROJECT_MASK_TILE_SIZE
+    || mask.encoding !== "zstd"
+    || !filePath
+    || !isSafePackPath(filePath)
+    || !/^whmm_unit_painter\\layers\\.+\\decal\.mask\.zst$/i.test(filePath)
+    || !Array.isArray(mask.tileKeys)
+    || mask.tileKeys.length === 0
+  ) {
+    throw new Error(`Decal layer '${layerName}' contains an invalid UV-island mask.`);
+  }
+  const tilesPerRow = Math.ceil(width / UNIT_PAINTER_PROJECT_MASK_TILE_SIZE);
+  const tileRows = Math.ceil(height / UNIT_PAINTER_PROJECT_MASK_TILE_SIZE);
+  const maxTileKey = tilesPerRow * tileRows;
+  const seenTiles = new Set<number>();
+  const tileKeys: number[] = [];
+  for (const key of mask.tileKeys) {
+    if (
+      typeof key !== "number"
+      || !Number.isInteger(key)
+      || key < 0
+      || key >= maxTileKey
+      || seenTiles.has(key)
+    ) {
+      throw new Error(`Decal layer '${layerName}' contains an invalid UV-island mask.`);
+    }
+    seenTiles.add(key);
+    tileKeys.push(key);
+  }
+  const placementMask =
+    decal.placementMask == null ? undefined : parseStoredMask(decal.placementMask, seenFiles, layerName);
+  const fileKey = filePath.toLowerCase();
+  if (seenFiles.has(fileKey)) throw new Error("The unit painter project contains duplicate decal payload files.");
+  seenFiles.add(fileKey);
+  return {
+    width,
+    height,
+    tileSize: UNIT_PAINTER_PROJECT_MASK_TILE_SIZE,
+    tileKeys,
+    filePath,
+    encoding: "zstd",
+  };
+};
+
 const parseStoredDecal = (
   raw: unknown,
   seenFiles: Set<string>,
@@ -674,6 +828,7 @@ const parseStoredDecal = (
     affectNormal,
     normalStrength,
     normalHeightSource,
+    ...(placementMask ? { placementMask } : {}),
     filePath,
     encoding: "zstd",
   };
@@ -766,6 +921,23 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     ...(selectedColor ? { selectedColor } : {}),
     layers,
   };
+};
+
+export const decodeUnitPainterProjectMaskTiles = async (
+  compressed: Uint8Array,
+  tileCount: number,
+): Promise<Buffer> => {
+  if (!Number.isInteger(tileCount) || tileCount <= 0) {
+    throw new Error("The saved painter decal mask tile count is invalid.");
+  }
+  const expectedBytes = tileCount * UNIT_PAINTER_PROJECT_MASK_TILE_BYTES;
+  const decoded = await zstdDecompress(Buffer.from(compressed));
+  if (decoded.length !== expectedBytes) {
+    throw new Error(
+      `The saved painter decal mask decoded to ${decoded.length} bytes; expected ${expectedBytes}.`,
+    );
+  }
+  return decoded;
 };
 
 export const decodeUnitPainterProjectDecalSource = async (
