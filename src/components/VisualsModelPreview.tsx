@@ -4476,7 +4476,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       }}
                       className="accent-violet-500"
                     />
-                    Faction only
+                    Save for faction only
                   </label>
                   {isPaintFactionScoped && paintFactionScopeSource && (
                     <>
@@ -4622,7 +4622,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
           {painterEnabledRef.current
-            ? "Left drag: paint · B: brush · E: restore · [/]: size · Shift+[/]: hardness · X: symmetry · Alt+click: pick color · Alt+drag: orbit · Select Material/Island: hover then click to lock · Esc: clear selection · Ctrl+Z/Y: undo/redo · Right drag: pan · Wheel: zoom"
+            ? "Left drag: paint · B: brush · E: restore · [/]: size · Shift+[/]: hardness · X: symmetry · Alt+click: pick color · Alt+drag: orbit · Select menu: material / island / similar · Esc: clear selection · Ctrl+Z/Y: undo/redo · Right drag: pan · Wheel: zoom"
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
