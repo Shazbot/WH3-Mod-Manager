@@ -2227,7 +2227,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintTexturePadding(0);
     setIsPaintColorHistoryOpen(false);
     pendingPaintProjectRef.current = null;
-  }, [assetPath]);
+  }, [assetPath, unitVariantContext]);
 
   useEffect(() => {
     if (comparisonModelCount !== 1 && isPainterEnabled) setIsPainterEnabled(false);
