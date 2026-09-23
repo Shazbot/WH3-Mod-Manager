@@ -146,6 +146,14 @@ export type UnitPainterVariantSourceDetails = {
   superLowPolyFilename: string;
 };
 
+export type UnitPainterFactionColourSet = {
+  faction: string;
+  soldierType: string;
+  primary: string;
+  secondary: string;
+  tertiary: string;
+};
+
 export type UnitPainterUnitVariantContext = {
   unitKey: string;
   faction: string;
@@ -154,7 +162,20 @@ export type UnitPainterUnitVariantContext = {
   unitCard: string;
   variantDetails: UnitPainterVariantSourceDetails;
   availableFactions?: string[];
+  factionColours?: UnitPainterFactionColourSet[];
 };
+
+export interface UnitPainterFactionMaskBinding {
+  baseColourSourcePath: string;
+  baseColourPreviewFileNames: string[];
+  maskUrl: string;
+}
+
+export interface UnitPainterFactionMaskResult {
+  success: boolean;
+  bindings?: UnitPainterFactionMaskBinding[];
+  error?: string;
+}
 
 export type UnitPainterFactionScopeTransfer = {
   faction: string;
@@ -255,6 +276,12 @@ export const getVisualsModelAnimationCatalog = async (
 export const releaseVisualsModelPreview = async (previewId: string): Promise<{ success: boolean }> =>
   (await getRendererIpc().invoke("releaseVisualsModelPreview", previewId)) as { success: boolean };
 
+
+export const getUnitPainterFactionMaskBindings = async (
+  sessionId: string,
+  assetPath: string,
+): Promise<UnitPainterFactionMaskResult> =>
+  (await getRendererIpc().invoke("getUnitPainterFactionMaskBindings", sessionId, assetPath)) as UnitPainterFactionMaskResult;
 
 export const reportVisualsModelPreviewTiming = async (report: VisualsModelPreviewTimingReport): Promise<void> => {
   await getRendererIpc().invoke("reportVisualsModelPreviewTiming", report);

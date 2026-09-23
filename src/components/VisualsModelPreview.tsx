@@ -8,12 +8,15 @@ import { useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import {
   exportUnitPainterTextures,
+  getUnitPainterFactionMaskBindings,
   openUnitPainterProject,
   exportVisualsModel,
   exportVisualsModelBatch,
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
   reportVisualsModelPreviewTiming,
+  type UnitPainterFactionColourSet,
+  type UnitPainterFactionMaskBinding,
   type UnitPainterFactionScopeTransfer,
   type UnitPainterProjectOpenResult,
   type UnitPainterUnitVariantContext,
@@ -610,6 +613,128 @@ const formatAnimationTime = (seconds: number) => {
 
 const ANIMATION_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+const getFactionPreviewTextureFileName = (texture: THREE.Texture) => {
+  const previewUrl = texture.userData.wh3PreviewTextureUrl;
+  if (typeof previewUrl !== "string" || !previewUrl) return "";
+  const withoutQuery = previewUrl.replace(/[?#].*$/, "");
+  try {
+    return decodeURIComponent(withoutQuery.split(/[\\/]/).pop() || "").toLowerCase();
+  } catch {
+    return (withoutQuery.split(/[\\/]/).pop() || "").toLowerCase();
+  }
+};
+
+const findFactionMaskBinding = (texture: THREE.Texture, bindings: readonly UnitPainterFactionMaskBinding[]) => {
+  const previewFileName = getFactionPreviewTextureFileName(texture);
+  if (!previewFileName) return undefined;
+  const exact = bindings.find((binding) => binding.baseColourPreviewFileNames.some((name) => name.toLowerCase() === previewFileName));
+  if (exact) return exact;
+  return bindings.find((binding) => {
+    const stem = binding.baseColourSourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "").toLowerCase();
+    return !!stem && (previewFileName === `${stem}.ktx2` || previewFileName.startsWith(`${stem}_`));
+  });
+};
+
+const selectFactionColourSet = (sets: readonly UnitPainterFactionColourSet[], faction: string) => {
+  const targetFaction = faction.trim().toLowerCase();
+  const exact = sets.filter((set) => set.faction.trim().toLowerCase() === targetFaction);
+  const generic = sets.filter((set) => !set.faction.trim());
+  const candidates = exact.length > 0 ? exact : generic.length > 0 ? generic : sets;
+  return candidates.find((set) => set.soldierType.toLowerCase() === "soldier") ?? candidates[0];
+};
+
+const applyFactionColourPreview = async (
+  root: THREE.Object3D,
+  bindings: readonly UnitPainterFactionMaskBinding[],
+  colours: UnitPainterFactionColourSet,
+) => {
+  const loadedMasks = new Map<string, THREE.Texture>();
+  const textureLoader = new THREE.TextureLoader();
+  await Promise.all(Array.from(new Set(bindings.map((binding) => binding.maskUrl))).map(async (url) => {
+    try {
+      const texture = await textureLoader.loadAsync(url);
+      texture.colorSpace = THREE.NoColorSpace;
+      texture.flipY = false;
+      texture.generateMipmaps = false;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.needsUpdate = true;
+      loadedMasks.set(url, texture);
+    } catch {
+      // Missing masks are ignored so other materials can still preview.
+    }
+  }));
+  const primary = new THREE.Color(colours.primary);
+  const secondary = new THREE.Color(colours.secondary);
+  const tertiary = new THREE.Color(colours.tertiary);
+  const restores: Array<{
+    material: THREE.MeshStandardMaterial;
+    onBeforeCompile: THREE.MeshStandardMaterial["onBeforeCompile"];
+    customProgramCacheKey: THREE.MeshStandardMaterial["customProgramCacheKey"];
+    mask: THREE.Texture;
+  }> = [];
+  const processed = new Set<THREE.MeshStandardMaterial>();
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshStandardMaterial) || processed.has(material) || !material.map) continue;
+      processed.add(material);
+      const binding = findFactionMaskBinding(material.map, bindings);
+      const sourceMask = binding ? loadedMasks.get(binding.maskUrl) : undefined;
+      if (!binding || !sourceMask) continue;
+      const mask = sourceMask.clone();
+      mask.wrapS = material.map.wrapS;
+      mask.wrapT = material.map.wrapT;
+      mask.offset.copy(material.map.offset);
+      mask.repeat.copy(material.map.repeat);
+      mask.center.copy(material.map.center);
+      mask.rotation = material.map.rotation;
+      mask.matrixAutoUpdate = material.map.matrixAutoUpdate;
+      mask.matrix.copy(material.map.matrix);
+      mask.needsUpdate = true;
+      const previousOnBeforeCompile = material.onBeforeCompile;
+      const previousProgramCacheKey = material.customProgramCacheKey;
+      material.onBeforeCompile = (shader, renderer) => {
+        previousOnBeforeCompile.call(material, shader, renderer);
+        shader.uniforms.wh3FactionMaskMap = { value: mask };
+        shader.uniforms.wh3FactionPrimary = { value: primary };
+        shader.uniforms.wh3FactionSecondary = { value: secondary };
+        shader.uniforms.wh3FactionTertiary = { value: tertiary };
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <common>",
+          `#include <common>\nuniform sampler2D wh3FactionMaskMap;\nuniform vec3 wh3FactionPrimary;\nuniform vec3 wh3FactionSecondary;\nuniform vec3 wh3FactionTertiary;`,
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>\nvec4 wh3FactionMaskValue = texture2D(wh3FactionMaskMap, vMapUv);\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * wh3FactionPrimary, wh3FactionMaskValue.r);\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * wh3FactionSecondary, wh3FactionMaskValue.g);\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * wh3FactionTertiary, wh3FactionMaskValue.b);`,
+        );
+      };
+      material.customProgramCacheKey = () => `${previousProgramCacheKey.call(material)}|wh3-faction-colours|${binding.maskUrl}`;
+      material.needsUpdate = true;
+      restores.push({ material, onBeforeCompile: previousOnBeforeCompile, customProgramCacheKey: previousProgramCacheKey, mask });
+    }
+  });
+  return () => {
+    for (const restore of restores) {
+      restore.material.onBeforeCompile = restore.onBeforeCompile;
+      restore.material.customProgramCacheKey = restore.customProgramCacheKey;
+      restore.material.needsUpdate = true;
+      restore.mask.dispose();
+    }
+    for (const texture of loadedMasks.values()) texture.dispose();
+  };
+};
+
+const getDefaultFactionPreviewFaction = (context?: UnitPainterUnitVariantContext) => {
+  if (!context) return "";
+  if (context.faction) return context.faction;
+  const exactFactions = new Set((context.factionColours || []).map((set) => set.faction).filter(Boolean));
+  return context.availableFactions?.find((faction) => exactFactions.has(faction))
+    ?? context.factionColours?.find((set) => !!set.faction)?.faction
+    ?? "";
+};
+
 const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const {
     assetPath,
@@ -711,6 +836,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintFactionNamesCustomized, setPaintFactionNamesCustomized] = useState(false);
   const [isPaintFactionAdvancedOpen, setIsPaintFactionAdvancedOpen] = useState(false);
   const [paintFactionScopeDirty, setPaintFactionScopeDirty] = useState(false);
+  const [isPaintFactionColourPreviewEnabled, setIsPaintFactionColourPreviewEnabled] = useState(false);
+  const [paintFactionPreviewFaction, setPaintFactionPreviewFaction] = useState(getDefaultFactionPreviewFaction(unitVariantContext));
+  const [paintFactionMaskBindings, setPaintFactionMaskBindings] = useState<UnitPainterFactionMaskBinding[]>([]);
+  const [paintFactionPreviewError, setPaintFactionPreviewError] = useState("");
   const [paintExcludedPackPaths, setPaintExcludedPackPaths] = useState<string[]>([]);
   const [isPaintExporting, setIsPaintExporting] = useState(false);
   const [isPaintProjectOpening, setIsPaintProjectOpening] = useState(false);
@@ -743,6 +872,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintActiveLayer = paintLayers.find((layer) => layer.id === paintActiveLayerId);
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
   const paintActiveDecal = paintSessionRef.current?.activeDecalInfo;
+  const paintFactionPreviewOptions = Array.from(new Set([
+    "",
+    ...(unitVariantContext?.availableFactions || []),
+    ...(unitVariantContext?.factionColours || []).map((set) => set.faction),
+  ]));
+  const paintFactionPreviewColours = selectFactionColourSet(unitVariantContext?.factionColours || [], paintFactionPreviewFaction);
   const paintRecentColors = paintColorHistory.slice(0, 8);
   const paintActiveDecalTint = paintActiveDecal
     ? `#${[paintActiveDecal.tint.r, paintActiveDecal.tint.g, paintActiveDecal.tint.b]
@@ -2245,6 +2380,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintFactionNamesCustomized(false);
     setIsPaintFactionAdvancedOpen(false);
     setPaintFactionScopeDirty(false);
+    setIsPaintFactionColourPreviewEnabled(false);
+    setPaintFactionPreviewFaction(getDefaultFactionPreviewFaction(unitVariantContext));
+    setPaintFactionMaskBindings([]);
+    setPaintFactionPreviewError("");
     setPaintExcludedPackPaths([]);
     setPaintColorHistory([]);
     setPaintColor(DEFAULT_PAINT_COLOR);
@@ -2327,6 +2466,39 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     );
     setPaintHistoryVersion((value) => value + 1);
   }, [comparisonModelCount, enablePainting, isPainterEnabled, status]);
+
+  useEffect(() => {
+    if (!isPaintFactionColourPreviewEnabled || variantMeshSessionType !== "unitViewer" || !variantMeshSessionId) return;
+    let canceled = false;
+    setPaintFactionPreviewError("");
+    void getUnitPainterFactionMaskBindings(variantMeshSessionId, assetPath).then((result) => {
+      if (canceled) return;
+      if (!result.success) {
+        setPaintFactionMaskBindings([]);
+        setPaintFactionPreviewError(result.error || "Failed to resolve faction-colour masks.");
+        return;
+      }
+      setPaintFactionMaskBindings(result.bindings || []);
+      if ((result.bindings || []).length === 0) setPaintFactionPreviewError("No faction-colour masks were found for this model.");
+    }).catch((error) => {
+      if (!canceled) setPaintFactionPreviewError(error instanceof Error ? error.message : "Failed to resolve faction-colour masks.");
+    });
+    return () => { canceled = true; };
+  }, [assetPath, isPaintFactionColourPreviewEnabled, variantMeshSessionId, variantMeshSessionType]);
+
+  useEffect(() => {
+    if (!isPaintFactionColourPreviewEnabled || !isPainterEnabled || status !== "ready" || !paintRootRef.current || !paintFactionPreviewColours || paintFactionMaskBindings.length === 0) return;
+    let canceled = false;
+    let disposePreview: (() => void) | undefined;
+    void applyFactionColourPreview(paintRootRef.current, paintFactionMaskBindings, paintFactionPreviewColours).then((dispose) => {
+      if (canceled) dispose();
+      else disposePreview = dispose;
+    });
+    return () => {
+      canceled = true;
+      disposePreview?.();
+    };
+  }, [isPaintFactionColourPreviewEnabled, isPainterEnabled, paintFactionMaskBindings, paintFactionPreviewColours, status]);
 
   useEffect(() => {
     const isEditingControl = (target: EventTarget | null) =>
@@ -2789,6 +2961,31 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   Texture
                 </button>
               </div>
+            )}
+            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
+              <>
+                <label className={`flex items-center gap-1 rounded border px-2 py-1 ${isPaintFactionColourPreviewEnabled ? "border-emerald-400 bg-emerald-900/40 text-emerald-100" : "border-gray-600 bg-gray-800 text-gray-300"}`} title="Apply WH3 faction colours through the material faction mask in the 3D preview. Painted BaseColour data is unchanged.">
+                  <input
+                    type="checkbox"
+                    checked={isPaintFactionColourPreviewEnabled}
+                    disabled={!unitVariantContext?.factionColours?.length || variantMeshSessionType !== "unitViewer" || !variantMeshSessionId}
+                    onChange={(event) => setIsPaintFactionColourPreviewEnabled(event.target.checked)}
+                    className="accent-emerald-500"
+                  />
+                  Faction colours
+                </label>
+                {isPaintFactionColourPreviewEnabled && (
+                  <select value={paintFactionPreviewFaction} onChange={(event) => setPaintFactionPreviewFaction(event.target.value)} className="max-w-52 rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100" aria-label="Faction colour preview faction">
+                    {paintFactionPreviewOptions.map((faction) => <option key={faction || "__generic"} value={faction}>{faction || "Generic / default"}</option>)}
+                  </select>
+                )}
+                {isPaintFactionColourPreviewEnabled && paintFactionPreviewColours && (
+                  <span className="flex items-center gap-0.5" title="Primary / secondary / tertiary faction colours">
+                    {[paintFactionPreviewColours.primary, paintFactionPreviewColours.secondary, paintFactionPreviewColours.tertiary].map((colour, index) => <span key={`${colour}-${index}`} className="h-4 w-4 rounded-sm border border-gray-500" style={{ backgroundColor: colour }} />)}
+                  </span>
+                )}
+                {isPaintFactionColourPreviewEnabled && paintFactionPreviewError && <span className="max-w-64 truncate text-amber-300" title={paintFactionPreviewError}>{paintFactionPreviewError}</span>}
+              </>
             )}
             <button
               type="button"

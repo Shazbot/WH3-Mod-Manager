@@ -172,6 +172,8 @@ import { toVariantMeshDefinitionPath } from "./visuals/paths";
 import {
   collectVisualDependencyClosure,
   getSupportedVisualDependencyExtension,
+  getSupportedVisualReferences,
+  getVisualMaterialFactionTextures,
   type VisualDependencyClosure,
 } from "./visuals/dependencies";
 import {
@@ -3448,6 +3450,60 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
 
+  ipcMain.handle("getUnitPainterFactionMaskBindings", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const rootPath = normalizePackFilePath(assetPath || "");
+      if (!rootPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const queue = [rootPath];
+      const seen = new Set<string>();
+      const bindings: Array<{ baseColourSourcePath: string; baseColourPreviewFileNames: string[]; maskUrl: string }> = [];
+      const bindingKeys = new Set<string>();
+      while (queue.length > 0) {
+        const requestedPath = queue.shift()!;
+        const key = normalizePackFilePathKey(requestedPath);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const extension = getSupportedVisualDependencyExtension(requestedPath);
+        if (extension !== "variantmeshdefinition" && extension !== "wsmodel" && extension !== "xml.material") continue;
+        const asset = await getUnitViewerAsset(session, requestedPath);
+        if (!asset) continue;
+        const text = decodePackedAssetText(asset.buffer);
+        if (!text) continue;
+        if (extension === "xml.material") {
+          const textures = getVisualMaterialFactionTextures(text);
+          if (textures?.baseColourPath && textures.maskPath) {
+            const basePath = textures.baseColourPath;
+            const maskPath = textures.maskPath;
+            const bindingKey = `${normalizePackFilePathKey(basePath)}\0${normalizePackFilePathKey(maskPath)}`;
+            if (!bindingKeys.has(bindingKey)) {
+              bindingKeys.add(bindingKey);
+              const normalizedBasePath = basePath.replaceAll("\\", "/").trim().toLowerCase();
+              const stem = basePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "texture";
+              const cacheKey = `${normalizedBasePath}|default|False|ktx2|srgb=True`;
+              const hash = createHash("sha256").update(`${normalizedBasePath}|${cacheKey}`).digest("hex").slice(0, 10);
+              bindings.push({
+                baseColourSourcePath: basePath,
+                baseColourPreviewFileNames: [`${stem}_${hash}.ktx2`, `${stem}.ktx2`],
+                maskUrl: unitAssetUrl(sessionId, maskPath),
+              });
+            }
+          }
+        }
+        for (const reference of getSupportedVisualReferences(text)) {
+          const referenceExtension = getSupportedVisualDependencyExtension(reference);
+          if (referenceExtension === "variantmeshdefinition" || referenceExtension === "wsmodel" || referenceExtension === "xml.material") {
+            queue.push(reference);
+          }
+        }
+      }
+      return { success: true, bindings };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to resolve faction-colour masks" };
+    }
+  });
+
   ipcMain.handle("getUnitViewerVariantMeshCatalog", async (_event, sessionId: string, assetPath: string) => {
     try {
       const session = unitViewerSessions.get(sessionId);
@@ -3498,7 +3554,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (pending) return await pending;
       const load = getUnitViewerAsset(session, assetPath).finally(() => session.pendingAssets.delete(normalized));
       session.pendingAssets.set(normalized, load);
-      return await load;
+      const resolved = await load;
+      if (!resolved) return undefined;
+      const image = getPackedFileImageData(resolved.buffer, resolved.resolvedPath);
+      return { buffer: image.buffer, mimeType: image.mimeType || resolved.mimeType };
     },
   });
 

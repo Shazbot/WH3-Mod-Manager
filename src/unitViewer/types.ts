@@ -102,6 +102,14 @@ export interface UnitViewerPainterVariantContext {
   };
   /** Useful faction keys for the save UI. Free-form faction keys are still allowed. */
   availableFactions: string[];
+  /** Effective unit_variants_colours rows for this land-unit key. */
+  factionColours?: Array<{
+    faction: string;
+    soldierType: string;
+    primary: string;
+    secondary: string;
+    tertiary: string;
+  }>;
 }
 
 export interface UnitViewerUnitModel {

@@ -84,6 +84,46 @@ export const getSupportedVisualReferences = (text: string): string[] => {
   return references;
 };
 
+const getXmlTextValue = (value: unknown) => {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return "";
+  const text = (value as Record<string, unknown>)["#text"];
+  return typeof text === "string" ? text.trim() : "";
+};
+
+export type VisualMaterialFactionTextures = {
+  baseColourPath?: string;
+  maskPath?: string;
+};
+
+export const getVisualMaterialFactionTextures = (text: string): VisualMaterialFactionTextures | undefined => {
+  let parsed: unknown;
+  try {
+    parsed = dependencyXmlParser.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const material = (parsed as Record<string, unknown>).material;
+  if (!material || typeof material !== "object") return undefined;
+  const textures = (material as Record<string, unknown>).textures;
+  if (!textures || typeof textures !== "object") return undefined;
+  const rawEntries = (textures as Record<string, unknown>).texture;
+  const entries = Array.isArray(rawEntries) ? rawEntries : rawEntries ? [rawEntries] : [];
+  let baseColourPath: string | undefined;
+  let maskPath: string | undefined;
+  for (const rawEntry of entries) {
+    if (!rawEntry || typeof rawEntry !== "object") continue;
+    const entry = rawEntry as Record<string, unknown>;
+    const slot = getXmlTextValue(entry.slot).toLowerCase();
+    const source = normalizePackFilePath(getXmlTextValue(entry.source));
+    if (!source) continue;
+    if (slot === "t_xml_base_colour") baseColourPath = source;
+    if (slot === "t_xml_mask") maskPath = source;
+  }
+  return baseColourPath || maskPath ? { baseColourPath, maskPath } : undefined;
+};
+
 const canContainSupportedVisualReferences = (filePath: string) => {
   const extension = getSupportedVisualDependencyExtension(filePath);
   return extension === "variantmeshdefinition" || extension === "wsmodel" || extension === "xml.material";

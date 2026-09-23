@@ -3,10 +3,23 @@ import { describe, expect, it, vi } from "vitest";
 import {
   collectVisualDependencyClosure,
   getSupportedVisualReferences,
+  getVisualMaterialFactionTextures,
   type ResolvedVisualDependency,
 } from "../src/visuals/dependencies";
 
 describe("Visuals isolated dependency extraction", () => {
+  it("reads base-colour and faction-mask slots from xml.material", () => {
+    expect(getVisualMaterialFactionTextures(`
+      <material><textures>
+        <texture><slot version="2">t_xml_base_colour</slot><source>VariantMeshes\\unit\\unit_base_colour.dds</source></texture>
+        <texture><slot version="2">t_xml_mask</slot><source>VariantMeshes\\unit\\unit_mask.dds</source></texture>
+      </textures></material>
+    `)).toEqual({
+      baseColourPath: "VariantMeshes\\unit\\unit_base_colour.dds",
+      maskPath: "VariantMeshes\\unit\\unit_mask.dds",
+    });
+  });
+
   it("finds supported references in VMD, WSModel and material XML while ignoring unsupported assets", () => {
     const text = `
       <VARIANT_MESH model="models\\unit.wsmodel">
