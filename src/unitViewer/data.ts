@@ -142,10 +142,57 @@ const UNIT_VIEWER_USED_STAT_ICON_KEYS = new Set([
 ]);
 
 const asString = (value: unknown) => (value == null ? "" : String(value));
-const normalizeFactionColourHex = (value: unknown) => {
+const normalizeHexColour = (value: unknown) => {
   const hex = asString(value).trim().replace(/^#/, "");
   return /^[0-9a-f]{6}$/i.test(hex) ? `#${hex.toLowerCase()}` : undefined;
 };
+
+const normalizePackedColourRgb = (value: unknown) => {
+  const raw = asString(value).trim();
+  if (!raw) return undefined;
+
+  // Parsed ColourRGB fields are exposed by WHMM as signed/unsigned decimal Int32 strings.
+  if (/^-?\d+$/.test(raw)) {
+    const parsed = Number(raw);
+    if (Number.isSafeInteger(parsed)) {
+      const rgb = (parsed >>> 0) & 0xffffff;
+      return `#${rgb.toString(16).padStart(6, "0")}`;
+    }
+  }
+
+  // Keep hand-built/test/TSV-shaped rows useful too.
+  return normalizeHexColour(raw);
+};
+
+const normalizeRgbComponents = (
+  red: unknown,
+  green: unknown,
+  blue: unknown,
+) => {
+  const values = [red, green, blue].map((value) => Number(asString(value).trim()));
+  if (!values.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) return undefined;
+  return `#${values.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+};
+
+const readFactionUniformColour = (
+  row: Record<string, string> | undefined,
+  fieldName: "uniform_colour_primary" | "uniform_colour_secondary" | "uniform_colour_tertiary",
+) => {
+  if (!row) return undefined;
+  return normalizePackedColourRgb(row[fieldName])
+    ?? normalizeHexColour(row[`${fieldName}_hex`]);
+};
+
+const readUnitVariantColour = (
+  row: Record<string, string>,
+  prefix: "primary" | "secondary" | "tertiary",
+) =>
+  normalizeHexColour(row[`${prefix}_colour_hex`])
+  ?? normalizeRgbComponents(
+    row[`${prefix}_colour_r`],
+    row[`${prefix}_colour_g`],
+    row[`${prefix}_colour_b`],
+  );
 const asNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -728,24 +775,34 @@ export const buildUnitViewerData = (
         ...variantRows.map((row) => asString(row.faction)).filter(Boolean),
       ]),
     ).sort((first, second) => collator.compare(first, second));
-    const factionColours = availableVariantFactions.flatMap((faction) => {
-      const row = factions.get(faction);
-      const primary = normalizeFactionColourHex(row?.uniform_colour_primary);
-      const secondary = normalizeFactionColourHex(row?.uniform_colour_secondary);
-      const tertiary = normalizeFactionColourHex(row?.uniform_colour_tertiary);
-      if (!primary || !secondary || !tertiary) return [];
-      return [{
-        faction,
-        subculture: asString(row?.subculture),
-        primary,
-        secondary,
-        tertiary,
-      }];
-    });
-    const variantColours = (unitVariantColours.get(landUnitKey) || []).flatMap((row) => {
-      const primary = normalizeFactionColourHex(row.primary_colour_hex);
-      const secondary = normalizeFactionColourHex(row.secondary_colour_hex);
-      const tertiary = normalizeFactionColourHex(row.tertiary_colour_hex);
+    const variantColourRows = unitVariantColours.get(landUnitKey) || [];
+    const previewSubcultures = new Set(
+      [
+        ...availableVariantFactions.map((faction) => asString(factions.get(faction)?.subculture)),
+        ...variantColourRows.map((row) => asString(row.subculture)),
+      ].filter(Boolean),
+    );
+    const factionColours = Array.from(factions.entries())
+      .flatMap(([faction, row]) => {
+        const subculture = asString(row.subculture);
+        if (
+          previewSubcultures.size > 0
+          && !previewSubcultures.has(subculture)
+          && !availableVariantFactions.includes(faction)
+        ) {
+          return [];
+        }
+        const primary = readFactionUniformColour(row, "uniform_colour_primary");
+        const secondary = readFactionUniformColour(row, "uniform_colour_secondary");
+        const tertiary = readFactionUniformColour(row, "uniform_colour_tertiary");
+        if (!primary || !secondary || !tertiary) return [];
+        return [{ faction, subculture, primary, secondary, tertiary }];
+      })
+      .sort((first, second) => collator.compare(first.faction, second.faction));
+    const variantColours = variantColourRows.flatMap((row) => {
+      const primary = readUnitVariantColour(row, "primary");
+      const secondary = readUnitVariantColour(row, "secondary");
+      const tertiary = readUnitVariantColour(row, "tertiary");
       if (!primary || !secondary || !tertiary) return [];
       return [{
         faction: asString(row.faction),

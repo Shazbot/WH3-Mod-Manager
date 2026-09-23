@@ -102,7 +102,7 @@ export interface UnitViewerPainterVariantContext {
   };
   /** Useful faction keys for the save UI. Free-form faction keys are still allowed. */
   availableFactions: string[];
-  /** Default uniform colours from factions_tables for factions this unit can use. */
+  /** Default uniform colours from factions_tables for previewable factions in the unit's relevant subculture(s). */
   factionColours?: Array<{
     faction: string;
     subculture: string;
