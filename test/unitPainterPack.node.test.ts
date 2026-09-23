@@ -168,6 +168,24 @@ describe("unit painter pack staging", () => {
         activeLayerId: "layer-2",
         usedColorHistory: ["#AABBCC", "#112233", "#aabbcc"],
         selectedColor: "#445566",
+        factionScope: {
+          faction: "wh_main_emp_empire",
+          unitKey: "wh_main_emp_inf_swordsmen",
+          sourceVariantName: "wh_emp_state_troops_sword_and_shieldmen",
+          unitVariantName: "wh_main_emp_inf_swordmen",
+          unitCard: "wh_main_emp_swordsmen",
+          sourceVariantDetails: {
+            techFolder: "",
+            variantFilename: "emp_state_troops_sword_and_shieldmen",
+            lowPolyFilename: "hu1\\emp\\low_poly\\empire_state_troops_sword_shield_lowlod",
+            mountScale: "1.0000",
+            scale: "1.0000",
+            scaleVariation: "0.0500",
+            superLowPolyFilename: "hu1\\imposter\\humanoid_imposter",
+          },
+          newVariantName: "whmm_emp_state_troops_swordsmen_reikland",
+          newVariantFilename: "emp_state_troops_swordsmen_reikland_painted",
+        },
         layers: [
           { id: "layer-1", name: "Cloth", visible: true, opacity: 0.5, textures: [] },
           {
@@ -198,6 +216,24 @@ describe("unit painter pack staging", () => {
     expect(manifest.activeLayerId).toBe("layer-2");
     expect(manifest.usedColorHistory).toEqual(["#aabbcc", "#112233"]);
     expect(manifest.selectedColor).toBe("#445566");
+    expect(manifest.factionScope).toEqual({
+      faction: "wh_main_emp_empire",
+      unitKey: "wh_main_emp_inf_swordsmen",
+      sourceVariantName: "wh_emp_state_troops_sword_and_shieldmen",
+      unitVariantName: "wh_main_emp_inf_swordmen",
+      unitCard: "wh_main_emp_swordsmen",
+      sourceVariantDetails: {
+        techFolder: "",
+        variantFilename: "emp_state_troops_sword_and_shieldmen",
+        lowPolyFilename: "hu1\\emp\\low_poly\\empire_state_troops_sword_shield_lowlod",
+        mountScale: "1.0000",
+        scale: "1.0000",
+        scaleVariation: "0.0500",
+        superLowPolyFilename: "hu1\\imposter\\humanoid_imposter",
+      },
+      newVariantName: "whmm_emp_state_troops_swordsmen_reikland",
+      newVariantFilename: "emp_state_troops_swordsmen_reikland_painted",
+    });
     expect(manifest.layers[1].textures[0].tileKeys).toEqual([0, 65]);
     expect(manifest.layers[1].textures[0].tileSize).toBe(64);
 
