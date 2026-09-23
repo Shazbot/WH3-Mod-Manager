@@ -110,6 +110,7 @@ const MAX_COMPARISON_MODELS = 100;
 const ALT_ORBIT_DRAG_THRESHOLD_PX = 4;
 const PAINT_COLOR_HISTORY_LIMIT = 64;
 const DEFAULT_PAINT_COLOR = "#c43030";
+const DEFAULT_PAINT_TEXTURE_PADDING = 2;
 const PREVIEW_GEOMETRY_KEY = "__wh3PreviewGeometryKey";
 
 const hashPainterGeneratedName = (value: string) => {
@@ -902,7 +903,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPainterEnabled, setIsPainterEnabled] = useState(false);
   const [paintViewMode, setPaintViewMode] = useState<"model" | "split" | "texture">("model");
   const [paintTextureViewId, setPaintTextureViewId] = useState<string>();
-  const [paintTexturePadding, setPaintTexturePadding] = useState(0);
+  const [paintTexturePadding, setPaintTexturePadding] = useState(DEFAULT_PAINT_TEXTURE_PADDING);
   const [paintColor, setPaintColor] = useState(DEFAULT_PAINT_COLOR);
   const [paintColorHistory, setPaintColorHistory] = useState<string[]>([]);
   const [isPaintColorHistoryOpen, setIsPaintColorHistoryOpen] = useState(false);
@@ -2519,7 +2520,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintColor(DEFAULT_PAINT_COLOR);
     setPaintViewMode("model");
     setPaintTextureViewId(undefined);
-    setPaintTexturePadding(0);
+    setPaintTexturePadding(DEFAULT_PAINT_TEXTURE_PADDING);
     setIsPaintColorHistoryOpen(false);
     pendingPaintProjectRef.current = null;
   }, [assetPath, unitVariantContext]);
