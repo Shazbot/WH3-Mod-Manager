@@ -652,15 +652,46 @@ describe("Unit Viewer catalog", () => {
         factions_tables: [
           {
             key: "faction_a",
+            subculture: "subculture_a",
             uniform_colour_primary: "AABBCC",
             uniform_colour_secondary: "112233",
             uniform_colour_tertiary: "445566",
           },
           {
             key: "faction_b",
+            subculture: "subculture_b",
             uniform_colour_primary: "DDEEFF",
             uniform_colour_secondary: "667788",
             uniform_colour_tertiary: "99AABB",
+          },
+        ],
+        unit_variants_colours_tables: [
+          {
+            unit_variant: "land",
+            faction: "faction_a",
+            subculture: "",
+            soldier_type: "soldier",
+            primary_colour_hex: "101010",
+            secondary_colour_hex: "202020",
+            tertiary_colour_hex: "303030",
+          },
+          {
+            unit_variant: "land",
+            faction: "",
+            subculture: "subculture_b",
+            soldier_type: "soldier",
+            primary_colour_hex: "404040",
+            secondary_colour_hex: "505050",
+            tertiary_colour_hex: "606060",
+          },
+          {
+            unit_variant: "land",
+            faction: "",
+            subculture: "",
+            soldier_type: "mount",
+            primary_colour_hex: "707070",
+            secondary_colour_hex: "808080",
+            tertiary_colour_hex: "909090",
           },
         ],
         variants_tables: [{
@@ -704,8 +735,22 @@ describe("Unit Viewer catalog", () => {
       },
       availableFactions: ["faction_a", "faction_b"],
       factionColours: [
-        { faction: "faction_a", primary: "#aabbcc", secondary: "#112233", tertiary: "#445566" },
-        { faction: "faction_b", primary: "#ddeeff", secondary: "#667788", tertiary: "#99aabb" },
+        { faction: "faction_a", subculture: "subculture_a", primary: "#aabbcc", secondary: "#112233", tertiary: "#445566" },
+        { faction: "faction_b", subculture: "subculture_b", primary: "#ddeeff", secondary: "#667788", tertiary: "#99aabb" },
+      ],
+      unitVariantColours: [
+        {
+          faction: "faction_a", subculture: "", soldierType: "soldier",
+          primary: "#101010", secondary: "#202020", tertiary: "#303030",
+        },
+        {
+          faction: "", subculture: "subculture_b", soldierType: "soldier",
+          primary: "#404040", secondary: "#505050", tertiary: "#606060",
+        },
+        {
+          faction: "", subculture: "", soldierType: "mount",
+          primary: "#707070", secondary: "#808080", tertiary: "#909090",
+        },
       ],
     });
   });

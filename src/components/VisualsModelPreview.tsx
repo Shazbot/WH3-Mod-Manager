@@ -673,9 +673,35 @@ const findFactionMaskBinding = (texture: THREE.Texture, bindings: readonly UnitP
   });
 };
 
-const selectFactionColourSet = (sets: readonly UnitPainterFactionColourSet[], faction: string) => {
+const selectFactionColourSet = (context: UnitPainterUnitVariantContext | undefined, faction: string) => {
+  if (!context) return undefined;
   const targetFaction = faction.trim().toLowerCase();
-  return sets.find((set) => set.faction.trim().toLowerCase() === targetFaction);
+  const factionDefault = (context.factionColours || []).find(
+    (set) => set.faction.trim().toLowerCase() === targetFaction,
+  );
+  const targetSubculture = factionDefault?.subculture.trim().toLowerCase() || "";
+  const overrides = context.unitVariantColours || [];
+  const preferSoldier = (sets: typeof overrides) =>
+    sets.find((set) => set.soldierType.trim().toLowerCase() === "soldier") ?? sets[0];
+
+  const exactFaction = overrides.filter(
+    (set) => set.faction.trim().toLowerCase() === targetFaction,
+  );
+  if (exactFaction.length > 0) return preferSoldier(exactFaction);
+
+  if (targetSubculture) {
+    const exactSubculture = overrides.filter(
+      (set) =>
+        !set.faction.trim()
+        && set.subculture.trim().toLowerCase() === targetSubculture,
+    );
+    if (exactSubculture.length > 0) return preferSoldier(exactSubculture);
+  }
+
+  const generic = overrides.filter(
+    (set) => !set.faction.trim() && !set.subculture.trim(),
+  );
+  return preferSoldier(generic) ?? factionDefault;
 };
 
 const applyFactionColourPreview = async (
@@ -764,9 +790,13 @@ const applyFactionColourPreview = async (
 const getDefaultFactionPreviewFaction = (context?: UnitPainterUnitVariantContext) => {
   if (!context) return "";
   if (context.faction) return context.faction;
-  const exactFactions = new Set((context.factionColours || []).map((set) => set.faction).filter(Boolean));
+  const exactFactions = new Set([
+    ...(context.factionColours || []).map((set) => set.faction).filter(Boolean),
+    ...(context.unitVariantColours || []).map((set) => set.faction).filter(Boolean),
+  ]);
   return context.availableFactions?.find((faction) => exactFactions.has(faction))
     ?? context.factionColours?.find((set) => !!set.faction)?.faction
+    ?? context.unitVariantColours?.find((set) => !!set.faction)?.faction
     ?? "";
 };
 
@@ -914,8 +944,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     "",
     ...(unitVariantContext?.availableFactions || []),
     ...(unitVariantContext?.factionColours || []).map((set) => set.faction),
+    ...(unitVariantContext?.unitVariantColours || []).map((set) => set.faction).filter(Boolean),
   ]));
-  const paintFactionPreviewColours = selectFactionColourSet(unitVariantContext?.factionColours || [], paintFactionPreviewFaction);
+  const paintFactionPreviewColours = selectFactionColourSet(unitVariantContext, paintFactionPreviewFaction);
   const paintRecentColors = paintColorHistory.slice(0, 8);
   const paintActiveDecalTint = paintActiveDecal
     ? `#${[paintActiveDecal.tint.r, paintActiveDecal.tint.g, paintActiveDecal.tint.b]
@@ -3105,7 +3136,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   <input
                     type="checkbox"
                     checked={isPaintFactionColourPreviewEnabled}
-                    disabled={!unitVariantContext?.factionColours?.length || variantMeshSessionType !== "unitViewer" || !variantMeshSessionId}
+                    disabled={!paintFactionPreviewColours || variantMeshSessionType !== "unitViewer" || !variantMeshSessionId}
                     onChange={(event) => setIsPaintFactionColourPreviewEnabled(event.target.checked)}
                     className="accent-emerald-500"
                   />

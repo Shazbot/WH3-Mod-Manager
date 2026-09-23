@@ -68,6 +68,7 @@ export const UNIT_VIEWER_TABLES = [
   "character_experience_skill_tiers_tables",
   "faction_agent_permitted_subtypes_tables",
   "unit_variants_tables",
+  "unit_variants_colours_tables",
   "land_units_to_unit_abilites_junctions_tables",
   "unit_attributes_to_groups_junctions_tables",
   "special_ability_groups_to_units_junctions_tables",
@@ -547,6 +548,7 @@ export const buildUnitViewerData = (
   const agentSubtypes = indexRows(tables.agent_subtypes_tables, "key");
   const agentSubtypeOverrides = groupRows(tables.agent_subtype_subculture_overrides_tables, "subtype");
   const unitVariants = groupRows(tables.unit_variants_tables, "unit");
+  const unitVariantColours = groupRows(tables.unit_variants_colours_tables, "unit_variant");
   const customBattleMountsByMountedUnit = groupRows(tables.units_custom_battle_mounts_tables, "mounted_unit");
   const permissions = groupRows(tables.units_custom_battle_permissions_tables, "unit");
   const directAbilities = groupRows(tables.land_units_to_unit_abilites_junctions_tables, "land_unit");
@@ -732,7 +734,27 @@ export const buildUnitViewerData = (
       const secondary = normalizeFactionColourHex(row?.uniform_colour_secondary);
       const tertiary = normalizeFactionColourHex(row?.uniform_colour_tertiary);
       if (!primary || !secondary || !tertiary) return [];
-      return [{ faction, primary, secondary, tertiary }];
+      return [{
+        faction,
+        subculture: asString(row?.subculture),
+        primary,
+        secondary,
+        tertiary,
+      }];
+    });
+    const variantColours = (unitVariantColours.get(landUnitKey) || []).flatMap((row) => {
+      const primary = normalizeFactionColourHex(row.primary_colour_hex);
+      const secondary = normalizeFactionColourHex(row.secondary_colour_hex);
+      const tertiary = normalizeFactionColourHex(row.tertiary_colour_hex);
+      if (!primary || !secondary || !tertiary) return [];
+      return [{
+        faction: asString(row.faction),
+        subculture: asString(row.subculture),
+        soldierType: asString(row.soldier_type),
+        primary,
+        secondary,
+        tertiary,
+      }];
     });
     const painterVariantContext =
       variant && variantName && variantDefinition
@@ -753,6 +775,7 @@ export const buildUnitViewerData = (
             },
             availableFactions: availableVariantFactions,
             ...(factionColours.length > 0 ? { factionColours } : {}),
+            ...(variantColours.length > 0 ? { unitVariantColours: variantColours } : {}),
           }
         : undefined;
     const generalPortrait = (permissions.get(key) || [])

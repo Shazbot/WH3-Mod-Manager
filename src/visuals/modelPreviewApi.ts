@@ -148,9 +148,14 @@ export type UnitPainterVariantSourceDetails = {
 
 export type UnitPainterFactionColourSet = {
   faction: string;
+  subculture: string;
   primary: string;
   secondary: string;
   tertiary: string;
+};
+
+export type UnitPainterUnitVariantColourSet = UnitPainterFactionColourSet & {
+  soldierType: string;
 };
 
 export type UnitPainterUnitVariantContext = {
@@ -162,6 +167,7 @@ export type UnitPainterUnitVariantContext = {
   variantDetails: UnitPainterVariantSourceDetails;
   availableFactions?: string[];
   factionColours?: UnitPainterFactionColourSet[];
+  unitVariantColours?: UnitPainterUnitVariantColourSet[];
 };
 
 export interface UnitPainterFactionMaskBinding {
