@@ -108,26 +108,47 @@ const PAINT_COLOR_HISTORY_LIMIT = 64;
 const DEFAULT_PAINT_COLOR = "#c43030";
 const PREVIEW_GEOMETRY_KEY = "__wh3PreviewGeometryKey";
 
+const hashPainterGeneratedName = (value: string) => {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36).padStart(7, "0").slice(-7);
+};
+
+const fitPainterGeneratedName = (
+  value: string,
+  maxLength: number,
+  sanitize: (value: string) => string,
+) => {
+  const sanitized = sanitize(value) || "whmm_painted";
+  if (sanitized.length <= maxLength) return sanitized;
+  const suffix = `_${hashPainterGeneratedName(sanitized)}`;
+  return `${sanitized.slice(0, Math.max(1, maxLength - suffix.length))}${suffix}`;
+};
+
 const sanitizePainterVariantKey = (value: string) =>
-  value.replace(/[^a-zA-Z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 160);
+  value.replace(/[^a-zA-Z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "");
 
 const sanitizePainterVmdStem = (value: string) =>
   value
     .replace(/\.variantmeshdefinition$/i, "")
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 120);
+    .replace(/^_+|_+$/g, "");
 
 const getPainterFactionScopeDefaults = (
   context: UnitPainterUnitVariantContext | undefined,
   assetPath: string,
+  factionOverride?: string,
 ) => {
   const assetStem = sanitizePainterVmdStem(assetPath.split(/[\\/]/).pop() || "painted_unit");
-  const sourceVariantKey = sanitizePainterVariantKey(context?.variantName || assetStem);
-  const sourceVmdStem = sanitizePainterVmdStem(context?.variantDetails.variantFilename || assetStem);
+  const unitKey = sanitizePainterVariantKey(context?.unitKey || context?.variantName || assetStem) || "unit";
+  const faction = sanitizePainterVariantKey(factionOverride ?? context?.faction ?? "") || "faction";
+  const generatedBase = `whmm_${unitKey}_${faction}`;
   return {
-    variantName: sanitizePainterVariantKey(`${sourceVariantKey}_whmm_painted`),
-    vmdFilename: sanitizePainterVmdStem(`${sourceVmdStem}_whmm_painted`),
+    variantName: fitPainterGeneratedName(generatedBase, 160, sanitizePainterVariantKey),
+    vmdFilename: fitPainterGeneratedName(generatedBase, 120, sanitizePainterVmdStem),
   };
 };
 
@@ -687,6 +708,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [paintFaction, setPaintFaction] = useState(unitVariantContext?.faction || "");
   const [paintFactionVariantName, setPaintFactionVariantName] = useState(initialFactionScopeDefaults.variantName);
   const [paintFactionVmdFilename, setPaintFactionVmdFilename] = useState(initialFactionScopeDefaults.vmdFilename);
+  const [paintFactionNamesCustomized, setPaintFactionNamesCustomized] = useState(false);
+  const [isPaintFactionAdvancedOpen, setIsPaintFactionAdvancedOpen] = useState(false);
   const [paintFactionScopeDirty, setPaintFactionScopeDirty] = useState(false);
   const [paintExcludedPackPaths, setPaintExcludedPackPaths] = useState<string[]>([]);
   const [isPaintExporting, setIsPaintExporting] = useState(false);
@@ -2211,13 +2234,16 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   ]);
 
   useEffect(() => {
-    const defaults = getPainterFactionScopeDefaults(unitVariantContext, assetPath);
+    const defaultFaction = unitVariantContext?.faction || "";
+    const defaults = getPainterFactionScopeDefaults(unitVariantContext, assetPath, defaultFaction);
     setPaintPackPath(undefined);
     setPaintFactionScopeSource(unitVariantContext);
     setIsPaintFactionScoped(false);
-    setPaintFaction(unitVariantContext?.faction || "");
+    setPaintFaction(defaultFaction);
     setPaintFactionVariantName(defaults.variantName);
     setPaintFactionVmdFilename(defaults.vmdFilename);
+    setPaintFactionNamesCustomized(false);
+    setIsPaintFactionAdvancedOpen(false);
     setPaintFactionScopeDirty(false);
     setPaintExcludedPackPaths([]);
     setPaintColorHistory([]);
@@ -2432,19 +2458,28 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         clearPaintSelection();
         const openedFactionScope = result.project.factionScope;
         if (openedFactionScope) {
-          setPaintFactionScopeSource(unitVariantContextFromFactionScope(openedFactionScope));
+          const openedSource = unitVariantContextFromFactionScope(openedFactionScope);
+          const defaults = getPainterFactionScopeDefaults(openedSource, assetPath, openedFactionScope.faction);
+          setPaintFactionScopeSource(openedSource);
           setIsPaintFactionScoped(true);
           setPaintFaction(openedFactionScope.faction);
           setPaintFactionVariantName(openedFactionScope.newVariantName);
           setPaintFactionVmdFilename(openedFactionScope.newVariantFilename);
+          setPaintFactionNamesCustomized(
+            openedFactionScope.newVariantName !== defaults.variantName
+              || openedFactionScope.newVariantFilename !== defaults.vmdFilename,
+          );
         } else {
-          const defaults = getPainterFactionScopeDefaults(unitVariantContext, assetPath);
+          const defaultFaction = unitVariantContext?.faction || "";
+          const defaults = getPainterFactionScopeDefaults(unitVariantContext, assetPath, defaultFaction);
           setPaintFactionScopeSource(unitVariantContext);
           setIsPaintFactionScoped(false);
-          setPaintFaction(unitVariantContext?.faction || "");
+          setPaintFaction(defaultFaction);
           setPaintFactionVariantName(defaults.variantName);
           setPaintFactionVmdFilename(defaults.vmdFilename);
+          setPaintFactionNamesCustomized(false);
         }
+        setIsPaintFactionAdvancedOpen(false);
         setPaintFactionScopeDirty(false);
         pendingPaintProjectRef.current = result;
         setPaintPackPath(result.packPath);
@@ -3909,7 +3944,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   }`}
                   title={
                     paintFactionScopeSource
-                      ? "Save a new VMD and assign it to one faction through variants_tables + unit_variants_tables"
+                      ? "Save a new VMD and assign it only to one faction"
                       : "Faction-scoped saving needs unit DB context; open the unit from Unit Viewer"
                   }
                 >
@@ -3920,8 +3955,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     onChange={(event) => {
                       const enabled = event.target.checked;
                       setIsPaintFactionScoped(enabled);
-                      if (enabled && !paintFactionVariantName && paintFactionScopeSource) {
-                        const defaults = getPainterFactionScopeDefaults(paintFactionScopeSource, assetPath);
+                      if (enabled && paintFactionScopeSource && !paintFactionNamesCustomized) {
+                        const defaults = getPainterFactionScopeDefaults(
+                          paintFactionScopeSource,
+                          assetPath,
+                          paintFaction,
+                        );
                         setPaintFactionVariantName(defaults.variantName);
                         setPaintFactionVmdFilename(defaults.vmdFilename);
                       }
@@ -3937,41 +3976,92 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       list="unit-painter-faction-keys"
                       value={paintFaction}
                       onChange={(event) => {
-                        setPaintFaction(event.target.value);
+                        const faction = event.target.value;
+                        setPaintFaction(faction);
+                        if (!paintFactionNamesCustomized) {
+                          const defaults = getPainterFactionScopeDefaults(
+                            paintFactionScopeSource,
+                            assetPath,
+                            faction,
+                          );
+                          setPaintFactionVariantName(defaults.variantName);
+                          setPaintFactionVmdFilename(defaults.vmdFilename);
+                        }
                         setPaintFactionScopeDirty(true);
                       }}
-                      placeholder="faction key"
+                      placeholder="Choose faction"
                       aria-label="Faction key for painted unit variant"
-                      className="w-44 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                      title="unit_variants_tables faction"
+                      className="w-52 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                      title="Only this faction will use the painted unit variant"
                     />
                     <datalist id="unit-painter-faction-keys">
                       {(paintFactionScopeSource.availableFactions || []).map((faction) => (
                         <option key={faction} value={faction} />
                       ))}
                     </datalist>
-                    <input
-                      value={paintFactionVariantName}
-                      onChange={(event) => {
-                        setPaintFactionVariantName(event.target.value);
-                        setPaintFactionScopeDirty(true);
-                      }}
-                      placeholder="new variant key"
-                      aria-label="New variants_tables variant key"
-                      className="w-56 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                      title="New variants_tables.variant_name"
-                    />
-                    <input
-                      value={paintFactionVmdFilename}
-                      onChange={(event) => {
-                        setPaintFactionVmdFilename(event.target.value);
-                        setPaintFactionScopeDirty(true);
-                      }}
-                      placeholder="new VMD filename"
-                      aria-label="New VMD filename"
-                      className="w-52 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                      title="New variants_tables.variant_filename (without .variantmeshdefinition)"
-                    />
+                    <details
+                      open={isPaintFactionAdvancedOpen}
+                      onToggle={(event) => setIsPaintFactionAdvancedOpen(event.currentTarget.open)}
+                      className="group relative"
+                    >
+                      <summary
+                        className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-400 hover:border-violet-400 hover:text-gray-200 [&::-webkit-details-marker]:hidden"
+                        title="Override the automatically generated variant key and VMD filename"
+                      >
+                        Advanced names{paintFactionNamesCustomized ? " · custom" : ""}
+                      </summary>
+                      <div className="absolute right-0 top-full z-30 mt-1 flex min-w-[34rem] items-end gap-2 rounded border border-gray-600 bg-gray-900 p-2 shadow-xl">
+                        <label className="min-w-0 flex-1 text-[10px] text-gray-400">
+                          Variant key
+                          <input
+                            value={paintFactionVariantName}
+                            onChange={(event) => {
+                              setPaintFactionVariantName(event.target.value);
+                              setPaintFactionNamesCustomized(true);
+                              setPaintFactionScopeDirty(true);
+                            }}
+                            placeholder="new variant key"
+                            aria-label="New variants_tables variant key"
+                            className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                            title="New variants_tables.variant_name"
+                          />
+                        </label>
+                        <label className="min-w-0 flex-1 text-[10px] text-gray-400">
+                          VMD filename
+                          <input
+                            value={paintFactionVmdFilename}
+                            onChange={(event) => {
+                              setPaintFactionVmdFilename(event.target.value);
+                              setPaintFactionNamesCustomized(true);
+                              setPaintFactionScopeDirty(true);
+                            }}
+                            placeholder="new VMD filename"
+                            aria-label="New VMD filename"
+                            className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                            title="New variants_tables.variant_filename (without .variantmeshdefinition)"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={!paintFactionNamesCustomized}
+                          onClick={() => {
+                            const defaults = getPainterFactionScopeDefaults(
+                              paintFactionScopeSource,
+                              assetPath,
+                              paintFaction,
+                            );
+                            setPaintFactionVariantName(defaults.variantName);
+                            setPaintFactionVmdFilename(defaults.vmdFilename);
+                            setPaintFactionNamesCustomized(false);
+                            setPaintFactionScopeDirty(true);
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Use automatically generated names based on the unit and faction"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </details>
                   </>
                 )}
                 <button
