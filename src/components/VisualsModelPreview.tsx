@@ -4060,7 +4060,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       onChange={(event) => {
                         const nextScope = event.target.value as UnitPainterSelectionScope;
                         if (paintSelectionPartition?.sourceScope !== nextScope) {
-                          paintSessionRef.current?.removeSelectionPartition();
+                          paintSessionRef.current?.clearSelectionPartitions();
                         }
                         setPaintScope(nextScope);
                         paintScopeRef.current = nextScope;
@@ -4203,7 +4203,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                                 ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
                                 : "border-gray-600 bg-gray-800 hover:border-yellow-400"
                             }`}
-                            title={title}
+                            title={paintSelectionPartition ? `${title} inside the active region` : title}
                           >
                             {label}
                           </button>
@@ -4212,6 +4212,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     )}
                     {paintSelectionPartition && (
                       <>
+                        <span
+                          className="max-w-48 truncate text-yellow-200"
+                          title={paintSelectionPartition.pathLabels.join(" › ")}
+                        >
+                          {paintSelectionPartition.pathLabels.join(" › ")}
+                        </span>
                         <span className="text-gray-500">Region</span>
                         {paintSelectionPartition.regions.map((region) => (
                           <button
@@ -4259,10 +4265,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                             }
                           }}
                           className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-gray-400"
-                          title="Remove the split and return to the parent selection"
+                          title="Remove the current split and return one split level"
                         >
                           Unsplit
                         </button>
+                        {paintSelectionPartition.depth > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (paintSessionRef.current?.clearSelectionPartitions()) {
+                                refreshPaintSelectionVisual(paintScope);
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-gray-400"
+                            title="Remove every nested split and return to the original selection"
+                          >
+                            Clear splits
+                          </button>
+                        )}
                       </>
                     )}
                     {paintSelectionPartition ? (
