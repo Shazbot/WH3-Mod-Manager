@@ -27,6 +27,9 @@ import { ensureWh3AssetHostVanillaCache } from "./wh3AssetHostVanillaCache";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
 import type { VisualsModelPreviewTimingReport } from "./visuals/modelPreviewApi";
 import { readPack, writePack } from "./packFileSerializer";
+import { getSchemaForGame } from "./schema";
+import { buildRowFromValues } from "./utility/dbRowCells";
+import type { NewPackedFile } from "./packFileTypes";
 import {
   buildUnitPainterPackFiles,
   buildUnitPainterProjectPackFiles,
@@ -43,6 +46,7 @@ import {
   UNIT_PAINTER_PROJECT_MAX_COLOR_HISTORY,
   UNIT_PAINTER_PROJECT_TILE_BYTES,
   UNIT_PAINTER_PROJECT_TILE_SIZE,
+  type UnitPainterFactionScopeInput,
   type UnitPainterProjectDecalInput,
   type UnitPainterProjectLayerInput,
   type UnitPainterProjectMaskInput,
@@ -798,6 +802,131 @@ const sanitizeUnitPainterColorHistory = (value: unknown) => {
   return colors;
 };
 
+const sanitizeUnitPainterFactionScope = (value: unknown): UnitPainterFactionScopeInput | undefined => {
+  if (value == null) return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const rawDetails =
+    raw.sourceVariantDetails && typeof raw.sourceVariantDetails === "object"
+      ? raw.sourceVariantDetails as Record<string, unknown>
+      : undefined;
+  if (!rawDetails) return undefined;
+
+  const text = (input: unknown, allowEmpty = false) => {
+    if (typeof input !== "string") return undefined;
+    const normalized = input.trim();
+    if ((!allowEmpty && !normalized) || normalized.includes("\0") || /[\r\n\t]/.test(normalized)) {
+      return undefined;
+    }
+    return normalized;
+  };
+  const faction = text(raw.faction);
+  const unitKey = text(raw.unitKey);
+  const sourceVariantName = text(raw.sourceVariantName);
+  const unitVariantName = text(raw.unitVariantName, true);
+  const unitCard = text(raw.unitCard, true);
+  const newVariantName = text(raw.newVariantName);
+  const newVariantFilename = text(raw.newVariantFilename);
+  const sourceVariantFilename = text(rawDetails.variantFilename);
+  if (
+    !faction
+    || !unitKey
+    || !sourceVariantName
+    || unitVariantName == null
+    || unitCard == null
+    || !newVariantName
+    || !newVariantFilename
+    || !sourceVariantFilename
+    || !/^[a-zA-Z0-9_.-]{1,160}$/.test(newVariantName)
+    || !/^[a-zA-Z0-9_-]{1,120}$/.test(newVariantFilename)
+  ) {
+    return undefined;
+  }
+
+  const optionalDetail = (field: string) => text(rawDetails[field], true);
+  const techFolder = optionalDetail("techFolder");
+  const lowPolyFilename = optionalDetail("lowPolyFilename");
+  const mountScale = optionalDetail("mountScale");
+  const scale = optionalDetail("scale");
+  const scaleVariation = optionalDetail("scaleVariation");
+  const superLowPolyFilename = optionalDetail("superLowPolyFilename");
+  if (
+    techFolder == null
+    || lowPolyFilename == null
+    || mountScale == null
+    || scale == null
+    || scaleVariation == null
+    || superLowPolyFilename == null
+  ) {
+    return undefined;
+  }
+
+  return {
+    faction,
+    unitKey,
+    sourceVariantName,
+    unitVariantName,
+    unitCard,
+    sourceVariantDetails: {
+      techFolder,
+      variantFilename: sourceVariantFilename,
+      lowPolyFilename,
+      mountScale,
+      scale,
+      scaleVariation,
+      superLowPolyFilename,
+    },
+    newVariantName,
+    newVariantFilename,
+  };
+};
+
+const getUnitPainterScopedVmdPath = (scope: UnitPainterFactionScopeInput) =>
+  `variantmeshes\\variantmeshdefinitions\\${scope.newVariantFilename}.variantmeshdefinition`;
+
+const buildUnitPainterFactionScopeDbFiles = async (
+  scope: UnitPainterFactionScopeInput,
+): Promise<NewPackedFile[]> => {
+  if (appData.currentGame !== "wh3") {
+    throw new Error("Faction-scoped unit painter variants are currently supported for WH3 only.");
+  }
+  const schemas = await getSchemaForGame("wh3");
+  const variantsSchema = schemas.variants_tables?.[0];
+  const unitVariantsSchema = schemas.unit_variants_tables?.[0];
+  if (!variantsSchema || !unitVariantsSchema) {
+    throw new Error("The WH3 DB schema is missing variants_tables or unit_variants_tables.");
+  }
+
+  const variantsFile: NewPackedFile = {
+    name: `db\\variants_tables\\whmm_unit_painter_${scope.newVariantFilename}`,
+    version: variantsSchema.version,
+    tableSchema: variantsSchema,
+    schemaFields: buildRowFromValues(variantsSchema, {
+      variant_name: scope.newVariantName,
+      tech_folder: scope.sourceVariantDetails.techFolder,
+      variant_filename: scope.newVariantFilename,
+      low_poly_filename: scope.sourceVariantDetails.lowPolyFilename,
+      mount_scale: scope.sourceVariantDetails.mountScale,
+      scale: scope.sourceVariantDetails.scale,
+      scale_variation: scope.sourceVariantDetails.scaleVariation,
+      super_low_poly_filename: scope.sourceVariantDetails.superLowPolyFilename,
+    }),
+  };
+  const unitVariantsFile: NewPackedFile = {
+    name: `db\\unit_variants_tables\\whmm_unit_painter_${scope.newVariantFilename}`,
+    version: unitVariantsSchema.version,
+    tableSchema: unitVariantsSchema,
+    schemaFields: buildRowFromValues(unitVariantsSchema, {
+      faction: scope.faction,
+      unit: scope.unitKey,
+      name: scope.unitVariantName,
+      variant: scope.newVariantName,
+      unit_card: scope.unitCard,
+    }),
+  };
+  return [variantsFile, unitVariantsFile];
+};
+
 const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
   if (!ArrayBuffer.isView(value)) return undefined;
   const expectedBytes = width * height * 4;
@@ -857,13 +986,16 @@ const sanitizeUnitPainterProjectState = (
     layers?: unknown;
     usedColorHistory?: unknown;
     selectedColor?: unknown;
+    factionScope?: unknown;
   };
   const activeLayerId = typeof candidate.activeLayerId === "string" ? candidate.activeLayerId.trim() : "";
   const usedColorHistory = sanitizeUnitPainterColorHistory(candidate.usedColorHistory);
   const selectedColor =
     candidate.selectedColor == null ? undefined : sanitizeUnitPainterColor(candidate.selectedColor);
+  const factionScope = sanitizeUnitPainterFactionScope(candidate.factionScope);
   if (candidate.usedColorHistory != null && !usedColorHistory) return undefined;
   if (candidate.selectedColor != null && !selectedColor) return undefined;
+  if (candidate.factionScope != null && !factionScope) return undefined;
   if (!activeLayerId || !Array.isArray(candidate.layers) || candidate.layers.length < 1 || candidate.layers.length > 32) {
     return undefined;
   }
@@ -1095,6 +1227,7 @@ const sanitizeUnitPainterProjectState = (
     layers,
     ...(usedColorHistory ? { usedColorHistory } : {}),
     ...(selectedColor ? { selectedColor } : {}),
+    ...(factionScope ? { factionScope } : {}),
   };
 };
 
@@ -1302,12 +1435,25 @@ const exportUnitPainterVariantNow = async (
       result.files ?? [],
       normalizedAsset.assetPath,
     );
+    let exportedVariantMeshPath = result.variantMeshVirtualPath;
+    const factionScope = projectState.factionScope;
+    let scopeDbFiles: NewPackedFile[] = [];
+    if (factionScope) {
+      const sourceRootKey = normalizeVirtualPath(normalizedAsset.assetPath);
+      const rootVmd = gamePackFiles.find((file) => normalizeVirtualPath(file.name) === sourceRootKey);
+      if (!rootVmd) {
+        throw new Error("The painted export did not contain its root VariantMeshDefinition.");
+      }
+      exportedVariantMeshPath = getUnitPainterScopedVmdPath(factionScope);
+      rootVmd.name = exportedVariantMeshPath;
+      scopeDbFiles = await buildUnitPainterFactionScopeDbFiles(factionScope);
+    }
     const projectFiles = await buildUnitPainterProjectPackFiles(
       normalizedAsset.assetPath,
       variantSelections,
       projectState,
     );
-    const packFiles = [...gamePackFiles, ...projectFiles];
+    const packFiles = [...gamePackFiles, ...scopeDbFiles, ...projectFiles];
     await writePack(packFiles, packPath);
 
     // The normal Data-folder watcher will discover this shortly. Defer the immediate
@@ -1351,7 +1497,7 @@ const exportUnitPainterVariantNow = async (
       success: true as const,
       packPath,
       files: packFiles.map((file) => file.name),
-      variantMeshPath: result.variantMeshVirtualPath,
+      variantMeshPath: exportedVariantMeshPath,
       warnings: result.warnings ?? [],
     };
   } catch (error) {
@@ -1555,6 +1701,7 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
         activeLayerId: manifest.activeLayerId,
         usedColorHistory: manifest.usedColorHistory,
         selectedColor: manifest.selectedColor,
+        factionScope: manifest.factionScope,
         layers,
       },
     };
