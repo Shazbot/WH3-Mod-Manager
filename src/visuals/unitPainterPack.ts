@@ -71,11 +71,31 @@ export type UnitPainterProjectLayerInput = {
   decal?: UnitPainterProjectDecalInput;
 };
 
+export type UnitPainterFactionScopeInput = {
+  faction: string;
+  unitKey: string;
+  sourceVariantName: string;
+  unitVariantName: string;
+  unitCard: string;
+  sourceVariantDetails: {
+    techFolder: string;
+    variantFilename: string;
+    lowPolyFilename: string;
+    mountScale: string;
+    scale: string;
+    scaleVariation: string;
+    superLowPolyFilename: string;
+  };
+  newVariantName: string;
+  newVariantFilename: string;
+};
+
 export type UnitPainterProjectStateInput = {
   activeLayerId: string;
   layers: UnitPainterProjectLayerInput[];
   usedColorHistory?: readonly string[];
   selectedColor?: string;
+  factionScope?: UnitPainterFactionScopeInput;
 };
 
 export type UnitPainterProjectStoredTexture = {
@@ -113,6 +133,7 @@ export type UnitPainterProjectManifest = {
   activeLayerId: string;
   usedColorHistory?: string[];
   selectedColor?: string;
+  factionScope?: UnitPainterFactionScopeInput;
   layers: Array<{
     id: string;
     name: string;
@@ -226,6 +247,60 @@ const normalizeProjectColor = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
   return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : undefined;
+};
+
+const normalizeFactionScopeText = (value: unknown, label: string, allowEmpty = false): string => {
+  if (typeof value !== "string") throw new Error(`The unit painter project contains an invalid ${label}.`);
+  const normalized = value.trim();
+  if ((!allowEmpty && !normalized) || normalized.includes("\0") || /[\r\n\t]/.test(normalized)) {
+    throw new Error(`The unit painter project contains an invalid ${label}.`);
+  }
+  return normalized;
+};
+
+const normalizeUnitPainterFactionScope = (value: unknown): UnitPainterFactionScopeInput | undefined => {
+  if (value == null) return undefined;
+  if (!value || typeof value !== "object") {
+    throw new Error("The unit painter project contains invalid faction-scope metadata.");
+  }
+  const raw = value as Record<string, unknown>;
+  const details =
+    raw.sourceVariantDetails && typeof raw.sourceVariantDetails === "object"
+      ? raw.sourceVariantDetails as Record<string, unknown>
+      : undefined;
+  if (!details) throw new Error("The unit painter project faction scope is missing source variant details.");
+
+  const newVariantName = normalizeFactionScopeText(raw.newVariantName, "new variant key");
+  const newVariantFilename = normalizeFactionScopeText(raw.newVariantFilename, "new VMD filename");
+  if (!/^[a-zA-Z0-9_.-]{1,160}$/.test(newVariantName)) {
+    throw new Error("The unit painter project new variant key contains unsupported characters.");
+  }
+  if (!/^[a-zA-Z0-9_-]{1,120}$/.test(newVariantFilename)) {
+    throw new Error("The unit painter project new VMD filename must use only letters, numbers, '_' or '-'.");
+  }
+
+  return {
+    faction: normalizeFactionScopeText(raw.faction, "faction key"),
+    unitKey: normalizeFactionScopeText(raw.unitKey, "unit key"),
+    sourceVariantName: normalizeFactionScopeText(raw.sourceVariantName, "source variant key"),
+    unitVariantName: normalizeFactionScopeText(raw.unitVariantName, "unit variant name", true),
+    unitCard: normalizeFactionScopeText(raw.unitCard, "unit card", true),
+    sourceVariantDetails: {
+      techFolder: normalizeFactionScopeText(details.techFolder, "source variant tech folder", true),
+      variantFilename: normalizeFactionScopeText(details.variantFilename, "source variant filename"),
+      lowPolyFilename: normalizeFactionScopeText(details.lowPolyFilename, "source variant low-poly filename", true),
+      mountScale: normalizeFactionScopeText(details.mountScale, "source variant mount scale", true),
+      scale: normalizeFactionScopeText(details.scale, "source variant scale", true),
+      scaleVariation: normalizeFactionScopeText(details.scaleVariation, "source variant scale variation", true),
+      superLowPolyFilename: normalizeFactionScopeText(
+        details.superLowPolyFilename,
+        "source variant super-low-poly filename",
+        true,
+      ),
+    },
+    newVariantName,
+    newVariantFilename,
+  };
 };
 
 const normalizeProjectColorHistory = (value: unknown): string[] | undefined => {
@@ -565,6 +640,7 @@ export const buildUnitPainterProjectPackFiles = async (
     throw new Error("The unit painter project contains an invalid selected color.");
   }
 
+  const factionScope = normalizeUnitPainterFactionScope(project.factionScope);
   const manifest: UnitPainterProjectManifest = {
     formatVersion: UNIT_PAINTER_PROJECT_FORMAT_VERSION,
     sourceVariantMeshDefinition: sourceVmd,
@@ -572,6 +648,7 @@ export const buildUnitPainterProjectPackFiles = async (
     activeLayerId: project.activeLayerId,
     ...(usedColorHistory ? { usedColorHistory } : {}),
     ...(selectedColor ? { selectedColor } : {}),
+    ...(factionScope ? { factionScope } : {}),
     layers: storedLayers,
   };
   const manifestBuffer = Buffer.from(JSON.stringify(manifest, null, 2), "utf8");
@@ -948,6 +1025,7 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
   const usedColorHistory = normalizeProjectColorHistory(candidate.usedColorHistory);
   const selectedColor =
     candidate.selectedColor == null ? undefined : normalizeProjectColor(candidate.selectedColor);
+  const factionScope = normalizeUnitPainterFactionScope(candidate.factionScope);
   if (candidate.selectedColor != null && !selectedColor) {
     throw new Error("The unit painter project contains an invalid selected color.");
   }
@@ -958,6 +1036,7 @@ export const parseUnitPainterProjectManifest = (buffer: Uint8Array): UnitPainter
     activeLayerId,
     ...(usedColorHistory ? { usedColorHistory } : {}),
     ...(selectedColor ? { selectedColor } : {}),
+    ...(factionScope ? { factionScope } : {}),
     layers,
   };
 };
