@@ -190,6 +190,12 @@ describe("WH3AssetHostClient", () => {
                   skeletonName: "human",
                   hasSkeletonFile: true,
                   animations: [{ path: "animations\\battle\\human\\stand_idle.anim" }],
+                  animationDefaults: {
+                    ground: {
+                      path: "animations\\battle\\human\\stand_idle.anim",
+                      slot: "STAND_IDLE_1",
+                    },
+                  },
                   diagnostics: [],
                 }
               : {
@@ -214,6 +220,12 @@ describe("WH3AssetHostClient", () => {
     await expect(assetHost.getAnimationCatalog("variantmeshes\\foo.variantmeshdefinition")).resolves.toMatchObject({
       skeletonName: "human",
       animations: [{ path: "animations\\battle\\human\\stand_idle.anim" }],
+      animationDefaults: {
+        ground: {
+          path: "animations\\battle\\human\\stand_idle.anim",
+          slot: "STAND_IDLE_1",
+        },
+      },
     });
     await assetHost.exportModel({
       assetPath: "variantmeshes\\foo.variantmeshdefinition",

@@ -24,7 +24,7 @@ import {
 import type { VisualsModelPreviewAnimationReference } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
-import { selectDefaultAnimation } from "../visuals/animationSelection";
+import { selectDefaultAnimation, type AnimationSelectionProfile } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
   createUnitPainterSession,
@@ -64,6 +64,8 @@ type PainterStrokeRuntimeProfile = {
 
 type VisualsModelPreviewProps = {
   assetPath: string;
+  /** Semantic animation family used to resolve the metadata-selected standing idle. */
+  animationProfile?: AnimationSelectionProfile;
   /** False while the owning main-window tab is kept mounted but hidden. */
   isActive?: boolean;
   /** Whether to show the ground wireframe beneath the model. */
@@ -848,6 +850,7 @@ const getDefaultFactionPreviewFaction = (context?: UnitPainterUnitVariantContext
 const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const {
     assetPath,
+    animationProfile = "ground",
     isActive = true,
     showWireframe = true,
     unsyncedAnimations = true,
@@ -972,8 +975,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const loadedAnimationCatalogKeyRef = useRef<string>();
   const loadedVariantCatalogKeyRef = useRef<string>();
   const animationCatalogKey = useMemo(
-    () => JSON.stringify([assetPath, effectiveEnabledMods]),
-    [assetPath, effectiveEnabledMods],
+    () => JSON.stringify([assetPath, animationProfile, effectiveEnabledMods]),
+    [animationProfile, assetPath, effectiveEnabledMods],
   );
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const selectedAnimation = animationOptions.find((animation) => animation.key === selectedAnimationPath);
@@ -2103,7 +2106,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               || first.key.localeCompare(second.key),
           );
         const options = [NONE_ANIMATION, ...animations];
-        const defaultAnimation = selectDefaultAnimation(animations);
+        const preferredAnimationPath = result.animationDefaults?.[animationProfile]?.path
+          ?? result.animationDefaults?.ground?.path;
+        const defaultAnimation = selectDefaultAnimation(animations, preferredAnimationPath);
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.key || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
@@ -2128,7 +2133,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [animationCatalogKey, assetPath, effectiveEnabledMods, isActive]);
+  }, [animationCatalogKey, animationProfile, assetPath, effectiveEnabledMods, isActive]);
 
   useEffect(() => {
     if (!isActive || loadedVariantCatalogKeyRef.current === variantCatalogKey) return;

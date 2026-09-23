@@ -8,6 +8,7 @@ import {
   encodeWh3AssetHostFrame,
 } from "./wh3AssetHostProtocol";
 import type { VariantMeshSelection } from "./visuals/variantMesh";
+import type { AnimationSelectionDefaults } from "./visuals/animationSelection";
 
 const REQUIRED_CAPABILITIES = [
   "hello",
@@ -151,6 +152,8 @@ export interface Wh3AssetHostAnimationCatalog {
   skeletonName?: string | null;
   hasSkeletonFile: boolean;
   animations: Wh3AssetHostAnimationReference[];
+  /** Game animation-bin defaults, when the native host has metadata for this skeleton. */
+  animationDefaults?: AnimationSelectionDefaults;
   diagnostics: string[];
 }
 

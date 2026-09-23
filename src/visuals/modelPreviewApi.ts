@@ -1,4 +1,5 @@
 import type { VariantMeshSelection } from "./variantMesh";
+import type { AnimationSelectionDefaults } from "./animationSelection";
 
 export type VisualsModelPreviewMod = Pick<Mod, "name" | "path" | "loadOrder">;
 
@@ -65,6 +66,8 @@ export interface VisualsModelPreviewAnimationCatalogResult {
   success: boolean;
   skeletonName?: string | null;
   animations?: VisualsModelPreviewAnimationReference[];
+  /** Game animation-bin defaults keyed by the kind of unit being previewed. */
+  animationDefaults?: AnimationSelectionDefaults;
   diagnostics?: string[];
   error?: string;
 }
