@@ -426,6 +426,76 @@ describe("unit painter", () => {
     }
   });
 
+  it("splits an active split region again and unsplits one level at a time", () => {
+    const painter = makePainter();
+    try {
+      const textureId = painter.session.textureViews[0].id;
+      expect(painter.session.selectSimilarTexturePoint(textureId, 1.5, 1.5, 0, "replace")).toBe(true);
+
+      expect(painter.session.splitSelection("similar", "vertical")).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.depth).toBe(1);
+      expect(painter.session.selectionPartitionInfo?.pathLabels).toEqual(["Left"]);
+
+      expect(painter.session.splitSelection("similar", "horizontal")).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.depth).toBe(2);
+      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label))
+        .toEqual(["Top", "Bottom"]);
+      expect(painter.session.selectionPartitionInfo?.pathLabels).toEqual(["Left", "Top"]);
+
+      expect(
+        painter.session.fillSelection("similar", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 220, g: 30, b: 30 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 4, 4)).toEqual([220, 30, 30, 255]);
+      expect(getPixel(painter.material, 4, 24)).toEqual([0, 0, 0, 255]);
+      expect(getPixel(painter.material, 24, 4)).toEqual([0, 0, 0, 255]);
+
+      expect(painter.session.setSelectionPartitionRegion("bottom")).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.pathLabels).toEqual(["Left", "Bottom"]);
+      expect(
+        painter.session.fillSelection("similar", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 30, g: 60, b: 220 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 4, 4)).toEqual([220, 30, 30, 255]);
+      expect(getPixel(painter.material, 4, 24)).toEqual([30, 60, 220, 255]);
+      expect(getPixel(painter.material, 24, 24)).toEqual([0, 0, 0, 255]);
+
+      expect(painter.session.removeSelectionPartition()).toBe(true);
+      expect(painter.session.selectionPartitionInfo?.depth).toBe(1);
+      expect(painter.session.selectionPartitionInfo?.kind).toBe("vertical");
+      expect(painter.session.selectionPartitionInfo?.pathLabels).toEqual(["Left"]);
+      expect(
+        painter.session.fillSelection("similar", {
+          radiusPx: 1,
+          opacity: 1,
+          hardness: 1,
+          mode: "paint",
+          color: { r: 40, g: 200, b: 80 },
+        }),
+      ).toBe(true);
+      expect(getPixel(painter.material, 4, 4)).toEqual([40, 200, 80, 255]);
+      expect(getPixel(painter.material, 4, 24)).toEqual([40, 200, 80, 255]);
+      expect(getPixel(painter.material, 24, 4)).toEqual([0, 0, 0, 255]);
+
+      expect(painter.session.clearSelectionPartitions()).toBe(true);
+      expect(painter.session.selectionPartitionInfo).toBeUndefined();
+    } finally {
+      painter.session.dispose();
+      painter.geometry.dispose();
+      painter.material.dispose();
+    }
+  });
+
   it("partitions a selection into four persistent X regions", () => {
     const painter = makePainter();
     try {
