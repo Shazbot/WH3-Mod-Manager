@@ -963,14 +963,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintActiveLayer = paintLayers.find((layer) => layer.id === paintActiveLayerId);
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
   const paintActiveDecal = paintSessionRef.current?.activeDecalInfo;
-  const paintFactionPreviewOptions = Array.from(new Set([
-    ...(unitVariantContext?.availableFactions || []),
-    ...(unitVariantContext?.factionColours || []).map((set) => set.faction),
-    ...(unitVariantContext?.unitVariantColours || []).map((set) => set.faction),
-  ].map((faction) => faction.trim()).filter(Boolean)));
-  const paintFactionPreviewResolution = resolveFactionColourSet(
-    unitVariantContext,
-    paintFactionPreviewFaction,
+  const paintFactionPreviewOptions = useMemo(
+    () => Array.from(new Set([
+      ...(unitVariantContext?.availableFactions || []),
+      ...(unitVariantContext?.factionColours || []).map((set) => set.faction),
+      ...(unitVariantContext?.unitVariantColours || []).map((set) => set.faction),
+    ].map((faction) => faction.trim()).filter(Boolean))),
+    [unitVariantContext],
+  );
+  const paintFactionPreviewResolution = useMemo(
+    () => resolveFactionColourSet(unitVariantContext, paintFactionPreviewFaction),
+    [paintFactionPreviewFaction, unitVariantContext],
   );
   const paintFactionPreviewColours = paintFactionPreviewResolution.colours;
   const canPreviewFactionColours =
@@ -3229,6 +3232,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       <option key={faction} value={faction}>{faction}</option>
                     ))}
                   </select>
+                )}
+                {paintFactionPreviewOptions.length > 0 && !paintFactionPreviewColours && (
+                  <span
+                    className="max-w-64 truncate text-amber-300"
+                    title={`No faction colour palette resolved for '${paintFactionPreviewFaction}'.`}
+                  >
+                    No faction colour palette
+                  </span>
                 )}
                 {isPaintFactionColourPreviewEnabled && paintFactionPreviewColours && (
                   <span className="flex items-center gap-0.5" title="Primary / secondary / tertiary faction colours">
