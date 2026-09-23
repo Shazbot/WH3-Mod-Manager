@@ -649,10 +649,20 @@ describe("Unit Viewer catalog", () => {
           variant: "unit_variant",
           unit_card: "unit_card",
         }],
-        unit_variants_colours_tables: [{
-          unit_variant: "land", faction: "faction_a", soldier_type: "soldier",
-          primary_colour_hex: "AABBCC", secondary_colour_hex: "112233", tertiary_colour_hex: "445566",
-        }],
+        factions_tables: [
+          {
+            key: "faction_a",
+            uniform_colour_primary: "AABBCC",
+            uniform_colour_secondary: "112233",
+            uniform_colour_tertiary: "445566",
+          },
+          {
+            key: "faction_b",
+            uniform_colour_primary: "DDEEFF",
+            uniform_colour_secondary: "667788",
+            uniform_colour_tertiary: "99AABB",
+          },
+        ],
         variants_tables: [{
           variant_name: "unit_variant",
           tech_folder: "tech",
@@ -693,9 +703,10 @@ describe("Unit Viewer catalog", () => {
         superLowPolyFilename: "imposter\\human",
       },
       availableFactions: ["faction_a", "faction_b"],
-      factionColours: [{
-        faction: "faction_a", soldierType: "soldier", primary: "#aabbcc", secondary: "#112233", tertiary: "#445566",
-      }],
+      factionColours: [
+        { faction: "faction_a", primary: "#aabbcc", secondary: "#112233", tertiary: "#445566" },
+        { faction: "faction_b", primary: "#ddeeff", secondary: "#667788", tertiary: "#99aabb" },
+      ],
     });
   });
 

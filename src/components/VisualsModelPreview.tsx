@@ -675,10 +675,7 @@ const findFactionMaskBinding = (texture: THREE.Texture, bindings: readonly UnitP
 
 const selectFactionColourSet = (sets: readonly UnitPainterFactionColourSet[], faction: string) => {
   const targetFaction = faction.trim().toLowerCase();
-  const exact = sets.filter((set) => set.faction.trim().toLowerCase() === targetFaction);
-  const generic = sets.filter((set) => !set.faction.trim());
-  const candidates = exact.length > 0 ? exact : generic.length > 0 ? generic : sets;
-  return candidates.find((set) => set.soldierType.toLowerCase() === "soldier") ?? candidates[0];
+  return sets.find((set) => set.faction.trim().toLowerCase() === targetFaction);
 };
 
 const applyFactionColourPreview = async (

@@ -148,7 +148,6 @@ export type UnitPainterVariantSourceDetails = {
 
 export type UnitPainterFactionColourSet = {
   faction: string;
-  soldierType: string;
   primary: string;
   secondary: string;
   tertiary: string;
