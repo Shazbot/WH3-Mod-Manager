@@ -83,6 +83,27 @@ export interface UnitViewerGroundEffect {
   multiplier: number;
 }
 
+export interface UnitViewerPainterVariantContext {
+  /** land_units key used by unit_variants_tables.unit. */
+  unitKey: string;
+  /** Faction on the source unit_variants row; empty means the source row is global. */
+  faction: string;
+  variantName: string;
+  unitVariantName: string;
+  unitCard: string;
+  variantDetails: {
+    techFolder: string;
+    variantFilename: string;
+    lowPolyFilename: string;
+    mountScale: string;
+    scale: string;
+    scaleVariation: string;
+    superLowPolyFilename: string;
+  };
+  /** Useful faction keys for the save UI. Free-form faction keys are still allowed. */
+  availableFactions: string[];
+}
+
 export interface UnitViewerUnitModel {
   key: string;
   landUnitKey: string;
@@ -130,6 +151,8 @@ export interface UnitViewerUnitModel {
   unitCardPath?: string;
   /** Resolved variantmeshdefinition used by the 3D unit preview. */
   variantMeshPath?: string;
+  /** Source DB rows needed to optionally save a painted VMD as a faction-specific unit variant. */
+  painterVariantContext?: UnitViewerPainterVariantContext;
   attributes: UnitViewerAttribute[];
   abilities: UnitViewerAbility[];
 }
