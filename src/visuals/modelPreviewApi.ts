@@ -136,11 +136,43 @@ export interface UnitPainterProjectLayerTransfer {
   }>;
 }
 
+export type UnitPainterVariantSourceDetails = {
+  techFolder: string;
+  variantFilename: string;
+  lowPolyFilename: string;
+  mountScale: string;
+  scale: string;
+  scaleVariation: string;
+  superLowPolyFilename: string;
+};
+
+export type UnitPainterUnitVariantContext = {
+  unitKey: string;
+  faction: string;
+  variantName: string;
+  unitVariantName: string;
+  unitCard: string;
+  variantDetails: UnitPainterVariantSourceDetails;
+  availableFactions?: string[];
+};
+
+export type UnitPainterFactionScopeTransfer = {
+  faction: string;
+  unitKey: string;
+  sourceVariantName: string;
+  unitVariantName: string;
+  unitCard: string;
+  sourceVariantDetails: UnitPainterVariantSourceDetails;
+  newVariantName: string;
+  newVariantFilename: string;
+};
+
 export interface UnitPainterProjectStateTransfer {
   activeLayerId: string;
   layers: UnitPainterProjectLayerTransfer[];
   usedColorHistory?: string[];
   selectedColor?: string;
+  factionScope?: UnitPainterFactionScopeTransfer;
 }
 
 export type UnitPainterOpenedProject = {
@@ -151,6 +183,7 @@ export type UnitPainterOpenedProject = {
   layers: UnitPainterProjectLayerTransfer[];
   usedColorHistory?: string[];
   selectedColor?: string;
+  factionScope?: UnitPainterFactionScopeTransfer;
 };
 
 export interface UnitPainterProjectOpenResult {
@@ -251,6 +284,12 @@ export const exportUnitPainterTextures = async (
       activeLayerId: projectState.activeLayerId,
       usedColorHistory: projectState.usedColorHistory ? [...projectState.usedColorHistory] : undefined,
       selectedColor: projectState.selectedColor,
+      factionScope: projectState.factionScope
+        ? {
+            ...projectState.factionScope,
+            sourceVariantDetails: { ...projectState.factionScope.sourceVariantDetails },
+          }
+        : undefined,
       layers: projectState.layers.map((layer) => ({
         id: layer.id,
         name: layer.name,
