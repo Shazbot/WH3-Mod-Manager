@@ -711,9 +711,37 @@ export const buildUnitViewerData = (
       .sort((first, second) => collator.compare(first.name, second.name) || collator.compare(first.key, second.key));
     const variantRows = (unitVariants.get(landUnitKey) || []).toReversed();
     const variant = variantRows.find((row) => !asString(row.faction)) || variantRows[0];
+    const variantName = asString(variant?.variant);
+    const variantDefinition = variants.get(variantName);
     const unitCardName = asString(variant?.unit_card) || key;
     const variantMeshPath =
-      toVariantMeshDefinitionPath(asString(variants.get(asString(variant?.variant))?.variant_filename)) || undefined;
+      toVariantMeshDefinitionPath(asString(variantDefinition?.variant_filename)) || undefined;
+    const availableVariantFactions = Array.from(
+      new Set([
+        ...(permissions.get(key) || []).map((permission) => asString(permission.faction)).filter(Boolean),
+        ...variantRows.map((row) => asString(row.faction)).filter(Boolean),
+      ]),
+    ).sort((first, second) => collator.compare(first, second));
+    const painterVariantContext =
+      variant && variantName && variantDefinition
+        ? {
+            unitKey: landUnitKey,
+            faction: asString(variant.faction),
+            variantName,
+            unitVariantName: asString(variant.name),
+            unitCard: asString(variant.unit_card),
+            variantDetails: {
+              techFolder: asString(variantDefinition.tech_folder),
+              variantFilename: asString(variantDefinition.variant_filename),
+              lowPolyFilename: asString(variantDefinition.low_poly_filename),
+              mountScale: asString(variantDefinition.mount_scale),
+              scale: asString(variantDefinition.scale),
+              scaleVariation: asString(variantDefinition.scale_variation),
+              superLowPolyFilename: asString(variantDefinition.super_low_poly_filename),
+            },
+            availableFactions: availableVariantFactions,
+          }
+        : undefined;
     const generalPortrait = (permissions.get(key) || [])
       .toReversed()
       .map((permission) => asString(permission.general_portrait))
@@ -790,6 +818,7 @@ export const buildUnitViewerData = (
       secondaryMissileWeapon,
       unitCardPath,
       variantMeshPath,
+      painterVariantContext,
       attributes: unitAttributes,
       abilities: unitAbilities,
     };
