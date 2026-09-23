@@ -4133,7 +4133,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   {paintSelection && paintScope !== "similar" && !paintSelectionPartition && (
                     <label
                       className="flex items-center gap-1 text-gray-400"
-                      title="Padding used by Fill and by scoped painting in the Texture view"
+                      title="Expand the selected material/UV-island mask outward by this many texture pixels. This gives fills and scoped Texture-view painting a small border beyond the exact UV footprint, which helps prevent visible seams from texture filtering and mipmaps. Pixels already occupied by other UVs are protected, so padding should not paint into unrelated mapped areas. This does not increase the normal 3D brush size."
                     >
                       Pad
                       <select
@@ -4443,7 +4443,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   >
                     Save options{isPaintFactionScoped ? " · faction only" : ""}
                   </summary>
-                  <div className="absolute right-0 top-full z-40 mt-1 flex min-w-[36rem] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
+                  <div className="absolute left-0 top-full z-40 mt-1 flex w-[min(36rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
                   <label
                     className={`flex items-center gap-1 rounded border px-2 py-1 ${
                       isPaintFactionScoped
@@ -4518,7 +4518,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         >
                           Advanced names{paintFactionNamesCustomized ? " · custom" : ""}
                         </summary>
-                        <div className="absolute right-0 top-full z-30 mt-1 flex min-w-[34rem] items-end gap-2 rounded border border-gray-600 bg-gray-900 p-2 shadow-xl">
+                        <div className="absolute left-0 top-full z-30 mt-1 flex w-[min(34rem,calc(100vw-3rem))] max-w-[calc(100vw-3rem)] flex-wrap items-end gap-2 rounded border border-gray-600 bg-gray-900 p-2 shadow-xl">
                           <label className="min-w-0 flex-1 text-[10px] text-gray-400">
                             Variant key
                             <input
