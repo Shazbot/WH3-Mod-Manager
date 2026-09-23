@@ -12,6 +12,8 @@ export type UnitPainterSelectionPartitionInfo = {
   sourceScope: Exclude<UnitPainterSelectionScope, "all">;
   regions: Array<{ id: string; label: string; active: boolean }>;
   allActive: boolean;
+  depth: number;
+  pathLabels: string[];
 };
 
 export type UnitPainterSelectionInfo = {
@@ -1793,7 +1795,7 @@ export class UnitPainterSession {
   private selections: UnitPainterSelection[] = [];
   private readonly similarSelectionMasks = new Map<PaintableTexture, UvIslandMask>();
   private similarSelectionLastTarget?: PaintableTexture;
-  private selectionPartition?: UnitPainterSelectionPartition;
+  private selectionPartitions: UnitPainterSelectionPartition[] = [];
   private selectionMode?: Exclude<UnitPainterSelectionScope, "all">;
   private paintLayers: PaintLayer[] = [];
   private activePaintLayerId = "";
@@ -2033,7 +2035,7 @@ export class UnitPainterSession {
     mode: UnitPainterSurfaceSelectionScope,
     operation: UnitPainterSelectionOperation,
   ) {
-    this.selectionPartition = undefined;
+    this.selectionPartitions.length = 0;
     const key = this.getSelectionKey(
       selection.mesh,
       selection.materialIndex,
@@ -2085,7 +2087,7 @@ export class UnitPainterSession {
     mask: UvIslandMask,
     operation: UnitPainterSelectionOperation,
   ) {
-    this.selectionPartition = undefined;
+    this.selectionPartitions.length = 0;
     if (this.selectionMode !== "similar") {
       this.selections = [];
       this.similarSelectionMasks.clear();
@@ -2150,8 +2152,21 @@ export class UnitPainterSession {
     return this.similarSelectionMasks.size > 0;
   }
 
+  private getActiveSelectionPartition() {
+    return this.selectionPartitions[this.selectionPartitions.length - 1];
+  }
+
+  private getSelectionPartitionActiveLabel(partition: UnitPainterSelectionPartition) {
+    const activeRegions = partition.regions.filter((region) => partition.activeRegionIds.has(region.id));
+    if (activeRegions.length === partition.regions.length) {
+      return partition.regions.length === 2 ? "Both" : "All";
+    }
+    if (activeRegions.length === 0) return "None";
+    return activeRegions.map((region) => region.label).join(" + ");
+  }
+
   get selectionPartitionInfo(): UnitPainterSelectionPartitionInfo | undefined {
-    const partition = this.selectionPartition;
+    const partition = this.getActiveSelectionPartition();
     if (!partition) return undefined;
     return {
       kind: partition.kind,
@@ -2164,6 +2179,8 @@ export class UnitPainterSession {
       allActive:
         partition.regions.length > 0
         && partition.regions.every((region) => partition.activeRegionIds.has(region.id)),
+      depth: this.selectionPartitions.length,
+      pathLabels: this.selectionPartitions.map((level) => this.getSelectionPartitionActiveLabel(level)),
     };
   }
 
@@ -2173,10 +2190,7 @@ export class UnitPainterSession {
       : [...new Set(this.selections.map((selection) => selection.target))];
   }
 
-  private rebuildSelectionPartitionActiveMasks() {
-    const partition = this.selectionPartition;
-    if (!partition) return;
-
+  private rebuildSelectionPartitionActiveMasks(partition: UnitPainterSelectionPartition) {
     partition.activeMasks.clear();
     const allActive =
       partition.regions.length > 0
@@ -2200,10 +2214,17 @@ export class UnitPainterSession {
     scope: Exclude<UnitPainterSelectionScope, "all">,
     kind: UnitPainterSelectionSplitKind,
   ) {
+    const parentPartition = this.getActiveSelectionPartition();
+    if (parentPartition && parentPartition.sourceScope !== scope) return false;
+
     const sourceMasks = new Map<PaintableTexture, UvIslandMask>();
-    for (const target of this.getBaseSelectionTargets(scope)) {
-      const mask = this.getBaseSelectionMaskForTarget(target, scope);
-      if (mask) sourceMasks.set(target, mask);
+    if (parentPartition) {
+      for (const [target, mask] of parentPartition.activeMasks) sourceMasks.set(target, mask);
+    } else {
+      for (const target of this.getBaseSelectionTargets(scope)) {
+        const mask = this.getBaseSelectionMaskForTarget(target, scope);
+        if (mask) sourceMasks.set(target, mask);
+      }
     }
     if (sourceMasks.size === 0) return false;
 
@@ -2224,7 +2245,7 @@ export class UnitPainterSession {
 
     const nonEmptyRegions = regions.filter((region) => region.masks.size > 0);
     if (nonEmptyRegions.length < 2) return false;
-    this.selectionPartition = {
+    const partition: UnitPainterSelectionPartition = {
       kind,
       sourceScope: scope,
       sourceMasks,
@@ -2232,7 +2253,8 @@ export class UnitPainterSession {
       activeRegionIds: new Set([nonEmptyRegions[0].id]),
       activeMasks: new Map(),
     };
-    this.rebuildSelectionPartitionActiveMasks();
+    this.rebuildSelectionPartitionActiveMasks(partition);
+    this.selectionPartitions.push(partition);
     return true;
   }
 
@@ -2240,7 +2262,7 @@ export class UnitPainterSession {
     regionId: string,
     operation: UnitPainterSelectionOperation = "replace",
   ) {
-    const partition = this.selectionPartition;
+    const partition = this.getActiveSelectionPartition();
     if (!partition || !partition.regions.some((region) => region.id === regionId)) return false;
 
     if (operation === "replace") {
@@ -2252,21 +2274,25 @@ export class UnitPainterSession {
     } else {
       partition.activeRegionIds.add(regionId);
     }
-    this.rebuildSelectionPartitionActiveMasks();
+    this.rebuildSelectionPartitionActiveMasks(partition);
     return true;
   }
 
   selectAllSelectionPartitionRegions() {
-    const partition = this.selectionPartition;
+    const partition = this.getActiveSelectionPartition();
     if (!partition) return false;
     partition.activeRegionIds = new Set(partition.regions.map((region) => region.id));
-    this.rebuildSelectionPartitionActiveMasks();
+    this.rebuildSelectionPartitionActiveMasks(partition);
     return true;
   }
 
   removeSelectionPartition() {
-    if (!this.selectionPartition) return false;
-    this.selectionPartition = undefined;
+    return this.selectionPartitions.pop() !== undefined;
+  }
+
+  clearSelectionPartitions() {
+    if (this.selectionPartitions.length === 0) return false;
+    this.selectionPartitions.length = 0;
     return true;
   }
 
@@ -3031,9 +3057,9 @@ export class UnitPainterSession {
         selectedUvSegments: Float32Array.from(selectedUvSegments),
         selectedUvTriangles: Float32Array.from(selectedUvTriangles),
         selectedPixelMask:
-          this.selectionPartition?.sourceScope === selectionScope
+          this.getActiveSelectionPartition()?.sourceScope === selectionScope
             ? (() => {
-                const mask = this.selectionPartition?.activeMasks.get(target);
+                const mask = this.getActiveSelectionPartition()?.activeMasks.get(target);
                 return mask
                   ? { width: mask.width, height: mask.height, tileSize: MASK_TILE_SIZE, tiles: mask.tiles }
                   : undefined;
@@ -3363,7 +3389,7 @@ export class UnitPainterSession {
 
   clearSelection() {
     this.selections = [];
-    this.selectionPartition = undefined;
+    this.selectionPartitions.length = 0;
     this.similarSelectionMasks.clear();
     this.similarSelectionLastTarget = undefined;
     this.selectionMode = undefined;
@@ -3451,11 +3477,11 @@ export class UnitPainterSession {
     if (!(intersection.object instanceof THREE.Mesh)) return false;
 
     const partitionMask =
-      this.selectionPartition?.sourceScope === scope && intersection.uv
+      this.getActiveSelectionPartition()?.sourceScope === scope && intersection.uv
         ? (() => {
             const material = getIntersectionMaterial(intersection);
             const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
-            const mask = target ? this.selectionPartition?.activeMasks.get(target) : undefined;
+            const mask = target ? this.getActiveSelectionPartition()?.activeMasks.get(target) : undefined;
             if (!target || !mask) return false;
             const uv = intersection.uv.clone();
             target.editable.updateMatrix();
@@ -3524,15 +3550,15 @@ export class UnitPainterSession {
     if (!target || !this.matchesSelectionScope(intersection, scope)) return undefined;
 
     const partitionMask =
-      this.selectionPartition?.sourceScope === scope
-        ? this.selectionPartition.activeMasks.get(target)
+      this.getActiveSelectionPartition()?.sourceScope === scope
+        ? this.getActiveSelectionPartition()!.activeMasks.get(target)
         : undefined;
     const mask =
       partitionMask
       ?? (scope === "similar"
         ? this.similarSelectionMasks.get(target)
         : this.getUvIslandMask(intersection, target));
-    if ((scope === "similar" || this.selectionPartition?.sourceScope === scope) && !mask) return undefined;
+    if ((scope === "similar" || this.getActiveSelectionPartition()?.sourceScope === scope) && !mask) return undefined;
     const uv = intersection.uv.clone();
     target.editable.transformUv(uv);
     return {
@@ -3802,8 +3828,8 @@ export class UnitPainterSession {
     scope: Exclude<UnitPainterSelectionScope, "all">,
     paddingPx = 0,
   ) {
-    if (this.selectionPartition?.sourceScope === scope) {
-      return this.selectionPartition.activeMasks.get(target);
+    if (this.getActiveSelectionPartition()?.sourceScope === scope) {
+      return this.getActiveSelectionPartition()!.activeMasks.get(target);
     }
     return this.getBaseSelectionMaskForTarget(target, scope, paddingPx);
   }
@@ -4335,7 +4361,7 @@ export class UnitPainterSession {
     this.uvMasksByTarget.clear();
     this.uvCoverageMasksByTarget.clear();
     this.selectionMaskCache.clear();
-    this.selectionPartition = undefined;
+    this.selectionPartitions.length = 0;
     this.similarSelectionMasks.clear();
     this.similarSelectionLastTarget = undefined;
     this.uvMaskCacheLru.clear();
