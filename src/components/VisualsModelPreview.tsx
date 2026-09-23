@@ -809,6 +809,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   >();
   const painterEnabledRef = useRef(false);
   const paintViewModeRef = useRef<"model" | "split" | "texture">("model");
+  const paintIsolationModeRef = useRef<UnitPainterIsolationMode>("off");
   const eyedropperActiveRef = useRef(false);
   const selectToolModeRef = useRef<UnitPainterSelectMode>();
   const similarToleranceRef = useRef(8);
@@ -1019,6 +1020,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
   painterEnabledRef.current = enablePainting && isPainterEnabled && status === "ready";
   paintViewModeRef.current = paintViewMode;
+  paintIsolationModeRef.current = paintIsolationMode;
   eyedropperActiveRef.current = isPaintEyedropperActive;
   selectToolModeRef.current = paintSelectMode;
   similarToleranceRef.current = paintSimilarTolerance;
@@ -1328,7 +1330,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         -(localY / viewportHeight) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObject(root, true)[0];
+      const isolationScope = paintScopeRef.current;
+      const shouldPierceUnselected =
+        paintIsolationModeRef.current !== "off"
+        && (isolationScope === "material" || isolationScope === "island")
+        && !!paintSessionRef.current;
+      raycaster.firstHitOnly = !shouldPierceUnselected;
+      const hits = raycaster.intersectObject(root, true);
+      raycaster.firstHitOnly = true;
+      const hit = shouldPierceUnselected
+        ? hits.find((candidate) => paintSessionRef.current?.matchesSelectionScope(candidate, isolationScope))
+        : hits[0];
       return hit ? { hit, viewportHeight } : undefined;
     };
 
