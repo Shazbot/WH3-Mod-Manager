@@ -798,7 +798,13 @@ const applyFactionColourPreview = async (
           `#include <map_fragment>\nvec4 wh3FactionMaskValue = texture2D(wh3FactionMaskMap, vMapUv);\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * wh3FactionPrimary, wh3FactionMaskValue.r);\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * wh3FactionSecondary, wh3FactionMaskValue.g);\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * wh3FactionTertiary, wh3FactionMaskValue.b);`,
         );
       };
-      material.customProgramCacheKey = () => `${previousProgramCacheKey.call(material)}|wh3-faction-colours|${binding.maskUrl}`;
+      const factionColourProgramKey = [
+        colours.primary.toLowerCase(),
+        colours.secondary.toLowerCase(),
+        colours.tertiary.toLowerCase(),
+      ].join("|");
+      material.customProgramCacheKey = () =>
+        `${previousProgramCacheKey.call(material)}|wh3-faction-colours|${binding.maskUrl}|${factionColourProgramKey}`;
       material.needsUpdate = true;
       restores.push({ material, onBeforeCompile: previousOnBeforeCompile, customProgramCacheKey: previousProgramCacheKey, mask });
     }
