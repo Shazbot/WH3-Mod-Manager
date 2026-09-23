@@ -674,6 +674,7 @@ const getVisualsSchemaHash = (game: SupportedGames): string | undefined => {
 const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
   const contribution: VisualsTableContribution = {
     variants: [],
+    variantDetails: [],
     unitVariants: [],
     landUnits: [],
     mainUnits: [],
@@ -697,17 +698,37 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
   };
 
   forEachTableRow("variants_tables", (row) => {
-    const variantName = row.find((field) => field.name === "variant_name")?.resolvedKeyValue;
+    const value = (fieldName: string) =>
+      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const variantName = value("variant_name");
     if (!variantName) return;
-    const variantFilename = row.find((field) => field.name === "variant_filename")?.resolvedKeyValue;
-    contribution.variants.push([variantName, variantFilename || ""]);
+    const variantFilename = value("variant_filename");
+    contribution.variants.push([variantName, variantFilename]);
+    contribution.variantDetails!.push([
+      variantName,
+      {
+        techFolder: value("tech_folder"),
+        variantFilename,
+        lowPolyFilename: value("low_poly_filename"),
+        mountScale: value("mount_scale"),
+        scale: value("scale"),
+        scaleVariation: value("scale_variation"),
+        superLowPolyFilename: value("super_low_poly_filename"),
+      },
+    ]);
   });
   forEachTableRow("unit_variants_tables", (row) => {
-    const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
+    const value = (fieldName: string) =>
+      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const unitKey = value("unit");
     if (!unitKey) return;
-    const faction = row.find((field) => field.name === "faction")?.resolvedKeyValue || "";
-    const variantName = row.find((field) => field.name === "variant")?.resolvedKeyValue || "";
-    contribution.unitVariants.push([unitKey, faction, variantName]);
+    contribution.unitVariants.push([
+      unitKey,
+      value("faction"),
+      value("variant"),
+      value("name"),
+      value("unit_card"),
+    ]);
   });
   forEachTableRow("main_units_tables", (row) => {
     const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
@@ -7513,6 +7534,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
       const {
         variantsByName,
+        variantDetailsByName,
         unitToVariantRows,
         landUnitKeys,
         unitKeyToOriginPackPath,
@@ -7536,14 +7558,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         return resolveTextReplacements(localized, getLocalizedName) || localized;
       };
       const landUnitToSubcultures = new Map<string, string[]>();
+      const landUnitToFactions = new Map<string, Set<string>>();
       for (const [unitKey, factionKeys] of unitToPermissionFactions) {
         const landUnitKey = mainUnitToLandUnit.get(unitKey) || (landUnitKeys.has(unitKey) ? unitKey : undefined);
         if (!landUnitKey) continue;
+        const availableFactions = landUnitToFactions.get(landUnitKey) || new Set<string>();
         const subcultures = new Set<string>();
         for (const factionKey of factionKeys) {
+          availableFactions.add(factionKey);
           const subculture = factionToSubculture.get(factionKey);
           if (subculture) subcultures.add(subculture);
         }
+        landUnitToFactions.set(landUnitKey, availableFactions);
         if (subcultures.size > 0) landUnitToSubcultures.set(landUnitKey, Array.from(subcultures));
       }
       const visualsUnits = [] as {
@@ -7552,6 +7578,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         localizedName: string;
         variantName?: string;
         variantMeshPath?: string;
+        unitVariantName?: string;
+        unitCard?: string;
+        variantDetails?: {
+          techFolder: string;
+          variantFilename: string;
+          lowPolyFilename: string;
+          mountScale: string;
+          scale: string;
+          scaleVariation: string;
+          superLowPolyFilename: string;
+        };
+        availableFactions: string[];
         originPackPath: string;
         originLabel: string;
         cultureKey: string;
@@ -7594,6 +7632,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             unitKey,
             faction: "",
             localizedName,
+            availableFactions: Array.from(landUnitToFactions.get(unitKey) || []).sort((a, b) => collator.compare(a, b)),
             originPackPath,
             originLabel,
             ...addCultureMetadata(""),
@@ -7611,6 +7650,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             localizedName,
             variantName: row.variantName || undefined,
             variantMeshPath,
+            unitVariantName: row.name || undefined,
+            unitCard: row.unitCard || undefined,
+            variantDetails: row.variantName ? variantDetailsByName.get(row.variantName) : undefined,
+            availableFactions: Array.from(landUnitToFactions.get(unitKey) || []).sort((a, b) => collator.compare(a, b)),
             originPackPath,
             originLabel,
             ...addCultureMetadata(row.faction),
