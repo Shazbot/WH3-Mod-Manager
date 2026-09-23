@@ -1007,6 +1007,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintColor(color.toLowerCase());
   };
 
+  const choosePaintSelectMode = (next: UnitPainterSelectMode | undefined) => {
+    selectToolModeRef.current = next;
+    setPaintSelectMode(next);
+    setIsPaintEyedropperActive(false);
+    clearPaintHoverVisual();
+  };
+
   const loadDecalFile = (file?: File) => {
     if (!file) return;
     void (async () => {
@@ -3147,7 +3154,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           />
         </div>
         {enablePainting && (
-          <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-xs text-gray-200 shadow-lg">
+          <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-col items-stretch gap-1 rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-xs text-gray-200 shadow-lg">
+            <div className="flex w-full flex-wrap items-center gap-1.5">
             <button
               type="button"
               disabled={status !== "ready" || comparisonModelCount !== 1}
@@ -3213,47 +3221,44 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 </button>
               </div>
             )}
-            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
-              <>
-                <label className={`flex items-center gap-1 rounded border px-2 py-1 ${isPaintFactionColourPreviewEnabled ? "border-emerald-400 bg-emerald-900/40 text-emerald-100" : "border-gray-600 bg-gray-800 text-gray-300"}`} title="Apply WH3 faction colours through the material faction mask in the 3D preview. Painted BaseColour data is unchanged.">
-                  <input
-                    type="checkbox"
-                    checked={isPaintFactionColourPreviewEnabled}
-                    disabled={!canPreviewFactionColours || !paintFactionPreviewColours}
-                    onChange={(event) => setIsPaintFactionColourPreviewEnabled(event.target.checked)}
-                    className="accent-emerald-500"
-                  />
-                  Faction colours
-                </label>
-                {paintFactionPreviewOptions.length > 0 && (
-                  <select
-                    value={paintFactionPreviewFaction}
-                    onChange={(event) => setPaintFactionPreviewFaction(event.target.value)}
-                    disabled={!canPreviewFactionColours}
-                    className="max-w-52 rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="Faction colour preview faction"
-                    title="Faction whose uniform colours should be previewed"
-                  >
-                    {paintFactionPreviewOptions.map((faction) => (
-                      <option key={faction} value={faction}>{faction}</option>
-                    ))}
-                  </select>
-                )}
-                {paintFactionPreviewOptions.length > 0 && !paintFactionPreviewColours && (
-                  <span
-                    className="max-w-64 truncate text-amber-300"
-                    title={`No faction colour palette resolved for '${paintFactionPreviewFaction}'.`}
-                  >
-                    No faction colour palette
-                  </span>
-                )}
+            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && paintFactionPreviewOptions.length > 0 && (
+              <label className="flex items-center gap-1 text-gray-400" title="Preview the unit with a faction's uniform colours. This never changes exported BaseColour textures.">
+                Faction preview
+                <select
+                  value={isPaintFactionColourPreviewEnabled ? paintFactionPreviewFaction : ""}
+                  onChange={(event) => {
+                    const faction = event.target.value;
+                    if (!faction) {
+                      setIsPaintFactionColourPreviewEnabled(false);
+                      return;
+                    }
+                    setPaintFactionPreviewFaction(faction);
+                    setIsPaintFactionColourPreviewEnabled(true);
+                  }}
+                  disabled={!canPreviewFactionColours}
+                  className={`max-w-52 rounded border px-1.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isPaintFactionColourPreviewEnabled
+                      ? "border-emerald-500 bg-emerald-950/40 text-emerald-100"
+                      : "border-gray-600 bg-gray-800 text-gray-100"
+                  }`}
+                  aria-label="Faction colour preview"
+                >
+                  <option value="">Off</option>
+                  {paintFactionPreviewOptions.map((faction) => (
+                    <option key={faction} value={faction}>{faction}</option>
+                  ))}
+                </select>
                 {isPaintFactionColourPreviewEnabled && paintFactionPreviewColours && (
                   <span className="flex items-center gap-0.5" title="Primary / secondary / tertiary faction colours">
-                    {[paintFactionPreviewColours.primary, paintFactionPreviewColours.secondary, paintFactionPreviewColours.tertiary].map((colour, index) => <span key={`${colour}-${index}`} className="h-4 w-4 rounded-sm border border-gray-500" style={{ backgroundColor: colour }} />)}
+                    {[paintFactionPreviewColours.primary, paintFactionPreviewColours.secondary, paintFactionPreviewColours.tertiary].map((colour, index) => (
+                      <span key={`${colour}-${index}`} className="h-4 w-4 rounded-sm border border-gray-500" style={{ backgroundColor: colour }} />
+                    ))}
                   </span>
                 )}
-                {isPaintFactionColourPreviewEnabled && paintFactionPreviewError && <span className="max-w-64 truncate text-amber-300" title={paintFactionPreviewError}>{paintFactionPreviewError}</span>}
-              </>
+                {isPaintFactionColourPreviewEnabled && paintFactionPreviewError && (
+                  <span className="max-w-48 truncate text-amber-300" title={paintFactionPreviewError}>{paintFactionPreviewError}</span>
+                )}
+              </label>
             )}
             <button
               type="button"
@@ -3269,6 +3274,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 {paintExportStatus}
               </span>
             )}
+            </div>
+            <div className="flex w-full flex-wrap items-center gap-1.5 border-t border-gray-700/70 pt-1">
             {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
               <>
                 <div className="relative">
@@ -3465,6 +3472,20 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                           className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-red-400 disabled:opacity-40"
                         >
                           Delete
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!paintSessionRef.current}
+                          onClick={() => {
+                            if (paintSessionRef.current?.reset()) {
+                              setPaintExportStatus("");
+                              setPaintHistoryVersion((value) => value + 1);
+                            }
+                          }}
+                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:opacity-40"
+                          title="Clear all paint from the active layer"
+                        >
+                          Clear
                         </button>
                         <button
                           type="button"
@@ -3915,60 +3936,28 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 >
                   Pick
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = paintSelectMode === "material" ? undefined : "material";
-                    selectToolModeRef.current = next;
-                    setPaintSelectMode(next);
-                    setIsPaintEyedropperActive(false);
-                    clearPaintHoverVisual();
-                  }}
-                  className={`rounded border px-2 py-1 ${
-                    paintSelectMode === "material"
-                      ? "border-cyan-400 bg-cyan-900/60 text-cyan-100"
-                      : "border-gray-600 bg-gray-800 hover:border-cyan-400"
-                  }`}
-                  title="Select a material. Shift-click adds; Ctrl-click toggles."
-                >
-                  Select Material
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = paintSelectMode === "island" ? undefined : "island";
-                    selectToolModeRef.current = next;
-                    setPaintSelectMode(next);
-                    setIsPaintEyedropperActive(false);
-                    clearPaintHoverVisual();
-                  }}
-                  className={`rounded border px-2 py-1 ${
-                    paintSelectMode === "island"
-                      ? "border-violet-400 bg-violet-900/60 text-violet-100"
-                      : "border-gray-600 bg-gray-800 hover:border-violet-400"
-                  }`}
-                  title="Select a UV island. Shift-click adds; Ctrl-click toggles."
-                >
-                  Select Island
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = paintSelectMode === "similar" ? undefined : "similar";
-                    selectToolModeRef.current = next;
-                    setPaintSelectMode(next);
-                    setIsPaintEyedropperActive(false);
-                    clearPaintHoverVisual();
-                  }}
-                  className={`rounded border px-2 py-1 ${
-                    paintSelectMode === "similar"
-                      ? "border-yellow-400 bg-yellow-900/60 text-yellow-100"
-                      : "border-gray-600 bg-gray-800 hover:border-yellow-400"
-                  }`}
-                  title="Select texels similar to the clicked visible color. Shift adds; Ctrl toggles."
-                >
-                  Select Similar
-                </button>
+                <label className="flex items-center gap-1 text-gray-400">
+                  Select
+                  <select
+                    value={paintSelectMode || ""}
+                    onChange={(event) => {
+                      const value = event.target.value as UnitPainterSelectMode | "";
+                      choosePaintSelectMode(value || undefined);
+                    }}
+                    className={`rounded border px-1.5 py-1 text-xs ${
+                      paintSelectMode
+                        ? "border-cyan-400 bg-cyan-950/50 text-cyan-100"
+                        : "border-gray-600 bg-gray-800 text-gray-100"
+                    }`}
+                    aria-label="Selection tool"
+                    title="Choose what clicking the model selects. Shift adds; Ctrl toggles."
+                  >
+                    <option value="">Off</option>
+                    <option value="material">Material</option>
+                    <option value="island">UV island</option>
+                    <option value="similar">Similar colors</option>
+                  </select>
+                </label>
                 {paintSelectMode === "similar" && (
                   <label className="flex items-center gap-1 text-gray-400" title="Perceptual OKLab color tolerance">
                     Tol
@@ -3986,171 +3975,181 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     <span className="min-w-6 text-right tabular-nums text-yellow-200">{paintSimilarTolerance}</span>
                   </label>
                 )}
-                <label className="flex items-center gap-1 text-gray-400">
-                  Size
-                  <input
-                    type="range"
-                    min={4}
-                    max={64}
-                    step={1}
-                    value={paintBrushRadius}
-                    onChange={(event) => setPaintBrushRadius(Number(event.target.value))}
-                    onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushRadius)}
-                    className="w-20 accent-blue-500"
-                    aria-label="Brush size"
-                  />
-                </label>
-                <label className="flex items-center gap-1 text-gray-400">
-                  Opacity
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={1}
-                    step={0.05}
-                    value={paintBrushOpacity}
-                    onChange={(event) => setPaintBrushOpacity(Number(event.target.value))}
-                    onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushOpacity)}
-                    className="w-16 accent-blue-500"
-                    aria-label="Brush opacity"
-                  />
-                </label>
-                <label className="flex items-center gap-1 text-gray-400">
-                  Hardness
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={paintBrushHardness}
-                    onChange={(event) => setPaintBrushHardness(Number(event.target.value))}
-                    onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushHardness)}
-                    className="w-16 accent-blue-500"
-                    aria-label="Brush hardness"
-                  />
-                </label>
-                <select
-                  value={paintBrushMode}
-                  onChange={(event) => setPaintBrushMode(event.target.value as UnitPainterBrushMode)}
-                  aria-label="Brush mode"
-                  title={paintBrushMode === "restore" ? "Erase the active layer to reveal layers/Base below" : "Brush mode"}
-                  className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
-                >
-                  <option value="recolor">Recolor</option>
-                  <option value="paint">Paint</option>
-                  <option value="restore">Restore</option>
-                </select>
-                <button
-                  type="button"
-                  disabled={paintViewMode === "texture"}
-                  onClick={() => setIsPaintSymmetryEnabled((enabled) => !enabled)}
-                  className={`rounded border px-2 py-1 ${
-                    isPaintSymmetryEnabled && paintViewMode !== "texture"
-                      ? "border-fuchsia-400 bg-fuchsia-900/50 text-fuchsia-100"
-                      : "border-gray-600 bg-gray-800 hover:border-fuchsia-400"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                  title={
-                    paintViewMode === "texture"
-                      ? "Model-space symmetry is available in the 3D or Split view."
-                      : "Mirror brush strokes left/right across the model's local X=0 plane"
-                  }
-                >
-                  Symmetry X
-                </button>
-                <label className="flex items-center gap-1 text-gray-400">
-                  Scope
+                {!paintSelectMode && !pendingDecal && !paintActiveDecal && (
+                  <>
+                  <label className="flex items-center gap-1 text-gray-400">
+                    Size
+                    <input
+                      type="range"
+                      min={4}
+                      max={64}
+                      step={1}
+                      value={paintBrushRadius}
+                      onChange={(event) => setPaintBrushRadius(Number(event.target.value))}
+                      onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushRadius)}
+                      className="w-20 accent-blue-500"
+                      aria-label="Brush size"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-gray-400">
+                    Opacity
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={1}
+                      step={0.05}
+                      value={paintBrushOpacity}
+                      onChange={(event) => setPaintBrushOpacity(Number(event.target.value))}
+                      onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushOpacity)}
+                      className="w-16 accent-blue-500"
+                      aria-label="Brush opacity"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-gray-400">
+                    Hardness
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={paintBrushHardness}
+                      onChange={(event) => setPaintBrushHardness(Number(event.target.value))}
+                      onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushHardness)}
+                      className="w-16 accent-blue-500"
+                      aria-label="Brush hardness"
+                    />
+                  </label>
                   <select
-                    value={paintScope}
-                    onChange={(event) => {
-                      const nextScope = event.target.value as UnitPainterSelectionScope;
-                      if (paintSelectionPartition?.sourceScope !== nextScope) {
-                        paintSessionRef.current?.removeSelectionPartition();
-                      }
-                      setPaintScope(nextScope);
-                      paintScopeRef.current = nextScope;
-                      if (nextScope !== "material" && nextScope !== "island") {
-                        setPaintIsolationMode("off");
-                      }
-                      refreshPaintSelectionVisual(nextScope);
-                      clearPaintHoverVisual();
-                    }}
-                    disabled={!!paintSelectionPartition}
-                    title={
-                      paintSelectionPartition
-                        ? "Remove the split before changing selection scope"
-                        : "Paint scope"
-                    }
-                    aria-label="Paint scope"
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    value={paintBrushMode}
+                    onChange={(event) => setPaintBrushMode(event.target.value as UnitPainterBrushMode)}
+                    aria-label="Brush mode"
+                    title={paintBrushMode === "restore" ? "Erase the active layer to reveal layers/Base below" : "Brush mode"}
+                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                   >
-                    <option value="all">All parts</option>
-                    <option value="material" disabled={!paintSelection || paintScope === "similar"}>Selected material</option>
-                    <option value="island" disabled={!paintSessionRef.current?.selectionHasUvIsland}>Selected UV island</option>
-                    <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>Selected similar colors</option>
+                    <option value="recolor">Recolor</option>
+                    <option value="paint">Paint</option>
+                    <option value="restore">Restore</option>
                   </select>
-                </label>
-                <button
-                  type="button"
-                  disabled={
-                    !paintSelection
-                    || (paintScope !== "material" && paintScope !== "island")
-                    || !!paintSelectionPartition
-                    || paintViewMode === "texture"
-                  }
-                  onClick={() =>
-                    setPaintIsolationMode((mode) => mode === "ghost" ? "off" : "ghost")
-                  }
-                  className={`rounded border px-2 py-1 ${
-                    paintIsolationMode === "ghost"
-                      ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
-                      : "border-gray-600 bg-gray-800 hover:border-emerald-400"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                  title={
-                    paintViewMode === "texture"
-                      ? "Isolation is visible in the 3D or Split view."
-                      : paintSelectionPartition
-                        ? "Remove the split before isolating the selection."
-                        : "Keep the selected material or UV island fully shaded and ghost the rest of the model."
-                  }
-                >
-                  Isolate
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    !paintSelection
-                    || (paintScope !== "material" && paintScope !== "island")
-                    || !!paintSelectionPartition
-                    || paintViewMode === "texture"
-                  }
-                  onClick={() =>
-                    setPaintIsolationMode((mode) => mode === "hide" ? "off" : "hide")
-                  }
-                  className={`rounded border px-2 py-1 ${
-                    paintIsolationMode === "hide"
-                      ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
-                      : "border-gray-600 bg-gray-800 hover:border-emerald-400"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                  title="Show only the selected material or UV island while keeping the hidden geometry paintable and selectable."
-                >
-                  Hide others
-                </button>
-                {paintSelection && paintScope !== "similar" && !paintSelectionPartition && (
-                  <label
-                    className="flex items-center gap-1 text-gray-400"
-                    title="Padding used by Fill and by scoped painting in the Texture view"
+                  <button
+                    type="button"
+                    disabled={paintViewMode === "texture"}
+                    onClick={() => setIsPaintSymmetryEnabled((enabled) => !enabled)}
+                    className={`rounded border px-2 py-1 ${
+                      isPaintSymmetryEnabled && paintViewMode !== "texture"
+                        ? "border-fuchsia-400 bg-fuchsia-900/50 text-fuchsia-100"
+                        : "border-gray-600 bg-gray-800 hover:border-fuchsia-400"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    title={
+                      paintViewMode === "texture"
+                        ? "Model-space symmetry is available in the 3D or Split view."
+                        : "Mirror brush strokes left/right across the model's local X=0 plane"
+                    }
                   >
-                    Pad
+                    Symmetry X
+                  </button>
+  
+                  </>
+                )}
+                {paintSelection && (
+                  <>
+                  <label className="flex items-center gap-1 text-gray-400">
+                    Apply to
                     <select
-                      value={paintTexturePadding}
-                      onChange={(event) => setPaintTexturePadding(Number(event.target.value))}
-                      aria-label="UV padding"
-                      className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                      value={paintScope}
+                      onChange={(event) => {
+                        const nextScope = event.target.value as UnitPainterSelectionScope;
+                        if (paintSelectionPartition?.sourceScope !== nextScope) {
+                          paintSessionRef.current?.removeSelectionPartition();
+                        }
+                        setPaintScope(nextScope);
+                        paintScopeRef.current = nextScope;
+                        if (nextScope !== "material" && nextScope !== "island") {
+                          setPaintIsolationMode("off");
+                        }
+                        refreshPaintSelectionVisual(nextScope);
+                        clearPaintHoverVisual();
+                      }}
+                      disabled={!!paintSelectionPartition}
+                      title={
+                        paintSelectionPartition
+                          ? "Remove the split before changing selection scope"
+                          : "Paint scope"
+                      }
+                      aria-label="Apply paint to"
+                      className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {[0, 2, 4, 8].map((padding) => (
-                        <option key={padding} value={padding}>{padding}px</option>
-                      ))}
+                      <option value="all">Whole model</option>
+                      <option value="material" disabled={!paintSelection || paintScope === "similar"}>Selected material</option>
+                      <option value="island" disabled={!paintSessionRef.current?.selectionHasUvIsland}>Selected UV island</option>
+                      <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>Selected similar colors</option>
                     </select>
                   </label>
+                  <button
+                    type="button"
+                    disabled={
+                      !paintSelection
+                      || (paintScope !== "material" && paintScope !== "island")
+                      || !!paintSelectionPartition
+                      || paintViewMode === "texture"
+                    }
+                    onClick={() =>
+                      setPaintIsolationMode((mode) => mode === "ghost" ? "off" : "ghost")
+                    }
+                    className={`rounded border px-2 py-1 ${
+                      paintIsolationMode === "ghost"
+                        ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
+                        : "border-gray-600 bg-gray-800 hover:border-emerald-400"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    title={
+                      paintViewMode === "texture"
+                        ? "Isolation is visible in the 3D or Split view."
+                        : paintSelectionPartition
+                          ? "Remove the split before isolating the selection."
+                          : "Keep the selected material or UV island fully shaded and ghost the rest of the model."
+                    }
+                  >
+                    Isolate
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !paintSelection
+                      || (paintScope !== "material" && paintScope !== "island")
+                      || !!paintSelectionPartition
+                      || paintViewMode === "texture"
+                    }
+                    onClick={() =>
+                      setPaintIsolationMode((mode) => mode === "hide" ? "off" : "hide")
+                    }
+                    className={`rounded border px-2 py-1 ${
+                      paintIsolationMode === "hide"
+                        ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
+                        : "border-gray-600 bg-gray-800 hover:border-emerald-400"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    title="Show only the selected material or UV island while keeping the hidden geometry paintable and selectable."
+                  >
+                    Hide others
+                  </button>
+                  {paintSelection && paintScope !== "similar" && !paintSelectionPartition && (
+                    <label
+                      className="flex items-center gap-1 text-gray-400"
+                      title="Padding used by Fill and by scoped painting in the Texture view"
+                    >
+                      Pad
+                      <select
+                        value={paintTexturePadding}
+                        onChange={(event) => setPaintTexturePadding(Number(event.target.value))}
+                        aria-label="UV padding"
+                        className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                      >
+                        {[0, 2, 4, 8].map((padding) => (
+                          <option key={padding} value={padding}>{padding}px</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+  
+                  </>
                 )}
                 {paintSelection && (
                   <>
@@ -4437,148 +4436,145 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 >
                   Redo
                 </button>
-                <button
-                  type="button"
-                  disabled={!paintSessionRef.current}
-                  onClick={() => {
-                    if (paintSessionRef.current?.reset()) {
-                      setPaintExportStatus("");
-                      setPaintHistoryVersion((value) => value + 1);
+                <details className="group relative">
+                  <summary
+                    className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-300 hover:border-violet-400 [&::-webkit-details-marker]:hidden"
+                    title="Faction-specific save and generated-name options"
+                  >
+                    Save options{isPaintFactionScoped ? " · faction only" : ""}
+                  </summary>
+                  <div className="absolute right-0 top-full z-40 mt-1 flex min-w-[36rem] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
+                  <label
+                    className={`flex items-center gap-1 rounded border px-2 py-1 ${
+                      isPaintFactionScoped
+                        ? "border-violet-400 bg-violet-900/40 text-violet-100"
+                        : "border-gray-600 bg-gray-800 text-gray-300"
+                    }`}
+                    title={
+                      paintFactionScopeSource
+                        ? "Save a new VMD and assign it only to one faction"
+                        : "Faction-scoped saving needs unit DB context; open the unit from Unit Viewer"
                     }
-                  }}
-                  className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                  title="Clear all paint from the active layer"
-                >
-                  Clear layer
-                </button>
-                <label
-                  className={`flex items-center gap-1 rounded border px-2 py-1 ${
-                    isPaintFactionScoped
-                      ? "border-violet-400 bg-violet-900/40 text-violet-100"
-                      : "border-gray-600 bg-gray-800 text-gray-300"
-                  }`}
-                  title={
-                    paintFactionScopeSource
-                      ? "Save a new VMD and assign it only to one faction"
-                      : "Faction-scoped saving needs unit DB context; open the unit from Unit Viewer"
-                  }
-                >
-                  <input
-                    type="checkbox"
-                    checked={isPaintFactionScoped}
-                    disabled={!paintFactionScopeSource || isPaintExporting}
-                    onChange={(event) => {
-                      const enabled = event.target.checked;
-                      setIsPaintFactionScoped(enabled);
-                      if (enabled && paintFactionScopeSource && !paintFactionNamesCustomized) {
-                        const defaults = getPainterFactionScopeDefaults(
-                          paintFactionScopeSource,
-                          assetPath,
-                          paintFaction,
-                        );
-                        setPaintFactionVariantName(defaults.variantName);
-                        setPaintFactionVmdFilename(defaults.vmdFilename);
-                      }
-                      setPaintFactionScopeDirty(true);
-                    }}
-                    className="accent-violet-500"
-                  />
-                  Faction only
-                </label>
-                {isPaintFactionScoped && paintFactionScopeSource && (
-                  <>
+                  >
                     <input
-                      list="unit-painter-faction-keys"
-                      value={paintFaction}
+                      type="checkbox"
+                      checked={isPaintFactionScoped}
+                      disabled={!paintFactionScopeSource || isPaintExporting}
                       onChange={(event) => {
-                        const faction = event.target.value;
-                        setPaintFaction(faction);
-                        if (!paintFactionNamesCustomized) {
+                        const enabled = event.target.checked;
+                        setIsPaintFactionScoped(enabled);
+                        if (enabled && paintFactionScopeSource && !paintFactionNamesCustomized) {
                           const defaults = getPainterFactionScopeDefaults(
                             paintFactionScopeSource,
                             assetPath,
-                            faction,
+                            paintFaction,
                           );
                           setPaintFactionVariantName(defaults.variantName);
                           setPaintFactionVmdFilename(defaults.vmdFilename);
                         }
                         setPaintFactionScopeDirty(true);
                       }}
-                      placeholder="Choose faction"
-                      aria-label="Faction key for painted unit variant"
-                      className="w-52 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                      title="Only this faction will use the painted unit variant"
+                      className="accent-violet-500"
                     />
-                    <datalist id="unit-painter-faction-keys">
-                      {(paintFactionScopeSource.availableFactions || []).map((faction) => (
-                        <option key={faction} value={faction} />
-                      ))}
-                    </datalist>
-                    <details
-                      open={isPaintFactionAdvancedOpen}
-                      onToggle={(event) => setIsPaintFactionAdvancedOpen(event.currentTarget.open)}
-                      className="group relative"
-                    >
-                      <summary
-                        className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-400 hover:border-violet-400 hover:text-gray-200 [&::-webkit-details-marker]:hidden"
-                        title="Override the automatically generated variant key and VMD filename"
-                      >
-                        Advanced names{paintFactionNamesCustomized ? " · custom" : ""}
-                      </summary>
-                      <div className="absolute right-0 top-full z-30 mt-1 flex min-w-[34rem] items-end gap-2 rounded border border-gray-600 bg-gray-900 p-2 shadow-xl">
-                        <label className="min-w-0 flex-1 text-[10px] text-gray-400">
-                          Variant key
-                          <input
-                            value={paintFactionVariantName}
-                            onChange={(event) => {
-                              setPaintFactionVariantName(event.target.value);
-                              setPaintFactionNamesCustomized(true);
-                              setPaintFactionScopeDirty(true);
-                            }}
-                            placeholder="new variant key"
-                            aria-label="New variants_tables variant key"
-                            className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                            title="New variants_tables.variant_name"
-                          />
-                        </label>
-                        <label className="min-w-0 flex-1 text-[10px] text-gray-400">
-                          VMD filename
-                          <input
-                            value={paintFactionVmdFilename}
-                            onChange={(event) => {
-                              setPaintFactionVmdFilename(event.target.value);
-                              setPaintFactionNamesCustomized(true);
-                              setPaintFactionScopeDirty(true);
-                            }}
-                            placeholder="new VMD filename"
-                            aria-label="New VMD filename"
-                            className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                            title="New variants_tables.variant_filename (without .variantmeshdefinition)"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          disabled={!paintFactionNamesCustomized}
-                          onClick={() => {
+                    Faction only
+                  </label>
+                  {isPaintFactionScoped && paintFactionScopeSource && (
+                    <>
+                      <input
+                        list="unit-painter-faction-keys"
+                        value={paintFaction}
+                        onChange={(event) => {
+                          const faction = event.target.value;
+                          setPaintFaction(faction);
+                          if (!paintFactionNamesCustomized) {
                             const defaults = getPainterFactionScopeDefaults(
                               paintFactionScopeSource,
                               assetPath,
-                              paintFaction,
+                              faction,
                             );
                             setPaintFactionVariantName(defaults.variantName);
                             setPaintFactionVmdFilename(defaults.vmdFilename);
-                            setPaintFactionNamesCustomized(false);
-                            setPaintFactionScopeDirty(true);
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Use automatically generated names based on the unit and faction"
+                          }
+                          setPaintFactionScopeDirty(true);
+                        }}
+                        placeholder="Choose faction"
+                        aria-label="Faction key for painted unit variant"
+                        className="w-52 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                        title="Only this faction will use the painted unit variant"
+                      />
+                      <datalist id="unit-painter-faction-keys">
+                        {(paintFactionScopeSource.availableFactions || []).map((faction) => (
+                          <option key={faction} value={faction} />
+                        ))}
+                      </datalist>
+                      <details
+                        open={isPaintFactionAdvancedOpen}
+                        onToggle={(event) => setIsPaintFactionAdvancedOpen(event.currentTarget.open)}
+                        className="group relative"
+                      >
+                        <summary
+                          className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-400 hover:border-violet-400 hover:text-gray-200 [&::-webkit-details-marker]:hidden"
+                          title="Override the automatically generated variant key and VMD filename"
                         >
-                          Reset
-                        </button>
-                      </div>
-                    </details>
-                  </>
-                )}
+                          Advanced names{paintFactionNamesCustomized ? " · custom" : ""}
+                        </summary>
+                        <div className="absolute right-0 top-full z-30 mt-1 flex min-w-[34rem] items-end gap-2 rounded border border-gray-600 bg-gray-900 p-2 shadow-xl">
+                          <label className="min-w-0 flex-1 text-[10px] text-gray-400">
+                            Variant key
+                            <input
+                              value={paintFactionVariantName}
+                              onChange={(event) => {
+                                setPaintFactionVariantName(event.target.value);
+                                setPaintFactionNamesCustomized(true);
+                                setPaintFactionScopeDirty(true);
+                              }}
+                              placeholder="new variant key"
+                              aria-label="New variants_tables variant key"
+                              className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                              title="New variants_tables.variant_name"
+                            />
+                          </label>
+                          <label className="min-w-0 flex-1 text-[10px] text-gray-400">
+                            VMD filename
+                            <input
+                              value={paintFactionVmdFilename}
+                              onChange={(event) => {
+                                setPaintFactionVmdFilename(event.target.value);
+                                setPaintFactionNamesCustomized(true);
+                                setPaintFactionScopeDirty(true);
+                              }}
+                              placeholder="new VMD filename"
+                              aria-label="New VMD filename"
+                              className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                              title="New variants_tables.variant_filename (without .variantmeshdefinition)"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            disabled={!paintFactionNamesCustomized}
+                            onClick={() => {
+                              const defaults = getPainterFactionScopeDefaults(
+                                paintFactionScopeSource,
+                                assetPath,
+                                paintFaction,
+                              );
+                              setPaintFactionVariantName(defaults.variantName);
+                              setPaintFactionVmdFilename(defaults.vmdFilename);
+                              setPaintFactionNamesCustomized(false);
+                              setPaintFactionScopeDirty(true);
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Use automatically generated names based on the unit and faction"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </details>
+                    </>
+                  )}
+  
+                  </div>
+                </details>
                 <button
                   type="button"
                   disabled={!paintSessionRef.current || isPaintExporting}
@@ -4621,6 +4617,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 {paintExportStatus && <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>{paintExportStatus}</span>}
               </>
             )}
+            </div>
           </div>
         )}
         <div className="pointer-events-none absolute bottom-2 left-3 rounded bg-black/50 px-2 py-1 text-[11px] text-gray-300">
