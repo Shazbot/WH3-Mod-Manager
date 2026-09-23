@@ -4259,8 +4259,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         <button
                           type="button"
                           onClick={() => {
-                            if (paintSessionRef.current?.removeSelectionPartition()) {
-                              refreshPaintSelectionVisual(paintScope);
+                            const session = paintSessionRef.current;
+                            if (session?.removeSelectionPartition()) {
+                              if (session.selectionPartitionInfo) clearPaintSelectionVisual();
+                              else refreshPaintSelectionVisual(paintScope);
                               setPaintHistoryVersion((value) => value + 1);
                             }
                           }}
