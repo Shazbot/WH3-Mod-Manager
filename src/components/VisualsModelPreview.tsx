@@ -821,6 +821,15 @@ const applyFactionColourPreview = async (
   };
 };
 
+const getPainterFactionOptions = (...contexts: Array<UnitPainterUnitVariantContext | undefined>) =>
+  Array.from(new Set(
+    contexts.flatMap((context) => [
+      ...(context?.availableFactions || []),
+      ...(context?.factionColours || []).map((set) => set.faction),
+      ...(context?.unitVariantColours || []).map((set) => set.faction),
+    ]).map((faction) => faction.trim()).filter(Boolean),
+  )).sort((first, second) => first.localeCompare(second));
+
 const getDefaultFactionPreviewFaction = (context?: UnitPainterUnitVariantContext) => {
   if (!context) return "";
   if (context.faction.trim()) return context.faction;
@@ -971,12 +980,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
   const paintActiveDecal = paintSessionRef.current?.activeDecalInfo;
   const paintFactionPreviewOptions = useMemo(
-    () => Array.from(new Set([
-      ...(unitVariantContext?.availableFactions || []),
-      ...(unitVariantContext?.factionColours || []).map((set) => set.faction),
-      ...(unitVariantContext?.unitVariantColours || []).map((set) => set.faction),
-    ].map((faction) => faction.trim()).filter(Boolean))),
+    () => getPainterFactionOptions(unitVariantContext),
     [unitVariantContext],
+  );
+  const paintFactionSaveOptions = useMemo(
+    () => getPainterFactionOptions(paintFactionScopeSource, unitVariantContext),
+    [paintFactionScopeSource, unitVariantContext],
   );
   const paintFactionPreviewResolution = useMemo(
     () => resolveFactionColourSet(unitVariantContext, paintFactionPreviewFaction),
@@ -4527,7 +4536,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         title="Only this faction will use the painted unit variant"
                       />
                       <datalist id="unit-painter-faction-keys">
-                        {(paintFactionScopeSource.availableFactions || []).map((faction) => (
+                        {paintFactionSaveOptions.map((faction) => (
                           <option key={faction} value={faction} />
                         ))}
                       </datalist>
