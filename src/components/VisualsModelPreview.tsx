@@ -102,6 +102,7 @@ type PreviewAnimation = {
 };
 
 type UnitPainterSelectMode = "material" | "island" | "similar";
+type UnitPainterIsolationMode = "off" | "ghost" | "hide";
 
 const NONE_ANIMATION: PreviewAnimation = { path: "", label: "None" };
 const ALL_VARIANTS = -1;
@@ -325,31 +326,20 @@ const disposePainterSurfaceOverlay = (overlay: THREE.Mesh | null) => {
   for (const material of materials) material.dispose();
 };
 
-const createPainterSurfaceOverlay = (
+const createPainterSurfaceMesh = (
   surface: UnitPainterSurfaceHighlight,
-  opacity: number,
+  material: THREE.Material,
+  name: string,
+  renderOrder: number,
 ) => {
   const source = surface.object;
   const geometry = new THREE.BufferGeometry();
-  for (const [name, attribute] of Object.entries(source.geometry.attributes)) {
-    geometry.setAttribute(name, attribute);
+  for (const [attributeName, attribute] of Object.entries(source.geometry.attributes)) {
+    geometry.setAttribute(attributeName, attribute);
   }
   geometry.morphAttributes = source.geometry.morphAttributes;
   geometry.morphTargetsRelative = source.geometry.morphTargetsRelative;
   geometry.setIndex(surface.indices);
-
-  const material = new THREE.MeshBasicMaterial({
-    color: surface.scope === "island" ? 0xa78bfa : 0x22d3ee,
-    transparent: true,
-    opacity,
-    depthTest: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-  material.toneMapped = false;
 
   let overlay: THREE.Mesh;
   if (source instanceof THREE.SkinnedMesh) {
@@ -367,12 +357,60 @@ const createPainterSurfaceOverlay = (
     overlay.morphTargetInfluences = source.morphTargetInfluences;
   }
 
-  overlay.name = "__whmm_unit_painter_surface_highlight";
+  overlay.name = name;
   overlay.frustumCulled = false;
-  overlay.renderOrder = 2000;
+  overlay.renderOrder = renderOrder;
   overlay.raycast = () => undefined;
   source.add(overlay);
   return overlay;
+};
+
+const createPainterSurfaceOverlay = (
+  surface: UnitPainterSurfaceHighlight,
+  opacity: number,
+) => {
+  const material = new THREE.MeshBasicMaterial({
+    color: surface.scope === "island" ? 0xa78bfa : 0x22d3ee,
+    transparent: true,
+    opacity,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  material.toneMapped = false;
+  return createPainterSurfaceMesh(
+    surface,
+    material,
+    "__whmm_unit_painter_surface_highlight",
+    2000,
+  );
+};
+
+const createPainterIsolationSurface = (surface: UnitPainterSurfaceHighlight) => {
+  const sourceMaterials = Array.isArray(surface.object.material)
+    ? surface.object.material
+    : [surface.object.material];
+  const sourceMaterial = sourceMaterials[surface.materialIndex] ?? sourceMaterials[0];
+  if (!sourceMaterial) return undefined;
+
+  // Clone only the material shell. Texture references remain shared, so edits to the
+  // painter's live DataTextures are immediately visible on the isolated surface.
+  const material = sourceMaterial.clone();
+  material.onBeforeCompile = sourceMaterial.onBeforeCompile;
+  material.customProgramCacheKey = sourceMaterial.customProgramCacheKey;
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -1;
+  material.polygonOffsetUnits = -1;
+  material.needsUpdate = true;
+  return createPainterSurfaceMesh(
+    surface,
+    material,
+    "__whmm_unit_painter_isolation_surface",
+    2001,
+  );
 };
 
 const hashGeometry = (geometry: THREE.BufferGeometry) => {
@@ -822,6 +860,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPaintSymmetryEnabled, setIsPaintSymmetryEnabled] = useState(false);
   const [paintScope, setPaintScope] = useState<UnitPainterSelectionScope>("all");
   const [paintSelection, setPaintSelection] = useState<UnitPainterSelectionInfo>();
+  const [paintIsolationMode, setPaintIsolationMode] = useState<UnitPainterIsolationMode>("off");
+  const [paintSelectionVisualVersion, setPaintSelectionVisualVersion] = useState(0);
   const [paintTextureCount, setPaintTextureCount] = useState(-1);
   const [paintExportStatus, setPaintExportStatus] = useState("");
   const [paintPackPath, setPaintPackPath] = useState<string>();
@@ -1021,10 +1061,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
   const refreshPaintSelectionVisual = (scope: UnitPainterSelectionScope = paintScopeRef.current) => {
     clearPaintSelectionVisual();
-    if (scope === "all" || scope === "similar") return;
-    for (const surface of paintSessionRef.current?.getSelectionSurfaceHighlights(scope) ?? []) {
-      paintSelectionHelperRef.current.push(createPainterSurfaceOverlay(surface, 0.34));
+    if (scope !== "all" && scope !== "similar") {
+      for (const surface of paintSessionRef.current?.getSelectionSurfaceHighlights(scope) ?? []) {
+        paintSelectionHelperRef.current.push(createPainterSurfaceOverlay(surface, 0.34));
+      }
     }
+    setPaintSelectionVisualVersion((value) => value + 1);
   };
 
   const updatePaintHoverVisual = (intersection?: THREE.Intersection<THREE.Object3D>) => {
@@ -1070,6 +1112,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     clearPaintSelectionVisual();
     clearPaintHoverVisual();
     setPaintSelection(undefined);
+    setPaintIsolationMode("off");
     setPaintScope("all");
     paintScopeRef.current = "all";
     selectToolModeRef.current = undefined;
@@ -2380,6 +2423,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintFactionNamesCustomized(false);
     setIsPaintFactionAdvancedOpen(false);
     setPaintFactionScopeDirty(false);
+    setPaintIsolationMode("off");
     setIsPaintFactionColourPreviewEnabled(false);
     setPaintFactionPreviewFaction(getDefaultFactionPreviewFaction(unitVariantContext));
     setPaintFactionMaskBindings([]);
@@ -2499,6 +2543,90 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       disposePreview?.();
     };
   }, [isPaintFactionColourPreviewEnabled, isPainterEnabled, paintFactionMaskBindings, paintFactionPreviewColours, status]);
+
+  useEffect(() => {
+    if (
+      paintIsolationMode === "off"
+      || !isPainterEnabled
+      || status !== "ready"
+      || paintViewMode === "texture"
+      || !paintRootRef.current
+      || !paintSessionRef.current
+      || (paintScope !== "material" && paintScope !== "island")
+      || paintSessionRef.current.selectionPartitionInfo
+    ) {
+      return;
+    }
+
+    const surfaces = paintSessionRef.current.getSelectionSurfaceHighlights(paintScope);
+    if (surfaces.length === 0) return;
+
+    const isolatedSurfaces = surfaces
+      .map((surface) => createPainterIsolationSurface(surface))
+      .filter((surface): surface is THREE.Mesh => !!surface);
+    if (isolatedSurfaces.length === 0) return;
+
+    const restoredMaterials = new Map<THREE.Material, {
+      transparent: boolean;
+      opacity: number;
+      depthWrite: boolean;
+      polygonOffset: boolean;
+      polygonOffsetFactor: number;
+      polygonOffsetUnits: number;
+    }>();
+    paintRootRef.current.traverse((child) => {
+      if (!(child instanceof THREE.Mesh) || child.name.startsWith("__whmm_unit_painter_")) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) {
+        if (!material || restoredMaterials.has(material)) continue;
+        restoredMaterials.set(material, {
+          transparent: material.transparent,
+          opacity: material.opacity,
+          depthWrite: material.depthWrite,
+          polygonOffset: material.polygonOffset,
+          polygonOffsetFactor: material.polygonOffsetFactor,
+          polygonOffsetUnits: material.polygonOffsetUnits,
+        });
+        material.transparent = true;
+        material.opacity = paintIsolationMode === "hide" ? 0 : material.opacity * 0.12;
+        material.depthWrite = false;
+        material.polygonOffset = true;
+        material.polygonOffsetFactor = 1;
+        material.polygonOffsetUnits = 1;
+        material.needsUpdate = true;
+      }
+    });
+
+    const selectionOverlayOpacities = paintSelectionHelperRef.current.map((overlay) => {
+      const material = Array.isArray(overlay.material) ? overlay.material[0] : overlay.material;
+      const opacity = material?.opacity ?? 0.34;
+      if (material) material.opacity = 0.12;
+      return { material, opacity };
+    });
+
+    return () => {
+      for (const [material, restore] of restoredMaterials) {
+        material.transparent = restore.transparent;
+        material.opacity = restore.opacity;
+        material.depthWrite = restore.depthWrite;
+        material.polygonOffset = restore.polygonOffset;
+        material.polygonOffsetFactor = restore.polygonOffsetFactor;
+        material.polygonOffsetUnits = restore.polygonOffsetUnits;
+        material.needsUpdate = true;
+      }
+      for (const { material, opacity } of selectionOverlayOpacities) {
+        if (material) material.opacity = opacity;
+      }
+      for (const surface of isolatedSurfaces) disposePainterSurfaceOverlay(surface);
+    };
+  }, [
+    isPainterEnabled,
+    paintIsolationMode,
+    paintScope,
+    paintSelectionVisualVersion,
+    paintViewMode,
+    status,
+  ]);
 
   useEffect(() => {
     const isEditingControl = (target: EventTarget | null) =>
@@ -3799,6 +3927,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                       }
                       setPaintScope(nextScope);
                       paintScopeRef.current = nextScope;
+                      if (nextScope !== "material" && nextScope !== "island") {
+                        setPaintIsolationMode("off");
+                      }
                       refreshPaintSelectionVisual(nextScope);
                       clearPaintHoverVisual();
                     }}
@@ -3817,6 +3948,52 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>Selected similar colors</option>
                   </select>
                 </label>
+                <button
+                  type="button"
+                  disabled={
+                    !paintSelection
+                    || (paintScope !== "material" && paintScope !== "island")
+                    || !!paintSelectionPartition
+                    || paintViewMode === "texture"
+                  }
+                  onClick={() =>
+                    setPaintIsolationMode((mode) => mode === "ghost" ? "off" : "ghost")
+                  }
+                  className={`rounded border px-2 py-1 ${
+                    paintIsolationMode === "ghost"
+                      ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
+                      : "border-gray-600 bg-gray-800 hover:border-emerald-400"
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                  title={
+                    paintViewMode === "texture"
+                      ? "Isolation is visible in the 3D or Split view."
+                      : paintSelectionPartition
+                        ? "Remove the split before isolating the selection."
+                        : "Keep the selected material or UV island fully shaded and ghost the rest of the model."
+                  }
+                >
+                  Isolate
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !paintSelection
+                    || (paintScope !== "material" && paintScope !== "island")
+                    || !!paintSelectionPartition
+                    || paintViewMode === "texture"
+                  }
+                  onClick={() =>
+                    setPaintIsolationMode((mode) => mode === "hide" ? "off" : "hide")
+                  }
+                  className={`rounded border px-2 py-1 ${
+                    paintIsolationMode === "hide"
+                      ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
+                      : "border-gray-600 bg-gray-800 hover:border-emerald-400"
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                  title="Show only the selected material or UV island while keeping the hidden geometry paintable and selectable."
+                >
+                  Hide others
+                </button>
                 {paintSelection && paintScope !== "similar" && !paintSelectionPartition && (
                   <label
                     className="flex items-center gap-1 text-gray-400"
@@ -3876,6 +4053,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                               const session = paintSessionRef.current;
                               if (!session) return;
                               if (session.splitSelection(paintScope, kind)) {
+                                setPaintIsolationMode("off");
                                 clearPaintSelectionVisual();
                                 setPaintHistoryVersion((value) => value + 1);
                               }
