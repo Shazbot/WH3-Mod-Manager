@@ -642,8 +642,27 @@ describe("Unit Viewer catalog", () => {
         land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon" }],
         battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
         melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
-        unit_variants_tables: [{ unit: "land", faction: "", variant: "unit_variant" }],
-        variants_tables: [{ variant_name: "unit_variant", variant_filename: "units\\human" }],
+        unit_variants_tables: [{
+          unit: "land",
+          faction: "",
+          name: "unit_variant_name",
+          variant: "unit_variant",
+          unit_card: "unit_card",
+        }],
+        variants_tables: [{
+          variant_name: "unit_variant",
+          tech_folder: "tech",
+          variant_filename: "units\\human",
+          low_poly_filename: "low\\human",
+          mount_scale: "1.0000",
+          scale: "1.0500",
+          scale_variation: "0.0500",
+          super_low_poly_filename: "imposter\\human",
+        }],
+        units_custom_battle_permissions_tables: [
+          { unit: "unit", faction: "faction_b" },
+          { unit: "unit", faction: "faction_a" },
+        ],
       },
       () => undefined,
     );
@@ -654,6 +673,23 @@ describe("Unit Viewer catalog", () => {
     expect(built.groups[0].units[0].variantMeshPath).toBe(
       "variantmeshes\\variantmeshdefinitions\\units\\human.variantmeshdefinition",
     );
+    expect(built.units.get("unit")?.painterVariantContext).toEqual({
+      unitKey: "land",
+      faction: "",
+      variantName: "unit_variant",
+      unitVariantName: "unit_variant_name",
+      unitCard: "unit_card",
+      variantDetails: {
+        techFolder: "tech",
+        variantFilename: "units\\human",
+        lowPolyFilename: "low\\human",
+        mountScale: "1.0000",
+        scale: "1.0500",
+        scaleVariation: "0.0500",
+        superLowPolyFilename: "imposter\\human",
+      },
+      availableFactions: ["faction_a", "faction_b"],
+    });
   });
 
   it("resolves character XP with campaign and agent-specific rows taking precedence", () => {
