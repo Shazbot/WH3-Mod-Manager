@@ -446,7 +446,19 @@ const VisualsRenderBenchmark = memo(({
       onRunningChange?.(true);
       setError("");
       setResult(undefined);
-      const renderer = createBenchmarkRenderer();
+      let renderer: THREE.WebGLRenderer | undefined;
+      try {
+        renderer = createBenchmarkRenderer();
+      } catch (rendererError) {
+        onRunningChange?.(false);
+        setIsRunning(false);
+        setError(
+          rendererError instanceof Error
+            ? rendererError.message
+            : "Unable to create the benchmark WebGL renderer.",
+        );
+        return;
+      }
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x111827);
       scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 2.2));
@@ -600,6 +612,7 @@ const VisualsRenderBenchmark = memo(({
 
           <div className="text-gray-500">
             Static model, 960×540, shadows off, shared geometry/material/texture resources between instances.
+            The camera fits the full instance grid, so the scaling test primarily stresses submissions/draw calls rather than fixed on-screen pixel cost.
             Counts: {BENCHMARK_COUNTS.join(", ")}. GPU timing uses EXT_disjoint_timer_query_webgl2 when available.
           </div>
 
