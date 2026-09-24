@@ -2,7 +2,7 @@ import React, { memo, useMemo, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinnedObject } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { Wh3Ktx2Loader } from "../visuals/Wh3Ktx2Loader";
+import { Wh3Ktx2Loader, type Wh3Ktx2Timing } from "../visuals/Wh3Ktx2Loader";
 import {
   exportVisualsModel,
   releaseVisualsModelPreview,
@@ -40,6 +40,7 @@ type BenchmarkSourceResult = {
   exportMs: number;
   loadMs: number;
   materialTextureObjects: number;
+  ktx2: Wh3Ktx2Timing;
   rows: BenchmarkRow[];
 };
 
@@ -458,12 +459,14 @@ const benchmarkSource = async (
       );
     }
 
+    const ktx2 = ktx2Loader.getTiming();
     ktx2Loader.clearRawTextureDataCache();
     return {
       packPath: source.path,
       exportMs,
       loadMs,
       materialTextureObjects,
+      ktx2,
       rows,
     };
   } finally {
@@ -473,6 +476,7 @@ const benchmarkSource = async (
 };
 
 const formatMs = (value?: number) => (value == null ? "—" : value.toFixed(value < 1 ? 3 : 2));
+const formatMiB = (bytes?: number) => (bytes == null ? "—" : `${(bytes / (1024 * 1024)).toFixed(1)} MiB`);
 const formatDelta = (baseline: number | undefined, candidate: number | undefined) => {
   if (baseline == null || candidate == null || baseline === 0) return "—";
   const delta = ((candidate / baseline) - 1) * 100;
@@ -695,6 +699,18 @@ const VisualsRenderBenchmark = memo(({
                 </span>
                 <span>
                   Material texture objects: {result.original.materialTextureObjects} → {result.atlas.materialTextureObjects}
+                </span>
+                <span>
+                  Raw texture payload: {formatMiB(result.original.ktx2.compressedBytes)} → {formatMiB(result.atlas.ktx2.compressedBytes)}
+                </span>
+                <span>
+                  Decoded RGBA texture bytes: {formatMiB(result.original.ktx2.decodedBytes)} → {formatMiB(result.atlas.ktx2.decodedBytes)}
+                </span>
+                <span>
+                  Raw KTX2 textures: {result.original.ktx2.rawTextureCount} → {result.atlas.ktx2.rawTextureCount}
+                </span>
+                <span>
+                  KTX2 decode wall: {formatMs(result.original.ktx2.rawTextureWallMs)} → {formatMs(result.atlas.ktx2.rawTextureWallMs)} ms
                 </span>
                 <span>
                   {result.warmupFrames} warmup + {result.sampleFrames} measured frames per count
