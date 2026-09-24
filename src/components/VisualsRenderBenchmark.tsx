@@ -1,6 +1,7 @@
 import React, { memo, useMemo, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as cloneSkinnedObject } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { Wh3Ktx2Loader } from "../visuals/Wh3Ktx2Loader";
 import {
   exportVisualsModel,
@@ -76,6 +77,11 @@ const BENCHMARK_PROFILES: Record<BenchmarkProfile, { warmupFrames: number; sampl
 
 const normalizePath = (value: string) => value.replace(/\//g, "\\").toLowerCase();
 const fileName = (value: string) => value.replace(/\\/g, "/").split("/").pop() ?? value;
+const directoryName = (value: string) => {
+  const normalized = value.replace(/\\/g, "/");
+  const separator = normalized.lastIndexOf("/");
+  return separator < 0 ? "" : normalized.slice(0, separator).toLowerCase();
+};
 const yieldToUi = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
 const findPackPairs = (mods: readonly BenchmarkMod[]): BenchmarkPackPair[] => {
@@ -93,7 +99,14 @@ const findPackPairs = (mods: readonly BenchmarkMod[]): BenchmarkPackPair[] => {
     if (!/_atlas\.pack$/i.test(atlasName)) continue;
     const originalName = atlasName.replace(/_atlas(\.pack)$/i, "$1").toLowerCase();
     const originals = byFileName.get(originalName) ?? [];
-    const original = originals.find((candidate) => !normalizePath(candidate.path).includes("_atlas.pack"));
+    const atlasDirectory = directoryName(atlas.path);
+    const original =
+      originals.find(
+        (candidate) =>
+          directoryName(candidate.path) === atlasDirectory
+          && !normalizePath(candidate.path).includes("_atlas.pack"),
+      )
+      ?? originals.find((candidate) => !normalizePath(candidate.path).includes("_atlas.pack"));
     if (!original) continue;
     pairs.push({
       id: `${normalizePath(original.path)}\0${normalizePath(atlas.path)}`,
@@ -189,7 +202,7 @@ const buildInstanceGroup = (source: THREE.Object3D, instanceCount: number) => {
   const group = new THREE.Group();
 
   for (let index = 0; index < instanceCount; index += 1) {
-    const clone = source.clone(true);
+    const clone = cloneSkinnedObject(source);
     const column = index % columns;
     const row = Math.floor(index / columns);
     clone.position.x += (column - (columns - 1) / 2) * spacingX;
@@ -311,6 +324,15 @@ const buildSourceMods = (
 ): VisualsModelPreviewMod[] => {
   const originalPath = normalizePath(pair.original.path);
   const atlasPath = normalizePath(pair.atlas.path);
+  const activePairMod = enabledMods.find((mod) => {
+    const path = normalizePath(mod.path);
+    return mod.isEnabled !== false && (path === originalPath || path === atlasPath);
+  });
+  const pairLoadOrder =
+    activePairMod?.loadOrder
+    ?? pair.original.loadOrder
+    ?? pair.atlas.loadOrder;
+
   const common = enabledMods
     .filter((mod) => mod.isEnabled !== false)
     .filter((mod) => {
@@ -321,8 +343,8 @@ const buildSourceMods = (
 
   return [
     ...common,
-    { name: source.name, path: source.path, loadOrder: source.loadOrder },
-  ].sort((left, right) => left.loadOrder - right.loadOrder);
+    { name: source.name, path: source.path, loadOrder: pairLoadOrder },
+  ].sort((left, right) => (left.loadOrder ?? 0) - (right.loadOrder ?? 0));
 };
 
 const benchmarkSource = async (
