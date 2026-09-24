@@ -872,6 +872,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   );
   const mountRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<ThreePreviewContext | null>(null);
+  const devBenchmarkRunningRef = useRef(false);
   const previewResourceSessionRef = useRef<PreviewResourceSession | null>(null);
   const paintRootRef = useRef<THREE.Object3D | null>(null);
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
@@ -1983,7 +1984,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const now = typeof timestamp === "number" ? timestamp : performance.now();
       const delta = Math.min(Math.max((now - previousFrameTime) / 1000, 0), 0.1);
       previousFrameTime = now;
-      if (!isVisible) return;
+      if (!isVisible || devBenchmarkRunningRef.current) return;
       if (context.isPlaying) {
         for (const mixer of context.mixers) mixer.update(delta);
       }
@@ -4694,6 +4695,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           enabledMods={currentPresetMods}
           variantSelections={comparisonVariants[0]?.selections ?? []}
           disabled={status !== "ready" || comparisonModelCount !== 1}
+          onRunningChange={(running) => {
+            devBenchmarkRunningRef.current = running;
+          }}
         />
       )}
       {variantMeshSessionId && !variantCatalogReady && (
