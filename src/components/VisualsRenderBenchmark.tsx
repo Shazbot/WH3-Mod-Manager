@@ -446,7 +446,7 @@ const VisualsRenderBenchmark = memo(({
       onRunningChange?.(true);
       setError("");
       setResult(undefined);
-      let renderer: THREE.WebGLRenderer | undefined;
+      let renderer: THREE.WebGLRenderer;
       try {
         renderer = createBenchmarkRenderer();
       } catch (rendererError) {
