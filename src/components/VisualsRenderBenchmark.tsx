@@ -60,6 +60,7 @@ type VisualsRenderBenchmarkProps = {
   enabledMods: readonly BenchmarkMod[];
   variantSelections: readonly VariantMeshSelection[];
   disabled?: boolean;
+  onRunningChange?: (running: boolean) => void;
 };
 
 type GpuTimerExtension = {
@@ -423,6 +424,7 @@ const VisualsRenderBenchmark = memo(({
   enabledMods,
   variantSelections,
   disabled = false,
+  onRunningChange,
 }: VisualsRenderBenchmarkProps) => {
   const pairs = useMemo(() => findPackPairs(availableMods), [availableMods]);
   const [selectedPairId, setSelectedPairId] = useState("");
@@ -441,6 +443,7 @@ const VisualsRenderBenchmark = memo(({
     if (!selectedPair || isRunning) return;
     void (async () => {
       setIsRunning(true);
+      onRunningChange?.(true);
       setError("");
       setResult(undefined);
       const renderer = createBenchmarkRenderer();
@@ -515,6 +518,7 @@ const VisualsRenderBenchmark = memo(({
       } finally {
         renderer.dispose();
         renderer.forceContextLoss();
+        onRunningChange?.(false);
         setIsRunning(false);
       }
     })();
