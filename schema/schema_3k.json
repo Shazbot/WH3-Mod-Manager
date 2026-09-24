@@ -113243,6 +113243,64 @@
         "version": 0,
         "fields": [
           {
+            "name": "ceo_set_key",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipped_set_bonuses",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "incident",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "incidents",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      },
+      {
+        "version": -1,
+        "fields": [
+          {
             "name": "id",
             "field_type": "I64",
             "is_key": true,
@@ -116014,6 +116072,61 @@
     "ceo_to_ui_display_junctions_tables": [
       {
         "version": 0,
+        "fields": [
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "female_image",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": true,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "male_image",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": true,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      },
+      {
+        "version": -1,
         "fields": [
           {
             "name": "ceo",
