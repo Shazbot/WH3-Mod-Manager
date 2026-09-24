@@ -39,6 +39,7 @@ type BenchmarkSourceResult = {
   packPath: string;
   exportMs: number;
   loadMs: number;
+  texturePreloadMs: number;
   materialTextureObjects: number;
   ktx2: Wh3Ktx2Timing;
   rows: BenchmarkRow[];
@@ -172,7 +173,7 @@ const waitForGpuQuery = async (
   return disjoint || !Number.isFinite(nanoseconds) ? undefined : nanoseconds / 1_000_000;
 };
 
-const countMaterialTextureObjects = (root: THREE.Object3D) => {
+const getMaterialTextureObjects = (root: THREE.Object3D) => {
   const textures = new Set<THREE.Texture>();
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
@@ -184,7 +185,7 @@ const countMaterialTextureObjects = (root: THREE.Object3D) => {
       }
     }
   });
-  return textures.size;
+  return [...textures];
 };
 
 const disposeSkinnedInstanceResources = (root: THREE.Object3D) => {
@@ -441,7 +442,16 @@ const benchmarkSource = async (
     const gltf = await loader.loadAsync(exported.url);
     const loadMs = performance.now() - loadStartedAt;
     loadedRoot = gltf.scene;
-    const materialTextureObjects = countMaterialTextureObjects(loadedRoot);
+    const materialTextures = getMaterialTextureObjects(loadedRoot);
+    const materialTextureObjects = materialTextures.length;
+
+    // WHMM's normal preview path explicitly uploads textures after GLTFLoader has
+    // applied sampler state. Do the same here so the measured render queries never
+    // absorb lazy texture initialization/upload work.
+    const texturePreloadStartedAt = performance.now();
+    for (const texture of materialTextures) ktx2Loader.preloadTexture(texture);
+    renderer.getContext().finish();
+    const texturePreloadMs = performance.now() - texturePreloadStartedAt;
 
     const rows: BenchmarkRow[] = [];
     for (const instances of BENCHMARK_COUNTS) {
@@ -465,6 +475,7 @@ const benchmarkSource = async (
       packPath: source.path,
       exportMs,
       loadMs,
+      texturePreloadMs,
       materialTextureObjects,
       ktx2,
       rows,
@@ -692,10 +703,10 @@ const VisualsRenderBenchmark = memo(({
             <div className="overflow-x-auto">
               <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-gray-500">
                 <span>
-                  Original export/load: {formatMs(result.original.exportMs)} / {formatMs(result.original.loadMs)} ms
+                  Original export/load/preload: {formatMs(result.original.exportMs)} / {formatMs(result.original.loadMs)} / {formatMs(result.original.texturePreloadMs)} ms
                 </span>
                 <span>
-                  Atlas export/load: {formatMs(result.atlas.exportMs)} / {formatMs(result.atlas.loadMs)} ms
+                  Atlas export/load/preload: {formatMs(result.atlas.exportMs)} / {formatMs(result.atlas.loadMs)} / {formatMs(result.atlas.texturePreloadMs)} ms
                 </span>
                 <span>
                   Material texture objects: {result.original.materialTextureObjects} → {result.atlas.materialTextureObjects}
