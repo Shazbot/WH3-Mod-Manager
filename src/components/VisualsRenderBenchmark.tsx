@@ -170,7 +170,16 @@ const waitForGpuQuery = async (
   return disjoint || !Number.isFinite(nanoseconds) ? undefined : nanoseconds / 1_000_000;
 };
 
+const disposeSkinnedInstanceResources = (root: THREE.Object3D) => {
+  const skeletons = new Set<THREE.Skeleton>();
+  root.traverse((child) => {
+    if (child instanceof THREE.SkinnedMesh) skeletons.add(child.skeleton);
+  });
+  skeletons.forEach((skeleton) => skeleton.dispose());
+};
+
 const disposeLoadedObject = (root: THREE.Object3D) => {
+  disposeSkinnedInstanceResources(root);
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
@@ -297,7 +306,16 @@ const runInstanceCount = async (
     };
   } finally {
     scene.remove(group);
+    disposeSkinnedInstanceResources(group);
     group.clear();
+
+    // Skeleton bone textures are allocated lazily per cloned skinned instance.
+    // Flush a frame after disposing them so renderer.info and the next sample do
+    // not inherit GPU resources from earlier instance-count steps.
+    renderer.info.reset();
+    renderer.render(scene, camera);
+    renderer.getContext().finish();
+    renderer.info.reset();
   }
 };
 
