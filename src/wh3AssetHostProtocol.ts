@@ -1,7 +1,9 @@
 import { TextDecoder } from "node:util";
 
 export const WH3_ASSET_HOST_PROTOCOL_VERSION = 1;
-export const WH3_ASSET_HOST_MAX_FRAME_BYTES = 1024 * 1024;
+// Large WH3 animation catalogs contain thousands of references plus metadata
+// identities and can exceed the original one-megabyte limit.
+export const WH3_ASSET_HOST_MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const FRAME_HEADER_BYTES = 4;
 
 export type Wh3AssetHostProtocolErrorCode =

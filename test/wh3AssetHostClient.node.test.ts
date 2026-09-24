@@ -101,7 +101,7 @@ describe("WH3AssetHostClient", () => {
           "missingSkeletonDecision",
           "shutdown",
         ],
-        maxFrameBytes: 1024 * 1024,
+        maxFrameBytes: 8 * 1024 * 1024,
       },
       error: null,
     }));
@@ -522,7 +522,7 @@ describe("WH3AssetHostClient", () => {
         hostVersion: "old-host",
         protocolVersion: 1,
         capabilities: ["hello", "initialize", "exportModel", "missingSkeletonDecision", "shutdown"],
-        maxFrameBytes: 1024 * 1024,
+        maxFrameBytes: 8 * 1024 * 1024,
       },
       error: null,
     }));
@@ -562,7 +562,7 @@ describe("WH3AssetHostClient", () => {
           "missingSkeletonDecision",
           "shutdown",
         ],
-        maxFrameBytes: 1024 * 1024,
+        maxFrameBytes: 8 * 1024 * 1024,
       },
       error: null,
     }));
@@ -603,7 +603,7 @@ describe("WH3AssetHostClient", () => {
           "missingSkeletonDecision",
           "shutdown",
         ],
-        maxFrameBytes: 1024 * 1024,
+        maxFrameBytes: 8 * 1024 * 1024,
       },
       error: null,
     }));
@@ -641,7 +641,7 @@ describe("WH3AssetHostClient", () => {
           "missingSkeletonDecision",
           "shutdown",
         ],
-        maxFrameBytes: 1024 * 1024,
+        maxFrameBytes: 8 * 1024 * 1024,
       },
       error: null,
     }));

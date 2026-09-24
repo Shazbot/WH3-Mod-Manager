@@ -94,7 +94,7 @@ describe("WH3AssetHost frame protocol", () => {
     expectProtocolError(() => decoder.push(Buffer.alloc(4)), "EmptyFrame");
   });
 
-  it("rejects a declared payload above the one-megabyte protocol limit before buffering it", () => {
+  it("rejects a declared payload above the configured protocol limit before buffering it", () => {
     const decoder = new Wh3AssetHostFrameDecoder();
     const header = Buffer.alloc(4);
     header.writeUInt32LE(WH3_ASSET_HOST_MAX_FRAME_BYTES + 1, 0);
