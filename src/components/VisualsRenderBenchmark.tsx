@@ -27,7 +27,7 @@ type BenchmarkRow = {
   drawCalls: number;
   triangles: number;
   geometries: number;
-  textures: number;
+  rendererTextureObjects: number;
   cpuMeanMs: number;
   cpuMedianMs: number;
   cpuP95Ms: number;
@@ -39,6 +39,7 @@ type BenchmarkSourceResult = {
   packPath: string;
   exportMs: number;
   loadMs: number;
+  materialTextureObjects: number;
   rows: BenchmarkRow[];
 };
 
@@ -170,6 +171,21 @@ const waitForGpuQuery = async (
   return disjoint || !Number.isFinite(nanoseconds) ? undefined : nanoseconds / 1_000_000;
 };
 
+const countMaterialTextureObjects = (root: THREE.Object3D) => {
+  const textures = new Set<THREE.Texture>();
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) textures.add(value);
+      }
+    }
+  });
+  return textures.size;
+};
+
 const disposeSkinnedInstanceResources = (root: THREE.Object3D) => {
   const skeletons = new Set<THREE.Skeleton>();
   root.traverse((child) => {
@@ -297,7 +313,7 @@ const runInstanceCount = async (
       drawCalls: renderer.info.render.calls,
       triangles: renderer.info.render.triangles,
       geometries: renderer.info.memory.geometries,
-      textures: renderer.info.memory.textures,
+      rendererTextureObjects: renderer.info.memory.textures,
       cpuMeanMs: cpu.mean,
       cpuMedianMs: cpu.median,
       cpuP95Ms: cpu.p95,
@@ -334,6 +350,31 @@ const createBenchmarkRenderer = () => {
   renderer.toneMappingExposure = 1;
   renderer.shadowMap.enabled = false;
   return renderer;
+};
+
+const createBenchmarkEnvironment = () => {
+  const renderer = createBenchmarkRenderer();
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111827);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 2.2));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 3.5);
+  keyLight.position.set(4, 7, 5);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0xbfd7ff, 1.4);
+  fillLight.position.set(-4, 3, -2);
+  scene.add(fillLight);
+  const camera = new THREE.PerspectiveCamera(
+    35,
+    BENCHMARK_WIDTH / BENCHMARK_HEIGHT,
+    0.01,
+    1000,
+  );
+  return { renderer, scene, camera };
+};
+
+const disposeBenchmarkEnvironment = (environment: ReturnType<typeof createBenchmarkEnvironment>) => {
+  environment.renderer.dispose();
+  environment.renderer.forceContextLoss();
 };
 
 const buildSourceMods = (
@@ -399,6 +440,7 @@ const benchmarkSource = async (
     const gltf = await loader.loadAsync(exported.url);
     const loadMs = performance.now() - loadStartedAt;
     loadedRoot = gltf.scene;
+    const materialTextureObjects = countMaterialTextureObjects(loadedRoot);
 
     const rows: BenchmarkRow[] = [];
     for (const instances of BENCHMARK_COUNTS) {
@@ -421,6 +463,7 @@ const benchmarkSource = async (
       packPath: source.path,
       exportMs,
       loadMs,
+      materialTextureObjects,
       rows,
     };
   } finally {
@@ -464,67 +507,72 @@ const VisualsRenderBenchmark = memo(({
       onRunningChange?.(true);
       setError("");
       setResult(undefined);
-      let renderer: THREE.WebGLRenderer;
-      try {
-        renderer = createBenchmarkRenderer();
-      } catch (rendererError) {
-        onRunningChange?.(false);
-        setIsRunning(false);
-        setError(
-          rendererError instanceof Error
-            ? rendererError.message
-            : "Unable to create the benchmark WebGL renderer.",
-        );
-        return;
-      }
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x111827);
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 2.2));
-      const keyLight = new THREE.DirectionalLight(0xffffff, 3.5);
-      keyLight.position.set(4, 7, 5);
-      scene.add(keyLight);
-      const fillLight = new THREE.DirectionalLight(0xbfd7ff, 1.4);
-      fillLight.position.set(-4, 3, -2);
-      scene.add(fillLight);
-      const camera = new THREE.PerspectiveCamera(
-        35,
-        BENCHMARK_WIDTH / BENCHMARK_HEIGHT,
-        0.01,
-        1000,
-      );
       const benchmarkProfile = BENCHMARK_PROFILES[profile];
 
       try {
-        setProgress(`Exporting ${fileName(selectedPair.original.path)}`);
-        const original = await benchmarkSource(
-          assetPath,
-          enabledMods,
-          selectedPair,
-          selectedPair.original,
-          variantSelections,
-          renderer,
-          scene,
-          camera,
-          benchmarkProfile.warmupFrames,
-          benchmarkProfile.sampleFrames,
-          setProgress,
-        );
+        let originalEnvironment: ReturnType<typeof createBenchmarkEnvironment>;
+        try {
+          originalEnvironment = createBenchmarkEnvironment();
+        } catch (rendererError) {
+          throw new Error(
+            rendererError instanceof Error
+              ? rendererError.message
+              : "Unable to create the original benchmark WebGL renderer.",
+          );
+        }
 
-        renderer.info.reset();
-        setProgress(`Exporting ${fileName(selectedPair.atlas.path)}`);
-        const atlas = await benchmarkSource(
-          assetPath,
-          enabledMods,
-          selectedPair,
-          selectedPair.atlas,
-          variantSelections,
-          renderer,
-          scene,
-          camera,
-          benchmarkProfile.warmupFrames,
-          benchmarkProfile.sampleFrames,
-          setProgress,
-        );
+        let original: BenchmarkSourceResult;
+        try {
+          setProgress(`Exporting ${fileName(selectedPair.original.path)}`);
+          original = await benchmarkSource(
+            assetPath,
+            enabledMods,
+            selectedPair,
+            selectedPair.original,
+            variantSelections,
+            originalEnvironment.renderer,
+            originalEnvironment.scene,
+            originalEnvironment.camera,
+            benchmarkProfile.warmupFrames,
+            benchmarkProfile.sampleFrames,
+            setProgress,
+          );
+        } finally {
+          disposeBenchmarkEnvironment(originalEnvironment);
+        }
+
+        await yieldToUi();
+
+        let atlasEnvironment: ReturnType<typeof createBenchmarkEnvironment>;
+        try {
+          atlasEnvironment = createBenchmarkEnvironment();
+        } catch (rendererError) {
+          throw new Error(
+            rendererError instanceof Error
+              ? rendererError.message
+              : "Unable to create the atlas benchmark WebGL renderer.",
+          );
+        }
+
+        let atlas: BenchmarkSourceResult;
+        try {
+          setProgress(`Exporting ${fileName(selectedPair.atlas.path)}`);
+          atlas = await benchmarkSource(
+            assetPath,
+            enabledMods,
+            selectedPair,
+            selectedPair.atlas,
+            variantSelections,
+            atlasEnvironment.renderer,
+            atlasEnvironment.scene,
+            atlasEnvironment.camera,
+            benchmarkProfile.warmupFrames,
+            benchmarkProfile.sampleFrames,
+            setProgress,
+          );
+        } finally {
+          disposeBenchmarkEnvironment(atlasEnvironment);
+        }
 
         setResult({
           assetPath,
@@ -546,8 +594,6 @@ const VisualsRenderBenchmark = memo(({
         );
         setProgress("");
       } finally {
-        renderer.dispose();
-        renderer.forceContextLoss();
         onRunningChange?.(false);
         setIsRunning(false);
       }
@@ -632,6 +678,7 @@ const VisualsRenderBenchmark = memo(({
             Static model, 960×540, shadows off, shared geometry/material/texture resources between instances.
             The camera fits the full instance grid, so the scaling test primarily stresses submissions/draw calls rather than fixed on-screen pixel cost.
             Counts: {BENCHMARK_COUNTS.join(", ")}. GPU timing uses EXT_disjoint_timer_query_webgl2 when available.
+            Export/load timings are diagnostic only and can be dominated by WH3AssetHost/browser cache state.
           </div>
 
           {progress && <div className="text-fuchsia-300">{progress}</div>}
@@ -647,9 +694,21 @@ const VisualsRenderBenchmark = memo(({
                   Atlas export/load: {formatMs(result.atlas.exportMs)} / {formatMs(result.atlas.loadMs)} ms
                 </span>
                 <span>
+                  Material texture objects: {result.original.materialTextureObjects} → {result.atlas.materialTextureObjects}
+                </span>
+                <span>
                   {result.warmupFrames} warmup + {result.sampleFrames} measured frames per count
                 </span>
               </div>
+              {result.original.rows[0]
+                && result.atlas.rows[0]
+                && result.original.rows[0].drawCalls === result.atlas.rows[0].drawCalls
+                && result.original.rows[0].triangles === result.atlas.rows[0].triangles && (
+                  <div className="mb-2 rounded border border-amber-800/70 bg-amber-950/30 px-2 py-1 text-amber-300">
+                    No 1-instance structural render difference detected: draw calls and triangles are identical.
+                    This asset/appearance does not exercise the atlas mesh-merge benefit, so timing deltas here are mostly noise.
+                  </div>
+                )}
               <table className="w-full min-w-[900px] border-collapse text-right tabular-nums">
                 <thead className="text-gray-500">
                   <tr>
