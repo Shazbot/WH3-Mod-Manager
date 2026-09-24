@@ -24,6 +24,7 @@ import {
 import type { VisualsModelPreviewAnimationReference } from "../visuals/modelPreviewApi";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
+import VisualsRenderBenchmark from "./VisualsRenderBenchmark";
 import { selectDefaultAnimation, type AnimationSelectionProfile } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
@@ -861,6 +862,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const allMods = useAppSelector((state) => state.app.allMods);
+  const isDev = useAppSelector((state) => state.app.isDev);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const enabledMods = useMemo(
     () =>
@@ -4684,6 +4687,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             : "Left drag: orbit · Right drag: pan · Wheel: zoom"}
         </div>
       </div>
+      {isDev && (
+        <VisualsRenderBenchmark
+          assetPath={assetPath}
+          availableMods={allMods}
+          enabledMods={currentPresetMods}
+          variantSelections={comparisonVariants[0]?.selections ?? []}
+          disabled={status !== "ready" || comparisonModelCount !== 1}
+        />
+      )}
       {variantMeshSessionId && !variantCatalogReady && (
         <div className="shrink-0 border-t border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-400">
           {localized.unitViewerLoadingAppearances || "Loading unit appearances…"}
