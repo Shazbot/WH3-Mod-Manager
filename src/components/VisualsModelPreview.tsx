@@ -1774,7 +1774,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         event.stopImmediatePropagation();
         const projected = getPaintIntersection(event.clientX, event.clientY);
         const operation = event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
-        if (projected) selectPaintIntersection(projected.hit, operation);
+        if (projected && selectPaintIntersection(projected.hit, operation) && operation === "replace") {
+          choosePaintSelectMode(undefined);
+        }
         return;
       }
 
@@ -3136,7 +3138,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
                 if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
               }}
-              onSelectionComplete={(selection, mode) => {
+              onSelectionComplete={(selection, mode, operation) => {
                 setPaintSelection(selection);
                 if (selection) {
                   setPaintTextureViewId(selection.textureId);
@@ -3147,6 +3149,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   paintScopeRef.current = "all";
                 }
                 refreshPaintSelectionVisual(selection ? mode : "all");
+                if (operation === "replace") choosePaintSelectMode(undefined);
                 setPaintHistoryVersion((value) => value + 1);
               }}
               linkedHoverSinkRef={textureLinkedHoverSinkRef}
@@ -3985,7 +3988,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                         : "border-gray-600 bg-gray-800 text-gray-100"
                     }`}
                     aria-label="Selection tool"
-                    title="Choose what clicking the model selects. Shift adds; Ctrl toggles."
+                    title="Plain click selects once, then returns LMB to painting. Hold Shift to add or Ctrl to toggle while keeping selection mode active."
                   >
                     <option value="">Off</option>
                     <option value="material">Material</option>
