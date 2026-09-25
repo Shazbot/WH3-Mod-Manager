@@ -22,6 +22,8 @@ type VisualsUnitEntry = {
   cultureName?: string;
   cultures?: Array<{ key: string; name: string }>;
   caste?: string;
+  numMen?: number;
+  uiGroupKey?: string;
 };
 
 type VisualsCultureGroup = {
@@ -1361,6 +1363,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                           isActive={isActive}
                           variantMeshSessionId={sessionId ?? undefined}
                           variantMeshSessionType="visuals"
+                          benchmarkUnits={units}
                         />
                       ))}
                   </div>
