@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState } from "react";
+import React, { memo, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinnedObject } from "three/examples/jsm/utils/SkeletonUtils.js";
@@ -9,6 +9,13 @@ import {
   type VisualsModelPreviewMod,
 } from "../visuals/modelPreviewApi";
 import type { VariantMeshSelection } from "../visuals/variantMesh";
+import {
+  generateArmyBenchmarkRoster,
+  parseArmyBenchmarkRoster,
+  serializeArmyBenchmarkRoster,
+  type ArmyBenchmarkCandidate,
+  type ArmyBenchmarkRosterFile,
+} from "../visuals/armyBenchmark";
 
 type BenchmarkMod = VisualsModelPreviewMod & {
   isEnabled?: boolean;
@@ -21,6 +28,7 @@ type BenchmarkPackPair = {
 };
 
 type BenchmarkProfile = "quick" | "deep";
+type BenchmarkMode = "asset" | "army";
 
 type BenchmarkRow = {
   instances: number;
@@ -46,7 +54,9 @@ type BenchmarkSourceResult = {
 };
 
 type BenchmarkComparisonResult = {
+  mode: BenchmarkMode;
   assetPath: string;
+  armyRoster?: ArmyBenchmarkRosterFile;
   profile: BenchmarkProfile;
   warmupFrames: number;
   sampleFrames: number;
@@ -62,6 +72,7 @@ type VisualsRenderBenchmarkProps = {
   availableMods: readonly BenchmarkMod[];
   enabledMods: readonly BenchmarkMod[];
   variantSelections: readonly VariantMeshSelection[];
+  benchmarkUnits: readonly ArmyBenchmarkCandidate[];
   disabled?: boolean;
   onRunningChange?: (running: boolean) => void;
 };
@@ -261,16 +272,15 @@ const frameBenchmarkGroup = (
   camera.updateMatrixWorld(true);
 };
 
-const runInstanceCount = async (
+const runPreparedGroup = async (
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
   camera: THREE.PerspectiveCamera,
-  source: THREE.Object3D,
+  group: THREE.Group,
   instances: number,
   warmupFrames: number,
   sampleFrames: number,
 ): Promise<BenchmarkRow> => {
-  const group = buildInstanceGroup(source, instances);
   scene.add(group);
   frameBenchmarkGroup(camera, group);
 
@@ -335,6 +345,64 @@ const runInstanceCount = async (
     renderer.getContext().finish();
     renderer.info.reset();
   }
+};
+
+const runInstanceCount = (
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.PerspectiveCamera,
+  source: THREE.Object3D,
+  instances: number,
+  warmupFrames: number,
+  sampleFrames: number,
+): Promise<BenchmarkRow> =>
+  runPreparedGroup(
+    renderer,
+    scene,
+    camera,
+    buildInstanceGroup(source, instances),
+    instances,
+    warmupFrames,
+    sampleFrames,
+  );
+
+type LoadedArmyAsset = {
+  source: THREE.Object3D;
+  entities: number;
+};
+
+const buildArmyGroup = async (assets: readonly LoadedArmyAsset[]) => {
+  let maxWidth = 0.25;
+  let maxDepth = 0.25;
+  let totalEntities = 0;
+  for (const asset of assets) {
+    const size = new THREE.Box3().setFromObject(asset.source).getSize(new THREE.Vector3());
+    maxWidth = Math.max(maxWidth, size.x);
+    maxDepth = Math.max(maxDepth, size.z);
+    totalEntities += asset.entities;
+  }
+
+  const spacingX = maxWidth * 1.2;
+  const spacingZ = maxDepth * 1.2;
+  const columns = Math.ceil(Math.sqrt(totalEntities));
+  const rows = Math.ceil(totalEntities / columns);
+  const group = new THREE.Group();
+  let entityIndex = 0;
+
+  for (const asset of assets) {
+    for (let index = 0; index < asset.entities; index += 1) {
+      const clone = cloneSkinnedObject(asset.source);
+      const column = entityIndex % columns;
+      const row = Math.floor(entityIndex / columns);
+      clone.position.x += (column - (columns - 1) / 2) * spacingX;
+      clone.position.z += (row - (rows - 1) / 2) * spacingZ;
+      group.add(clone);
+      entityIndex += 1;
+      if (entityIndex % 100 === 0) await yieldToUi();
+    }
+  }
+
+  return { group, totalEntities };
 };
 
 const createBenchmarkRenderer = () => {
@@ -486,6 +554,125 @@ const benchmarkSource = async (
   }
 };
 
+const benchmarkArmySource = async (
+  roster: ArmyBenchmarkRosterFile,
+  enabledMods: readonly BenchmarkMod[],
+  pair: BenchmarkPackPair,
+  source: BenchmarkMod,
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.PerspectiveCamera,
+  warmupFrames: number,
+  sampleFrames: number,
+  onProgress: (message: string) => void,
+): Promise<BenchmarkSourceResult> => {
+  const sourceMods = buildSourceMods(enabledMods, pair, source);
+  const byAssetPath = new Map<string, { assetPath: string; entities: number; names: string[] }>();
+  for (const unit of roster.units) {
+    const key = normalizePath(unit.assetPath);
+    const existing = byAssetPath.get(key);
+    if (existing) {
+      existing.entities += unit.entities;
+      existing.names.push(unit.name);
+    } else {
+      byAssetPath.set(key, {
+        assetPath: unit.assetPath,
+        entities: unit.entities,
+        names: [unit.name],
+      });
+    }
+  }
+
+  const loadedAssets: LoadedArmyAsset[] = [];
+  const previewIds: string[] = [];
+  const loadedRoots: THREE.Object3D[] = [];
+  const materialTextures = new Set<THREE.Texture>();
+  let exportMs = 0;
+  let loadMs = 0;
+  let group: THREE.Group | undefined;
+  const ktx2Loader = new Wh3Ktx2Loader(renderer);
+  ktx2Loader.detectSupport(renderer);
+  const loader = new GLTFLoader();
+  loader.setKTX2Loader(ktx2Loader);
+
+  try {
+    const entries = [...byAssetPath.values()];
+    for (const [index, entry] of entries.entries()) {
+      onProgress(
+        `${fileName(source.path)} · loading army unit ${index + 1}/${entries.length} · ${entry.names[0]}`,
+      );
+      const exportStartedAt = performance.now();
+      const exported = await exportVisualsModel(entry.assetPath, sourceMods, [], []);
+      exportMs += performance.now() - exportStartedAt;
+      if (!exported.success || !exported.previewId || !exported.url) {
+        throw new Error(exported.error || `Failed to export ${entry.assetPath}.`);
+      }
+      previewIds.push(exported.previewId);
+
+      const loadStartedAt = performance.now();
+      const gltf = await loader.loadAsync(exported.url);
+      loadMs += performance.now() - loadStartedAt;
+      const root = gltf.scene;
+      loadedRoots.push(root);
+      getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
+      loadedAssets.push({ source: root, entities: entry.entities });
+      await yieldToUi();
+    }
+
+    const texturePreloadStartedAt = performance.now();
+    for (const texture of materialTextures) ktx2Loader.preloadTexture(texture);
+    renderer.getContext().finish();
+    const texturePreloadMs = performance.now() - texturePreloadStartedAt;
+
+    onProgress(
+      `${fileName(source.path)} · building ${roster.units.length}-unit army · ${roster.units.reduce((sum, unit) => sum + unit.entities, 0).toLocaleString()} entities`,
+    );
+    const built = await buildArmyGroup(loadedAssets);
+    group = built.group;
+    onProgress(
+      `${fileName(source.path)} · measuring whole army · ${built.totalEntities.toLocaleString()} entities`,
+    );
+    const row = await runPreparedGroup(
+      renderer,
+      scene,
+      camera,
+      group,
+      built.totalEntities,
+      warmupFrames,
+      sampleFrames,
+    );
+    group = undefined;
+
+    const ktx2 = ktx2Loader.getTiming();
+    ktx2Loader.clearRawTextureDataCache();
+    return {
+      packPath: source.path,
+      exportMs,
+      loadMs,
+      texturePreloadMs,
+      materialTextureObjects: materialTextures.size,
+      ktx2,
+      rows: [row],
+    };
+  } finally {
+    if (group) {
+      disposeSkinnedInstanceResources(group);
+      group.clear();
+    }
+    for (const root of loadedRoots) disposeLoadedObject(root);
+    await Promise.all(previewIds.map((previewId) => releaseVisualsModelPreview(previewId).catch(() => undefined)));
+  }
+};
+
+const downloadJson = (fileNameValue: string, value: string) => {
+  const url = URL.createObjectURL(new Blob([value], { type: "application/json" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileNameValue;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+};
+
 const formatMs = (value?: number) => (value == null ? "—" : value.toFixed(value < 1 ? 3 : 2));
 const formatMiB = (bytes?: number) => (bytes == null ? "—" : `${(bytes / (1024 * 1024)).toFixed(1)} MiB`);
 const formatDelta = (baseline: number | undefined, candidate: number | undefined) => {
@@ -499,21 +686,52 @@ const VisualsRenderBenchmark = memo(({
   availableMods,
   enabledMods,
   variantSelections,
+  benchmarkUnits,
   disabled = false,
   onRunningChange,
 }: VisualsRenderBenchmarkProps) => {
   const pairs = useMemo(() => findPackPairs(availableMods), [availableMods]);
   const [selectedPairId, setSelectedPairId] = useState("");
+  const [mode, setMode] = useState<BenchmarkMode>("asset");
   const [profile, setProfile] = useState<BenchmarkProfile>("quick");
   const [isOpen, setIsOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<BenchmarkComparisonResult>();
+  const [armyRoster, setArmyRoster] = useState<ArmyBenchmarkRosterFile>();
+  const armyImportRef = useRef<HTMLInputElement>(null);
 
   const selectedPair =
     pairs.find((pair) => pair.id === selectedPairId)
     ?? pairs[0];
+
+  const createRandomArmy = () => {
+    if (!selectedPair) return undefined;
+    const roster = generateArmyBenchmarkRoster(benchmarkUnits, selectedPair.original.path);
+    setArmyRoster(roster);
+    setError("");
+    return roster;
+  };
+
+  const exportArmy = () => {
+    if (!armyRoster) return;
+    const stamp = armyRoster.generatedAt.replace(/[:.]/g, "-");
+    downloadJson(`whmm-army-benchmark-${stamp}.json`, serializeArmyBenchmarkRoster(armyRoster));
+  };
+
+  const importArmy = async (file?: File) => {
+    if (!file) return;
+    try {
+      const roster = parseArmyBenchmarkRoster(await file.text());
+      setArmyRoster(roster);
+      setMode("army");
+      setResult(undefined);
+      setError("");
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Failed to import army benchmark list.");
+    }
+  };
 
   const runBenchmark = () => {
     if (!selectedPair || isRunning) return;
@@ -525,6 +743,13 @@ const VisualsRenderBenchmark = memo(({
       const benchmarkProfile = BENCHMARK_PROFILES[profile];
 
       try {
+        const rosterForRun =
+          mode === "army"
+            ? armyRoster ?? createRandomArmy()
+            : undefined;
+        if (mode === "army" && !rosterForRun) {
+          throw new Error("No army benchmark roster is available.");
+        }
         let originalEnvironment: ReturnType<typeof createBenchmarkEnvironment>;
         try {
           originalEnvironment = createBenchmarkEnvironment();
@@ -539,19 +764,33 @@ const VisualsRenderBenchmark = memo(({
         let original: BenchmarkSourceResult;
         try {
           setProgress(`Exporting ${fileName(selectedPair.original.path)}`);
-          original = await benchmarkSource(
-            assetPath,
-            enabledMods,
-            selectedPair,
-            selectedPair.original,
-            variantSelections,
-            originalEnvironment.renderer,
-            originalEnvironment.scene,
-            originalEnvironment.camera,
-            benchmarkProfile.warmupFrames,
-            benchmarkProfile.sampleFrames,
-            setProgress,
-          );
+          original =
+            mode === "army"
+              ? await benchmarkArmySource(
+                  rosterForRun!,
+                  enabledMods,
+                  selectedPair,
+                  selectedPair.original,
+                  originalEnvironment.renderer,
+                  originalEnvironment.scene,
+                  originalEnvironment.camera,
+                  benchmarkProfile.warmupFrames,
+                  benchmarkProfile.sampleFrames,
+                  setProgress,
+                )
+              : await benchmarkSource(
+                  assetPath,
+                  enabledMods,
+                  selectedPair,
+                  selectedPair.original,
+                  variantSelections,
+                  originalEnvironment.renderer,
+                  originalEnvironment.scene,
+                  originalEnvironment.camera,
+                  benchmarkProfile.warmupFrames,
+                  benchmarkProfile.sampleFrames,
+                  setProgress,
+                );
         } finally {
           disposeBenchmarkEnvironment(originalEnvironment);
         }
@@ -572,25 +811,41 @@ const VisualsRenderBenchmark = memo(({
         let atlas: BenchmarkSourceResult;
         try {
           setProgress(`Exporting ${fileName(selectedPair.atlas.path)}`);
-          atlas = await benchmarkSource(
-            assetPath,
-            enabledMods,
-            selectedPair,
-            selectedPair.atlas,
-            variantSelections,
-            atlasEnvironment.renderer,
-            atlasEnvironment.scene,
-            atlasEnvironment.camera,
-            benchmarkProfile.warmupFrames,
-            benchmarkProfile.sampleFrames,
-            setProgress,
-          );
+          atlas =
+            mode === "army"
+              ? await benchmarkArmySource(
+                  rosterForRun!,
+                  enabledMods,
+                  selectedPair,
+                  selectedPair.atlas,
+                  atlasEnvironment.renderer,
+                  atlasEnvironment.scene,
+                  atlasEnvironment.camera,
+                  benchmarkProfile.warmupFrames,
+                  benchmarkProfile.sampleFrames,
+                  setProgress,
+                )
+              : await benchmarkSource(
+                  assetPath,
+                  enabledMods,
+                  selectedPair,
+                  selectedPair.atlas,
+                  variantSelections,
+                  atlasEnvironment.renderer,
+                  atlasEnvironment.scene,
+                  atlasEnvironment.camera,
+                  benchmarkProfile.warmupFrames,
+                  benchmarkProfile.sampleFrames,
+                  setProgress,
+                );
         } finally {
           disposeBenchmarkEnvironment(atlasEnvironment);
         }
 
         setResult({
+          mode,
           assetPath,
+          ...(rosterForRun ? { armyRoster: rosterForRun } : {}),
           profile,
           warmupFrames: benchmarkProfile.warmupFrames,
           sampleFrames: benchmarkProfile.sampleFrames,
@@ -652,6 +907,19 @@ const VisualsRenderBenchmark = memo(({
             </label>
 
             <label className="flex items-center gap-1">
+              <span className="text-gray-500">Test</span>
+              <select
+                value={mode}
+                onChange={(event) => setMode(event.target.value as BenchmarkMode)}
+                disabled={isRunning}
+                className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-gray-200"
+              >
+                <option value="asset">Current asset</option>
+                <option value="army">Random army</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-1">
               <span className="text-gray-500">Profile</span>
               <select
                 value={profile}
@@ -664,6 +932,47 @@ const VisualsRenderBenchmark = memo(({
               </select>
             </label>
 
+            {mode === "army" && (
+              <>
+                <button
+                  type="button"
+                  onClick={createRandomArmy}
+                  disabled={isRunning || !selectedPair || benchmarkUnits.length === 0}
+                  className="rounded border border-gray-700 bg-gray-900 px-2 py-1 hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Generate another army from DB-backed units using the 1/2/9/4/3/2 template."
+                >
+                  Generate army
+                </button>
+                <button
+                  type="button"
+                  onClick={exportArmy}
+                  disabled={isRunning || !armyRoster}
+                  className="rounded border border-gray-700 bg-gray-900 px-2 py-1 hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Export list
+                </button>
+                <button
+                  type="button"
+                  onClick={() => armyImportRef.current?.click()}
+                  disabled={isRunning}
+                  className="rounded border border-gray-700 bg-gray-900 px-2 py-1 hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Import list
+                </button>
+                <input
+                  ref={armyImportRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    void importArmy(file);
+                  }}
+                />
+              </>
+            )}
+
             <button
               type="button"
               onClick={runBenchmark}
@@ -671,8 +980,10 @@ const VisualsRenderBenchmark = memo(({
               className="rounded border border-fuchsia-700 bg-fuchsia-950/50 px-2 py-1 font-medium text-fuchsia-200 hover:border-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40"
               title={
                 disabled
-                  ? "Benchmarking requires one fully loaded model."
-                  : "Benchmark the same asset and appearance against the original and _atlas pack."
+                  ? "Benchmarking requires a fully loaded preview."
+                  : mode === "army"
+                    ? "Benchmark one reproducible 21-slot army against the original and _atlas pack."
+                    : "Benchmark the same asset and appearance against the original and _atlas pack."
               }
             >
               {isRunning ? "Running…" : "Run A/B"}
@@ -690,11 +1001,41 @@ const VisualsRenderBenchmark = memo(({
           </div>
 
           <div className="text-gray-500">
-            Static model, 960×540, shadows off, shared geometry/material/texture resources between instances.
-            The camera fits the full instance grid, so the scaling test primarily stresses submissions/draw calls rather than fixed on-screen pixel cost.
-            Counts: {BENCHMARK_COUNTS.join(", ")}. GPU timing uses EXT_disjoint_timer_query_webgl2 when available.
-            Export/load timings are diagnostic only and can be dominated by WH3AssetHost/browser cache state.
+            {mode === "army" ? (
+              <>
+                Whole-army render at 960×540 with the established template: 1 lord, 2 heroes, 9 infantry/missile,
+                4 cavalry/chariots, 3 monsters/beasts, and 2 artillery/war machines. Each selected regiment uses
+                its DB num_men entity count; repeated VMDs share loaded geometry/material/texture resources.
+              </>
+            ) : (
+              <>
+                Static model, 960×540, shadows off, shared geometry/material/texture resources between instances.
+                The camera fits the full instance grid. Counts: {BENCHMARK_COUNTS.join(", ")}.
+              </>
+            )}
+            {" "}GPU timing uses EXT_disjoint_timer_query_webgl2 when available. Export/load timings are diagnostic only
+            and can be dominated by WH3AssetHost/browser cache state.
           </div>
+
+          {mode === "army" && armyRoster && (
+            <div className="rounded border border-gray-800 bg-gray-900/60 px-2 py-1 text-gray-400">
+              <div>
+                Army list: {armyRoster.units.length} unit slots ·{" "}
+                {armyRoster.units.reduce((sum, unit) => sum + unit.entities, 0).toLocaleString()} entities
+                {armyRoster.cultureKey ? ` · ${armyRoster.cultureKey}` : ""}
+              </div>
+              <details className="mt-1">
+                <summary className="cursor-pointer text-gray-300">Show selected units</summary>
+                <div className="mt-1 grid gap-x-3 gap-y-0.5 md:grid-cols-2 xl:grid-cols-3">
+                  {armyRoster.units.map((unit) => (
+                    <div key={`${unit.slot}:${unit.unitKey}:${unit.faction}`} title={unit.assetPath}>
+                      {unit.slot + 1}. {unit.category} · {unit.name} · {unit.entities}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          )}
 
           {progress && <div className="text-fuchsia-300">{progress}</div>}
           {error && <div className="text-red-300">{error}</div>}
@@ -724,10 +1065,12 @@ const VisualsRenderBenchmark = memo(({
                   KTX2 decode wall: {formatMs(result.original.ktx2.rawTextureWallMs)} → {formatMs(result.atlas.ktx2.rawTextureWallMs)} ms
                 </span>
                 <span>
-                  {result.warmupFrames} warmup + {result.sampleFrames} measured frames per count
+                  {result.warmupFrames} warmup + {result.sampleFrames} measured frames
+                  {result.mode === "army" ? " for the whole army" : " per count"}
                 </span>
               </div>
-              {result.original.rows[0]
+              {result.mode === "asset"
+                && result.original.rows[0]
                 && result.atlas.rows[0]
                 && result.original.rows[0].drawCalls === result.atlas.rows[0].drawCalls
                 && result.original.rows[0].triangles === result.atlas.rows[0].triangles && (
@@ -739,7 +1082,9 @@ const VisualsRenderBenchmark = memo(({
               <table className="w-full min-w-[900px] border-collapse text-right tabular-nums">
                 <thead className="text-gray-500">
                   <tr>
-                    <th className="border-b border-gray-800 px-1 py-1 text-left">Instances</th>
+                    <th className="border-b border-gray-800 px-1 py-1 text-left">
+                      {result.mode === "army" ? "Entities" : "Instances"}
+                    </th>
                     <th className="border-b border-gray-800 px-1 py-1">Calls orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">Calls atlas</th>
                     <th className="border-b border-gray-800 px-1 py-1">Δ calls</th>
