@@ -735,6 +735,15 @@ const VisualsRenderBenchmark = memo(({
     try {
       const roster = parseArmyBenchmarkRoster(await file.text());
       setArmyRoster(roster);
+      const recordedPackPath = roster.sourcePackPath ? normalizePath(roster.sourcePackPath) : "";
+      if (recordedPackPath) {
+        const recordedPair = pairs.find(
+          (pair) =>
+            normalizePath(pair.original.path) === recordedPackPath
+            || normalizePath(pair.atlas.path) === recordedPackPath,
+        );
+        if (recordedPair) setSelectedPairId(recordedPair.id);
+      }
       setMode("army");
       setResult(undefined);
       setError("");
