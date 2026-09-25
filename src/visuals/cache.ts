@@ -2,7 +2,7 @@ import * as nodePath from "path";
 import * as fs from "fs";
 
 /** Bump whenever the extraction rules or the cached shape change. */
-export const VISUALS_DATA_CACHE_VERSION = 7;
+export const VISUALS_DATA_CACHE_VERSION = 8;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const VISUALS_CACHE_DIR = "visuals";
 const VANILLA_CACHE_FILE = "vanilla.bin";
@@ -35,8 +35,12 @@ export interface VisualsTableContribution {
     [unitKey: string, faction: string, variantName: string, name?: string, unitCard?: string]
   >;
   landUnits: string[];
-  /** Land-unit caste metadata from main_units, kept optional for callers constructing old fixtures. */
-  mainUnits?: Array<[landUnitKey: string, caste: string]>;
+  /** Land-unit render metadata from main_units, kept optional for callers constructing old fixtures. */
+  mainUnits?: Array<
+    [landUnitKey: string, caste: string, numMen?: number, uiUnitGroupLand?: string]
+  >;
+  /** UI unit group -> parent roster group, used by the army benchmark category template. */
+  uiUnitGroupings?: Array<[uiUnitGroupKey: string, parentGroupKey: string]>;
   /** Main-unit -> land-unit links used to join Unit Viewer permissions to Visuals rows. */
   mainUnitLinks?: Array<[unitKey: string, landUnitKey: string]>;
   /** Main-unit -> faction permissions used by Unit Viewer to build culture/subculture groups. */
@@ -57,6 +61,8 @@ export interface VisualsMergedTableData {
   landUnitKeys: Set<string>;
   unitKeyToOriginPackPath: Map<string, string>;
   unitKeyToCaste: Map<string, string>;
+  unitKeyToNumMen: Map<string, number>;
+  unitKeyToUiGroupKey: Map<string, string>;
   mainUnitToLandUnit: Map<string, string>;
   unitToPermissionFactions: Map<string, Set<string>>;
   factionToSubculture: Map<string, string>;
@@ -363,6 +369,9 @@ export const mergeVisualsTableContributions = (
   const landUnitKeys = new Set<string>();
   const unitKeyToOriginPackPath = new Map<string, string>();
   const unitKeyToCaste = new Map<string, string>();
+  const unitKeyToNumMen = new Map<string, number>();
+  const unitKeyToUiGroupLand = new Map<string, string>();
+  const uiGroupToParent = new Map<string, string>();
   const mainUnitToLandUnit = new Map<string, string>();
   const unitToPermissionFactions = new Map<string, Set<string>>();
   const factionToSubculture = new Map<string, string>();
@@ -383,7 +392,14 @@ export const mergeVisualsTableContributions = (
       else rows.push(nextRow);
       unitToVariantRows.set(unitKey, rows);
     }
-    for (const [landUnitKey, caste] of contribution.mainUnits || []) unitKeyToCaste.set(landUnitKey, caste);
+    for (const [uiUnitGroupKey, parentGroupKey] of contribution.uiUnitGroupings || []) {
+      uiGroupToParent.set(uiUnitGroupKey, parentGroupKey);
+    }
+    for (const [landUnitKey, caste, numMen, uiUnitGroupLand] of contribution.mainUnits || []) {
+      unitKeyToCaste.set(landUnitKey, caste);
+      if (numMen != null && Number.isFinite(numMen)) unitKeyToNumMen.set(landUnitKey, numMen);
+      if (uiUnitGroupLand) unitKeyToUiGroupLand.set(landUnitKey, uiUnitGroupLand);
+    }
     for (const [unitKey, landUnitKey] of contribution.mainUnitLinks || []) {
       mainUnitToLandUnit.set(unitKey, landUnitKey);
     }
@@ -401,6 +417,11 @@ export const mergeVisualsTableContributions = (
     for (const unitKey of contribution.landUnits) landUnitKeys.add(unitKey);
   }
 
+  const unitKeyToUiGroupKey = new Map<string, string>();
+  for (const [landUnitKey, uiUnitGroupLand] of unitKeyToUiGroupLand) {
+    unitKeyToUiGroupKey.set(landUnitKey, uiGroupToParent.get(uiUnitGroupLand) || uiUnitGroupLand);
+  }
+
   for (const { packPath, contribution } of originOrder) {
     for (const unitKey of contribution.landUnits) {
       if (!unitKeyToOriginPackPath.has(unitKey)) {
@@ -416,6 +437,8 @@ export const mergeVisualsTableContributions = (
     landUnitKeys,
     unitKeyToOriginPackPath,
     unitKeyToCaste,
+    unitKeyToNumMen,
+    unitKeyToUiGroupKey,
     mainUnitToLandUnit,
     unitToPermissionFactions,
     factionToSubculture,
