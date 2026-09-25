@@ -385,7 +385,6 @@ const buildArmyGroup = async (assets: readonly LoadedArmyAsset[]) => {
   const spacingX = maxWidth * 1.2;
   const spacingZ = maxDepth * 1.2;
   const columns = Math.ceil(Math.sqrt(totalEntities));
-  const rows = Math.ceil(totalEntities / columns);
   const group = new THREE.Group();
   let entityIndex = 0;
 
@@ -708,7 +707,18 @@ const VisualsRenderBenchmark = memo(({
 
   const createRandomArmy = () => {
     if (!selectedPair) return undefined;
-    const roster = generateArmyBenchmarkRoster(benchmarkUnits, selectedPair.original.path);
+    const originalPath = normalizePath(selectedPair.original.path);
+    const atlasPath = normalizePath(selectedPair.atlas.path);
+    // Visuals data describes whichever side of the pair is currently enabled. Treat
+    // units originating from the atlas pack as belonging to the original pack too,
+    // so random generation stays scoped to this mod before falling back globally.
+    const generationUnits = benchmarkUnits.map((unit) => {
+      const origin = normalizePath(unit.originPackPath);
+      return origin === originalPath || origin === atlasPath
+        ? { ...unit, originPackPath: selectedPair.original.path }
+        : unit;
+    });
+    const roster = generateArmyBenchmarkRoster(generationUnits, selectedPair.original.path);
     setArmyRoster(roster);
     setError("");
     return roster;
@@ -936,7 +946,17 @@ const VisualsRenderBenchmark = memo(({
               <>
                 <button
                   type="button"
-                  onClick={createRandomArmy}
+                  onClick={() => {
+                    try {
+                      createRandomArmy();
+                    } catch (generationError) {
+                      setError(
+                        generationError instanceof Error
+                          ? generationError.message
+                          : "Failed to generate an army benchmark list.",
+                      );
+                    }
+                  }}
                   disabled={isRunning || !selectedPair || benchmarkUnits.length === 0}
                   className="rounded border border-gray-700 bg-gray-900 px-2 py-1 hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
                   title="Generate another army from DB-backed units using the 1/2/9/4/3/2 template."
