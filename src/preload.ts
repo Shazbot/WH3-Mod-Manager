@@ -637,6 +637,8 @@ const api = {
       cultureName?: string;
       cultures?: { key: string; name: string }[];
       caste?: string;
+      numMen?: number;
+      uiGroupKey?: string;
     }[];
     error?: string;
   }> => ipcRenderer.invoke("getVisualsUnitsData", enabledMods),
