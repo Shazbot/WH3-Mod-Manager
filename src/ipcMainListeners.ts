@@ -680,6 +680,7 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     unitVariants: [],
     landUnits: [],
     mainUnits: [],
+    uiUnitGroupings: [],
     mainUnitLinks: [],
     unitPermissions: [],
     factions: [],
@@ -738,7 +739,21 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     if (!landUnitKey) return;
     if (unitKey) contribution.mainUnitLinks!.push([unitKey, landUnitKey]);
     const caste = row.find((field) => field.name === "caste")?.resolvedKeyValue || "";
-    contribution.mainUnits!.push([landUnitKey, caste]);
+    const numMenRaw = row.find((field) => field.name === "num_men")?.resolvedKeyValue || "";
+    const numMen = Number(numMenRaw);
+    const uiUnitGroupLand = row.find((field) => field.name === "ui_unit_group_land")?.resolvedKeyValue || "";
+    contribution.mainUnits!.push([
+      landUnitKey,
+      caste,
+      Number.isFinite(numMen) ? numMen : 0,
+      uiUnitGroupLand,
+    ]);
+  });
+  forEachTableRow("ui_unit_groupings_tables", (row) => {
+    const key = row.find((field) => field.name === "key")?.resolvedKeyValue;
+    if (!key) return;
+    const parentGroup = row.find((field) => field.name === "parent_group")?.resolvedKeyValue || "";
+    contribution.uiUnitGroupings!.push([key, parentGroup]);
   });
   forEachTableRow("units_custom_battle_permissions_tables", (row) => {
     const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
@@ -7434,6 +7449,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           [
             "land_units_tables",
             "main_units_tables",
+            "ui_unit_groupings_tables",
             "units_custom_battle_permissions_tables",
             "unit_variants_tables",
             "factions_tables",
@@ -7598,6 +7614,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         landUnitKeys,
         unitKeyToOriginPackPath,
         unitKeyToCaste,
+        unitKeyToNumMen,
+        unitKeyToUiGroupKey,
         mainUnitToLandUnit,
         unitToPermissionFactions,
         factionToSubculture,
@@ -7655,6 +7673,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         cultureName: string;
         cultures: Array<{ key: string; name: string }>;
         caste: string;
+        numMen: number;
+        uiGroupKey: string;
       }[];
       for (const unitKey of landUnitKeys) {
         const rows = unitToVariantRows.get(unitKey);
@@ -7665,6 +7685,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ? "Vanilla"
             : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
         const caste = unitKeyToCaste.get(unitKey) || "";
+        const numMen = unitKeyToNumMen.get(unitKey) || 0;
+        const uiGroupKey = unitKeyToUiGroupKey.get(unitKey) || "";
         const addCultureMetadata = (faction: string) => {
           const variantSubculture = factionToSubculture.get(faction) || "";
           const subcultures = variantSubculture ? [variantSubculture] : landUnitToSubcultures.get(unitKey) || [];
@@ -7696,6 +7718,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             originLabel,
             ...addCultureMetadata(""),
             caste,
+            numMen,
+            uiGroupKey,
           });
           continue;
         }
@@ -7717,6 +7741,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             originLabel,
             ...addCultureMetadata(row.faction),
             caste,
+            numMen,
+            uiGroupKey,
           });
         }
       }
