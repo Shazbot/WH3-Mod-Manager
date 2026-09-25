@@ -25,6 +25,7 @@ import type { VisualsModelPreviewAnimationReference } from "../visuals/modelPrev
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
 import VisualsRenderBenchmark from "./VisualsRenderBenchmark";
+import type { ArmyBenchmarkCandidate } from "../visuals/armyBenchmark";
 import { selectDefaultAnimation, type AnimationSelectionProfile } from "../visuals/animationSelection";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
@@ -80,6 +81,8 @@ type VisualsModelPreviewProps = {
   unitVariantContext?: UnitPainterUnitVariantContext;
   /** Enables the experimental direct-on-model base-colour painter. */
   enablePainting?: boolean;
+  /** DB-backed unit pool used only by the dev atlas army benchmark. */
+  benchmarkUnits?: readonly ArmyBenchmarkCandidate[];
 };
 
 type ThreePreviewContext = {
@@ -859,6 +862,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     variantMeshSessionType = "unitViewer",
     unitVariantContext,
     enablePainting = false,
+    benchmarkUnits = [],
   } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -4694,6 +4698,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           availableMods={allMods}
           enabledMods={currentPresetMods}
           variantSelections={comparisonVariants[0]?.selections ?? []}
+          benchmarkUnits={benchmarkUnits}
           disabled={status !== "ready" || comparisonModelCount !== 1}
           onRunningChange={(running) => {
             devBenchmarkRunningRef.current = running;
