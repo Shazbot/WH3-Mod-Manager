@@ -10,7 +10,10 @@ type TechGroupNodeData = {
 
 const TechGroupNode = memo(({ data }: NodeProps) => {
   const typedData = data as TechGroupNodeData;
-  const safeHex = typedData.colorHex.replace(/[^0-9a-fA-F]/g, "").padStart(6, "0").slice(0, 6);
+  const safeHex = typedData.colorHex
+    .replace(/[^0-9a-fA-F]/g, "")
+    .padStart(6, "0")
+    .slice(0, 6);
   return (
     <div
       style={{

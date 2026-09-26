@@ -9,7 +9,6 @@ import { Toasts } from "./components/Toasts";
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
 import TechTreesTab from "./components/techTrees/TechTreesTab";
-import { endTiming, startTiming } from "./utility/performanceMonitor";
 
 function ErrorFallback({ error }: { error: Error }) {
   const localized = useLocalizations();
@@ -23,13 +22,6 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 const AppTechTrees = React.memo(() => {
-  useEffect(() => {
-    startTiming("app_tech_trees_mount");
-    return () => {
-      endTiming("app_tech_trees_mount");
-    };
-  }, []);
-
   const [localization, setLocalization] = useState<Record<string, string>>({});
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
 
@@ -54,7 +46,6 @@ const AppTechTrees = React.memo(() => {
 });
 
 export function renderTechTreesWindow() {
-  startTiming("react_render_tech_trees");
   const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <StrictMode>
@@ -63,5 +54,4 @@ export function renderTechTreesWindow() {
       </Provider>
     </StrictMode>,
   );
-  endTiming("react_render_tech_trees");
 }

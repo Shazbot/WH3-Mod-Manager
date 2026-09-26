@@ -86,7 +86,7 @@ typings/
 .webpack/
 
 # Electron-Forge
-out/
+/out/
 
 .yarn/cache/
 
@@ -97,3 +97,14 @@ sublog.txt
 .claude
 
 agentdocs
+
+plans
+
+# Build output for the standalone ESF tools (yarn esf:build)
+tools/esf/dist
+
+script
+
+# Generated helper JavaScript rebuilt from src/sub.ts before Forge commands
+temp/*.js
+

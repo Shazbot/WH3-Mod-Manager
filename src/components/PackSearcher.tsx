@@ -3,20 +3,19 @@ import React, { memo, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setIsPackSearcherOpen, setPackSearchResults } from "../appSlice";
 import { useLocalizations } from "../localizationContext";
+import { getEnabledMods } from "../modsHelpers";
 
 const PackSearcher = memo(() => {
   const dispatch = useAppDispatch();
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
-  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
+  const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const isOpen = useAppSelector((state) => state.app.isPackSearcherOpen);
   const packSearchResults = useAppSelector((state) => state.app.packSearchResults);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
 
-  const enabledMods = mods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
-  );
+  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
 
   const localized = useLocalizations();
 

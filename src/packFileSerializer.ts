@@ -25,14 +25,23 @@ import appData from "./appData";
 import { format } from "date-fns";
 import { Blob } from "buffer";
 import * as fsExtra from "fs-extra";
-import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
-import { getDBName } from "./utility/packFileHelpers";
+import { getDBName, getDBPackedFilePath, parseDBTablePath, resolveParsedDBVersion } from "./utility/packFileHelpers";
+import { groupPackedFilesIntoReadRuns } from "./utility/packedFileReadRuns";
+import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
+import { hasPackedFileNameHash, readPackedFileIndexEntry } from "./utility/packFileIndex";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
-import getPackTableData, {
-  isSchemaFieldNumber,
-  isSchemaFieldNumberInteger,
-} from "./utility/frontend/packDataHandling";
+import { resolveRadioChoiceId } from "./nodeGraph/types";
+import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
+import {
+  substituteDeepCloneOptionValues,
+  substituteEditXmlOptionValues,
+  substituteFilterOptionValues,
+  substituteLocRuleValues,
+  substituteTextFileRuleValues,
+} from "./nodeGraph/nestedOptionValues";
+import { transformationOptionFields } from "./nodeGraph/graphSerialization";
+import getPackTableData, { isSchemaFieldNumber, isSchemaFieldNumberInteger } from "./utility/frontend/packDataHandling";
 import deepClone from "clone-deep";
 import { gameToIntroMovies, gameToPackHeader, supportsCompression } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
@@ -45,10 +54,13 @@ import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
 import {
   PreparedFlow,
+  buildAutomaticFlowExecutionId,
+  canReuseFlowSourcePack,
   createFlowExecutionContext,
   flowExecutionDebugLog,
   isFlowExecutionDebugEnabled,
 } from "./flowExecutionSupport";
+import { getCurrentVanillaPackIndex, rememberVanillaPackIndex } from "./vanillaPackFilesCache";
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 const string_schema = `{
     "units_custom_battle_permissions_tables": {
@@ -92,7 +104,7 @@ const tryZlibDecompress = (payload: Buffer): Buffer => {
     return Buffer.from(zlib.inflateSync(payload));
   }
 };
-const decompressPackedPayload = async (buffer: Buffer, context?: string): Promise<Buffer> => {
+export const decompressPackedPayload = async (buffer: Buffer, context?: string): Promise<Buffer> => {
   const offsets = [] as number[];
   const addOffset = (offset: number) => {
     if (offset < 0 || offset >= buffer.length) return;
@@ -303,11 +315,7 @@ export async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackData
       break;
   }
 }
-async function parseType(
-  file: BinaryFile,
-  type: SCHEMA_FIELD_TYPE,
-  existingFields?: Field[],
-): Promise<Field[]> {
+async function parseType(file: BinaryFile, type: SCHEMA_FIELD_TYPE, existingFields?: Field[]): Promise<Field[]> {
   const fields: Field[] = existingFields || [];
   switch (type) {
     case "Boolean":
@@ -583,8 +591,7 @@ export function getFieldSize(value: string, type: SCHEMA_FIELD_TYPE): number {
   }
 }
 const getGUID = () => {
-  const genRanHex = (size: number) =>
-    [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+  const genRanHex = (size: number) => [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
   return [genRanHex(8), genRanHex(4), genRanHex(4), genRanHex(4), genRanHex(12)].join("-");
 };
 const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[], enabledMods: Mod[]) => {
@@ -620,11 +627,7 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
       const dbVersionNumFields = dbVersion.fields.length;
       for (let i = 0; i < packFile.schemaFields.length; i++) {
         const field = packFile.schemaFields[i];
-        if (
-          general_unit_index != null &&
-          dbVersionNumFields != null &&
-          i % dbVersionNumFields == general_unit_index
-        ) {
+        if (general_unit_index != null && dbVersionNumFields != null && i % dbVersionNumFields == general_unit_index) {
           // console.log("FOUND GENERAL UNIT INDEX");
           // console.log(field.name);
           if (field.fields[0].val == 1) {
@@ -694,17 +697,34 @@ export const getDBVersion = (packFile: PackedFile) => {
   if (!dbName) return;
   return getDBVersionByTableName(packFile, dbName);
 };
+/**
+ * Cells split into rows of the schema's width.
+ *
+ * A trailing row with fewer cells than the schema has fields is dropped rather than handed back
+ * short. That row appears when the game ships a table the bundled schema no longer fits, which is
+ * the normal state of things for a day or two after a patch: readDBPackedFiles reads fields until it
+ * runs off the end of the table and keeps whatever it had collected. Every caller pairs cell `i`
+ * with `dbversion.fields[i]`, so a short row is a partial record at best and an undefined
+ * dereference at worst, and the callers that re-chunk this output would have every later row shifted
+ * by it. Dropping it also matches what the vanilla DB cache's builder stores.
+ */
 export const chunkSchemaIntoRows = (schemaFields: SchemaField[], dbversion: DBVersion) => {
-  return (
-    schemaFields?.reduce<SchemaField[][]>((resultArray, item, index) => {
-      const chunkIndex = Math.floor(index / dbversion.fields.length);
-      if (!resultArray[chunkIndex]) {
-        resultArray[chunkIndex] = []; // start a new chunk
-      }
-      resultArray[chunkIndex].push(item as SchemaField);
-      return resultArray;
-    }, []) ?? []
-  );
+  const rows: SchemaField[][] = [];
+  const columnCount = dbversion.fields.length;
+  const cellCount = schemaFields?.length ?? 0;
+  if (columnCount < 1) return rows;
+
+  for (let start = 0; start + columnCount <= cellCount; start += columnCount) {
+    rows.push(schemaFields.slice(start, start + columnCount));
+  }
+  const droppedCells = cellCount - rows.length * columnCount;
+  if (droppedCells > 0) {
+    console.log(
+      `chunkSchemaIntoRows: dropping a row with ${droppedCells} of ${columnCount} cells,` +
+        " the table did not parse fully",
+    );
+  }
+  return rows;
 };
 export const resolveKeyValue = (field_type: SCHEMA_FIELD_TYPE, fields: Field[]) => {
   if (isSchemaFieldNumber(field_type)) {
@@ -789,9 +809,8 @@ export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], g
       if (typeof table === "string") {
         packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(table));
       } else {
-        packedFiles = pack.packedFiles.filter((packedFile) =>
-          packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`),
-        );
+        const tablePath = getDBPackedFilePath(table as DBTableSelection);
+        packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(tablePath));
       }
       // console.log("getpackviewdata packedFiles:", packedFiles);
       for (const packedFile of packedFiles) {
@@ -850,9 +869,8 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
     if (typeof table === "string") {
       packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name == table);
     } else {
-      packedFiles = pack.packedFiles.filter((packedFile) =>
-        packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`),
-      );
+      const tablePath = getDBPackedFilePath(table as DBTableSelection);
+      packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(tablePath));
     }
   }
   if (getLocs) {
@@ -891,6 +909,33 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
   }
   return result;
 };
+
+/**
+ * Adds the schema and amended fields the table viewer needs to a packed DB file.
+ *
+ * A file taken from a pack index has no schemaFields at all. It must be read from the pack before
+ * it is prepared; otherwise preparing it here would turn it into a perfectly valid-looking empty
+ * table. An explicitly read empty table is allowed through with `allowEmptyParsed`.
+ */
+export const preparePackedFileForViewer = (
+  sourcePack: Pick<Pack, "name" | "path">,
+  packedFile: PackedFile | undefined,
+  allowEmptyParsed = false,
+): PackedFile | undefined => {
+  if (!packedFile || (packedFile.schemaFields !== undefined && packedFile.tableSchema !== undefined)) {
+    return packedFile;
+  }
+  if (!allowEmptyParsed && packedFile.schemaFields === undefined) return packedFile;
+
+  const packedFileForView = { ...packedFile };
+  const packForView = {
+    ...sourcePack,
+    packedFiles: [packedFileForView],
+  } as Pack;
+  const packViewData = getPackViewData(packForView, packedFileForView.name);
+  return packViewData?.packedFiles?.[packedFileForView.name] ?? packedFileForView;
+};
+
 const createScriptLoggingData = (pack_files: PackedFile[]) => {
   pack_files.push({
     name: "script\\enable_console_logging",
@@ -924,15 +969,12 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
   let outFile: BinaryFile | undefined;
   try {
     const targetPath =
-      existingPath ||
-      nodePath.join(dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
+      existingPath || nodePath.join(dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
     await fsExtra.ensureDirSync(nodePath.dirname(targetPath));
     const packFieldsSettled = await Promise.allSettled(
       mods.map((mod) => readPack(mod.path, { skipParsingTables: true })),
     );
-    const sources = (
-      packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
-    )
+    const sources = (packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[])
       .map((r) => r.value)
       .filter((packData) => packData);
     const header = gameToPackHeader[appData.currentGame];
@@ -991,10 +1033,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
         }) as MergedModsData,
     );
     const parsedTargetPath = nodePath.parse(targetPath);
-    await fsExtra.writeJSONSync(
-      nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"),
-      mergedMetaData,
-    );
+    await fsExtra.writeJSONSync(nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"), mergedMetaData);
     for (const packedFileName of sortedPackFileNamesDBFirst) {
       const sourceFile = packNameToFileHandle[packedFileName];
       const packedFile = packedFileNameToPackFileLookup[packedFileName];
@@ -1024,11 +1063,7 @@ export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
   ];
   await writeCopyPack(pathSource, pathTarget, toAdd);
 };
-export const createOverwritePack = async (
-  pathSource: string,
-  pathTarget: string,
-  overwrites: PackDataOverwrite[],
-) => {
+export const createOverwritePack = async (pathSource: string, pathTarget: string, overwrites: PackDataOverwrite[]) => {
   if (overwrites.length == 0) return;
   const tablesToRead = overwrites.map((overwrite) => overwrite.packFilePath);
   console.log("to read for new overwrite pack:", tablesToRead);
@@ -1062,11 +1097,7 @@ export const createOverwritePack = async (
                 console.log("item is", item);
                 console.log("operation is", overwrite.operation);
                 if (overwrite.operation == "REMOVE") return acc;
-                if (
-                  overwrite.operation == "EDIT" &&
-                  overwrite.overwriteIndex &&
-                  overwrite.overwriteData != undefined
-                ) {
+                if (overwrite.operation == "EDIT" && overwrite.overwriteIndex && overwrite.overwriteData != undefined) {
                   const clonedRow = deepClone(item);
                   clonedRow[overwrite.overwriteIndex] = overwrite.overwriteData;
                   acc.push(clonedRow);
@@ -1139,6 +1170,8 @@ const flowOptionTextFields = [
   "joinSeparator",
   "packName",
   "packedFileName",
+  "filePath",
+  "replacementXml",
 ] as const;
 const schemaAwareFlowNodeTypes = new Set([
   "columnselectiondropdown",
@@ -1155,10 +1188,14 @@ const schemaAwareFlowNodeTypes = new Set([
   "generaterows",
   "generaterowsschema",
   "addnewcolumn",
+  "deepclone",
 ]);
-const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
+/** Exported for tests: the same hop as serializeNodeConfigForExecution, for the game-start run. */
+export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
   switch (node.type) {
     case "packfilesdropdown":
+      return { selectedPack: node.data.selectedPack || "" };
+    case "removepacksource":
       return { selectedPack: node.data.selectedPack || "" };
     case "tableselectiondropdown":
       return { selectedTable: node.data.selectedTable || "" };
@@ -1189,6 +1226,7 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
       return {
         selectedReverseTable: (node.data as any).selectedReverseTable || "",
         includeBaseGame: (node.data as any).includeBaseGame !== false,
+        connectedTableName: (node.data as any).connectedTableName || "",
       };
     case "groupedcolumnstotext":
       return {
@@ -1201,6 +1239,8 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         packedFileName: (node.data as any).packedFileName || "",
         additionalConfig: node.data.textValue || "",
         flowExecutionId: (node.data as any).flowExecutionId || "",
+        openInWindows: (node.data as any).openInWindows ?? false,
+        openInViewer: (node.data as any).openInViewer ?? false,
       };
     case "textsurround":
       return {
@@ -1261,6 +1301,7 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
       return {
         filename: (node.data as any).filename || "",
         openInWindows: (node.data as any).openInWindows ?? false,
+        openInViewer: (node.data as any).openInViewer ?? false,
       };
     case "getcountercolumn":
       return {
@@ -1277,11 +1318,53 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         customRows: (node.data as any).customRows || [],
         tableName: (node.data as any).tableName || "",
       };
+    case "packfileoperations":
+      return { fileOperations: (node.data as any).fileOperations || [] };
+    case "edittextfile":
+      return {
+        textFileRules: (node.data as any).textFileRules || [],
+        textFileFormatter: (node.data as any).textFileFormatter || "none",
+        ignoreFlowSourcePack: (node.data as any).ignoreFlowSourcePack === true,
+        flowSourcePack: (node.data as any).flowSourcePack || "",
+      };
+    case "editxmlfile":
+      return {
+        targetMode: (node.data as any).targetMode || "path",
+        filePath: (node.data as any).filePath || "",
+        ignoreHierarchy: (node.data as any).ignoreHierarchy !== false,
+        locatorSteps: (node.data as any).locatorSteps || [],
+        action: (node.data as any).action || "setAttributes",
+        attributeEdits: (node.data as any).attributeEdits || [],
+        replacementXml: (node.data as any).replacementXml || "",
+      };
+    case "editloctext":
+      return { locRules: (node.data as any).locRules || [] };
+    case "removetables":
+      return { tablesToRemove: (node.data as any).tablesToRemove || [] };
+    case "conditionalbranch":
+      return {
+        selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",
+        flowOptionChecked: (node.data as any).flowOptionChecked === true,
+        flowOptionKind: (node.data as any).flowOptionKind || "checkbox",
+        flowOptionChoiceId: (node.data as any).flowOptionChoiceId || "",
+      };
+    case "deepclone":
+      return {
+        cloneTree: (node.data as any).cloneTree,
+        nameTemplate: (node.data as any).nameTemplate || "{original}{variant}",
+        useModdersPrefix: (node.data as any).useModdersPrefix !== false,
+        moddersPrefix: (node.data as any).moddersPrefix || "",
+        variantAxes: (node.data as any).variantAxes || [],
+        columnOverrides: (node.data as any).columnOverrides || [],
+        generateLoc: (node.data as any).generateLoc !== false,
+        autoFollowReferences: (node.data as any).autoFollowReferences !== false,
+      };
     default:
       return node.data.textValue;
   }
 };
-const prepareFlow = (
+/** Exported for regression tests around packaged-flow-only runtime substitutions. */
+export const prepareFlow = (
   flowFileName: string,
   flowData: SerializedNodeGraph,
   packName: string,
@@ -1290,9 +1373,7 @@ const prepareFlow = (
 ): PreparedFlow => {
   const preparedNodes = deepClone(flowData.nodes);
   const preparedConnections = deepClone(flowData.connections);
-  const flowNameWithoutPath = flowFileName.replace(/^.*[\\/]/, "");
-  const flowNameWithoutExt = flowNameWithoutPath.replace(/\.[^.]+$/, "");
-  const flowExecutionId = `${packName}_${flowNameWithoutExt}`;
+  const flowExecutionId = buildAutomaticFlowExecutionId(packName, flowFileName);
   const currentGameSchema = DBNameToDBVersions[appData.currentGame];
   const nodeConfigs: Record<string, unknown> = {};
   const optionReplacements =
@@ -1325,8 +1406,67 @@ const prepareFlow = (
         }
       }
     }
+    if (
+      optionReplacements.length > 0 &&
+      (node.type === "deepclone" ||
+        node.type === "filter" ||
+        node.type === "editloctext" ||
+        node.type === "edittextfile" ||
+        node.type === "editxmlfile")
+    ) {
+      const replace = (value: string) => {
+        let modifiedValue = value;
+        for (const optionReplacement of optionReplacements) {
+          if (!modifiedValue.includes(optionReplacement.placeholder)) continue;
+          modifiedValue = modifiedValue.replace(optionReplacement.matcher, optionReplacement.replacement);
+        }
+        return modifiedValue;
+      };
+      const nestedData = node.data as unknown as Record<string, unknown>;
+      if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
+      else if (node.type === "editloctext") substituteLocRuleValues(nestedData, replace);
+      else if (node.type === "edittextfile") substituteTextFileRuleValues(nestedData, replace);
+      else if (node.type === "editxmlfile") substituteEditXmlOptionValues(nestedData, replace);
+      else substituteDeepCloneOptionValues(nestedData, replace);
+    }
+    // The manual run substitutes into transformation fields too; without this the same flow behaves
+    // differently at game start.
+    if (optionReplacements.length > 0 && Array.isArray((node.data as any).transformations)) {
+      (node.data as any).transformations = (node.data as any).transformations.map(
+        (transformation: Record<string, unknown>) => {
+          if (!transformation || typeof transformation !== "object") return transformation;
+          const nextTransformation = { ...transformation };
+          for (const fieldName of transformationOptionFields) {
+            const fieldValue = nextTransformation[fieldName];
+            if (typeof fieldValue !== "string" || fieldValue.length === 0) continue;
+            let modifiedValue = fieldValue;
+            for (const optionReplacement of optionReplacements) {
+              if (!modifiedValue.includes(optionReplacement.placeholder)) continue;
+              modifiedValue = modifiedValue.replace(optionReplacement.matcher, optionReplacement.replacement);
+            }
+            nextTransformation[fieldName] = modifiedValue;
+          }
+          return nextTransformation;
+        },
+      );
+    }
+
+    // Same resolution as the manual run, but against the values the end user actually set.
+    if (node.type === "conditionalbranch") {
+      const selectedOption = flowData.options?.find((option) => option.id === (node.data as any).selectedFlowOptionId);
+      const userValue = selectedOption ? flowOptions?.optionValues?.[selectedOption.id] : undefined;
+      const effectiveValue = userValue !== undefined ? userValue : selectedOption?.value;
+      const isRadio = selectedOption?.type === "radio";
+
+      (node.data as any).flowOptionChecked = selectedOption?.type === "checkbox" ? effectiveValue === true : false;
+      (node.data as any).flowOptionKind = isRadio ? "radio" : "checkbox";
+      (node.data as any).flowOptionChoices = isRadio ? selectedOption.choices : [];
+      (node.data as any).flowOptionChoiceId = isRadio ? resolveRadioChoiceId(selectedOption, userValue) : "";
+    }
     if (node.data.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {
+        node.data.selectedPack = packName;
+      } else if (node.type === "removepacksource") {
         node.data.selectedPack = packName;
       } else if (node.type === "packedfiles") {
         node.data.textValue = packName;
@@ -1334,6 +1474,10 @@ const prepareFlow = (
     }
     if (node.type === "savechanges") {
       (node.data as any).flowExecutionId = flowExecutionId;
+    }
+    if (node.type === "edittextfile") {
+      // Runtime-only: lets the node omit the pack which owns this flow from PackFiles resolution.
+      (node.data as any).flowSourcePack = packName;
     }
     if (schemaAwareFlowNodeTypes.has(node.type)) {
       const existingSchema = (node.data as any).DBNameToDBVersions;
@@ -1356,25 +1500,44 @@ export const executeFlowsForPack = async (
   pathTarget: string,
   userFlowOptions: UserFlowOptions,
   packName: string,
-  sourcePack?: Pick<Pack, "packedFiles">,
-): Promise<{ createdPackPaths: string[]; hadErrors: boolean }> => {
+  sourcePack?: Pick<Pack, "packedFiles" | "lastChangedLocal" | "size">,
+  /** Packs whose data overwrites were written to a copy, so flows read that copy instead. */
+  packPathSubstitutes?: Map<string, string>,
+  deletedFlowFileNames: Iterable<string> = [],
+): Promise<{ createdPackPaths: string[]; replacedPackPaths: string[]; hadErrors: boolean }> => {
   void pathTarget;
   const createdPackPaths = new Set<string>();
+  /** Packs a flow wrote a full replacement for, which must not also be loaded. */
+  const replacedPackPaths = new Set<string>();
   let hadErrors = false;
   const packStartTime = performance.now();
   const isDebug = isFlowExecutionDebugEnabled();
   const executionContext = createFlowExecutionContext(isDebug);
+  if (packPathSubstitutes) {
+    for (const [originalPath, substitutePath] of packPathSubstitutes) {
+      executionContext.packPathSubstitutes.set(originalPath, substitutePath);
+    }
+  }
   try {
     console.log("Executing flows for pack:", packName);
     // Note: Counter tracking is NOT reset here - it's reset once at game launch level
     // This ensures counters are unique across all flows in all packs
     // Read the pack to get flow files
-    const sourceMod = sourcePack ?? (await readPack(pathSource, { readFlows: true, skipParsingTables: true }));
-    // Filter for flow files
-    const flowFiles = sourceMod.packedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
+    const sourceStat = await fs.promises.stat(pathSource);
+    const sourceMod = canReuseFlowSourcePack(sourcePack, sourceStat)
+      ? sourcePack
+      : await readPack(pathSource, { readFlows: true, skipParsingTables: true });
+    const deletedFlowKeys = new Set(Array.from(deletedFlowFileNames, normalizePackFilePathKey));
+    const flowFiles = sourceMod.packedFiles.filter(
+      (file) => isPackedFlowName(file.name) && !deletedFlowKeys.has(normalizePackFilePathKey(file.name)),
+    );
     if (flowFiles.length === 0) {
       console.log("No flow files found in pack");
-      return { createdPackPaths: Array.from(createdPackPaths), hadErrors };
+      return {
+        createdPackPaths: Array.from(createdPackPaths),
+        replacedPackPaths: Array.from(replacedPackPaths),
+        hadErrors,
+      };
     }
     console.log(`Found ${flowFiles.length} flow files in pack`);
     // Get user options for this pack
@@ -1386,6 +1549,7 @@ export const executeFlowsForPack = async (
         const flowContent = flowFile.text || (flowFile.buffer ? flowFile.buffer.toString("utf-8") : "");
         if (!flowContent) {
           console.warn(`Flow file ${flowFile.name} has no content`);
+          hadErrors = true;
           continue;
         }
         const flowFileName = flowFile.name;
@@ -1427,6 +1591,9 @@ export const executeFlowsForPack = async (
               if (savedPath) {
                 createdPackPaths.add(savedPath);
               }
+              for (const replacedPath of nodeResult.data.replacedPackPaths ?? []) {
+                replacedPackPaths.add(replacedPath);
+              }
             }
           }
         } else {
@@ -1446,7 +1613,11 @@ export const executeFlowsForPack = async (
     console.error("Error in executeFlowsForPack:", error);
     hadErrors = true;
   }
-  return { createdPackPaths: Array.from(createdPackPaths), hadErrors };
+  return {
+    createdPackPaths: Array.from(createdPackPaths),
+    replacedPackPaths: Array.from(replacedPackPaths),
+    hadErrors,
+  };
 };
 export const writeCopyPack = async (
   pathSource: string,
@@ -1589,10 +1760,7 @@ export const writePackStream = async (
     const finalDependencyPacks =
       dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend?.dependencyPacks || [];
     // Calculate pack_file_index_size based on dependency packs
-    const pack_file_index_size = finalDependencyPacks.reduce(
-      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0,
-    );
+    const pack_file_index_size = finalDependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     // Use StreamWriter to batch header writes with backpressure handling
     streamWriter.addString(header);
@@ -1688,13 +1856,15 @@ export const writePackAppendFast = async (
   existingPackToAppend?: Pack,
   replaceDuplicates?: boolean,
   dependencyPacks: string[] = [],
+  removedFileNames: string[] = [],
 ) => {
   let outFile: BinaryFile | undefined;
   let sourceFile: BinaryFile | undefined;
   const timestamp = format(new Date(), "ddMMyy_HHmmss");
   const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
+  const removedKeys = new Set(removedFileNames.map(normalizePackFilePathKey));
   try {
-    if (packFiles.length < 1) return;
+    if (packFiles.length < 1 && removedKeys.size === 0) return;
     ensurePackFilesReadyForWrite(packFiles);
     if (existingPackToAppend) {
       // FAST PATH: Clone existing pack and append new files
@@ -1708,10 +1878,14 @@ export const writePackAppendFast = async (
       outFile = new BinaryFile(outPath, "w", true);
       await outFile.open();
       // Handle duplicate replacement logic
-      const newFileNames = new Set(packFiles.map((pf) => pf.name));
-      const filesToKeep = replaceDuplicates
-        ? existingPackToAppend.packedFiles.filter((pf) => !newFileNames.has(pf.name))
-        : existingPackToAppend.packedFiles;
+      const newKeys = new Set(packFiles.map((pf) => normalizePackFilePathKey(pf.name)));
+      const filesToKeep =
+        replaceDuplicates || removedKeys.size > 0
+          ? existingPackToAppend.packedFiles.filter((pf) => {
+              const key = normalizePackFilePathKey(pf.name);
+              return !newKeys.has(key) && !removedKeys.has(key);
+            })
+          : existingPackToAppend.packedFiles;
       // Calculate new counts and sizes
       const originalFileCount = existingPackToAppend.packedFiles.length;
       const keptFileCount = filesToKeep.length;
@@ -1750,7 +1924,7 @@ export const writePackAppendFast = async (
         `Original files: ${originalFileCount}, Kept files: ${keptFileCount}, Replaced files: ${replacedFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`,
       );
       // Copy file index entries (selectively if replacing duplicates)
-      if (replaceDuplicates && replacedFileCount > 0) {
+      if (replacedFileCount > 0) {
         console.log("Selectively copying file index entries (excluding duplicates)...");
         // Write index entries for files we're keeping
         const keptIndexAccumulator = new BufferAccumulator(outFile);
@@ -1794,7 +1968,7 @@ export const writePackAppendFast = async (
       }
       await newIndexAccumulator.flush();
       // Copy file data (selectively if replacing duplicates)
-      if (replaceDuplicates && replacedFileCount > 0) {
+      if (replacedFileCount > 0) {
         console.log("Selectively copying file data (excluding duplicates)...");
         // Copy data for files we're keeping
         for (const keptFile of filesToKeep) {
@@ -1899,10 +2073,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string, depende
       return firstPf.name.localeCompare(secondPf.name);
     });
     // Calculate pack_file_index_size based on dependency packs
-    const pack_file_index_size = dependencyPacks.reduce(
-      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0,
-    );
+    const pack_file_index_size = dependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
     const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     // Write header
     const headerAccumulator = new BufferAccumulator(outFile);
@@ -1974,6 +2145,7 @@ export const writePack = async (
   existingPackToAppend?: Pack,
   replaceDuplicates?: boolean,
   dependencyPacks: string[] = [],
+  removedFileNames: string[] = [],
 ) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
@@ -1983,6 +2155,7 @@ export const writePack = async (
       existingPackToAppend,
       replaceDuplicates,
       dependencyPacks,
+      removedFileNames,
     );
   }
   // Fallback to sorted implementation for new packs
@@ -2026,10 +2199,7 @@ export const writePackLegacy = async (
     const finalDependencyPacks =
       dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend?.dependencyPacks || [];
     // Calculate pack_file_index_size based on dependency packs
-    const pack_file_index_size = finalDependencyPacks.reduce(
-      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0,
-    );
+    const pack_file_index_size = finalDependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     // Use BufferAccumulator to batch header writes and reduce Promise overhead
     const headerAccumulator = new BufferAccumulator(outFile);
@@ -2153,8 +2323,7 @@ export const writeStartGamePack = async (
     const refFileCount = 0;
     const pack_file_index_size = 0;
     const packFiles: PackedFile[] = [];
-    if (startGameOptions.isMakeUnitsGeneralsEnabled)
-      createBattlePermissionsData(packsData, packFiles, enabledMods);
+    if (startGameOptions.isMakeUnitsGeneralsEnabled) createBattlePermissionsData(packsData, packFiles, enabledMods);
     if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(packFiles);
     if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(packFiles);
     if (startGameOptions.isAutoStartCustomBattleEnabled) createAutoStartCustomBattleData(packFiles);
@@ -2263,7 +2432,7 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
       return Buffer.from(stringVal, "utf8");
     }
     case "Buffer": {
-      return field.val as Buffer;
+      return Buffer.isBuffer(field.val) ? field.val : Buffer.from(field.val as number[]);
     }
     default:
       throw new Error("NO WAY TO RESOLVE " + field.type);
@@ -2271,6 +2440,18 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
 };
 // Serialize an entire schema field to buffer
 const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
+  // StringU16 is parsed into a single already-decoded string, its length prefix dropped - unlike
+  // StringU8, which keeps the prefix as a field of its own and so round-trips field by field. Written
+  // the generic way a StringU16 would lose its prefix and come back out as utf8, which is how loc
+  // files (three StringU16-family fields) were unwritable.
+  if (schemaField.type === "StringU16" && schemaField.fields.length === 1) {
+    const value = String(schemaField.fields[0]?.val ?? "");
+    const lengthBuffer = Buffer.allocUnsafe(2);
+    // The reader takes this as a count of utf16 code units and reads twice as many bytes.
+    lengthBuffer.writeInt16LE(value.length, 0);
+    return Buffer.concat([lengthBuffer, Buffer.from(value, "utf16le")]);
+  }
+
   const fieldBuffers: Buffer[] = [];
   for (const field of schemaField.fields) {
     const buffer = serializeFieldToBuffer(field);
@@ -2279,7 +2460,7 @@ const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
   const result = Buffer.concat(fieldBuffers);
   return result;
 };
-const serializePackFileDataToBuffer = (packFile: NewPackedFile): Buffer => {
+export const serializePackFileDataToBuffer = (packFile: NewPackedFile): Buffer => {
   if (packFile.buffer) {
     return packFile.buffer;
   }
@@ -2563,6 +2744,42 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
   return [];
 };
 let toRead: Mod[];
+
+/**
+ * Reads selected payloads through an existing pack index without attaching the resulting bytes to
+ * the Pack/PackedFile objects. This is safe for long-lived indexes stored in appData.
+ */
+export const readPackedFileBuffersFromIndex = async (
+  pack: Pick<Pack, "path" | "packedFiles">,
+  fileNames: readonly string[],
+): Promise<Map<string, Buffer>> => {
+  const buffers = new Map<string, Buffer>();
+  if (fileNames.length === 0) return buffers;
+
+  let fileId = -1;
+  try {
+    fileId = fs.openSync(pack.path, "r");
+    for (const fileName of fileNames) {
+      const index = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) => collator.compare(a.name, b));
+      if (index < 0) continue;
+
+      const packedFile = pack.packedFiles[index];
+      let buffer = Buffer.allocUnsafe(packedFile.file_size);
+      fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
+      if (packedFile.is_compressed) {
+        buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+      }
+      buffers.set(fileName, buffer);
+    }
+  } catch (error) {
+    console.log(error);
+  } finally {
+    if (fileId >= 0) fs.closeSync(fileId);
+  }
+
+  return buffers;
+};
+
 export const readFromExistingPack = async (
   pack: Pack,
   packReadingOptions: PackReadingOptions = { skipParsingTables: false },
@@ -2593,18 +2810,14 @@ export const readFromExistingPack = async (
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
       for (const fileToRead of packReadingOptions.filesToRead) {
         // console.log("FIND", fileToRead);
-        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
-          collator.compare(a.name, b),
-        );
+        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) => collator.compare(a.name, b));
         if (indexOfFileToRead >= 0) {
           // console.log("FOUND", fileToRead);
           const packedFileToRead = pack_files[indexOfFileToRead];
           let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
           if (packedFileToRead.is_compressed) {
-            buffer = Buffer.concat([
-              Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name)),
-            ]);
+            buffer = Buffer.concat([Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name))]);
           }
           packedFileToRead.buffer = buffer;
         }
@@ -2612,10 +2825,7 @@ export const readFromExistingPack = async (
     }
     const dbPackFiles = packReadingOptions.skipParsingTables
       ? []
-      : pack_files.filter((packFile) => {
-          const dbNameMatch = packFile.name.match(matchDBFileRegex);
-          return dbNameMatch != null && dbNameMatch[1];
-        });
+      : pack_files.filter((packFile) => parseDBTablePath(packFile.name) != undefined);
     if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
       return {
         name: nodePath.basename(modPath),
@@ -2636,8 +2846,7 @@ export const readFromExistingPack = async (
       -1,
     );
     const endPos =
-      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
-      startOfLastPack;
+      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) + startOfLastPack;
     // console.log("endPos is ", endPos);
     const buffer = Buffer.allocUnsafe(endPos - startPos);
     fs.readSync(fileId, buffer, 0, buffer.length, startPos);
@@ -2682,10 +2891,9 @@ const readDBPackedFiles = async (
     //   console.log("READING TABLE ", pack_file.name);
     // }
     currentPos = pack_file.start_pos - startPos;
-    const dbNameMatch = pack_file.name.match(matchDBFileRegex);
-    if (dbNameMatch == null) continue;
-    const dbName = dbNameMatch[1];
-    if (dbName == null) continue;
+    const parsedTablePath = parseDBTablePath(pack_file.name);
+    if (parsedTablePath == undefined) continue;
+    const dbName = parsedTablePath.dbName;
     const dbversions = DBNameToDBVersions[appData.currentGame][dbName];
     if (!dbversions) continue;
     let packBuffer = buffer.subarray(currentPos, currentPos + pack_file.file_size);
@@ -2736,11 +2944,8 @@ const readDBPackedFiles = async (
     //   console.log(pack_file.start_pos);
     // }
     // if (version == null) continue;
-    const dbversion =
-      dbversions.find((dbversion) => dbversion.version == version) ||
-      dbversions.find((dbversion) => dbversion.version == 0);
+    const dbversion = resolveParsedDBVersion(version, dbversions);
     if (!dbversion) continue;
-    if (version != null && dbversion.version < version) continue;
     // if (version == null) {
     //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
     // }
@@ -2815,6 +3020,36 @@ const readDBPackedFiles = async (
       console.log(`cannot read ${pack_file.name} in ${modPath}, skipping it`);
     }
   }
+};
+
+/**
+ * Reads and parses only entries already resolved from a compact pack index. The pack directory is
+ * deliberately not parsed here; flow execution can therefore reuse one index across many nodes.
+ */
+export const readDBPackedFilesFromIndex = async (
+  modPath: string,
+  indexedFiles: readonly PackedFile[],
+): Promise<PackedFile[]> => {
+  const packedFiles = indexedFiles.map((file) => ({
+    name: file.name,
+    file_size: file.file_size,
+    start_pos: file.start_pos,
+    is_compressed: file.is_compressed,
+  }));
+  const readRuns = groupPackedFilesIntoReadRuns(packedFiles);
+  if (readRuns.length === 0) return packedFiles;
+
+  const fileId = fs.openSync(modPath, "r");
+  try {
+    for (const run of readRuns) {
+      const buffer = Buffer.allocUnsafe(run.endPos - run.startPos);
+      fs.readSync(fileId, buffer, 0, buffer.length, run.startPos);
+      await readDBPackedFiles({}, run.packedFiles, buffer, run.startPos, modPath);
+    }
+  } finally {
+    fs.closeSync(fileId);
+  }
+  return packedFiles;
 };
 const readLoc = async (
   packReadingOptions: PackReadingOptions,
@@ -2891,6 +3126,11 @@ const readLoc = async (
     console.log(`cannot read ${locPackFile.name} in ${modPath}, skipping it`);
   }
 };
+/**
+ * @deprecated Prefer parseDBTablePath / parseLiveDBTablePath from utility/packFileHelpers.
+ *
+ * Kept only because it is exported; it matches the live db folder alone.
+ */
 export const matchDBFileRegex = /^db\\(.*?)\\/;
 export const readPack = async (
   modPath: string,
@@ -2908,6 +3148,29 @@ export const readPack = async (
   } catch (e) {
     console.log(e);
   }
+  const cachedVanillaPackIndex = await getCurrentVanillaPackIndex(modPath);
+  const canReturnCachedIndex =
+    cachedVanillaPackIndex &&
+    packReadingOptions.skipParsingTables &&
+    !packReadingOptions.readScripts &&
+    !packReadingOptions.readLocs &&
+    !packReadingOptions.readFlows &&
+    (!packReadingOptions.filesToRead || packReadingOptions.filesToRead.length === 0);
+  if (canReturnCachedIndex) {
+    const packedFiles = cachedVanillaPackIndex.packedFiles;
+    if (!packReadingOptions.skipSorting) packedFiles.sort((a, b) => collator.compare(a.name, b.name));
+    console.log(`[readPack] vanilla index cache hit: ${nodePath.basename(modPath)}`);
+    return {
+      name: nodePath.basename(modPath),
+      path: modPath,
+      packedFiles,
+      packHeader: cachedVanillaPackIndex.packHeader,
+      lastChangedLocal,
+      size,
+      readTables: [],
+      dependencyPacks: cachedVanillaPackIndex.dependencyPacks,
+    } as Pack;
+  }
   // let file: BinaryFile | undefined;
   // eslint-disable-next-line @typescript-eslint/no-inferrable-types
   let fileId: number = -1;
@@ -2916,120 +3179,101 @@ export const readPack = async (
     // console.log(`${modPath} file opened`);
     // if (packReadingOptions.tablesToRead)
     //   console.log(`NUM OF TABLES TO READ:`, packReadingOptions.tablesToRead.length);
-    // header 4
-    // byteMask 4
-    // refFileCount 4
-    // pack_file_index_size 4
-    // pack_file_count 4
-    // packed_file_index_size 4
-    // headerBuffer 4
-    // header_buffer_len 4;
-    const packedFileHeaderSize = 8 * 4;
-    const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
-    fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
-    let packedFileHeaderPosition = 0;
-    const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
-    packedFileHeaderPosition += 4;
-    if (header === null) throw new Error("header missing");
-    if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
-      throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
-    }
-    const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const refFileCount = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const pack_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const pack_file_count = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const packed_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
-    packedFileHeaderPosition += 4;
-    const header_buffer_len = 4;
-    const header_buffer = await packedFileHeader.subarray(
-      packedFileHeaderPosition,
-      packedFileHeaderPosition + header_buffer_len,
-    );
-    packedFileHeaderPosition += header_buffer_len;
-    // const header = await file.read(4);
-    // if (header === null) throw new Error("header missing");
-    // const byteMask = await file.readInt32();
-    // const refFileCount = await file.readInt32();
-    // const pack_file_index_size = await file.readInt32();
-    // const pack_file_count = await file.readInt32();
-    // const packed_file_index_size = await file.readInt32();
-    // console.log(`modPath is ${modPath}`);
-    // console.log(`header is ${header}`);
-    // console.log(`byteMask is ${byteMask}`);
-    // console.log(`refFileCount is ${refFileCount}`);
-    // console.log(`pack_file_index_size is ${pack_file_index_size}`);
-    // console.log(`pack_file_count is ${pack_file_count}`);
-    // console.log(`packed_file_index_size is ${packed_file_index_size}`);
-    // const header_buffer_len = 4;
-    // const header_buffer = await file.read(4); // header_buffer
-    packHeader = {
-      header,
-      byteMask,
-      refFileCount,
-      pack_file_index_size,
-      pack_file_count,
-      header_buffer,
-    } as PackHeader;
-    if (pack_file_index_size > 0) {
-      const packIndexBuffer = Buffer.allocUnsafe(pack_file_index_size);
-      fs.readSync(fileId, packIndexBuffer, 0, pack_file_index_size, packedFileHeaderPosition);
-      packedFileHeaderPosition += pack_file_index_size;
-      // get the dependencyPacks
-      let start = 0;
-      for (let i = 0; i < pack_file_index_size; i++) {
-        if (packIndexBuffer[i] === 0) {
-          if (i > start) {
-            dependencyPacks[dependencyPacks.length] = packIndexBuffer.toString("utf8", start, i);
+    if (cachedVanillaPackIndex) {
+      pack_files.push(...cachedVanillaPackIndex.packedFiles);
+      packHeader = cachedVanillaPackIndex.packHeader;
+      dependencyPacks.push(...cachedVanillaPackIndex.dependencyPacks);
+      console.log(`[readPack] vanilla index cache hit: ${nodePath.basename(modPath)}`);
+    } else {
+      // header 4
+      // byteMask 4
+      // refFileCount 4
+      // pack_file_index_size 4
+      // pack_file_count 4
+      // packed_file_index_size 4
+      // headerBuffer 4
+      // header_buffer_len 4;
+      const packedFileHeaderSize = 8 * 4;
+      const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
+      fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
+      let packedFileHeaderPosition = 0;
+      const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
+      packedFileHeaderPosition += 4;
+      if (header === null) throw new Error("header missing");
+      if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
+        throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
+      }
+      const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const refFileCount = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const pack_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const pack_file_count = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const packed_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      packedFileHeaderPosition += 4;
+      const header_buffer_len = 4;
+      const header_buffer = await packedFileHeader.subarray(
+        packedFileHeaderPosition,
+        packedFileHeaderPosition + header_buffer_len,
+      );
+      packedFileHeaderPosition += header_buffer_len;
+      packHeader = {
+        header,
+        byteMask,
+        refFileCount,
+        pack_file_index_size,
+        pack_file_count,
+        header_buffer,
+      } as PackHeader;
+      if (pack_file_index_size > 0) {
+        const packIndexBuffer = Buffer.allocUnsafe(pack_file_index_size);
+        fs.readSync(fileId, packIndexBuffer, 0, pack_file_index_size, packedFileHeaderPosition);
+        packedFileHeaderPosition += pack_file_index_size;
+        // get the dependencyPacks
+        let start = 0;
+        for (let i = 0; i < pack_file_index_size; i++) {
+          if (packIndexBuffer[i] === 0) {
+            if (i > start) {
+              dependencyPacks[dependencyPacks.length] = packIndexBuffer.toString("utf8", start, i);
+            }
+            start = i + 1;
           }
-          start = i + 1;
         }
       }
-    }
-    const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
-    // console.log("data starts at " + dataStart);
-    let file_pos = dataStart;
-    const headerSize = dataStart - packedFileHeaderPosition;
-    // const headerBuffer = await file.read(headerSize);
-    const headerBuffer = Buffer.allocUnsafe(headerSize);
-    fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, packedFileHeaderPosition);
-    // console.log("header size is: " + headerSize);
-    // console.time("1000files");
-    let bufPos = 0;
-    // console.log("pack_file_count is " + pack_file_count);
-    for (let i = 0; i < pack_file_count; i++) {
-      let name = "";
-      const file_size = headerBuffer.readInt32LE(bufPos);
-      bufPos += 4;
-      let is_compressed = false;
-      if (appData.currentGame != "attila") {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        is_compressed = headerBuffer.readInt8(bufPos) == 1;
-        bufPos += 1;
+      const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
+      // console.log("data starts at " + dataStart);
+      let file_pos = dataStart;
+      const headerSize = dataStart - packedFileHeaderPosition;
+      // const headerBuffer = await file.read(headerSize);
+      const headerBuffer = Buffer.allocUnsafe(headerSize);
+      fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, packedFileHeaderPosition);
+      // console.log("header size is: " + headerSize);
+      // console.time("1000files");
+      let bufPos = 0;
+      // console.log("pack_file_count is " + pack_file_count);
+      const hasCompressionFlag = supportsCompression[appData.currentGame];
+      const hasFileNameHash = hasPackedFileNameHash(byteMask);
+      for (let i = 0; i < pack_file_count; i++) {
+        const entry = readPackedFileIndexEntry(headerBuffer, bufPos, hasCompressionFlag, hasFileNameHash);
+        if (!entry) throw new Error(`Could not parse packed-file index entry ${i} in ${modPath}`);
+        const { name, file_size, is_compressed } = entry;
+        bufPos = entry.nextPosition;
+        // if (i === 1000) {
+        // console.log(console.timeEnd("1000files"));
+        // }
+        pack_files.push({
+          name,
+          file_size,
+          start_pos: file_pos,
+          is_compressed,
+        });
+        file_pos += file_size;
       }
-      // const file_size = (stream.read(4) as Buffer).readInt32LE();
-      // const is_compressed = (stream.read(1) as Buffer).readInt8();
-      const nameStartPos = bufPos;
-      for (let i = nameStartPos; i < headerBuffer.length; i++) {
-        if (headerBuffer[i] === 0) {
-          name = headerBuffer.toString("utf8", nameStartPos, i);
-          bufPos = i + 1;
-          break;
-        }
+      if (packHeader) {
+        rememberVanillaPackIndex(modPath, size, lastChangedLocal, pack_files, packHeader, dependencyPacks);
       }
-      // if (i === 1000) {
-      // console.log(console.timeEnd("1000files"));
-      // }
-      pack_files.push({
-        name,
-        file_size,
-        start_pos: file_pos,
-        is_compressed,
-      });
-      file_pos += file_size;
     }
     if (!packReadingOptions.skipSorting) pack_files.sort((a, b) => collator.compare(a.name, b.name));
     // Early return if no additional processing needed
@@ -3054,7 +3298,7 @@ export const readPack = async (
     if (packReadingOptions.readScripts) {
       const scriptFiles: PackedFile[] = [];
       const xmlFiles: PackedFile[] = [];
-      const xmlExtensions = new Set([".xml", ".variantmeshdefinition", ".wsmodel", ".xml.material"]);
+      const xmlExtensions = new Set([".xml", ".variantmeshdefinition", ".wsmodel"]);
       for (const packFile of pack_files) {
         const name = packFile.name;
         const lastDot = name.lastIndexOf(".");
@@ -3062,7 +3306,7 @@ export const readPack = async (
         const ext = name.substring(lastDot);
         if (ext === ".lua") {
           scriptFiles.push(packFile);
-        } else if (xmlExtensions.has(ext)) {
+        } else if (xmlExtensions.has(ext) || name.endsWith(".xml.material")) {
           xmlFiles.push(packFile);
         }
       }
@@ -3117,9 +3361,7 @@ export const readPack = async (
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
       for (const fileToRead of packReadingOptions.filesToRead) {
         // console.log("FIND", fileToRead);
-        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
-          collator.compare(a.name, b),
-        );
+        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) => collator.compare(a.name, b));
         if (indexOfFileToRead >= 0) {
           // console.log("FOUND", fileToRead);
           const packedFileToRead = pack_files[indexOfFileToRead];
@@ -3133,7 +3375,7 @@ export const readPack = async (
       }
     }
     if (packReadingOptions.readFlows) {
-      const flowFiles = pack_files.filter((packFile) => packFile.name.startsWith("whmmflows\\"));
+      const flowFiles = pack_files.filter((packFile) => isPackedFlowName(packFile.name));
       for (const flowFile of flowFiles) {
         let buffer = Buffer.allocUnsafe(flowFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, flowFile.start_pos);
@@ -3156,10 +3398,7 @@ export const readPack = async (
         dependencyPacks,
       } as Pack;
     }
-    const dbPackFiles = pack_files.filter((packFile) => {
-      const dbNameMatch = packFile.name.match(matchDBFileRegex);
-      return dbNameMatch != null && dbNameMatch[1];
-    });
+    const dbPackFiles = pack_files.filter((packFile) => parseDBTablePath(packFile.name) != undefined);
     if (packReadingOptions.tablesToRead) {
       if (dbPackFiles.length < 1) console.log(`NO DB TABLES PRESENT IN PACK:`, modPath);
       else console.log(`readPack: TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
@@ -3177,19 +3416,36 @@ export const readPack = async (
         dependencyPacks,
       } as Pack;
     }
-    let startPos = Number.MAX_SAFE_INTEGER;
-    let endPos = -1;
-    for (const dbFile of dbPackFiles) {
-      if (dbFile.start_pos < startPos) startPos = dbFile.start_pos;
-      const fileEnd = dbFile.start_pos + dbFile.file_size;
-      if (fileEnd > endPos) endPos = fileEnd;
+    // Narrow to the requested tables before working out what to read, using the same prefix test
+    // readDBPackedFiles applies. Without this the span below covers every db file in the pack, so
+    // opening one table in the viewer reads the whole DB region of db.pack - hundreds of megabytes -
+    // to parse a few kilobytes of it.
+    const tablesToRead = packReadingOptions.tablesToRead;
+    const dbPackFilesToRead = tablesToRead
+      ? dbPackFiles.filter((dbFile) => tablesToRead.some((tableToRead) => dbFile.name.startsWith(tableToRead)))
+      : dbPackFiles;
+
+    const readRuns = groupPackedFilesIntoReadRuns(dbPackFilesToRead);
+    const dbReadStartedAt = performance.now();
+    let dbBytesRead = 0;
+
+    for (const run of readRuns) {
+      const buffer = Buffer.allocUnsafe(run.endPos - run.startPos);
+      dbBytesRead += buffer.length;
+      fs.readSync(fileId, buffer, 0, buffer.length, run.startPos);
+      await readDBPackedFiles(packReadingOptions, run.packedFiles, buffer, run.startPos, modPath);
     }
-    // const buffer = await file.read(endPos - startPos, startPos);
-    const buffer = Buffer.allocUnsafe(endPos - startPos);
-    fs.readSync(fileId, buffer, 0, buffer.length, startPos);
-    // console.log("len:", endPos - startPos);
-    // console.log("startPos:", startPos);
-    await readDBPackedFiles(packReadingOptions, dbPackFiles, buffer, startPos, modPath);
+
+    if (dbPackFilesToRead.length > 0) {
+      // Bytes read is the number worth watching: it is what narrowing to the requested tables
+      // changes, and reading the whole DB region of db.pack to parse one table does not otherwise
+      // show up anywhere.
+      console.log(
+        `[readPack] ${nodePath.basename(modPath)}: ${dbPackFilesToRead.length}/${dbPackFiles.length} db files` +
+          ` in ${readRuns.length} read(s), ${(dbBytesRead / 1048576).toFixed(1)} MB` +
+          ` in ${(performance.now() - dbReadStartedAt).toFixed(0)}ms`,
+      );
+    }
   } catch (e) {
     console.log(e);
   } finally {
@@ -3219,17 +3475,55 @@ export const readPack = async (
     dependencyPacks,
   } as Pack;
 };
-export const readPackWithWorker = async (modPath: string, skipParsingTables = false): Promise<Pack> => {
-  return new Promise<Pack>((resolve, reject) => {
-    const worker = new Worker(nodePath.join(__dirname, "readPacksWorker.js"), {
-      workerData: { mods: [modPath] },
-    });
-    worker.on("message", resolve);
-    worker.on("error", reject);
-    worker.on("exit", (code: number) => {
-      if (code !== 0) reject(new Error(`Stopped with  ${code} exit code`));
-    });
-  });
+
+/**
+ * Visits accepted packed-file payloads without retaining them on a Pack object.
+ *
+ * The index is parsed once, then each payload is read and released before the next one. This is
+ * intentionally separate from `readModsByPath`: that path appends the returned Pack to appData and
+ * would pin every file encountered by an all-mods search.
+ */
+export const forEachPackedFileBuffer = async (
+  modPath: string,
+  wanted: (name: string) => boolean,
+  visit: (packedFile: PackedFile, buffer: Buffer) => Promise<void | false> | void | false,
+  options: {
+    maxFileBytes?: number;
+    onSkipped?: (packedFile: PackedFile, reason: "tooLarge" | "unreadable") => void;
+  } = {},
+): Promise<void> => {
+  const indexedPack = await readPack(modPath, { skipParsingTables: true, skipSorting: true });
+  const fileId = fs.openSync(modPath, "r");
+  try {
+    for (const packedFile of indexedPack.packedFiles) {
+      if (!wanted(packedFile.name)) continue;
+      if (options.maxFileBytes !== undefined && packedFile.file_size > options.maxFileBytes) {
+        options.onSkipped?.(packedFile, "tooLarge");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        continue;
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.allocUnsafe(packedFile.file_size);
+        fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
+        if (packedFile.is_compressed) {
+          buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+        }
+      } catch {
+        options.onSkipped?.(packedFile, "unreadable");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        continue;
+      }
+      const shouldStop = await visit(packedFile, buffer);
+      if (shouldStop === false) return;
+      // `readPack` uses synchronous reads. Give cancelGlobalSearch and progress sends a macrotask
+      // between files instead of letting a large pack monopolise the main process.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  } finally {
+    fs.closeSync(fileId);
+  }
 };
 // Helper function to extract the base filename from a packed file path
 const getBaseFilename = (filePath: string): string => {
@@ -3430,12 +3724,7 @@ const createPackWithRenamedFilesWithOptions = async (
     sourceFileId = fs.openSync(originalPack.path, "r");
     await outFile.open();
     // Write header
-    await writePackHeader(
-      outFile,
-      originalPack.packHeader,
-      finalPackedFiles,
-      originalPack.dependencyPacks || [],
-    );
+    await writePackHeader(outFile, originalPack.packHeader, finalPackedFiles, originalPack.dependencyPacks || []);
     // Pre-build file lookup map for O(1) instead of O(N) lookups
     const originalFileMap = new Map<string, PackedFile>();
     for (const pf of originalPack.packedFiles) {
@@ -3539,10 +3828,7 @@ const writePackHeader = async (
   await outFile.writeInt32(originalHeader.byteMask);
   await outFile.writeInt32(originalHeader.refFileCount);
   // Calculate pack index size
-  const pack_file_index_size = dependencyPacks.reduce(
-    (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-    0,
-  );
+  const pack_file_index_size = dependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
   await outFile.writeInt32(pack_file_index_size);
   await outFile.writeInt32(packedFiles.length);
   // Calculate packed file index size
@@ -3591,16 +3877,6 @@ export const readDataFromPacks = async (mods: Mod[]) => {
   // mods = mods.filter((mod) => mod.name != "data.pack");
   // mods = mods.filter((mod) => mod.name === "merged-11-10-2022-15-22.pack");
   toRead = [...mods];
-  // return (
-  //   await new Promise<{ newPacksData: Pack[] }>((resolve, reject) => {
-  //     const worker = new Worker(path.join(__dirname, "readPacksWorker.js"), { workerData: { mods, schema } });
-  //     worker.on("message", resolve);
-  //     worker.on("error", reject);
-  //     worker.on("exit", (code) => {
-  //       if (code !== 0) reject(new Error(`Stopped with  ${code} exit code`));
-  //     });
-  //   })
-  // ).newPacksData;
   try {
     const packFieldsPromises = mods.map((mod) => {
       return readPack(mod.path);

@@ -19,7 +19,7 @@ export const ModalBody: FC<ModalBodyProps> = ({ children, ...props }) => {
       })}
       style={{
         maxHeight: "calc(100% - 6rem)",
-        ...(theirProps as HTMLProps<'div'>).style
+        ...(theirProps as HTMLProps<"div">).style,
       }}
       {...theirProps}
     >

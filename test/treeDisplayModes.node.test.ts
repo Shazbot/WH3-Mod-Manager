@@ -2,22 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import appReducer, {
   setFromConfig,
+  setCurrentTab,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
+  setUnitViewerMode,
+  setUnitViewerShowUnitCard,
+  setUnitViewerShowWireframe,
+  setUnitViewerUnsyncedAnimations,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 
-const createConfigState = (overrides: Partial<AppStateToRead> = {}): AppStateToRead =>
+const createConfigState = (overrides: Partial<ConfigForRenderer> = {}): ConfigForRenderer =>
   ({
     ...initialState,
-    currentPreset: {
-      ...initialState.currentPreset,
-      mods: [],
-      version: 2,
-    },
+    configVersion: 3,
+    currentPreset: { name: "", mods: [], version: 2 },
     presets: [],
-    hiddenMods: [],
-    alwaysEnabledMods: [],
+    modUserData: {},
+    hiddenModNames: [],
+    alwaysEnabledModNames: [],
     categories: [],
     categoryColors: {},
     packDataOverwrites: {},
@@ -26,9 +29,23 @@ const createConfigState = (overrides: Partial<AppStateToRead> = {}): AppStateToR
     isFeaturesForModdersEnabled: true,
     currentLanguage: "en",
     ...overrides,
-  }) as AppStateToRead;
+  }) as ConfigForRenderer;
 
 describe("tree display modes", () => {
+  it("allows Unit Viewer for WH3 without modder features and rejects it for other games", () => {
+    const wh3State = appReducer(
+      { ...initialState, currentGame: "wh3", isFeaturesForModdersEnabled: false },
+      setCurrentTab("unitViewer"),
+    );
+    expect(wh3State.currentTab).toBe("unitViewer");
+
+    const wh2State = appReducer(
+      { ...initialState, currentGame: "wh2", isFeaturesForModdersEnabled: true },
+      setCurrentTab("unitViewer"),
+    );
+    expect(wh2State.currentTab).toBe("mods");
+  });
+
   it("falls back to mods when the skills tab is disabled", () => {
     const state = appReducer(
       {
@@ -69,5 +86,42 @@ describe("tree display modes", () => {
 
     expect(state.skillTreesDisplayMode).toBe("window");
     expect(state.technologyTreesDisplayMode).toBe("window");
+  });
+});
+
+describe("unit viewer mode", () => {
+  it("starts in visualize mode for new and pre-feature configs", () => {
+    expect(initialState.unitViewerMode).toBe("visualize");
+
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.unitViewerMode;
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).unitViewerMode).toBe("visualize");
+  });
+
+  it("restores, validates, and updates the mode", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerMode: "visualize" }));
+    expect(restored.unitViewerMode).toBe("visualize");
+
+    const invalid = appReducer(initialState, setFromConfig({ ...initialState, unitViewerMode: "other" } as never));
+    expect(invalid.unitViewerMode).toBe("visualize");
+    expect(appReducer(restored, setUnitViewerMode("compare")).unitViewerMode).toBe("compare");
+  });
+
+  it("restores and updates the wireframe option", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerShowWireframe: false }));
+    expect(restored.unitViewerShowWireframe).toBe(false);
+    expect(appReducer(restored, setUnitViewerShowWireframe(true)).unitViewerShowWireframe).toBe(true);
+  });
+
+  it("restores and updates the unsynced animations option", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerUnsyncedAnimations: false }));
+    expect(restored.unitViewerUnsyncedAnimations).toBe(false);
+    expect(appReducer(restored, setUnitViewerUnsyncedAnimations(true)).unitViewerUnsyncedAnimations).toBe(true);
+  });
+
+  it("restores and updates the unit card option", () => {
+    const restored = appReducer(initialState, setFromConfig({ ...initialState, unitViewerShowUnitCard: false }));
+    expect(restored.unitViewerShowUnitCard).toBe(false);
+    expect(appReducer(restored, setUnitViewerShowUnitCard(true)).unitViewerShowUnitCard).toBe(true);
   });
 });

@@ -123,7 +123,7 @@ const Onboarding = memo(() => {
         step.disableBeacon = true;
         return step;
       }),
-    [localized]
+    [localized],
   );
 
   const onJoyrideStateChange = useCallback((data: CallBackProps) => {

@@ -7,7 +7,7 @@ import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
 import { SkillsDataContext } from "./skillsDataContext";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
-import { setIsShowingSkillNodeSetNames, setSkillsData } from "../../appSlice";
+import { setHideRepeatedKeyPrefixes, setIsShowingSkillNodeSetNames, setSkillsData } from "../../appSlice";
 
 type SkillTab = {
   id: string;
@@ -18,17 +18,23 @@ type SkillTab = {
 };
 
 let nextTabId = 1;
+let nextSkillsRequestId = 1;
 const SKILL_NODE_SET_MARKER = "_skill_node_set_";
-// Each prefetched tree carries the full icon set, so only the few most recently hovered ones are kept.
-const PREFETCHED_TREES_LIMIT = 3;
-type SkillSubtypeSelection = { subtype: string; subtypeIndex: number };
+// Each prefetched tree is a few hundred KB, so only the most recently hovered ones are kept.
+const PREFETCHED_TREES_LIMIT = 10;
+type SkillSubtypeSelection = { subtype: string; subtypeIndex: number; requestId: string };
 
-const selectionKey = (selection: SkillSubtypeSelection) => `${selection.subtype}:${selection.subtypeIndex}`;
+const makeSkillsRequestId = () => `skills_request_${Date.now()}_${nextSkillsRequestId++}`;
+const selectionKey = (selection: Pick<SkillSubtypeSelection, "subtype" | "subtypeIndex">) =>
+  `${selection.subtype}:${selection.subtypeIndex}`;
 
 const isMatchingSelection = (selection: SkillSubtypeSelection | null, skillsData: SkillsData) =>
   selection != null &&
   selection.subtype === skillsData.currentSubtype &&
-  selection.subtypeIndex === skillsData.currentSubtypeIndex;
+  selection.subtypeIndex === skillsData.currentSubtypeIndex &&
+  // Older main-process builds did not include a request token. Keep the subtype/index
+  // fallback for those responses; current responses are matched to the exact request.
+  (!skillsData.requestId || selection.requestId === skillsData.requestId);
 
 const SkillsViewer = memo(() => {
   const [filterInputValue, setFilterInputValue] = useState("");
@@ -37,13 +43,16 @@ const SkillsViewer = memo(() => {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const pendingNewTab = useRef<SkillSubtypeSelection | null>(null);
   const pendingActiveTab = useRef<SkillSubtypeSelection | null>(null);
+  const staleRequestIds = useRef(new Set<string>());
+  const staleSelectionKeys = useRef(new Set<string>());
+  const acceptedRequestId = useRef<string | null>(null);
+  const acceptedSelectionKey = useRef<string | null>(null);
   // The tab a single click last replaced, kept so a double-click can give it back. It has none when the click opened
   // the first tab.
   const replacedTab = useRef<{ selectionKey: string; previous?: SkillTab } | null>(null);
   const routedSkillsData = useRef<SkillsData | null>(null);
   // Trees loaded on hover, by selection key, so a click can show one without waiting on main.
   const prefetchedTrees = useRef(new Map<string, Promise<SkillsData | undefined>>());
-  const servedFromPrefetch = useRef<SkillsData | null>(null);
   const skillsViewRef = useRef<SkillsViewHandle>(null);
   const dispatch = useAppDispatch();
   const debouncedFilterChange = useRef(debounce((val: string) => setDBTableFilter(val), 150));
@@ -77,6 +86,7 @@ const SkillsViewer = memo(() => {
   const skillsData = useAppSelector((state) => state.app.skillsData);
   const localized = useAppSelector((state) => state.app.currentLocalization);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
+  const hideRepeatedKeyPrefixes = useAppSelector((state) => state.app.hideRepeatedKeyPrefixes);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
 
   const getTabLabel = useCallback(
@@ -128,15 +138,33 @@ const SkillsViewer = memo(() => {
     [activeTabId, snapshotCurrentTab],
   );
 
+  const markSelectionAccepted = useCallback((selection: SkillSubtypeSelection) => {
+    const previousAcceptedRequestId = acceptedRequestId.current;
+    if (previousAcceptedRequestId && previousAcceptedRequestId !== selection.requestId) {
+      staleRequestIds.current.add(previousAcceptedRequestId);
+    }
+    const previousAcceptedSelectionKey = acceptedSelectionKey.current;
+    if (previousAcceptedSelectionKey && previousAcceptedSelectionKey !== selectionKey(selection)) {
+      staleSelectionKeys.current.add(previousAcceptedSelectionKey);
+    }
+    const pendingActive = pendingActiveTab.current;
+    if (pendingActive && pendingActive.requestId !== selection.requestId) {
+      staleRequestIds.current.add(pendingActive.requestId);
+      staleSelectionKeys.current.add(selectionKey(pendingActive));
+    }
+    acceptedRequestId.current = selection.requestId;
+    acceptedSelectionKey.current = selectionKey(selection);
+    staleSelectionKeys.current.delete(selectionKey(selection));
+  }, []);
+
   // When Redux skillsData updates, route it to the correct tab
   useEffect(() => {
     if (!skillsData || !skillsData.currentSkills) return;
     // Switching tabs re-runs this effect. Only a new response is routed, or the tab switched to would be overwritten.
     if (skillsData === routedSkillsData.current) return;
     routedSkillsData.current = skillsData;
-    // Main cannot say whether it pushed a requested tree or a rebuild, and a rebuild makes the prefetched trees
-    // stale, so any push from main drops them.
-    if (skillsData !== servedFromPrefetch.current) prefetchedTrees.current = new Map();
+    // Main only pushes unasked when it rebuilt or changed its skills data, which makes the prefetched trees stale.
+    if (!skillsData.requestId) prefetchedTrees.current = new Map();
 
     const pending = pendingNewTab.current;
     const pendingActive = pendingActiveTab.current;
@@ -148,6 +176,7 @@ const SkillsViewer = memo(() => {
         ? pendingActive
         : null;
     if (newTabSelection) {
+      markSelectionAccepted(newTabSelection);
       if (isPendingNewTab) pendingNewTab.current = null;
       else replacedTab.current = { selectionKey: selectionKey(newTabSelection) };
       pendingActiveTab.current = null;
@@ -165,6 +194,7 @@ const SkillsViewer = memo(() => {
     }
 
     if (pendingActive && isMatchingSelection(pendingActive, skillsData)) {
+      markSelectionAccepted(pendingActive);
       pendingActiveTab.current = null;
       const replaced = tabs.find((tab) => tab.id === activeTabId);
       if (replaced) {
@@ -186,6 +216,21 @@ const SkillsViewer = memo(() => {
       return;
     } else if (tabs.length === 0) {
       // First load: create the initial tab
+      // Record the initial response as accepted as well. Without this, a delayed duplicate of the
+      // initial exact-token response can look like a fresh selection after another tab was accepted.
+      if (!pendingNewTab.current && !pendingActiveTab.current) {
+        if (skillsData.requestId) {
+          markSelectionAccepted({
+            subtype: skillsData.currentSubtype,
+            subtypeIndex: skillsData.currentSubtypeIndex,
+            requestId: skillsData.requestId,
+          });
+        } else {
+          const initialSelection = { subtype: skillsData.currentSubtype, subtypeIndex: skillsData.currentSubtypeIndex };
+          acceptedSelectionKey.current = selectionKey(initialSelection);
+          staleSelectionKeys.current.delete(selectionKey(initialSelection));
+        }
+      }
       const id = `tab_${nextTabId++}`;
       const newTab: SkillTab = {
         id,
@@ -199,6 +244,16 @@ const SkillsViewer = memo(() => {
     }
 
     if (pendingNewTab.current || pendingActiveTab.current) {
+      return;
+    }
+
+    if (
+      (skillsData.requestId && staleRequestIds.current.has(skillsData.requestId)) ||
+      (!skillsData.requestId &&
+        staleSelectionKeys.current.has(
+          selectionKey({ subtype: skillsData.currentSubtype, subtypeIndex: skillsData.currentSubtypeIndex }),
+        ))
+    ) {
       return;
     }
 
@@ -217,7 +272,7 @@ const SkillsViewer = memo(() => {
         }),
       );
     }
-  }, [activeTabId, skillsData, snapshotCurrentTab, tabs]);
+  }, [activeTabId, markSelectionAccepted, skillsData, snapshotCurrentTab, tabs]);
 
   const onTreeHover = useCallback((subtype: string, subtypeIndex: number) => {
     const trees = prefetchedTrees.current;
@@ -235,31 +290,21 @@ const SkillsViewer = memo(() => {
     });
   }, []);
 
-  // Uses the hover prefetch when there is one, and asks main otherwise.
+  // Uses the hover prefetch when there is one, and asks main otherwise. Either way the response is routed by
+  // `requestId`.
   const requestTree = useCallback(
-    (subtype: string, subtypeIndex: number) => {
+    (subtype: string, subtypeIndex: number, requestId: string) => {
       const key = selectionKey({ subtype, subtypeIndex });
       const prefetch = prefetchedTrees.current.get(key);
       if (!prefetch) {
-        window.api?.getSkillsForSubtype(subtype, subtypeIndex);
+        window.api?.getSkillsForSubtype(subtype, subtypeIndex, requestId);
         return;
       }
       window.api?.setSkillsSelection(subtype, subtypeIndex);
       prefetch.then((data) => {
         // A rebuild may have cleared it while it was loading.
-        if (!data || prefetchedTrees.current.get(key) !== prefetch) {
-          window.api?.getSkillsForSubtype(subtype, subtypeIndex);
-          return;
-        }
-        // Another tree may have been picked while it was loading.
-        const isStillPending = [pendingActiveTab.current, pendingNewTab.current].some(
-          (pending) => pending && selectionKey(pending) === key,
-        );
-        if (!isStillPending) return;
-        // A copy, so a tree shown from the prefetch before still counts as a new response.
-        const served = { ...data };
-        servedFromPrefetch.current = served;
-        dispatch(setSkillsData(served));
+        if (data && prefetchedTrees.current.get(key) === prefetch) dispatch(setSkillsData({ ...data, requestId }));
+        else window.api?.getSkillsForSubtype(subtype, subtypeIndex, requestId);
       });
     },
     [dispatch],
@@ -267,8 +312,14 @@ const SkillsViewer = memo(() => {
 
   const onTreeSelect = useCallback(
     (subtype: string, subtypeIndex: number) => {
-      pendingActiveTab.current = { subtype, subtypeIndex };
-      requestTree(subtype, subtypeIndex);
+      const requestId = makeSkillsRequestId();
+      const previousPending = pendingActiveTab.current;
+      if (previousPending) {
+        staleRequestIds.current.add(previousPending.requestId);
+        staleSelectionKeys.current.add(selectionKey(previousPending));
+      }
+      pendingActiveTab.current = { subtype, subtypeIndex, requestId };
+      requestTree(subtype, subtypeIndex, requestId);
     },
     [requestTree],
   );
@@ -296,14 +347,20 @@ const SkillsViewer = memo(() => {
       return;
     }
 
+    const previousPending = pendingNewTab.current;
+    if (previousPending) {
+      staleRequestIds.current.add(previousPending.requestId);
+      staleSelectionKeys.current.add(selectionKey(previousPending));
+    }
     if (firstClickPending) {
       // Its response has not arrived yet, so it is routed to a new tab instead.
       pendingNewTab.current = firstClickPending;
       pendingActiveTab.current = null;
       return;
     }
-    pendingNewTab.current = { subtype, subtypeIndex };
-    window.api?.getSkillsForSubtype(subtype, subtypeIndex);
+    const requestId = makeSkillsRequestId();
+    pendingNewTab.current = { subtype, subtypeIndex, requestId };
+    window.api?.getSkillsForSubtype(subtype, subtypeIndex, requestId);
   }, []);
 
   const closeTab = useCallback(
@@ -327,13 +384,14 @@ const SkillsViewer = memo(() => {
 
   // console.log("SkillsViewer tabs:", tabs);
   return (
-    <div className="dark:text-gray-300">
-      <div style={{ width: "100%", display: "flex" }}>
-        <Resizable defaultSize={{ width: "17%", height: "85vh" }} maxWidth="100%" minWidth="1">
-          <div>
-            <div className="overflow-auto h-[85vh] scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
+    <div className="flex explicit-height-without-topbar-and-padding min-h-0 flex-col dark:text-gray-300">
+      <div className="flex min-h-0 flex-1" style={{ width: "100%" }}>
+        <Resizable defaultSize={{ width: "17%", height: "100%" }} maxWidth="100%" minWidth="1">
+          <div className="h-full min-h-0">
+            <div className="h-full overflow-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
               <SkillsTreeView
                 tableFilter={dbTableFilter}
+                hideRepeatedKeyPrefixes={hideRepeatedKeyPrefixes}
                 onSelect={onTreeSelect}
                 onHover={onTreeHover}
                 onDoubleClick={onTreeDoubleClick}
@@ -342,7 +400,7 @@ const SkillsViewer = memo(() => {
             </div>
           </div>
         </Resizable>
-        <div style={{ width: "100%", minWidth: "1px", display: "flex", flexDirection: "column" }}>
+        <div style={{ width: "100%", minWidth: "1px", display: "flex", flexDirection: "column" }} className="min-h-0">
           {tabs.length > 0 && (
             <div className="flex bg-gray-800 overflow-x-auto" style={{ minHeight: "32px" }}>
               {tabs.map((tab) => {
@@ -381,7 +439,7 @@ const SkillsViewer = memo(() => {
               })}
             </div>
           )}
-          <div style={{ flex: 1 }}>
+          <div className="min-h-0 flex-1">
             {activeTab && (
               <SkillsDataContext.Provider value={activeTab.skillsData}>
                 <SkillsView
@@ -396,7 +454,7 @@ const SkillsViewer = memo(() => {
         </div>
       </div>
 
-      <div className="flex items-center">
+      <div className="flex shrink-0 items-center mt-2">
         <span className="relative">
           <input
             id="dbTableFilter"
@@ -419,9 +477,16 @@ const SkillsViewer = memo(() => {
             checked={!!isShowingSkillNodeSetNames}
             onChange={() => dispatch(setIsShowingSkillNodeSetNames(!isShowingSkillNodeSetNames))}
           ></input>
-          <span className="ml-2">
-            {localized.showSkillNodeSetNames || "Show Skill Node Set Names"}
-          </span>
+          <span className="ml-2">{localized.showSkillNodeSetNames || "Show Skill Node Set Names"}</span>
+        </label>
+        <label htmlFor="hideRepeatedSkillKeyPrefixesCheckbox" className="ml-4 flex items-center text-sm">
+          <input
+            id="hideRepeatedSkillKeyPrefixesCheckbox"
+            type="checkbox"
+            checked={hideRepeatedKeyPrefixes}
+            onChange={(event) => dispatch(setHideRepeatedKeyPrefixes(event.target.checked))}
+          ></input>
+          <span className="ml-2">{localized.hideRepeatedKeyPrefixes || "Hide Repeated Key Prefixes"}</span>
         </label>
       </div>
     </div>

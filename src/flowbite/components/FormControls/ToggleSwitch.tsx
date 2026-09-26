@@ -11,14 +11,7 @@ export type ToggleSwitchProps = Omit<ComponentProps<"button">, "onChange" | "cla
   onChange: (checked: boolean) => void;
 };
 
-export const ToggleSwitch: FC<ToggleSwitchProps> = ({
-  checked,
-  disabled,
-  label,
-  name,
-  onChange,
-  ...props
-}) => {
+export const ToggleSwitch: FC<ToggleSwitchProps> = ({ checked, disabled, label, name, onChange, ...props }) => {
   const theme = useTheme().theme.formControls.toggleSwitch;
   const theirProps = excludeClassName(props);
   const id = useId();
@@ -36,9 +29,7 @@ export const ToggleSwitch: FC<ToggleSwitchProps> = ({
 
   return (
     <>
-      {name && checked && (
-        <input checked={checked} hidden name={name} readOnly type="checkbox" className="sr-only" />
-      )}
+      {name && checked && <input checked={checked} hidden name={name} readOnly type="checkbox" className="sr-only" />}
       <button
         aria-checked={checked}
         aria-labelledby={`${id}-flowbite-toggleswitch-label`}

@@ -1,0 +1,343 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { shell } from "electron";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import appData from "../../src/appData";
+import { executeNodeAction } from "../../src/nodeExecutor";
+import { createFlowExecutionContext } from "../../src/flowExecutionSupport";
+import { readPack } from "../../src/packFileSerializer";
+import type { DBVersion, Pack, PackedFile } from "../../src/packFileTypes";
+
+vi.mock("@mongodb-js/zstd", () => ({
+  decompress: vi.fn(async (input: Uint8Array) => input),
+}));
+vi.mock("electron-is-dev", () => ({
+  default: false,
+}));
+
+let outputDirectory: string | undefined;
+const originalCurrentGame = appData.currentGame;
+const originalGamePath = appData.gamesToGameFolderPaths.wh3.gamePath;
+
+beforeEach(() => {
+  vi.mocked(shell.openPath).mockReset().mockResolvedValue("");
+});
+
+afterEach(async () => {
+  appData.currentGame = originalCurrentGame;
+  appData.gamesToGameFolderPaths.wh3.gamePath = originalGamePath;
+  if (outputDirectory) {
+    await rm(outputDirectory, { recursive: true, force: true });
+    outputDirectory = undefined;
+  }
+});
+
+const executeTextSave = async (executionContext?: ReturnType<typeof createFlowExecutionContext>) => {
+  outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+  appData.currentGame = "wh3";
+  appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+  return executeNodeAction({
+    nodeId: "save_changes_1",
+    nodeType: "savechanges",
+    textValue: "",
+    config: {
+      packName: "manual-output",
+      packedFileName: "output.txt",
+      openInWindows: true,
+    },
+    inputData: {
+      type: "Text",
+      text: "saved text",
+    },
+    executionContext,
+  });
+};
+
+describe("save changes node", () => {
+  it("treats an empty TableSelection as a successful no-op", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const result = await executeNodeAction({
+      nodeId: "save_changes_empty",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "empty-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        type: "SaveResult",
+        savedTo: "",
+        message: "No changes to save",
+      }),
+    );
+  });
+
+  it("opens a newly saved pack after a manual editor run when enabled", async () => {
+    const result = await executeTextSave();
+
+    expect(result.success).toBe(true);
+    expect(shell.openPath).toHaveBeenCalledOnce();
+    expect(shell.openPath).toHaveBeenCalledWith(
+      path.join(outputDirectory as string, "whmm_flows", "manual-output.pack"),
+    );
+  });
+
+  it("does not open a newly saved pack during an automatic flow run", async () => {
+    const result = await executeTextSave(createFlowExecutionContext());
+
+    expect(result.success).toBe(true);
+    expect(shell.openPath).not.toHaveBeenCalled();
+  });
+
+  it("routes a table carrying an output path prefix outside db\\, leaving other tables untouched", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const tableSchema = {
+      version: 1,
+      fields: [
+        {
+          name: "key",
+          field_type: "StringU8",
+          is_key: true,
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: "",
+          ca_order: 0,
+          is_bitwise: 0,
+          enum_values: {},
+        },
+      ],
+    } as DBVersion;
+
+    const createTable = (name: string, value: string, outputPathPrefix?: string, outputPathSuffix?: string) => ({
+      name,
+      fileName: `db\\${name}\\data__`,
+      sourceFile: {} as Pack,
+      table: {
+        name: `db\\${name}\\data__`,
+        file_size: 0,
+        start_pos: 0,
+        version: 1,
+        tableSchema,
+        schemaFields: [
+          {
+            name: "key",
+            type: "StringU8" as const,
+            fields: [{ type: "String" as const, val: value }],
+            resolvedKeyValue: value,
+            isKey: true,
+          },
+        ],
+      } as PackedFile,
+      outputPathPrefix,
+      outputPathSuffix,
+    });
+
+    const result = await executeNodeAction({
+      nodeId: "save_changes_2",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "table-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          createTable("main_units_tables", "my_new_unit"),
+          createTable("deepclone_loc", "some_loc_key", "text\\db\\", ".loc"),
+        ],
+        sourceFiles: [],
+        tableCount: 2,
+      },
+    });
+
+    expect(result.success).toBe(true);
+
+    const savedPack = await readPack(path.join(outputDirectory, "data", "table-output.pack"), {
+      skipParsingTables: true,
+    });
+    const savedNames = savedPack.packedFiles.map((packedFile) => packedFile.name);
+
+    expect(savedNames.some((name) => /^text\\db\\table-output_[a-z0-9]+\.loc$/.test(name))).toBe(true);
+    expect(savedNames.some((name) => /^db\\main_units_tables\\table-output_[a-z0-9]+$/.test(name))).toBe(true);
+  });
+
+  it("writes a raw payload at its exact path when the table names one", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const artPath = "ui\\units\\minspec_portholes\\my_new_unit.png";
+    const artBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    const result = await executeNodeAction({
+      nodeId: "save_changes_3",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "art-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          {
+            name: artPath,
+            fileName: artPath,
+            sourceFile: {} as Pack,
+            table: { name: artPath, file_size: artBytes.length, start_pos: 0, buffer: artBytes } as PackedFile,
+            outputFileName: artPath,
+          },
+        ],
+        sourceFiles: [],
+        tableCount: 1,
+      },
+    });
+
+    expect(result.success).toBe(true);
+
+    const savedPack = await readPack(path.join(outputDirectory, "data", "art-output.pack"), {
+      skipParsingTables: true,
+      filesToRead: [artPath],
+    });
+    const savedFile = savedPack.packedFiles.find((packedFile) => packedFile.name === artPath);
+
+    // The name must survive verbatim: the game finds this file by the unit key, not by a generated name.
+    expect(savedFile).toBeDefined();
+    expect(savedFile?.buffer).toEqual(artBytes);
+  });
+
+  it("reports the packs it replaces, so the mod list can leave the originals out", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const copiedFile = (name: string, replacesSourcePackPath?: string) => ({
+      name,
+      fileName: name,
+      sourceFile: {} as Pack,
+      table: {
+        name,
+        file_size: 4,
+        start_pos: 0,
+        buffer: Buffer.from("data"),
+      } as PackedFile,
+      outputFileName: name,
+      replacesSourcePackPath,
+    });
+
+    const result = await executeNodeAction({
+      nodeId: "save_changes_4",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "replacement-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          copiedFile("script\\a.lua", "C:\\game\\data\\my_mod.pack"),
+          copiedFile("script\\b.lua", "C:\\game\\data\\my_mod.pack"),
+          copiedFile("script\\c.lua", "C:\\game\\data\\other_mod.pack"),
+          // Not part of any pack copy, so it must not make a pack look replaced.
+          copiedFile("ui\\generated.png"),
+        ],
+        sourceFiles: [],
+        tableCount: 4,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    expect(saveData.replacedPackPaths?.toSorted()).toEqual([
+      "C:\\game\\data\\my_mod.pack",
+      "C:\\game\\data\\other_mod.pack",
+    ]);
+    // A manual run has no mod list to fix up, so the message has to say it.
+    expect(saveData.message).toContain("disable the original");
+  });
+
+  it("uses the original pack name when writing a single pack replacement", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const originalPackPath = "C:\\workshop\\content\\123\\my_mod.pack";
+    const result = await executeNodeAction({
+      nodeId: "save_changes_replacement_name",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "configured-output-name", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          {
+            name: "script\\changed.lua",
+            fileName: "script\\changed.lua",
+            sourceFile: {} as Pack,
+            table: {
+              name: "script\\changed.lua",
+              file_size: 4,
+              start_pos: 0,
+              buffer: Buffer.from("data"),
+            } as PackedFile,
+            outputFileName: "script\\changed.lua",
+            replacesSourcePackPath: originalPackPath,
+          },
+        ],
+        sourceFiles: [],
+        tableCount: 1,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    expect(saveData.savedTo).toBe(path.join(outputDirectory, "data", "my_mod.pack"));
+    expect(saveData.replacedPackPaths).toEqual([originalPackPath]);
+    await expect(readPack(saveData.savedTo, { skipParsingTables: true })).resolves.toEqual(
+      expect.objectContaining({ name: "my_mod.pack" }),
+    );
+  });
+
+  it("reports nothing replaced when no table claims to stand in for a pack", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const artPath = "ui\\generated.png";
+    const result = await executeNodeAction({
+      nodeId: "save_changes_5",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "plain-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          {
+            name: artPath,
+            fileName: artPath,
+            sourceFile: {} as Pack,
+            table: { name: artPath, file_size: 4, start_pos: 0, buffer: Buffer.from("data") } as PackedFile,
+            outputFileName: artPath,
+          },
+        ],
+        sourceFiles: [],
+        tableCount: 1,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    expect(saveData.replacedPackPaths).toEqual([]);
+    expect(saveData.message).not.toContain("Replaces");
+  });
+});

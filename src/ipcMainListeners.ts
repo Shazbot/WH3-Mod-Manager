@@ -1,21 +1,208 @@
 import assert from "assert";
+import {
+  DEFAULT_DB_TABLE_ROOT,
+  UNUSED_DB_TABLE_ROOT,
+  getDBName,
+  findUnparsedTablePrefixes,
+  getDBPackedFilePath,
+  isLocPackedFilePath,
+  parseDBTablePath,
+  parseLiveDBTablePath,
+  releaseParsedTables,
+} from "./utility/packFileHelpers";
+import { planSaveAs } from "./utility/saveAsPlan";
+import { planPackImport, type PackImportItem, type PackImportSource } from "./utility/packImportPlan";
+import { hasParentSegment, normalizePackFilePath, normalizePackFilePathKey } from "./utility/packFilePathUtils";
+import type { PackFileRenameEntry } from "./utility/packFileRenamePlan";
+import { resolveExportOutputPath } from "./utility/exportPaths";
+import { buildRpfmTsvContent, getRpfmTsvExportPath } from "./utility/rpfmTsv";
+import { buildImportedPackedFile } from "./utility/packImportStaging";
+import { applyTextPackedFileEdit } from "./utility/textPackStaging";
+import { compareFilesByteForByte } from "./utility/fileComparison";
+import { invalidateCustomizableModPath } from "./utility/customizableModsState";
+import { encodeDdsAsPng } from "./esfMap/dds";
+import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
+import { createSerializedBuilds } from "./utility/serializedBuilds";
+import { createPackReadRegistry } from "./utility/packReadRegistry";
+import type { PackRowsForSave } from "./utility/packRowsForSave";
+import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
+import { selectPacksToCheck } from "./modCompat/compatScope";
+import {
+  findExistingPackedFlowName,
+  isPackedFlowName,
+  normalizePackedFlowName,
+  orderFlowPackCatalog,
+  type FlowPackCatalogEntry,
+} from "./nodeGraph/flowPackOperations";
+import {
+  canReusePackIndexForCompat,
+  canReuseParsedPackForCompat,
+  mergeCompatTextIntoPack,
+  packNeedsCompatTextRefresh,
+} from "./modCompat/compatPackReuse";
+import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
+import {
+  buildUnitViewerData,
+  createLocLookup,
+  UNIT_VIEWER_TABLES,
+  type BuiltUnitViewerData,
+  type UnitViewerTableRows,
+} from "./unitViewer/data";
+import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
+import {
+  buildBuildingsData,
+  buildVariantNameLocKey,
+  createBuildingsLocLookup,
+  BUILDINGS_TABLES,
+  variantLocKey,
+} from "./buildingsData/data";
+import { resolveCulturesWithoutChains, resolveForeignSlotTypes, resolveRegionBuildings } from "./buildingsData/derive";
+import { validateNewRows } from "./buildingsData/validate";
+import { applyNewRowsToBuildingsData, LOC_TABLE, newRowsByTable, type BuildingsEditState } from "./buildingsData/edits";
+import {
+  clearBuildingsMemoryCache,
+  describeBuildingsVanillaSignatureChanges,
+  buildingsModSegmentKey,
+  isSameBuildingsIdentity,
+  loadBuildingsModSegments,
+  loadVanillaBuildingsCache,
+  mergeBuildingsSources,
+  readBuildingsPackIdentity,
+  saveBuildingsModSegments,
+  saveVanillaBuildingsCache,
+  type BuildingsModSegment,
+  type BuildingsModSegments,
+  type BuildingsSource,
+  type BuildingsVanillaSignatureInputs,
+} from "./buildingsData/cache";
+import type {
+  BuildingsCatalog,
+  BuildingsCaiRowsResponse,
+  BuildingsCatalogResponse,
+  BuildingsRegionQuery,
+  BuildingsRegionView,
+  BuildingsRegionViewResponse,
+  BuildingsTableRows,
+  BuiltBuildingsData,
+} from "./buildingsData/types";
+import {
+  ANCILLARY_TABLES,
+  ancillaryUniquenessGroupingDescriptionLocKey,
+  ancillaryUniquenessGroupingNameLocKey,
+  buildAncillariesData,
+  categoryIconPath,
+  createAncillariesLocLookup,
+  resolveAncillaryText,
+} from "./ancillariesData/data";
+import { validateNewRows as validateAncillariesNewRows } from "./ancillariesData/validate";
+import {
+  applyNewRowsToAncillariesData,
+  LOC_TABLE as ANCILLARIES_LOC_TABLE,
+  newRowsByTable as ancillariesNewRowsByTable,
+  type AncillariesEditState,
+} from "./ancillariesData/edits";
+import {
+  clearAncillariesMemoryCache,
+  isSameIdentity,
+  loadAncillariesModSegments,
+  loadVanillaAncillariesCache,
+  mergeAncillariesSources,
+  modSegmentKey,
+  readPackIdentity,
+  saveAncillariesModSegments,
+  saveVanillaAncillariesCache,
+  type AncillariesModSegment,
+  type AncillariesModSegments,
+  type AncillariesSource,
+  type AncillariesVanillaSignatureInputs,
+} from "./ancillariesData/cache";
+import type {
+  AncillariesCatalog,
+  AncillariesCatalogResponse,
+  AncillariesDetailResponse,
+  AncillaryAbilityTooltips,
+  AncillariesTableRows,
+  AncillaryDetail,
+  AncillaryEffectRow,
+  BuiltAncillariesData,
+} from "./ancillariesData/types";
+import {
+  clearEsfMapMemoryCache,
+  loadEsfMapDiskCache,
+  resolveEsfMapCachedImage,
+  saveEsfMapDiskCache,
+} from "./esfMap/cache";
+import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
+import { addClimateDataToEsfMap } from "./esfMap/climates";
+import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
+import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
+import type { EsfMapDiplomacyIconUrls, EsfMapResponse } from "./esfMap/types";
+import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
+import { VanillaLocCacheBuildCanceled, openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
+import { runGlobalSearch, type GlobalSearchRunDeps } from "./globalSearch/run";
+import { createProgressThrottle } from "./globalSearch/progressThrottle";
+import type { GlobalSearchRequest, GlobalSearchResponse } from "./globalSearch/types";
+import {
+  clearVisualsMemoryCache,
+  createEmptyVisualsDataCache,
+  getCurrentVisualsTableContribution,
+  getCurrentVisualsPackCacheEntry,
+  getCurrentVisualsModSegment,
+  getOrCreateVisualsModSegment,
+  getOrCreateVisualsPackCacheEntry,
+  getVisualsFilesFromNames,
+  loadVisualsModSegments,
+  loadVanillaVisualsCache,
+  mergeVisualsLocContributions,
+  mergeVisualsFileContributions,
+  mergeVisualsTableContributions,
+  saveVisualsModSegments,
+  saveVanillaVisualsCache,
+  visualsModSegmentKey,
+  type VisualsFileResult,
+  type VisualsModSegment,
+  type VisualsModSegments,
+  type VisualsPackCacheEntry,
+  type VisualsPackCacheIdentity,
+  type VisualsTableContribution,
+  type VisualsVanillaSignatureInputs,
+} from "./visuals/cache";
+import { toVariantMeshDefinitionPath } from "./visuals/paths";
+import {
+  collectVisualDependencyClosure,
+  getSupportedVisualDependencyExtension,
+  getSupportedVisualReferences,
+  getVisualMaterialFactionTextures,
+  type VisualDependencyClosure,
+} from "./visuals/dependencies";
+import {
+  canUseVanillaDbCacheForPack,
+  closeVanillaDbCacheReaders,
+  fillPackedFileFromVanillaCache,
+  fillVanillaTablesFromCache,
+  searchVanillaDb,
+} from "./vanillaDbCache/store";
+import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progress";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
-import { exec, fork } from "child_process";
+import { execFile } from "child_process";
 import chokidar from "chokidar";
 import { format } from "date-fns";
+import electronLog from "electron-log/main";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import windowStateKeeper from "electron-window-state";
 import * as fs from "fs";
 import * as fsExtra from "fs-extra";
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import debounce from "just-debounce-it";
 import fetch from "node-fetch";
 import * as nodePath from "path";
 import { version } from "react";
-import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
+import { readAppConfig, setStartingConfig, writeAppConfig } from "./appConfigFunctions";
+import { applyConfigSavePayloadToAppData } from "./config/applyConfigSavePayload";
 import appData, { GameFolderPaths } from "./appData";
 import type { SerializedNode, SerializedConnection } from "./nodeGraph/types";
 import { packDataStore } from "./components/viewer/packDataStore";
@@ -29,12 +216,30 @@ import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modC
 import {
   fetchModData,
   getContentModInFolder,
+  getCustomMod,
   getDataMod,
   getFolderPaths,
   getLastUpdated,
   getMods,
 } from "./modFunctions";
+import {
+  DATA_MOD_SOURCE_ID,
+  getModSourceId,
+  getWorkshopModSyncItems,
+  insertCustomSourceAfterData,
+  isWorkshopMod,
+  normalizeModSourceOrder,
+  WORKSHOP_MOD_SOURCE_ID,
+} from "./modSources";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import {
+  createModdingFolderPacks,
+  replaceEnabledModsWithGeneratedPacks,
+  WHMM_MODDING_FOLDER,
+  type ModdingFolderPackResult,
+} from "./moddingFolderPacks";
+import { serializeSharedModList } from "./sharedModList";
+import { parseUsedMods } from "./usedMods";
 import { readPackHeader } from "./packFileHandler";
 import {
   addFakeUpdate,
@@ -43,12 +248,18 @@ import {
   createOverwritePack,
   executeFlowsForPack,
   getDBVersion,
+  getDBVersionByTableName,
   getPacksInSave,
   getPacksTableData,
   getPackViewData,
+  preparePackedFileForViewer,
   mergeMods,
   readFromExistingPack,
+  forEachPackedFileBuffer,
+  decompressPackedPayload,
   readPack,
+  resolveKeyValue,
+  serializePackFileDataToBuffer,
   typeToBuffer,
   writeStartGamePack,
   writePack,
@@ -56,7 +267,9 @@ import {
 import {
   AmendedSchemaField,
   DBField,
+  DBVersion,
   LocFields,
+  LocVersion,
   NewPackedFile,
   Pack,
   PackCollisions,
@@ -68,6 +281,8 @@ import {
   DBNameToDBVersions,
   gameToDBFieldsThatReference,
   gameToReferences,
+  getSchemaFileName,
+  getSchemaForGame,
   initializeAllSchemaForGame,
 } from "./schema";
 import {
@@ -79,6 +294,7 @@ import {
   getSubtypesToLocalizedNames,
   NodeLinks,
   NodeSkill,
+  normalizeSkillIconPath,
   pickTreeNodeData,
   resolveTextReplacements,
   SkillAndIcons,
@@ -91,9 +307,43 @@ import {
   getSkillAndEffectIconPaths,
   getVanillaSkillsDataCoreFromCache,
   loadIconsFromPacks,
+  pickIconsForSkills,
   saveVanillaSkillsDataCoreCache,
 } from "./skillsData/cache";
 import { applyModOverlayToSkillsDataCore } from "./skillsData/overlay";
+import {
+  clearIconAssets,
+  iconAssetUrl,
+  registerAssetProtocol,
+  registerIconAssets,
+  unitAssetUrl,
+  type AssetBytes,
+} from "./assetProtocol";
+import { normalizeAssetPath } from "./assetUrls";
+import { forkSteamWorker as fork, terminateSteamWorker } from "./steamWorker";
+import {
+  collectVanillaPackTreeChildren,
+  collectVanillaFilesUnderPrefix,
+  findVanillaPackContaining,
+  searchVanillaPackFileTree,
+} from "./vanillaPackIndex/format";
+import {
+  selectPackPathsToSearch,
+  selectVanillaPacksHoldingFiles,
+  selectVanillaPacksHoldingTables,
+} from "./vanillaPackIndex/select";
+import { getVanillaPackIndex } from "./vanillaPackIndex/store";
+import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
+import {
+  getPackedFileNamesFromCacheEntry,
+  getCurrentPackFilesCacheEntry,
+  getVanillaPackFilesCacheEntry,
+  getCachedVanillaPackIndexFromEntry,
+  loadVanillaPackFilesCache,
+  rememberPackFileNames,
+  saveVanillaPackFilesCache,
+} from "./vanillaPackFilesCache";
+import { addRecentPackPath, recentPackPathsEqual, sanitizeRecentPackPaths } from "./utility/recentPackPaths";
 import {
   gameToGameName,
   gameToPackWithDBTablesName,
@@ -101,17 +351,55 @@ import {
   gameToSteamId,
   gameToSupportedGameOptions,
   gameToVanillaPacksData,
+  vanillaPackNames,
   supportedGameOptions,
   supportedGameOptionToStartGameOption,
+  supportsCompression,
   SupportedGames,
   supportedGames,
   SupportedLanguage,
 } from "./supportedGames";
 import { tryOpenFile } from "./utility/fileHelpers";
 import getPackTableData from "./utility/frontend/packDataHandling";
+import { findLatestScriptLog } from "./utility/logPaths";
+import {
+  decodePackedTextBuffer,
+  getPackedFileMimeType,
+  getPackedFileViewerKind,
+  isDdsPackedFilePath,
+} from "./utility/packFileViewing";
+import { refreshMainLoadOrderRules } from "./mainLoadOrderRules";
+import { replaceModLoadOrderRules } from "./loadOrderRules";
+import {
+  isLoadOrderRulesPackedFilePath,
+  LOAD_ORDER_RULES_PACKED_FILE_PATH,
+  parseLoadOrderRulesFile,
+} from "./utility/loadOrderRulesFile";
 import { collator } from "./utility/packFileSorting";
+import { launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
+import {
+  cleanupWorkshopModStaging,
+  getWorkshopModStagingFolderInfo,
+  buildWorkshopStagingWorkingDirectoryLines,
+  stageWorkshopMods,
+  WorkshopModStagingError,
+  WORKSHOP_MOD_STAGING_FOLDER,
+  type WorkshopStagingProgress,
+  type WorkshopStagingResult,
+} from "./utility/workshopModStaging";
+import { findGameProcessIds } from "./utility/gameProcess";
+import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
-import Trie from "./utility/trie";
+import Trie, { type KeyedLookup } from "./utility/trie";
+import {
+  analyzeCompressionPacks,
+  compressAnalyzedPack,
+  type CompressionAnalysisProgress,
+  type CompressionAnalysisRequest,
+  type CompressionAnalysisResult,
+  type CompressPackRequest,
+  type CompressPackResponse,
+} from "./compressionAnalysis";
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
@@ -123,18 +411,15 @@ declare const SKILLS_PRELOAD_WEBPACK_ENTRY: string;
 declare const TECH_TREES_WEBPACK_ENTRY: string;
 declare const TECH_TREES_PRELOAD_WEBPACK_ENTRY: string;
 const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
-const appendScopedTechNodeHash = (nodeKey: string, campaignKey?: string, factionKey?: string) => {
-  const scopeSource = `${campaignKey || ""}${factionKey || ""}`.trim();
-  if (!scopeSource) return nodeKey;
+const appendScopedTechNodeHash = (nodeKey: string, campaignKey?: string | null, factionKey?: string | null) => {
+  const normalizedCampaignKey = campaignKey?.trim() || "";
+  const normalizedFactionKey = factionKey?.trim() || "";
+  if (!normalizedCampaignKey && !normalizedFactionKey) return nodeKey;
+  const scopeSource = JSON.stringify([normalizedCampaignKey, normalizedFactionKey]);
   const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
   return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
 };
-const appendScopedSkillNodeHash = (
-  nodeKey: string,
-  campaignKey?: string,
-  factionKey?: string,
-  subculture?: string,
-) => {
+const appendScopedSkillNodeHash = (nodeKey: string, campaignKey?: string, factionKey?: string, subculture?: string) => {
   const scopeSource = `${campaignKey || ""}${factionKey || ""}${subculture || ""}`.trim();
   if (!scopeSource) return nodeKey;
   const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
@@ -148,9 +433,17 @@ const buildSkillsDataSignature = (mods: Mod[], currentGame: SupportedGames) =>
       path: mod.path,
       loadOrder: mod.loadOrder ?? null,
       lastChangedLocal: mod.lastChangedLocal ?? null,
-      lastChanged: mod.lastChanged ?? null,
     })),
   });
+const buildBuildingsModsSignature = (mods: Mod[]) =>
+  JSON.stringify(
+    sortByNameAndLoadOrder(mods).map((mod) => ({
+      path: mod.path,
+      loadOrder: mod.loadOrder ?? null,
+    })),
+  );
+const buildBuildingsBuildKey = (mods: Mod[], currentGame: SupportedGames) =>
+  JSON.stringify({ currentGame, mods: buildBuildingsModsSignature(mods) });
 const resolveSkillGenerationTemplate = (
   template: string,
   variables: { prefix: string; setSuffix: string; timestamp: string; row: string; column: string },
@@ -169,21 +462,398 @@ let contentWatcher: chokidar.FSWatcher | undefined;
 let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
+let customModFoldersWatcher: chokidar.FSWatcher | undefined;
+/**
+ * Opens a pack in the viewer, published by registerIpcMainListeners.
+ *
+ * The viewer is normally opened by an IPC message from the renderer. Flows run in the main process
+ * and have no renderer to send one, so they need a way in from this side.
+ */
+let openModInViewerFromMainProcess: ((modPath: string) => void) | undefined;
+
+export const openModInViewer = (modPath: string) => {
+  if (!openModInViewerFromMainProcess) {
+    console.warn(`Cannot open ${modPath} in the viewer: main process listeners are not registered`);
+    return;
+  }
+  openModInViewerFromMainProcess(modPath);
+};
+
 export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
   skillsWindow: undefined as BrowserWindow | undefined,
   techTreesWindow: undefined as BrowserWindow | undefined,
 };
+
+let workshopCleanupInFlight: Promise<void> | undefined;
+
+const formatWorkshopStagingBytes = (bytes: number) => {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = Math.max(0, bytes);
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+};
+
+const reportWorkshopCleanupWarning = (message: string, error?: unknown) => {
+  if (error === undefined) console.warn(message);
+  else console.error(message, error);
+  windows.mainWindow?.webContents.send("handleLog", message);
+  windows.mainWindow?.webContents.send("addToast", {
+    type: "warning",
+    messages: [message],
+    startTime: Date.now(),
+  } as Toast);
+};
+
+const reportWorkshopCleanupFailure = (error: unknown) => {
+  const detail = error instanceof Error ? error.message : String(error);
+  const message = i18n.t("automaticWorkshopStagingCleanupFailed", { error: detail });
+  reportWorkshopCleanupWarning(message, error);
+};
+
+/** Removes a previous launch's manager-owned staging folder after the game has stopped. */
+export const cleanupWorkshopStagingAfterGameExit = async (): Promise<void> => {
+  if (appData.isWH3Running || !appData.workshopStagingCleanupPending || !appData.workshopStagingCleanupGamePath) {
+    return;
+  }
+  if (workshopCleanupInFlight) return workshopCleanupInFlight;
+
+  const gamePath = appData.workshopStagingCleanupGamePath;
+  workshopCleanupInFlight = cleanupWorkshopModStaging(gamePath)
+    .then(() => {
+      appData.workshopStagingCleanupPending = false;
+      appData.workshopStagingCleanupGamePath = undefined;
+      console.log(`Cleaned ${WORKSHOP_MOD_STAGING_FOLDER} after game exit.`);
+    })
+    .catch((error) => {
+      reportWorkshopCleanupFailure(error);
+    })
+    .finally(() => {
+      workshopCleanupInFlight = undefined;
+    });
+  return workshopCleanupInFlight;
+};
+
+setVanillaDbCacheBuildProgressReporter((progress) => {
+  for (const targetWindow of Object.values(windows)) {
+    if (targetWindow && !targetWindow.isDestroyed() && !targetWindow.webContents.isDestroyed()) {
+      targetWindow.webContents.send("vanillaDbCacheBuildProgress", progress);
+    }
+  }
+});
 type VisualsSession = {
   sessionId: string;
   enabledModPaths: string[];
+  vanillaCacheSignature: string;
   dbPriorityPackPaths: string[];
   fileSearchPackPaths: string[];
+  visualFiles?: VisualsFileResult[];
+  visualFilesPromise?: Promise<VisualsFileResult[]>;
+  /** Parsed VMD catalogs shared by the Visuals tab preview. */
+  variantMeshCatalogs: Map<string, Promise<VariantMeshCatalog>>;
   createdAt: number;
 };
+type UnitViewerSession = {
+  sessionId: string;
+  data: BuiltUnitViewerData;
+  assetPackPaths: string[];
+  assetCache: Map<string, { buffer: Buffer; mimeType: string; bytes: number; resolvedPath: string }>;
+  assetCacheBytes: number;
+  /** Reads in flight, so an image requested twice before it lands is read once. */
+  pendingAssets: Map<string, Promise<AssetBytes | undefined>>;
+  /** A batch read in flight, which single asset requests wait behind rather than race. */
+  pendingPrewarm?: Promise<unknown>;
+  /** Parsed VMD catalogs, shared by animation/export requests for this unit-viewer session. */
+  variantMeshCatalogs: Map<string, Promise<VariantMeshCatalog>>;
+  createdAt: number;
+};
+const unitViewerSessions = new Map<string, UnitViewerSession>();
+const UNIT_VIEWER_ASSET_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+let cachedUnitViewerData: { signature: string; data: BuiltUnitViewerData; assetPackPaths: string[] } | undefined;
+type CachedBuildingsData = {
+  signature: string;
+  vanillaSignatureInputs?: BuildingsVanillaSignatureInputs;
+  data: BuiltBuildingsData;
+  /** Effective source rows retained so every non-start-pos pending table can rebuild the view. */
+  tables: BuildingsTableRows;
+  /** Localization snapshot merged from the cached vanilla and mod sources. */
+  localizations: Record<string, string>;
+  dbPackPath: string;
+  /** Variant `icon` cell, normalised to a bare lowercase name -> the packed file that holds it. */
+  iconPathByBaseName: Record<string, string>;
+  /** Every indexed icon under the building icon folder, including icons not used by current rows. */
+  buildingIconPaths: string[];
+  icons: Record<string, AssetBytes>;
+  iconGeneration: number;
+  /** Runtime URLs for the extended map's diplomacy controls. */
+  diplomacyIconUrls: EsfMapDiplomacyIconUrls;
+};
+let cachedBuildingsData: CachedBuildingsData | undefined;
+type CachedAncillariesData = {
+  /** Covers the vanilla signature *and* every enabled mod's identity, so any change misses. */
+  signature: string;
+  data: BuiltAncillariesData;
+  /** Effective source rows retained so a pending table can rebuild the panel. */
+  tables: AncillariesTableRows;
+  /** Only localization keys consumed by `buildAncillariesData`, captured while the base is built. */
+  localizations: Record<string, string>;
+  originPackPathByAncillary: Record<string, string>;
+  dbPackPath: string;
+  icons: Record<string, AssetBytes>;
+  iconGeneration: number;
+};
+let cachedAncillariesData: CachedAncillariesData | undefined;
+let cachedEsfMapData: { signature: string; data: import("./esfMap/types").EsfMapPayload } | undefined;
+/**
+ * A pack's file names, from the expanded vanilla cache or names-only v2 entries for mods when its
+ * size and mtime still match.
+ *
+ * The names are all an icon lookup needs, and reading a pack just to list them costs a full index
+ * parse per pack - about 260 of them for wh3. Populates the cache for packs the startup path never
+ * touched, so the second call in a session is free.
+ */
+const getVanillaPackedFileNames = async (packPath: string): Promise<string[]> => {
+  const cachedEntry = await getCurrentPackFilesCacheEntry(packPath);
+  if (cachedEntry) return getPackedFileNamesFromCacheEntry(cachedEntry);
+
+  const alreadyRead = appData.packsData.find((pack) => pack.path == packPath);
+  const packedFileNames = alreadyRead
+    ? alreadyRead.packedFiles.map((packedFile) => packedFile.name)
+    : (await readPack(packPath, { skipParsingTables: true })).packedFiles.map((packedFile) => packedFile.name);
+  try {
+    const stat = await fs.promises.stat(packPath);
+    rememberPackFileNames(packPath, stat.size, stat.mtimeMs, packedFileNames);
+    await saveVanillaPackFilesCache();
+  } catch {
+    // The caller already has the names; a disappearing pack only prevents persistence.
+  }
+  return packedFileNames;
+};
+
 const visualsSessions = new Map<string, VisualsSession>();
+const visualsPackIndexes = new Map<string, { size: number; mtimeMs: number; pack: Pack }>();
+
+const getVisualsPackIdentity = async (packPath: string): Promise<VisualsPackCacheIdentity | undefined> => {
+  try {
+    const stat = await fs.promises.stat(packPath);
+    return { packPath, size: stat.size, mtimeMs: stat.mtimeMs };
+  } catch {
+    return undefined;
+  }
+};
+
+const getVisualsVanillaSignature = async (
+  game: SupportedGames,
+  dbPackPath: string,
+): Promise<{ signature: string; signatureInputs: VisualsVanillaSignatureInputs }> => {
+  const identity = await getVisualsPackIdentity(dbPackPath);
+  const signatureInputs: VisualsVanillaSignatureInputs = {
+    feature: 1,
+    game,
+    schema: getVisualsSchemaHash(game),
+    identities: [[nodePath.resolve(dbPackPath), identity?.size ?? -1, identity?.mtimeMs ?? -1]],
+  };
+  return {
+    signature: createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex"),
+    signatureInputs,
+  };
+};
+
+const getVisualsSchemaHash = (game: SupportedGames): string | undefined => {
+  try {
+    const schemaPath = nodePath.join(__dirname, `../schema/${getSchemaFileName(game)}`);
+    return createHash("sha1").update(fs.readFileSync(schemaPath)).digest("hex");
+  } catch (error) {
+    console.error("Failed to identify the schema for the Visuals cache:", error);
+    return undefined;
+  }
+};
+
+const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
+  const contribution: VisualsTableContribution = {
+    variants: [],
+    variantDetails: [],
+    unitVariants: [],
+    landUnits: [],
+    mainUnits: [],
+    mainUnitLinks: [],
+    unitPermissions: [],
+    factions: [],
+    culturesSubcultures: [],
+  };
+
+  const forEachTableRow = (tableName: string, visit: (schemaFieldRow: AmendedSchemaField[]) => void) => {
+    for (const packedFile of pack.packedFiles) {
+      if (!packedFile.name.startsWith(`db\\${tableName}\\`)) continue;
+      const dbVersion = getDBVersion(packedFile);
+      if (!dbVersion || !packedFile.schemaFields) continue;
+      const rows = chunkSchemaIntoRows(
+        amendSchemaField(packedFile.schemaFields, dbVersion),
+        dbVersion,
+      ) as AmendedSchemaField[][];
+      for (const row of rows) visit(row);
+    }
+  };
+
+  forEachTableRow("variants_tables", (row) => {
+    const value = (fieldName: string) =>
+      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const variantName = value("variant_name");
+    if (!variantName) return;
+    const variantFilename = value("variant_filename");
+    contribution.variants.push([variantName, variantFilename]);
+    contribution.variantDetails!.push([
+      variantName,
+      {
+        techFolder: value("tech_folder"),
+        variantFilename,
+        lowPolyFilename: value("low_poly_filename"),
+        mountScale: value("mount_scale"),
+        scale: value("scale"),
+        scaleVariation: value("scale_variation"),
+        superLowPolyFilename: value("super_low_poly_filename"),
+      },
+    ]);
+  });
+  forEachTableRow("unit_variants_tables", (row) => {
+    const value = (fieldName: string) =>
+      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const unitKey = value("unit");
+    if (!unitKey) return;
+    contribution.unitVariants.push([
+      unitKey,
+      value("faction"),
+      value("variant"),
+      value("name"),
+      value("unit_card"),
+    ]);
+  });
+  forEachTableRow("main_units_tables", (row) => {
+    const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
+    const landUnitKey = row.find((field) => field.name === "land_unit")?.resolvedKeyValue;
+    if (!landUnitKey) return;
+    if (unitKey) contribution.mainUnitLinks!.push([unitKey, landUnitKey]);
+    const caste = row.find((field) => field.name === "caste")?.resolvedKeyValue || "";
+    contribution.mainUnits!.push([landUnitKey, caste]);
+  });
+  forEachTableRow("units_custom_battle_permissions_tables", (row) => {
+    const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
+    const factionKey = row.find((field) => field.name === "faction")?.resolvedKeyValue;
+    if (unitKey && factionKey) contribution.unitPermissions!.push([unitKey, factionKey]);
+  });
+  forEachTableRow("factions_tables", (row) => {
+    const factionKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
+    if (!factionKey) return;
+    const subculture = row.find((field) => field.name === "subculture")?.resolvedKeyValue || "";
+    contribution.factions!.push([factionKey, subculture]);
+  });
+  forEachTableRow("cultures_subcultures_tables", (row) => {
+    const subculture = row.find((field) => field.name === "subculture")?.resolvedKeyValue;
+    if (!subculture) return;
+    const culture = row.find((field) => field.name === "culture")?.resolvedKeyValue || "";
+    contribution.culturesSubcultures!.push([subculture, culture]);
+  });
+  forEachTableRow("land_units_tables", (row) => {
+    const unitKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
+    if (unitKey) contribution.landUnits.push(unitKey);
+  });
+
+  return contribution;
+};
+
+const getVisualsLocContribution = (pack: Pack): Array<[string, string]> => {
+  const trie = getLocsTrie(pack);
+  return trie ? Object.entries(trie.getEntries()) : [];
+};
 const dbDuplicationCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
+const compressionAnalysisCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
+const compressionPackPathsInProgress = new Set<string>();
+interface ActiveWorkshopStagingRun {
+  runId: string;
+  senderId: number;
+  controller: AbortController;
+  canceled: boolean;
+  lastProgress: WorkshopStagingProgress;
+}
+let activeWorkshopStagingRun: ActiveWorkshopStagingRun | undefined;
+const globalSearchCancelStateByWebContentsId = new Map<
+  number,
+  { canceled: boolean; done?: Promise<GlobalSearchResponse> }
+>();
+
+const workshopStagingProgressChannel = "workshopModStagingProgress";
+
+const workshopStagingStageForPhase = (phase: WorkshopStagingProgress["phase"]): string => {
+  switch (phase) {
+    case "planning":
+      return "preparing";
+    case "pruning":
+      return "cleaning";
+    case "copying":
+      return "copying";
+    case "compressing":
+      return "compressing";
+    case "checkpointing":
+      return "saving";
+    case "completed":
+      return "complete";
+    case "canceled":
+      return "cleaning";
+    default:
+      return phase;
+  }
+};
+
+const makeWorkshopStagingProgressEvent = (
+  runId: string,
+  progress: WorkshopStagingProgress,
+  status: WorkshopModStagingProgressStatus,
+  overrides: Partial<WorkshopModStagingProgressEvent> = {},
+): WorkshopModStagingProgressEvent => {
+  const total = Number.isFinite(progress.total) ? Math.max(0, progress.total) : 0;
+  const completed = Number.isFinite(progress.current) ? Math.max(0, Math.min(total, progress.current)) : 0;
+  const byteFraction =
+    progress.bytesCopied !== undefined && progress.totalBytes !== undefined && progress.totalBytes > 0
+      ? Math.min(1, Math.max(0, progress.bytesCopied / progress.totalBytes))
+      : undefined;
+  const fileFraction =
+    progress.fileIndex !== undefined && progress.fileCount !== undefined && progress.fileCount > 0
+      ? Math.min(1, Math.max(0, progress.fileIndex / progress.fileCount))
+      : undefined;
+  const itemFraction = byteFraction ?? fileFraction ?? 0;
+  return {
+    runId,
+    status,
+    stage: workshopStagingStageForPhase(progress.phase),
+    ...(total > 0 ? { percent: Math.round(((completed + itemFraction) / total) * 100) } : {}),
+    completedMods: completed,
+    totalMods: total,
+    ...(progress.bytesCopied !== undefined ? { bytesCopied: progress.bytesCopied } : {}),
+    ...(progress.totalBytes !== undefined ? { totalBytes: progress.totalBytes } : {}),
+    ...(progress.fileIndex !== undefined ? { fileIndex: progress.fileIndex } : {}),
+    ...(progress.fileCount !== undefined ? { fileCount: progress.fileCount } : {}),
+    ...(progress.modName ? { currentMod: progress.modName } : {}),
+    ...(progress.phase === "compressing" && progress.message ? { currentFile: progress.message } : {}),
+    ...(progress.message ? { detail: progress.message } : {}),
+    ...overrides,
+  };
+};
+
+const sendWorkshopStagingProgress = (sender: Electron.WebContents, progress: WorkshopModStagingProgressEvent): void => {
+  if (sender.isDestroyed()) return;
+  try {
+    sender.send(workshopStagingProgressChannel, progress);
+  } catch {
+    // The renderer may close between the destroyed check and send.
+  }
+};
+/** Serializes the handoff between overlapping invocations from one viewer sender. */
+const globalSearchStartLockByWebContentsId = new Map<number, Promise<void>>();
 const dbIndirectReferenceCacheByWebContentsId = new Map<number, DBIndirectReferenceCacheContext>();
 const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContext => ({
   packByPath: new Map<string, Pack>(),
@@ -194,24 +864,6 @@ const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContex
   reverseRefTtlMs: 5 * 60 * 1000,
   maxReverseRefEntries: 32,
 });
-const normalizePackFilePath = (value: string) =>
-  value.replace(/\//g, "\\").replace(/\\+/g, "\\").replace(/^\\+/, "").trim();
-const normalizePackFilePathKey = (value: string) => normalizePackFilePath(value).toLowerCase();
-const toVariantMeshDefinitionPath = (value: string) => {
-  let path = normalizePackFilePath(value);
-  if (!path) return path;
-  if (!path.toLowerCase().endsWith(".variantmeshdefinition")) {
-    path = `${path}.variantmeshdefinition`;
-  }
-  const lower = path.toLowerCase();
-  if (!lower.startsWith("variantmeshes\\")) {
-    path = `variantmeshes\\variantmeshdefinitions\\${path}`;
-  } else if (!lower.startsWith("variantmeshes\\variantmeshdefinitions\\")) {
-    const baseName = nodePath.basename(path);
-    path = `variantmeshes\\variantmeshdefinitions\\${baseName}`;
-  }
-  return normalizePackFilePath(path);
-};
 const decodePackedFileText = (packedFile: PackedFile) => {
   if (packedFile.text != null) return packedFile.text;
   if (!packedFile.buffer) return undefined;
@@ -224,38 +876,133 @@ const decodePackedFileText = (packedFile: PackedFile) => {
   }
   return buffer.toString("utf8");
 };
+const decodePackedAssetText = (buffer: Buffer) => {
+  if (buffer.length >= 2 && buffer.subarray(0, 2).toString("hex") === "fffe") {
+    return buffer.subarray(2).toString("utf16le");
+  }
+  if (buffer.length >= 3 && buffer.subarray(0, 3).toString("hex") === "efbbbf") {
+    return buffer.subarray(3).toString("utf8");
+  }
+  return buffer.toString("utf8");
+};
 const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
   const normalizedTarget = normalizePackFilePathKey(fileName);
-  const exactIndex = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) =>
-    collator.compare(a.name, b),
-  );
+  const exactIndex = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) => collator.compare(a.name, b));
   if (exactIndex >= 0) return pack.packedFiles[exactIndex];
-  return pack.packedFiles.find(
-    (packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget,
-  );
+  return pack.packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget);
+};
+const findPackedFileInList = (packedFiles: PackedFile[], fileName: string) => {
+  const normalizedTarget = normalizePackFilePathKey(fileName);
+  return packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget);
+};
+const getPackedFileImageData = (buffer: Buffer, fileName: string): { buffer: Buffer; mimeType?: string } => {
+  if (isDdsPackedFilePath(fileName)) {
+    return { buffer: encodeDdsAsPng(buffer), mimeType: "image/png" };
+  }
+  return { buffer, mimeType: getPackedFileMimeType(fileName) };
 };
 const getOrLoadPackFromAppData = async (packPath: string) => {
+  let stat: { size: number; mtimeMs: number } | undefined;
+  try {
+    stat = await fs.promises.stat(packPath);
+  } catch {
+    // Let readPack or the retained pack provide the existing failure behavior below.
+  }
+  const retainedVisualsIndex = visualsPackIndexes.get(packPath);
+  if (stat && retainedVisualsIndex?.size === stat.size && retainedVisualsIndex.mtimeMs === stat.mtimeMs) {
+    return retainedVisualsIndex.pack;
+  }
   const pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
-  if (pack) return pack;
+  if (pack) {
+    const isPlaceholderIndex =
+      pack.packedFiles.length > 0 && pack.packedFiles.every((file) => file.file_size === 0 && file.start_pos === 0);
+    if (stat && pack.size === stat.size && pack.lastChangedLocal === stat.mtimeMs && !isPlaceholderIndex) {
+      return pack;
+    }
+    if (stat) {
+      // Do not merge a changed index into a retained parsed pack: appendPacksData intentionally only
+      // merges parsed files. The fresh index is sufficient for this Visuals request and avoids stale
+      // search/open results until the normal mod refresh replaces the retained pack.
+      const freshPack = await readPack(packPath, { skipParsingTables: true });
+      visualsPackIndexes.set(packPath, { size: stat.size, mtimeMs: stat.mtimeMs, pack: freshPack });
+      return freshPack;
+    }
+    return pack;
+  }
   const newPack = await readPack(packPath, { skipParsingTables: true });
+  if (stat) {
+    visualsPackIndexes.set(packPath, { size: stat.size, mtimeMs: stat.mtimeMs, pack: newPack });
+  }
   appendPacksData(newPack);
   return appData.packsData.find((existingPack) => existingPack.path === packPath);
+};
+const getVisualsFilesForSession = async (session: VisualsSession): Promise<VisualsFileResult[]> => {
+  if (session.visualFiles) return session.visualFiles;
+  if (session.visualFilesPromise) return session.visualFilesPromise;
+
+  session.visualFilesPromise = (async () => {
+    const vanillaCache =
+      (await loadVanillaVisualsCache(app.getPath("userData"), session.vanillaCacheSignature)) ??
+      createEmptyVisualsDataCache();
+    const modSegments: VisualsModSegments = { ...(await loadVisualsModSegments(app.getPath("userData"))) };
+    const modPathKeys = new Set(session.enabledModPaths.map(visualsModSegmentKey));
+    const contributions: VisualsFileResult[][] = [];
+    let didChangeVanillaCache = false;
+    let didChangeModSegments = false;
+    for (const packPath of session.fileSearchPackPaths) {
+      const identity = await getVisualsPackIdentity(packPath);
+      if (!identity) continue;
+      const isMod = modPathKeys.has(visualsModSegmentKey(packPath));
+      let entry = isMod
+        ? getCurrentVisualsModSegment(modSegments, identity)
+        : getCurrentVisualsPackCacheEntry(vanillaCache, identity);
+      if (!entry?.files) {
+        const pack = await getOrLoadPackFromAppData(packPath);
+        if (!pack) continue;
+        entry = isMod
+          ? getOrCreateVisualsModSegment(modSegments, identity)
+          : getOrCreateVisualsPackCacheEntry(vanillaCache, identity);
+        entry.files = getVisualsFilesFromNames(pack.packedFiles.map((file) => file.name));
+        if (isMod) didChangeModSegments = true;
+        else didChangeVanillaCache = true;
+      }
+      if (isMod) {
+        (entry as VisualsModSegment).lastUsedMs = Date.now();
+        didChangeModSegments = true;
+      }
+      contributions.push(entry.files);
+    }
+    if (didChangeVanillaCache) {
+      await saveVanillaVisualsCache(app.getPath("userData"), session.vanillaCacheSignature, vanillaCache);
+    }
+    if (didChangeModSegments) await saveVisualsModSegments(app.getPath("userData"), modSegments);
+    const files = mergeVisualsFileContributions(contributions);
+    session.visualFiles = files;
+    return files;
+  })();
+
+  try {
+    return await session.visualFilesPromise;
+  } finally {
+    session.visualFilesPromise = undefined;
+  }
 };
 const resolveVisualsFileInSession = async (
   session: VisualsSession,
   fileName: string,
-  options?: { variantMeshDefinitionFallback?: boolean; preferredPackPath?: string },
+  options?: {
+    variantMeshDefinitionFallback?: boolean;
+    preferredPackPath?: string;
+    packCache?: Map<string, Pack | undefined>;
+  },
 ) => {
   let requestedPath = normalizePackFilePath(fileName);
   if (!requestedPath) return undefined;
   if (options?.variantMeshDefinitionFallback) {
     const lowerRequested = requestedPath.toLowerCase();
-    const looksExplicitPath = lowerRequested.includes("\\") || lowerRequested.startsWith("variantmeshes");
-    if (
-      lowerRequested.endsWith(".variantmeshdefinition") ||
-      !looksExplicitPath ||
-      !(/\.[a-z0-9_]+$/i.test(lowerRequested) && !lowerRequested.endsWith(".variantmeshdefinition"))
-    ) {
+    const hasNonVariantMeshDefinitionExtension =
+      /\.[a-z0-9_]+$/i.test(lowerRequested) && !lowerRequested.endsWith(".variantmeshdefinition");
+    if (!hasNonVariantMeshDefinitionExtension) {
       requestedPath = toVariantMeshDefinitionPath(requestedPath);
     }
   }
@@ -267,7 +1014,13 @@ const resolveVisualsFileInSession = async (
       ? [preferredPackPath, ...searchPackPaths.filter((packPath) => packPath !== preferredPackPath)]
       : searchPackPaths;
   for (const packPath of prioritizedPackPaths) {
-    const pack = await getOrLoadPackFromAppData(packPath);
+    let pack: Pack | undefined;
+    if (options?.packCache?.has(packPath)) {
+      pack = options.packCache.get(packPath);
+    } else {
+      pack = await getOrLoadPackFromAppData(packPath);
+      options?.packCache?.set(packPath, pack);
+    }
     if (!pack) continue;
     const matchedFile = findPackedFileCaseInsensitive(pack, requestedPath);
     if (!matchedFile) continue;
@@ -288,14 +1041,18 @@ const sendAssetEditorOpenRequest = async (args: {
   openInExistingKitbashTab: boolean;
 }) => {
   const pipePath = "\\\\.\\pipe\\TheAssetEditor.Ipc";
+  const connectionTimeoutMs = 5000;
+  const responseTimeoutMs = 60000;
   return new Promise<{ ok?: boolean; error?: string; normalizedPath?: string }>((resolve, reject) => {
     const socket = net.connect(pipePath);
     socket.setEncoding("utf8");
     let buffer = "";
     let settled = false;
+    let timeout: ReturnType<typeof setTimeout>;
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeout);
       try {
         fn();
       } finally {
@@ -304,11 +1061,14 @@ const sendAssetEditorOpenRequest = async (args: {
         socket.destroy();
       }
     };
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       finish(() => reject(new Error(`Timed out connecting to AssetEditor IPC pipe ${pipePath}`)));
-    }, 3500);
-    const clear = () => clearTimeout(timeout);
+    }, connectionTimeoutMs);
     socket.on("connect", () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        finish(() => reject(new Error("AssetEditor accepted the request but did not respond within 60 seconds")));
+      }, responseTimeoutMs);
       const request = {
         action: "open",
         path: args.path,
@@ -316,7 +1076,9 @@ const sendAssetEditorOpenRequest = async (args: {
         openInExistingKitbashTab: args.openInExistingKitbashTab,
         packPathOnDisk: args.packPathOnDisk,
       };
-      socket.write(`${JSON.stringify(request)}\n`);
+      const requestAsJSON = JSON.stringify(request);
+      console.log("sending asset editor request:", requestAsJSON);
+      socket.write(`${requestAsJSON}\n`);
     });
     socket.on("data", (chunk: string) => {
       if (settled) return;
@@ -325,7 +1087,6 @@ const sendAssetEditorOpenRequest = async (args: {
       if (newlineIndex === -1) return;
       const line = buffer.slice(0, newlineIndex).trim();
       finish(() => {
-        clear();
         if (!line) {
           reject(new Error("AssetEditor IPC returned an empty response"));
           return;
@@ -335,9 +1096,7 @@ const sendAssetEditorOpenRequest = async (args: {
         } catch (error) {
           reject(
             new Error(
-              `Failed to parse AssetEditor IPC response: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              `Failed to parse AssetEditor IPC response: ${error instanceof Error ? error.message : String(error)}`,
             ),
           );
         }
@@ -345,14 +1104,12 @@ const sendAssetEditorOpenRequest = async (args: {
     });
     socket.on("error", (error) => {
       finish(() => {
-        clear();
         reject(new Error(`Failed to connect to ${pipePath}: ${error.message}`));
       });
     });
     socket.on("close", () => {
       if (settled) return;
       finish(() => {
-        clear();
         reject(new Error("AssetEditor IPC connection closed before a response was received"));
       });
     });
@@ -375,7 +1132,7 @@ const appendCollisions = async (newPack: Pack) => {
     );
   }
 };
-const matchVanillaDBFiles = /^db\\.*\\data__/;
+const isLiveDBPackedFileName = (packedFileName: string) => parseLiveDBTablePath(packedFileName) != undefined;
 const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
   const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
   console.log("appendPacksData: appending", newPack.name);
@@ -384,27 +1141,22 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
     if (emitToMainWindow) {
       windows.mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
     }
-    const overwrittenFileNames = newPack.packedFiles
+    const candidateFileNames = newPack.packedFiles
       .map((packedFile) => packedFile.name)
-      .filter(
-        (packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua"),
-      )
-      .filter((packedFileName) => {
-        let foundMatchingFile = false;
-        for (const vanillaPack of appData.vanillaPacks) {
-          foundMatchingFile ||= vanillaPack.packedFiles.some(
-            (packedFileInData) => packedFileInData.name == packedFileName,
-          );
-        }
-        return foundMatchingFile;
-      });
+      .filter((packedFileName) => isLiveDBPackedFileName(packedFileName) || packedFileName.endsWith(".lua"));
+    // Gathered once rather than scanned per candidate: a mod adding scripts of its own finds no
+    // match for any of them, and that is the case that walked every vanilla pack in full each time.
+    const vanillaFileNames = new Set<string>();
+    if (candidateFileNames.length > 0) {
+      for (const vanillaPack of appData.vanillaPacks) {
+        for (const packedFileInData of vanillaPack.packedFiles) vanillaFileNames.add(packedFileInData.name);
+      }
+    }
+    const overwrittenFileNames = candidateFileNames.filter((packedFileName) => vanillaFileNames.has(packedFileName));
     if (overwrittenFileNames.length > 0) {
       appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
       if (emitToMainWindow) {
-        windows.mainWindow?.webContents.send(
-          "setOverwrittenDataPackedFiles",
-          appData.overwrittenDataPackedFiles,
-        );
+        windows.mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
       }
     }
     const outdatedPackFiles = new Set<string>();
@@ -467,6 +1219,180 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
       });
   }
 };
+/**
+ * Every loc entry in a pack, one at a time.
+ *
+ * The same walk `getLocsTrie` does, without building the trie: feeding a cache builder through a
+ * trie would pay ~97 MB of node overhead to produce something it immediately flattens again.
+ */
+export const forEachPackLocEntry = (
+  pack: Pack,
+  visit: (key: string, value: string, locFileName: string) => boolean | void,
+) => {
+  const locPackedFiles = Object.values(pack.packedFiles).filter((packedFile) => packedFile.name.endsWith(".loc"));
+  const packViewData = getPackViewData(pack, undefined, true);
+  if (!packViewData) return;
+  for (const packedFile of locPackedFiles) {
+    const data = getPackTableData(packedFile.name, packViewData);
+    if (!data) continue;
+    for (const rows of Object.values(data)) {
+      for (const row of rows) {
+        const locKey = row[0] as string;
+        if (locKey && visit(locKey, row[1] as string, packedFile.name) === false) return;
+      }
+    }
+  }
+};
+
+/**
+ * Icons a tooltip turned out to need that the feature's initial sweep did not cover.
+ *
+ * Reads them, adds them to the record and registers them for the asset protocol, returning the
+ * generation their URLs have to be built with. Undefined when there was nothing left to read.
+ */
+const loadMissingIconsInto = async (icons: Record<string, AssetBytes>, packs: Pack[], iconPaths: string[]) => {
+  const missing = iconPaths.filter((iconPath) => !icons[iconPath]);
+  if (missing.length === 0) return undefined;
+  const loaded = await loadIconsFromPacks(packs, missing);
+  Object.assign(icons, loaded);
+  return registerIconAssets(loaded);
+};
+
+/**
+ * The vanilla packs that actually hold one of `iconPaths`, in load order.
+ *
+ * The skills and technology builds each want a few dozen icons and used to find them by indexing
+ * every vanilla pack their filter let through - a full index parse per pack, repeated on every
+ * build, to read three or four of them. The global file index answers which pack wins for a path
+ * without opening anything.
+ *
+ * Undefined means there is no index to ask, which callers read as "fall back to the whole set".
+ */
+const findVanillaPacksHoldingIcons = async (iconPaths: readonly string[]): Promise<string[] | undefined> => {
+  if (iconPaths.length === 0) return [];
+  const vanillaIndex = await getVanillaPackIndex();
+  if (!vanillaIndex) return undefined;
+  return selectVanillaPacksHoldingFiles(vanillaIndex, iconPaths, getVanillaPackPathsInLoadOrder());
+};
+
+/**
+ * The vanilla rows for `tablePathPrefixes`, from the vanilla db cache wherever it can serve them.
+ *
+ * Vanilla ships its db tables in the database pack, but this asks the file index rather than
+ * assuming it, so a game or a table family that breaks the rule is read rather than missed. Only the
+ * database pack can come from the cache - that is all the cache holds - and anything else is read
+ * the way it always was.
+ *
+ * Undefined means the read did not produce every prefix's rows - usually because another operation
+ * was already reading a pack this one wanted. It matters because both callers distil these rows into
+ * a model they then cache: a model built without the base game's rows reads as a real answer, with
+ * mods present and vanilla missing, and would be served for the rest of the session.
+ */
+const readVanillaTablePacks = async (
+  dataFolder: string,
+  tablePathPrefixes: string[],
+  fallbackPackPaths: string[],
+  emitToMainWindow: boolean,
+): Promise<Pack[] | undefined> => {
+  const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
+  const vanillaIndex = await getVanillaPackIndex();
+
+  // No pack under any of these prefixes is not an answer worth acting on - an index built before the
+  // tables existed says the same thing as a game that genuinely has none. Read the old set.
+  const narrowed = vanillaIndex
+    ? selectVanillaPacksHoldingTables(vanillaIndex, tablePathPrefixes, getVanillaPackPathsInLoadOrder())
+    : [];
+  const packPaths = narrowed.length > 0 ? narrowed : fallbackPackPaths;
+
+  const stillToRead: string[] = [];
+  for (const packPath of packPaths) {
+    if (nodePath.resolve(packPath) !== nodePath.resolve(dbPackPath)) {
+      stillToRead.push(packPath);
+      continue;
+    }
+    // The file index still comes from the pack, which is cheap; the parse, which is not, comes from
+    // the cache. Partly served is no use: the rows below are read per prefix.
+    const indexedDbPack = await readPack(packPath, { skipParsingTables: true });
+    const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablePathPrefixes, getDBVersion);
+    if (unservedPrefixes.length === 0) {
+      indexedDbPack.readTables = [...tablePathPrefixes];
+      appendPacksData(indexedDbPack, undefined, emitToMainWindow);
+      continue;
+    }
+    console.log("readVanillaTablePacks: prefixes the vanilla db cache did not serve:", unservedPrefixes);
+    stillToRead.push(packPath);
+  }
+  if (stillToRead.length > 0) {
+    await readModsByPath(
+      stillToRead,
+      { skipParsingTables: false, tablesToRead: tablePathPrefixes },
+      true,
+      emitToMainWindow,
+    );
+  }
+
+  const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+  const packs = packPaths.map((packPath) => packsByPath.get(packPath)).filter((pack): pack is Pack => !!pack);
+  // Only the packs that carry one of these tables. When the index was unavailable the set above is
+  // the caller's whole vanilla filter, and handing a consumer packs with nothing in them would have
+  // it build view data per pack for no rows.
+  const carriers = packs.filter((pack) =>
+    pack.packedFiles.some((packedFile) => tablePathPrefixes.some((prefix) => packedFile.name.startsWith(prefix))),
+  );
+  // Not one pack carrying any of them means the pack that does was never read, not that the game
+  // ships none of these tables: `findUnparsedTablePrefixes` has nothing to report either way, so it
+  // cannot tell those apart on its own.
+  if (carriers.length === 0) return undefined;
+  if (findUnparsedTablePrefixes(carriers, tablePathPrefixes).length > 0) return undefined;
+  return carriers;
+};
+
+const getVanillaLocalisationPackPaths = (dataFolder: string) =>
+  getVanillaLocalisationPackPathsFor(
+    appData.allVanillaPackNames,
+    appData.currentLanguage,
+    dataFolder,
+    appData.isUsingEnglishLocalizations,
+  );
+
+/**
+ * The game's own locs, as an entry for the `locs` record consumers look keys up in.
+ *
+ * Returns the cache reader under one synthetic key rather than a trie per pack, which is the whole
+ * saving: the tries these replace cost ~97 MB of heap and are retained for as long as the skills or
+ * technology data is. Technology data places live mod tries before this cached lookup so a mod
+ * localization can override a vanilla value.
+ *
+ * Falls back to reading the packs and building tries, so a cache that cannot be built or opened
+ * degrades to the old behaviour instead of losing every localised string.
+ */
+export const getVanillaLocLookup = async (vanillaPackPaths: string[]): Promise<Record<string, KeyedLookup<string>>> => {
+  const readVanillaLocPacks = async () => {
+    if (vanillaPackPaths.length > 0) {
+      await readModsByPath(vanillaPackPaths, { skipParsingTables: true, readLocs: true }, true, false);
+    }
+    const loadedByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    return vanillaPackPaths.map((packPath) => loadedByPath.get(packPath)).filter((pack): pack is Pack => !!pack);
+  };
+
+  const reader = await openOrBuildVanillaLocCache({
+    userDataPath: app.getPath("userData"),
+    game: appData.currentGame,
+    packPaths: vanillaPackPaths,
+    readEntries: async () => {
+      const entries: Array<readonly [string, string, string]> = [];
+      for (const pack of await readVanillaLocPacks()) {
+        forEachPackLocEntry(pack, (key, value, locFileName) => {
+          entries.push([key, value, `${pack.path}\0${locFileName}`]);
+        });
+      }
+      return entries;
+    },
+  });
+  if (reader) return { "vanilla-loc-cache": reader };
+  return getLocsFromPacks(await readVanillaLocPacks(), getLocsTrie);
+};
+
 export const getLocsTrie = (pack: Pack) => {
   const trie = new Trie<string>("_");
   const locPFs = Object.values(pack.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
@@ -489,8 +1415,18 @@ export const getLocsTrie = (pack: Pack) => {
   }
   return trie;
 };
-const matchDBFileRegex = /^db\\(.*?)\\/;
 const gameToDefaultTableVersions = {} as Record<SupportedGames, Record<string, number>>;
+interface DefaultTableVersionsCacheEntry {
+  dbPackSize: number;
+  dbPackMtimeMs: number;
+  tableNameToVersion: Record<string, number>;
+}
+const DEFAULT_TABLE_VERSIONS_CACHE_FILE = "default-table-versions-cache.bin";
+/**
+ * One integer per table, and getting it costs a full parse of every table in the game's db pack -
+ * the version only exists in the parsed output. Worth keeping across restarts, keyed like the other
+ * vanilla caches on the pack's size and mtime.
+ */
 export const getDefaultTableVersions = async () => {
   const cachedGameToDefaultTableVersions = gameToDefaultTableVersions[appData.currentGame];
   if (cachedGameToDefaultTableVersions) return cachedGameToDefaultTableVersions;
@@ -498,6 +1434,28 @@ export const getDefaultTableVersions = async () => {
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
   if (!dataFolder) return;
   const dbPackPath = nodePath.join(dataFolder, dbPackName);
+
+  const cacheFilePath = nodePath.join(app.getPath("userData"), DEFAULT_TABLE_VERSIONS_CACHE_FILE);
+  let dbPackStats: fs.Stats | undefined;
+  try {
+    dbPackStats = await fs.promises.stat(dbPackPath);
+  } catch {
+    // No pack to key the cache on, so fall through and let the read below fail as it did before.
+  }
+
+  type DefaultTableVersionsCache = Partial<Record<SupportedGames, DefaultTableVersionsCacheEntry>>;
+  const diskCache = (await readJsonDiskCache<DefaultTableVersionsCache>(cacheFilePath)) ?? {};
+  const cacheEntry = diskCache[appData.currentGame];
+  if (
+    dbPackStats &&
+    cacheEntry &&
+    cacheEntry.dbPackSize === dbPackStats.size &&
+    cacheEntry.dbPackMtimeMs === dbPackStats.mtimeMs
+  ) {
+    gameToDefaultTableVersions[appData.currentGame] = cacheEntry.tableNameToVersion;
+    return cacheEntry.tableNameToVersion;
+  }
+
   let pack = appData.packsData.find((packData) => packData.path == dbPackPath);
   if (!pack || (pack && pack.packedFiles.length == 0)) {
     pack = await readPack(dbPackPath, { skipParsingTables: true });
@@ -507,19 +1465,47 @@ export const getDefaultTableVersions = async () => {
     tablesToRead: pack.packedFiles.filter((pf) => pf.name.startsWith("db\\")).map((pf) => pf.name),
   });
   const tableNameToVersion = {} as Record<string, number>;
-  for (const packedFile of dataPackData.packedFiles.filter((pf) => pf.name.startsWith("db\\"))) {
-    const dbNameMatch = packedFile.name.match(matchDBFileRegex);
-    if (dbNameMatch != null && dbNameMatch.length > 0) {
-      if (packedFile.version != undefined) {
-        tableNameToVersion[dbNameMatch[1]] = packedFile.version;
-      } else {
-        tableNameToVersion[dbNameMatch[1]] = 0;
-      }
-    }
+  // Default versions come from the game's own tables, so the live db folder alone.
+  for (const packedFile of dataPackData.packedFiles) {
+    const dbName = parseLiveDBTablePath(packedFile.name)?.dbName;
+    if (dbName == undefined) continue;
+    tableNameToVersion[dbName] = packedFile.version ?? 0;
   }
   gameToDefaultTableVersions[appData.currentGame] = tableNameToVersion;
+
+  if (dbPackStats) {
+    diskCache[appData.currentGame] = {
+      dbPackSize: dbPackStats.size,
+      dbPackMtimeMs: dbPackStats.mtimeMs,
+      tableNameToVersion,
+    };
+    await writeJsonDiskCache(cacheFilePath, diskCache);
+  }
   return tableNameToVersion;
 };
+/**
+ * The packs being read right now. Every read of a whole pack registers here, so a caller that needs
+ * one can wait for the read in flight instead of reading beside it or giving up on it.
+ */
+export const packReads = createPackReadRegistry();
+
+/**
+ * A pack read that is registered for its whole duration, released even when the read throws.
+ *
+ * Registering only. It deliberately does not wait for a read already in flight: callers that need
+ * that - the mod list and the global search - wait themselves, and making it implicit here once
+ * queued `readPackForCompat` and the data-pack read behind unrelated work for up to the registry's
+ * five-minute backstop.
+ */
+export const readPackRegistered = async (packPath: string, packReadingOptions: PackReadingOptions) => {
+  const releaseRead = packReads.begin(packPath);
+  try {
+    return await readPack(packPath, packReadingOptions);
+  } finally {
+    releaseRead();
+  }
+};
+
 export const readModsByPath = async (
   modPaths: string[],
   packReadingOptions: PackReadingOptions,
@@ -534,26 +1520,22 @@ export const readModsByPath = async (
   // }
   const newPacks = [] as Pack[];
   for (const modPath of modPaths) {
-    for (let i = 0; i < 20; i++) {
-      if (!appData.currentlyReadingModPaths.some((path) => path == modPath)) {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 125));
-    }
-    if (appData.currentlyReadingModPaths.some((path) => path == modPath)) {
-      console.log("already reading", modPath, "SKIPPING IT");
-      continue;
+    // Wait for whoever is reading this pack rather than skip it. The read in flight is not this
+    // caller's read - it may be parsing an entirely different set of tables - so giving up on it
+    // returned a pack holding none of the tables asked for, with only a log line to say so. A full
+    // parse of the game's database pack runs well past any fixed wait, so the wait is exact and the
+    // backstop below only guards against a registration that leaked.
+    if (!(await packReads.waitUntilFree(modPath))) {
+      console.log("readModsByPath: waited too long for a read of", modPath, "to end, reading it anyway");
     }
     // console.log("READING ", modPath, readLocs);
-    appData.currentlyReadingModPaths.push(modPath);
     if (emitToMainWindow) {
       windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
     }
-    const newPack = await readPack(modPath, packReadingOptions);
+    const newPack = await readPackRegistered(modPath, packReadingOptions);
     if (emitToMainWindow) {
       windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
     }
-    appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
     // if (appData.packsData.every((pack) => pack.path != modPath)) {
     appendPacksData(newPack, undefined, emitToMainWindow);
     // }
@@ -570,13 +1552,209 @@ export const readModsByPath = async (
   }
   return newPacks;
 };
-export const registerIpcMainListeners = (
-  mainWindow: Electron.CrossProcessExports.BrowserWindow,
-  isDev: boolean,
-) => {
+export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExports.BrowserWindow, isDev: boolean) => {
   const log = (msg: string) => {
     mainWindow?.webContents.send("handleLog", msg);
     console.log(msg);
+  };
+  let vanillaCompressionCsv: string | undefined;
+  let vanillaCompressionCsvLoaded = false;
+  const getVanillaCompressionCsv = (): string | undefined => {
+    if (vanillaCompressionCsvLoaded) return vanillaCompressionCsv;
+    const candidates = [
+      nodePath.resolve(process.cwd(), "scripts/out/vanilla-pack-compression-by-extension.csv"),
+      nodePath.resolve(__dirname, "../scripts/out/vanilla-pack-compression-by-extension.csv"),
+      nodePath.resolve(__dirname, "../../scripts/out/vanilla-pack-compression-by-extension.csv"),
+      typeof process.resourcesPath === "string"
+        ? nodePath.join(process.resourcesPath, "scripts/out/vanilla-pack-compression-by-extension.csv")
+        : undefined,
+    ].filter((candidate): candidate is string => !!candidate);
+    for (const candidate of candidates) {
+      try {
+        vanillaCompressionCsv = fs.readFileSync(candidate, "utf8");
+        vanillaCompressionCsvLoaded = true;
+        return vanillaCompressionCsv;
+      } catch {
+        // Try the next development/packaged location.
+      }
+    }
+    // Cache the miss too; a packaged resource cannot appear while this process is running.
+    vanillaCompressionCsvLoaded = true;
+    return undefined;
+  };
+  const checkWorkshopStagingCleanupOnStartup = async (
+    config: Pick<ConfigForRenderer, "currentGame" | "cleanUpWorkshopModStagingAfterGameExit" | "appFolderPaths">,
+  ) => {
+    const gamePath = config.appFolderPaths.gamePath;
+    if (!config.cleanUpWorkshopModStagingAfterGameExit || !gamePath) {
+      appData.workshopStagingCleanupPending = false;
+      appData.workshopStagingCleanupGamePath = undefined;
+      return;
+    }
+
+    try {
+      const processIds = await findGameProcessIds(gameToProcessName[config.currentGame]);
+      appData.workshopStagingCleanupGamePath = gamePath;
+      if (processIds.length > 0) {
+        appData.workshopStagingCleanupPending = true;
+        log("Workshop staging cleanup is waiting for the running game to exit.");
+        return;
+      }
+
+      appData.workshopStagingCleanupPending = true;
+      await cleanupWorkshopStagingAfterGameExit();
+    } catch (error) {
+      reportWorkshopCleanupFailure(error);
+    }
+  };
+  const packPathKey = (packPath: string) =>
+    packPath.startsWith("memory://") ? packPath.toLowerCase() : nodePath.resolve(packPath).toLowerCase();
+  const findPackByPath = (packPath: string) =>
+    appData.packsData.find((pack) => pack.path === packPath || packPathKey(pack.path) === packPathKey(packPath));
+  const broadcastPackStagingState = (packPath: string) => {
+    const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+    const deletedFilePaths = appData.deletedPackFilePaths[packPath] ?? [];
+    mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+    mainWindow?.webContents.send("setDeletedPackFilePaths", packPath, deletedFilePaths);
+    windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+    windows.viewerWindow?.webContents.send("setDeletedPackFilePaths", packPath, deletedFilePaths);
+  };
+  const broadcastSavedPackData = (packPath: string, savedFileData: PackedFile[], deletedFilePaths: string[]) => {
+    const payload: ApplySavedPackDataPayload = { packPath, savedFileData, deletedFilePaths };
+    mainWindow?.webContents.send("applySavedPackData", payload);
+    windows.viewerWindow?.webContents.send("applySavedPackData", payload);
+  };
+  const clearDeletedPackFilePath = (packPath: string, filePath: string) => {
+    const deletedFilePaths = appData.deletedPackFilePaths[packPath];
+    if (!deletedFilePaths?.length) return;
+
+    const fileKey = normalizePackFilePathKey(filePath);
+    const remainingPaths = deletedFilePaths.filter((deletedPath) => normalizePackFilePathKey(deletedPath) !== fileKey);
+    if (remainingPaths.length > 0) appData.deletedPackFilePaths[packPath] = remainingPaths;
+    else delete appData.deletedPackFilePaths[packPath];
+  };
+  const getPackNameForLoadOrderRules = (packPath: string, fallbackPackName?: string) => {
+    const mod = appData.allMods.find((candidate) => packPathKey(candidate.path) === packPathKey(packPath));
+    return mod?.name ?? findPackByPath(packPath)?.name ?? fallbackPackName;
+  };
+  const publishModLoadOrderRules = () => {
+    refreshMainLoadOrderRules();
+    mainWindow?.webContents.send("setModLoadOrderRules", appData.modLoadOrderRules);
+  };
+  const updateSavedPackLoadOrderRules = (
+    packPath: string,
+    unsavedFiles: PackedFile[],
+    deletedFilePaths: string[],
+    fallbackPackName?: string,
+  ) => {
+    const savedRulesFile = unsavedFiles.find((file) => isLoadOrderRulesPackedFilePath(file.name));
+    const deletedRulesFile = deletedFilePaths.some((filePath) => isLoadOrderRulesPackedFilePath(filePath));
+    if (!savedRulesFile && !deletedRulesFile) return;
+
+    const packName = getPackNameForLoadOrderRules(packPath, fallbackPackName);
+    if (!packName) return;
+
+    let rules: LoadOrderRule[] = [];
+    if (savedRulesFile && !deletedRulesFile) {
+      const text = savedRulesFile.text ?? (savedRulesFile.buffer ? decodePackedTextBuffer(savedRulesFile.buffer) : "");
+      const parsed = parseLoadOrderRulesFile(text, packName);
+      if (parsed.errors.length > 0) {
+        console.log(`saved load order rules in ${packName} have ${parsed.errors.length} bad line(s):`, parsed.errors);
+      }
+      rules = parsed.rules;
+    }
+
+    appData.modLoadOrderRules = replaceModLoadOrderRules(appData.modLoadOrderRules, packName, rules);
+    publishModLoadOrderRules();
+  };
+  const materializePackedFileForStaging = async (
+    sourcePackPath: string,
+    filePath: string,
+    destinationFilePath: string,
+    preloadedSourceFiles?: Map<string, PackedFile>,
+  ): Promise<PackedFile> => {
+    const normalizedFilePath = normalizePackFilePath(filePath);
+    const normalizedDestinationFilePath = normalizePackFilePath(destinationFilePath);
+    const isDBFile = parseDBTablePath(normalizedFilePath) != undefined;
+    const sourceUnsavedFiles = appData.unsavedPacksData[sourcePackPath] || [];
+    let sourcePackedFile = findPackedFileInList(sourceUnsavedFiles, normalizedFilePath);
+    const sourcePack = findPackByPath(sourcePackPath);
+    if (!sourcePackedFile) sourcePackedFile = preloadedSourceFiles?.get(normalizePackFilePathKey(normalizedFilePath));
+    if (!sourcePackedFile && sourcePack) {
+      sourcePackedFile = findPackedFileInList(sourcePack.packedFiles, normalizedFilePath);
+    }
+
+    const makeViewerReadyDBFile = (
+      packedFile: PackedFile | undefined,
+      allowEmptyParsed = false,
+    ): PackedFile | undefined => {
+      if (!isDBFile || !packedFile) return packedFile;
+      return preparePackedFileForViewer(
+        sourcePack ?? { name: nodePath.basename(sourcePackPath), path: sourcePackPath },
+        packedFile,
+        allowEmptyParsed,
+      );
+    };
+
+    sourcePackedFile = makeViewerReadyDBFile(sourcePackedFile);
+
+    let sourceBuffer = sourcePackedFile?.buffer;
+    if (!sourceBuffer && sourcePackedFile?.text != null) sourceBuffer = Buffer.from(sourcePackedFile.text, "utf8");
+    if (!sourceBuffer && sourcePackedFile?.schemaFields && sourcePackedFile.tableSchema) {
+      sourceBuffer = serializePackFileDataToBuffer({
+        name: sourcePackedFile.name,
+        schemaFields: sourcePackedFile.schemaFields,
+        tableSchema: sourcePackedFile.tableSchema,
+        version: sourcePackedFile.version,
+      });
+    }
+
+    if (!sourceBuffer || (isDBFile && (!sourcePackedFile?.schemaFields || !sourcePackedFile.tableSchema))) {
+      if (preloadedSourceFiles) {
+        throw new Error(`Could not read "${normalizedFilePath}" from the source pack`);
+      }
+      if (sourcePackPath.startsWith("memory://")) {
+        throw new Error(`The source file "${normalizedFilePath}" has no saved payload`);
+      }
+
+      const sourceReadPath = await resolveVanillaViewerFilePackPath(sourcePackPath, normalizedFilePath);
+      const sourceRead = await readPack(
+        sourceReadPath,
+        isDBFile
+          ? {
+              tablesToRead: [normalizedFilePath],
+              filesToRead: [normalizedFilePath],
+              readLocs: isLocPackedFilePath(normalizedFilePath),
+            }
+          : { skipParsingTables: true, filesToRead: [normalizedFilePath] },
+      );
+      sourcePackedFile = findPackedFileInList(sourceRead.packedFiles, normalizedFilePath);
+      sourcePackedFile = makeViewerReadyDBFile(sourcePackedFile, true);
+      sourceBuffer = sourcePackedFile?.buffer;
+    }
+
+    if (!sourcePackedFile || !sourceBuffer) {
+      throw new Error(`Could not read "${normalizedFilePath}" from the source pack`);
+    }
+    if (isDBFile && (!sourcePackedFile.schemaFields || !sourcePackedFile.tableSchema)) {
+      throw new Error(`Could not prepare DB table "${normalizedFilePath}" for the viewer`);
+    }
+
+    const copiedFile: PackedFile = {
+      ...sourcePackedFile,
+      name: normalizedDestinationFilePath,
+      file_size: sourceBuffer.length,
+      start_pos: -1,
+      is_compressed: false,
+      buffer: sourceBuffer,
+    };
+    if (
+      getPackedFileViewerKind(normalizedDestinationFilePath) === "text" ||
+      normalizedDestinationFilePath.toLowerCase().startsWith("whmmflows\\")
+    ) {
+      copiedFile.text = decodePackedFileText(copiedFile);
+    }
+    return copiedFile;
   };
   const tempModDatas: ModData[] = [];
   const sendModData = debounce(() => {
@@ -607,7 +1785,15 @@ export const registerIpcMainListeners = (
       currentSubtypeIndex: 0,
     };
   };
-  const getSkillsData = async (mods: Mod[]) => {
+  /**
+   * One skills build at a time, for the same reason the Unit Viewer has one: the cold path below
+   * fills vanilla rows into the shared packs, uses them across several awaits and releases them at
+   * the end, and it persists a vanilla core cache from what it read.
+   */
+  const skillsDataBuilds = createSerializedBuilds();
+  const getSkillsData = async (mods: Mod[]) =>
+    skillsDataBuilds.run(buildSkillsDataSignature(mods, appData.currentGame), () => buildSkillsData(mods));
+  const buildSkillsData = async (mods: Mod[]) => {
     console.log(
       "getSkillsData:",
       mods.map((mod) => mod.name),
@@ -621,18 +1807,14 @@ export const registerIpcMainListeners = (
       }
       return;
     }
-    const tablesToRead = resolveTable("character_skill_node_set_items_tables").map(
-      (table) => `db\\${table}\\`,
-    );
+    const tablesToRead = resolveTable("character_skill_node_set_items_tables").map((table) => `db\\${table}\\`);
     const effectTablesToRead = resolveTable("character_skill_level_to_effects_junctions_tables").map(
       (table) => `db\\${table}\\`,
     );
     for (const effectTable of effectTablesToRead) {
       if (!tablesToRead.includes(effectTable)) tablesToRead.push(effectTable);
     }
-    const nodeLinksTablesToRead = resolveTable("character_skill_node_links_tables").map(
-      (table) => `db\\${table}\\`,
-    );
+    const nodeLinksTablesToRead = resolveTable("character_skill_node_links_tables").map((table) => `db\\${table}\\`);
     for (const nodeLinksTable of nodeLinksTablesToRead) {
       if (!tablesToRead.includes(nodeLinksTable)) tablesToRead.push(nodeLinksTable);
     }
@@ -642,12 +1824,11 @@ export const registerIpcMainListeners = (
     for (const skillLocksTable of skillLocksTablesToRead) {
       if (!tablesToRead.includes(skillLocksTable)) tablesToRead.push(skillLocksTable);
     }
-    const effectBonusValueIdsUnitSetsTablesToRead = resolveTable(
-      "effect_bonus_value_ids_unit_sets_tables",
-    ).map((table) => `db\\${table}\\`);
+    const effectBonusValueIdsUnitSetsTablesToRead = resolveTable("effect_bonus_value_ids_unit_sets_tables").map(
+      (table) => `db\\${table}\\`,
+    );
     for (const effectBonusValueIdsUnitSetsTable of effectBonusValueIdsUnitSetsTablesToRead) {
-      if (!tablesToRead.includes(effectBonusValueIdsUnitSetsTable))
-        tablesToRead.push(effectBonusValueIdsUnitSetsTable);
+      if (!tablesToRead.includes(effectBonusValueIdsUnitSetsTable)) tablesToRead.push(effectBonusValueIdsUnitSetsTable);
     }
     const abilityTooltipTablesToRead = [
       "effect_bonus_value_unit_ability_junctions_tables",
@@ -704,38 +1885,47 @@ export const registerIpcMainListeners = (
       if (mods.length > 0) {
         await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
       }
-      await readModsByPath(vanillaPacksToRead, { skipParsingTables: true, readLocs: true }, true, false);
-      const vanillaPacks = appData.packsData.filter((packsData) =>
-        vanillaPacksToRead.includes(packsData.path),
-      );
-      const enabledModPacks = appData.packsData.filter((packData) =>
-        mods.some((mod) => mod.path == packData.path),
-      );
+      const vanillaLocs = await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder));
+      const enabledModPacks = appData.packsData.filter((packData) => mods.some((mod) => mod.path == packData.path));
       const mergedSkillsCore = cloneSkillsDataCore(cachedVanillaSkillsCore);
       if (mods.length > 0) {
         const sortedMods = sortByNameAndLoadOrder(mods);
         const unsortedModPacksTableData = getPacksTableData(enabledModPacks, tablesToRead, true) || [];
         const orderedModPacksTableData = [] as PackViewData[];
-        for (const mod of sortedMods.toReversed()) {
+        // Overlay rows are applied in order and the later row wins. Keep the game's load order
+        // (lowest priority first) so the highest-priority mod remains the final override.
+        for (const mod of sortedMods) {
           const packTableData = unsortedModPacksTableData.find((ptd) => ptd.packPath == mod.path);
           if (packTableData) orderedModPacksTableData.push(packTableData);
         }
         applyModOverlayToSkillsDataCore(mergedSkillsCore, orderedModPacksTableData, getTableRowData);
       }
-      const locs = getLocsFromPacks(vanillaPacks.concat(enabledModPacks), getLocsTrie);
+      // Vanilla first, matching the order these were merged in before: the lookups read the record
+      // in insertion order and take the first hit.
+      const locs = { ...vanillaLocs, ...getLocsFromPacks(enabledModPacks, getLocsTrie) };
       const skillIconPaths = getSkillAndEffectIconPaths(
         mergedSkillsCore.skills,
         mergedSkillsCore.skillsToEffects,
         mergedSkillsCore.effectsToEffectData,
+      );
+      // Vanilla is read on this path for its icons and nothing else, so only the handful of packs
+      // that hold one gets indexed. The icon paths have to be known first, which is why this sits
+      // below the merge rather than beside the mod read.
+      const vanillaPacks = await getIconPacks(
+        (await findVanillaPacksHoldingIcons(skillIconPaths)) ?? vanillaPacksToRead,
       );
       const icons = await loadIconsFromPacks(vanillaPacks.concat(enabledModPacks), skillIconPaths);
       appData.skillsData = {
         ...mergedSkillsCore,
         locs,
         icons,
+        iconGeneration: registerIconAssets(icons),
         skillsDataPackPaths: vanillaPacks.concat(enabledModPacks).map((pack) => pack.path),
       };
       appData.lastSkillsDataSignature = skillsDataSignature;
+      // The overlay has been folded into the core above, so the mod rows it was read from are done
+      // with. Vanilla was never parsed on this path - it is only read for its icons.
+      releaseParsedTables(enabledModPacks, tablesToRead);
       const defaultSubtype = getDefaultSkillsSubtype(mergedSkillsCore.subtypesToSet);
       if (defaultSubtype) {
         await getSkillsForSubtype(defaultSubtype, 0);
@@ -743,15 +1933,20 @@ export const registerIpcMainListeners = (
       return;
     }
     await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
-    await readModsByPath(
-      vanillaPacksToRead,
-      { skipParsingTables: false, readLocs: true, tablesToRead },
-      true,
-      false,
-    );
+    // Only the packs that hold these tables, and their rows from the vanilla db cache where it can
+    // serve them. The vanilla locs are not read here at all - they come from the loc cache below -
+    // and undefined means a pack another operation was reading was not parsed. Building on that
+    // produces skills data holding only the mods' rows, which the vanilla core cache would then
+    // persist as if it were the base game's. Give up instead: the next request rebuilds from scratch.
+    const vanillaSkillsPacks = await readVanillaTablePacks(dataFolder, tablesToRead, vanillaPacksToRead, false);
+    if (!vanillaSkillsPacks) {
+      console.log("getSkillsData: the vanilla skills tables were not read, not building");
+      return;
+    }
+    const vanillaSkillsPackPaths = new Set(vanillaSkillsPacks.map((pack) => pack.path));
     const unsortedPacksTableData = getPacksTableData(
       appData.packsData.filter(
-        (pack) => pack.name == "db.pack" || mods.some((mod) => mod.path === pack.path),
+        (pack) => vanillaSkillsPackPaths.has(pack.path) || mods.some((mod) => mod.path === pack.path),
       ),
       tablesToRead,
       true,
@@ -760,9 +1955,13 @@ export const registerIpcMainListeners = (
     const packsTableData = [] as PackViewData[];
     // sort the mods by load priority
     const sortedMods = sortByNameAndLoadOrder(mods);
-    const dbPackData = unsortedPacksTableData.find((ptd) => ptd.packName == "db.pack");
-    if (dbPackData) packsTableData.push(dbPackData);
-    for (const mod of sortedMods.toReversed()) {
+    const vanillaPacksTableData = vanillaSkillsPacks
+      .map((pack) => unsortedPacksTableData.find((ptd) => ptd.packPath == pack.path))
+      .filter((packTableData): packTableData is PackViewData => !!packTableData);
+    packsTableData.push(...vanillaPacksTableData);
+    // Overlay rows are applied in order and the later row wins. Keep the game's load order
+    // (lowest priority first) so the highest-priority mod remains the final override.
+    for (const mod of sortedMods) {
       const packTableData = unsortedPacksTableData.find((ptd) => ptd.packPath == mod.path);
       if (packTableData) packsTableData.push(packTableData);
     }
@@ -802,8 +2001,7 @@ export const registerIpcMainListeners = (
           unitSet,
         });
     });
-    const effectToEffectBonusValueIdsUnitSetsData: Record<string, (typeof effectBonusValueIdsUnitSets)[0]> =
-      {};
+    const effectToEffectBonusValueIdsUnitSetsData: Record<string, (typeof effectBonusValueIdsUnitSets)[0]> = {};
     for (const effectBonusValueIdsUnitSet of effectBonusValueIdsUnitSets) {
       effectToEffectBonusValueIdsUnitSetsData[effectBonusValueIdsUnitSet.effect] = effectBonusValueIdsUnitSet;
     }
@@ -853,12 +2051,12 @@ export const registerIpcMainListeners = (
       const set = schemaFieldRow.find((sF) => sF.name == "set")?.resolvedKeyValue;
       const node = schemaFieldRow.find((sF) => sF.name == "item")?.resolvedKeyValue;
       const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
-      if (set && node && modDisabled != undefined)
-        setAndNodes.push({
-          set,
-          node,
-          modDisabled,
-        });
+      if (set && node && modDisabled != undefined) {
+        const updated = { set, node, modDisabled };
+        const existingIndex = setAndNodes.findIndex((entry) => entry.set == set && entry.node == node);
+        if (existingIndex >= 0) setAndNodes.splice(existingIndex, 1, updated);
+        else setAndNodes.push(updated);
+      }
     });
     const setToNodes: Record<string, string[]> = {};
     for (const setAndNode of setAndNodes) {
@@ -866,26 +2064,19 @@ export const registerIpcMainListeners = (
       if (!setToNodes[set]) setToNodes[set] = [];
       if (!setToNodes[set].includes(setAndNode.node)) setToNodes[set].push(setAndNode.node);
     }
-    // set to node table can also be used to disable nodes for a set
-    const setToNodesDisables: Record<string, string[]> = {};
-    for (const setAndNode of setAndNodes) {
-      const set = setAndNode.set;
-      if (setAndNode.modDisabled == "0") continue;
-      if (!setToNodesDisables[set]) setToNodesDisables[set] = [];
-      if (!setToNodesDisables[set].includes(setAndNode.node)) setToNodesDisables[set].push(setAndNode.node);
-    }
-    // console.log("setToNodesDisables:", setToNodesDisables);
     // console.log("setToNodes KF:", setToNodes["wh_main_skill_node_set_emp_karl_franz"]);
     const nodeLinks: NodeLinks = {};
     getTableRowData(packsTableData, "character_skill_node_links_tables", (schemaFieldRow) => {
       const child_key = schemaFieldRow.find((sF) => sF.name == "child_key")?.resolvedKeyValue;
       const parent_key = schemaFieldRow.find((sF) => sF.name == "parent_key")?.resolvedKeyValue;
       const link_type = schemaFieldRow.find((sF) => sF.name == "link_type")?.resolvedKeyValue;
-      const parent_link_position = schemaFieldRow.find(
-        (sF) => sF.name == "parent_link_position",
+      const parent_link_position = schemaFieldRow.find((sF) => sF.name == "parent_link_position")?.resolvedKeyValue;
+      const child_link_position = schemaFieldRow.find((sF) => sF.name == "child_link_position")?.resolvedKeyValue;
+      const parent_link_position_offset = schemaFieldRow.find(
+        (sF) => sF.name == "parent_link_position_offset",
       )?.resolvedKeyValue;
-      const child_link_position = schemaFieldRow.find(
-        (sF) => sF.name == "child_link_position",
+      const child_link_position_offset = schemaFieldRow.find(
+        (sF) => sF.name == "child_link_position_offset",
       )?.resolvedKeyValue;
       if (
         child_key != undefined &&
@@ -896,12 +2087,18 @@ export const registerIpcMainListeners = (
         child_link_position != undefined
       ) {
         nodeLinks[parent_key] = nodeLinks[parent_key] || [];
-        nodeLinks[parent_key].push({
+        const link = {
           child: child_key,
           childLinkPosition: child_link_position,
           parentLinkPosition: parent_link_position,
+          childLinkPositionOffset: child_link_position_offset,
+          parentLinkPositionOffset: parent_link_position_offset,
           linkType: link_type,
-        });
+        } as NodeLinks[string][number];
+        // parent_key + child_key are the table's composite key. A later mod row replaces the
+        // earlier row, including its type and geometry, instead of leaving two competing links.
+        nodeLinks[parent_key] = nodeLinks[parent_key].filter((iterLink) => iterLink.child !== child_key);
+        nodeLinks[parent_key].push(link);
       }
     });
     const nodeAndSkills: NodeSkill[] = [];
@@ -912,12 +2109,8 @@ export const registerIpcMainListeners = (
       const indent = schemaFieldRow.find((sF) => sF.name == "indent")?.resolvedKeyValue;
       const factionKey = schemaFieldRow.find((sF) => sF.name == "faction_key")?.resolvedKeyValue;
       const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
-      const requiredNumParents = schemaFieldRow.find(
-        (sF) => sF.name == "required_num_parents",
-      )?.resolvedKeyValue;
-      const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue as
-        | "0"
-        | "1";
+      const requiredNumParents = schemaFieldRow.find((sF) => sF.name == "required_num_parents")?.resolvedKeyValue;
+      const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue as "0" | "1";
       if (
         node &&
         skill &&
@@ -957,7 +2150,7 @@ export const registerIpcMainListeners = (
       if (key != undefined && iconPath != undefined && unlockRank != undefined) {
         const newSkill = {
           key,
-          iconPath,
+          iconPath: normalizeSkillIconPath(iconPath),
           maxLevel: 1,
           unlockRank: Number(unlockRank),
         };
@@ -1001,7 +2194,7 @@ export const registerIpcMainListeners = (
         if (!effectsToEffectData[effectKey]) {
           console.error("MISSING ICON FOR EFFECT", effectKey);
         }
-        skillsAndEffects.push({
+        const effect = {
           key,
           effectScope,
           level: Number(level),
@@ -1010,7 +2203,14 @@ export const registerIpcMainListeners = (
           iconData: "",
           icon: effectsToEffectData[effectKey]?.icon,
           priority: effectsToEffectData[effectKey]?.priority,
-        });
+        };
+        // character_skill_key + effect_key + level are the table's key. Mod rows replace the
+        // complete effect record (scope/value included) at that identity.
+        const existingIndex = skillsAndEffects.findIndex(
+          (iter) => iter.key === key && iter.effectKey === effectKey && iter.level === Number(level),
+        );
+        if (existingIndex >= 0) skillsAndEffects.splice(existingIndex, 1, effect);
+        else skillsAndEffects.push(effect);
       }
     });
     const skillsToEffects: Record<string, (typeof skillsAndEffects)[0][]> = {};
@@ -1116,9 +2316,7 @@ export const registerIpcMainListeners = (
         targetEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "target_enemies")?.resolvedKeyValue),
         targetSelf: parseBool(schemaFieldRow.find((sF) => sF.name == "target_self")?.resolvedKeyValue),
         manaCost: parseNumber(schemaFieldRow.find((sF) => sF.name == "mana_cost")?.resolvedKeyValue),
-        miscastChance: parseNumber(
-          schemaFieldRow.find((sF) => sF.name == "miscast_chance")?.resolvedKeyValue,
-        ),
+        miscastChance: parseNumber(schemaFieldRow.find((sF) => sF.name == "miscast_chance")?.resolvedKeyValue),
         minRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "min_range")?.resolvedKeyValue),
         activatedProjectile:
           schemaFieldRow.find((sF) => sF.name == "activated_projectile")?.resolvedKeyValue || undefined,
@@ -1126,16 +2324,11 @@ export const registerIpcMainListeners = (
         vortex: schemaFieldRow.find((sF) => sF.name == "vortex")?.resolvedKeyValue || undefined,
       };
     });
-    const bombardmentsByKey = {} as Record<
-      string,
-      { key: string; numProjectiles: number; projectileType: string }
-    >;
+    const bombardmentsByKey = {} as Record<string, { key: string; numProjectiles: number; projectileType: string }>;
     getTableRowData(packsTableData, "projectile_bombardments_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "bombardment_key")?.resolvedKeyValue;
       const projectileType = schemaFieldRow.find((sF) => sF.name == "projectile_type")?.resolvedKeyValue;
-      const numProjectiles = parseNumber(
-        schemaFieldRow.find((sF) => sF.name == "num_projectiles")?.resolvedKeyValue,
-      );
+      const numProjectiles = parseNumber(schemaFieldRow.find((sF) => sF.name == "num_projectiles")?.resolvedKeyValue);
       if (!key || !projectileType) return;
       bombardmentsByKey[key] = {
         key,
@@ -1161,13 +2354,9 @@ export const registerIpcMainListeners = (
         key,
         damage: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage")?.resolvedKeyValue),
         apDamage: parseNumber(schemaFieldRow.find((sF) => sF.name == "ap_damage")?.resolvedKeyValue),
-        projectileNumber: parseNumber(
-          schemaFieldRow.find((sF) => sF.name == "projectile_number")?.resolvedKeyValue,
-        ),
-        explosionType:
-          schemaFieldRow.find((sF) => sF.name == "explosion_type")?.resolvedKeyValue || undefined,
-        spawnedVortex:
-          schemaFieldRow.find((sF) => sF.name == "spawned_vortex")?.resolvedKeyValue || undefined,
+        projectileNumber: parseNumber(schemaFieldRow.find((sF) => sF.name == "projectile_number")?.resolvedKeyValue),
+        explosionType: schemaFieldRow.find((sF) => sF.name == "explosion_type")?.resolvedKeyValue || undefined,
+        spawnedVortex: schemaFieldRow.find((sF) => sF.name == "spawned_vortex")?.resolvedKeyValue || undefined,
       };
     });
     const explosionsByKey = {} as Record<
@@ -1185,15 +2374,11 @@ export const registerIpcMainListeners = (
       if (!key) return;
       explosionsByKey[key] = {
         key,
-        detonationDamage: parseNumber(
-          schemaFieldRow.find((sF) => sF.name == "detonation_damage")?.resolvedKeyValue,
-        ),
+        detonationDamage: parseNumber(schemaFieldRow.find((sF) => sF.name == "detonation_damage")?.resolvedKeyValue),
         detonationDamageAp: parseNumber(
           schemaFieldRow.find((sF) => sF.name == "detonation_damage_ap")?.resolvedKeyValue,
         ),
-        detonationRadius: parseNumber(
-          schemaFieldRow.find((sF) => sF.name == "detonation_radius")?.resolvedKeyValue,
-        ),
+        detonationRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "detonation_radius")?.resolvedKeyValue),
         detonationDuration: parseNumber(
           schemaFieldRow.find((sF) => sF.name == "detonation_duration")?.resolvedKeyValue,
         ),
@@ -1222,24 +2407,18 @@ export const registerIpcMainListeners = (
         duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
         goalRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "goal_radius")?.resolvedKeyValue),
         startRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "start_radius")?.resolvedKeyValue),
-        movementSpeed: parseNumber(
-          schemaFieldRow.find((sF) => sF.name == "movement_speed")?.resolvedKeyValue,
-        ),
+        movementSpeed: parseNumber(schemaFieldRow.find((sF) => sF.name == "movement_speed")?.resolvedKeyValue),
         numVortexes: parseNumber(schemaFieldRow.find((sF) => sF.name == "num_vortexes")?.resolvedKeyValue),
       };
     });
     const abilityToPhaseIds = {} as Record<string, string[]>;
-    getTableRowData(
-      packsTableData,
-      "special_ability_to_special_ability_phase_junctions_tables",
-      (schemaFieldRow) => {
-        const abilityKey = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
-        const phaseId = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
-        if (!abilityKey || !phaseId) return;
-        abilityToPhaseIds[abilityKey] = abilityToPhaseIds[abilityKey] || [];
-        if (!abilityToPhaseIds[abilityKey].includes(phaseId)) abilityToPhaseIds[abilityKey].push(phaseId);
-      },
-    );
+    getTableRowData(packsTableData, "special_ability_to_special_ability_phase_junctions_tables", (schemaFieldRow) => {
+      const abilityKey = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
+      const phaseId = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
+      if (!abilityKey || !phaseId) return;
+      abilityToPhaseIds[abilityKey] = abilityToPhaseIds[abilityKey] || [];
+      if (!abilityToPhaseIds[abilityKey].includes(phaseId)) abilityToPhaseIds[abilityKey].push(phaseId);
+    });
     const phasesById = {} as Record<
       string,
       {
@@ -1262,17 +2441,13 @@ export const registerIpcMainListeners = (
         maxDamagedEntities: parseNumber(
           schemaFieldRow.find((sF) => sF.name == "max_damaged_entities")?.resolvedKeyValue,
         ),
-        hpChangeFrequency: parseNumber(
-          schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue,
-        ),
+        hpChangeFrequency: parseNumber(schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue),
         duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
         fatigueChangeRatio: parseNumber(
           schemaFieldRow.find((sF) => sF.name == "fatigue_change_ratio")?.resolvedKeyValue,
         ),
         affectsAllies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_allies")?.resolvedKeyValue),
-        affectsEnemies: parseBool(
-          schemaFieldRow.find((sF) => sF.name == "affects_enemies")?.resolvedKeyValue,
-        ),
+        affectsEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_enemies")?.resolvedKeyValue),
       };
     });
     const phaseStatEffectsByPhaseId = {} as Record<string, { stat: string; value: number; how: string }[]>;
@@ -1308,28 +2483,20 @@ export const registerIpcMainListeners = (
       if (key == "direct_damage_large") kvDirectDamageLarge = value;
     });
     const abilityToAdditionalUiEffectKeys = {} as Record<string, string[]>;
-    getTableRowData(
-      packsTableData,
-      "unit_abilities_to_additional_ui_effects_juncs_tables",
-      (schemaFieldRow) => {
-        const ability = schemaFieldRow.find((sF) => sF.name == "ability")?.resolvedKeyValue;
-        const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
-        if (!ability || !effect) return;
-        abilityToAdditionalUiEffectKeys[ability] = abilityToAdditionalUiEffectKeys[ability] || [];
-        if (!abilityToAdditionalUiEffectKeys[ability].includes(effect)) {
-          abilityToAdditionalUiEffectKeys[ability].push(effect);
-        }
-      },
-    );
-    const additionalUiEffectsByKey = {} as Record<
-      string,
-      { key: string; sortOrder: number; effectState: string }
-    >;
+    getTableRowData(packsTableData, "unit_abilities_to_additional_ui_effects_juncs_tables", (schemaFieldRow) => {
+      const ability = schemaFieldRow.find((sF) => sF.name == "ability")?.resolvedKeyValue;
+      const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+      if (!ability || !effect) return;
+      abilityToAdditionalUiEffectKeys[ability] = abilityToAdditionalUiEffectKeys[ability] || [];
+      if (!abilityToAdditionalUiEffectKeys[ability].includes(effect)) {
+        abilityToAdditionalUiEffectKeys[ability].push(effect);
+      }
+    });
+    const additionalUiEffectsByKey = {} as Record<string, { key: string; sortOrder: number; effectState: string }>;
     getTableRowData(packsTableData, "unit_abilities_additional_ui_effects_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const sortOrder = parseNumber(schemaFieldRow.find((sF) => sF.name == "sort_order")?.resolvedKeyValue);
-      const effectState =
-        schemaFieldRow.find((sF) => sF.name == "effect_state")?.resolvedKeyValue?.toString() || "";
+      const effectState = schemaFieldRow.find((sF) => sF.name == "effect_state")?.resolvedKeyValue?.toString() || "";
       if (!key) return;
       additionalUiEffectsByKey[key] = { key, sortOrder, effectState };
     });
@@ -1344,17 +2511,13 @@ export const registerIpcMainListeners = (
       }
     });
     const abilityToGroupKeys = {} as Record<string, string[]>;
-    getTableRowData(
-      packsTableData,
-      "special_ability_groups_to_unit_abilities_junctions_tables",
-      (schemaFieldRow) => {
-        const group = schemaFieldRow.find((sF) => sF.name == "special_ability_groups")?.resolvedKeyValue;
-        const ability = schemaFieldRow.find((sF) => sF.name == "unit_special_abilities")?.resolvedKeyValue;
-        if (!ability || !group) return;
-        abilityToGroupKeys[ability] = abilityToGroupKeys[ability] || [];
-        if (!abilityToGroupKeys[ability].includes(group)) abilityToGroupKeys[ability].push(group);
-      },
-    );
+    getTableRowData(packsTableData, "special_ability_groups_to_unit_abilities_junctions_tables", (schemaFieldRow) => {
+      const group = schemaFieldRow.find((sF) => sF.name == "special_ability_groups")?.resolvedKeyValue;
+      const ability = schemaFieldRow.find((sF) => sF.name == "unit_special_abilities")?.resolvedKeyValue;
+      if (!ability || !group) return;
+      abilityToGroupKeys[ability] = abilityToGroupKeys[ability] || [];
+      if (!abilityToGroupKeys[ability].includes(group)) abilityToGroupKeys[ability].push(group);
+    });
     const specialAbilityGroupsByKey = {} as Record<string, { key: string; iconPath: string }>;
     getTableRowData(packsTableData, "special_ability_groups_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;
@@ -1394,28 +2557,28 @@ export const registerIpcMainListeners = (
     );
     // for (const pack of enabledModPacks)
     //   await readFromExistingPack(pack, { filesToRead: skillIconPaths, skipParsingTables: true });
-    console.log("vanillaPacksToRead", vanillaPacksToRead);
+    // The packs the tables came from hold hardly any of the icons, so this is a second, separate set:
+    // the vanilla packs the file index says carry one, indexed and nothing more.
+    const vanillaIconPacks = await getIconPacks(
+      (await findVanillaPacksHoldingIcons(skillIconPaths)) ?? vanillaPacksToRead,
+    );
     console.log(
-      "vanillaPacksToRead ARE:",
-      appData.packsData
-        .filter((packsData) => vanillaPacksToRead.includes(packsData.path))
-        .map((pack) => pack.path),
+      "getSkillsData: vanilla packs holding skill icons:",
+      vanillaIconPacks.map((pack) => pack.name),
     );
-    const vanillaPacks = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
-    const icons = await loadIconsFromPacks(vanillaPacks.concat(enabledModPacks), skillIconPaths);
-    const locs = getLocsFromPacks(
-      appData.packsData.filter(
-        (packsData) =>
-          mods.map((mod) => mod.name).includes(packsData.name) || vanillaPacks.includes(packsData),
+    const icons = await loadIconsFromPacks(vanillaIconPacks.concat(enabledModPacks), skillIconPaths);
+    // Vanilla first, then mods, matching the cached path above. These packs were read for their
+    // tables regardless, so the saving here is the tries, which used to be retained for the session.
+    const locs = {
+      ...(await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder))),
+      ...getLocsFromPacks(
+        appData.packsData.filter((packsData) => mods.some((mod) => mod.name === packsData.name)),
+        getLocsTrie,
       ),
-      getLocsTrie,
-    );
-    const packNameToLocEntries: Record<string, Record<string, string>> = {};
-    for (const packName of Object.keys(locs)) {
-      packNameToLocEntries[packName] = locs[packName].getEntries();
-    }
+    };
     // fs.writeFileSync("dumps/iconPaths.json", JSON.stringify(skillIconPaths));
-    // fs.writeFileSync("dumps/locs.json", JSON.stringify(packNameToLocEntries));
+    // To dump locs, flatten them here rather than on every build: doing it unconditionally cost a
+    // ~180k entry object per pack to feed a writeFileSync that has always been commented out.
     // fs.writeFileSync("dumps/packsTableData.json", JSON.stringify(packsTableData));
     // fs.writeFileSync("dumps/subtypeAndSets.json", JSON.stringify(subtypeAndSets));
     // fs.writeFileSync("dumps/setAndNodes.json", JSON.stringify(setAndNodes));
@@ -1433,17 +2596,12 @@ export const registerIpcMainListeners = (
     //   "dumps/effectToEffectBonusValueIdsUnitSetsData.json",
     //   JSON.stringify(effectToEffectBonusValueIdsUnitSetsData)
     // );
-    for (const [set, setToNodesToDisable] of Object.entries(setToNodesDisables)) {
-      const nodes = setToNodes[set];
-      const lenBefore = nodes.length;
-      setToNodes[set] = setToNodes[set].filter((node) => !setToNodesToDisable.includes(node));
-      const lenAfter = setToNodes[set].length;
-      if (lenBefore != lenAfter) {
-        console.log("from set", set, "removed", lenBefore - lenAfter, "elements");
-      }
+    for (const { set, node, modDisabled } of setAndNodes) {
+      if (modDisabled == "0" || modDisabled == "false") continue;
+      setToNodes[set] = (setToNodes[set] || []).filter((currentNode) => currentNode !== node);
     }
     const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
-    const skillsDataPackPaths = vanillaPacks.concat(enabledModPacks).map((pack) => pack.path);
+    const skillsDataPackPaths = vanillaIconPacks.concat(enabledModPacks).map((pack) => pack.path);
     appData.skillsData = {
       subtypesToSet,
       subtypeAndSets,
@@ -1455,6 +2613,7 @@ export const registerIpcMainListeners = (
       skills,
       locs,
       icons,
+      iconGeneration: registerIconAssets(icons),
       effectsToEffectData,
       skillsDataPackPaths,
       effectToUnitAbilityEnables,
@@ -1484,10 +2643,10 @@ export const registerIpcMainListeners = (
           userDataPath: app.getPath("userData"),
           skillsData: appData.skillsData,
         });
-      } else if (dbPackData) {
-        // Seed vanilla cache from db.pack only, even on a modded cold start.
+      } else if (vanillaPacksTableData.length > 0) {
+        // Seed the vanilla cache from the vanilla packs only, even on a modded cold start.
         const vanillaCoreForCache = createEmptySkillsDataCore();
-        applyModOverlayToSkillsDataCore(vanillaCoreForCache, [dbPackData], getTableRowData);
+        applyModOverlayToSkillsDataCore(vanillaCoreForCache, vanillaPacksTableData, getTableRowData);
         void saveVanillaSkillsDataCoreCache({
           dataFolder,
           currentGame: appData.currentGame,
@@ -1496,11 +2655,17 @@ export const registerIpcMainListeners = (
             ...vanillaCoreForCache,
             locs: {},
             icons: {},
+            iconGeneration: 0,
             skillsDataPackPaths: [],
           },
         });
       }
     }
+    // Both the live data and the vanilla core cache have been built off these rows by now, and what
+    // follows works entirely off the structures above. This is the cold path, so the rows dropped
+    // here are every skills table in the vanilla packs as well as the mods'. The icon packs are a
+    // different set and were never parsed, so they are not in this list.
+    releaseParsedTables(vanillaSkillsPacks.concat(enabledModPacks), tablesToRead);
     const nodesKF = setToNodes[setKF];
     // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
@@ -1551,23 +2716,21 @@ export const registerIpcMainListeners = (
       specialAbilityGroupsByKey,
       getLoc,
     });
+    // Same as on the subtype switch below: the tooltip icons are not part of the sweep the vanilla
+    // icon packs were chosen for, so whichever are still missing get their own packs looked up.
     const missingAbilityIconPaths = kfAbilityIconPaths.filter((iconPath) => !icons[iconPath]);
-    if (missingAbilityIconPaths.length > 0) {
-      for (const pack of vanillaPacks.concat(enabledModPacks)) {
-        await readFromExistingPack(pack, { filesToRead: missingAbilityIconPaths, skipParsingTables: true });
-      }
-      for (const pack of vanillaPacks.concat(enabledModPacks)) {
-        for (const iconPath of missingAbilityIconPaths) {
-          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) =>
-            collator.compare(a.name, b),
-          );
-          if (iconIndex < 0) continue;
-          const iconPackedFile = pack.packedFiles[iconIndex];
-          if (!iconPackedFile.buffer) continue;
-          icons[iconPath] = iconPackedFile.buffer.toString("base64");
-        }
-      }
-    }
+    const abilityIconPacks =
+      missingAbilityIconPaths.length > 0
+        ? await getIconPacks((await findVanillaPacksHoldingIcons(missingAbilityIconPaths)) ?? [])
+        : [];
+    const addedIconGeneration = await loadMissingIconsInto(
+      icons,
+      vanillaIconPacks
+        .concat(abilityIconPacks.filter((pack) => !vanillaIconPacks.includes(pack)))
+        .concat(enabledModPacks),
+      kfAbilityIconPaths,
+    );
+    if (addedIconGeneration) appData.skillsData.iconGeneration = addedIconGeneration;
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
       (acc, curr) => {
@@ -1577,46 +2740,6 @@ export const registerIpcMainListeners = (
       {} as Record<string, number>,
     );
     const treeNodeData = pickTreeNodeData(nodesKF, kfSkills, nodeLinks, nodeToSkill, nodeToSkillLocks);
-    const characterEffectKeys = new Set<string>();
-    for (const effect of skillsAndEffects) {
-      if (effect.effectScope.startsWith("character_")) {
-        characterEffectKeys.add(effect.effectKey);
-      }
-    }
-    const allEffects = Object.values(effectsToEffectData)
-      .filter((ed) => characterEffectKeys.has(ed.key))
-      .map((ed) => ({
-        effectKey: ed.key,
-        localizedKey: getRawEffectLocalization(ed.key, getLoc),
-        icon: ed.icon,
-        priority: ed.priority,
-      }));
-    const allSkillIcons = Object.keys(icons)
-      .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
-      .sort()
-      .map((iconPath) => ({
-        path: iconPath,
-        name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
-      }));
-    const allSkills = skills.map((skill) => {
-      const effects = (skillsToEffects[skill.key] || []).map((e) => ({
-        effectKey: e.effectKey,
-        effectScope: e.effectScope,
-        level: e.level,
-        value: e.value,
-        icon: e.icon,
-        priority: e.priority,
-      }));
-      return {
-        key: skill.key,
-        localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
-        localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
-        iconPath: skill.iconPath,
-        maxLevel: skill.maxLevel,
-        unlockRank: skill.unlockRank,
-        effects,
-      };
-    });
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
@@ -1626,13 +2749,10 @@ export const registerIpcMainListeners = (
       subtypeAndSets,
       currentSkills: kfSkills,
       ...treeNodeData,
-      icons,
+      icons: pickIconsForSkills(icons, appData.skillsData.iconGeneration, kfSkills, kfAbilityIconPaths),
       subtypes,
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
-      allEffects,
-      allSkills,
-      allSkillIcons,
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
     appData.lastSkillsDataSignature = skillsDataSignature;
@@ -1643,18 +2763,25 @@ export const registerIpcMainListeners = (
       }
     }
   };
-  const getSkillsForSubtype = async (subtype: string, subtypeIndex: number) => {
+  const getSkillsForSubtype = async (subtype: string, subtypeIndex: number, requestId?: string) => {
     console.log("getSkillsForSubtype:", subtype);
     const cachedSkillsData = appData.skillsData;
     if (!cachedSkillsData) {
-      getSkillsData(appData.enabledMods);
+      appData.lastSkillsSelection = {
+        currentSubtype: subtype,
+        currentSubtypeIndex: subtypeIndex,
+      };
+      await getSkillsData(appData.enabledMods);
+      if (appData.skillsData) await getSkillsForSubtype(subtype, subtypeIndex, requestId);
       return;
     }
     appData.lastSkillsSelection = {
       currentSubtype: subtype,
       currentSubtypeIndex: subtypeIndex,
     };
-    appData.queuedSkillsData = await buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
+    const skillsForSubtype = await buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
+    if (!skillsForSubtype) return;
+    appData.queuedSkillsData = { requestId, ...skillsForSubtype };
     if (appData.queuedSkillsData) {
       if (appData.skillTreesDisplayMode === "tab") {
         pushSkillsDataToMainWindow();
@@ -1669,9 +2796,10 @@ export const registerIpcMainListeners = (
     cachedSkillsData: NonNullable<typeof appData.skillsData>,
     subtype: string,
     subtypeIndex: number,
-  ): Promise<SkillsData> => {
+  ): Promise<SkillsData | undefined> => {
     const setKF = cachedSkillsData.subtypesToSet[subtype];
     console.log("sets for subtype:", setKF);
+    if (!setKF?.[subtypeIndex]) return;
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
     const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet, nodeToSkillLocks } =
       cachedSkillsData;
@@ -1713,26 +2841,23 @@ export const registerIpcMainListeners = (
       specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
       getLoc,
     });
-    const missingTooltipIcons = tooltipIconPaths.filter((iconPath) => !cachedSkillsData.icons[iconPath]);
-    if (missingTooltipIcons.length > 0) {
-      const packsToRead = appData.packsData.filter((pack) =>
-        cachedSkillsData.skillsDataPackPaths.includes(pack.path),
-      );
-      for (const pack of packsToRead) {
-        await readFromExistingPack(pack, { filesToRead: missingTooltipIcons, skipParsingTables: true });
-      }
-      for (const pack of packsToRead) {
-        for (const iconPath of missingTooltipIcons) {
-          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) =>
-            collator.compare(a.name, b),
-          );
-          if (iconIndex < 0) continue;
-          const iconPackedFile = pack.packedFiles[iconIndex];
-          if (!iconPackedFile.buffer) continue;
-          cachedSkillsData.icons[iconPath] = iconPackedFile.buffer.toString("base64");
-        }
-      }
-    }
+    // The tree's own icons were resolved when the data was built, so the build only had to index the
+    // vanilla packs holding those. A tooltip's icons are not known until a subtype is opened and can
+    // sit in a pack that set never included, so the ones still missing are looked up here rather than
+    // being lost to the narrower read.
+    const missingTooltipIconPaths = tooltipIconPaths.filter((iconPath) => !cachedSkillsData.icons[iconPath]);
+    const tooltipIconPackPaths =
+      missingTooltipIconPaths.length > 0 ? ((await findVanillaPacksHoldingIcons(missingTooltipIconPaths)) ?? []) : [];
+    const iconPackPaths = [
+      ...cachedSkillsData.skillsDataPackPaths,
+      ...tooltipIconPackPaths.filter((packPath) => !cachedSkillsData.skillsDataPackPaths.includes(packPath)),
+    ];
+    const addedIconGeneration = await loadMissingIconsInto(
+      cachedSkillsData.icons,
+      await getIconPacks(iconPackPaths),
+      tooltipIconPaths,
+    );
+    if (addedIconGeneration) cachedSkillsData.iconGeneration = addedIconGeneration;
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
       (acc, curr) => {
@@ -1742,6 +2867,40 @@ export const registerIpcMainListeners = (
       {} as Record<string, number>,
     );
     const treeNodeData = pickTreeNodeData(nodesKF, kfSkills, nodeLinks, nodeToSkill, nodeToSkillLocks);
+    return {
+      // subtypeToSkills: { [subtype]: kfSkills },
+      currentSubtype: subtype,
+      currentSubtypeIndex: subtypeIndex,
+      currentSkills: kfSkills,
+      subtypeToNumSets,
+      subtypesToSet,
+      subtypeAndSets: cachedSkillsData.subtypeAndSets,
+      ...treeNodeData,
+      icons: pickIconsForSkills(icons, cachedSkillsData.iconGeneration, kfSkills, tooltipIconPaths),
+      abilityTooltipsByKey,
+      effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
+      subtypes,
+      subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
+    };
+  };
+  /**
+   * Everything the skill tree editor's pickers offer: every skill, every character effect, and the
+   * whole icon record.
+   *
+   * Asked for when the editor opens rather than sent with the tree. It is several megabytes - the
+   * icons alone are around 1,600 base64 encoded images, and every skill carries its localised
+   * description - against a few dozen icons for the tree itself, and it was being rebuilt and sent on
+   * every subtype switch for a modders-only feature most sessions never open.
+   */
+  ipcMain.handle("getSkillsEditorData", async (): Promise<SkillsEditorData | undefined> => {
+    const cachedSkillsData = appData.skillsData;
+    if (!cachedSkillsData) return undefined;
+    const getLoc = (locId: string) => {
+      for (const locsInPack of Object.values(cachedSkillsData.locs)) {
+        const localized = locsInPack.get(locId);
+        if (localized) return localized;
+      }
+    };
     const characterEffectKeys = new Set<string>();
     for (const effects of Object.values(cachedSkillsData.skillsToEffects)) {
       for (const effect of effects) {
@@ -1758,25 +2917,22 @@ export const registerIpcMainListeners = (
         icon: ed.icon,
         priority: ed.priority,
       }));
-    const allSkills = cachedSkillsData.skills.map((skill) => {
-      const effects = (cachedSkillsData.skillsToEffects[skill.key] || []).map((e) => ({
+    const allSkills = cachedSkillsData.skills.map((skill) => ({
+      key: skill.key,
+      localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
+      localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
+      iconPath: skill.iconPath,
+      maxLevel: skill.maxLevel,
+      unlockRank: skill.unlockRank,
+      effects: (cachedSkillsData.skillsToEffects[skill.key] || []).map((e) => ({
         effectKey: e.effectKey,
         effectScope: e.effectScope,
         level: e.level,
         value: e.value,
         icon: e.icon,
         priority: e.priority,
-      }));
-      return {
-        key: skill.key,
-        localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
-        localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
-        iconPath: skill.iconPath,
-        maxLevel: skill.maxLevel,
-        unlockRank: skill.unlockRank,
-        effects,
-      };
-    });
+      })),
+    }));
     const allSkillIcons = Object.keys(cachedSkillsData.icons)
       .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
       .sort()
@@ -1784,29 +2940,18 @@ export const registerIpcMainListeners = (
         path: iconPath,
         name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
       }));
-    return {
-      // subtypeToSkills: { [subtype]: kfSkills },
-      currentSubtype: subtype,
-      currentSubtypeIndex: subtypeIndex,
-      currentSkills: kfSkills,
-      subtypeToNumSets,
-      subtypesToSet,
-      subtypeAndSets: cachedSkillsData.subtypeAndSets,
-      ...treeNodeData,
-      icons,
-      abilityTooltipsByKey,
-      effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
-      subtypes,
-      allEffects,
-      allSkills,
-      allSkillIcons,
-      subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
-    };
-  };
+    const icons = Object.fromEntries(
+      Object.keys(cachedSkillsData.icons).map((iconPath) => [
+        iconPath,
+        iconAssetUrl(cachedSkillsData.iconGeneration, iconPath),
+      ]),
+    );
+    return { allEffects, allSkills, allSkillIcons, icons };
+  });
   const getTableRowData = (
     packsTableData: PackViewData[],
     tableName: string,
-    rowDataExtractor: (schemaFieldRow: AmendedSchemaField[]) => void,
+    rowDataExtractor: (schemaFieldRow: AmendedSchemaField[], packViewData: PackViewData) => void,
   ) => {
     packsTableData.forEach((pTD) => {
       const skillNodeSetsFiles = Object.keys(pTD.packedFiles).filter((pFName) =>
@@ -1819,7 +2964,7 @@ export const registerIpcMainListeners = (
         const schemaFields = packedFile.schemaFields as AmendedSchemaField[];
         const chunkedShemaFields = chunkSchemaIntoRows(schemaFields, dbVersion) as AmendedSchemaField[][];
         for (const schemaFieldRow of chunkedShemaFields) {
-          rowDataExtractor(schemaFieldRow);
+          rowDataExtractor(schemaFieldRow, pTD);
         }
       }
     });
@@ -1863,8 +3008,9 @@ export const registerIpcMainListeners = (
     technologyRowsByKey: Record<string, Record<string, string>>;
     technologyEffectRowsByKey: Record<string, Record<string, Record<string, string>>>;
     technologyEffectScopesByKey: Record<string, string>;
-    locs: Record<string, Trie<string>>;
-    icons: Record<string, string>;
+    locs: Record<string, KeyedLookup<string>>;
+    icons: Record<string, AssetBytes>;
+    iconGeneration: number;
     technologyToEffects: Record<string, { effectKey: string; value?: string }[]>;
     effectsForTech: Record<string, { icon?: string }>;
   };
@@ -1910,12 +3056,525 @@ export const registerIpcMainListeners = (
     }
     return rowRecord;
   };
+  const getUnitViewerSignature = (mods: Mod[]) => buildSkillsDataSignature(mods, appData.currentGame);
+  /**
+   * One Unit Viewer build at a time. The build fills vanilla rows into the shared packs and releases
+   * them at the end, so a second build running beside it would have those rows dropped mid-flight.
+   */
+  const unitViewerBuilds = createSerializedBuilds();
+
+  const getUnitViewerAssetCandidates = (normalizedPath: string) => {
+    const withoutExtension = normalizedPath.replace(/\.(png|webp|jpe?g)$/i, "");
+    return Array.from(
+      new Set([normalizedPath, `${withoutExtension}.png`, `${withoutExtension}.webp`, `${withoutExtension}.jpg`]),
+    );
+  };
+
+  const cacheUnitViewerAsset = (
+    session: UnitViewerSession,
+    normalizedPath: string,
+    entry: { buffer: Buffer; mimeType: string; bytes: number; resolvedPath: string },
+  ) => {
+    while (session.assetCacheBytes + entry.bytes > UNIT_VIEWER_ASSET_CACHE_MAX_BYTES && session.assetCache.size > 0) {
+      const oldestKey = session.assetCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      const oldest = session.assetCache.get(oldestKey);
+      session.assetCache.delete(oldestKey);
+      session.assetCacheBytes -= oldest?.bytes || 0;
+    }
+    session.assetCache.set(normalizedPath, entry);
+    session.assetCacheBytes += entry.bytes;
+  };
+
+  const takeCachedUnitViewerAsset = (session: UnitViewerSession, normalizedPath: string) => {
+    const cached = session.assetCache.get(normalizedPath);
+    if (!cached) return undefined;
+    session.assetCache.delete(normalizedPath);
+    session.assetCache.set(normalizedPath, cached);
+    return cached;
+  };
+
+  /**
+   * The packs worth opening for a set of asset paths, highest priority first.
+   *
+   * A session's pack list is every vanilla pack the game ships bar the audio and terrain ones -
+   * around 200 of them - and the walk below used to open each one's index in turn until the file
+   * turned up, worst of all for a path nothing carries, which paid for all 200. The mods stay in the
+   * walk: there are a handful and they outrank vanilla anyway. Vanilla is asked of the global file
+   * index instead, which names the pack that wins a path without opening anything, and answers for
+   * every vanilla pack there is - so a path it does not know is one no vanilla pack holds.
+   *
+   * Falls back to the whole list wherever the index cannot answer for certain: no index at all, or a
+   * winning pack this session's filter excludes, where whether some lower-priority pack it does hold
+   * carries the file too is exactly what the index cannot say.
+   */
+  const narrowUnitViewerAssetPackPaths = async (session: UnitViewerSession, normalizedPaths: readonly string[]) => {
+    const packPathsByPriority = session.assetPackPaths.toReversed();
+    const vanillaIndex = await getVanillaPackIndex();
+    if (!vanillaIndex) return packPathsByPriority;
+    return selectPackPathsToSearch(
+      vanillaIndex,
+      // Every spelling the walk itself would try, so a pack is kept if it wins any of them.
+      normalizedPaths.flatMap((normalizedPath) => getUnitViewerAssetCandidates(normalizedPath)),
+      packPathsByPriority,
+      // The session's paths were built by joining these very names onto the data folder, so this
+      // tells its vanilla packs from its mods exactly the way the list was assembled.
+      new Set([...appData.allVanillaPackNames].map((packName) => packName.toLowerCase())),
+    );
+  };
+
+  const getUnitViewerAsset = async (session: UnitViewerSession, requestedPath: string) => {
+    const normalized = normalizePackFilePath(requestedPath).toLowerCase();
+    const cached = takeCachedUnitViewerAsset(session, normalized);
+    if (cached) return cached;
+    const candidates = getUnitViewerAssetCandidates(normalized);
+    for (const packPath of await narrowUnitViewerAssetPackPaths(session, [normalized])) {
+      const pack = await getOrLoadPackFromAppData(packPath);
+      if (!pack) continue;
+      const indexedFile = candidates
+        .map((candidate) => findPackedFileCaseInsensitive(pack, candidate))
+        .find((candidate): candidate is PackedFile => !!candidate);
+      if (!indexedFile) continue;
+      await readFromExistingPack(pack, { filesToRead: [indexedFile.name], skipParsingTables: true });
+      const loadedFile = findPackedFileCaseInsensitive(pack, indexedFile.name);
+      if (!loadedFile?.buffer) continue;
+      const entry = {
+        buffer: loadedFile.buffer,
+        mimeType: getPackedFileMimeType(loadedFile.name) || "image/png",
+        bytes: loadedFile.buffer.length,
+        resolvedPath: loadedFile.name,
+      };
+      cacheUnitViewerAsset(session, normalized, entry);
+      return entry;
+    }
+    return undefined;
+  };
+
+  /**
+   * Resolves many assets with at most one read per pack instead of one per asset: each pack is
+   * asked for every asset still outstanding, and all of its hits are read in a single call.
+   *
+   * `withPayload: false` warms the session cache and reports only which paths resolved, which is
+   * what every caller but the cache build wants: the images themselves are served over the asset
+   * protocol out of that same cache, so nothing has to carry them.
+   */
+  const loadUnitViewerAssets = async (session: UnitViewerSession, requestedPaths: string[], withPayload: boolean) => {
+    const assets: Record<string, AssetBytes> = {};
+    const resolved: string[] = [];
+    const outstanding = new Map<string, string[]>();
+    const resolveFor = (requestedPath: string, entry: AssetBytes) => {
+      resolved.push(requestedPath);
+      if (withPayload) assets[requestedPath] = { buffer: entry.buffer, mimeType: entry.mimeType };
+    };
+    for (const requestedPath of requestedPaths) {
+      const normalized = normalizePackFilePath(requestedPath).toLowerCase();
+      const cached = takeCachedUnitViewerAsset(session, normalized);
+      if (cached) {
+        resolveFor(requestedPath, cached);
+        continue;
+      }
+      const requestedFor = outstanding.get(normalized) || [];
+      requestedFor.push(requestedPath);
+      outstanding.set(normalized, requestedFor);
+    }
+
+    // Narrowed once against everything still outstanding rather than per pack: the set only shrinks
+    // as the walk resolves paths, so the list picked here stays a superset of what is still wanted.
+    for (const packPath of await narrowUnitViewerAssetPackPaths(session, Array.from(outstanding.keys()))) {
+      if (outstanding.size === 0) break;
+      const pack = await getOrLoadPackFromAppData(packPath);
+      if (!pack) continue;
+      const fileNamesByAsset = new Map<string, string>();
+      for (const normalized of outstanding.keys()) {
+        const indexedFile = getUnitViewerAssetCandidates(normalized)
+          .map((candidate) => findPackedFileCaseInsensitive(pack, candidate))
+          .find((candidate): candidate is PackedFile => !!candidate);
+        if (indexedFile) fileNamesByAsset.set(normalized, indexedFile.name);
+      }
+      if (fileNamesByAsset.size === 0) continue;
+      await readFromExistingPack(pack, {
+        filesToRead: Array.from(fileNamesByAsset.values()),
+        skipParsingTables: true,
+      });
+      for (const [normalized, fileName] of fileNamesByAsset) {
+        const loadedFile = findPackedFileCaseInsensitive(pack, fileName);
+        if (!loadedFile?.buffer) continue;
+        const entry = {
+          buffer: loadedFile.buffer,
+          mimeType: getPackedFileMimeType(loadedFile.name) || "image/png",
+          bytes: loadedFile.buffer.length,
+          resolvedPath: loadedFile.name,
+        };
+        cacheUnitViewerAsset(session, normalized, entry);
+        for (const requestedPath of outstanding.get(normalized) || []) resolveFor(requestedPath, entry);
+        outstanding.delete(normalized);
+      }
+    }
+    return { assets, resolved };
+  };
+
+  const buildUnitViewerSessionData = async (enabledMods: Mod[]) => {
+    if (appData.currentGame !== "wh3") throw new Error("Unit Viewer is available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+    const tablesToRead = Array.from(
+      new Set(
+        UNIT_VIEWER_TABLES.flatMap((tableName) =>
+          resolveTable(tableName).map((resolvedTable) => `db\\${resolvedTable}\\`),
+        ),
+      ),
+    );
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
+    const assetPackPaths = [...appData.allVanillaPackNames]
+      .filter(
+        (packName) =>
+          !packName.startsWith("audio_") &&
+          !packName.startsWith("movies") &&
+          !packName.startsWith("terrain") &&
+          !packName.startsWith("tile"),
+      )
+      .map((packName) => nodePath.join(dataFolder, packName))
+      .concat(
+        sortByNameAndLoadOrder(enabledMods)
+          .toReversed()
+          .map((mod) => mod.path),
+      );
+    const identityPaths = [dbPackPath, ...localizationPackPaths, ...enabledMods.map((mod) => mod.path)];
+    const identities = await Promise.all(
+      identityPaths.map(async (packPath) => {
+        try {
+          const stat = await fs.promises.stat(packPath);
+          return [nodePath.resolve(packPath), stat.size, stat.mtimeMs] as const;
+        } catch {
+          return [nodePath.resolve(packPath), -1, -1] as const;
+        }
+      }),
+    );
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify({
+          feature: 19,
+          game: appData.currentGame,
+          schema: getVisualsSchemaHash(appData.currentGame),
+          mods: getUnitViewerSignature(enabledMods),
+          identities,
+        }),
+      )
+      .digest("hex");
+    if (cachedUnitViewerData?.signature === signature) return cachedUnitViewerData;
+    const diskData = await loadUnitViewerDiskCache(app.getPath("userData"), signature);
+    if (diskData) {
+      cachedUnitViewerData = { signature, data: diskData, assetPackPaths };
+      return cachedUnitViewerData;
+    }
+
+    const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
+    const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
+    if (unservedPrefixes.length === 0) {
+      indexedDbPack.readTables = [...tablesToRead];
+      appendPacksData(indexedDbPack, undefined, false);
+    } else {
+      // A pack readModsByPath did not return is one it never read, and a catalog built without the
+      // game's database pack holds no vanilla units at all - which reads as a real result and would
+      // be cached under a signature that stays valid across restarts.
+      const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
+      if (readDbPacks.length === 0) {
+        throw new Error("The game's database pack could not be read for the Unit Viewer");
+      }
+    }
+    if (enabledMods.length > 0) {
+      await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
+    }
+    // The game's locs are only read when the loc cache has to be built. On a hit nothing here
+    // touches local_en.pack, which is the point: parsing it into a trie costs ~97 MB of heap.
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+
+    const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    const dbPack = packsByPath.get(dbPackPath);
+    if (!dbPack) throw new Error("Could not read db.pack for Unit Viewer");
+    // A prefix db.pack carries files for, yet has no parsed rows for, means the rows this build filled
+    // in were dropped again before it got here - by a release from another build over the same tables,
+    // or by a read that never happened. Building on that yields a catalog holding only mod units, and
+    // the disk cache below would then serve it on every start until the mod list changes. Fail instead.
+    const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
+    if (unparsedVanillaPrefixes.length > 0) {
+      throw new Error(
+        `The game's unit tables were not available when the Unit Viewer was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
+      );
+    }
+    const orderedMods = sortByNameAndLoadOrder(enabledMods)
+      .toReversed()
+      .map((mod) => packsByPath.get(mod.path))
+      .filter((pack): pack is Pack => !!pack);
+    const tablePacks = [dbPack, ...orderedMods];
+    const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
+    const tables: UnitViewerTableRows = {};
+    const originPackPathByUnit = new Map<string, string>();
+    const originPackPathByLandUnit = new Map<string, string>();
+    for (const canonicalTableName of UNIT_VIEWER_TABLES) {
+      const rows: Array<Record<string, string>> = [];
+      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
+        const row = schemaRowToRecord(schemaFieldRow);
+        rows.push(row);
+        if (packViewData.packPath === dbPackPath) return;
+        if (canonicalTableName === "main_units_tables" && row.unit) {
+          originPackPathByUnit.set(row.unit, packViewData.packPath);
+        } else if (canonicalTableName === "land_units_tables" && row.key) {
+          originPackPathByLandUnit.set(row.key, packViewData.packPath);
+        }
+      });
+      tables[canonicalTableName] = rows;
+    }
+    for (const row of tables.main_units_tables || []) {
+      const unitKey = row.unit;
+      const landUnitOrigin = row.land_unit ? originPackPathByLandUnit.get(row.land_unit) : undefined;
+      if (unitKey && landUnitOrigin) originPackPathByUnit.set(unitKey, landUnitOrigin);
+    }
+
+    // Vanilla first so mod locs, which stay on the live path, still shadow it.
+    const data = buildUnitViewerData(
+      tables,
+      createLocLookup([...vanillaLocLookups, ...orderedMods.map((pack) => getLocsTrie(pack))]),
+      originPackPathByUnit,
+    );
+    const statIconSession: UnitViewerSession = {
+      sessionId: "unit-viewer-cache-build",
+      data,
+      assetPackPaths,
+      assetCache: new Map(),
+      assetCacheBytes: 0,
+      pendingAssets: new Map(),
+      variantMeshCatalogs: new Map(),
+      createdAt: Date.now(),
+    };
+    const { assets: statIcons } = await loadUnitViewerAssets(
+      statIconSession,
+      Array.from(new Set(Object.values(data.constants.statIconPaths))),
+      true,
+    );
+    for (const [iconPath, icon] of Object.entries(statIcons)) {
+      data.statIcons[iconPath] = icon.buffer.toString("base64");
+    }
+    await saveUnitViewerDiskCache(app.getPath("userData"), signature, data);
+    // Everything the Unit Viewer needs now lives in `data`, which is cached both here and on disk.
+    // The rows it was built from are the expensive half and are never read again: the next build for
+    // this mod list is served by the cache above, and a build for another one re-reads anyway.
+    releaseParsedTables(tablePacks, tablesToRead);
+    cachedUnitViewerData = { signature, data, assetPackPaths };
+    return cachedUnitViewerData;
+  };
+
+  ipcMain.handle("getUnitViewerCatalog", async (_event, enabledMods: Mod[]) => {
+    try {
+      const built = await unitViewerBuilds.run(getUnitViewerSignature(enabledMods), () =>
+        buildUnitViewerSessionData(enabledMods),
+      );
+      const sessionId = randomUUID();
+      unitViewerSessions.set(sessionId, {
+        sessionId,
+        data: built.data,
+        assetPackPaths: built.assetPackPaths,
+        assetCache: new Map(),
+        assetCacheBytes: 0,
+        pendingAssets: new Map(),
+        variantMeshCatalogs: new Map(),
+        createdAt: Date.now(),
+      });
+      // The one being replaced is kept, and nothing older.
+      //
+      // Every asset URL carries the session it was built for, and a reload rebuilds all of them, so
+      // a session two catalogs back can no longer be addressed by anything the renderer draws - it
+      // is unreachable bytes, up to the asset cache cap each. The one slot of slack covers the
+      // requests already in flight when the swap happens.
+      while (unitViewerSessions.size > 2) {
+        const oldest = Array.from(unitViewerSessions.values()).sort((a, b) => a.createdAt - b.createdAt)[0];
+        if (!oldest) break;
+        unitViewerSessions.delete(oldest.sessionId);
+      }
+      // The stat icons come back from the disk cache already encoded, which is how they stay cheap
+      // to persist. Registering them decodes each one once, for a URL like every other icon.
+      const statIconGeneration = registerIconAssets(
+        Object.fromEntries(
+          Object.entries(built.data.statIcons).map(([iconPath, base64]) => [
+            iconPath,
+            { buffer: Buffer.from(base64, "base64"), mimeType: getPackedFileMimeType(iconPath) || "image/png" },
+          ]),
+        ),
+      );
+      const statIcons = Object.fromEntries(
+        Object.keys(built.data.statIcons).map((iconPath) => [iconPath, iconAssetUrl(statIconGeneration, iconPath)]),
+      );
+      return {
+        success: true,
+        sessionId,
+        groups: built.data.groups,
+        lordOptions: built.data.lordOptions,
+        unitGroups: built.data.unitGroups,
+        constants: built.data.constants,
+        characterExperience: built.data.characterExperience,
+        statIcons,
+      };
+    } catch (error) {
+      console.error("Failed to build Unit Viewer catalog:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Failed to load units" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerDetails", async (_event, sessionId: string, unitKey: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const unit = session.data.units.get(unitKey);
+      if (!unit) return { success: false, error: `Unit ${unitKey} was not found` };
+      // Warmed in one pass over the packs rather than one request per icon, then handed over as URLs
+      // the protocol serves straight from that session cache.
+      const { resolved } = await loadUnitViewerAssets(session, session.data.iconPathsByUnit.get(unitKey) || [], false);
+      const icons = Object.fromEntries(
+        resolved.map((iconPath) => [iconPath, unitAssetUrl(sessionId, iconPath)] as const),
+      );
+      return { success: true, unit, icons };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to load unit" };
+    }
+  });
+
+  ipcMain.handle("getUnitPainterFactionMaskBindings", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const rootPath = normalizePackFilePath(assetPath || "");
+      if (!rootPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const queue = [rootPath];
+      const seen = new Set<string>();
+      const bindings: Array<{ baseColourSourcePath: string; baseColourPreviewFileNames: string[]; maskUrl: string }> = [];
+      const bindingKeys = new Set<string>();
+      while (queue.length > 0) {
+        const requestedPath = queue.shift()!;
+        const key = normalizePackFilePathKey(requestedPath);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const extension = getSupportedVisualDependencyExtension(requestedPath);
+        if (extension !== "variantmeshdefinition" && extension !== "wsmodel" && extension !== "xml.material") continue;
+        const asset = await getUnitViewerAsset(session, requestedPath);
+        if (!asset) continue;
+        const text = decodePackedAssetText(asset.buffer);
+        if (!text) continue;
+        if (extension === "xml.material") {
+          const textures = getVisualMaterialFactionTextures(text);
+          if (textures?.baseColourPath && textures.maskPath) {
+            const basePath = textures.baseColourPath;
+            const maskPath = textures.maskPath;
+            const bindingKey = `${normalizePackFilePathKey(basePath)}\0${normalizePackFilePathKey(maskPath)}`;
+            if (!bindingKeys.has(bindingKey)) {
+              bindingKeys.add(bindingKey);
+              const normalizedBasePath = basePath.replaceAll("\\", "/").trim().toLowerCase();
+              const stem = basePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "texture";
+              const cacheKey = `${normalizedBasePath}|default|False|ktx2|srgb=True`;
+              const hash = createHash("sha256").update(`${normalizedBasePath}|${cacheKey}`).digest("hex").slice(0, 10);
+              bindings.push({
+                baseColourSourcePath: basePath,
+                baseColourPreviewFileNames: [`${stem}_${hash}.ktx2`, `${stem}.ktx2`],
+                maskUrl: unitAssetUrl(sessionId, maskPath),
+              });
+            }
+          }
+        }
+        for (const reference of getSupportedVisualReferences(text)) {
+          const referenceExtension = getSupportedVisualDependencyExtension(reference);
+          if (referenceExtension === "variantmeshdefinition" || referenceExtension === "wsmodel" || referenceExtension === "xml.material") {
+            queue.push(reference);
+          }
+        }
+      }
+      return { success: true, bindings };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to resolve faction-colour masks" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerVariantMeshCatalog", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!normalizedPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const cacheKey = normalizedPath.toLowerCase();
+      const cached = session.variantMeshCatalogs.get(cacheKey);
+      const catalogPromise =
+        cached ||
+        buildVariantMeshCatalog(normalizedPath, async (definitionPath) => {
+          const asset = await getUnitViewerAsset(session, definitionPath);
+          return asset ? decodePackedAssetText(asset.buffer) : undefined;
+        });
+      if (!cached) session.variantMeshCatalogs.set(cacheKey, catalogPromise);
+      try {
+        return { success: true, catalog: await catalogPromise };
+      } catch (error) {
+        if (session.variantMeshCatalogs.get(cacheKey) === catalogPromise) session.variantMeshCatalogs.delete(cacheKey);
+        throw error;
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve unit appearances",
+      };
+    }
+  });
+
+  /**
+   * The unit viewer's images, served to `<img>` rather than sent as payloads.
+   *
+   * A miss still reads the file out of the packs, so a card nothing prewarmed still appears; the
+   * prewarm below is what keeps a whole roster to one read per pack instead of one per card.
+   */
+  registerAssetProtocol({
+    resolveMapCacheImage: (signature, imageName) =>
+      resolveEsfMapCachedImage(app.getPath("userData"), signature, imageName),
+    resolveUnitViewerAsset: async (sessionId, assetPath) => {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return undefined;
+      // The roster paints every card at once, so these arrive in a burst. Waiting behind a prewarm
+      // lets that one pass over the packs serve the whole burst, and the pending map collapses what
+      // is left: without either, a hundred images would start a hundred reads of the same packs.
+      await session.pendingPrewarm?.catch(() => undefined);
+      const normalized = normalizePackFilePath(assetPath).toLowerCase();
+      const pending = session.pendingAssets.get(normalized);
+      if (pending) return await pending;
+      const load = getUnitViewerAsset(session, assetPath).finally(() => session.pendingAssets.delete(normalized));
+      session.pendingAssets.set(normalized, load);
+      const resolved = await load;
+      if (!resolved) return undefined;
+      const image = getPackedFileImageData(resolved.buffer, resolved.resolvedPath);
+      return { buffer: image.buffer, mimeType: image.mimeType || resolved.mimeType };
+    },
+  });
+
+  ipcMain.handle("prewarmUnitViewerAssets", async (_event, sessionId: string, assetPaths: string[]) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const prewarm = loadUnitViewerAssets(session, Array.from(new Set(assetPaths || [])), false);
+      session.pendingPrewarm = prewarm;
+      try {
+        const { resolved } = await prewarm;
+        return { success: true, resolved };
+      } finally {
+        if (session.pendingPrewarm === prewarm) session.pendingPrewarm = undefined;
+      }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to load assets" };
+    }
+  });
+
+  const TECHNOLOGY_ICON_PREFIX = "ui\\campaign ui\\technologies\\";
+  const TECHNOLOGY_ICON_EXTENSION = /\.(png|jpg|jpeg)$/i;
   const getTechnologyIconPath = (iconName: string | undefined) => {
     if (!iconName || iconName.trim() === "") return undefined;
-    const withoutExtension = iconName.replace(/\.(png|jpg|jpeg)$/i, "");
-    return `ui\\campaign ui\\technologies\\${withoutExtension}.png`;
+    const withoutExtension = iconName.replace(TECHNOLOGY_ICON_EXTENSION, "");
+    return `${TECHNOLOGY_ICON_PREFIX}${withoutExtension}.png`;
   };
-  const getTechnologyIconNameFromPath = (iconPath: string | undefined) => {
+  const getTechnologyIconNameFromPath = (iconPath: string | null | undefined) => {
     if (!iconPath || iconPath.trim() === "") return "";
     return iconPath
       .trim()
@@ -1923,9 +3582,10 @@ export const registerIpcMainListeners = (
       .replace(/\.(png|jpg|jpeg)$/i, "");
   };
   const getTechnologyBuildingLevelForWrite = (
-    buildingLevel: string | undefined,
+    buildingLevel: string | null | undefined,
     originalTechnologyRow?: Record<string, string>,
   ) => {
+    if (buildingLevel === null) return "";
     const explicitBuildingLevel = (buildingLevel || "").trim();
     if (explicitBuildingLevel !== "") return explicitBuildingLevel;
     if (originalTechnologyRow && "building_level" in originalTechnologyRow) {
@@ -1950,15 +3610,12 @@ export const registerIpcMainListeners = (
     return nextUniqueIndex;
   };
   const normalizeTechnologyBuildingLevel = (buildingLevel: string | undefined) => {
-    if (
-      buildingLevel === "wh_main_human_port_ruin" ||
-      buildingLevel === "wh_main_chs_port_ruin"
-    ) {
+    if (buildingLevel === "wh_main_human_port_ruin" || buildingLevel === "wh_main_chs_port_ruin") {
       return undefined;
     }
     return buildingLevel;
   };
-  const getLocById = (locs: Record<string, Trie<string>>, locId: string) => {
+  const getLocById = (locs: Record<string, KeyedLookup<string>>, locId: string) => {
     for (const locsInPack of Object.values(locs)) {
       const localized = locsInPack.get(locId);
       if (localized) return localized;
@@ -1967,11 +3624,12 @@ export const registerIpcMainListeners = (
   const getTechnologyDataCacheKey = () =>
     hash({
       game: appData.currentGame,
+      language: appData.currentLanguage || "",
+      useEnglishLocalizations: appData.isUsingEnglishLocalizations,
       dataFolder: appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder || "",
       enabledMods: sortByNameAndLoadOrder(appData.enabledMods).map((mod) => ({
         path: mod.path,
         loadOrder: mod.loadOrder,
-        lastChanged: mod.lastChanged,
         lastChangedLocal: mod.lastChangedLocal,
       })),
     });
@@ -2012,13 +3670,16 @@ export const registerIpcMainListeners = (
             !packName.startsWith("terrain")),
       )
       .map((packName) => nodePath.join(dataFolder, packName));
-    await readModsByPath(
-      vanillaPacksToRead,
-      { skipParsingTables: false, readLocs: true, tablesToRead },
-      true,
-    );
-    const vanillaPackPathSet = new Set(vanillaPacksToRead);
-    const vanillaPacks = appData.packsData.filter((packData) => vanillaPackPathSet.has(packData.path));
+    // Only the packs that hold these tables, and their rows from the vanilla db cache where it can
+    // serve them. The locs are not read here - they come from the loc cache below - and undefined
+    // means a pack something else was already reading still carries its technology tables with no
+    // rows in them. The result is held under a cache key for the rest of the session, so a tech tree
+    // built from that would stay missing the base game's technologies.
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, tablesToRead, vanillaPacksToRead, true);
+    if (!vanillaPacks) {
+      console.log("buildTechnologyData: the vanilla technology tables were not read");
+      return undefined;
+    }
     const packsByPath = new Map(appData.packsData.map((packData) => [packData.path, packData]));
     const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
     const orderedModPacks = orderedEnabledMods
@@ -2044,6 +3705,7 @@ export const registerIpcMainListeners = (
       if (!key) return;
       setsByKey[key] = {
         key,
+        nodeCount: 0,
         campaignKey: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "campaign_key")),
         factionKey: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "faction_key")),
         culture: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "culture")),
@@ -2073,12 +3735,17 @@ export const registerIpcMainListeners = (
         factionKey: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "faction_key")),
         pixelOffsetX: parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "pixel_offset_x"), 0),
         pixelOffsetY: parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "pixel_offset_y"), 0),
-        researchPointsRequired: parseOptionalNumber(
-          getSchemaFieldValue(schemaFieldRow, "research_points_required"),
-        ),
+        researchPointsRequired: parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "research_points_required")),
         optionalUiGroup: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "optional_ui_group")),
       };
       nodeRowsByKey[nodeKey] = schemaRowToRecord(schemaFieldRow);
+    });
+    const nodeCountsBySet = Object.values(nodesByKey).reduce<Record<string, number>>((counts, node) => {
+      counts[node.setKey] = (counts[node.setKey] || 0) + 1;
+      return counts;
+    }, {});
+    Object.values(setsByKey).forEach((nodeSet) => {
+      nodeSet.nodeCount = nodeCountsBySet[nodeSet.key] || 0;
     });
     getTableRowData(packsTableData, "technology_node_links_tables", (schemaFieldRow) => {
       const parentKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "parent_key"));
@@ -2098,10 +3765,7 @@ export const registerIpcMainListeners = (
           getSchemaFieldValue(schemaFieldRow, "child_link_position_offset"),
           0,
         ),
-        initialDescentTiers: parseOptionalNumber(
-          getSchemaFieldValue(schemaFieldRow, "initial_descent_tiers"),
-          0,
-        ),
+        initialDescentTiers: parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "initial_descent_tiers"), 0),
         visibleInUi: parseOptionalBool(getSchemaFieldValue(schemaFieldRow, "visible_in_ui"), true),
       };
       linkRowsByKey[linkKey] = schemaRowToRecord(schemaFieldRow);
@@ -2146,39 +3810,27 @@ export const registerIpcMainListeners = (
         colourGreen: green,
         colourBlue: blue,
         colourHex,
-        optionalBackgroundImage: parseOptionalString(
-          getSchemaFieldValue(schemaFieldRow, "optional_background_image"),
-        ),
-        optionalDisplayName: parseOptionalString(
-          getSchemaFieldValue(schemaFieldRow, "optional_display_name"),
-        ),
+        optionalBackgroundImage: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "optional_background_image")),
+        optionalDisplayName: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "optional_display_name")),
         optionalDisplayDescription: parseOptionalString(
           getSchemaFieldValue(schemaFieldRow, "optional_display_desctiption") ??
             getSchemaFieldValue(schemaFieldRow, "optional_display_description"),
         ),
       };
     });
-    getTableRowData(
-      packsTableData,
-      "technology_ui_groups_to_technology_nodes_junctions_tables",
-      (schemaFieldRow) => {
-        const groupKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tech_ui_group"));
-        const topLeftNode = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "top_left_node"));
-        const bottomRightNode = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "bottom_right_node"));
-        if (!groupKey || !topLeftNode || !bottomRightNode) return;
-        uiGroupBoundsByKey[groupKey] = {
-          groupKey,
-          topLeftNode,
-          bottomRightNode,
-          optionalTopRightNode: parseOptionalString(
-            getSchemaFieldValue(schemaFieldRow, "optional_top_right_node"),
-          ),
-          optionalBottomLeftNode: parseOptionalString(
-            getSchemaFieldValue(schemaFieldRow, "optional_bottom_left_node"),
-          ),
-        };
-      },
-    );
+    getTableRowData(packsTableData, "technology_ui_groups_to_technology_nodes_junctions_tables", (schemaFieldRow) => {
+      const groupKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tech_ui_group"));
+      const topLeftNode = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "top_left_node"));
+      const bottomRightNode = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "bottom_right_node"));
+      if (!groupKey || !topLeftNode || !bottomRightNode) return;
+      uiGroupBoundsByKey[groupKey] = {
+        groupKey,
+        topLeftNode,
+        bottomRightNode,
+        optionalTopRightNode: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "optional_top_right_node")),
+        optionalBottomLeftNode: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "optional_bottom_left_node")),
+      };
+    });
     getTableRowData(packsTableData, "technologies_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       if (!key) return;
@@ -2201,26 +3853,22 @@ export const registerIpcMainListeners = (
     });
     const technologyToEffectsByKey: Record<string, Record<string, { effectKey: string; value?: string }>> = {};
     const technologyEffectScopesByKey: Record<string, string> = {};
-    getTableRowData(
-      packsTableData,
-      "technology_effects_junction_tables",
-      (schemaFieldRow) => {
-        const techKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "technology"));
-        const effectKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect"));
-        if (!techKey || !effectKey) return;
-        const effectScope = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect_scope"));
-        if (!technologyToEffectsByKey[techKey]) technologyToEffectsByKey[techKey] = {};
-        technologyToEffectsByKey[techKey][effectKey] = {
-          effectKey,
-          value: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "value")),
-        };
-        if (effectScope && !technologyEffectScopesByKey[effectKey]) {
-          technologyEffectScopesByKey[effectKey] = effectScope;
-        }
-        if (!technologyEffectRowsByKey[techKey]) technologyEffectRowsByKey[techKey] = {};
-        technologyEffectRowsByKey[techKey][effectKey] = schemaRowToRecord(schemaFieldRow);
-      },
-    );
+    getTableRowData(packsTableData, "technology_effects_junction_tables", (schemaFieldRow) => {
+      const techKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "technology"));
+      const effectKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect"));
+      if (!techKey || !effectKey) return;
+      const effectScope = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect_scope"));
+      if (!technologyToEffectsByKey[techKey]) technologyToEffectsByKey[techKey] = {};
+      technologyToEffectsByKey[techKey][effectKey] = {
+        effectKey,
+        value: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "value")),
+      };
+      if (effectScope && !technologyEffectScopesByKey[effectKey]) {
+        technologyEffectScopesByKey[effectKey] = effectScope;
+      }
+      if (!technologyEffectRowsByKey[techKey]) technologyEffectRowsByKey[techKey] = {};
+      technologyEffectRowsByKey[techKey][effectKey] = schemaRowToRecord(schemaFieldRow);
+    });
     const technologyToEffects: Record<string, { effectKey: string; value?: string }[]> = Object.fromEntries(
       Object.entries(technologyToEffectsByKey).map(([techKey, effectsByKey]) => [techKey, Object.values(effectsByKey)]),
     );
@@ -2231,15 +3879,20 @@ export const registerIpcMainListeners = (
           .filter((iconPath): iconPath is string => !!iconPath),
       ).values(),
     );
+    // Every technology icon the game and the enabled mods ship, so the editor's picker can offer one
+    // the current tree does not use. Vanilla's come from the file index rather than from indexing the
+    // vanilla packs, which is what the whole vanilla set used to be read for.
+    const isTechnologyIconPath = (iconPath: string) =>
+      iconPath.toLowerCase().startsWith(TECHNOLOGY_ICON_PREFIX) && TECHNOLOGY_ICON_EXTENSION.test(iconPath);
+    const vanillaIndex = await getVanillaPackIndex();
     const allTechnologyIconPaths = Array.from(
       new Set(
-        orderedPacks
-          .flatMap((pack) => pack.packedFiles.map((packedFile) => packedFile.name))
-          .filter(
-            (iconPath) =>
-              iconPath.toLowerCase().startsWith("ui\\campaign ui\\technologies\\") &&
-              /\.(png|jpg|jpeg)$/i.test(iconPath),
-          ),
+        (vanillaIndex
+          ? [...collectVanillaFilesUnderPrefix(vanillaIndex, TECHNOLOGY_ICON_PREFIX).keys()]
+          : vanillaPacks.flatMap((pack) => pack.packedFiles.map((packedFile) => packedFile.name))
+        )
+          .concat(orderedModPacks.flatMap((pack) => pack.packedFiles.map((packedFile) => packedFile.name)))
+          .filter(isTechnologyIconPath),
       ).values(),
     );
     const effectIconPaths = Array.from(
@@ -2252,8 +3905,25 @@ export const registerIpcMainListeners = (
       ).values(),
     );
     const iconPaths = Array.from(new Set([...techIconPaths, ...allTechnologyIconPaths, ...effectIconPaths]).values());
-    const locs = getLocsFromPacks(orderedPacks, getLocsTrie);
-    const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
+    // Mod packs are ordered from highest to lowest load priority. Put them before the vanilla
+    // lookup because getLocById intentionally returns the first matching localization.
+    const locs = {
+      ...getLocsFromPacks(orderedModPacks, getLocsTrie),
+      ...(await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder))),
+    };
+    // The table packs hold hardly any of these, so the packs the icons are read out of are resolved
+    // separately and indexed only if they turn out to carry one.
+    const vanillaIconPacks = await getIconPacks((await findVanillaPacksHoldingIcons(iconPaths)) ?? vanillaPacksToRead);
+    const iconPacks = vanillaIconPacks
+      .concat(vanillaPacks.filter((pack) => !vanillaIconPacks.includes(pack)))
+      .concat(orderedModPacks);
+    const icons = iconPaths.length > 0 ? await loadIconsFromPacks(iconPacks, iconPaths) : {};
+    const iconGeneration = registerIconAssets(icons);
+    // Every technology table has been read into the structures above, and the result is held in
+    // `cachedTechnologyData` for as long as it stays valid, so nothing below the row extraction
+    // touches the rows again: the icon paths come from the file index, and the locs from the loc
+    // cache. Only the packs that were parsed are released; the icon packs never were.
+    releaseParsedTables(orderedPacks, tablesToRead);
     return {
       setsByKey,
       setRowsByKey,
@@ -2271,19 +3941,1483 @@ export const registerIpcMainListeners = (
       technologyEffectScopesByKey,
       locs,
       icons,
+      iconGeneration,
       technologyToEffects,
       effectsForTech,
     };
   };
+  /** As for the other two: buildTechnologyData releases rows a second build beside it would need. */
+  const technologyDataBuilds = createSerializedBuilds();
   const ensureTechnologyData = async () => {
     const cacheKey = getTechnologyDataCacheKey();
     if (cachedTechnologyData && cachedTechnologyDataKey == cacheKey) return cachedTechnologyData;
-    cachedTechnologyData = await buildTechnologyData();
-    cachedTechnologyDataKey = cacheKey;
-    return cachedTechnologyData;
+    return technologyDataBuilds.run(cacheKey, async () => {
+      // The build this one queued behind may have produced exactly what it was about to read packs for.
+      if (cachedTechnologyData && cachedTechnologyDataKey == cacheKey) return cachedTechnologyData;
+      cachedTechnologyData = await buildTechnologyData();
+      cachedTechnologyDataKey = cacheKey;
+      return cachedTechnologyData;
+    });
   };
-  const setCurrentGame = async (newGame: SupportedGames) => {
+
+  // --- Campaign map ----------------------------------------------------------
+  const getEsfMapSignature = async (enabledMods: Mod[], campaignName: string | undefined): Promise<string> => {
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+    const englishLocalizationPackPaths = dataFolder
+      ? getVanillaLocalisationPackPathsFor(appData.allVanillaPackNames, appData.currentLanguage, dataFolder, true)
+      : [];
+    const vanillaStartposPaths = dataFolder ? await getVanillaStartposFilePaths(dataFolder) : [];
+    const vanillaPackPaths = dataFolder
+      ? [...appData.allVanillaPackNames].map((packName) => nodePath.join(dataFolder, packName))
+      : [];
+    const identityPaths = [
+      ...vanillaPackPaths,
+      ...englishLocalizationPackPaths,
+      ...vanillaStartposPaths,
+      ...enabledMods.map((mod) => mod.path),
+    ];
+    const identities = await Promise.all(
+      [...new Set(identityPaths)].map(async (filePath) => {
+        try {
+          const stat = await fs.promises.stat(filePath);
+          return [nodePath.resolve(filePath), stat.size, stat.mtimeMs] as const;
+        } catch {
+          return [nodePath.resolve(filePath), -1, -1] as const;
+        }
+      }),
+    );
+    return createHash("sha256")
+      .update(
+        JSON.stringify({
+          feature: 4,
+          game: appData.currentGame,
+          dataFolder: dataFolder ?? null,
+          currentLanguage: appData.currentLanguage ?? null,
+          useEnglishLocalizations: appData.isUsingEnglishLocalizations,
+          campaignName: campaignName ?? null,
+          vanillaPackNames: [...appData.allVanillaPackNames],
+          mods: sortByNameAndLoadOrder(enabledMods).map((mod) => ({
+            path: mod.path,
+            loadOrder: mod.loadOrder ?? null,
+            lastChangedLocal: mod.lastChangedLocal ?? null,
+          })),
+          identities,
+        }),
+      )
+      .digest("hex");
+  };
+
+  ipcMain.handle("getEsfMap", async (_event, enabledMods: Mod[], campaignName?: string): Promise<EsfMapResponse> => {
     try {
+      const signature = await getEsfMapSignature(enabledMods, campaignName);
+      const buildings = await ensureBuildingsData(enabledMods);
+      // Indexed rather than scanned per lookup: the faction roster asks for a flag per faction, and
+      // most of the roster holds no land.
+      const iconPathsByNormalizedPath = new Map<string, string>();
+      for (const iconPath of Object.keys(buildings.icons)) {
+        // First registration wins, as the scan this replaces did.
+        const normalized = normalizeAssetPath(iconPath);
+        if (!iconPathsByNormalizedPath.has(normalized)) iconPathsByNormalizedPath.set(normalized, iconPath);
+      }
+      const registeredIconPath = (requestedPath: string) =>
+        iconPathsByNormalizedPath.get(normalizeAssetPath(requestedPath));
+      const decorate = (map: import("./esfMap/types").EsfMapPayload) => {
+        const withFactions = addFactionDataToEsfMap(map, buildings.data, (flagPath) => {
+          const registeredPath = registeredIconPath(flagPath);
+          return registeredPath ? iconAssetUrl(buildings.iconGeneration, registeredPath) : undefined;
+        });
+        const withClimates = addClimateDataToEsfMap(withFactions, buildings.data);
+        return {
+          ...addSettlementTypeDataToEsfMap(withClimates, buildings.data),
+          diplomacyIconUrls: buildings.diplomacyIconUrls,
+        };
+      };
+      if (cachedEsfMapData?.signature === signature) {
+        return { success: true, map: decorate(cachedEsfMapData.data) };
+      }
+
+      const diskData = await loadEsfMapDiskCache(app.getPath("userData"), signature);
+      if (diskData) {
+        cachedEsfMapData = { signature, data: diskData };
+        return { success: true, map: decorate(diskData) };
+      }
+
+      const extractedMap = await loadEsfMapData(enabledMods, campaignName);
+      const data = decorate(extractedMap);
+      const { diplomacyIconUrls: _diplomacyIconUrls, ...withoutDiplomacyUrls } = data;
+      const cacheData = {
+        ...withoutDiplomacyUrls,
+        factions: data.factions.map(({ flagUrl: _flagUrl, ...faction }) => faction),
+      };
+      await saveEsfMapDiskCache(app.getPath("userData"), signature, cacheData);
+      // saveEsfMapDiskCache replaces the cached copy's data URLs with whmm:// URLs. Copy those
+      // lightweight refs onto the decorated response too, so the first cold IPC response does not
+      // send the large base64 strings that were just externalised.
+      data.backgroundImage = cacheData.backgroundImage;
+      data.backgroundTextImage = cacheData.backgroundTextImage;
+      cachedEsfMapData = { signature, data: cacheData };
+      return { success: true, map: data };
+    } catch (error) {
+      console.log("getEsfMap failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  // --- Buildings -------------------------------------------------------------
+  const BUILDING_FRAME_PATH = "ui\\skins\\default\\building_frame.png";
+  const BUILDING_FRAME_PACK_NAME = "ui2.pack";
+  const DIPLOMACY_ICON_PATHS = {
+    mil_access: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_soft_access.png",
+    def_ally: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_defensive_alliance.png",
+    mil_ally: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_military_alliance.png",
+    non_aggression: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_nonaggression_pact.png",
+    vassals: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_vassal.png",
+    trade: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_trade_agreement.png",
+    war: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_join_war.png",
+    peace: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_peace.png",
+    confederate: "ui\\campaign ui\\diplomacy_icons\\diplomatic_option_confederation.png",
+  } as const;
+  /** Folders the game keeps building icons in. Scanned, not assumed: `icon` holds a bare name. */
+  const BUILDING_ICON_PREFIXES = ["ui\\campaign ui\\building_icons\\", "ui\\buildings\\"];
+  const BUILDING_ICON_BROWSE_PREFIX = "ui\\buildings\\icons\\";
+  const IMAGE_EXTENSION = /\.(png|jpg|jpeg|webp|tga)$/i;
+
+  /**
+   * `basename without extension` -> full packed file path, for every building icon in the packs.
+   *
+   * Vanilla names come from the global pack index, which answers both folder and exact-path lookups
+   * without reopening ~260 pack indices. Enabled mods are few and still inspected directly.
+   */
+  const buildBuildingIconIndex = async (dataFolder: string, vanillaPackPaths: string[], modPackPaths: string[]) => {
+    const byBaseName: Record<string, string> = {};
+    const browsePathsByNormalizedPath = new Map<string, string>();
+    const recordBuildingIcons = (packedFileNames: Iterable<string>) => {
+      for (const name of packedFileNames) {
+        const lower = name.toLowerCase();
+        if (!BUILDING_ICON_PREFIXES.some((prefix) => lower.startsWith(prefix))) continue;
+        if (!IMAGE_EXTENSION.test(lower)) continue;
+        const baseName = lower.slice(lower.lastIndexOf("\\") + 1).replace(IMAGE_EXTENSION, "");
+        byBaseName[baseName] = name;
+        if (lower.startsWith(BUILDING_ICON_BROWSE_PREFIX)) {
+          browsePathsByNormalizedPath.set(normalizeAssetPath(name), name);
+        }
+      }
+    };
+
+    const vanillaIndex = await getVanillaPackIndex();
+    const fallbackVanillaNames = new Map<string, Set<string>>();
+    if (vanillaIndex) {
+      for (const prefix of BUILDING_ICON_PREFIXES) {
+        recordBuildingIcons(collectVanillaFilesUnderPrefix(vanillaIndex, prefix).keys());
+      }
+    } else {
+      // The global index can be unavailable after a failed build. Preserve a slower path rather than
+      // losing every building image, but retain its results in the older per-pack filename cache.
+      for (const packPath of vanillaPackPaths) {
+        try {
+          const names = await getVanillaPackedFileNames(packPath);
+          fallbackVanillaNames.set(packPath, new Set(names.map(normalizeAssetPath)));
+          recordBuildingIcons(names);
+        } catch {
+          // One unreadable art pack must not take down the Buildings panel.
+        }
+      }
+    }
+
+    const modNames = new Map<string, Set<string>>();
+    for (const packPath of modPackPaths) {
+      try {
+        const names = await getVanillaPackedFileNames(packPath);
+        modNames.set(packPath, new Set(names.map(normalizeAssetPath)));
+        // Mods follow vanilla and later mods win, matching game load order.
+        recordBuildingIcons(names);
+      } catch {
+        // An unreadable mod cannot contribute an icon, but its tables were handled separately.
+      }
+    }
+
+    const sourcePackPath = (assetPath: string): string | undefined => {
+      const normalized = normalizeAssetPath(assetPath);
+      let source: string | undefined;
+      if (vanillaIndex) {
+        const packName = findVanillaPackContaining(vanillaIndex, normalized);
+        source = packName ? nodePath.join(dataFolder, packName) : undefined;
+      } else {
+        source = vanillaPackPaths.findLast((packPath) => fallbackVanillaNames.get(packPath)?.has(normalized));
+      }
+      for (const packPath of modPackPaths) {
+        if (modNames.get(packPath)?.has(normalized)) source = packPath;
+      }
+      return source;
+    };
+
+    return { byBaseName, buildingIconPaths: [...browsePathsByNormalizedPath.values()], sourcePackPath };
+  };
+
+  /** Strips any folder and extension so a raw `icon` cell can be matched against the index. */
+  const buildingIconBaseName = (icon: string) => {
+    const normalized = icon.replace(/\//g, "\\").toLowerCase();
+    return normalized.slice(normalized.lastIndexOf("\\") + 1).replace(IMAGE_EXTENSION, "");
+  };
+
+  const sendBuildingsDataRebuild = (isRebuilding: boolean) => {
+    if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+    mainWindow.webContents.send("buildingsDataRebuild", isRebuilding);
+  };
+
+  const buildingTablePrefixes = () =>
+    Array.from(
+      new Set(
+        BUILDINGS_TABLES.flatMap((tableName) =>
+          resolveTable(tableName).map((resolvedTable) => `db\\${resolvedTable}\\`),
+        ),
+      ),
+    );
+
+  /** Loc prefixes the Buildings panel reads, including replacement and effect text. */
+  const BUILDING_LOC_PREFIXES = [
+    "building_chains_encyclopedia_name_",
+    "building_chains_chain_tooltip_",
+    "building_culture_variants_name_",
+    "building_short_description_texts_short_description_",
+    "building_description_texts_description_",
+    "building_sets_onscreen_name_",
+    "land_units_onscreen_name_",
+    "campaigns_onscreen_name_",
+    "regions_onscreen_",
+    "cultures_name_",
+    "cultures_subcultures_name_",
+    "factions_screen_name_",
+    "settlement_types_name_",
+    "settlement_climate_types_ui_name_",
+    "effects_description_",
+    "ui_text_replacements_localised_text_",
+  ];
+
+  /**
+   * Reads one or more source packs into the raw shape stored by the split cache.
+   *
+   * `getLoc` must only see the source being captured. Mod localisation entries are copied by
+   * prefix as well as by row-driven lookup so translation-only mods survive a cache round trip.
+   */
+  const readBuildingsSourceFromPacks = (
+    packs: Pack[],
+    getLoc: (key: string) => string | undefined,
+    ownLocEntries?: Record<string, string>,
+  ): BuildingsSource => {
+    const packsTableData = getPacksTableData(packs, buildingTablePrefixes(), false) || [];
+    const tables: BuildingsTableRows = {};
+    const cloneSourcePackPaths: NonNullable<BuiltBuildingsData["cloneSourcePackPaths"]> = {
+      levels: {},
+      cultureVariants: {},
+      sets: {},
+    };
+    for (const canonicalTableName of BUILDINGS_TABLES) {
+      const rows: Array<Record<string, string>> = [];
+      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
+        const row = schemaRowToRecord(schemaFieldRow);
+        rows.push(row);
+        if (canonicalTableName === "building_levels_tables") {
+          const levelKey = row.level_name?.trim();
+          if (levelKey) cloneSourcePackPaths.levels[levelKey] = packViewData.packPath;
+        } else if (canonicalTableName === "building_culture_variants_tables") {
+          const building = row.building?.trim() ?? "";
+          if (building) {
+            cloneSourcePackPaths.cultureVariants[
+              variantLocKey(
+                building,
+                row.culture?.trim() ?? "",
+                row.subculture?.trim() ?? "",
+                row.faction?.trim() ?? "",
+              )
+            ] = packViewData.packPath;
+          }
+        } else if (canonicalTableName === "building_sets_tables") {
+          const setKey = row.key?.trim();
+          if (setKey) cloneSourcePackPaths.sets[setKey] = packViewData.packPath;
+        }
+      });
+      tables[canonicalTableName] = rows;
+    }
+
+    const localizations: Record<string, string> = {};
+    const record = (key: string) => {
+      const value = getLoc(key);
+      if (value !== undefined) localizations[key] = value;
+      return value;
+    };
+    const recordWithReplacements = (key: string) => {
+      const text = record(key);
+      for (const match of text?.matchAll(/{{tr:(.*?)}}/gi) ?? []) {
+        const token = match[1];
+        if (!token) continue;
+        const replacement = record(`ui_text_replacements_localised_text_${token}`) ?? record(token);
+        const nested = replacement?.match(/^{{tr:(.*?)}}$/i)?.[1];
+        if (nested && record(`ui_text_replacements_localised_text_${nested}`) === undefined) record(nested);
+      }
+      return text;
+    };
+
+    for (const row of tables.building_chains_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (!key) continue;
+      recordWithReplacements(`building_chains_encyclopedia_name_${key}`);
+      recordWithReplacements(`building_chains_chain_tooltip_${key}`);
+    }
+    for (const row of tables.building_culture_variants_tables ?? []) {
+      const building = (row.building ?? "").trim();
+      if (!building) continue;
+      const culture = (row.culture ?? "").trim();
+      const subculture = (row.subculture ?? "").trim();
+      const faction = (row.faction ?? "").trim();
+      recordWithReplacements(buildVariantNameLocKey(building, culture, subculture, faction));
+      const shortDescription = (row.short_description ?? "").trim();
+      if (shortDescription) {
+        recordWithReplacements(`building_short_description_texts_short_description_${shortDescription}`);
+      }
+      const description = (row.description ?? "").trim();
+      if (description) recordWithReplacements(`building_description_texts_description_${description}`);
+    }
+    for (const row of tables.building_sets_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`building_sets_onscreen_name_${key}`);
+    }
+    for (const row of tables.main_units_tables ?? []) {
+      const unit = (row.unit ?? "").trim();
+      const landUnit = (row.land_unit ?? "").trim();
+      if (landUnit) recordWithReplacements(`land_units_onscreen_name_${landUnit}`);
+      if (unit) recordWithReplacements(`land_units_onscreen_name_${unit}`);
+    }
+    for (const row of tables.campaigns_tables ?? []) {
+      const key = (row.campaign_name ?? "").trim();
+      if (key) recordWithReplacements(`campaigns_onscreen_name_${key}`);
+    }
+    for (const row of tables.regions_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`regions_onscreen_${key}`);
+    }
+    for (const row of tables.cultures_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`cultures_name_${key}`);
+    }
+    for (const row of tables.cultures_subcultures_tables ?? []) {
+      const key = (row.subculture ?? "").trim();
+      if (key) recordWithReplacements(`cultures_subcultures_name_${key}`);
+    }
+    for (const row of tables.factions_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`factions_screen_name_${key}`);
+    }
+    for (const row of tables.settlement_types_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (key) recordWithReplacements(`settlement_types_name_${key}`);
+    }
+    for (const row of tables.settlement_climate_types_tables ?? []) {
+      const key = (row.type ?? "").trim();
+      if (key) recordWithReplacements(`settlement_climate_types_ui_name_${key}`);
+    }
+    for (const row of tables.effects_tables ?? []) {
+      const key = (row.effect ?? "").trim();
+      if (key) recordWithReplacements(`effects_description_${key}`);
+    }
+    // An effect can be referenced by a building junction even when the effects metadata table does
+    // not carry a row for it. `buildBuildingsData` still localises that used effect, so capture it
+    // from both sources.
+    for (const row of tables.building_effects_junction_tables ?? []) {
+      const key = (row.effect ?? "").trim();
+      if (key) recordWithReplacements(`effects_description_${key}`);
+    }
+    for (const [key, value] of Object.entries(ownLocEntries ?? {})) {
+      if (BUILDING_LOC_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+        // Use the same replacement walk for translation-only entries as for row-driven entries, so
+        // a mod's replacement can itself point at another loc entry in that mod.
+        recordWithReplacements(key);
+        localizations[key] = value;
+      }
+    }
+
+    return { tables, localizations, cloneSourcePackPaths };
+  };
+
+  const buildBuildingsVanillaSource = async (
+    dataFolder: string,
+    buildingFramePackPath: string,
+  ): Promise<{ source: BuildingsSource; signature: string; signatureInputs: BuildingsVanillaSignatureInputs }> => {
+    const tablePrefixes = buildingTablePrefixes();
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
+    const vanillaStartposPaths = await getVanillaStartposFilePaths(dataFolder);
+    const identityPaths = [
+      ...new Set([dbPackPath, buildingFramePackPath, ...localizationPackPaths, ...vanillaStartposPaths]),
+    ];
+    const identities = await Promise.all(
+      identityPaths.map(async (packPath) => {
+        const [size, mtimeMs] = await readBuildingsPackIdentity(packPath);
+        return [nodePath.resolve(packPath), size, mtimeMs] as const;
+      }),
+    );
+    const signatureInputs: BuildingsVanillaSignatureInputs = {
+      feature: 4,
+      game: appData.currentGame,
+      schema: getVisualsSchemaHash(appData.currentGame),
+      identities,
+    };
+    const signature = createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex");
+    const cached = await loadVanillaBuildingsCache(app.getPath("userData"), signature, signatureInputs);
+    if (cached) {
+      console.log("Buildings: reusing the vanilla cache", { signature });
+      return { source: cached, signature, signatureInputs };
+    }
+
+    console.log("Buildings: rebuilding the vanilla half from the game's packs", { signature });
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, tablePrefixes, [dbPackPath], false);
+    if (!vanillaPacks) throw new Error("The game's building tables could not be read, try again");
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+    const source = readBuildingsSourceFromPacks(vanillaPacks, createBuildingsLocLookup(vanillaLocLookups));
+    releaseParsedTables(vanillaPacks, tablePrefixes);
+    await saveVanillaBuildingsCache(app.getPath("userData"), signature, source, signatureInputs);
+    return { source, signature, signatureInputs };
+  };
+
+  const buildBuildingsModSources = async (
+    orderedEnabledMods: Mod[],
+  ): Promise<Array<{ packPath: string; source: BuildingsModSegment }>> => {
+    if (orderedEnabledMods.length === 0) return [];
+
+    const segments: BuildingsModSegments = { ...(await loadBuildingsModSegments(app.getPath("userData"))) };
+    const identities = new Map(
+      await Promise.all(
+        orderedEnabledMods.map(async (mod) => [mod.path, await readBuildingsPackIdentity(mod.path)] as const),
+      ),
+    );
+    const stale = orderedEnabledMods.filter(
+      (mod) => !isSameBuildingsIdentity(segments[buildingsModSegmentKey(mod.path)]?.identity, identities.get(mod.path)),
+    );
+
+    if (stale.length > 0) {
+      console.log("Buildings: rebuilding mod cache segments", { count: stale.length, of: orderedEnabledMods.length });
+      await readMods(stale, false, true, false, true, buildingTablePrefixes(), undefined, false);
+      const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+      for (const mod of stale) {
+        const pack = packsByPath.get(mod.path);
+        if (!pack) continue;
+        const trie = getLocsTrie(pack);
+        const source = readBuildingsSourceFromPacks([pack], createBuildingsLocLookup([trie]), trie?.getEntries());
+        segments[buildingsModSegmentKey(mod.path)] = {
+          ...source,
+          identity: identities.get(mod.path) ?? [-1, -1],
+          lastUsedMs: Date.now(),
+        };
+      }
+      releaseParsedTables(
+        stale.map((mod) => packsByPath.get(mod.path)).filter((pack): pack is Pack => !!pack),
+        buildingTablePrefixes(),
+      );
+    } else {
+      console.log("Buildings: every enabled mod's cache segment is current", { count: orderedEnabledMods.length });
+    }
+
+    const now = Date.now();
+    for (const mod of orderedEnabledMods) {
+      const segment = segments[buildingsModSegmentKey(mod.path)];
+      if (segment) segment.lastUsedMs = now;
+    }
+    const saved = await saveBuildingsModSegments(app.getPath("userData"), segments);
+    return orderedEnabledMods
+      .map((mod) => ({ packPath: mod.path, source: saved[buildingsModSegmentKey(mod.path)] }))
+      .filter(
+        (entry): entry is { packPath: string; source: BuildingsModSegment } =>
+          !!entry.source && isSameBuildingsIdentity(entry.source.identity, identities.get(entry.packPath)),
+      );
+  };
+
+  const buildBuildingsSessionData = async (enabledMods: Mod[]): Promise<CachedBuildingsData> => {
+    if (appData.currentGame !== "wh3") throw new Error("Buildings are available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
+    const vanillaIconPackPaths = [...appData.allVanillaPackNames]
+      .filter(
+        (packName) =>
+          !packName.startsWith("audio_") &&
+          !packName.startsWith("movies") &&
+          !packName.startsWith("terrain") &&
+          !packName.startsWith("tile"),
+      )
+      .map((packName) => nodePath.join(dataFolder, packName));
+    const modIconPackPaths = orderedEnabledMods.map((mod) => mod.path);
+    const buildingFramePackPath = nodePath.join(dataFolder, BUILDING_FRAME_PACK_NAME);
+    const vanilla = await buildBuildingsVanillaSource(dataFolder, buildingFramePackPath);
+    const modSources = await buildBuildingsModSources(orderedEnabledMods);
+    const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods);
+    const merged = mergeBuildingsSources(vanilla.source, modSources);
+    // Startpos is selected as one effective ESF file per campaign, rather than being an additive
+    // DB table. Resolve that selection after the independently cached DB segments are merged. Keep
+    // any DB-shaped rows as the old path did; the derived table-key dedupe lets ESF rows override
+    // matching entries while preserving rows from campaigns with no ESF candidate.
+    if (startposSlotTemplateRows.length > 0) {
+      (merged.tables.start_pos_region_slot_templates_tables ||= []).push(...startposSlotTemplateRows);
+    }
+
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify({
+          feature: 4,
+          game: appData.currentGame,
+          vanilla: vanilla.signature,
+          mods: orderedEnabledMods.map((mod) => ({
+            path: nodePath.resolve(mod.path),
+            loadOrder: mod.loadOrder ?? null,
+            identity: modSources.find((entry) => entry.packPath === mod.path)?.source.identity ?? [-1, -1],
+          })),
+          startposSlotTemplateRows,
+        }),
+      )
+      .digest("hex");
+    if (cachedBuildingsData?.signature === signature) {
+      console.log("buildBuildingsSessionData: using in-memory Buildings cache", { signature });
+      return cachedBuildingsData;
+    }
+    if (cachedBuildingsData) {
+      console.log("buildBuildingsSessionData: in-memory Buildings cache miss: signature changed", {
+        cachedSignature: cachedBuildingsData.signature,
+        requestedSignature: signature,
+        changedVanillaInputs: describeBuildingsVanillaSignatureChanges(
+          cachedBuildingsData.vanillaSignatureInputs,
+          vanilla.signatureInputs,
+        ),
+      });
+    } else {
+      console.log("buildBuildingsSessionData: in-memory Buildings cache miss: no cached data", {
+        requestedSignature: signature,
+      });
+    }
+
+    sendBuildingsDataRebuild(true);
+    try {
+      const data = buildBuildingsData(merged.tables, (key) => merged.localizations[key]);
+      data.buildingFrame = merged.buildingFrame;
+      data.cloneSourcePackPaths = merged.cloneSourcePackPaths;
+      const icons = await registerBuildingIcons(data, dataFolder, vanillaIconPackPaths, modIconPackPaths);
+
+      // The frame is part of the vanilla source. It is discovered alongside the other assets on
+      // the first build, then written back without touching the mod file.
+      if (data.buildingFrame && vanilla.source.buildingFrame !== data.buildingFrame) {
+        vanilla.source.buildingFrame = data.buildingFrame;
+        await saveVanillaBuildingsCache(
+          app.getPath("userData"),
+          vanilla.signature,
+          vanilla.source,
+          vanilla.signatureInputs,
+        );
+      }
+
+      cachedBuildingsData = {
+        signature,
+        vanillaSignatureInputs: vanilla.signatureInputs,
+        data,
+        tables: merged.tables,
+        localizations: merged.localizations,
+        dbPackPath,
+        ...icons,
+      };
+      return cachedBuildingsData;
+    } finally {
+      sendBuildingsDataRebuild(false);
+    }
+  };
+
+  /** Loads the icon bytes for every variant icon the data mentions and registers them for serving. */
+  const registerBuildingIcons = async (
+    data: BuiltBuildingsData,
+    dataFolder: string,
+    vanillaPackPaths: string[],
+    modPackPaths: string[],
+  ) => {
+    let buildingFrame: AssetBytes | undefined;
+    if (data.buildingFrame) {
+      buildingFrame = { buffer: Buffer.from(data.buildingFrame, "base64"), mimeType: "image/png" };
+    } else {
+      const vanillaUiPackPath = vanillaPackPaths.find(
+        (packPath) => nodePath.basename(packPath).toLowerCase() === BUILDING_FRAME_PACK_NAME,
+      );
+      if (vanillaUiPackPath) {
+        const uiPack = (await getIconPacks([vanillaUiPackPath]))[0];
+        if (uiPack) {
+          const loadedFrame = await loadIconsFromPacks([uiPack], [BUILDING_FRAME_PATH]);
+          buildingFrame = loadedFrame[BUILDING_FRAME_PATH];
+          if (buildingFrame) data.buildingFrame = buildingFrame.buffer.toString("base64");
+        }
+      }
+    }
+
+    const iconIndex = await buildBuildingIconIndex(dataFolder, vanillaPackPaths, modPackPaths);
+    const iconPathByBaseName: Record<string, string> = {};
+    for (const variants of Object.values(data.variantsByLevel)) {
+      for (const variant of variants) {
+        if (!variant.icon) continue;
+        const baseName = buildingIconBaseName(variant.icon);
+        const packedFilePath = iconIndex.byBaseName[baseName];
+        if (packedFilePath) iconPathByBaseName[baseName] = packedFilePath;
+      }
+    }
+    const effectIconPaths = new Set<string>();
+    for (const effects of Object.values(data.effectsByLevel)) {
+      for (const effect of effects) {
+        if (effect.icon) effectIconPaths.add(`ui\\campaign ui\\effect_bundles\\${effect.icon}`);
+      }
+    }
+    const unitCardPaths = new Set<string>();
+    for (const units of [...Object.values(data.garrisonByLevel), ...Object.values(data.recruitableByLevel)]) {
+      for (const unit of units) if (unit.cardPath) unitCardPaths.add(unit.cardPath);
+    }
+    const factionFlagPaths = new Set<string>();
+    for (const faction of data.factions) {
+      const flagPath = factionFlagPath(faction.flagPath);
+      if (flagPath) factionFlagPaths.add(flagPath);
+    }
+    const diplomacyIconPaths = Object.values(DIPLOMACY_ICON_PATHS);
+    const wantedPaths = Array.from(
+      new Set([
+        ...(buildingFrame ? [BUILDING_FRAME_PATH] : []),
+        ...iconIndex.buildingIconPaths,
+        ...Object.values(iconPathByBaseName),
+        ...effectIconPaths,
+        ...unitCardPaths,
+        ...factionFlagPaths,
+        ...diplomacyIconPaths,
+      ]),
+    );
+    const wantedPackPaths = new Set(
+      wantedPaths.map(iconIndex.sourcePackPath).filter((packPath): packPath is string => !!packPath),
+    );
+    const neededPackPaths = [...vanillaPackPaths, ...modPackPaths].filter((packPath) => wantedPackPaths.has(packPath));
+    const icons =
+      wantedPaths.length > 0 ? await loadIconsFromPacks(await getIconPacks(neededPackPaths), wantedPaths) : {};
+    if (buildingFrame) icons[BUILDING_FRAME_PATH] = buildingFrame;
+    const iconGeneration = registerIconAssets(icons);
+    const diplomacyIconUrls = Object.fromEntries(
+      Object.entries(DIPLOMACY_ICON_PATHS).flatMap(([key, iconPath]) =>
+        icons[iconPath] ? [[key, iconAssetUrl(iconGeneration, iconPath)]] : [],
+      ),
+    );
+    return {
+      iconPathByBaseName,
+      buildingIconPaths: iconIndex.buildingIconPaths,
+      icons,
+      iconGeneration,
+      diplomacyIconUrls,
+    };
+  };
+
+  /** The packs icon bytes are read out of, loaded lazily and only once per session. */
+  const getIconPacks = async (iconPackPaths: string[]) => {
+    const loaded = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    const missing = iconPackPaths.filter((packPath) => !loaded.has(packPath));
+    if (missing.length > 0) {
+      await readModsByPath(missing, { skipParsingTables: true }, true, false);
+    }
+    const byPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    return iconPackPaths.map((packPath) => byPath.get(packPath)).filter((pack): pack is Pack => !!pack);
+  };
+
+  /**
+   * Builds the same ability cards the skill tree uses, but for the effects on one ancillary.
+   *
+   * Skill data is normally loaded lazily by the skill-tree tab/window. Ancillaries can be opened
+   * first, so make sure the shared skills core exists before asking it for the effect mappings. The
+   * result is kept narrow: only this ancillary's effect keys and the icon URLs those cards need
+   * cross the IPC boundary.
+   */
+  const getAncillaryAbilityTooltips = async (
+    effectKeys: string[],
+    enabledMods: Mod[],
+  ): Promise<AncillaryAbilityTooltips | undefined> => {
+    if (effectKeys.length === 0) return undefined;
+
+    const skillsSignature = buildSkillsDataSignature(enabledMods, appData.currentGame);
+    if (!appData.skillsData || appData.lastSkillsDataSignature !== skillsSignature) {
+      await getSkillsData(enabledMods);
+    }
+
+    const skillsData = appData.skillsData;
+    if (!skillsData || appData.lastSkillsDataSignature !== skillsSignature) return undefined;
+
+    const getLoc = (locId: string) => {
+      for (const locsInPack of Object.values(skillsData.locs)) {
+        const localized = locsInPack.get(locId);
+        if (localized) return localized;
+      }
+      return undefined;
+    };
+    const { abilityTooltipsByKey, reducedEffectToUnitAbilityEnables, iconPathsToLoad } =
+      buildAbilityTooltipDataForEffects({
+        effectKeys: [...new Set(effectKeys)],
+        effectToUnitAbilityEnables: skillsData.effectToUnitAbilityEnables,
+        unitAbilitiesByKey: skillsData.unitAbilitiesByKey,
+        unitSpecialAbilitiesByKey: skillsData.unitSpecialAbilitiesByKey,
+        bombardmentsByKey: skillsData.bombardmentsByKey,
+        projectilesByKey: skillsData.projectilesByKey,
+        explosionsByKey: skillsData.explosionsByKey,
+        vortexesByKey: skillsData.vortexesByKey,
+        abilityToPhaseIds: skillsData.abilityToPhaseIds,
+        phasesById: skillsData.phasesById,
+        phaseStatEffectsByPhaseId: skillsData.phaseStatEffectsByPhaseId,
+        uiUnitStatIconsByStat: skillsData.uiUnitStatIconsByStat,
+        kvDirectDamageMinUnary: skillsData.kvDirectDamageMinUnary,
+        kvDirectDamageLarge: skillsData.kvDirectDamageLarge,
+        abilityToAdditionalUiEffectKeys: skillsData.abilityToAdditionalUiEffectKeys,
+        additionalUiEffectsByKey: skillsData.additionalUiEffectsByKey,
+        abilityToAutoDeactivateFlags: skillsData.abilityToAutoDeactivateFlags,
+        abilityToGroupKeys: skillsData.abilityToGroupKeys,
+        specialAbilityGroupsByKey: skillsData.specialAbilityGroupsByKey,
+        getLoc,
+      });
+
+    const missingIconPaths = iconPathsToLoad.filter((iconPath) => !skillsData.icons[iconPath]);
+    if (missingIconPaths.length > 0) {
+      const vanillaIconPackPaths = (await findVanillaPacksHoldingIcons(missingIconPaths)) ?? [];
+      const iconPackPaths = [
+        ...skillsData.skillsDataPackPaths,
+        ...vanillaIconPackPaths.filter((packPath) => !skillsData.skillsDataPackPaths.includes(packPath)),
+      ];
+      const addedIconGeneration = await loadMissingIconsInto(
+        skillsData.icons,
+        await getIconPacks(iconPackPaths),
+        iconPathsToLoad,
+      );
+      if (addedIconGeneration) skillsData.iconGeneration = addedIconGeneration;
+    }
+
+    const icons: Record<string, string> = {};
+    for (const iconPath of iconPathsToLoad) {
+      if (skillsData.icons[iconPath]) icons[iconPath] = iconAssetUrl(skillsData.iconGeneration, iconPath);
+    }
+
+    const byEffect: Record<string, AbilityTooltipData[]> = {};
+    for (const effectKey of effectKeys) {
+      const seenAbilityKeys = new Set<string>();
+      const abilities = (reducedEffectToUnitAbilityEnables[effectKey] || [])
+        .map((mapping) => abilityTooltipsByKey[mapping.unitAbilityKey])
+        .filter((ability): ability is AbilityTooltipData => {
+          if (!ability || seenAbilityKeys.has(ability.key)) return false;
+          seenAbilityKeys.add(ability.key);
+          return true;
+        });
+      if (abilities.length > 0) byEffect[effectKey] = abilities;
+    }
+
+    return { byEffect, icons };
+  };
+
+  const buildingsBuilds = createSerializedBuilds();
+  const ensureBuildingsData = async (enabledMods: Mod[]) =>
+    buildingsBuilds.run(buildBuildingsBuildKey(enabledMods, appData.currentGame), () =>
+      buildBuildingsSessionData(enabledMods),
+    );
+
+  /**
+   * The schema each buildings table's rows have to be written with.
+   *
+   * The version matters: writing rows against a different one than the game's own table uses makes
+   * the pack unreadable. Same choice `saveSkillsPack` makes - prefer the version the vanilla pack
+   * carries, fall back to the newest the schema knows.
+   */
+  const getBuildingsTableSchemas = async (): Promise<Record<string, DBVersion>> => {
+    const defaultTableVersions = await getDefaultTableVersions();
+    const schemas: Record<string, DBVersion> = {};
+    for (const tableName of BUILDINGS_TABLES) {
+      const versions = DBNameToDBVersions[appData.currentGame][tableName];
+      if (!versions || versions.length === 0) continue;
+      const defaultVersion = defaultTableVersions?.[tableName];
+      schemas[tableName] = versions.find((version) => version.version === defaultVersion) || versions[0];
+    }
+    return schemas;
+  };
+
+  const toBuildingsCatalog = (
+    built: CachedBuildingsData,
+    tableSchemas: Record<string, DBVersion>,
+  ): BuildingsCatalog => {
+    const assetUrl = (packedFilePath: string | undefined) =>
+      packedFilePath && built.icons[packedFilePath] ? iconAssetUrl(built.iconGeneration, packedFilePath) : undefined;
+    const buildingIcons = built.buildingIconPaths
+      .map((path) => ({
+        path,
+        name: buildingIconBaseName(path),
+        iconUrl: assetUrl(path),
+      }))
+      .filter((icon): icon is { path: string; name: string; iconUrl: string } => icon.iconUrl !== undefined)
+      .sort((first, second) => collator.compare(first.name, second.name) || collator.compare(first.path, second.path));
+    const unitGroupsByUnit: Record<string, string[]> = {};
+    for (const [unitGroup, units] of Object.entries(built.data.garrisonUnitsByGroup)) {
+      for (const unit of units) {
+        (unitGroupsByUnit[unit.unitKey] ||= []).push(unitGroup);
+      }
+    }
+
+    return {
+      tableSchemas,
+      campaigns: built.data.campaigns,
+      regions: built.data.regions,
+      cultures: built.data.cultures,
+      subcultures: built.data.subcultures,
+      factions: built.data.factions,
+      settlementTypes: built.data.settlementTypes,
+      foreignSlotTypes: resolveForeignSlotTypes(built.data),
+      units: built.data.units,
+      unitGroups: built.data.unitGroups,
+      unitGroupsByUnit,
+      cultureVariantsByBuilding: built.data.variantsByLevel,
+      buildingIcons,
+      effects: built.data.effects,
+      effectScopes: built.data.effectScopes,
+      chainKeys: Object.keys(built.data.chains).sort(),
+      dbPackPath: built.dbPackPath,
+      moddersPrefix: appData.moddersPrefix,
+      nextNumericIds: built.data.nextNumericIds,
+    };
+  };
+
+  /**
+   * Rebuilds every structure and option list from the effective rows. Keeping this as the same
+   * `buildBuildingsData` path used at initial load means a table cannot be consumed by the view yet
+   * forgotten by a separate incremental updater. `start_pos_*` rows are deliberately immutable.
+   */
+  const applyPendingBuildingsRows = (built: CachedBuildingsData, pendingEdits?: BuildingsEditState) => {
+    if (!pendingEdits) return built.data;
+    const rowsByTable = newRowsByTable(pendingEdits);
+    const hasApplicableRows = Object.keys(rowsByTable).some(
+      (table) => table === LOC_TABLE || !table.startsWith("start_pos_"),
+    );
+    if (!hasApplicableRows) return built.data;
+
+    const pendingLoc: Record<string, string> = {};
+    for (const row of rowsByTable[LOC_TABLE] ?? []) {
+      const key = (row.values.key ?? "").trim();
+      if (key) pendingLoc[key] = row.values.text ?? "";
+    }
+    const data = applyNewRowsToBuildingsData(built.tables, pendingEdits, (tables) =>
+      buildBuildingsData(tables, (key) =>
+        Object.prototype.hasOwnProperty.call(pendingLoc, key) ? pendingLoc[key] : built.localizations[key],
+      ),
+    );
+    // The shared frame is an asset added after table extraction rather than a DB-derived field.
+    data.buildingFrame = built.data.buildingFrame;
+    return data;
+  };
+
+  /** Fills in the icon URLs the renderer renders; the data itself holds only pack-relative paths. */
+  const decorateBuildingsView = (view: BuildingsRegionView, built: CachedBuildingsData): BuildingsRegionView => {
+    const assetUrl = (packedFilePath: string | undefined) =>
+      packedFilePath && built.icons[packedFilePath] ? iconAssetUrl(built.iconGeneration, packedFilePath) : undefined;
+
+    view.buildingFrameUrl = assetUrl(BUILDING_FRAME_PATH);
+    for (const band of view.bands) {
+      for (const column of band.columns) {
+        for (const tile of column.tiles) {
+          const variant = tile.variant;
+          const variantSource = variant
+            ? built.data.cloneSourcePackPaths?.cultureVariants[
+                variantLocKey(tile.levelKey, variant.culture, variant.subculture, variant.faction)
+              ]
+            : undefined;
+          tile.cloneSourcePackPath =
+            variantSource ?? built.data.cloneSourcePackPaths?.levels[tile.levelKey] ?? built.dbPackPath;
+          tile.iconUrl = assetUrl(
+            tile.iconPath ? built.iconPathByBaseName[buildingIconBaseName(tile.iconPath)] : undefined,
+          );
+          for (const effect of tile.effects) {
+            effect.iconUrl = assetUrl(effect.icon ? `ui\\campaign ui\\effect_bundles\\${effect.icon}` : undefined);
+          }
+          for (const unit of [...tile.garrison, ...tile.recruitable]) {
+            unit.cardUrl = assetUrl(unit.cardPath);
+          }
+        }
+      }
+    }
+    for (const band of view.bands) {
+      band.cloneSourcePackPath = built.data.cloneSourcePackPaths?.sets[band.setKey] ?? built.dbPackPath;
+    }
+    return view;
+  };
+
+  ipcMain.handle("getBuildingsCatalog", async (_event, enabledMods: Mod[]): Promise<BuildingsCatalogResponse> => {
+    try {
+      const built = await ensureBuildingsData(enabledMods);
+      return { success: true, catalog: toBuildingsCatalog(built, await getBuildingsTableSchemas()) };
+    } catch (error) {
+      console.log("getBuildingsCatalog failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle(
+    "getBuildingsRegionView",
+    async (
+      _event,
+      enabledMods: Mod[],
+      query: BuildingsRegionQuery,
+      pendingEdits?: BuildingsEditState,
+    ): Promise<BuildingsRegionViewResponse> => {
+      try {
+        const built = await ensureBuildingsData(enabledMods);
+        const data = applyPendingBuildingsRows(built, pendingEdits);
+        const view = {
+          ...resolveRegionBuildings(data, query),
+          culturesWithoutChains: resolveCulturesWithoutChains(data, query),
+        };
+        // Validated against the base data, not `data`: every pending row exists in the latter by
+        // construction, so an override would look like a perfectly ordinary key.
+        const rowIssues = pendingEdits ? validateNewRows(built.data, pendingEdits) : undefined;
+        const catalog = toBuildingsCatalog({ ...built, data }, await getBuildingsTableSchemas());
+        return { success: true, view: decorateBuildingsView(view, built), catalog, rowIssues };
+      } catch (error) {
+        console.log("getBuildingsRegionView failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "getBuildingsCaiRows",
+    async (
+      _event,
+      enabledMods: Mod[],
+      chainKey: string,
+      pendingEdits?: BuildingsEditState,
+    ): Promise<BuildingsCaiRowsResponse> => {
+      try {
+        const built = await ensureBuildingsData(enabledMods);
+        const data = applyPendingBuildingsRows(built, pendingEdits);
+        const rowsByTable: Record<string, Array<Record<string, string>>> = {};
+        const values = data.caiValuesByChain[chainKey];
+        if (values?.length) rowsByTable.cai_construction_system_building_values_tables = values;
+        const synergies = data.caiSynergiesByChain[chainKey];
+        if (synergies?.length) rowsByTable.cai_construction_system_synergies_tables = synergies;
+        return { success: true, rowsByTable, superChain: data.chains[chainKey]?.superChain };
+      } catch (error) {
+        console.log("getBuildingsCaiRows failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+
+  // --- Ancillaries -----------------------------------------------------------
+  const ANCILLARY_TABLE_PREFIXES = ANCILLARY_TABLES.map((tableName) => `db\\${tableName}\\`);
+
+  /** Loc key prefixes the Ancillaries panel reads. Used to scan a mod's own loc entries. */
+  const ANCILLARY_LOC_PREFIXES = [
+    "ancillaries_onscreen_name_",
+    "ancillaries_explanation_text_",
+    "ancillaries_colour_text_",
+    "ancillaries_categories_onscreen_name_",
+    "ancillaries_subcategories_onscreen_name_",
+    "ancillary_uniqueness_groupings_onscreen_name_",
+    "ancillary_uniqueness_groupings_description_",
+    "effects_description_",
+    "ui_text_replacements_localised_text_",
+  ];
+
+  /**
+   * The rows and locs one pack contributes, read from that pack alone.
+   *
+   * `ownLocEntries` is a mod pack's complete loc table. Scanning it is what makes a *translation
+   * only* mod work: such a pack defines no ancillary rows, so a purely row-driven capture would
+   * record nothing from it and its override of a vanilla name would be lost. Vanilla has no
+   * equivalent - its loc lookup is the cache reader, which cannot be enumerated - but it does not
+   * need one, since its own rows define every key it can supply.
+   */
+  const readAncillariesSourceFromPacks = (
+    packs: Pack[],
+    getLoc: (key: string) => string | undefined,
+    ownLocEntries?: Record<string, string>,
+  ) => {
+    const packsTableData = getPacksTableData(packs, ANCILLARY_TABLE_PREFIXES, false) || [];
+    const tables: AncillariesTableRows = {};
+    for (const tableName of ANCILLARY_TABLES) {
+      const rows: Array<Record<string, string>> = [];
+      getTableRowData(packsTableData, tableName, (schemaFieldRow) => {
+        rows.push(schemaRowToRecord(schemaFieldRow));
+      });
+      tables[tableName] = rows;
+    }
+
+    // Capture only the keys this source's own rows can need. Recorded rather than retaining the loc
+    // tries, which cost far more than the handful of strings a mod actually defines.
+    const localizations: Record<string, string> = {};
+    const record = (key: string) => {
+      const value = getLoc(key);
+      if (value != undefined) localizations[key] = value;
+      return value;
+    };
+    /**
+     * Records a key, and the keys its own text is built out of.
+     *
+     * Any of these strings can be a `{{tr:...}}` token, which `resolveTextReplacements` looks up as
+     * a loc key of its own - one level of nesting included. Without recording those too, the cached
+     * snapshot resolves the token to its bare name: a category reads "{{tr:foo}}" rather than its
+     * name.
+     */
+    const recordWithReplacements = (key: string) => {
+      const text = record(key);
+      for (const match of text?.matchAll(/{{tr:(.*?)}}/gi) ?? []) {
+        const token = match[1];
+        if (!token) continue;
+        const replacement = record(`ui_text_replacements_localised_text_${token}`) ?? record(token);
+        const nested = replacement?.match(/^{{tr:(.*?)}}$/i)?.[1];
+        if (nested && record(`ui_text_replacements_localised_text_${nested}`) === undefined) record(nested);
+      }
+      return text;
+    };
+
+    for (const row of tables.ancillaries_tables ?? []) {
+      const key = (row.key ?? "").trim();
+      if (!key) continue;
+      recordWithReplacements(`ancillaries_onscreen_name_${key}`);
+      recordWithReplacements(`ancillaries_explanation_text_${key}`);
+      recordWithReplacements(`ancillaries_colour_text_${key}`);
+    }
+    for (const row of tables.ancillaries_categories_tables ?? []) {
+      const key = (row.category ?? "").trim();
+      if (key) recordWithReplacements(`ancillaries_categories_onscreen_name_${key}`);
+    }
+    for (const row of tables.ancillaries_subcategories_tables ?? []) {
+      const key = (row.subcategory ?? "").trim();
+      if (key) recordWithReplacements(`ancillaries_subcategories_onscreen_name_${key}`);
+    }
+    for (const row of tables.ancillary_uniqueness_groupings_tables ?? []) {
+      const key = (row.group_key ?? "").trim();
+      if (!key) continue;
+      recordWithReplacements(ancillaryUniquenessGroupingNameLocKey(key));
+      recordWithReplacements(ancillaryUniquenessGroupingDescriptionLocKey(key));
+    }
+    // Every effect, not only the ones an ancillary already has: the "+ Add effect" picker offers
+    // all of them, and a key recorded here is the only way the panel can name one later.
+    for (const row of tables.effects_tables ?? []) {
+      const effect = (row.effect ?? "").trim();
+      if (effect) recordWithReplacements(`effects_description_${effect}`);
+    }
+    for (const [key, value] of Object.entries(ownLocEntries ?? {})) {
+      if (ANCILLARY_LOC_PREFIXES.some((prefix) => key.startsWith(prefix))) localizations[key] = value;
+    }
+    return { tables, localizations } satisfies AncillariesSource;
+  };
+
+  /**
+   * The vanilla half: db.pack plus the localisation packs, keyed on their identities alone.
+   *
+   * No mod list goes into the signature, which is the whole point of the split - enabling or
+   * disabling a mod leaves this valid and only the mod segments below are revisited.
+   */
+  const buildAncillariesVanillaSource = async (dataFolder: string): Promise<AncillariesSource> => {
+    const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const identityPaths = [dbPackPath, ...localizationPackPaths];
+    const identities = await Promise.all(
+      identityPaths.map(async (packPath) => {
+        const [size, mtimeMs] = await readPackIdentity(packPath);
+        return [nodePath.resolve(packPath), size, mtimeMs] as const;
+      }),
+    );
+    const signatureInputs: AncillariesVanillaSignatureInputs = {
+      feature: 1,
+      game: appData.currentGame,
+      schema: getVisualsSchemaHash(appData.currentGame),
+      identities,
+    };
+    const signature = createHash("sha256").update(JSON.stringify(signatureInputs)).digest("hex");
+
+    const cached = await loadVanillaAncillariesCache(app.getPath("userData"), signature, signatureInputs);
+    if (cached) {
+      console.log("Ancillaries: reusing the vanilla cache", { signature });
+      return cached;
+    }
+
+    console.log("Ancillaries: rebuilding the vanilla half from the game's packs", { signature });
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, ANCILLARY_TABLE_PREFIXES, [dbPackPath], false);
+    if (!vanillaPacks) {
+      throw new Error("The game's ancillary tables could not be read, try again");
+    }
+    // Read separately from the tables: readVanillaPackFromCache refuses any request with readLocs,
+    // so combining the two would give up the cache for the whole build.
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
+    const getLoc = createAncillariesLocLookup(vanillaLocLookups);
+    const source = readAncillariesSourceFromPacks(vanillaPacks, getLoc);
+
+    releaseParsedTables(vanillaPacks, ANCILLARY_TABLE_PREFIXES);
+    await saveVanillaAncillariesCache(app.getPath("userData"), signature, source, signatureInputs);
+    return source;
+  };
+
+  /**
+   * The mod half: one segment per enabled mod, each keyed on that pack's own size and mtime.
+   *
+   * Packs are read one at a time rather than in a single merged call, because a segment is only
+   * reusable if it holds exactly one pack's rows. That is the cost of not rebuilding all of them
+   * when one mod changes.
+   */
+  const buildAncillariesModSources = async (
+    dataFolder: string,
+    orderedEnabledMods: Mod[],
+  ): Promise<Array<{ packPath: string; source: AncillariesSource }>> => {
+    if (orderedEnabledMods.length === 0) return [];
+
+    const segments: AncillariesModSegments = { ...(await loadAncillariesModSegments(app.getPath("userData"))) };
+    const identities = new Map(
+      await Promise.all(orderedEnabledMods.map(async (mod) => [mod.path, await readPackIdentity(mod.path)] as const)),
+    );
+    const stale = orderedEnabledMods.filter(
+      (mod) => !isSameIdentity(segments[modSegmentKey(mod.path)]?.identity, identities.get(mod.path)),
+    );
+
+    if (stale.length > 0) {
+      console.log("Ancillaries: rebuilding mod cache segments", { count: stale.length, of: orderedEnabledMods.length });
+      await readMods(stale, false, true, false, true, ANCILLARY_TABLE_PREFIXES, undefined, false);
+      const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+      // Mod locs stay on the live path; the vanilla lookup is not consulted here so a segment never
+      // captures a string it did not itself define.
+      for (const mod of stale) {
+        const pack = packsByPath.get(mod.path);
+        if (!pack) continue;
+        const trie = getLocsTrie(pack);
+        const getLoc = createAncillariesLocLookup([trie]);
+        segments[modSegmentKey(mod.path)] = {
+          ...readAncillariesSourceFromPacks([pack], getLoc, trie?.getEntries()),
+          identity: identities.get(mod.path) ?? [-1, -1],
+          lastUsedMs: Date.now(),
+        };
+      }
+      releaseParsedTables(
+        stale.map((mod) => packsByPath.get(mod.path)).filter((pack): pack is Pack => !!pack),
+        ANCILLARY_TABLE_PREFIXES,
+      );
+    } else {
+      console.log("Ancillaries: every enabled mod's cache segment is current", { count: orderedEnabledMods.length });
+    }
+
+    // Refresh the LRU stamp on every segment this build used, reused or not, so the pruner drops
+    // the mods that have actually gone quiet.
+    const now = Date.now();
+    for (const mod of orderedEnabledMods) {
+      const segment = segments[modSegmentKey(mod.path)];
+      if (segment) segment.lastUsedMs = now;
+    }
+    const saved = await saveAncillariesModSegments(app.getPath("userData"), segments);
+
+    return orderedEnabledMods
+      .map((mod) => ({ packPath: mod.path, source: saved[modSegmentKey(mod.path)] }))
+      .filter((entry): entry is { packPath: string; source: AncillariesModSegment } => !!entry.source);
+  };
+
+  /**
+   * Loads every icon the data mentions and registers it for serving.
+   *
+   * Four sources, all addressed by exact path, so the global vanilla file index answers "which
+   * pack wins" without opening anything: the ancillary's own `ui_icon`, its category's icon, one
+   * per effect, and every ancillary type's icon for the type picker.
+   */
+  const effectIconPath = (icon: string | undefined) => (icon ? `ui\\campaign ui\\effect_bundles\\${icon}` : undefined);
+
+  const registerAncillaryIcons = async (data: BuiltAncillariesData, dataFolder: string, modPackPaths: string[]) => {
+    const wantedPaths = new Set<string>();
+    for (const ancillary of data.ancillaries) {
+      if (ancillary.iconPath) wantedPaths.add(normalizeAssetPath(ancillary.iconPath));
+    }
+    for (const category of data.categories) {
+      if (category.iconName) wantedPaths.add(normalizeAssetPath(categoryIconPath(category.iconName)));
+    }
+    // Types no ancillary uses yet still need their icon: the type picker offers all of them.
+    for (const iconPath of Object.values(data.typeIcons)) wantedPaths.add(normalizeAssetPath(iconPath));
+    // Every effect, not only the ones in use: the "+ Add effect" picker shows an icon per option.
+    // Effects share icons heavily, so the deduped set stays a fraction of the effect count.
+    for (const effect of data.effects) {
+      const iconPath = effectIconPath(effect.icon);
+      if (iconPath) wantedPaths.add(normalizeAssetPath(iconPath));
+    }
+    const paths = [...wantedPaths];
+    if (paths.length === 0) return { icons: {} as Record<string, AssetBytes>, iconGeneration: registerIconAssets({}) };
+
+    const vanillaPackPaths =
+      (await findVanillaPacksHoldingIcons(paths)) ??
+      [...appData.allVanillaPackNames].map((packName) => nodePath.join(dataFolder, packName));
+    // Mods come after vanilla so a mod that replaces an icon wins, matching game load order.
+    const icons = await loadIconsFromPacks(await getIconPacks([...vanillaPackPaths, ...modPackPaths]), paths);
+    return { icons, iconGeneration: registerIconAssets(icons) };
+  };
+
+  const buildAncillariesSessionData = async (enabledMods: Mod[]): Promise<CachedAncillariesData> => {
+    if (appData.currentGame !== "wh3") throw new Error("Ancillaries are available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+
+    const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
+    const vanilla = await buildAncillariesVanillaSource(dataFolder);
+    const modSources = await buildAncillariesModSources(dataFolder, orderedEnabledMods);
+
+    // Both halves are now current, so their identities are the whole signature. Recomputing it here
+    // rather than up front is what lets each half decide independently whether it had to rebuild.
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify({
+          game: appData.currentGame,
+          schema: getVisualsSchemaHash(appData.currentGame),
+          vanillaRows: Object.fromEntries(
+            ANCILLARY_TABLES.map((tableName) => [tableName, vanilla.tables[tableName]?.length ?? 0]),
+          ),
+          mods: modSources.map(({ packPath, source }) => [
+            nodePath.resolve(packPath),
+            source.tables.ancillaries_tables?.length ?? 0,
+            source.tables.ancillary_to_effects_tables?.length ?? 0,
+          ]),
+        }),
+      )
+      .digest("hex");
+    if (cachedAncillariesData?.signature === signature) {
+      console.log("Ancillaries: using the in-memory cache", { signature });
+      return cachedAncillariesData;
+    }
+
+    const merged = mergeAncillariesSources(vanilla, modSources);
+    const data = buildAncillariesData(
+      merged.tables,
+      (key) => merged.localizations[key],
+      merged.originPackPathByAncillary,
+    );
+    const icons = await registerAncillaryIcons(
+      data,
+      dataFolder,
+      orderedEnabledMods.map((mod) => mod.path),
+    );
+    cachedAncillariesData = {
+      signature,
+      data,
+      tables: merged.tables,
+      localizations: merged.localizations,
+      originPackPathByAncillary: merged.originPackPathByAncillary,
+      dbPackPath: nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3),
+      ...icons,
+    };
+    return cachedAncillariesData;
+  };
+
+  const ancillariesBuilds = createSerializedBuilds();
+  const ensureAncillariesData = async (enabledMods: Mod[]) =>
+    ancillariesBuilds.run(buildBuildingsBuildKey(enabledMods, appData.currentGame), () =>
+      buildAncillariesSessionData(enabledMods),
+    );
+
+  /**
+   * The schema each ancillaries table's rows have to be written with.
+   *
+   * Same choice `getBuildingsTableSchemas` makes: prefer the version the vanilla pack carries, fall
+   * back to the newest the schema knows. Writing rows against a different version than the game's
+   * own table uses makes the pack unreadable.
+   */
+  const getAncillariesTableSchemas = async (): Promise<Record<string, DBVersion>> => {
+    const defaultTableVersions = await getDefaultTableVersions();
+    const schemas: Record<string, DBVersion> = {};
+    for (const tableName of ANCILLARY_TABLES) {
+      const versions = DBNameToDBVersions[appData.currentGame][tableName];
+      if (!versions || versions.length === 0) continue;
+      const defaultVersion = defaultTableVersions?.[tableName];
+      schemas[tableName] = versions.find((version) => version.version === defaultVersion) || versions[0];
+    }
+    return schemas;
+  };
+
+  /** Fills in the icon URLs the renderer renders; the data itself holds only pack-relative paths. */
+  const ancillaryIconUrl = (built: CachedAncillariesData, packedFilePath: string | undefined) => {
+    if (!packedFilePath) return undefined;
+    const normalized = normalizeAssetPath(packedFilePath);
+    return built.icons[normalized] ? iconAssetUrl(built.iconGeneration, normalized) : undefined;
+  };
+
+  /** `ui\campaign ui\ancillaries\foo.png` -> `foo`, which is all the icon grid has room for. */
+  const ancillaryIconName = (iconPath: string) =>
+    (iconPath.split("\\").pop() ?? iconPath).replace(/\.(png|jpg|jpeg|tga|dds)$/i, "");
+
+  const toAncillariesCatalog = (
+    built: CachedAncillariesData,
+    data: BuiltAncillariesData,
+    tableSchemas: Record<string, DBVersion>,
+  ): AncillariesCatalog => ({
+    categories: data.categories.map((category) => ({
+      ...category,
+      iconUrl: ancillaryIconUrl(built, category.iconName ? categoryIconPath(category.iconName) : undefined),
+    })),
+    subcategories: data.subcategories,
+    uniquenessGroupings: data.uniquenessGroupings,
+    ancillaries: data.ancillaries.map((ancillary) => ({
+      ...ancillary,
+      iconUrl: ancillaryIconUrl(built, ancillary.iconPath),
+    })),
+    effects: data.effects.map((effect) => ({
+      ...effect,
+      iconUrl: ancillaryIconUrl(built, effectIconPath(effect.icon)),
+    })),
+    effectScopes: data.effectScopes,
+    types: data.typeKeys.map((key) => ({
+      key,
+      localizedName: key,
+      iconUrl: ancillaryIconUrl(built, data.typeIcons[key]),
+    })),
+    // Deduped because most icons are shared by several types, and an icon that failed to load is
+    // left out rather than offered as an empty tile.
+    icons: [...new Set(Object.values(data.typeIcons))]
+      .map((iconPath) => ({
+        path: iconPath,
+        name: ancillaryIconName(iconPath),
+        iconUrl: ancillaryIconUrl(built, iconPath),
+      }))
+      .filter((icon): icon is { path: string; name: string; iconUrl: string } => icon.iconUrl !== undefined)
+      .sort((firstIcon, secondIcon) => collator.compare(firstIcon.name, secondIcon.name)),
+    dbPackPath: built.dbPackPath,
+    tableSchemas,
+    moddersPrefix: appData.moddersPrefix,
+    nextNumericIds: data.nextNumericIds,
+  });
+
+  /**
+   * Rebuilds every structure from the effective rows. Keeping this on the same `buildAncillariesData`
+   * path used at initial load means a table cannot be consumed by the view yet forgotten by a
+   * separate incremental updater.
+   */
+  const applyPendingAncillariesRows = (built: CachedAncillariesData, pendingEdits?: AncillariesEditState) => {
+    if (!pendingEdits) return built.data;
+    const rowsByTable = ancillariesNewRowsByTable(pendingEdits);
+    if (Object.keys(rowsByTable).length === 0) return built.data;
+
+    const pendingLoc: Record<string, string> = {};
+    for (const row of rowsByTable[ANCILLARIES_LOC_TABLE] ?? []) {
+      const key = (row.values.key ?? "").trim();
+      if (key) pendingLoc[key] = row.values.text ?? "";
+    }
+    return applyNewRowsToAncillariesData(built.tables, pendingEdits, (tables) =>
+      buildAncillariesData(
+        tables,
+        (key) => (Object.prototype.hasOwnProperty.call(pendingLoc, key) ? pendingLoc[key] : built.localizations[key]),
+        built.originPackPathByAncillary,
+      ),
+    );
+  };
+
+  /** Marks the effect rows that came from pending edits, which are the only removable ones. */
+  const markPendingEffects = (
+    effects: AncillaryEffectRow[],
+    pendingEdits: AncillariesEditState | undefined,
+  ): AncillaryEffectRow[] => {
+    if (!pendingEdits) return effects;
+    const pendingByPair = new Map<string, string>();
+    for (const row of ancillariesNewRowsByTable(pendingEdits).ancillary_to_effects_tables ?? []) {
+      pendingByPair.set(`${row.values.ancillary ?? ""}|${row.values.effect ?? ""}`, row.id);
+    }
+    return effects.map((effect) => {
+      const pendingRowId = pendingByPair.get(`${effect.ancillary}|${effect.effectKey}`);
+      return pendingRowId ? { ...effect, isPending: true, pendingRowId } : effect;
+    });
+  };
+
+  const toAncillaryDetail = (
+    built: CachedAncillariesData,
+    data: BuiltAncillariesData,
+    key: string,
+    pendingEdits?: AncillariesEditState,
+  ): AncillaryDetail | undefined => {
+    const summary = data.ancillaries.find((ancillary) => ancillary.key === key);
+    if (!summary) return undefined;
+    const getLoc = (locKey: string) => built.localizations[locKey];
+    const category = data.categories.find((row) => row.key === summary.category);
+    const subcategory = data.subcategories.find((row) => row.key === summary.subcategory);
+    return {
+      ...summary,
+      iconUrl: ancillaryIconUrl(built, summary.iconPath),
+      explanation: resolveAncillaryText(getLoc, `ancillaries_explanation_text_${key}`),
+      colourText: resolveAncillaryText(getLoc, `ancillaries_colour_text_${key}`),
+      categoryName: category?.localizedName || summary.category,
+      subcategoryName: subcategory?.localizedName,
+      effects: markPendingEffects(data.effectsByAncillary[key] ?? [], pendingEdits).map((effect) => ({
+        ...effect,
+        iconUrl: ancillaryIconUrl(built, effectIconPath(effect.icon)),
+      })),
+      rowValues: data.rowValuesByKey[key] ?? {},
+      hasInfoRow: data.infoKeys.includes(key),
+    };
+  };
+
+  ipcMain.handle("getAncillariesCatalog", async (_event, enabledMods: Mod[]): Promise<AncillariesCatalogResponse> => {
+    try {
+      const built = await ensureAncillariesData(enabledMods);
+      return { success: true, catalog: toAncillariesCatalog(built, built.data, await getAncillariesTableSchemas()) };
+    } catch (error) {
+      console.log("getAncillariesCatalog failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle(
+    "getAncillariesDetail",
+    async (
+      _event,
+      enabledMods: Mod[],
+      key: string,
+      pendingEdits?: AncillariesEditState,
+    ): Promise<AncillariesDetailResponse> => {
+      try {
+        const built = await ensureAncillariesData(enabledMods);
+        const data = applyPendingAncillariesRows(built, pendingEdits);
+        // Validated against the base data, not `data`: every pending row exists in the latter by
+        // construction, so an override would look like a perfectly ordinary ancillary.
+        const rowIssues = pendingEdits ? validateAncillariesNewRows(built.data, pendingEdits) : undefined;
+        const detail = toAncillaryDetail(built, data, key, pendingEdits);
+        let abilityTooltips: AncillaryAbilityTooltips | undefined;
+        if (detail) {
+          try {
+            abilityTooltips = await getAncillaryAbilityTooltips(
+              detail.effects.map((effect) => effect.effectKey),
+              enabledMods,
+            );
+          } catch (error) {
+            // Ability data is an enhancement to the ancillary card. A missing or malformed skill
+            // table should not make the ancillary browser itself unavailable.
+            console.log("getAncillaryAbilityTooltips failed:", error);
+          }
+        }
+        return {
+          success: true,
+          detail: detail && abilityTooltips ? { ...detail, abilityTooltips } : detail,
+          catalog: toAncillariesCatalog(built, data, await getAncillariesTableSchemas()),
+          rowIssues,
+        };
+      } catch (error) {
+        console.log("getAncillariesDetail failed:", error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+
+  const setCurrentGame = async (newGame: SupportedGames): Promise<boolean> => {
+    let didSwitchGame = false;
+    try {
+      // Readers hold an open handle and only check the pack and schema when they open, so drop them
+      // here: coming back to this game later should revalidate rather than serve what was true before.
+      closeVanillaDbCacheReaders();
+      // Every registered icon belongs to the game being left, and the features that registered them
+      // register again when they rebuild for the new one.
+      clearIconAssets();
+      // The buildings data is cached under a signature that includes the game, so coming back here
+      // would otherwise serve icon URLs built with a generation clearIconAssets has just dropped.
+      console.log("Buildings cache: clearing in-memory cache because the game/folders changed", { game: newGame });
+      cachedBuildingsData = undefined;
+      // Same reasoning for Ancillaries: its icon URLs carry a generation clearIconAssets just
+      // dropped, and its vanilla half is keyed on the game being left.
+      cachedAncillariesData = undefined;
+      cachedEsfMapData = undefined;
+      clearEsfMapMemoryCache();
+      clearBuildingsMemoryCache();
+      clearAncillariesMemoryCache();
+      clearVisualsMemoryCache();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);
       }
@@ -2314,13 +5448,16 @@ export const registerIpcMainListeners = (
         console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
         // mainWindow?.webContents.send("setCurrentGameNaive", newGame);
         mainWindow?.webContents.send("setAppFolderPaths", {
+          ...appData.gamesToGameFolderPaths[newGame],
           gamePath: gamePath || "",
           contentFolder: contentFolder || "",
         } as GameFolderPaths);
+        didSwitchGame = true;
       } else {
         mainWindow?.webContents.send("requestGameFolderPaths", newGame);
       }
     }
+    return didSwitchGame;
   };
   const refreshModsIfFoldersValid = async (requestedGame: SupportedGames | undefined) => {
     const game = requestedGame || appData.currentGame;
@@ -2331,13 +5468,16 @@ export const registerIpcMainListeners = (
     //   console.log(contentFolder, gamePath, dataFolder);
     //   getAllMods();
     // }
-    await setCurrentGame(game);
-    if (appData.gamesToGameFolderPaths[game].contentFolder) {
-      const currentPreset = appData.gameToCurrentPreset[game];
-      // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
-      const presets = appData.gameToPresets[game];
-      mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
-    }
+    const didSwitchGame = await setCurrentGame(game);
+    if (!didSwitchGame) return;
+    const gameConfig = appData.gameToConfig[game];
+    mainWindow?.webContents.send(
+      "setCurrentGame",
+      game,
+      gameConfig.currentPreset,
+      gameConfig.presets,
+      gameConfig.modUserData,
+    );
   };
   const setLastGameUpdateTimeUsingAppManifest = async () => {
     try {
@@ -2373,11 +5513,23 @@ export const registerIpcMainListeners = (
   const removeMod = async (mainWindow: BrowserWindow, modPath: string) => {
     mainWindow?.webContents.send("removeMod", modPath);
   };
+  const isPathInsideFolder = (filePath: string, folderPath: string) => {
+    const relativePath = nodePath.relative(folderPath, filePath);
+    return relativePath !== "" && !relativePath.startsWith("..") && !nodePath.isAbsolute(relativePath);
+  };
   const getMod = async (mainWindow: BrowserWindow, modPath: string) => {
     let mod: Mod | undefined;
     try {
-      if (modPath.includes(`\\content\\${gameToSteamId[appData.currentGame]}\\`)) {
-        const modSubfolderName = nodePath.dirname(modPath).replace(/.*\\/, "");
+      const gameFolderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const customFolder = (gameFolderPaths.customModFolders || []).find((folder) =>
+        isPathInsideFolder(modPath, folder.path),
+      );
+      if (gameFolderPaths.dataFolder && isPathInsideFolder(modPath, gameFolderPaths.dataFolder)) {
+        mod = await getDataMod(modPath, log);
+      } else if (customFolder) {
+        mod = await getCustomMod(modPath, customFolder.id, log);
+      } else if (gameFolderPaths.contentFolder && isPathInsideFolder(modPath, gameFolderPaths.contentFolder)) {
+        const modSubfolderName = nodePath.basename(nodePath.dirname(modPath));
         console.log("looking for ", modSubfolderName);
         mod = await getContentModInFolder(modSubfolderName, log);
       } else {
@@ -2407,6 +5559,15 @@ export const registerIpcMainListeners = (
     console.log("MOD ADDED: " + path);
     const mod = await getMod(mainWindow, path);
     if (mod) {
+      try {
+        const packHeaderData = await readPackHeaderCached(mod.path);
+        mod.isMovie = packHeaderData.isMovie;
+        mod.hasStartpos = packHeaderData.hasStartpos;
+        mod.dependencyPacks = packHeaderData.dependencyPacks;
+        await savePackHeaderCache();
+      } catch (error) {
+        if (error instanceof Error) log(error.message);
+      }
       mainWindow?.webContents.send("addMod", mod);
       // we get onNewPackFound called by the data watcher if it's a symlink on app launch, ignore that case
       if (!fromWatcher || !mod.isSymbolicLink) {
@@ -2417,9 +5578,7 @@ export const registerIpcMainListeners = (
         } as Toast);
       }
       if (appData.modsToResubscribeTo.some((iterMod) => iterMod.name == mod.name)) {
-        appData.modsToResubscribeTo = appData.modsToResubscribeTo.filter(
-          (iterMod) => iterMod.name != mod.name,
-        );
+        appData.modsToResubscribeTo = appData.modsToResubscribeTo.filter((iterMod) => iterMod.name != mod.name);
         if (appData.modsToResubscribeTo.length > 0) {
           forceResubscribeMods(appData.modsToResubscribeTo);
         }
@@ -2427,13 +5586,11 @@ export const registerIpcMainListeners = (
     }
   };
   const onPackDeleted = async (path: string, isDeletedFromContent = false) => {
+    await invalidateCachedPackData(path);
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
     console.log("MOD REMOVED: " + path);
     await removeMod(mainWindow, path);
-    if (appData.packsData && appData.packsData.some((pack) => pack.path == path)) {
-      appData.packsData = appData.packsData.filter((pack) => pack.path != path);
-    }
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (isDeletedFromContent && dataFolder) {
       try {
@@ -2448,8 +5605,7 @@ export const registerIpcMainListeners = (
     }
     removePackFromCollisions(path);
   };
-  const matchTableNamePart = /^db\\(.*?)\\data__/;
-  const getAllMods = async () => {
+  const getAllMods = async (afterModsPopulated?: () => void | Promise<void>) => {
     const timeStartedFetchingSubbedIds = Date.now();
     try {
       appData.subscribedModIds = [];
@@ -2475,11 +5631,14 @@ export const registerIpcMainListeners = (
       //   if (!mod.isInData && !appData.subscribedModIds.includes(mod.workshopId)) console.log(mod.workshopId);
       // }
       if (appData.subscribedModIds.length != 0) {
-        mods = mods.filter((mod) => mod.isInData || appData.subscribedModIds.includes(mod.workshopId));
+        mods = mods.filter((mod) => !isWorkshopMod(mod) || appData.subscribedModIds.includes(mod.workshopId));
       }
       console.log("after subscription filter:", mods.length);
+      appData.allMods = mods;
       mainWindow?.webContents.send("modsPopulated", mods);
+      await afterModsPopulated?.();
       const packHeadersToSend: PackHeaderData[] = [];
+      const modLoadOrderRules: Record<string, LoadOrderRule[]> = {};
       await Promise.all(
         mods.map(async (mod) => {
           try {
@@ -2488,8 +5647,15 @@ export const registerIpcMainListeners = (
               return;
             }
             const packHeaderData = await readPackHeaderCached(mod.path);
-            if (packHeaderData.isMovie || packHeaderData.dependencyPacks.length > 0)
+            if (packHeaderData.isMovie || packHeaderData.hasStartpos || packHeaderData.dependencyPacks.length > 0)
               packHeadersToSend.push(packHeaderData);
+
+            // The header scan already told us whether this pack has rules, so only the few that do
+            // get opened again.
+            if (packHeaderData.hasLoadOrderRules) {
+              const rules = await readModLoadOrderRulesCached(mod.path, mod.name, packHeaderData);
+              if (rules.length > 0) modLoadOrderRules[mod.name] = rules;
+            }
           } catch (e) {
             if (e instanceof Error) {
               log(e.message);
@@ -2498,6 +5664,9 @@ export const registerIpcMainListeners = (
         }),
       );
       mainWindow?.webContents.send("setPackHeaderData", packHeadersToSend);
+      appData.modLoadOrderRules = modLoadOrderRules;
+      refreshMainLoadOrderRules();
+      mainWindow?.webContents.send("setModLoadOrderRules", modLoadOrderRules);
       await savePackHeaderCache();
       if (!appData.saveSetupDone) {
         appData.saveSetupDone = true;
@@ -2539,63 +5708,52 @@ export const registerIpcMainListeners = (
             } catch {
               // pack doesn't exist, skip
             }
-            const cacheEntry = vanillaStat && vanillaCache[dataPackPath];
+            const cacheEntry = vanillaStat ? getVanillaPackFilesCacheEntry(vanillaCache, dataPackPath) : undefined;
+            const cachedPackIndex = cacheEntry ? getCachedVanillaPackIndexFromEntry(cacheEntry) : undefined;
             const cacheHit =
-              cacheEntry &&
-              cacheEntry.size === vanillaStat!.size &&
-              cacheEntry.lastChangedLocal === vanillaStat!.mtimeMs;
+              !!cachedPackIndex &&
+              cacheEntry!.size === vanillaStat!.size &&
+              cacheEntry!.lastChangedLocal === vanillaStat!.mtimeMs;
             let packedFileNames: string[];
             if (cacheHit) {
               console.log("VANILLA PACK CACHE HIT:", dataPackPath);
-              packedFileNames = cacheEntry.packedFileNames;
+              packedFileNames = cachedPackIndex.packedFiles.map((packedFile) => packedFile.name);
             } else {
               console.log("READING DATA PACK");
-              appData.currentlyReadingModPaths.push(dataPackPath);
-              const dataPackData = await readPack(dataMod.path, {
+              const dataPackData = await readPackRegistered(dataMod.path, {
                 skipParsingTables: true,
               });
-              appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
-                (path) => path != dataPackPath,
-              );
               if (dataPackData) {
                 appData.vanillaPacks.push(dataPackData);
                 if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
                   appendPacksData(dataPackData);
                 }
                 packedFileNames = dataPackData.packedFiles.map((pf) => pf.name);
-                if (vanillaStat) {
-                  vanillaCache[dataPackPath] = {
-                    size: vanillaStat.size,
-                    lastChangedLocal: vanillaStat.mtimeMs,
-                    packedFileNames,
-                  };
-                  await saveVanillaPackFilesCache();
-                }
               } else {
                 packedFileNames = [];
               }
             }
             if (cacheHit) {
-              // Reconstruct a minimal Pack for vanillaPacks and appendPacksData from cached file names
+              // Reconstruct the pack from cached index metadata without reopening or reparsing it.
               const reconstructedPack: Pack = {
                 name: baseVanillaPackName,
                 path: dataPackPath,
-                packedFiles: packedFileNames.map((name) => ({ name, file_size: 0, start_pos: 0 })),
-                packHeader: {} as PackHeader,
+                packedFiles: cachedPackIndex.packedFiles,
+                packHeader: cachedPackIndex.packHeader,
                 lastChangedLocal: vanillaStat!.mtimeMs,
                 size: vanillaStat!.size,
                 readTables: [],
+                dependencyPacks: cachedPackIndex.dependencyPacks,
               };
               appData.vanillaPacks.push(reconstructedPack);
               if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
                 appendPacksData(reconstructedPack);
               }
             }
-            const vanillaDBFileNames = packedFileNames
-              .map((name) => name.match(matchTableNamePart))
-              .filter((matchResult) => matchResult)
-              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              .map((matchResult) => matchResult![1]);
+            const vanillaDBFileNames = packedFileNames.flatMap((name) => {
+              const dbName = parseLiveDBTablePath(name)?.dbName;
+              return dbName ? [dbName] : [];
+            });
             if (vanillaDBFileNames.length > 0) {
               appData.vanillaPacksDBFileNames = Array.from(
                 new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values(),
@@ -2603,25 +5761,61 @@ export const registerIpcMainListeners = (
             }
           }
         }
+        await saveVanillaPackFilesCache();
         appData.vanillaPacksDBFileNames.sort((a, b) => collator.compare(a, b));
         await fetchGameUpdates();
       }
       try {
-        fork(
+        const workshopUpdateChild = fork(
           nodePath.join(__dirname, "sub.js"),
           [
             gameToSteamId[appData.currentGame],
             "checkState",
             mods
               .filter(
-                (mod) =>
-                  !mod.isInData && !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId)),
+                (mod) => isWorkshopMod(mod) && !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId)),
               )
               .map((mod) => mod.workshopId)
               .join(";"),
           ],
           {},
         );
+        let receivedWorkshopUpdateResult = false;
+        workshopUpdateChild.on("message", (message: WorkshopUpdateCheckMessage) => {
+          mainWindow.webContents.send("workshopUpdateCheck", message);
+          if (message.type === "started") return;
+          if (message.type === "progress") return;
+
+          receivedWorkshopUpdateResult = true;
+          if (message.items.length === 0) return;
+
+          for (const item of message.items) {
+            const mod = mods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.workshopId === item.workshopId);
+            const progress =
+              item.downloadedBytes == null ? "unavailable" : `${item.downloadedBytes}/${item.totalBytes ?? "unknown"}`;
+            log(
+              `[Workshop update check] mod=${mod?.humanName || mod?.name || "unknown"}` +
+                ` id=${item.workshopId}` +
+                ` status=${item.status}` +
+                ` initialState=${item.initialState}` +
+                ` finalState=${item.finalState}` +
+                ` requestAccepted=${item.requestAccepted}` +
+                ` retryAccepted=${item.retryAccepted ?? "not-needed"}` +
+                ` installTimestampBefore=${item.installTimestampBefore ?? "unavailable"}` +
+                ` installTimestampAfter=${item.installTimestampAfter ?? "unavailable"}` +
+                ` progress=${progress}` +
+                (item.error ? ` error=${item.error}` : ""),
+            );
+          }
+        });
+        workshopUpdateChild.once("error", (error) => {
+          log(`[Workshop update check] child process error: ${error.message}`);
+        });
+        workshopUpdateChild.once("exit", (code, signal) => {
+          if (!receivedWorkshopUpdateResult) {
+            log(`[Workshop update check] child exited without a final result (code=${code}, signal=${signal})`);
+          }
+        });
       } catch (e) {
         console.log(e);
       }
@@ -2636,6 +5830,8 @@ export const registerIpcMainListeners = (
     downloadsWatcher = undefined;
     await mergedWatcher?.close();
     mergedWatcher = undefined;
+    await customModFoldersWatcher?.close();
+    customModFoldersWatcher = undefined;
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
@@ -2662,8 +5858,8 @@ export const registerIpcMainListeners = (
         })
         .on("change", async (path) => {
           console.log("NEW CONTENT CHANGE", path);
-          onPackDeleted(path);
-          onNewPackFound(path);
+          await onPackDeleted(path);
+          await onNewPackFound(path);
         });
     }
     if (!downloadsWatcher) {
@@ -2704,20 +5900,35 @@ export const registerIpcMainListeners = (
         })
         .on("change", async (path) => {
           console.log("data pack changed:", path);
-          onPackDeleted(path);
+          await onPackDeleted(path);
           console.log("dataWatcher change:", path);
-          onNewPackFound(path);
+          await onNewPackFound(path);
+        });
+    }
+    const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
+    const existingCustomFolders = customFolders.filter((folder) => fsExtra.existsSync(folder.path));
+    if (!customModFoldersWatcher && existingCustomFolders.length > 0) {
+      const customFolderPatterns = existingCustomFolders.flatMap((folder) => {
+        const sanitizedFolder = folder.path.replaceAll("\\", "/").replaceAll("//", "/");
+        return [`${sanitizedFolder}/*.pack`, `${sanitizedFolder}/*/*.pack`];
+      });
+      customModFoldersWatcher = chokidar
+        .watch(customFolderPatterns, {
+          ignoreInitial: true,
+          awaitWriteFinish: true,
+          followSymlinks: false,
+          ignored: /whmm_backups/,
+        })
+        .on("add", async (path) => onNewPackFound(path, true))
+        .on("unlink", async (path) => onPackDeleted(path))
+        .on("change", async (path) => {
+          await onPackDeleted(path);
+          await onNewPackFound(path, true);
         });
     }
     if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
-      exec(`mkdir "${mergedDirPath}"`);
-      while (!fsExtra.existsSync(mergedDirPath)) {
-        await new Promise((resolve) => {
-          setTimeout(resolve, 100);
-        });
-      }
-      // await fsExtra.ensureDir(nodePath.join(gamePath, "/merged/"));
+      await fsExtra.ensureDir(mergedDirPath);
       const sanitizedGamePath = gamePath.replaceAll("\\", "/").replaceAll("//", "/");
       mergedWatcher = chokidar
         .watch([`${sanitizedGamePath}/merged/*.pack`], {
@@ -2737,97 +5948,82 @@ export const registerIpcMainListeners = (
         })
         .on("change", async (path) => {
           console.log("pack changed:", path);
-          onPackDeleted(path);
-          onNewPackFound(path);
+          await onPackDeleted(path);
+          await onNewPackFound(path);
         });
     }
   };
-  const readConfig = async (): Promise<AppStateToRead> => {
+  const readConfig = async (): Promise<ConfigForRenderer> => {
     try {
+      // readAppConfig has already migrated anything older than the current config version
       const appState = await readAppConfig();
       if (!appData.hasReadConfig) {
         fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {}); // forces steam workshop to download mods
-        setStartingAppState(appState);
+        setStartingConfig(appState);
       }
-      // appFolderPaths is deprecated in the config since we moved from only supporting wh3, this is migration code
-      if (appState.appFolderPaths) {
-        if (appState.appFolderPaths.contentFolder && !fs.existsSync(appState.appFolderPaths.contentFolder)) {
-          appState.appFolderPaths.contentFolder = "";
-        } else {
-          appData.gamesToGameFolderPaths["wh3"].contentFolder = appState.appFolderPaths.contentFolder;
-        }
-        if (appState.appFolderPaths.gamePath && !fs.existsSync(appState.appFolderPaths.gamePath)) {
-          appState.appFolderPaths.gamePath = "";
-        } else {
-          appData.gamesToGameFolderPaths["wh3"].gamePath = appState.appFolderPaths.gamePath;
-          if (appState.appFolderPaths.gamePath)
-            appData.gamesToGameFolderPaths["wh3"].dataFolder = nodePath.join(
-              appState.appFolderPaths.gamePath,
-              "/data/",
-            );
-        }
+      appData.gamesToGameFolderPaths = appState.gameFolderPaths;
+      for (const game of supportedGames) {
+        const folderPaths = appData.gamesToGameFolderPaths[game];
+        folderPaths.customModFolders = folderPaths.customModFolders || [];
+        folderPaths.modSourceOrder = normalizeModSourceOrder(
+          folderPaths,
+          appState.isFeaturesForModdersEnabled || false,
+        );
       }
-      if (appState.gameFolderPaths) {
-        appData.gamesToGameFolderPaths = appState.gameFolderPaths;
-        if (appState.currentGame) {
-          const gameFolderPaths = appData.gamesToGameFolderPaths[appState.currentGame];
-          if (gameFolderPaths.contentFolder && !fs.existsSync(gameFolderPaths.contentFolder)) {
-            gameFolderPaths.contentFolder = "";
-          }
-          if (gameFolderPaths.gamePath && !fs.existsSync(gameFolderPaths.gamePath)) {
-            gameFolderPaths.gamePath = "";
-          }
-        }
+      const currentGameFolderPaths = appData.gamesToGameFolderPaths[appState.currentGame];
+      if (currentGameFolderPaths.contentFolder && !fs.existsSync(currentGameFolderPaths.contentFolder)) {
+        currentGameFolderPaths.contentFolder = "";
       }
-      if (appState.currentGame) {
-        appData.currentGame = appState.currentGame;
-        initializeAllSchemaForGame(appData.currentGame);
-      } else {
-        appState.currentGame = appData.currentGame;
+      if (currentGameFolderPaths.gamePath && !fs.existsSync(currentGameFolderPaths.gamePath)) {
+        currentGameFolderPaths.gamePath = "";
       }
-      if (appState.gameToCurrentPreset) {
-        appData.gameToCurrentPreset = appState.gameToCurrentPreset;
-      } else {
-        appState.gameToCurrentPreset = appData.gameToCurrentPreset;
-      }
-      if (appState.gameToPresets) {
-        appData.gameToPresets = appState.gameToPresets;
-      } else {
-        appState.gameToPresets = appData.gameToPresets;
-      }
-      // presets and currentPreset is also deprecated and now in gameToPresets and gameToCurrentPreset, migration code
-      if (appState.currentPreset) {
-        appData.gameToCurrentPreset["wh3"] = appState.currentPreset;
-      } else if (appData.gameToCurrentPreset[appState.currentGame]) {
-        appState.currentPreset = appData.gameToCurrentPreset[appState.currentGame] as Preset;
-      }
-      if (appState.presets) {
-        appData.gameToPresets["wh3"] = appState.presets;
-      } else {
-        appState.presets = appData.gameToPresets[appState.currentGame];
-      }
+
+      appData.currentGame = appState.currentGame;
+      initializeAllSchemaForGame(appData.currentGame);
+      appData.gameToConfig = appState.games;
+      appData.recentPackPaths = sanitizeRecentPackPaths(appState.recentPackPaths, [
+        ...vanillaPackNames,
+        ...appData.allVanillaPackNames,
+      ]);
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
       appData.moddersPrefix = appState.moddersPrefix || "";
-      appData.isShowingSkillNodeSetNames =
-        appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
+      appData.isRigidModelV2CompressionEnabled =
+        appState.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
+      appData.compressModsOnUpload = appState.compressModsOnUpload ?? appData.compressModsOnUpload;
+      appData.isShowingSkillNodeSetNames = appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
+      appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
       appData.isShowingHiddenModifiersInsideSkills =
         appState.isShowingHiddenModifiersInsideSkills ?? appData.isShowingHiddenModifiersInsideSkills;
-      appData.isCheckingSkillRequirements =
-        appState.isCheckingSkillRequirements ?? appData.isCheckingSkillRequirements;
+      appData.isCheckingSkillRequirements = appState.isCheckingSkillRequirements ?? appData.isCheckingSkillRequirements;
       appData.skillTreesDisplayMode = appState.skillTreesDisplayMode ?? appData.skillTreesDisplayMode;
-      appData.technologyTreesDisplayMode =
-        appState.technologyTreesDisplayMode ?? appData.technologyTreesDisplayMode;
-      return appState;
+      appData.technologyTreesDisplayMode = appState.technologyTreesDisplayMode ?? appData.technologyTreesDisplayMode;
+
+      await checkWorkshopStagingCleanupOnStartup({
+        currentGame: appState.currentGame,
+        cleanUpWorkshopModStagingAfterGameExit: appState.cleanUpWorkshopModStagingAfterGameExit,
+        appFolderPaths: currentGameFolderPaths,
+      });
+
+      // flatten to the single-game view the renderer works with
+      const { games, gameFolderPaths, ...options } = appState;
+      return {
+        ...options,
+        ...games[appState.currentGame],
+        appFolderPaths: gameFolderPaths[appState.currentGame],
+      };
     } finally {
       appData.hasReadConfig = true;
     }
   };
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    // if (isDev) return;
+    // if we keep restarting the app in dev steam refuse requests eventually
+    if (isDev) return;
+    const workshopIds = ids.filter((id) => id !== "");
+    if (workshopIds.length === 0) return;
     fetchModData(
-      ids.filter((id) => id !== ""),
+      workshopIds,
       (modData) => {
         tempModDatas.push(modData);
         sendModData();
@@ -2862,7 +6058,6 @@ export const registerIpcMainListeners = (
       const cacheFilePath = nodePath.join(app.getPath("userData"), CACHE_FILE_NAME);
       const data = await fs.promises.readFile(cacheFilePath, "utf8");
       customizableModsCache = JSON.parse(data);
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return customizableModsCache!;
     } catch (err) {
       // Cache file doesn't exist or is invalid, return empty cache
@@ -2882,13 +6077,19 @@ export const registerIpcMainListeners = (
       console.error("Failed to save customizable mods cache:", err);
     }
   };
-  // Cache for pack header data (isMovie, dependencyPacks) keyed by pack path
+  // Cache for cheap pack index metadata keyed by pack path.
   // Entries are invalidated when the file's size or mtime changes
   interface PackHeaderCacheEntry {
     size: number;
     lastChangedLocal: number;
     isMovie: boolean;
+    hasStartpos: boolean;
     dependencyPacks: string[];
+    /** Absent on entries written before load order rules existed, which forces a re-read. */
+    hasLoadOrderRules?: boolean;
+    loadOrderRulesFileName?: string;
+    /** The parsed rules, kept here so a restart does not reopen every pack that has them. */
+    loadOrderRules?: LoadOrderRule[];
   }
   type PackHeaderCache = Record<string, PackHeaderCacheEntry>;
   const PACK_HEADER_CACHE_FILE = "pack-headers-cache.bin";
@@ -2927,67 +6128,93 @@ export const registerIpcMainListeners = (
     }
     if (stat) {
       const entry = cache[path];
-      if (entry && entry.size === stat.size && entry.lastChangedLocal === stat.mtimeMs) {
-        return { path, isMovie: entry.isMovie, dependencyPacks: entry.dependencyPacks };
+      if (
+        entry &&
+        entry.size === stat.size &&
+        entry.lastChangedLocal === stat.mtimeMs &&
+        typeof entry.hasStartpos === "boolean" &&
+        typeof entry.hasLoadOrderRules === "boolean"
+      ) {
+        return {
+          path,
+          isMovie: entry.isMovie,
+          hasStartpos: entry.hasStartpos,
+          hasLoadOrderRules: entry.hasLoadOrderRules,
+          loadOrderRulesFileName: entry.loadOrderRulesFileName,
+          dependencyPacks: entry.dependencyPacks,
+        };
       }
     }
-    const data = await readPackHeader(path);
+    const data = await readPackHeader(path, supportsCompression[appData.currentGame]);
     if (stat) {
       cache[path] = {
         size: stat.size,
         lastChangedLocal: stat.mtimeMs,
         isMovie: data.isMovie,
+        hasStartpos: data.hasStartpos,
+        hasLoadOrderRules: data.hasLoadOrderRules ?? false,
+        loadOrderRulesFileName: data.loadOrderRulesFileName,
         dependencyPacks: data.dependencyPacks,
       };
     }
     return data;
   };
-  // Cache for vanilla pack file name lists, keyed by pack path.
-  // Allows skipping readPack() on startup when the pack hasn't changed.
-  interface VanillaPackFilesCacheEntry {
-    size: number;
-    lastChangedLocal: number;
-    packedFileNames: string[];
-  }
-  type VanillaPackFilesCache = Record<string, VanillaPackFilesCacheEntry>;
-  const VANILLA_PACK_FILES_CACHE_FILE = "vanilla-pack-files-cache.bin";
-  let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
-  const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache> => {
-    if (vanillaPackFilesCache !== null) return vanillaPackFilesCache;
+
+  /**
+   * The rules a pack ships inside itself.
+   *
+   * Only ever called for packs whose header scan already said they have the file, so the great
+   * majority of packs are never reopened for this. The parsed result is cached next to the header
+   * data under the same size and mtime key.
+   */
+  const readModLoadOrderRulesCached = async (
+    packPath: string,
+    packName: string,
+    headerData: PackHeaderData,
+  ): Promise<LoadOrderRule[]> => {
+    if (!headerData.hasLoadOrderRules) return [];
+
+    const cache = await loadPackHeaderCache();
+    const entry = cache[packPath];
+    if (entry?.loadOrderRules) return entry.loadOrderRules;
+
+    let rules: LoadOrderRule[] = [];
     try {
-      const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-      const compressed = await fs.promises.readFile(cacheFilePath);
-      const json = await zstdDecompress(compressed);
-      vanillaPackFilesCache = JSON.parse(json.toString("utf8")) as VanillaPackFilesCache;
-      return vanillaPackFilesCache!;
-    } catch {
-      vanillaPackFilesCache = {};
-      return vanillaPackFilesCache;
+      const fileName = headerData.loadOrderRulesFileName ?? LOAD_ORDER_RULES_PACKED_FILE_PATH;
+      const pack = await readPack(packPath, { filesToRead: [fileName], skipParsingTables: true });
+      const packedFile = pack.packedFiles.find((file) => isLoadOrderRulesPackedFilePath(file.name));
+      if (packedFile?.buffer) {
+        const parsed = parseLoadOrderRulesFile(decodePackedTextBuffer(packedFile.buffer), packName);
+        if (parsed.errors.length > 0) {
+          console.log(`load order rules in ${packName} have ${parsed.errors.length} bad line(s):`, parsed.errors);
+        }
+        rules = parsed.rules;
+      }
+    } catch (error) {
+      // A pack we cannot read rules from simply contributes none; it must not break the mod scan.
+      console.log("failed to read load order rules from", packPath, error);
     }
-  };
-  const saveVanillaPackFilesCache = async (): Promise<void> => {
-    if (!vanillaPackFilesCache) return;
-    try {
-      const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
-      const json = Buffer.from(JSON.stringify(vanillaPackFilesCache), "utf8");
-      const compressed = await zstdCompress(json, 1);
-      await fs.promises.writeFile(cacheFilePath, compressed);
-    } catch (err) {
-      console.error("Failed to save vanilla pack files cache:", err);
-    }
+
+    if (entry) entry.loadOrderRules = rules;
+    return rules;
   };
   interface FlowExecutionCacheEntry {
     signatureHash: string;
     createdAt: number;
     modsWithFlows: Array<{ path: string; name: string }>;
     createdFlowPackFileNames: string[];
+    /** Packs a flow wrote a full replacement for, which are left out of the mod list. */
+    replacedPackPaths?: string[];
   }
   interface FlowExecutionCache {
     version: number;
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
-  const FLOW_EXECUTION_CACHE_VERSION = 1;
+  // 7: automatic flow execution uses saved pack content only; also invalidate v6 entries that included staged data.
+  // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
+  // Changes node's configured name instead.
+  const FLOW_EXECUTION_CACHE_VERSION = 7;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
@@ -3037,17 +6264,7 @@ export const registerIpcMainListeners = (
     }
     return value;
   };
-  const getModStatForFlowSignature = async (
-    mod: Mod,
-    cache: PackHeaderCache,
-  ): Promise<{ size: number; mtimeMs: number } | null> => {
-    if (typeof mod.size === "number" && typeof mod.lastChangedLocal === "number") {
-      return { size: mod.size, mtimeMs: mod.lastChangedLocal };
-    }
-    const cachedEntry = cache[mod.path];
-    if (cachedEntry) {
-      return { size: cachedEntry.size, mtimeMs: cachedEntry.lastChangedLocal };
-    }
+  const getModStatForFlowSignature = async (mod: Mod): Promise<{ size: number; mtimeMs: number } | null> => {
     try {
       const stat = await fs.promises.stat(mod.path);
       return { size: stat.size, mtimeMs: stat.mtimeMs };
@@ -3077,23 +6294,19 @@ export const registerIpcMainListeners = (
     return [...appData.allVanillaPackNames]
       .filter(
         (packName) =>
-          packName.startsWith("local_en") ||
-          (!packName.startsWith("audio_") && !packName.startsWith("local_")),
+          packName.startsWith("local_en") || (!packName.startsWith("audio_") && !packName.startsWith("local_")),
       )
       .map((packName) => nodePath.join(dataFolder, packName))
       .toSorted((first, second) => first.localeCompare(second));
   };
-  const getCompatVanillaTableToPackPaths = (
-    vanillaPackPaths: string[],
-  ): Record<string, string[]> => {
+  const getCompatVanillaTableToPackPaths = (vanillaPackPaths: string[]): Record<string, string[]> => {
     const vanillaPackPathsSet = new Set(vanillaPackPaths);
     const tableToPackPaths: Record<string, string[]> = {};
     for (const pack of appData.vanillaPacks) {
       if (!vanillaPackPathsSet.has(pack.path)) continue;
       for (const packedFile of pack.packedFiles) {
-        const tableNameMatch = packedFile.name.match(matchTableNamePart);
-        if (!tableNameMatch) continue;
-        const tableName = tableNameMatch[1];
+        const tableName = parseLiveDBTablePath(packedFile.name)?.dbName;
+        if (!tableName) continue;
         tableToPackPaths[tableName] = tableToPackPaths[tableName] || [];
         if (!tableToPackPaths[tableName].includes(pack.path)) {
           tableToPackPaths[tableName].push(pack.path);
@@ -3110,9 +6323,8 @@ export const registerIpcMainListeners = (
       if (!modPaths.has(pack.path)) continue;
       for (const packedFile of pack.packedFiles) {
         if (!packedFile.schemaFields) continue;
-        const tableNameMatch = packedFile.name.match(matchTableNamePart);
-        if (!tableNameMatch) continue;
-        const tableName = tableNameMatch[1];
+        const tableName = parseLiveDBTablePath(packedFile.name)?.dbName;
+        if (!tableName) continue;
         const dbVersion = getDBVersion(packedFile);
         if (!dbVersion) continue;
         const tableFieldRefs = tablesAndDBFieldsThatReference[tableName];
@@ -3154,10 +6366,7 @@ export const registerIpcMainListeners = (
     packCollisions: PackCollisions;
   }
   let compatCheckCache: CompatCheckCacheEntry | null = null;
-  const buildCompatCheckSignature = async (
-    mods: Mod[],
-    vanillaPackPaths: string[],
-  ): Promise<string | null> => {
+  const buildCompatCheckSignature = async (mods: Mod[], vanillaPackPaths: string[]): Promise<string | null> => {
     const headerCache = await loadPackHeaderCache();
     const modSignatureData: Array<{
       path: string;
@@ -3196,12 +6405,98 @@ export const registerIpcMainListeners = (
       vanillaPacks: vanillaSignatureData,
     });
   };
+  const pathsMatch = (firstPath: string, secondPath: string) =>
+    nodePath.resolve(firstPath) === nodePath.resolve(secondPath);
+  const readPackForCompat = async (packPath: string, packReadingOptions: PackReadingOptions, displayName: string) => {
+    mainWindow?.webContents.send("setCurrentlyReadingMod", displayName);
+    try {
+      return await readPackRegistered(packPath, packReadingOptions);
+    } finally {
+      mainWindow?.webContents.send("setLastModThatWasRead", displayName);
+    }
+  };
+  const replaceRetainedCompatPack = (newPack: Pack, mod?: Mod, isVanilla = false) => {
+    const existingIndex = appData.packsData.findIndex((pack) => pathsMatch(pack.path, newPack.path));
+    if (existingIndex !== -1) appData.packsData.splice(existingIndex, 1);
+    appendPacksData(newPack, mod);
+
+    if (isVanilla) {
+      const vanillaIndex = appData.vanillaPacks.findIndex((pack) => pathsMatch(pack.path, newPack.path));
+      if (vanillaIndex === -1) appData.vanillaPacks.push(newPack);
+      else appData.vanillaPacks.splice(vanillaIndex, 1, newPack);
+    }
+  };
+  const refreshCompatText = async (pack: Pack, displayName: string) => {
+    if (!packNeedsCompatTextRefresh(pack)) return 0;
+    const textPack = await readPackForCompat(pack.path, { skipParsingTables: true, readScripts: true }, displayName);
+    return mergeCompatTextIntoPack(pack, textPack);
+  };
+  const prepareModsForCompat = async (mods: Mod[]) => {
+    let reusedCount = 0;
+    let parsedCount = 0;
+    let refreshedTextCount = 0;
+    for (const mod of mods) {
+      const stat = await fs.promises.stat(mod.path);
+      const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, mod.path));
+      if (retainedPack && canReuseParsedPackForCompat(retainedPack, stat)) {
+        refreshedTextCount += await refreshCompatText(retainedPack, mod.name);
+        reusedCount++;
+        continue;
+      }
+
+      const parsedPack = await readPackForCompat(mod.path, { skipParsingTables: false, readScripts: true }, mod.name);
+      replaceRetainedCompatPack(parsedPack, mod);
+      parsedCount++;
+    }
+    console.log(
+      `compat pack preparation: reused ${reusedCount}, parsed ${parsedCount}, refreshed ${refreshedTextCount} text files`,
+    );
+  };
+  const prepareVanillaPacksForCompat = async (vanillaPackPaths: string[]) => {
+    let reusedCount = 0;
+    let readCount = 0;
+    let refreshedTextCount = 0;
+    for (const vanillaPackPath of vanillaPackPaths) {
+      let stat: fs.Stats;
+      try {
+        stat = await fs.promises.stat(vanillaPackPath);
+      } catch (error) {
+        console.error(`Failed to stat vanilla pack for compat check: ${vanillaPackPath}`, error);
+        continue;
+      }
+
+      const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, vanillaPackPath));
+      if (retainedPack && canReusePackIndexForCompat(retainedPack, stat)) {
+        if (!appData.vanillaPacks.some((pack) => pathsMatch(pack.path, retainedPack.path))) {
+          appData.vanillaPacks.push(retainedPack);
+        }
+        if (appData.isCompatCheckingVanillaPacks) {
+          refreshedTextCount += await refreshCompatText(retainedPack, retainedPack.name);
+        }
+        reusedCount++;
+        continue;
+      }
+
+      const vanillaPack = await readPackForCompat(
+        vanillaPackPath,
+        {
+          skipParsingTables: true,
+          readScripts: appData.isCompatCheckingVanillaPacks,
+        },
+        nodePath.basename(vanillaPackPath),
+      );
+      replaceRetainedCompatPack(vanillaPack, undefined, true);
+      readCount++;
+    }
+    console.log(
+      `compat vanilla preparation: reused ${reusedCount}, read ${readCount}, refreshed ${refreshedTextCount} text files`,
+    );
+  };
   const buildFlowExecutionSignature = async (
     sortedEnabledMods: Mod[],
     startGameOptions: StartGameOptions,
     dataFolderPath: string,
   ): Promise<string | null> => {
-    const headerCache = await loadPackHeaderCache();
     const enabledModsSignatureData: Array<{
       path: string;
       name: string;
@@ -3210,7 +6505,7 @@ export const registerIpcMainListeners = (
       mtimeMs: number;
     }> = [];
     for (const mod of sortedEnabledMods) {
-      const stat = await getModStatForFlowSignature(mod, headerCache);
+      const stat = await getModStatForFlowSignature(mod);
       if (!stat) return null;
       enabledModsSignatureData.push({
         path: mod.path,
@@ -3261,7 +6556,7 @@ export const registerIpcMainListeners = (
       modPaths.sort((firstPath, secondPath) => firstPath.localeCompare(secondPath));
       const newPaths = [] as string[];
       if (appData.lastGetCustomizableMods) {
-        for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length; ) {
+        for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length;) {
           if (i == modPaths.length) {
             break;
           }
@@ -3361,7 +6656,11 @@ export const registerIpcMainListeners = (
         } else {
           // Calculate and update cache
           foundTables = tablesForMatching.filter((tableForMatching) =>
-            currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching)),
+            currentPack.packedFiles.some((packedFile) =>
+              tableForMatching === "whmmflows\\"
+                ? isPackedFlowName(packedFile.name)
+                : packedFile.name.startsWith(tableForMatching),
+            ),
           );
           cache[currentPack.path] = {
             size: currentPack.size,
@@ -3391,6 +6690,9 @@ export const registerIpcMainListeners = (
   ipcMain.on("getPacksInSave", async (event, saveName: string) => {
     mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
   });
+  ipcMain.on("requestSaves", async () => {
+    mainWindow?.webContents.send("savesPopulated", await getSaveFiles());
+  });
   ipcMain.handle("getListOfPacksInSave", async (event, saveName: string) => {
     return getPacksInSave(saveName);
   });
@@ -3403,6 +6705,63 @@ export const registerIpcMainListeners = (
       throw error;
     }
   });
+  ipcMain.handle(
+    "getPackRowsForSave",
+    async (event, packPath: string, tableNames: string[], includeLocs: boolean): Promise<PackRowsForSave> => {
+      try {
+        const requestedTables = new Set(tableNames);
+        const tablesToRead = tableNames.map((tableName) => `db\\${tableName}\\`);
+        const pack = await readPack(packPath, { tablesToRead, readLocs: includeLocs });
+        const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+        const filesByName = new Map<string, PackedFile>();
+        for (const packedFile of pack.packedFiles) filesByName.set(packedFile.name.toLowerCase(), packedFile);
+        // An unsaved file replaces the disk file with the same path when the pack is written.
+        for (const packedFile of unsavedFiles) filesByName.set(packedFile.name.toLowerCase(), packedFile);
+        const rowsByTable: PackRowsForSave["rowsByTable"] = {};
+
+        const collectRows = (packedFile: PackedFile) => {
+          let tableName: string | undefined;
+          let tableSchema: DBVersion | undefined;
+          if (isLocPackedFilePath(packedFile.name)) {
+            if (!includeLocs) return;
+            tableName = LOC_TABLE;
+            tableSchema = LocVersion;
+          } else {
+            const parsed = parseLiveDBTablePath(packedFile.name);
+            if (!parsed || !requestedTables.has(parsed.dbName)) return;
+            tableName = parsed.dbName;
+            tableSchema = packedFile.tableSchema ?? getDBVersion(packedFile);
+          }
+          if (!tableName || !tableSchema || !packedFile.schemaFields) return;
+
+          for (const schemaRow of chunkSchemaIntoRows(packedFile.schemaFields, tableSchema)) {
+            if (schemaRow.length !== tableSchema.fields.length) continue;
+            const row: Record<string, string> = {};
+            let complete = true;
+            tableSchema.fields.forEach((field, index) => {
+              const schemaField = schemaRow[index];
+              if (!schemaField?.fields?.length) {
+                complete = false;
+                return;
+              }
+              row[field.name] = resolveKeyValue(field.field_type, schemaField.fields);
+            });
+            if (complete) (rowsByTable[tableName] ||= []).push(row);
+          }
+        };
+
+        for (const packedFile of filesByName.values()) collectRows(packedFile);
+
+        return {
+          fileNames: [...filesByName.values()].map((packedFile) => packedFile.name),
+          rowsByTable,
+        };
+      } catch (error) {
+        console.error("Failed to get pack rows for save:", error);
+        throw error;
+      }
+    },
+  );
   ipcMain.handle(
     "renamePackedFiles",
     async (
@@ -3424,6 +6783,221 @@ export const registerIpcMainListeners = (
     },
   );
   ipcMain.handle(
+    "deletePackedFiles",
+    async (
+      _event,
+      packPath: string,
+      filePaths: string[],
+    ): Promise<{ success: boolean; removedPaths?: string[]; error?: string }> => {
+      try {
+        if (!packPath || !Array.isArray(filePaths)) {
+          return { success: false, error: "A pack and file path list are required" };
+        }
+
+        const requestedKeys = new Set(filePaths.map(normalizePackFilePathKey).filter(Boolean));
+        let unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+        const removedPaths: string[] = [];
+        const removedKeys = new Set<string>();
+        const addRemovedPath = (path: string) => {
+          const key = normalizePackFilePathKey(path);
+          if (!key || removedKeys.has(key)) return;
+          removedKeys.add(key);
+          removedPaths.push(path);
+        };
+
+        unsavedFiles = unsavedFiles.filter((packedFile) => {
+          if (!requestedKeys.has(normalizePackFilePathKey(packedFile.name))) return true;
+          addRemovedPath(packedFile.name);
+          return false;
+        });
+        if (unsavedFiles.length > 0) appData.unsavedPacksData[packPath] = unsavedFiles;
+        else delete appData.unsavedPacksData[packPath];
+
+        let indexedPack = findPackByPath(packPath);
+        if (!indexedPack && !packPath.startsWith("memory://")) {
+          try {
+            indexedPack = await readPack(packPath, { skipParsingTables: true });
+          } catch {
+            // A missing index is reported through the paths that could actually be staged. The
+            // viewer will surface a failed save if the pack itself is no longer readable.
+          }
+        }
+        const deletedFilePaths = [...(appData.deletedPackFilePaths[packPath] ?? [])];
+        const deletedKeys = new Set(deletedFilePaths.map(normalizePackFilePathKey));
+        for (const packedFile of indexedPack?.packedFiles ?? []) {
+          const key = normalizePackFilePathKey(packedFile.name);
+          if (!requestedKeys.has(key) || deletedKeys.has(key)) continue;
+          deletedFilePaths.push(packedFile.name);
+          deletedKeys.add(key);
+          addRemovedPath(packedFile.name);
+        }
+        if (deletedFilePaths.length > 0) appData.deletedPackFilePaths[packPath] = deletedFilePaths;
+        else delete appData.deletedPackFilePaths[packPath];
+
+        broadcastPackStagingState(packPath);
+        return { success: true, removedPaths };
+      } catch (error) {
+        console.error("Error deleting packed files:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to delete packed files",
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    "renamePackedFilesInPack",
+    async (
+      _event,
+      packPath: string,
+      entries: PackFileRenameEntry[],
+    ): Promise<{ success: boolean; removedPaths?: string[]; error?: string }> => {
+      try {
+        if (!packPath || !Array.isArray(entries) || entries.length === 0) {
+          return { success: false, error: "A pack and at least one rename entry are required" };
+        }
+
+        const existingUnsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+        let indexedPack = findPackByPath(packPath);
+        if (!indexedPack && !packPath.startsWith("memory://")) {
+          try {
+            indexedPack = await readPack(packPath, { skipParsingTables: true });
+          } catch {
+            // Materialization below will provide the useful per-file read error.
+          }
+        }
+        const deletedKeys = new Set((appData.deletedPackFilePaths[packPath] ?? []).map(normalizePackFilePathKey));
+        const packFilesByKey = new Map(
+          (indexedPack?.packedFiles ?? [])
+            .filter((packedFile) => !deletedKeys.has(normalizePackFilePathKey(packedFile.name)))
+            .map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile] as const),
+        );
+        const unsavedFilesByKey = new Map(
+          existingUnsavedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile] as const),
+        );
+        const sourceKeys = new Set<string>();
+        const destinationKeys = new Set<string>();
+        for (const entry of entries) {
+          const originalPath = normalizePackFilePath(entry.originalPath);
+          const newPath = normalizePackFilePath(entry.newPath);
+          const originalKey = normalizePackFilePathKey(originalPath);
+          const destinationKey = normalizePackFilePathKey(newPath);
+          if (!originalPath || !newPath || hasParentSegment(newPath)) {
+            return { success: false, error: `Invalid rename path: ${entry.originalPath} → ${entry.newPath}` };
+          }
+          if (sourceKeys.has(originalKey)) {
+            return { success: false, error: `The source file is listed more than once: ${originalPath}` };
+          }
+          if (destinationKeys.has(destinationKey)) {
+            return { success: false, error: `Multiple files would be written to ${newPath}` };
+          }
+          if (!unsavedFilesByKey.has(originalKey) && !packFilesByKey.has(originalKey)) {
+            return { success: false, error: `Could not find "${originalPath}" in the pack` };
+          }
+          if (packFilesByKey.has(destinationKey) || unsavedFilesByKey.has(destinationKey)) {
+            // A destination occupied by another selected source is allowed: that source is
+            // removed in the same operation. All other destinations are protected from overwrite.
+            const isAnotherSource = entries.some(
+              (candidate) => normalizePackFilePathKey(candidate.originalPath) === destinationKey,
+            );
+            if (!isAnotherSource) return { success: false, error: `The destination already exists: ${newPath}` };
+          }
+          sourceKeys.add(originalKey);
+          destinationKeys.add(destinationKey);
+        }
+
+        // Read pack-resident sources in batches before changing the staged lists. A selection such
+        // as a→b, b→c must still observe the original bytes, while one index scan is enough for
+        // every source in a large folder.
+        const preloadedSourceFiles = new Map<string, PackedFile>();
+        const packSourcePaths = [...sourceKeys]
+          .filter((sourceKey) => !unsavedFilesByKey.has(sourceKey))
+          .map((sourceKey) => packFilesByKey.get(sourceKey))
+          .filter((packedFile): packedFile is PackedFile => packedFile != undefined)
+          .map((packedFile) => packedFile.name);
+        for (const packedFile of packFilesByKey.values()) {
+          const sourceKey = normalizePackFilePathKey(packedFile.name);
+          if (sourceKeys.has(sourceKey)) preloadedSourceFiles.set(sourceKey, packedFile);
+        }
+        if (packSourcePaths.length > 0 && !packPath.startsWith("memory://")) {
+          const rawSourcePack = await readPack(packPath, {
+            skipParsingTables: true,
+            filesToRead: packSourcePaths,
+          });
+          for (const packedFile of rawSourcePack.packedFiles) {
+            const sourceKey = normalizePackFilePathKey(packedFile.name);
+            if (sourceKeys.has(sourceKey)) preloadedSourceFiles.set(sourceKey, packedFile);
+          }
+
+          const dbSourcePaths = packSourcePaths.filter((sourcePath) => parseDBTablePath(sourcePath) != undefined);
+          if (dbSourcePaths.length > 0) {
+            const dbSourceKeys = new Set(dbSourcePaths.map(normalizePackFilePathKey));
+            const parsedSourcePack = await readPack(packPath, {
+              tablesToRead: dbSourcePaths,
+              filesToRead: dbSourcePaths,
+              readLocs: dbSourcePaths.some(isLocPackedFilePath),
+            });
+            for (const packedFile of parsedSourcePack.packedFiles) {
+              const sourceKey = normalizePackFilePathKey(packedFile.name);
+              if (dbSourceKeys.has(sourceKey)) preloadedSourceFiles.set(sourceKey, packedFile);
+            }
+          }
+        }
+
+        const materializedFiles = await Promise.all(
+          entries.map((entry) =>
+            materializePackedFileForStaging(packPath, entry.originalPath, entry.newPath, preloadedSourceFiles),
+          ),
+        );
+
+        let unsavedFiles = existingUnsavedFiles.filter(
+          (packedFile) => !sourceKeys.has(normalizePackFilePathKey(packedFile.name)),
+        );
+        const deletedFilePaths = [...(appData.deletedPackFilePaths[packPath] ?? [])];
+        const deletedPathKeys = new Set(deletedFilePaths.map(normalizePackFilePathKey));
+        const removedPaths: string[] = [];
+        const removedPathKeys = new Set<string>();
+        const addRemovedPath = (path: string) => {
+          const key = normalizePackFilePathKey(path);
+          if (!key || removedPathKeys.has(key)) return;
+          removedPathKeys.add(key);
+          removedPaths.push(path);
+        };
+
+        for (const entry of entries) {
+          const originalKey = normalizePackFilePathKey(entry.originalPath);
+          const indexedSource = packFilesByKey.get(originalKey);
+          if (indexedSource && !deletedPathKeys.has(originalKey)) {
+            deletedFilePaths.push(indexedSource.name);
+            deletedPathKeys.add(originalKey);
+          }
+          addRemovedPath(unsavedFilesByKey.get(originalKey)?.name ?? indexedSource?.name ?? entry.originalPath);
+        }
+
+        for (const materializedFile of materializedFiles) {
+          const destinationKey = normalizePackFilePathKey(materializedFile.name);
+          unsavedFiles = unsavedFiles.filter(
+            (packedFile) => normalizePackFilePathKey(packedFile.name) !== destinationKey,
+          );
+          unsavedFiles.push(materializedFile);
+        }
+
+        if (unsavedFiles.length > 0) appData.unsavedPacksData[packPath] = unsavedFiles;
+        else delete appData.unsavedPacksData[packPath];
+        if (deletedFilePaths.length > 0) appData.deletedPackFilePaths[packPath] = deletedFilePaths;
+        else delete appData.deletedPackFilePaths[packPath];
+        broadcastPackStagingState(packPath);
+        return { success: true, removedPaths };
+      } catch (error) {
+        console.error("Error renaming packed files in pack:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to rename packed files",
+        };
+      }
+    },
+  );
+  ipcMain.handle(
     "executeNode",
     async (
       event,
@@ -3435,9 +7009,7 @@ export const registerIpcMainListeners = (
       },
     ): Promise<{ success: boolean; data?: any; error?: string }> => {
       try {
-        console.log(
-          `Executing node ${nodeExecutionRequest.nodeId} (${nodeExecutionRequest.nodeType}) in backend`,
-        );
+        console.log(`Executing node ${nodeExecutionRequest.nodeId} (${nodeExecutionRequest.nodeType}) in backend`);
         // Import node execution functions
         const { executeNodeAction } = await import("./nodeExecutor");
         const result = await executeNodeAction(nodeExecutionRequest);
@@ -3461,7 +7033,7 @@ export const registerIpcMainListeners = (
       },
     ): Promise<{
       success: boolean;
-      executionResults: Array<[string, { success: boolean; data?: any; error?: string }]>;
+      executionResults: Array<[string, { success: boolean; data?: any; error?: string; warnings?: string[] }]>;
       totalExecuted: number;
       successCount: number;
       failureCount: number;
@@ -3512,28 +7084,37 @@ export const registerIpcMainListeners = (
   ipcMain.handle("saveNodeFlow", async (event, flowName: string, flowData: string, packPath: string) => {
     try {
       console.log("saveNodeFlow:", flowName);
+      const normalizedFlowName = normalizePackedFlowName(flowName);
+      if (!normalizedFlowName) {
+        return { success: false, error: "Enter a valid flow name" };
+      }
+
       let unsavedFiles = appData.unsavedPacksData[packPath];
       if (!unsavedFiles) {
         unsavedFiles = [];
         appData.unsavedPacksData[packPath] = unsavedFiles;
       }
-      if (!flowName.startsWith("whmmflows\\")) flowName = `whmmflows\\${flowName}`;
+      const existingFileIndex = unsavedFiles.findIndex(
+        (file) => normalizePackFilePathKey(file.name) === normalizePackFilePathKey(normalizedFlowName),
+      );
+      const storedFlowName = existingFileIndex >= 0 ? unsavedFiles[existingFileIndex].name : normalizedFlowName;
       const buffer = Buffer.from(flowData);
       const newFile = {
-        name: flowName,
+        name: storedFlowName,
         file_size: buffer.length,
         start_pos: -1,
         text: flowData,
       } as PackedFile;
-      const existingFileIndex = unsavedFiles.findIndex((file) => file.name == flowName);
       if (existingFileIndex != -1) {
         unsavedFiles.splice(existingFileIndex, 1, newFile);
       } else {
         unsavedFiles.push(newFile);
       }
-      mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
-      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
-      return { success: true, filePath: flowName };
+      // Editing a file after deleting it is an explicit re-add, so the deletion must not win when
+      // the staged pack is eventually written.
+      clearDeletedPackFilePath(packPath, storedFlowName);
+      broadcastPackStagingState(packPath);
+      return { success: true, filePath: storedFlowName };
     } catch (error) {
       console.error("Error saving node flow:", error);
       return {
@@ -3542,6 +7123,120 @@ export const registerIpcMainListeners = (
       };
     }
   });
+  ipcMain.handle("saveDBTableEdits", async (event, packPath: string, packedFile: PackedFile) => {
+    try {
+      if (!packedFile.schemaFields || !packedFile.tableSchema) {
+        return {
+          success: false,
+          error: `Cannot save DB table "${packedFile.name}" without schema fields and table schema`,
+        };
+      }
+
+      let unsavedFiles = appData.unsavedPacksData[packPath];
+      if (!unsavedFiles) {
+        unsavedFiles = [];
+        appData.unsavedPacksData[packPath] = unsavedFiles;
+      }
+
+      const buffer = serializePackFileDataToBuffer({
+        name: packedFile.name,
+        schemaFields: packedFile.schemaFields,
+        tableSchema: packedFile.tableSchema,
+        version: packedFile.version,
+      });
+
+      const nextUnsavedFile = {
+        ...packedFile,
+        buffer,
+        file_size: buffer.length,
+      } as PackedFile;
+
+      const existingFileIndex = unsavedFiles.findIndex((file) => file.name == packedFile.name);
+      if (existingFileIndex != -1) {
+        unsavedFiles.splice(existingFileIndex, 1, nextUnsavedFile);
+      } else {
+        unsavedFiles.push(nextUnsavedFile);
+      }
+
+      clearDeletedPackFilePath(packPath, packedFile.name);
+      broadcastPackStagingState(packPath);
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error saving DB table edits:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to save DB table edits",
+      };
+    }
+  });
+  ipcMain.handle("saveTextPackedFileEdits", async (event, packPath: string, filePath: string, text: string) => {
+    try {
+      let originalText: string | undefined;
+      if (!packPath.startsWith("memory://")) {
+        try {
+          // Text files in the app's pack index usually carry only their position and size, so read
+          // the original payload before deciding whether this edit is a no-op. Use the indexed
+          // spelling when available because readPack's targeted lookup is case-sensitive.
+          const indexedFile = findPackedFileInList(findPackByPath(packPath)?.packedFiles ?? [], filePath);
+          const originalPack = await readPack(packPath, {
+            skipParsingTables: true,
+            filesToRead: [indexedFile?.name ?? filePath],
+          });
+          const originalFile = findPackedFileCaseInsensitive(originalPack, filePath);
+          if (originalFile) originalText = decodePackedFileText(originalFile);
+        } catch (error) {
+          // Failing to read the source should not discard a user's edit. In that case the previous
+          // staging behavior is retained and the next save can try again.
+          console.warn("Could not read original text file while staging edit:", filePath, error);
+        }
+      }
+
+      const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+      const nextUnsavedFiles = applyTextPackedFileEdit(unsavedFiles, filePath, text, originalText);
+      if (nextUnsavedFiles.length > 0) appData.unsavedPacksData[packPath] = nextUnsavedFiles;
+      else delete appData.unsavedPacksData[packPath];
+
+      clearDeletedPackFilePath(packPath, filePath);
+      broadcastPackStagingState(packPath);
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error saving text packed file edits:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to save text packed file edits",
+      };
+    }
+  });
+  /**
+   * Drops everything read from a pack file that has just been written over or changed externally,
+   * so the next read sees the new contents instead of the old ones.
+   */
+  const invalidateCachedPackData = async (packPath: string) => {
+    appData.packsData = appData.packsData.filter((packData) => packData.path !== packPath);
+    const hadCustomizableMod = packPath in appData.customizableMods;
+    invalidateCustomizableModPath(appData, packPath);
+    if (hadCustomizableMod) {
+      mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
+    }
+    const customizableModsCache = await loadCustomizableModsCache();
+    if (packPath in customizableModsCache) {
+      delete customizableModsCache[packPath];
+      await saveCustomizableModsCache(customizableModsCache);
+    }
+    if (packHeaderCache) {
+      delete packHeaderCache[packPath];
+      await savePackHeaderCache();
+    }
+    // The cache is lazy-loaded. Load it before invalidating so a persisted entry cannot survive a
+    // save merely because this process has not needed the cache yet.
+    const flowCache = await loadFlowExecutionCache();
+    if (flowCache.byGame[appData.currentGame]) {
+      delete flowCache.byGame[appData.currentGame];
+      await saveFlowExecutionCache();
+    }
+  };
   ipcMain.handle("savePackWithUnsavedFiles", async (event, packPath: string) => {
     try {
       console.log("savePackWithUnsavedFiles:", packPath);
@@ -3552,8 +7247,9 @@ export const registerIpcMainListeners = (
           error: "Memory packs must use 'Save As' to specify a save location",
         };
       }
-      const unsavedFiles = appData.unsavedPacksData[packPath];
-      if (!unsavedFiles || unsavedFiles.length === 0) {
+      const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+      const deletedPaths = appData.deletedPackFilePaths[packPath] ?? [];
+      if (unsavedFiles.length === 0 && deletedPaths.length === 0) {
         return {
           success: false,
           error: "No unsaved files found for this pack",
@@ -3579,7 +7275,7 @@ export const registerIpcMainListeners = (
       let replacedOriginal = true;
       try {
         // Write the pack with unsaved files appended/overwritten
-        await writePack(sortedFilesToSave, savePath, pack, true);
+        await writePack(sortedFilesToSave, savePath, pack, true, [], deletedPaths);
         console.log(`Pack saved to: ${savePath}`);
       } catch (error) {
         // If we can't overwrite (file in use/locked), save as _modified instead
@@ -3589,18 +7285,25 @@ export const registerIpcMainListeners = (
           const packName = nodePath.basename(packPath, ".pack");
           savePath = nodePath.join(packDir, `${packName}_modified.pack`);
           replacedOriginal = false;
-          await writePack(sortedFilesToSave, savePath, pack, true);
+          await writePack(sortedFilesToSave, savePath, pack, true, [], deletedPaths);
           console.log(`Pack saved to: ${savePath}`);
         } else {
           throw error;
         }
       }
+      if (replacedOriginal) {
+        await invalidateCachedPackData(savePath);
+        updateSavedPackLoadOrderRules(savePath, unsavedFiles, deletedPaths, pack.name);
+        broadcastSavedPackData(packPath, unsavedFiles, deletedPaths);
+      }
       // Clear unsaved files for this pack
       delete appData.unsavedPacksData[packPath];
-      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
+      delete appData.deletedPackFilePaths[packPath];
+      broadcastPackStagingState(packPath);
       return {
         success: true,
         savedPath: savePath,
+        replacedOriginal,
         warning: !replacedOriginal
           ? "Could not replace original pack (file in use). Saved as _modified.pack instead."
           : undefined,
@@ -3615,28 +7318,57 @@ export const registerIpcMainListeners = (
   });
   ipcMain.handle(
     "savePackAsWithUnsavedFiles",
-    async (event, packPath: string, newPackName: string, newPackDirectory: string) => {
+    async (event, packPath: string, newPackName: string, newPackDirectory: string, overwriteExisting?: boolean) => {
       try {
         console.log("savePackAsWithUnsavedFiles:", packPath, newPackName, newPackDirectory);
-        const unsavedFiles = appData.unsavedPacksData[packPath];
-        if (!unsavedFiles || unsavedFiles.length === 0) {
+        // No unsaved files is not an error: Save As on an untouched pack means "save a copy of it".
+        const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+        const deletedPaths = appData.deletedPackFilePaths[packPath] ?? [];
+        const isMemoryPack = packPath.startsWith("memory://");
+        // Create new pack path with user-provided name and directory
+        const savePath = nodePath.join(newPackDirectory, `${newPackName}.pack`);
+        const plan = planSaveAs({
+          isMemoryPack,
+          unsavedFileCount: unsavedFiles.length + deletedPaths.length,
+          targetExists: fsExtra.existsSync(savePath),
+          targetIsSourcePack: !isMemoryPack && nodePath.resolve(savePath) === nodePath.resolve(packPath),
+          overwriteExisting: !!overwriteExisting,
+        });
+
+        if (plan.action === "reject") return { success: false, error: plan.reason };
+        if (plan.action === "confirmOverwrite") {
+          // Its own outcome rather than a plain error, so the caller can offer to overwrite instead
+          // of making the user pick another name. Nothing has been written at this point.
           return {
             success: false,
-            error: "No unsaved files found for this pack",
+            alreadyExists: true,
+            savedPath: savePath,
+            error: `Pack file already exists at: ${savePath}`,
           };
         }
-        // Check if this is a memory pack (created with "New Pack" button)
-        const isMemoryPack = packPath.startsWith("memory://");
-        let pack;
-        let useFastAppendMode = true;
-        if (isMemoryPack) {
-          // For memory packs, we don't have a source pack to clone, so don't use fast append mode
-          useFastAppendMode = false;
-          pack = undefined;
-        } else {
-          // For disk packs, read the original pack
-          pack = await readPack(packPath, { skipParsingTables: true });
+        if (plan.action === "leaveAsIs") {
+          return {
+            success: true,
+            savedPath: savePath,
+            warning: "There were no unsaved changes, so the pack was left as it is.",
+          };
         }
+        if (plan.action === "copyPack") {
+          await fsExtra.copy(packPath, savePath, { overwrite: true });
+          // A file copy carries the source's last-modified time over on Windows, so a pack saved
+          // just now shows up as however old the pack it came from was. The written path gets a
+          // current timestamp for free, and mod load order and update checks read this date, so the
+          // copy is stamped to match.
+          const savedAt = new Date();
+          await fsExtra.utimes(savePath, savedAt, savedAt);
+          console.log(`Pack copied to: ${savePath}`);
+          if (overwriteExisting) await invalidateCachedPackData(savePath);
+          return { success: true, savedPath: savePath };
+        }
+
+        // For memory packs, don't use fast append mode since there's no source pack to clone
+        const pack = isMemoryPack ? undefined : await readPack(packPath, { skipParsingTables: true });
+        const useFastAppendMode = !isMemoryPack;
         // Convert unsaved files to format for writePack (similar to DBClone.ts)
         const filesToSave = unsavedFiles.map((file) => {
           const buffer = file.buffer || Buffer.from(file.text || "");
@@ -3650,22 +7382,16 @@ export const registerIpcMainListeners = (
         const sortedFilesToSave = filesToSave.toSorted((firstPf, secondPf) => {
           return firstPf.name.localeCompare(secondPf.name);
         });
-        // Create new pack path with user-provided name and directory
-        const savePath = nodePath.join(newPackDirectory, `${newPackName}.pack`);
-        // Check if file already exists
-        if (fsExtra.existsSync(savePath)) {
-          return {
-            success: false,
-            error: `Pack file already exists at: ${savePath}`,
-          };
-        }
         // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
-        // For memory packs, don't use fast append mode since there's no source pack
-        await writePack(sortedFilesToSave, savePath, pack, useFastAppendMode);
+        await writePack(sortedFilesToSave, savePath, pack, useFastAppendMode, [], deletedPaths);
         console.log(`Pack saved to: ${savePath}`);
+        // Whatever was read from the pack we just wrote over describes the old file now.
+        if (overwriteExisting) await invalidateCachedPackData(savePath);
+        updateSavedPackLoadOrderRules(savePath, unsavedFiles, deletedPaths);
         // Clear unsaved files for this pack
         delete appData.unsavedPacksData[packPath];
-        windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
+        delete appData.deletedPackFilePaths[packPath];
+        broadcastPackStagingState(packPath);
         return { success: true, savedPath: savePath };
       } catch (error) {
         console.error("Error saving pack as with unsaved files:", error);
@@ -3689,15 +7415,20 @@ export const registerIpcMainListeners = (
         if (trimmedHumanName) modPathToLabel.set(mod.path, trimmedHumanName);
         else {
           const baseName = nodePath.basename(mod.path);
-          modPathToLabel.set(
-            mod.path,
-            baseName.toLowerCase().endsWith(".pack") ? baseName.slice(0, -5) : baseName,
-          );
+          modPathToLabel.set(mod.path, baseName.toLowerCase().endsWith(".pack") ? baseName.slice(0, -5) : baseName);
         }
       }
       const tablesToRead = Array.from(
         new Set(
-          ["land_units_tables", "unit_variants_tables", "variants_tables"]
+          [
+            "land_units_tables",
+            "main_units_tables",
+            "units_custom_battle_permissions_tables",
+            "unit_variants_tables",
+            "factions_tables",
+            "cultures_subcultures_tables",
+            "variants_tables",
+          ]
             .flatMap((tableName) => resolveTable(tableName))
             .map((tableName) => `db\\${tableName}\\`),
         ),
@@ -3707,163 +7438,7 @@ export const registerIpcMainListeners = (
       const dbPackName = gameToPackWithDBTablesName[appData.currentGame] || "db.pack";
       const dbPackPath = nodePath.join(dataFolder, dbPackName);
       const dataPackPath = nodePath.join(dataFolder, "data.pack");
-      await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true);
-      await readModsByPath(enabledModPaths, { skipParsingTables: false, readLocs: true, tablesToRead }, true);
-      const localPackNames = [] as string[];
-      const currentLanguage = appData.currentLanguage || "en";
-      const preferredLocPack = `local_${currentLanguage}.pack`;
-      if (appData.allVanillaPackNames.has(preferredLocPack)) localPackNames.push(preferredLocPack);
-      if (!localPackNames.includes("local_en.pack") && appData.allVanillaPackNames.has("local_en.pack")) {
-        localPackNames.push("local_en.pack");
-      }
-      const localPackPaths = localPackNames.map((packName) => nodePath.join(dataFolder, packName));
-      if (localPackPaths.length > 0) {
-        await readModsByPath(localPackPaths, { skipParsingTables: true, readLocs: true }, true);
-      }
-      if (fsExtra.existsSync(dataPackPath)) {
-        await readModsByPath([dataPackPath], { skipParsingTables: true }, true);
-      }
-      const packsForTables = appData.packsData.filter(
-        (pack) => pack.path === dbPackPath || enabledModPaths.includes(pack.path),
-      );
-      const unsortedPacksTableData = getPacksTableData(packsForTables, tablesToRead, false);
-      if (!unsortedPacksTableData) {
-        return { success: false, error: "Failed to build table data for visuals tab" };
-      }
-      const orderedPacksTableData = [] as PackViewData[];
-      const dbPackTableData = unsortedPacksTableData.find((pack) => pack.packPath === dbPackPath);
-      if (dbPackTableData) orderedPacksTableData.push(dbPackTableData);
-      for (const mod of dbPriorityMods) {
-        const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
-        if (ptd) orderedPacksTableData.push(ptd);
-      }
-      const getTableRowDataWithPackPath = (
-        packsTableData: PackViewData[],
-        tableName: string,
-        rowDataExtractor: (packPath: string, schemaFieldRow: AmendedSchemaField[]) => void,
-      ) => {
-        packsTableData.forEach((pTD) => {
-          const tableFiles = Object.keys(pTD.packedFiles).filter((pFName) =>
-            pFName.startsWith(`db\\${tableName}\\`),
-          );
-          for (const tableFile of tableFiles) {
-            const packedFile = pTD.packedFiles[tableFile];
-            const dbVersion = getDBVersion(packedFile);
-            if (!dbVersion) continue;
-            const schemaFields = packedFile.schemaFields as AmendedSchemaField[];
-            const chunkedShemaFields = chunkSchemaIntoRows(schemaFields, dbVersion) as AmendedSchemaField[][];
-            for (const schemaFieldRow of chunkedShemaFields) {
-              rowDataExtractor(pTD.packPath, schemaFieldRow);
-            }
-          }
-        });
-      };
-      const variantsByName = new Map<string, string>();
-      const unitToVariantRows = new Map<string, { faction: string; variantName: string }[]>();
-      const landUnitKeys = new Set<string>();
-      const unitKeyToOriginPackPath = new Map<string, string>();
-      const packsTableDataForOrigin = [] as PackViewData[];
-      for (const mod of dbPriorityMods) {
-        const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
-        if (ptd) packsTableDataForOrigin.push(ptd);
-      }
-      if (dbPackTableData) packsTableDataForOrigin.push(dbPackTableData);
-      getTableRowData(orderedPacksTableData, "variants_tables", (schemaFieldRow) => {
-        const variantName = schemaFieldRow.find((field) => field.name == "variant_name")?.resolvedKeyValue;
-        const variantFilename = schemaFieldRow.find(
-          (field) => field.name == "variant_filename",
-        )?.resolvedKeyValue;
-        if (variantName) {
-          variantsByName.set(variantName, variantFilename || "");
-        }
-      });
-      getTableRowData(orderedPacksTableData, "unit_variants_tables", (schemaFieldRow) => {
-        const unitKey = schemaFieldRow.find((field) => field.name == "unit")?.resolvedKeyValue;
-        const variantName = schemaFieldRow.find((field) => field.name == "variant")?.resolvedKeyValue;
-        const faction = schemaFieldRow.find((field) => field.name == "faction")?.resolvedKeyValue || "";
-        if (!unitKey) return;
-        const rows = unitToVariantRows.get(unitKey) || [];
-        const existingIndex = rows.findIndex((row) => row.faction === faction);
-        const nextRow = { faction, variantName: variantName || "" };
-        if (existingIndex >= 0) rows.splice(existingIndex, 1, nextRow);
-        else rows.push(nextRow);
-        unitToVariantRows.set(unitKey, rows);
-      });
-      getTableRowData(orderedPacksTableData, "land_units_tables", (schemaFieldRow) => {
-        const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
-        if (unitKey) landUnitKeys.add(unitKey);
-      });
-      getTableRowDataWithPackPath(
-        packsTableDataForOrigin,
-        "land_units_tables",
-        (packPath, schemaFieldRow) => {
-          const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
-          if (!unitKey) return;
-          if (unitKeyToOriginPackPath.has(unitKey)) return;
-          unitKeyToOriginPackPath.set(unitKey, packPath);
-        },
-      );
-      const locPacksInPriority = [...localPackPaths, ...dbPriorityMods.map((mod) => mod.path)]
-        .map((packPath) => appData.packsData.find((pack) => pack.path === packPath))
-        .filter((pack): pack is Pack => !!pack);
-      const localizedNames = new Map<string, string>();
-      for (const pack of locPacksInPriority) {
-        const trie = getLocsTrie(pack);
-        if (!trie) continue;
-        for (const [key, value] of Object.entries(trie.getEntries())) {
-          localizedNames.set(key, value);
-        }
-      }
-      const getLocalizedName = (locId: string) => localizedNames.get(locId);
-      const resolveVisualsLoc = (locId: string) => {
-        const localized = getLocalizedName(locId);
-        return resolveTextReplacements(localized, getLocalizedName) || localized;
-      };
-      const visualsUnits = [] as {
-        unitKey: string;
-        faction: string;
-        localizedName: string;
-        variantName?: string;
-        variantMeshPath?: string;
-        originPackPath: string;
-        originLabel: string;
-      }[];
-      for (const unitKey of landUnitKeys) {
-        const rows = unitToVariantRows.get(unitKey);
-        const localizedName = resolveVisualsLoc(`land_units_onscreen_name_${unitKey}`) || unitKey;
-        const originPackPath = unitKeyToOriginPackPath.get(unitKey) || dbPackPath;
-        const originLabel =
-          originPackPath === dbPackPath
-            ? "Vanilla"
-            : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
-        if (!rows || rows.length === 0) {
-          visualsUnits.push({ unitKey, faction: "", localizedName, originPackPath, originLabel });
-          continue;
-        }
-        for (const row of rows) {
-          const variantFilename = row.variantName ? variantsByName.get(row.variantName) : undefined;
-          const variantMeshPath =
-            variantFilename && variantFilename.trim() !== ""
-              ? toVariantMeshDefinitionPath(variantFilename)
-              : undefined;
-          visualsUnits.push({
-            unitKey,
-            faction: row.faction,
-            localizedName,
-            variantName: row.variantName || undefined,
-            variantMeshPath,
-            originPackPath,
-            originLabel,
-          });
-        }
-      }
-      visualsUnits.sort((first, second) => {
-        const nameDiff = collator.compare(first.localizedName, second.localizedName);
-        if (nameDiff !== 0) return nameDiff;
-        const keyDiff = collator.compare(first.unitKey, second.unitKey);
-        if (keyDiff !== 0) return keyDiff;
-        return collator.compare(first.faction || "", second.faction || "");
-      });
+      const localPackPaths = getVanillaLocalisationPackPaths(dataFolder);
       const vanillaVariantsPackPaths = [...appData.allVanillaPackNames]
         .filter((packName) => packName.toLowerCase().startsWith("variants"))
         .map((packName) => nodePath.join(dataFolder, packName))
@@ -3875,6 +7450,300 @@ export const registerIpcMainListeners = (
         ...(fsExtra.existsSync(dataPackPath) ? [dataPackPath] : []),
         ...sortedEnabledMods.map((mod) => mod.path),
       ];
+      const { signature: vanillaCacheSignature, signatureInputs: vanillaSignatureInputs } =
+        await getVisualsVanillaSignature(appData.currentGame, dbPackPath);
+      const visualsCache =
+        (await loadVanillaVisualsCache(app.getPath("userData"), vanillaCacheSignature, vanillaSignatureInputs)) ??
+        createEmptyVisualsDataCache();
+      const visualsModSegments: VisualsModSegments = {
+        ...(await loadVisualsModSegments(app.getPath("userData"))),
+      };
+      const schemaHash = vanillaSignatureInputs.schema;
+      const modPathKeys = new Set(enabledModPaths.map(visualsModSegmentKey));
+      const contributionPaths = Array.from(
+        new Set([dbPackPath, ...enabledModPaths, ...vanillaVariantsPackPaths, dataPackPath]),
+      );
+      const identities = new Map<string, VisualsPackCacheIdentity>();
+      await Promise.all(
+        contributionPaths.map(async (packPath) => {
+          const identity = await getVisualsPackIdentity(packPath);
+          if (identity) identities.set(packPath, identity);
+        }),
+      );
+      const getCachedContribution = (packPath: string) => {
+        const identity = identities.get(packPath);
+        if (!identity) return undefined;
+        return modPathKeys.has(visualsModSegmentKey(packPath))
+          ? getCurrentVisualsModSegment(visualsModSegments, identity)
+          : getCurrentVisualsPackCacheEntry(visualsCache, identity);
+      };
+      const hasCurrentTables = (entry: VisualsPackCacheEntry | undefined) =>
+        !!getCurrentVisualsTableContribution(entry, schemaHash);
+
+      const missingDbTables = !hasCurrentTables(getCachedContribution(dbPackPath));
+      const missingModContributions = enabledModPaths.filter((packPath) => {
+        const entry = getCachedContribution(packPath);
+        return !hasCurrentTables(entry) || !entry?.locs;
+      });
+      const freshlyReadPacks = new Map<string, Pack>();
+      const retainFreshPacks = (packs: Pack[]) => {
+        for (const pack of packs) freshlyReadPacks.set(pack.path, pack);
+      };
+      if (missingDbTables) {
+        // The same route the Unit Viewer and Buildings take. variants_tables and land_units_tables
+        // are among the larger ones the game ships, and this ran a full parse of them out of the
+        // pack every time the schema changed or the visuals cache missed; the vanilla db cache hands
+        // back the same rows without touching db.pack. Only prefixes it cannot serve are parsed.
+        const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
+        const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
+        if (unservedPrefixes.length === 0) {
+          indexedDbPack.readTables = [...tablesToRead];
+          appendPacksData(indexedDbPack);
+          // appendPacksData merges into a pack already held rather than replacing it, so the rows
+          // just filled can land on the retained instance instead of this one. Retain whichever of
+          // the two ends up in packsData, since that is the one carrying them.
+          retainFreshPacks([appData.packsData.find((pack) => pack.path === dbPackPath) ?? indexedDbPack]);
+        } else {
+          retainFreshPacks(await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true));
+        }
+      }
+      if (missingModContributions.length > 0) {
+        retainFreshPacks(
+          await readModsByPath(
+            missingModContributions,
+            { skipParsingTables: false, readLocs: true, tablesToRead },
+            true,
+          ),
+        );
+      }
+
+      let didChangeVanillaCache = false;
+      let didChangeModSegments = false;
+      const fillCachedContribution = (
+        packPath: string,
+        options: { tables?: boolean; locs?: boolean },
+      ): VisualsPackCacheEntry | undefined => {
+        const identity = identities.get(packPath);
+        if (!identity) return undefined;
+        const isMod = modPathKeys.has(visualsModSegmentKey(packPath));
+        const entry = isMod
+          ? getOrCreateVisualsModSegment(visualsModSegments, identity)
+          : getOrCreateVisualsPackCacheEntry(visualsCache, identity);
+        const pack =
+          freshlyReadPacks.get(packPath) || appData.packsData.find((candidate) => candidate.path === packPath);
+        if (options.tables && schemaHash && entry.tables?.schemaHash !== schemaHash) {
+          if (!pack) return undefined;
+          entry.tables = {
+            schemaHash,
+            contribution: getVisualsTableContribution(pack),
+          };
+          if (isMod) didChangeModSegments = true;
+          else didChangeVanillaCache = true;
+        }
+        if (options.locs && !entry.locs) {
+          if (!pack) return undefined;
+          entry.locs = getVisualsLocContribution(pack);
+          if (isMod) didChangeModSegments = true;
+          else didChangeVanillaCache = true;
+        }
+        return entry;
+      };
+
+      const contributionByPath = new Map<string, VisualsPackCacheEntry>();
+      const dbContribution = fillCachedContribution(dbPackPath, { tables: true });
+      if (!dbContribution?.tables) {
+        return { success: false, error: "Failed to build vanilla table data for visuals tab" };
+      }
+      contributionByPath.set(dbPackPath, dbContribution);
+      for (const packPath of enabledModPaths) {
+        const contribution = fillCachedContribution(packPath, { tables: true, locs: true });
+        if (contribution) contributionByPath.set(packPath, contribution);
+      }
+      // Refresh the LRU stamp for every enabled segment, including a segment reused without a read.
+      const now = Date.now();
+      for (const packPath of enabledModPaths) {
+        const identity = identities.get(packPath);
+        const segment = identity ? getCurrentVisualsModSegment(visualsModSegments, identity) : undefined;
+        if (segment) {
+          segment.lastUsedMs = now;
+          didChangeModSegments = true;
+        }
+      }
+      // The game's own locs come from the loc cache, so they are neither materialised into a map
+      // here nor persisted per pack in the visuals cache. Its language choice is preserved: the
+      // cache folds the same pack list in the same order, so local_en still lands last.
+      const vanillaLoc = createLocLookup(Object.values(await getVanillaLocLookup(localPackPaths)));
+
+      const tablePathsInMergeOrder = [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)];
+      const toTableContributions = (packPaths: string[]) =>
+        packPaths.flatMap((packPath) => {
+          const contribution = contributionByPath.get(packPath)?.tables?.contribution;
+          return contribution ? [{ packPath, contribution }] : [];
+        });
+      const {
+        variantsByName,
+        variantDetailsByName,
+        unitToVariantRows,
+        landUnitKeys,
+        unitKeyToOriginPackPath,
+        unitKeyToCaste,
+        mainUnitToLandUnit,
+        unitToPermissionFactions,
+        factionToSubculture,
+        subcultureToCulture,
+      } = mergeVisualsTableContributions(
+        toTableContributions(tablePathsInMergeOrder),
+        toTableContributions([...dbPriorityMods.map((mod) => mod.path), dbPackPath]),
+      );
+      // Mods only. They were merged after the game's locs and so overrode them; checking them
+      // first and falling through to the cache keeps that precedence.
+      const modLocalizedNames = mergeVisualsLocContributions(
+        dbPriorityMods.map((mod) => contributionByPath.get(mod.path)?.locs || []),
+      );
+      const getLocalizedName = (locId: string) => modLocalizedNames.get(locId) ?? vanillaLoc(locId);
+      const resolveVisualsLoc = (locId: string) => {
+        const localized = getLocalizedName(locId);
+        return resolveTextReplacements(localized, getLocalizedName) || localized;
+      };
+      const landUnitToSubcultures = new Map<string, string[]>();
+      const landUnitToFactions = new Map<string, Set<string>>();
+      for (const [unitKey, factionKeys] of unitToPermissionFactions) {
+        const landUnitKey = mainUnitToLandUnit.get(unitKey) || (landUnitKeys.has(unitKey) ? unitKey : undefined);
+        if (!landUnitKey) continue;
+        const availableFactions = landUnitToFactions.get(landUnitKey) || new Set<string>();
+        const subcultures = new Set<string>();
+        for (const factionKey of factionKeys) {
+          availableFactions.add(factionKey);
+          const subculture = factionToSubculture.get(factionKey);
+          if (subculture) subcultures.add(subculture);
+        }
+        landUnitToFactions.set(landUnitKey, availableFactions);
+        if (subcultures.size > 0) landUnitToSubcultures.set(landUnitKey, Array.from(subcultures));
+      }
+      const visualsUnits = [] as {
+        unitKey: string;
+        faction: string;
+        localizedName: string;
+        variantName?: string;
+        variantMeshPath?: string;
+        unitVariantName?: string;
+        unitCard?: string;
+        variantDetails?: {
+          techFolder: string;
+          variantFilename: string;
+          lowPolyFilename: string;
+          mountScale: string;
+          scale: string;
+          scaleVariation: string;
+          superLowPolyFilename: string;
+        };
+        availableFactions: string[];
+        originPackPath: string;
+        originLabel: string;
+        cultureKey: string;
+        cultureName: string;
+        cultures: Array<{ key: string; name: string }>;
+        caste: string;
+      }[];
+      for (const unitKey of landUnitKeys) {
+        const rows = unitToVariantRows.get(unitKey);
+        const localizedName = resolveVisualsLoc(`land_units_onscreen_name_${unitKey}`) || unitKey;
+        const originPackPath = unitKeyToOriginPackPath.get(unitKey) || dbPackPath;
+        const originLabel =
+          originPackPath === dbPackPath
+            ? "Vanilla"
+            : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
+        const caste = unitKeyToCaste.get(unitKey) || "";
+        const addCultureMetadata = (faction: string) => {
+          const variantSubculture = factionToSubculture.get(faction) || "";
+          const subcultures = variantSubculture ? [variantSubculture] : landUnitToSubcultures.get(unitKey) || [];
+          const cultures = subcultures.map((subculture) => {
+            const parentCulture = subcultureToCulture.get(subculture) || "";
+            return {
+              key: subculture || parentCulture || "__unassigned",
+              name:
+                resolveVisualsLoc(`cultures_subcultures_name_${subculture}`) ||
+                resolveVisualsLoc(`cultures_name_${parentCulture}`) ||
+                subculture ||
+                parentCulture ||
+                "Unassigned",
+            };
+          });
+          if (cultures.length > 0) {
+            return { cultureKey: cultures[0].key, cultureName: cultures[0].name, cultures };
+          }
+          const unassigned = { key: "__unassigned", name: "Unassigned" };
+          return { cultureKey: unassigned.key, cultureName: unassigned.name, cultures: [unassigned] };
+        };
+        if (!rows || rows.length === 0) {
+          visualsUnits.push({
+            unitKey,
+            faction: "",
+            localizedName,
+            availableFactions: Array.from(landUnitToFactions.get(unitKey) || []).sort((a, b) => collator.compare(a, b)),
+            originPackPath,
+            originLabel,
+            ...addCultureMetadata(""),
+            caste,
+          });
+          continue;
+        }
+        for (const row of rows) {
+          const variantFilename = row.variantName ? variantsByName.get(row.variantName) : undefined;
+          const variantMeshPath =
+            variantFilename && variantFilename.trim() !== "" ? toVariantMeshDefinitionPath(variantFilename) : undefined;
+          visualsUnits.push({
+            unitKey,
+            faction: row.faction,
+            localizedName,
+            variantName: row.variantName || undefined,
+            variantMeshPath,
+            unitVariantName: row.name || undefined,
+            unitCard: row.unitCard || undefined,
+            variantDetails: row.variantName ? variantDetailsByName.get(row.variantName) : undefined,
+            availableFactions: Array.from(landUnitToFactions.get(unitKey) || []).sort((a, b) => collator.compare(a, b)),
+            originPackPath,
+            originLabel,
+            ...addCultureMetadata(row.faction),
+            caste,
+          });
+        }
+      }
+      visualsUnits.sort((first, second) => {
+        const nameDiff = collator.compare(first.localizedName, second.localizedName);
+        if (nameDiff !== 0) return nameDiff;
+        const keyDiff = collator.compare(first.unitKey, second.unitKey);
+        if (keyDiff !== 0) return keyDiff;
+        return collator.compare(first.faction || "", second.faction || "");
+      });
+      const cachedFileContributions: VisualsFileResult[][] = [];
+      let areAllFileContributionsCached = true;
+      for (const packPath of fileSearchPackPaths) {
+        let identity = identities.get(packPath);
+        if (!identity) {
+          identity = await getVisualsPackIdentity(packPath);
+          if (identity) identities.set(packPath, identity);
+        }
+        const files = identity
+          ? modPathKeys.has(visualsModSegmentKey(packPath))
+            ? getCurrentVisualsModSegment(visualsModSegments, identity)?.files
+            : getCurrentVisualsPackCacheEntry(visualsCache, identity)?.files
+          : undefined;
+        if (!files) {
+          areAllFileContributionsCached = false;
+          break;
+        }
+        cachedFileContributions.push(files);
+      }
+      if (didChangeVanillaCache) {
+        await saveVanillaVisualsCache(
+          app.getPath("userData"),
+          vanillaCacheSignature,
+          visualsCache,
+          vanillaSignatureInputs,
+        );
+      }
+      if (didChangeModSegments) await saveVisualsModSegments(app.getPath("userData"), visualsModSegments);
       const sessionId = `visuals_${hash({
         game: appData.currentGame,
         language: appData.currentLanguage || "en",
@@ -3883,8 +7752,11 @@ export const registerIpcMainListeners = (
       visualsSessions.set(sessionId, {
         sessionId,
         enabledModPaths,
+        vanillaCacheSignature,
         dbPriorityPackPaths: [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)],
         fileSearchPackPaths,
+        visualFiles: areAllFileContributionsCached ? mergeVisualsFileContributions(cachedFileContributions) : undefined,
+        variantMeshCatalogs: new Map(),
         createdAt: Date.now(),
       });
       return {
@@ -3942,55 +7814,66 @@ export const registerIpcMainListeners = (
       };
     }
   });
-  ipcMain.handle(
-    "searchVisualsFiles",
-    async (event, sessionId: string, query: string, offset = 0, limit = 200) => {
+  ipcMain.handle("getVisualsVariantMeshCatalog", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = visualsSessions.get(sessionId);
+      if (!session) return { success: false, error: "Visuals session expired or missing" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!normalizedPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      const cacheKey = normalizedPath.toLowerCase();
+      const cached = session.variantMeshCatalogs.get(cacheKey);
+      const catalogPromise =
+        cached ||
+        buildVariantMeshCatalog(normalizedPath, async (definitionPath) => {
+          const resolved = await resolveVisualsFileInSession(session, definitionPath, {
+            variantMeshDefinitionFallback: true,
+          });
+          if (!resolved?.pack || !resolved.fileName) return undefined;
+          await readFromExistingPack(resolved.pack, {
+            filesToRead: [resolved.fileName],
+            skipParsingTables: true,
+          });
+          const refreshedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+          return refreshedFile ? decodePackedFileText(refreshedFile) : undefined;
+        });
+      if (!cached) session.variantMeshCatalogs.set(cacheKey, catalogPromise);
       try {
-        const session = visualsSessions.get(sessionId);
-        if (!session) return { success: false, error: "Visuals session expired or missing" };
-        const normalizedQuery = normalizePackFilePathKey(query || "");
-        const uniqueResults = new Map<
-          string,
-          { path: string; ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" }
-        >();
-        for (const packPath of session.fileSearchPackPaths) {
-          let pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
-          if (!pack) {
-            const newPack = await readPack(packPath, { skipParsingTables: true });
-            appendPacksData(newPack);
-            pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
-          }
-          if (!pack) continue;
-          for (const packedFile of pack.packedFiles) {
-            const normalizedName = normalizePackFilePathKey(packedFile.name);
-            let ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | undefined;
-            if (normalizedName.endsWith(".variantmeshdefinition")) ext = "variantmeshdefinition";
-            else if (normalizedName.endsWith(".wsmodel")) ext = "wsmodel";
-            else if (normalizedName.endsWith(".rigid_model_v2")) ext = "rigid_model_v2";
-            if (!ext) continue;
-            if (normalizedQuery && !normalizedName.includes(normalizedQuery)) continue;
-            uniqueResults.set(normalizedName, { path: packedFile.name, ext });
-          }
-        }
-        const allResults = Array.from(uniqueResults.values()).sort((first, second) =>
-          collator.compare(first.path, second.path),
-        );
-        const safeOffset = Math.max(0, offset || 0);
-        const safeLimit = Math.max(1, Math.min(1000, limit || 200));
-        return {
-          success: true,
-          total: allResults.length,
-          results: allResults.slice(safeOffset, safeOffset + safeLimit),
-        };
+        return { success: true, catalog: await catalogPromise };
       } catch (error) {
-        console.error("Error searching visuals files:", error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Failed to search visuals files",
-        };
+        if (session.variantMeshCatalogs.get(cacheKey) === catalogPromise) session.variantMeshCatalogs.delete(cacheKey);
+        throw error;
       }
-    },
-  );
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve Visuals appearances",
+      };
+    }
+  });
+  ipcMain.handle("searchVisualsFiles", async (event, sessionId: string, query: string, offset = 0, limit = 1000) => {
+    try {
+      const session = visualsSessions.get(sessionId);
+      if (!session) return { success: false, error: "Visuals session expired or missing" };
+      const normalizedQuery = normalizePackFilePathKey(query || "");
+      const cachedFiles = await getVisualsFilesForSession(session);
+      const allResults = normalizedQuery
+        ? cachedFiles.filter((file) => normalizePackFilePathKey(file.path).includes(normalizedQuery))
+        : cachedFiles;
+      const safeOffset = Math.max(0, offset || 0);
+      const safeLimit = Math.max(1, Math.min(1000, limit || 1000));
+      return {
+        success: true,
+        total: allResults.length,
+        results: allResults.slice(safeOffset, safeOffset + safeLimit),
+      };
+    } catch (error) {
+      console.error("Error searching visuals files:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to search visuals files",
+      };
+    }
+  });
   ipcMain.handle(
     "openInAssetEditor",
     async (
@@ -4053,32 +7936,198 @@ export const registerIpcMainListeners = (
       }
     },
   );
+  ipcMain.handle(
+    "copyPackedFileToPack",
+    async (
+      _event,
+      sourcePackPath: string,
+      filePath: string,
+      targetPackPath: string,
+      overwriteExisting = false,
+      destinationFilePath?: string,
+    ) => {
+      try {
+        if (!sourcePackPath || !filePath || !targetPackPath) {
+          return { success: false, error: "A source pack, file, and target pack are required" };
+        }
+
+        if (packPathKey(sourcePackPath) === packPathKey(targetPackPath)) {
+          return { success: false, error: "The destination must be a different pack" };
+        }
+
+        const normalizedFilePath = normalizePackFilePath(filePath);
+        const normalizedDestinationFilePath = normalizePackFilePath(destinationFilePath || normalizedFilePath);
+        const sourceDBTable = parseDBTablePath(normalizedFilePath);
+        const destinationDBTable = parseDBTablePath(normalizedDestinationFilePath);
+        const targetUnsavedFiles = appData.unsavedPacksData[targetPackPath] || [];
+        let targetPackedFiles = [...targetUnsavedFiles];
+        let targetPackedFile = findPackedFileInList(targetUnsavedFiles, normalizedDestinationFilePath);
+        const targetPack = appData.packsData.find(
+          (pack) => pack.path === targetPackPath || packPathKey(pack.path) === packPathKey(targetPackPath),
+        );
+        if (!targetPackedFile && targetPack) {
+          targetPackedFiles = [...targetPackedFiles, ...targetPack.packedFiles];
+          targetPackedFile = findPackedFileInList(targetPack.packedFiles, normalizedDestinationFilePath);
+        }
+        if (!targetPackedFile && !targetPackPath.startsWith("memory://")) {
+          const targetRead = await readPack(targetPackPath, { skipParsingTables: true });
+          targetPackedFiles = [...targetPackedFiles, ...targetRead.packedFiles];
+          targetPackedFile = findPackedFileInList(targetRead.packedFiles, normalizedDestinationFilePath);
+        }
+        if (
+          sourceDBTable &&
+          (sourceDBTable.dbFolder === DEFAULT_DB_TABLE_ROOT || sourceDBTable.dbFolder === UNUSED_DB_TABLE_ROOT) &&
+          destinationFilePath &&
+          !overwriteExisting &&
+          targetPackedFiles.some((targetFile) => {
+            const targetDBTable = parseDBTablePath(targetFile.name);
+            return (
+              destinationDBTable && targetDBTable?.dbName.toLowerCase() === destinationDBTable.dbName.toLowerCase()
+            );
+          })
+        ) {
+          return {
+            success: false,
+            targetPackPath,
+            filePath: normalizedDestinationFilePath,
+            error: `The destination already contains a table named "${destinationDBTable?.dbName}"`,
+          };
+        }
+        if (
+          sourceDBTable &&
+          (sourceDBTable.dbFolder === DEFAULT_DB_TABLE_ROOT || sourceDBTable.dbFolder === UNUSED_DB_TABLE_ROOT) &&
+          !destinationFilePath &&
+          !overwriteExisting &&
+          targetPackedFiles.some((targetFile) => {
+            const targetDBTable = parseDBTablePath(targetFile.name);
+            return targetDBTable?.dbName.toLowerCase() === sourceDBTable.dbName.toLowerCase();
+          })
+        ) {
+          return {
+            success: false,
+            tableNameRequired: true,
+            targetPackPath,
+            filePath: normalizedFilePath,
+            tableName: sourceDBTable.dbName,
+          };
+        }
+        if (targetPackedFile && !overwriteExisting) {
+          return {
+            success: false,
+            overwriteRequired: true,
+            targetPackPath,
+            filePath: normalizedDestinationFilePath,
+          };
+        }
+
+        const copiedFile = await materializePackedFileForStaging(
+          sourcePackPath,
+          normalizedFilePath,
+          destinationFilePath || normalizedFilePath,
+        );
+        const copiedFileName = copiedFile.name;
+
+        const existingTargetIndex = targetUnsavedFiles.findIndex(
+          (targetFile) => normalizePackFilePathKey(targetFile.name) === normalizePackFilePathKey(copiedFileName),
+        );
+        if (existingTargetIndex >= 0) {
+          targetUnsavedFiles.splice(existingTargetIndex, 1, copiedFile);
+        } else {
+          targetUnsavedFiles.push(copiedFile);
+        }
+        appData.unsavedPacksData[targetPackPath] = targetUnsavedFiles;
+        broadcastPackStagingState(targetPackPath);
+
+        return { success: true, targetPackPath, filePath: copiedFileName };
+      } catch (error) {
+        console.error("Error copying packed file to pack:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to copy packed file",
+        };
+      }
+    },
+  );
   ipcMain.handle("readFileFromPack", async (event, packPath: string, fileName: string) => {
     try {
       console.log("readFileFromPack:", packPath, fileName);
-      // Read the pack with the specific file
-      const pack = await readPack(packPath, { filesToRead: [fileName] });
+      const unsavedFile = findPackedFileInList(appData.unsavedPacksData[packPath] || [], fileName);
+      if (unsavedFile) {
+        const viewerKind = getPackedFileViewerKind(fileName);
+        if (!viewerKind) {
+          return {
+            success: false,
+            error: "Unsupported file type",
+          };
+        }
+        const unsavedBuffer =
+          unsavedFile.buffer || (unsavedFile.text != null ? Buffer.from(unsavedFile.text, "utf8") : undefined);
+        if (!unsavedBuffer) {
+          return {
+            success: false,
+            error: "File has no readable content",
+          };
+        }
+        if (viewerKind === "image") {
+          const image = getPackedFileImageData(unsavedBuffer, fileName);
+          return {
+            success: true,
+            base64: image.buffer.toString("base64"),
+            mimeType: image.mimeType,
+          };
+        }
+        return { success: true, text: decodePackedFileText(unsavedFile) };
+      }
+      const deletedFileKeys = new Set((appData.deletedPackFilePaths[packPath] ?? []).map(normalizePackFilePathKey));
+      if (deletedFileKeys.has(normalizePackFilePathKey(fileName))) {
+        return {
+          success: false,
+          error: `File "${fileName}" was deleted from the pack and has not been saved yet`,
+        };
+      }
+      // The viewer's db.pack tree also contains files whose winning bytes live in another vanilla
+      // pack. Resolve that source here, keeping the full payload read lazy until this request.
+      const sourcePackPath = await resolveVanillaViewerFilePackPath(packPath, fileName);
+      const pack = await readPack(sourcePackPath, { filesToRead: [fileName] });
       // Find the file
-      const file = pack.packedFiles.find((pf) => pf.name === fileName);
+      const file = findPackedFileCaseInsensitive(pack, fileName);
       if (!file) {
         return {
           success: false,
           error: `File "${fileName}" not found in pack`,
         };
       }
-      // Convert buffer to text
-      let text: string;
-      if (file.text) {
-        text = file.text;
-      } else if (file.buffer) {
-        text = file.buffer.toString("utf-8");
-      } else {
+      const viewerKind = getPackedFileViewerKind(fileName);
+      if (!viewerKind) {
+        return {
+          success: false,
+          error: "Unsupported file type",
+        };
+      }
+      if (viewerKind === "image") {
+        if (!file.buffer) {
+          return {
+            success: false,
+            error: "Image data is unavailable",
+          };
+        }
+        const image = getPackedFileImageData(file.buffer, fileName);
+        return {
+          success: true,
+          base64: image.buffer.toString("base64"),
+          mimeType: image.mimeType,
+        };
+      }
+      if (file.text != null) {
+        return { success: true, text: file.text };
+      }
+      if (!file.buffer) {
         return {
           success: false,
           error: "File has no readable content",
         };
       }
-      return { success: true, text };
+      return { success: true, text: decodePackedTextBuffer(file.buffer) };
     } catch (error) {
       console.error("Error reading file from pack:", error);
       return {
@@ -4092,19 +8141,23 @@ export const registerIpcMainListeners = (
       console.log("getFlowFilesFromPack:", packPath);
       // Check if there are unsaved flow files for this pack
       const unsavedFiles = appData.unsavedPacksData[packPath] || [];
-      const unsavedFlowFiles = unsavedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
+      const unsavedFlowFiles = unsavedFiles.filter((file) => isPackedFlowName(file.name));
+      const deletedFileKeys = new Set((appData.deletedPackFilePaths[packPath] ?? []).map(normalizePackFilePathKey));
       // Read the pack to get flow files
       const pack = await readPack(packPath, { skipParsingTables: true, readFlows: true });
       // Find all flow files in the pack
-      const packFlowFiles = pack.packedFiles.filter((pf) => pf.name.startsWith("whmmflows\\"));
+      const packFlowFiles = pack.packedFiles.filter(
+        (pf) => isPackedFlowName(pf.name) && !deletedFileKeys.has(normalizePackFilePathKey(pf.name)),
+      );
+      const unsavedFlowKeys = new Set(unsavedFlowFiles.map((file) => normalizePackFilePathKey(file.name)));
       // Combine pack files with unsaved files (unsaved takes priority)
       const flowFiles: { name: string; content: string }[] = [];
       // Add pack flow files
       for (const file of packFlowFiles) {
         // Skip if there's an unsaved version
-        if (unsavedFlowFiles.some((uf) => uf.name === file.name)) continue;
+        if (unsavedFlowKeys.has(normalizePackFilePathKey(file.name))) continue;
         let text: string;
-        if (file.text) {
+        if (file.text != null) {
           text = file.text;
         } else if (file.buffer) {
           text = file.buffer.toString("utf-8");
@@ -4117,7 +8170,7 @@ export const registerIpcMainListeners = (
       // Add unsaved flow files
       for (const file of unsavedFlowFiles) {
         let text: string;
-        if (file.text) {
+        if (file.text != null) {
           text = file.text;
         } else if (file.buffer) {
           text = file.buffer.toString("utf-8");
@@ -4135,12 +8188,571 @@ export const registerIpcMainListeners = (
       };
     }
   });
+  ipcMain.handle("getViewerPackCatalog", async () => {
+    try {
+      // `allMods` is kept in sync when the main window refreshes its mod list. The fallback also
+      // makes the picker useful during the short window where the viewer was opened before that
+      // first refresh completed.
+      const mods =
+        appData.allMods.length > 0
+          ? appData.allMods
+          : await getMods((message) => mainWindow?.webContents.send("handleLog", message));
+      // `allMods` is the disk-scan catalog and its `isEnabled` flags are not changed when the
+      // renderer toggles a mod. Use the live enabled list for this field instead, otherwise the
+      // viewer's enabled-mods picker is empty even while the manager has enabled mods.
+      const enabledModPaths = new Set(appData.enabledMods.map((mod) => nodePath.resolve(mod.path).toLowerCase()));
+      const folderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const sourceOrder = normalizeModSourceOrder(folderPaths, appData.isFeaturesForModdersEnabled);
+      const sourcePriorityById = new Map(sourceOrder.map((sourceId, index) => [sourceId, index]));
+      const seenPaths = new Set<string>();
+      const packs = mods
+        .filter((mod) => !mod.isDeleted && !!mod.path)
+        .filter((mod) => {
+          const pathKey = nodePath.resolve(mod.path).toLowerCase();
+          if (seenPaths.has(pathKey)) return false;
+          seenPaths.add(pathKey);
+          return true;
+        })
+        .map((mod) => ({
+          path: mod.path,
+          name: mod.name,
+          humanName: mod.humanName,
+          isEnabled: enabledModPaths.has(nodePath.resolve(mod.path).toLowerCase()),
+          isInData: !!mod.isInData,
+          // This is the same ordering used by resolveModsBySourcePriority: source order first,
+          // then data/modding folders before the ordinary data folder. Lower is higher priority.
+          priority:
+            (sourcePriorityById.get(getModSourceId(mod)) ?? sourceOrder.length) * 2 +
+            (getModSourceId(mod) === DATA_MOD_SOURCE_ID && mod.isInModding ? 0 : 1),
+        }))
+        .toSorted((first, second) => {
+          const firstLabel = first.humanName?.trim() || first.name;
+          const secondLabel = second.humanName?.trim() || second.name;
+          return firstLabel.localeCompare(secondLabel) || first.name.localeCompare(second.name);
+        });
+
+      return { success: true, packs };
+    } catch (error) {
+      console.error("Error getting viewer pack catalog:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to load mod packs",
+      };
+    }
+  });
+  ipcMain.on("cancelCompressionAnalysis", (event) => {
+    const state = compressionAnalysisCancelStateByWebContentsId.get(event.sender.id);
+    if (state) state.canceled = true;
+  });
+  ipcMain.handle(
+    "startCompressionAnalysis",
+    async (
+      event,
+      request: CompressionAnalysisRequest,
+    ): Promise<import("./compressionAnalysis").CompressionAnalysisStartResponse> => {
+      if (appData.currentGame !== "wh3") {
+        return { accepted: false, reason: "unsupportedGame" };
+      }
+      const requestedPackPaths = Array.isArray(request?.packPaths)
+        ? request.packPaths.filter((packPath): packPath is string => typeof packPath === "string")
+        : [];
+      const enabledMods = appData.enabledMods.filter((mod) => !mod.isDeleted && !!mod.path);
+      if (enabledMods.length === 0 || requestedPackPaths.length === 0) {
+        return { accepted: false, reason: "noEnabledMods" };
+      }
+      const webContentsId = event.sender.id;
+      if (compressionAnalysisCancelStateByWebContentsId.has(webContentsId)) {
+        return { accepted: false, busy: true, reason: "alreadyRunning" };
+      }
+      const normalizeRequestedPath = (packPath: string) => nodePath.resolve(packPath).toLowerCase();
+      const enabledPathSet = new Set(enabledMods.map((mod) => normalizeRequestedPath(mod.path)));
+      const vanillaPathSet = new Set(
+        appData.vanillaPacks
+          .map((pack) => normalizeRequestedPath(pack.path))
+          .concat(
+            [...appData.allVanillaPackNames].map((packName) => {
+              const dataFolder = appData.gamesToGameFolderPaths.wh3?.dataFolder;
+              return dataFolder ? normalizeRequestedPath(nodePath.join(dataFolder, packName)) : "";
+            }),
+          ),
+      );
+      const packPaths: string[] = [];
+      const seenPaths = new Set<string>();
+      for (const packPath of requestedPackPaths) {
+        const normalizedPath = normalizeRequestedPath(packPath);
+        if (
+          !enabledPathSet.has(normalizedPath) ||
+          vanillaPathSet.has(normalizedPath) ||
+          seenPaths.has(normalizedPath)
+        ) {
+          continue;
+        }
+        seenPaths.add(normalizedPath);
+        packPaths.push(packPath);
+      }
+      if (packPaths.length === 0) return { accepted: false, reason: "noEnabledMods" };
+
+      const cancelState = { canceled: false };
+      compressionAnalysisCancelStateByWebContentsId.set(webContentsId, cancelState);
+      const sendProgress = (progress: CompressionAnalysisProgress) => {
+        if (event.sender.isDestroyed()) return;
+        try {
+          event.sender.send("compressionAnalysisProgress", progress);
+        } catch {
+          // The renderer may close between the destroyed check and send.
+        }
+      };
+      try {
+        const result: CompressionAnalysisResult = await analyzeCompressionPacks(packPaths, {
+          isCanceled: () => cancelState.canceled || event.sender.isDestroyed(),
+          onProgress: sendProgress,
+          vanillaCsv: getVanillaCompressionCsv(),
+        });
+        return { accepted: true, result };
+      } catch (error) {
+        return {
+          accepted: true,
+          result: {
+            status: "error",
+            packs: [],
+            overall: {
+              currentSize: 0,
+              projectedSize: 0,
+              bytesSaved: 0,
+              wholePackPercentSaved: 0,
+              projectedSizeIncludingRigidModelV2: 0,
+              wholePackPercentSavedIncludingRigidModelV2: 0,
+              packCount: packPaths.length,
+              analyzedPackCount: 0,
+              testedCount: 0,
+              skippedCount: 0,
+              errorCount: 1,
+              acceptedCount: 0,
+              sampledRejectedCount: 0,
+              existing: {
+                NONE: { count: 0, storedBytes: 0 },
+                LZ4: { count: 0, storedBytes: 0 },
+                ZSTD: { count: 0, storedBytes: 0 },
+                UNKNOWN: { count: 0, storedBytes: 0 },
+              },
+              existingCounts: { NONE: 0, LZ4: 0, ZSTD: 0, UNKNOWN: 0 },
+              existingStoredBytes: { NONE: 0, LZ4: 0, ZSTD: 0, UNKNOWN: 0 },
+            },
+            requestedPackCount: requestedPackPaths.length,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        };
+      } finally {
+        if (compressionAnalysisCancelStateByWebContentsId.get(webContentsId) === cancelState) {
+          compressionAnalysisCancelStateByWebContentsId.delete(webContentsId);
+        }
+      }
+    },
+  );
+  const compressPackWithAnalysis = async (
+    packPath: string,
+    includeRigidModelV2: boolean,
+    options: { outputPath?: string; allowNoEligible?: boolean } = {},
+  ): Promise<CompressPackResponse> => {
+    const gameFolder = appData.gamesToGameFolderPaths.wh3?.gamePath;
+    if (!gameFolder) return { success: false, error: "Set the Warhammer 3 game folder before compressing packs." };
+
+    const normalizedPackPath = nodePath.resolve(packPath).toLowerCase();
+    if (compressionPackPathsInProgress.has(normalizedPackPath)) {
+      return { success: false, error: "This pack is already being compressed." };
+    }
+    compressionPackPathsInProgress.add(normalizedPackPath);
+
+    try {
+      // Analyze again in the main process so renderer data can never choose unsafe files/codecs.
+      const analysisResult = await analyzeCompressionPacks([packPath], {
+        vanillaCsv: getVanillaCompressionCsv(),
+      });
+      const analysis = analysisResult.packs[0];
+      if (!analysis || !analysis.success) {
+        return { success: false, error: analysis?.errors[0] || analysisResult.error || "Pack analysis failed." };
+      }
+      const hasEligibleFiles =
+        analysis.acceptedCount > 0 || (includeRigidModelV2 && analysis.rigidModelV2Wins.length > 0);
+      if (!hasEligibleFiles && options.allowNoEligible) {
+        return {
+          success: true,
+          packPath: options.outputPath ?? packPath,
+          originalSize: analysis.currentSize,
+          compressedSize: analysis.currentSize,
+          compressedFileCount: 0,
+        };
+      }
+      return await compressAnalyzedPack(packPath, analysis, gameFolder, includeRigidModelV2, {
+        outputPath: options.outputPath,
+      });
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      compressionPackPathsInProgress.delete(normalizedPackPath);
+    }
+  };
+
+  ipcMain.handle("compressPack", async (_event, request: CompressPackRequest): Promise<CompressPackResponse> => {
+    if (!appData.isFeaturesForModdersEnabled) {
+      return { success: false, error: "Enable Features For Modders before compressing packs." };
+    }
+    if (appData.currentGame !== "wh3") {
+      return { success: false, error: "Pack compression is available for Warhammer 3 only." };
+    }
+    if (!request || typeof request.packPath !== "string" || request.packPath.trim() === "") {
+      return { success: false, error: "No pack was selected." };
+    }
+    const normalizePackPath = (packPath: string) => nodePath.resolve(packPath).toLowerCase();
+    const normalizedRequestedPath = normalizePackPath(request.packPath);
+    const enabledMod = appData.enabledMods.find(
+      (mod) => !mod.isDeleted && !!mod.path && normalizePackPath(mod.path) === normalizedRequestedPath,
+    );
+    if (!enabledMod) return { success: false, error: "Only currently enabled mod packs can be compressed." };
+    const dataFolder = appData.gamesToGameFolderPaths.wh3?.dataFolder;
+    const vanillaPaths = new Set(
+      appData.vanillaPacks
+        .map((pack) => normalizePackPath(pack.path))
+        .concat(
+          [...appData.allVanillaPackNames].map((packName) =>
+            dataFolder ? normalizePackPath(nodePath.join(dataFolder, packName)) : "",
+          ),
+        ),
+    );
+    if (vanillaPaths.has(normalizedRequestedPath)) {
+      return { success: false, error: "Vanilla packs cannot be compressed." };
+    }
+    const copyToDataFolder = request.copyToDataFolder === true;
+    const isInDataFolder = !!dataFolder && isPathInsideFolder(enabledMod.path, dataFolder);
+    const dataPackPath = dataFolder ? nodePath.join(dataFolder, nodePath.basename(enabledMod.path)) : undefined;
+    const dataAlreadyContainsPack = !!dataPackPath && fs.existsSync(dataPackPath);
+    if (copyToDataFolder && (isInDataFolder || dataAlreadyContainsPack)) {
+      return { success: false, error: "This pack already exists in the data folder; Ctrl-click did nothing." };
+    }
+    if (copyToDataFolder && !dataFolder) {
+      return { success: false, error: "Set the Warhammer 3 data folder before copying compressed packs." };
+    }
+    const outputPath = copyToDataFolder ? nodePath.join(dataFolder!, nodePath.basename(enabledMod.path)) : undefined;
+    return await compressPackWithAnalysis(enabledMod.path, request.includeRigidModelV2 === true, { outputPath });
+  });
+  ipcMain.on("cancelGlobalSearch", (event) => {
+    const state = globalSearchCancelStateByWebContentsId.get(event.sender.id);
+    if (state) state.canceled = true;
+  });
+  ipcMain.handle("runGlobalSearch", async (event, request: GlobalSearchRequest): Promise<GlobalSearchResponse> => {
+    const webContentsId = event.sender.id;
+    const previousStart = globalSearchStartLockByWebContentsId.get(webContentsId);
+    let releaseStart!: () => void;
+    let startReleased = false;
+    const startGate = new Promise<void>((resolve) => {
+      releaseStart = () => {
+        if (startReleased) return;
+        startReleased = true;
+        resolve();
+      };
+    });
+    const startLock = (previousStart ?? Promise.resolve()).then(() => startGate);
+    globalSearchStartLockByWebContentsId.set(webContentsId, startLock);
+
+    try {
+      await previousStart;
+      const previous = globalSearchCancelStateByWebContentsId.get(webContentsId);
+      if (previous) {
+        previous.canceled = true;
+        if (previous.done) await previous.done;
+      }
+    } catch (error) {
+      releaseStart();
+      if (globalSearchStartLockByWebContentsId.get(webContentsId) === startLock) {
+        globalSearchStartLockByWebContentsId.delete(webContentsId);
+      }
+      throw error;
+    }
+
+    const cancelState: { canceled: boolean; done?: Promise<GlobalSearchResponse> } = { canceled: false };
+    globalSearchCancelStateByWebContentsId.set(webContentsId, cancelState);
+    let resolveDone!: (response: GlobalSearchResponse) => void;
+    cancelState.done = new Promise<GlobalSearchResponse>((resolve) => {
+      resolveDone = resolve;
+    });
+    releaseStart();
+    if (globalSearchStartLockByWebContentsId.get(webContentsId) === startLock) {
+      globalSearchStartLockByWebContentsId.delete(webContentsId);
+    }
+    const progressThrottle = createProgressThrottle<Parameters<GlobalSearchRunDeps["report"]>[0]>({
+      isTerminal: (progress) => progress.stage === "done",
+      deliver: (progress) => {
+        if (event.sender.isDestroyed()) return;
+        try {
+          event.sender.send("setGlobalSearchProgress", progress);
+        } catch {
+          // The viewer may close between the destroyed check and send.
+        }
+      },
+    });
+    const sendProgress = (progress: Parameters<GlobalSearchRunDeps["report"]>[0]) => progressThrottle.send(progress);
+    const sendResults = (batch: Parameters<GlobalSearchRunDeps["emit"]>[0]) => {
+      if (event.sender.isDestroyed()) return;
+      try {
+        event.sender.send("setGlobalSearchResults", batch);
+      } catch {
+        // The in-flight run can finish quietly after a window closes.
+      }
+    };
+
+    try {
+      const mods =
+        appData.allMods.length > 0
+          ? appData.allMods
+          : await getMods((message) => mainWindow?.webContents.send("handleLog", message));
+      const unsavedPackPaths = new Set(
+        Object.entries(appData.unsavedPacksData)
+          .filter(([, files]) => files.length > 0)
+          .map(([path]) => nodePath.resolve(path).toLowerCase()),
+      );
+      const hasUnsavedChanges = (path: string) => unsavedPackPaths.has(nodePath.resolve(path).toLowerCase());
+      const catalog = {
+        openPacks: appData.openViewerPackPaths.map((path) => ({
+          path,
+          name: nodePath.basename(path),
+          hasUnsavedChanges: hasUnsavedChanges(path),
+        })),
+        enabledMods: appData.enabledMods
+          .filter((mod) => !mod.isDeleted && !!mod.path)
+          .map((mod) => ({
+            path: mod.path,
+            name: mod.name,
+            humanName: mod.humanName,
+            hasUnsavedChanges: hasUnsavedChanges(mod.path),
+          })),
+        allMods: mods
+          .filter((mod) => !!mod.path)
+          .map((mod) => ({
+            path: mod.path,
+            name: mod.name,
+            humanName: mod.humanName,
+            isDeleted: mod.isDeleted,
+            hasUnsavedChanges: hasUnsavedChanges(mod.path),
+          })),
+      };
+      /** The search reads packs the viewer and mod list may also be reading, so it waits its turn. */
+      const readPackAfterInFlight = async (packPath: string, packReadingOptions: PackReadingOptions) => {
+        await packReads.waitUntilFree(packPath);
+        return readPackRegistered(packPath, packReadingOptions);
+      };
+      const getVanillaLocReader = async () => {
+        const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+        if (!dataFolder) return undefined;
+        const packPaths = getVanillaLocalisationPackPaths(dataFolder);
+        return openOrBuildVanillaLocCache({
+          userDataPath: app.getPath("userData"),
+          game: appData.currentGame,
+          packPaths,
+          readEntries: async () => {
+            const entries: Array<readonly [string, string, string]> = [];
+            for (const packPath of packPaths) {
+              if (cancelState.canceled) throw new VanillaLocCacheBuildCanceled();
+              const pack = await readPackAfterInFlight(packPath, { skipParsingTables: true, readLocs: true });
+              forEachPackLocEntry(pack, (key, value, locFileName) => {
+                entries.push([key, value, `${pack.path}\0${locFileName}`]);
+              });
+            }
+            if (cancelState.canceled) throw new VanillaLocCacheBuildCanceled();
+            return entries;
+          },
+        });
+      };
+      const forEachPackedFileBufferRegistered: GlobalSearchRunDeps["forEachPackedFileBuffer"] = async (
+        packPath,
+        wanted,
+        visit,
+        options,
+      ) => {
+        await packReads.waitUntilFree(packPath);
+        const releaseRead = packReads.begin(packPath);
+        try {
+          await forEachPackedFileBuffer(packPath, wanted, visit, options);
+        } finally {
+          releaseRead();
+        }
+      };
+      const deps: GlobalSearchRunDeps = {
+        getVanillaPackIndex,
+        getVanillaPackPathsInLoadOrder,
+        searchVanillaDb,
+        getVanillaLocReader,
+        forEachPackedFileBuffer: forEachPackedFileBufferRegistered,
+        readPackRegistered: readPackAfterInFlight,
+        forEachPackLocEntry,
+        isCanceled: () => cancelState.canceled,
+        report: sendProgress,
+        emit: sendResults,
+        yieldToEventLoop: () => new Promise<void>((resolve) => setImmediate(resolve)),
+      };
+      const work = runGlobalSearch(request, catalog, deps);
+      const response = await work;
+      resolveDone(response);
+      return response;
+    } catch (error) {
+      const response: GlobalSearchResponse = {
+        success: false,
+        searchId: request.searchId,
+        canceled: cancelState.canceled,
+        truncated: false,
+        results: [],
+        counts: { db: 0, loc: 0, text: 0, rigidModel: 0 },
+        targetsSearched: 0,
+        filesScanned: 0,
+        skippedFiles: [],
+        warnings: [],
+        elapsedMs: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      resolveDone(response);
+      return response;
+    } finally {
+      // A run that ends without a "done" report - the error path - can leave a coalesced update
+      // queued, which would land after the response the panel has already settled on.
+      progressThrottle.cancel();
+      if (globalSearchCancelStateByWebContentsId.get(webContentsId) === cancelState) {
+        globalSearchCancelStateByWebContentsId.delete(webContentsId);
+      }
+    }
+  });
+  ipcMain.handle("getFlowPackCatalog", async () => {
+    const mods = appData.allMods.filter((mod) => !mod.isDeleted && !!mod.path);
+    const enabledModPaths = new Set(appData.enabledMods.map((mod) => nodePath.resolve(mod.path)));
+    const entries: FlowPackCatalogEntry[] = [];
+    const seenPaths = new Set<string>();
+
+    for (const mod of mods) {
+      const resolvedPath = nodePath.resolve(mod.path);
+      if (seenPaths.has(resolvedPath)) continue;
+      seenPaths.add(resolvedPath);
+
+      const unsavedFlowFiles = appData.unsavedPacksData[mod.path] ?? [];
+      const deletedFileKeys = new Set((appData.deletedPackFilePaths[mod.path] ?? []).map(normalizePackFilePathKey));
+      let hasFlows = unsavedFlowFiles.some((file) => isPackedFlowName(file.name));
+      const retainedPack = appData.packsData.find((pack) => nodePath.resolve(pack.path) === resolvedPath);
+      if (!hasFlows && retainedPack) {
+        hasFlows = retainedPack.packedFiles.some(
+          (file) => isPackedFlowName(file.name) && !deletedFileKeys.has(normalizePackFilePathKey(file.name)),
+        );
+      }
+
+      // Only enabled packs need an accurate answer for the promoted group. Other packs stay in the
+      // complete list and are inspected when selected, avoiding a header read for every disabled mod.
+      const isEnabled = enabledModPaths.size > 0 ? enabledModPaths.has(resolvedPath) : !!mod.isEnabled;
+      if (!hasFlows && isEnabled) {
+        try {
+          const pack = await readPack(mod.path, { skipParsingTables: true });
+          hasFlows = pack.packedFiles.some(
+            (file) => isPackedFlowName(file.name) && !deletedFileKeys.has(normalizePackFilePathKey(file.name)),
+          );
+        } catch (error) {
+          console.error(`Failed to inspect pack for flows: ${mod.path}`, error);
+        }
+      }
+
+      entries.push({
+        path: mod.path,
+        name: mod.name,
+        humanName: mod.humanName,
+        isEnabled,
+        hasFlows,
+        isInData: mod.isInData,
+      });
+    }
+
+    return { success: true, packs: orderFlowPackCatalog(entries) };
+  });
+  ipcMain.handle(
+    "saveFlowToPack",
+    async (event, packPath: string, flowName: string, flowData: string, overwriteExisting = false) => {
+      try {
+        if (!packPath) return { success: false, error: "No target pack selected" };
+        const normalizedFlowName = normalizePackedFlowName(flowName);
+        if (!normalizedFlowName) {
+          return { success: false, error: "Enter a valid flow name" };
+        }
+
+        const normalizedPackPath = packPath.toLowerCase().endsWith(".pack") ? packPath : `${packPath}.pack`;
+        const targetExists = fsExtra.existsSync(normalizedPackPath);
+        const existingPack = targetExists ? await readPack(normalizedPackPath, { skipParsingTables: true }) : undefined;
+        const unsavedFiles = appData.unsavedPacksData[normalizedPackPath] || [];
+        const deletedFileKeys = new Set(
+          (appData.deletedPackFilePaths[normalizedPackPath] ?? []).map(normalizePackFilePathKey),
+        );
+        const existingFlowName = findExistingPackedFlowName(
+          [
+            ...(existingPack?.packedFiles || [])
+              .filter((file) => !deletedFileKeys.has(normalizePackFilePathKey(file.name)))
+              .map((file) => file.name),
+            ...unsavedFiles.map((file) => file.name),
+          ],
+          normalizedFlowName,
+        );
+        if (existingFlowName && !overwriteExisting) {
+          return {
+            success: false,
+            alreadyExists: true,
+            packPath: normalizedPackPath,
+            flowName: existingFlowName,
+          };
+        }
+        const flowNameToWrite = existingFlowName || normalizedFlowName;
+
+        await fsExtra.ensureDir(nodePath.dirname(normalizedPackPath));
+        const buffer = Buffer.from(flowData, "utf8");
+        await writePack(
+          [{ name: flowNameToWrite, buffer, file_size: buffer.length }],
+          normalizedPackPath,
+          existingPack,
+          !!existingPack,
+          [],
+          [flowNameToWrite],
+        );
+        await invalidateCachedPackData(normalizedPackPath);
+        clearDeletedPackFilePath(normalizedPackPath, flowNameToWrite);
+
+        if (unsavedFiles.length > 0) {
+          const remainingUnsavedFiles = unsavedFiles.filter(
+            (file) => normalizePackFilePathKey(file.name) !== normalizePackFilePathKey(flowNameToWrite),
+          );
+          if (remainingUnsavedFiles.length > 0) {
+            appData.unsavedPacksData[normalizedPackPath] = remainingUnsavedFiles;
+          } else {
+            delete appData.unsavedPacksData[normalizedPackPath];
+          }
+        }
+        broadcastPackStagingState(normalizedPackPath);
+
+        return {
+          success: true,
+          packPath: normalizedPackPath,
+          flowName: flowNameToWrite,
+        };
+      } catch (error) {
+        console.error("Error saving flow directly to pack:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to save flow to pack",
+        };
+      }
+    },
+  );
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {
       try {
         const appState = await readConfig();
         mainWindow?.webContents.send("fromAppConfig", appState);
+        const nextUseEnglishLocalizations = !!appState.isUsingEnglishLocalizations;
+        if (appData.isUsingEnglishLocalizations !== nextUseEnglishLocalizations) {
+          cachedTechnologyData = undefined;
+          cachedTechnologyDataKey = undefined;
+        }
+        appData.isUsingEnglishLocalizations = nextUseEnglishLocalizations;
         console.log("appState.currentLanguage:", appState.currentLanguage);
         if (appState.currentLanguage) {
           const languageInConfig = appState.currentLanguage || "en";
@@ -4171,31 +8783,34 @@ export const registerIpcMainListeners = (
           break;
         }
       }
-      getAllMods().then(async () => {
+      let modsToImport: string[] | undefined;
+      if (!doesConfigExist) {
         try {
-          if (doesConfigExist) return;
           const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
-          if (!gamePath) return;
-          const usedModsFilePath = nodePath.join(gamePath, "used_mods.txt");
-          const usedModsData = await fs.promises.readFile(usedModsFilePath, "utf8");
-          const modsToEnable: string[] = [];
-          for (const line of usedModsData.split("\n")) {
-            const match = line.match(/mod\s+"([^"]+)";/);
-            if (match) {
-              modsToEnable.push(match[1]);
-            }
+          if (gamePath) {
+            const usedModsFilePath = nodePath.join(gamePath, "used_mods.txt");
+            const encoding = appData.currentGame == "shogun2" ? "utf16le" : "utf8";
+            const usedModsData = await fs.promises.readFile(usedModsFilePath, encoding);
+            modsToImport = parseUsedMods(usedModsData);
           }
-          console.log("config doesn't exist, enabling mods from used_mods.txt:", modsToEnable);
-          mainWindow?.webContents.send("enableModsByName", modsToEnable);
         } catch {
           // Ignore a missing used_mods fallback file.
         }
-      });
+      }
+      getAllMods(
+        modsToImport
+          ? () => {
+              console.log("config doesn't exist, importing mods from used_mods.txt:", modsToImport);
+              mainWindow?.webContents.send("importModsFromUsedMods", modsToImport);
+            }
+          : undefined,
+      );
     } finally {
       const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
       const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
       console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
       mainWindow?.webContents.send("setAppFolderPaths", {
+        ...appData.gamesToGameFolderPaths[appData.currentGame],
         gamePath: gamePath || "",
         contentFolder: contentFolder || "",
       } as GameFolderPaths);
@@ -4207,7 +8822,7 @@ export const registerIpcMainListeners = (
     console.log(
       "NUM MODS IN APPDATA",
       appData.currentGame,
-      appData.gameToCurrentPreset[appData.currentGame]?.mods.length,
+      appData.gameToConfig[appData.currentGame]?.currentPreset.mods.length,
     );
     // for testing, automatically opens db.pack
     if (appData.startArgs.includes("-testDBClone")) {
@@ -4215,7 +8830,6 @@ export const registerIpcMainListeners = (
         ipcMain.emit(
           "requestOpenModInViewer",
           null,
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
           nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder!, "db.pack"),
         );
     }
@@ -4273,6 +8887,63 @@ export const registerIpcMainListeners = (
       console.log(e);
     }
   });
+  const getCurrentGameFolder = () => appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
+  const isCurrentGameRunning = async () => {
+    if (appData.isWH3Running) return true;
+    try {
+      return (await findGameProcessIds(gameToProcessName[appData.currentGame])).length > 0;
+    } catch (error) {
+      console.warn("Could not check whether the game is running before Workshop staging cleanup:", error);
+      return false;
+    }
+  };
+  ipcMain.handle("getWorkshopModStagingInfo", async () => {
+    const gamePath = getCurrentGameFolder();
+    if (!gamePath) return { success: true, size: 0, hasContents: false };
+
+    try {
+      return { success: true, ...(await getWorkshopModStagingFolderInfo(gamePath)) };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = i18n.t("automaticWorkshopStagingFolderSizeFailed", { error: detail });
+      console.error(message, error);
+      return { success: false, size: 0, hasContents: false, error: message };
+    }
+  });
+  ipcMain.handle("clearWorkshopModStaging", async () => {
+    const gamePath = getCurrentGameFolder();
+    if (!gamePath) {
+      const message = i18n.t("automaticWorkshopStagingClearFailed", { error: "No game folder is configured." });
+      reportWorkshopCleanupWarning(message);
+      return { success: false, code: "CLEANUP_FAILED", error: message };
+    }
+
+    if (await isCurrentGameRunning()) {
+      const message = i18n.t("automaticWorkshopStagingGameRunning");
+      reportWorkshopCleanupWarning(message);
+      return { success: false, code: "GAME_RUNNING", error: message };
+    }
+
+    try {
+      const removed = await cleanupWorkshopModStaging(gamePath);
+      if (appData.workshopStagingCleanupGamePath === gamePath) {
+        appData.workshopStagingCleanupPending = false;
+        appData.workshopStagingCleanupGamePath = undefined;
+      }
+      return { success: true, removed };
+    } catch (error) {
+      if (await isCurrentGameRunning()) {
+        const message = i18n.t("automaticWorkshopStagingGameRunning");
+        reportWorkshopCleanupWarning(message, error);
+        return { success: false, code: "GAME_RUNNING", error: message };
+      }
+
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = i18n.t("automaticWorkshopStagingClearFailed", { error: detail });
+      reportWorkshopCleanupWarning(message, error);
+      return { success: false, code: "CLEANUP_FAILED", error: message };
+    }
+  });
   ipcMain.handle("getSteamCollectionName", async (event, steamCollectionURL: string) => {
     try {
       console.log("getting steamCollectionURL name:", steamCollectionURL);
@@ -4286,15 +8957,12 @@ export const registerIpcMainListeners = (
     }
     return "";
   });
-  ipcMain.handle(
-    "translate",
-    async (event, translationId: string, options?: Record<string, string | number>) => {
-      if (i18n.language != appData.currentLanguage) {
-        await i18n.changeLanguage(appData.currentLanguage);
-      }
-      return i18n.t(translationId, options);
-    },
-  );
+  ipcMain.handle("translate", async (event, translationId: string, options?: Record<string, string | number>) => {
+    if (i18n.language != appData.currentLanguage) {
+      await i18n.changeLanguage(appData.currentLanguage);
+    }
+    return i18n.t(translationId, options);
+  });
   ipcMain.handle(
     "translateAll",
     async (event, translationIdsWithOptions: Record<string, Record<string, string | number>>) => {
@@ -4330,23 +8998,64 @@ export const registerIpcMainListeners = (
       mainWindow?.webContents.send("setPackCollisions", compatCheckCache.packCollisions);
       return;
     }
-    await readMods(mods, false, true, true);
-    await readModsByPath(
-      vanillaPackPaths,
-      { skipParsingTables: true, readScripts: appData.isCompatCheckingVanillaPacks },
-      true,
-    );
+    await prepareModsForCompat(mods);
+    // Startup retains vanilla file indexes. Reuse those unless the pack changed, and only reload
+    // script/XML payloads when the optional vanilla analysis actually needs them.
+    await prepareVanillaPacksForCompat(vanillaPackPaths);
     const lazyVanillaReadPlan = getLazyCompatVanillaReadPlan(mods, vanillaPackPaths);
-    if (lazyVanillaReadPlan.packPaths.length > 0 && lazyVanillaReadPlan.tablesToRead.length > 0) {
+    // Whatever the cache already holds is filled in place, so the reference scan below runs on the
+    // same rows from a cheaper source. Only what it cannot serve is read from the packs.
+    let tablesStillToRead = lazyVanillaReadPlan.tablesToRead;
+    const cachedVanillaPack = appData.packsData.find((pack) =>
+      lazyVanillaReadPlan.packPaths.some((packPath) => nodePath.resolve(packPath) === nodePath.resolve(pack.path)),
+    );
+    if (cachedVanillaPack && tablesStillToRead.length > 0) {
+      const { servedTablePaths, unservedPrefixes } = await fillVanillaTablesFromCache(
+        cachedVanillaPack,
+        tablesStillToRead,
+        // getDBVersionByTableName is what findPackTableReferencesOptimized resolves with, so the
+        // layout check inside compares against the same answer the scan will get.
+        (packedFile: PackedFile) => {
+          const dbName = getDBName(packedFile);
+          return dbName ? getDBVersionByTableName(packedFile, dbName) : undefined;
+        },
+      );
+      if (servedTablePaths.length > 0) {
+        console.log(
+          `vanilla db cache served ${servedTablePaths.length} tables to the compat check,` +
+            ` ${unservedPrefixes.length} of ${tablesStillToRead.length} still to read`,
+        );
+      }
+      tablesStillToRead = unservedPrefixes;
+    }
+    if (lazyVanillaReadPlan.packPaths.length > 0 && tablesStillToRead.length > 0) {
       await readModsByPath(
         lazyVanillaReadPlan.packPaths,
-        { skipParsingTables: false, tablesToRead: lazyVanillaReadPlan.tablesToRead },
+        { skipParsingTables: false, tablesToRead: tablesStillToRead },
         true,
       );
     }
+    // Only the packs this check was asked about, plus vanilla, which the reference resolution needs.
+    //
+    // appData.packsData accumulates every pack read at any point in the session - browsing a mod in
+    // the viewer, a mod enabled and later disabled - and scanning all of it reported conflicts between
+    // packs the user had not selected. It also made the result depend on session history, so the same
+    // mods could produce different reports, and made compatCheckCache unsound: its key covers `mods`
+    // and the vanilla packs, while the answer depended on whatever else happened to be loaded.
+    const packsToCheck = selectPacksToCheck(appData.packsData, [...mods.map((mod) => mod.path), ...vanillaPackPaths]);
+    console.log(`getCompatData: checking ${packsToCheck.length} packs of ${appData.packsData.length} loaded`);
+
+    let lastProgressSentAt = 0;
+    let lastProgressType: PackCollisionCheckType | undefined;
     const packCollisions = getCompatData(
-      appData.packsData,
+      packsToCheck,
       (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
+        const now = Date.now();
+        const isStageBoundary = type !== lastProgressType;
+        const isFinalUpdate = currentIndex >= maxIndex;
+        if (!isStageBoundary && !isFinalUpdate && now - lastProgressSentAt < 50) return;
+        lastProgressSentAt = now;
+        lastProgressType = type;
         mainWindow?.webContents.send("setPackCollisionsCheckProgress", {
           currentIndex,
           maxIndex,
@@ -4366,81 +9075,298 @@ export const registerIpcMainListeners = (
     mainWindow?.webContents.send("setPackCollisions", packCollisions);
     emptyAllCompatDataCollections();
   });
+  const reportFileOperationFailures = (operation: string, failures: unknown[]) => {
+    if (failures.length === 0) return;
+
+    for (const failure of failures) {
+      const message = failure instanceof Error ? failure.message : String(failure);
+      mainWindow?.webContents.send("handleLog", `${operation} failed: ${message}`);
+    }
+    mainWindow?.webContents.send("addToast", {
+      type: "warning",
+      messages: [`${operation} failed for ${failures.length} file(s).`],
+      startTime: Date.now(),
+    } as Toast);
+  };
   ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
-    if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) return;
-    console.log("copyToData: modPathsToCopy:", modPathsToCopy);
-    const mods = await getMods(log);
-    let withoutDataMods = mods.filter((mod) => !mod.isInData);
-    if (modPathsToCopy) {
-      withoutDataMods = withoutDataMods.filter((mod) =>
-        modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path),
+    try {
+      const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+      if (!gamePath) return;
+      console.log("copyToData: modPathsToCopy:", modPathsToCopy);
+      const mods = await getMods(log);
+      let withoutDataMods = mods.filter((mod) => !mod.isInData);
+      if (modPathsToCopy) {
+        withoutDataMods = withoutDataMods.filter((mod) =>
+          modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path),
+        );
+      }
+      const results = await Promise.allSettled(
+        withoutDataMods.map(async (mod) => {
+          mainWindow?.webContents.send("handleLog", `COPYING ${mod.path} to ${gamePath}\\data\\${mod.name}`);
+          await fs.promises.copyFile(mod.path, nodePath.join(gamePath, "data", mod.name));
+        }),
       );
+      reportFileOperationFailures(
+        "Copy to Data",
+        results.filter((result) => result.status === "rejected").map((result) => result.reason),
+      );
+    } catch (error) {
+      reportFileOperationFailures("Copy to Data", [error]);
     }
-    const copyPromises = withoutDataMods.map((mod) => {
-      mainWindow?.webContents.send(
-        "handleLog",
-        `COPYING ${mod.path} to ${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}\\data\\${
-          mod.name
-        }`,
-      );
-      if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) throw new Error("game path not set");
-      return fs.copyFileSync(
-        mod.path,
-        nodePath.join(
-          appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
-          "/data/",
-          mod.name,
-        ),
-      );
-    });
-    await Promise.allSettled(copyPromises);
-    // getAllMods();
   });
+  const normalizeComparablePath = (folderPath: string) => {
+    const normalizedPath = nodePath.resolve(folderPath);
+    return process.platform === "win32" ? normalizedPath.toLowerCase() : normalizedPath;
+  };
+  const sourcePathsOverlap = (firstPath: string, secondPath: string) => {
+    const first = normalizeComparablePath(firstPath);
+    const second = normalizeComparablePath(secondPath);
+    const firstToSecond = nodePath.relative(first, second);
+    const secondToFirst = nodePath.relative(second, first);
+    const isInside = (relativePath: string) =>
+      relativePath === "" || (!relativePath.startsWith("..") && !nodePath.isAbsolute(relativePath));
+    return isInside(firstToSecond) || isInside(secondToFirst);
+  };
+  const validateCustomModFolders = (game: SupportedGames, customFolders: CustomModFolder[]) => {
+    const gameFolderPaths = appData.gamesToGameFolderPaths[game];
+    const existingCustomIds = new Set((gameFolderPaths.customModFolders || []).map((folder) => folder.id));
+    const seenIds = new Set<string>();
+    const paths: Array<{ id: string; path: string }> = [];
+    if (gameFolderPaths.dataFolder) paths.push({ id: DATA_MOD_SOURCE_ID, path: gameFolderPaths.dataFolder });
+    if (gameFolderPaths.contentFolder) {
+      paths.push({ id: WORKSHOP_MOD_SOURCE_ID, path: gameFolderPaths.contentFolder });
+    }
+
+    for (const folder of customFolders) {
+      if (!folder.id || !folder.path) return "Custom mod folders must have an ID and path.";
+      if (seenIds.has(folder.id)) return `Duplicate custom folder ID: ${folder.id}`;
+      seenIds.add(folder.id);
+      if (!existingCustomIds.has(folder.id)) {
+        try {
+          if (!fs.statSync(folder.path).isDirectory()) return `Not a directory: ${folder.path}`;
+        } catch {
+          return `Folder does not exist: ${folder.path}`;
+        }
+      }
+      const overlappingSource = paths.find((source) => sourcePathsOverlap(source.path, folder.path));
+      if (overlappingSource) return `Folder overlaps another mod source: ${overlappingSource.path}`;
+      paths.push(folder);
+    }
+    return undefined;
+  };
+  ipcMain.handle(
+    "updateCustomModSources",
+    async (event, data: { game: SupportedGames; customModFolders: CustomModFolder[]; modSourceOrder: string[] }) => {
+      const error = validateCustomModFolders(data.game, data.customModFolders);
+      if (error) return { success: false, error };
+
+      const folderPaths = appData.gamesToGameFolderPaths[data.game];
+      const didFolderListChange =
+        JSON.stringify(folderPaths.customModFolders || []) !== JSON.stringify(data.customModFolders);
+      folderPaths.customModFolders = data.customModFolders;
+      folderPaths.modSourceOrder = normalizeModSourceOrder(
+        { ...folderPaths, modSourceOrder: data.modSourceOrder },
+        appData.isFeaturesForModdersEnabled,
+      );
+      if (data.game === appData.currentGame) {
+        mainWindow?.webContents.send("setAppFolderPaths", folderPaths);
+        if (didFolderListChange) await getAllMods();
+      }
+      return { success: true, folderPaths };
+    },
+  );
+  ipcMain.handle("getCustomModFolderStatuses", (event, folderPaths: string[]) =>
+    Object.fromEntries(
+      folderPaths.map((folderPath) => {
+        try {
+          return [folderPath, fs.statSync(folderPath).isDirectory()];
+        } catch {
+          return [folderPath, false];
+        }
+      }),
+    ),
+  );
+  ipcMain.handle(
+    "copyModsToNewCustomFolder",
+    async (event, data: { destinationPath: string; modPaths: string[]; overwrite: boolean }) => {
+      if (data.modPaths.length === 0) return { success: false, error: "No mods selected." };
+      const folderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const candidateFolder = { id: `custom-${randomUUID()}`, path: data.destinationPath };
+      const validationError = validateCustomModFolders(appData.currentGame, [
+        ...(folderPaths.customModFolders || []),
+        candidateFolder,
+      ]);
+      if (validationError) return { success: false, error: validationError };
+
+      const conflicts = data.modPaths
+        .map((modPath) => nodePath.basename(modPath))
+        .filter((modName) => fsExtra.existsSync(nodePath.join(data.destinationPath, modName)));
+      if (conflicts.length > 0 && !data.overwrite) {
+        return { success: false, requiresConfirmation: true, conflicts };
+      }
+
+      const knownMods = appData.allMods.length > 0 ? appData.allMods : await getMods(log);
+      const copied: string[] = [];
+      const failed: Array<{ path: string; error: string }> = [];
+      for (const modPath of data.modPaths) {
+        try {
+          const modName = nodePath.basename(modPath);
+          await fs.promises.copyFile(modPath, nodePath.join(data.destinationPath, modName));
+          copied.push(modName);
+          const sourceMod = knownMods.find((mod) => mod.path === modPath);
+          if (sourceMod?.imgPath && fsExtra.existsSync(sourceMod.imgPath)) {
+            const thumbnailExtension = nodePath.extname(sourceMod.imgPath).toLowerCase();
+            if (thumbnailExtension === ".png" || thumbnailExtension === ".jpg") {
+              const thumbnailName = `${nodePath.basename(modName, nodePath.extname(modName))}${thumbnailExtension}`;
+              try {
+                await fs.promises.copyFile(sourceMod.imgPath, nodePath.join(data.destinationPath, thumbnailName));
+              } catch (error) {
+                failed.push({
+                  path: sourceMod.imgPath,
+                  error: error instanceof Error ? error.message : "Unknown thumbnail copy error",
+                });
+              }
+            }
+          }
+        } catch (error) {
+          failed.push({
+            path: modPath,
+            error: error instanceof Error ? error.message : "Unknown copy error",
+          });
+        }
+      }
+
+      if (copied.length === 0) return { success: false, error: "No mods could be copied.", failed };
+
+      folderPaths.customModFolders = [...(folderPaths.customModFolders || []), candidateFolder];
+      folderPaths.modSourceOrder = insertCustomSourceAfterData(
+        normalizeModSourceOrder(folderPaths, appData.isFeaturesForModdersEnabled),
+        candidateFolder.id,
+      );
+      mainWindow?.webContents.send("setAppFolderPaths", folderPaths);
+      await getAllMods();
+      return { success: true, copied, failed, folderPaths };
+    },
+  );
+  ipcMain.handle(
+    "syncWorkshopModsToCustomFolder",
+    async (event, data: { customSourceId: string; enabledWorkshopModNames: string[] }) => {
+      const folderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const customFolder = (folderPaths.customModFolders || []).find((folder) => folder.id === data.customSourceId);
+      if (!customFolder) return { success: false, error: "Custom mod folder not found." };
+      try {
+        if (!fs.statSync(customFolder.path).isDirectory()) {
+          return { success: false, error: "Custom mod folder is not a directory." };
+        }
+      } catch {
+        return { success: false, error: "Custom mod folder does not exist." };
+      }
+
+      const knownMods = await getMods(log);
+      const syncItems = getWorkshopModSyncItems(knownMods, customFolder.id, data.enabledWorkshopModNames);
+      const updated: string[] = [];
+      const added: string[] = [];
+      const failed: Array<{ path: string; error: string }> = [];
+
+      for (const { workshopMod, customMod } of syncItems) {
+        const destinationPackPath = customMod?.path || nodePath.join(customFolder.path, workshopMod.name);
+        try {
+          await fs.promises.copyFile(workshopMod.path, destinationPackPath);
+          (customMod ? updated : added).push(workshopMod.name);
+
+          if (workshopMod.imgPath && fsExtra.existsSync(workshopMod.imgPath)) {
+            const thumbnailExtension = nodePath.extname(workshopMod.imgPath).toLowerCase();
+            if (thumbnailExtension === ".png" || thumbnailExtension === ".jpg") {
+              const thumbnailName = `${nodePath.basename(
+                destinationPackPath,
+                nodePath.extname(destinationPackPath),
+              )}${thumbnailExtension}`;
+              try {
+                await fs.promises.copyFile(
+                  workshopMod.imgPath,
+                  nodePath.join(nodePath.dirname(destinationPackPath), thumbnailName),
+                );
+              } catch (error) {
+                failed.push({
+                  path: workshopMod.imgPath,
+                  error: error instanceof Error ? error.message : "Unknown thumbnail copy error",
+                });
+              }
+            }
+          }
+        } catch (error) {
+          failed.push({
+            path: workshopMod.path,
+            error: error instanceof Error ? error.message : "Unknown copy error",
+          });
+        }
+      }
+
+      if (updated.length > 0 || added.length > 0) await getAllMods();
+      return { success: true, updated, added, failed };
+    },
+  );
   ipcMain.on("copyToDataAsSymbolicLink", async (event, modPathsToCopy?: string[]) => {
-    console.log("copyToDataAsSymbolicLink modPathsToCopy:", modPathsToCopy);
-    const mods = await getMods(log);
-    let withoutDataMods = mods.filter((mod) => !mod.isInData);
-    if (modPathsToCopy) {
-      withoutDataMods = withoutDataMods.filter((mod) =>
-        modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path),
+    try {
+      console.log("copyToDataAsSymbolicLink modPathsToCopy:", modPathsToCopy);
+      const mods = await getMods(log);
+      let withoutDataMods = mods.filter((mod) => !mod.isInData);
+      if (modPathsToCopy) {
+        withoutDataMods = withoutDataMods.filter((mod) =>
+          modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path),
+        );
+      }
+      const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+      if (!gamePath) return;
+      const results = await Promise.allSettled(
+        withoutDataMods.map(async (mod) => {
+          const destinationPath = nodePath.join(gamePath, "data", mod.name);
+          mainWindow?.webContents.send(
+            "handleLog",
+            `CREATING SYMLINK of ${mod.path} to ${gamePath}\\data\\${mod.name}`,
+          );
+          await fsExtra.symlink(mod.path, destinationPath);
+          return destinationPath;
+        }),
       );
+      const pathsOfNewSymLinks: string[] = [];
+      const failures: unknown[] = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") pathsOfNewSymLinks.push(result.value);
+        else failures.push(result.reason);
+      }
+      reportFileOperationFailures("Create symbolic links in Data", failures);
+      // Should be tracked automatically by the data watcher, but chokidar can choke on symlinks here.
+      await Promise.all(pathsOfNewSymLinks.map((path) => onNewPackFound(path)));
+    } catch (error) {
+      reportFileOperationFailures("Create symbolic links in Data", [error]);
     }
-    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
-    if (!gamePath) return;
-    const pathsOfNewSymLinks = withoutDataMods.map((mod) =>
-      nodePath.join(gamePath ?? "", "/data/", mod.name),
-    );
-    const copyPromises = withoutDataMods.map((mod) => {
-      mainWindow?.webContents.send(
-        "handleLog",
-        `CREATING SYMLINK of ${mod.path} to ${gamePath}\\data\\${mod.name}`,
-      );
-      if (!gamePath) throw new Error("game path not set");
-      return fsExtra.symlink(mod.path, nodePath.join(gamePath, "/data/", mod.name));
-    });
-    await Promise.allSettled(copyPromises);
-    // should be tracked automatically by the data watcher, but chokidar can choke on symlinks here
-    for (const pathsOfNewSymLink of pathsOfNewSymLinks) {
-      onNewPackFound(pathsOfNewSymLink);
-    }
-    // getAllMods();
   });
   ipcMain.on("cleanData", async () => {
-    const mods = await getMods(log);
-    mods.forEach((mod) => {
-      if (mod.isInData) mainWindow?.webContents.send("handleLog", `is in data ${mod.name}`);
-    });
-    const modsInBothPlaces = mods.filter(
-      (mod) =>
-        mod.isInData &&
-        !mod.isInModding &&
-        mods.find((modSecond) => !modSecond.isInData && !modSecond.isInData && modSecond.name === mod.name),
-    );
-    const deletePromises = modsInBothPlaces.map((mod) => {
-      mainWindow?.webContents.send("handleLog", `DELETING ${mod.path}`);
-      return fs.unlinkSync(mod.path);
-    });
-    await Promise.allSettled(deletePromises);
+    try {
+      const mods = await getMods(log);
+      mods.forEach((mod) => {
+        if (mod.isInData) mainWindow?.webContents.send("handleLog", `is in data ${mod.name}`);
+      });
+      const modsInBothPlaces = mods.filter(
+        (mod) =>
+          mod.isInData &&
+          !mod.isInModding &&
+          mods.find((modSecond) => !modSecond.isInData && !modSecond.isInData && modSecond.name === mod.name),
+      );
+      const results = await Promise.allSettled(
+        modsInBothPlaces.map(async (mod) => {
+          mainWindow?.webContents.send("handleLog", `DELETING ${mod.path}`);
+          await fs.promises.unlink(mod.path);
+        }),
+      );
+      reportFileOperationFailures(
+        "Clean Data",
+        results.filter((result) => result.status === "rejected").map((result) => result.reason),
+      );
+    } catch (error) {
+      reportFileOperationFailures("Clean Data", [error]);
+    }
     // Clear whmm_overwrites directory
     try {
       const gamePath = appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
@@ -4453,57 +9379,51 @@ export const registerIpcMainListeners = (
         }
       }
     } catch (error) {
-      console.log(
-        `Error clearing whmm_overwrites: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      console.log(`Error clearing whmm_overwrites: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
     // getAllMods();
   });
   ipcMain.on("cleanSymbolicLinksInData", async () => {
-    const mods = await getMods(log);
-    const symLinksToDelete = mods.filter((mod) => mod.isInData && mod.isSymbolicLink);
-    console.log("symLinksToDelete", symLinksToDelete);
-    const deletePromises = symLinksToDelete.map((mod) => {
-      mainWindow?.webContents.send("handleLog", `DELETING SYMLINK ${mod.path}`);
-      return fs.unlinkSync(mod.path);
-    });
-    await Promise.allSettled(deletePromises);
-    // should be tracked automatically by the data watcher, but chokidar can choke on symlinks here
-    for (const deletedSymLink of symLinksToDelete) {
-      onPackDeleted(deletedSymLink.path);
+    try {
+      const mods = await getMods(log);
+      const symLinksToDelete = mods.filter((mod) => mod.isInData && mod.isSymbolicLink);
+      console.log("symLinksToDelete", symLinksToDelete);
+      const results = await Promise.allSettled(
+        symLinksToDelete.map(async (mod) => {
+          mainWindow?.webContents.send("handleLog", `DELETING SYMLINK ${mod.path}`);
+          await fs.promises.unlink(mod.path);
+          return mod.path;
+        }),
+      );
+      const deletedSymLinkPaths: string[] = [];
+      const failures: unknown[] = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") deletedSymLinkPaths.push(result.value);
+        else failures.push(result.reason);
+      }
+      reportFileOperationFailures("Clean symbolic links in Data", failures);
+      // Should be tracked automatically by the data watcher, but chokidar can choke on symlinks here.
+      await Promise.all(deletedSymLinkPaths.map((path) => onPackDeleted(path)));
+    } catch (error) {
+      reportFileOperationFailures("Clean symbolic links in Data", [error]);
     }
-    // getAllMods();
   });
-  ipcMain.on("saveConfig", (event, data: AppState) => {
-    console.log("saveConfig");
-    const enabledMods = data.currentPreset.mods.filter(
-      (iterMod) => iterMod.isEnabled || data.alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
-    );
-    appData.enabledMods = enabledMods;
-    appData.allMods = data.allMods;
-    appData.isCompatCheckingVanillaPacks = data.isCompatCheckingVanillaPacks;
-    appData.isChangingGameProcessPriority = data.isChangingGameProcessPriority;
-    appData.skillTreesDisplayMode = data.skillTreesDisplayMode;
-    appData.technologyTreesDisplayMode = data.technologyTreesDisplayMode;
-    const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
-      enabledMods.find((mod) => mod.name === iterMod.name),
-    );
+  ipcMain.on("saveConfig", (event, payload: ConfigSavePayload) => {
+    const { config } = payload;
+
+    applyConfigSavePayloadToAppData(payload);
+
+    const hiddenModNames = new Set(config.hiddenModNames);
+    const hiddenAndEnabledCount = appData.enabledMods.filter((mod) => hiddenModNames.has(mod.name)).length;
     mainWindow?.setTitle(
-      `WH3 Mod Manager v${version}: ${enabledMods.length} mods enabled` +
-        (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "") +
+      `WH3 Mod Manager v${version}: ${appData.enabledMods.length} mods enabled` +
+        (hiddenAndEnabledCount > 0 ? ` (${hiddenAndEnabledCount} of those hidden)` : "") +
         ` for ${gameToGameName[appData.currentGame]}`,
     );
-    // console.log(
-    //   "BEFORE saveconfig",
-    //   appData.gameToCurrentPreset["wh2"]?.mods[0].name,
-    //   appData.gameToCurrentPreset["wh3"]?.mods[0].name,
-    //   data.currentGame,
-    //   data.currentPreset.mods[0].name
-    // );
-    writeAppConfig(data);
+    writeAppConfig(payload);
   });
-  ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
-    getSkillsForSubtype(subtype, subtypeIndex);
+  ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number, requestId?: string) => {
+    getSkillsForSubtype(subtype, subtypeIndex, requestId);
   });
   ipcMain.handle("prefetchSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
     const cachedSkillsData = appData.skillsData;
@@ -4564,37 +9484,34 @@ export const registerIpcMainListeners = (
       const currentSetKey = appData.skillsData?.subtypesToSet?.[subtype]?.[subtypeIndex];
       const currentSetCampaignKey =
         appData.skillsData?.subtypeAndSets?.find((set) => set.key === currentSetKey)?.campaignKey || "";
-      const tn = resolveSkillGenerationTemplate(
-        tableNameTemplate?.trim() || "${prefix}_${setSuffix}_${timestamp}",
-        {
-          prefix: kp,
-          setSuffix,
-          timestamp: ts,
-          row: "",
-          column: "",
-        },
-      );
+      const tn = resolveSkillGenerationTemplate(tableNameTemplate?.trim() || "${prefix}_${setSuffix}_${timestamp}", {
+        prefix: kp,
+        setSuffix,
+        timestamp: ts,
+        row: "",
+        column: "",
+      });
       // Build key mappings: old nodeId → new node key, index-based new skill key
       const nodeIdToNewNodeKey: Record<string, string> = {};
       const nodeIdToNewSkillKey: Record<string, string> = {};
+      const usedNodeKeys = new Set<string>(Object.keys(appData.skillsData?.nodeToSkill || {}));
+      // Existing skills that are reused must also reserve their keys so a custom template
+      // cannot accidentally generate the same character skill key.
+      const usedSkillKeys = new Set<string>([
+        ...(appData.skillsData?.skills || []).map((skill) => skill.key),
+        ...nodes.flatMap((node) => (node.existingSkillKey ? [node.existingSkillKey] : [])),
+      ]);
+      const makeUniqueKey = (baseKey: string, usedKeys: Set<string>) => {
+        let key = baseKey;
+        let suffix = 2;
+        while (usedKeys.has(key)) key = `${baseKey}_${suffix++}`;
+        usedKeys.add(key);
+        return key;
+      };
       for (let i = 0; i < nodes.length; i++) {
-        nodeIdToNewNodeKey[nodes[i].nodeId] = appendScopedSkillNodeHash(
-          resolveSkillGenerationTemplate(nodeKeyTemplate?.trim() || "${prefix}_skill_node_${row}_${column}", {
-            prefix: kp,
-            setSuffix,
-            timestamp: ts,
-            row: nodes[i].row.toString(),
-            column: nodes[i].column.toString(),
-          }),
-          currentSetCampaignKey,
-          nodes[i].faction,
-          nodes[i].subculture,
-        );
-        if (!cloneAllSkills && nodes[i].existingSkillKey) {
-          nodeIdToNewSkillKey[nodes[i].nodeId] = nodes[i].existingSkillKey!;
-        } else {
-          nodeIdToNewSkillKey[nodes[i].nodeId] = appendScopedSkillNodeHash(
-            resolveSkillGenerationTemplate(skillKeyTemplate?.trim() || "${prefix}_skill_${row}_${column}", {
+        nodeIdToNewNodeKey[nodes[i].nodeId] = makeUniqueKey(
+          appendScopedSkillNodeHash(
+            resolveSkillGenerationTemplate(nodeKeyTemplate?.trim() || "${prefix}_skill_node_${row}_${column}", {
               prefix: kp,
               setSuffix,
               timestamp: ts,
@@ -4604,10 +9521,30 @@ export const registerIpcMainListeners = (
             currentSetCampaignKey,
             nodes[i].faction,
             nodes[i].subculture,
+          ),
+          usedNodeKeys,
+        );
+        if (!cloneAllSkills && nodes[i].existingSkillKey && !nodes[i].cloneSkill) {
+          nodeIdToNewSkillKey[nodes[i].nodeId] = nodes[i].existingSkillKey!;
+        } else {
+          nodeIdToNewSkillKey[nodes[i].nodeId] = makeUniqueKey(
+            appendScopedSkillNodeHash(
+              resolveSkillGenerationTemplate(skillKeyTemplate?.trim() || "${prefix}_skill_${row}_${column}", {
+                prefix: kp,
+                setSuffix,
+                timestamp: ts,
+                row: nodes[i].row.toString(),
+                column: nodes[i].column.toString(),
+              }),
+              currentSetCampaignKey,
+              nodes[i].faction,
+              nodes[i].subculture,
+            ),
+            usedSkillKeys,
           );
         }
       }
-      const customNodes = cloneAllSkills ? nodes : nodes.filter((n) => !n.existingSkillKey);
+      const customNodes = cloneAllSkills ? nodes : nodes.filter((n) => !n.existingSkillKey || n.cloneSkill);
       const newSetKey = `${kp}_${setSuffix}`;
       const buildRowFromSchema = (
         dbFields: DBField[],
@@ -4696,8 +9633,8 @@ export const registerIpcMainListeners = (
         const rows = customNodes.map((node, i) =>
           buildRowFromSchema(schema.fields, {
             key: nodeIdToNewSkillKey[node.nodeId],
-            image_path: node.imgPath || "",
-            unlocked_at_rank: node.unlockRank.toString(),
+            image_path: normalizeSkillIconPath(node.imgPath || ""),
+            unlocked_at_rank: (node.unlockRank ?? 0).toString(),
           }),
         );
         if (rows.length > 0) {
@@ -4715,7 +9652,7 @@ export const registerIpcMainListeners = (
             character_skill_key: nodeIdToNewSkillKey[node.nodeId],
             tier: node.column.toString(),
             indent: node.row.toString(),
-            visible_in_ui: "1",
+            visible_in_ui: node.visibleInUI === false ? "0" : "1",
             faction_key: node.faction || "",
             subculture: node.subculture || "",
             required_num_parents: (node.requiredNumParents || 0).toString(),
@@ -4749,8 +9686,10 @@ export const registerIpcMainListeners = (
               parent_key: nodeIdToNewNodeKey[edge.source],
               child_key: nodeIdToNewNodeKey[edge.target],
               link_type: edge.linkType || "REQUIRED",
-              parent_link_position: "1",
-              child_link_position: "1",
+              parent_link_position: edge.parentLinkPosition || "1",
+              child_link_position: edge.childLinkPosition || "1",
+              parent_link_position_offset: edge.parentLinkPositionOffset || "0",
+              child_link_position_offset: edge.childLinkPositionOffset || "0",
             }),
           );
         if (rows.length > 0) {
@@ -4765,7 +9704,7 @@ export const registerIpcMainListeners = (
         const rows: (string | boolean)[][] = [];
         for (const node of customNodes) {
           const skillKey = nodeIdToNewSkillKey[node.nodeId];
-          for (const effect of node.effects) {
+          for (const effect of node.effects || []) {
             rows.push(
               buildRowFromSchema(schema.fields, {
                 character_skill_key: skillKey,
@@ -4789,10 +9728,15 @@ export const registerIpcMainListeners = (
         const rows = data.skillLocks
           .filter((lock) => nodes.some((n) => n.nodeId === lock.lockedNodeId))
           .map((lock) => {
-            const lockingNode = nodes.find((n) => n.skillId === lock.lockingSkillKey);
+            const lockingNode = nodes.find(
+              (n) =>
+                n.skillId === lock.lockingSkillKey ||
+                n.existingSkillKey === lock.lockingSkillKey ||
+                n.nodeId === lock.lockingSkillKey,
+            );
             return buildRowFromSchema(schema.fields, {
               character_skill: lockingNode
-                ? (nodeIdToNewSkillKey[lockingNode.nodeId] || lock.lockingSkillKey)
+                ? nodeIdToNewSkillKey[lockingNode.nodeId] || lock.lockingSkillKey
                 : lock.lockingSkillKey,
               character_skill_node: nodeIdToNewNodeKey[lock.lockedNodeId] || lock.lockedNodeId,
               level: lock.requiredLevel.toString(),
@@ -4852,16 +9796,13 @@ export const registerIpcMainListeners = (
       const defaultModdersPrefix = normalizeGeneratedPrefix(appData.moddersPrefix);
       const kp = defaultModdersPrefix || "custom";
       const setSuffix = buildDefaultSkillSetSuffix(subtype);
-      const tn = resolveSkillGenerationTemplate(
-        tableNameTemplate?.trim() || "${prefix}_${setSuffix}_${timestamp}",
-        {
-          prefix: kp,
-          setSuffix,
-          timestamp: ts,
-          row: "",
-          column: "",
-        },
-      );
+      const tn = resolveSkillGenerationTemplate(tableNameTemplate?.trim() || "${prefix}_${setSuffix}_${timestamp}", {
+        prefix: kp,
+        setSuffix,
+        timestamp: ts,
+        row: "",
+        column: "",
+      });
       // Get original set key
       const subtypeSets = appData.skillsData?.subtypesToSet?.[subtype];
       if (!subtypeSets || !subtypeSets[subtypeIndex]) {
@@ -4935,7 +9876,7 @@ export const registerIpcMainListeners = (
               character_skill_key: node.characterSkillKey,
               tier: node.tier.toString(),
               indent: node.indent.toString(),
-              visible_in_ui: "1",
+              visible_in_ui: node.visibleInUI === false ? "0" : "1",
               faction_key: node.faction || "",
               subculture: node.subculture || "",
               required_num_parents: (node.requiredNumParents || 0).toString(),
@@ -4946,10 +9887,10 @@ export const registerIpcMainListeners = (
           rows.push(
             buildRowFromSchema(schema.fields, {
               key: node.newNodeKey,
-              character_skill_key: node.characterSkillKey,
+              character_skill_key: node.newSkillKey || node.characterSkillKey,
               tier: node.tier.toString(),
               indent: node.indent.toString(),
-              visible_in_ui: "1",
+              visible_in_ui: node.visibleInUI === false ? "0" : "1",
               faction_key: node.faction || "",
               subculture: node.subculture || "",
               required_num_parents: (node.requiredNumParents || 0).toString(),
@@ -4963,7 +9904,7 @@ export const registerIpcMainListeners = (
               character_skill_key: node.newSkillKey,
               tier: node.tier.toString(),
               indent: node.indent.toString(),
-              visible_in_ui: "1",
+              visible_in_ui: node.visibleInUI === false ? "0" : "1",
               faction_key: node.faction || "",
               subculture: node.subculture || "",
               required_num_parents: (node.requiredNumParents || 0).toString(),
@@ -5034,8 +9975,10 @@ export const registerIpcMainListeners = (
             parent_key: edge.parentKey,
             child_key: edge.childKey,
             link_type: edge.linkType || "REQUIRED",
-            parent_link_position: "1",
-            child_link_position: "1",
+            parent_link_position: edge.parentLinkPosition || "1",
+            child_link_position: edge.childLinkPosition || "1",
+            parent_link_position_offset: edge.parentLinkPositionOffset || "0",
+            child_link_position_offset: edge.childLinkPositionOffset || "0",
           }),
         );
         if (rows.length > 0) {
@@ -5043,16 +9986,31 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-      // 4. character_skills_tables — only for new nodes with custom skills (not reusing existing skills)
-      const customSkillNodes = newNodes.filter((n) => n.shouldCreateCharacterSkill);
+      // 4. character_skills_tables — new custom skills plus cloned/edited skills on replaced nodes.
+      // A replacement gets a new node key because the node-set item table has no delete/update
+      // operation for the old composite-key rows; metadata changes likewise need a new skill key
+      // so the original character skill remains untouched.
+      const customSkillNodes = [
+        ...newNodes.filter((n) => n.shouldCreateCharacterSkill),
+        ...replacedNodes.filter(
+          (n) =>
+            !!n.newSkillKey &&
+            n.label !== undefined &&
+            n.description !== undefined &&
+            n.imgPath !== undefined &&
+            n.unlockRank !== undefined &&
+            n.effects !== undefined &&
+            n.maxLevel !== undefined,
+        ),
+      ];
       if (customSkillNodes.length > 0) {
         const tableName = "character_skills_tables";
         const schema = getPreferredSchema(tableName);
         const rows = customSkillNodes.map((node) =>
           buildRowFromSchema(schema.fields, {
-            key: node.newSkillKey,
-            image_path: node.imgPath || "",
-            unlocked_at_rank: node.unlockRank.toString(),
+            key: node.newSkillKey!,
+            image_path: normalizeSkillIconPath(node.imgPath || ""),
+            unlocked_at_rank: (node.unlockRank ?? 0).toString(),
           }),
         );
         if (rows.length > 0) {
@@ -5066,10 +10024,10 @@ export const registerIpcMainListeners = (
         const schema = getPreferredSchema(tableName);
         const rows: (string | boolean)[][] = [];
         for (const node of customSkillNodes) {
-          for (const effect of node.effects) {
+          for (const effect of node.effects || []) {
             rows.push(
               buildRowFromSchema(schema.fields, {
-                character_skill_key: node.newSkillKey,
+                character_skill_key: node.newSkillKey!,
                 effect_key: effect.effectKey,
                 effect_scope: effect.effectScope || "character_to_character_own",
                 level: (effect.level || 1).toString(),
@@ -5103,8 +10061,8 @@ export const registerIpcMainListeners = (
       {
         const rows: (string | boolean)[][] = [];
         for (const node of customSkillNodes) {
-          rows.push([`character_skills_localised_name_${node.newSkillKey}`, node.label, false]);
-          rows.push([`character_skills_localised_description_${node.newSkillKey}`, node.description, false]);
+          rows.push([`character_skills_localised_name_${node.newSkillKey!}`, node.label || "", false]);
+          rows.push([`character_skills_localised_description_${node.newSkillKey!}`, node.description || "", false]);
         }
         if (rows.length > 0) {
           const buffer = await buildLocFileBuffer(rows);
@@ -5132,10 +10090,7 @@ export const registerIpcMainListeners = (
     const technologyData = await ensureTechnologyData();
     if (!technologyData) return [];
     return Object.values(technologyData.setsByKey).sort((firstSet, secondSet) =>
-      collator.compare(
-        firstSet.localizedName || firstSet.key,
-        secondSet.localizedName || secondSet.key,
-      ),
+      collator.compare(firstSet.localizedName || firstSet.key, secondSet.localizedName || secondSet.key),
     );
   });
   ipcMain.handle("getTechnologyTree", async (event, setKey: string) => {
@@ -5160,7 +10115,10 @@ export const registerIpcMainListeners = (
           localizedKey: formatEffectLocalization(effect.effectKey, effect.value, getLoc),
           value: effect.value,
           icon: iconFile,
-          iconData: effectIconPath ? technologyData.icons[effectIconPath] : undefined,
+          iconData:
+            effectIconPath && technologyData.icons[effectIconPath]
+              ? iconAssetUrl(technologyData.iconGeneration, effectIconPath)
+              : undefined,
         };
       });
     };
@@ -5184,7 +10142,10 @@ export const registerIpcMainListeners = (
         shortDescription: resolveTechnologyLoc(`technologies_short_description_${node.technologyKey}`),
         longDescription: resolveTechnologyLoc(`technologies_long_description_${node.technologyKey}`),
         iconPath,
-        iconData: iconPath ? technologyData.icons[iconPath] : undefined,
+        iconData:
+          iconPath && technologyData.icons[iconPath]
+            ? iconAssetUrl(technologyData.iconGeneration, iconPath)
+            : undefined,
         isHidden: technology?.isHidden || false,
         buildingLevel: technology?.buildingLevel,
         effects: mapEffectsForTechnology(node.technologyKey),
@@ -5202,20 +10163,26 @@ export const registerIpcMainListeners = (
           shortDescription: resolveTechnologyLoc(`technologies_short_description_${technology.key}`),
           longDescription: resolveTechnologyLoc(`technologies_long_description_${technology.key}`),
           iconPath,
-          iconData: iconPath ? technologyData.icons[iconPath] : undefined,
+          iconData:
+            iconPath && technologyData.icons[iconPath]
+              ? iconAssetUrl(technologyData.iconGeneration, iconPath)
+              : undefined,
           isHidden: technology.isHidden,
           effects: mapEffectsForTechnology(technology.key),
         };
       })
       .sort((firstTechnology, secondTechnology) =>
-        collator.compare(firstTechnology.localizedName || firstTechnology.key, secondTechnology.localizedName || secondTechnology.key),
+        collator.compare(
+          firstTechnology.localizedName || firstTechnology.key,
+          secondTechnology.localizedName || secondTechnology.key,
+        ),
       );
     const allTechnologyIcons: TechnologyIconEntry[] = Object.entries(technologyData.icons)
       .filter(([iconPath]) => iconPath.toLowerCase().startsWith("ui\\campaign ui\\technologies\\"))
-      .map(([path, iconData]) => ({
+      .map(([path]) => ({
         path,
         name: path.replace("ui\\campaign ui\\technologies\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
-        iconData,
+        iconData: iconAssetUrl(technologyData.iconGeneration, path),
       }))
       .sort((firstIcon, secondIcon) => collator.compare(firstIcon.name, secondIcon.name));
     const allEffectKeys = new Set<string>([
@@ -5232,11 +10199,17 @@ export const registerIpcMainListeners = (
           effectKey,
           localizedKey: getRawEffectLocalization(effectKey, getLoc),
           icon: iconFile,
-          iconData: effectIconPath ? technologyData.icons[effectIconPath] : undefined,
+          iconData:
+            effectIconPath && technologyData.icons[effectIconPath]
+              ? iconAssetUrl(technologyData.iconGeneration, effectIconPath)
+              : undefined,
         };
       })
       .sort((firstEffect, secondEffect) =>
-        collator.compare(firstEffect.localizedKey || firstEffect.effectKey, secondEffect.localizedKey || secondEffect.effectKey),
+        collator.compare(
+          firstEffect.localizedKey || firstEffect.effectKey,
+          secondEffect.localizedKey || secondEffect.effectKey,
+        ),
       );
     const links = Object.values(technologyData.linksByKey).filter(
       (link) => nodeSet.has(link.parentKey) && nodeSet.has(link.childKey),
@@ -5258,8 +10231,7 @@ export const registerIpcMainListeners = (
           getLocById(technologyData.locs, `technology_ui_tabs_localised_name_${uiTab.key}`) ||
           uiTab.key,
         tooltipString:
-          uiTab.tooltipString ||
-          getLocById(technologyData.locs, `technology_ui_tabs_tooltip_string_${uiTab.key}`),
+          uiTab.tooltipString || getLocById(technologyData.locs, `technology_ui_tabs_tooltip_string_${uiTab.key}`),
       }));
     const relevantGroupKeys = new Set(
       nodesInSet
@@ -5280,10 +10252,7 @@ export const registerIpcMainListeners = (
           getLocById(technologyData.locs, `technology_ui_groups_optional_display_name_${uiGroup.key}`),
         optionalDisplayDescription:
           uiGroup.optionalDisplayDescription ||
-          getLocById(
-            technologyData.locs,
-            `technology_ui_groups_optional_display_desctiption_${uiGroup.key}`,
-          ),
+          getLocById(technologyData.locs, `technology_ui_groups_optional_display_desctiption_${uiGroup.key}`),
       }));
     const uiGroupBounds = technologyData.uiGroupBounds.filter((bounds) => {
       if (!relevantGroupKeys.has(bounds.groupKey)) return false;
@@ -5344,8 +10313,7 @@ export const registerIpcMainListeners = (
       const finalPackName = data.packName.endsWith(".pack") ? data.packName : `${data.packName}.pack`;
       const packPath = nodePath.join(data.packDirectory || dataFolder, finalPackName);
       const nodeKeyTemplate = data.nodeKeyTemplate?.trim() || "${prefix}_tech_node_${nodeSet}_${row}_${column}";
-      const technologyKeyTemplate =
-        data.technologyKeyTemplate?.trim() || "${prefix}_tech_${nodeSet}_${row}_${column}";
+      const technologyKeyTemplate = data.technologyKeyTemplate?.trim() || "${prefix}_tech_${nodeSet}_${row}_${column}";
       const buildRowFromSchema = (
         dbFields: DBField[],
         values: Record<string, string | boolean>,
@@ -5431,17 +10399,11 @@ export const registerIpcMainListeners = (
         const generatedTechnologyKey = resolveGenerationTemplate(technologyKeyTemplate, templateVariables);
         const finalNode = {
           ...sourceNode,
-          nodeKey: appendScopedTechNodeHash(
-            generatedNodeKey,
-            sourceNode.campaignKey,
-            sourceNode.factionKey,
-          ),
+          nodeKey: shouldCloneNodeSet
+            ? appendScopedTechNodeHash(generatedNodeKey, sourceNode.campaignKey, sourceNode.factionKey)
+            : sourceNode.nodeKey,
           technologyKey: shouldCloneTechnologies
-            ? appendScopedTechNodeHash(
-                generatedTechnologyKey,
-                sourceNode.campaignKey,
-                sourceNode.factionKey,
-              )
+            ? appendScopedTechNodeHash(generatedTechnologyKey, sourceNode.campaignKey, sourceNode.factionKey)
             : sourceNode.technologyKey,
           setKey: targetSetKey,
         };
@@ -5451,6 +10413,7 @@ export const registerIpcMainListeners = (
 
       const seenNodeKeys = new Set<string>();
       const seenTechnologyKeys = new Set<string>();
+      const newTechnologyDefinitionByKey = new Map<string, string>();
       for (const { finalNode } of remappedNodes) {
         if (seenNodeKeys.has(finalNode.nodeKey)) {
           return {
@@ -5459,6 +10422,12 @@ export const registerIpcMainListeners = (
           };
         }
         seenNodeKeys.add(finalNode.nodeKey);
+        if (shouldCloneNodeSet && technologyData.nodesByKey[finalNode.nodeKey]) {
+          return {
+            success: false,
+            error: `Generated technology node key already exists: ${finalNode.nodeKey}`,
+          };
+        }
         if (shouldCloneTechnologies) {
           if (seenTechnologyKeys.has(finalNode.technologyKey)) {
             return {
@@ -5467,13 +10436,59 @@ export const registerIpcMainListeners = (
             };
           }
           seenTechnologyKeys.add(finalNode.technologyKey);
+          if (technologyData.technologyRowsByKey[finalNode.technologyKey]) {
+            return {
+              success: false,
+              error: `Generated technology key already exists: ${finalNode.technologyKey}`,
+            };
+          }
+        }
+        if (!technologyData.technologyRowsByKey[finalNode.technologyKey]) {
+          const definition = JSON.stringify({
+            displayName: finalNode.displayName || finalNode.technologyKey,
+            shortDescription: finalNode.shortDescription ?? "",
+            longDescription: finalNode.longDescription ?? "",
+            researchPointsRequired: finalNode.researchPointsRequired,
+            iconPath: finalNode.iconPath ?? "",
+            isHidden: !!finalNode.isHidden,
+            buildingLevel: finalNode.buildingLevel ?? "",
+            effects: (finalNode.effects || [])
+              .map((effect) => ({ effectKey: effect.effectKey, value: effect.value || "" }))
+              .sort((left, right) =>
+                left.effectKey === right.effectKey
+                  ? left.value.localeCompare(right.value)
+                  : left.effectKey.localeCompare(right.effectKey),
+              ),
+          });
+          const existingDefinition = newTechnologyDefinitionByKey.get(finalNode.technologyKey);
+          if (existingDefinition && existingDefinition !== definition) {
+            return {
+              success: false,
+              error: `Duplicate custom technology key has conflicting definitions: ${finalNode.technologyKey}`,
+            };
+          }
+          newTechnologyDefinitionByKey.set(finalNode.technologyKey, definition);
         }
       }
 
       const finalNodes = remappedNodes.map(({ finalNode }) => finalNode);
+      const normalizeUiTabMappings = (mappings: Record<string, string[]>) =>
+        JSON.stringify(
+          Object.fromEntries(
+            Object.entries(mappings)
+              .map(([tabKey, nodeKeys]) => [tabKey, [...new Set(nodeKeys)].sort()] as const)
+              .sort(([left], [right]) => left.localeCompare(right)),
+          ),
+        );
+      const uiTabMappingsChanged =
+        normalizeUiTabMappings(data.uiTabToNodes || {}) !== normalizeUiTabMappings(technologyData.uiTabToNodes);
       const shouldWriteNodeMappings =
         shouldCloneNodeSet ||
-        remappedNodes.some(({ sourceNode, finalNode }) => sourceNode.nodeKey !== finalNode.nodeKey);
+        remappedNodes.some(({ sourceNode, finalNode }) => sourceNode.nodeKey !== finalNode.nodeKey) ||
+        Object.values(data.uiTabToNodes || {}).some((nodeKeys) =>
+          nodeKeys.some((nodeKey) => !technologyData.nodesByKey[nodeKey]),
+        ) ||
+        uiTabMappingsChanged;
       const referencedUiGroupKeys = new Set(
         finalNodes
           .map((node) => node.optionalUiGroup)
@@ -5488,7 +10503,10 @@ export const registerIpcMainListeners = (
       [...referencedUiGroupKeys]
         .sort((left, right) => collator.compare(left, right))
         .forEach((groupKey, index) => {
-          uiGroupKeyRemap.set(groupKey, `${generationPrefix}_${targetSetKey}_${index + 1}`);
+          uiGroupKeyRemap.set(
+            groupKey,
+            shouldCloneNodeSet ? `${generationPrefix}_${targetSetKey}_${index + 1}` : groupKey,
+          );
         });
 
       if (shouldWriteNodeSet) {
@@ -5510,7 +10528,11 @@ export const registerIpcMainListeners = (
           }),
         ];
         const buffer = await buildDBFileBuffer(setSchema.version, setRows, setSchema.fields);
-        packFiles.push({ name: `db\\technology_node_sets_tables\\${tableName}`, file_size: buffer.length, buffer });
+        packFiles.push({
+          name: `db\\technology_node_sets_tables\\${tableName}`,
+          file_size: buffer.length,
+          buffer,
+        });
       }
 
       const nodeSchema = getPreferredSchema("technology_nodes_tables");
@@ -5533,7 +10555,11 @@ export const registerIpcMainListeners = (
       );
       if (nodeRows.length > 0) {
         const buffer = await buildDBFileBuffer(nodeSchema.version, nodeRows, nodeSchema.fields);
-        packFiles.push({ name: `db\\technology_nodes_tables\\${tableName}`, file_size: buffer.length, buffer });
+        packFiles.push({
+          name: `db\\technology_nodes_tables\\${tableName}`,
+          file_size: buffer.length,
+          buffer,
+        });
       }
       if (referencedUiGroupKeys.size > 0) {
         const uiGroupsSchema = getPreferredSchema("technology_ui_groups_tables");
@@ -5556,7 +10582,11 @@ export const registerIpcMainListeners = (
           .filter((row): row is (string | boolean)[] => !!row);
         if (uiGroupRows.length > 0) {
           const buffer = await buildDBFileBuffer(uiGroupsSchema.version, uiGroupRows, uiGroupsSchema.fields);
-          packFiles.push({ name: `db\\technology_ui_groups_tables\\${tableName}`, file_size: buffer.length, buffer });
+          packFiles.push({
+            name: `db\\technology_ui_groups_tables\\${tableName}`,
+            file_size: buffer.length,
+            buffer,
+          });
         }
       }
 
@@ -5650,7 +10680,11 @@ export const registerIpcMainListeners = (
       );
       if (linkRows.length > 0) {
         const buffer = await buildDBFileBuffer(linkSchema.version, linkRows, linkSchema.fields);
-        packFiles.push({ name: `db\\technology_node_links_tables\\${tableName}`, file_size: buffer.length, buffer });
+        packFiles.push({
+          name: `db\\technology_node_links_tables\\${tableName}`,
+          file_size: buffer.length,
+          buffer,
+        });
       }
 
       const nodesByTechnologyKey = new Map<
@@ -5665,12 +10699,14 @@ export const registerIpcMainListeners = (
           });
         }
       }
-      const normalizeComparableString = (value: string | undefined) => (value || "").trim();
+      const normalizeComparableString = (value: string | null | undefined) => (value || "").trim();
       const normalizeComparableNumber = (value: string | undefined) => parseOptionalNumber(value, 0).toString();
       const normalizeComparableBool = (value: string | undefined) =>
         parseOptionalBool(value, false) ? "true" : "false";
       const normalizeComparableIconName = (value: string | undefined) =>
-        normalizeComparableString(value).replace(/\.(png|jpg|jpeg)$/i, "").toLowerCase();
+        normalizeComparableString(value)
+          .replace(/\.(png|jpg|jpeg)$/i, "")
+          .toLowerCase();
       const buildEffectsSignature = (effects: { effectKey?: string; value?: string }[] | undefined) =>
         JSON.stringify(
           (effects || [])
@@ -5713,23 +10749,23 @@ export const registerIpcMainListeners = (
             key:
               technologyFieldNames.has("key") &&
               normalizeComparableString(originalTechnologyRow?.key) !==
-              normalizeComparableString(nextTechnologyRow.key),
+                normalizeComparableString(nextTechnologyRow.key),
             research_points_required:
               technologyFieldNames.has("research_points_required") &&
               normalizeComparableNumber(originalTechnologyRow?.research_points_required) !==
-              normalizeComparableNumber(nextTechnologyRow.research_points_required),
+                normalizeComparableNumber(nextTechnologyRow.research_points_required),
             icon_name:
               technologyFieldNames.has("icon_name") &&
               normalizeComparableIconName(originalTechnologyRow?.icon_name) !==
-              normalizeComparableIconName(nextTechnologyRow.icon_name),
+                normalizeComparableIconName(nextTechnologyRow.icon_name),
             is_hidden:
               technologyFieldNames.has("is_hidden") &&
               normalizeComparableBool(originalTechnologyRow?.is_hidden) !==
-              normalizeComparableBool(nextTechnologyRow.is_hidden),
+                normalizeComparableBool(nextTechnologyRow.is_hidden),
             building_level:
               technologyFieldNames.has("building_level") &&
               normalizeComparableString(originalTechnologyRow?.building_level) !==
-              normalizeComparableString(nextTechnologyRow.building_level),
+                normalizeComparableString(nextTechnologyRow.building_level),
           };
           const basicDataChanged =
             rowDifferences.missingOriginalRow ||
@@ -5776,7 +10812,7 @@ export const registerIpcMainListeners = (
             building_level: getTechnologyBuildingLevelForWrite(finalNode.buildingLevel, originalTechnologyRow),
             unique_index: shouldAllocateNewUniqueIndex
               ? allocateTechnologyUniqueIndex(usedTechnologyUniqueIndexes)
-              : (originalTechnologyRow.unique_index || ""),
+              : originalTechnologyRow.unique_index || "",
             is_military: isBrandNewTechnology ? "true" : originalTechnologyRow.is_military,
           });
         });
@@ -5825,22 +10861,19 @@ export const registerIpcMainListeners = (
       const locRowsByKey: Record<string, string> = {};
       for (const { technologyKey, finalNode, shouldWriteLoc } of technologyEntries) {
         if (!shouldWriteLoc) continue;
-        locRowsByKey[`technologies_onscreen_name_${technologyKey}`] =
-          finalNode.displayName || technologyKey;
+        locRowsByKey[`technologies_onscreen_name_${technologyKey}`] = finalNode.displayName || technologyKey;
         if (finalNode.shortDescription !== undefined) {
-          locRowsByKey[`technologies_short_description_${technologyKey}`] = finalNode.shortDescription;
+          locRowsByKey[`technologies_short_description_${technologyKey}`] = finalNode.shortDescription || "";
         }
         if (finalNode.longDescription !== undefined) {
-          locRowsByKey[`technologies_long_description_${technologyKey}`] = finalNode.longDescription;
+          locRowsByKey[`technologies_long_description_${technologyKey}`] = finalNode.longDescription || "";
         }
       }
       for (const remappedGroupKey of uiGroupKeyRemap.values()) {
         locRowsByKey[`technology_ui_groups_optional_display_name_${remappedGroupKey}`] = "";
         locRowsByKey[`technology_ui_groups_optional_display_desctiption_${remappedGroupKey}`] = "";
       }
-      const locRows = Object.entries(locRowsByKey).map(
-        ([key, text]) => [key, text, false] as (string | boolean)[],
-      );
+      const locRows = Object.entries(locRowsByKey).map(([key, text]) => [key, text, false] as (string | boolean)[]);
       if (locRows.length > 0) {
         const buffer = await buildLocFileBuffer(locRows);
         packFiles.push({ name: `text\\db\\${tableName}.loc`, file_size: buffer.length, buffer });
@@ -5936,6 +10969,44 @@ export const registerIpcMainListeners = (
         return versions.find((version) => version.version === defaultVersion) || versions[0];
       };
       const packFiles: NewPackedFile[] = [];
+      const newNodeKeys = new Set<string>();
+      for (const newNode of data.newNodes || []) {
+        if (newNodeKeys.has(newNode.nodeKey)) {
+          return { success: false, error: `Duplicate technology node key: ${newNode.nodeKey}` };
+        }
+        if (technologyData.nodesByKey[newNode.nodeKey]) {
+          return { success: false, error: `Technology node key already exists: ${newNode.nodeKey}` };
+        }
+        newNodeKeys.add(newNode.nodeKey);
+      }
+      const newTechnologyDefinitions = new Map<string, string>();
+      for (const newNode of data.newNodes || []) {
+        if (technologyData.technologyRowsByKey[newNode.technologyKey]) continue;
+        const definition = JSON.stringify({
+          displayName: newNode.displayName,
+          shortDescription: newNode.shortDescription ?? "",
+          longDescription: newNode.longDescription ?? "",
+          researchPointsRequired: newNode.researchPointsRequired,
+          iconPath: newNode.iconPath ?? "",
+          isHidden: !!newNode.isHidden,
+          buildingLevel: newNode.buildingLevel ?? "",
+          effects: (newNode.effects || [])
+            .map((effect) => ({ effectKey: effect.effectKey, value: effect.value || "" }))
+            .sort((left, right) =>
+              left.effectKey === right.effectKey
+                ? left.value.localeCompare(right.value)
+                : left.effectKey.localeCompare(right.effectKey),
+            ),
+        });
+        const previousDefinition = newTechnologyDefinitions.get(newNode.technologyKey);
+        if (previousDefinition && previousDefinition !== definition) {
+          return {
+            success: false,
+            error: `Duplicate custom technology key has conflicting definitions: ${newNode.technologyKey}`,
+          };
+        }
+        newTechnologyDefinitions.set(newNode.technologyKey, definition);
+      }
       const hasNodeDeletions = data.deletedNodeKeys && data.deletedNodeKeys.length > 0;
       const hasNodeEdits = data.editedNodes && data.editedNodes.length > 0;
       if (data.changedNodes.length > 0 || hasNodeDeletions || hasNodeEdits) {
@@ -5964,7 +11035,8 @@ export const registerIpcMainListeners = (
         if (data.editedNodes) {
           for (const editedNode of data.editedNodes) {
             if (deletedNodeSet.has(editedNode.nodeKey)) continue;
-            const existingRow = dedupedRowsByNodeKey[editedNode.nodeKey] || technologyData.nodeRowsByKey[editedNode.nodeKey];
+            const existingRow =
+              dedupedRowsByNodeKey[editedNode.nodeKey] || technologyData.nodeRowsByKey[editedNode.nodeKey];
             if (!existingRow) continue;
             const updatedRow: Record<string, string | boolean> = { ...existingRow };
             if (editedNode.technologyKey !== undefined && editedNode.technologyKey.trim() !== "") {
@@ -5977,10 +11049,10 @@ export const registerIpcMainListeners = (
               updatedRow.required_parents = editedNode.requiredParents.toString();
             }
             if (editedNode.campaignKey !== undefined) {
-              updatedRow.campaign_key = editedNode.campaignKey;
+              updatedRow.campaign_key = editedNode.campaignKey ?? "";
             }
             if (editedNode.factionKey !== undefined) {
-              updatedRow.faction_key = editedNode.factionKey;
+              updatedRow.faction_key = editedNode.factionKey ?? "";
             }
             if (editedNode.pixelOffsetX !== undefined) {
               updatedRow.pixel_offset_x = editedNode.pixelOffsetX.toString();
@@ -5994,21 +11066,39 @@ export const registerIpcMainListeners = (
         const rows = Object.values(dedupedRowsByNodeKey).map((row) => buildRowFromSchema(schema.fields, row));
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-          packFiles.push({ name: `db\\technology_nodes_tables\\${tableName}`, file_size: buffer.length, buffer });
+          packFiles.push({
+            name: `db\\technology_nodes_tables\\${tableName}`,
+            file_size: buffer.length,
+            buffer,
+          });
         }
       }
-      // Handle edited nodes in technologies_tables (for display name, building level, etc.)
-      if (hasNodeEdits && data.editedNodes) {
+      // Handle edited nodes and hidden overrides in one technologies_tables file. Keeping both
+      // sources in the same row map prevents duplicate packed file paths and preserves edits when
+      // a node's hidden state is changed at the same time.
+      if ((hasNodeEdits && data.editedNodes) || data.hiddenTechnologies.length > 0) {
         const techSchema = getPreferredSchema("technologies_tables");
         const dedupedRows: Record<string, Record<string, string | boolean>> = {};
-        for (const editedNode of data.editedNodes) {
+        const hiddenStateByTechnologyKey = new Map<string, boolean>();
+        for (const hiddenTechnology of data.hiddenTechnologies) {
+          const originalRow = technologyData.technologyRowsByKey[hiddenTechnology.technologyKey];
+          if (!originalRow) continue;
+          hiddenStateByTechnologyKey.set(hiddenTechnology.technologyKey, hiddenTechnology.isHidden);
+          dedupedRows[hiddenTechnology.technologyKey] = {
+            ...originalRow,
+            key: hiddenTechnology.technologyKey,
+            is_hidden: hiddenTechnology.isHidden ? "true" : "false",
+            building_level: hiddenTechnology.isHidden ? "wh_main_chs_port_ruin" : originalRow.building_level || "",
+          };
+        }
+        for (const editedNode of data.editedNodes || []) {
           const nodeRow = technologyData.nodeRowsByKey[editedNode.nodeKey];
           const technologyKey = (editedNode.technologyKey || (nodeRow?.technology_key as string) || "").trim();
           if (!technologyKey) continue;
           const originalTechRow = technologyData.technologyRowsByKey[technologyKey];
           const sourceTechnologyKey = (nodeRow?.technology_key as string) || "";
           const sourceTechRowForClone = technologyData.technologyRowsByKey[sourceTechnologyKey];
-          const baseTechRow = originalTechRow || sourceTechRowForClone || {};
+          const baseTechRow = dedupedRows[technologyKey] || originalTechRow || sourceTechRowForClone || {};
           const isBrandNewTechnology = !originalTechRow;
           const updatedRow: Record<string, string | boolean> = {
             ...baseTechRow,
@@ -6021,7 +11111,7 @@ export const registerIpcMainListeners = (
             updatedRow.is_hidden = editedNode.isHidden ? "true" : "false";
           }
           if (editedNode.iconPath !== undefined) {
-            updatedRow.icon_name = getTechnologyIconNameFromPath(editedNode.iconPath);
+            updatedRow.icon_name = getTechnologyIconNameFromPath(editedNode.iconPath || undefined);
           }
           if (editedNode.buildingLevel !== undefined) {
             updatedRow.building_level = getTechnologyBuildingLevelForWrite(
@@ -6030,26 +11120,21 @@ export const registerIpcMainListeners = (
             );
           }
           if (isBrandNewTechnology) {
-            updatedRow.unique_index = allocateTechnologyUniqueIndex(usedTechnologyUniqueIndexes);
+            updatedRow.unique_index =
+              updatedRow.unique_index || allocateTechnologyUniqueIndex(usedTechnologyUniqueIndexes);
             updatedRow.is_military = updatedRow.is_military ?? "true";
+          }
+          const hiddenState = editedNode.isHidden ?? hiddenStateByTechnologyKey.get(technologyKey);
+          if (hiddenState !== undefined) {
+            updatedRow.is_hidden = hiddenState ? "true" : "false";
+            if (hiddenState) updatedRow.building_level = "wh_main_chs_port_ruin";
           }
           dedupedRows[technologyKey] = updatedRow;
         }
         const rows = Object.values(dedupedRows).map((row) => buildRowFromSchema(techSchema.fields, row));
         if (rows.length > 0) {
-          const existingTechFile = packFiles.find((f) => f.name.startsWith("db\\technologies_tables\\"));
-          if (existingTechFile) {
-            // Merge: rebuild with combined rows
-            const buffer = await buildDBFileBuffer(techSchema.version, rows, techSchema.fields);
-            packFiles.push({
-              name: `db\\technologies_tables\\${tableName}_edits`,
-              file_size: buffer.length,
-              buffer,
-            });
-          } else {
-            const buffer = await buildDBFileBuffer(techSchema.version, rows, techSchema.fields);
-            packFiles.push({ name: `db\\technologies_tables\\${tableName}`, file_size: buffer.length, buffer });
-          }
+          const buffer = await buildDBFileBuffer(techSchema.version, rows, techSchema.fields);
+          packFiles.push({ name: `db\\technologies_tables\\${tableName}`, file_size: buffer.length, buffer });
         }
       }
       const hasLinkDeletions = data.deletedLinkKeys && data.deletedLinkKeys.length > 0;
@@ -6090,29 +11175,6 @@ export const registerIpcMainListeners = (
           });
         }
       }
-      if (data.hiddenTechnologies.length > 0) {
-        const schema = getPreferredSchema("technologies_tables");
-        const dedupedRowsByTechnologyKey: Record<string, Record<string, string | boolean>> = {};
-        for (const hiddenTechnology of data.hiddenTechnologies) {
-          const originalRow = technologyData.technologyRowsByKey[hiddenTechnology.technologyKey];
-          if (!originalRow) continue;
-          dedupedRowsByTechnologyKey[hiddenTechnology.technologyKey] = {
-            ...originalRow,
-            key: hiddenTechnology.technologyKey,
-            is_hidden: hiddenTechnology.isHidden ? "true" : "false",
-            building_level: hiddenTechnology.isHidden
-              ? "wh_main_chs_port_ruin"
-              : originalRow.building_level || "",
-          };
-        }
-        const rows = Object.values(dedupedRowsByTechnologyKey).map((row) =>
-          buildRowFromSchema(schema.fields, row),
-        );
-        if (rows.length > 0) {
-          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-          packFiles.push({ name: `db\\technologies_tables\\${tableName}`, file_size: buffer.length, buffer });
-        }
-      }
       if (data.newNodes && data.newNodes.length > 0) {
         // Write new entries to technology_nodes_tables
         const nodeSchema = getPreferredSchema("technology_nodes_tables");
@@ -6126,6 +11188,7 @@ export const registerIpcMainListeners = (
             required_parents: newNode.requiredParents.toString(),
             campaign_key: newNode.campaignKey || "",
             faction_key: newNode.factionKey || "",
+            optional_ui_group: newNode.optionalUiGroup || "",
             pixel_offset_x: newNode.pixelOffsetX.toString(),
             pixel_offset_y: newNode.pixelOffsetY.toString(),
             research_points_required: newNode.researchPointsRequired.toString(),
@@ -6191,6 +11254,32 @@ export const registerIpcMainListeners = (
           }
         }
       }
+      if (data.uiTabToNodes && data.newNodes && data.newNodes.length > 0) {
+        const uiTabsToNodesSchema = getPreferredSchema("technology_ui_tabs_to_technology_nodes_junctions_tables");
+        const newNodeKeys = new Set(data.newNodes.map((newNode) => newNode.nodeKey));
+        const uiTabsToNodesRows = Object.entries(data.uiTabToNodes).flatMap(([tab, nodeKeys]) =>
+          nodeKeys
+            .filter((nodeKey) => newNodeKeys.has(nodeKey))
+            .map((nodeKey) =>
+              buildRowFromSchema(uiTabsToNodesSchema.fields, {
+                tab,
+                node: nodeKey,
+              }),
+            ),
+        );
+        if (uiTabsToNodesRows.length > 0) {
+          const buffer = await buildDBFileBuffer(
+            uiTabsToNodesSchema.version,
+            uiTabsToNodesRows,
+            uiTabsToNodesSchema.fields,
+          );
+          packFiles.push({
+            name: `db\\technology_ui_tabs_to_technology_nodes_junctions_tables\\${tableName}`,
+            file_size: buffer.length,
+            buffer,
+          });
+        }
+      }
       const techEffectsSchema = getPreferredSchema("technology_effects_junction_tables");
       const techEffectsRows: (string | boolean)[][] = [];
       const seenTechnologyEffects = new Set<string>();
@@ -6219,7 +11308,7 @@ export const registerIpcMainListeners = (
           techEffectsRows.push(
             buildRowFromSchema(techEffectsSchema.fields, {
               ...(sourceTechnologyKey
-                ? (technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey] || {})
+                ? technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey] || {}
                 : {}),
               technology: technologyKey,
               effect: effectKey,
@@ -6277,10 +11366,10 @@ export const registerIpcMainListeners = (
             locRows.push([`technologies_onscreen_name_${technologyKey}`, editedNode.displayName, false]);
           }
           if (editedNode.shortDescription !== undefined) {
-            locRows.push([`technologies_short_description_${technologyKey}`, editedNode.shortDescription, false]);
+            locRows.push([`technologies_short_description_${technologyKey}`, editedNode.shortDescription || "", false]);
           }
           if (editedNode.longDescription !== undefined) {
-            locRows.push([`technologies_long_description_${technologyKey}`, editedNode.longDescription, false]);
+            locRows.push([`technologies_long_description_${technologyKey}`, editedNode.longDescription || "", false]);
           }
         }
       }
@@ -6323,12 +11412,6 @@ export const registerIpcMainListeners = (
       console.error("Failed to save technology changes:", error);
       return { success: false, error: error?.message || String(error) };
     }
-  });
-  ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
-    getPackData(packPath, table);
-  });
-  ipcMain.on("getPackDataWithLocs", async (event, packPath: string, table?: DBTable) => {
-    getPackData(packPath, table, true);
   });
   const getLiveViewerWindow = () => {
     if (!windows.viewerWindow) return undefined;
@@ -6377,11 +11460,34 @@ export const registerIpcMainListeners = (
     viewerWindow.on("closed", () => {
       dbIndirectReferenceCacheByWebContentsId.delete(viewerWebContentsId);
       dbDuplicationCancelStateByWebContentsId.delete(viewerWebContentsId);
+      const globalSearchState = globalSearchCancelStateByWebContentsId.get(viewerWebContentsId);
+      if (globalSearchState) globalSearchState.canceled = true;
+      globalSearchCancelStateByWebContentsId.delete(viewerWebContentsId);
+      globalSearchStartLockByWebContentsId.delete(viewerWebContentsId);
       if (windows.viewerWindow === viewerWindow) {
         windows.viewerWindow = undefined;
       }
       appData.isViewerReady = false;
+      // The tab list is replayed on reload, where the window survives. Closing the window is the user
+      // saying they are done, so the next viewer opens on the pack they ask for and nothing else.
+      appData.openViewerPackPaths = [];
+      appData.activeViewerPackPath = undefined;
     });
+  };
+  const updateViewerTitle = () => {
+    const viewerWindow = getLiveViewerWindow();
+    if (!viewerWindow) return;
+
+    const activePackPath = appData.activeViewerPackPath;
+    if (!activePackPath) {
+      viewerWindow.setTitle("WH3 Mod Manager Mod Viewer");
+      return;
+    }
+
+    const additionalPackCount = Math.max(0, appData.openViewerPackPaths.length - 1);
+    viewerWindow.setTitle(
+      `${nodePath.basename(activePackPath)}` + (additionalPackCount > 0 ? ` (+${additionalPackCount} more)` : ""),
+    );
   };
   const createSkillsWindow = () => {
     if (windows.skillsWindow) return;
@@ -6458,7 +11564,16 @@ export const registerIpcMainListeners = (
       windows.techTreesWindow = undefined;
     });
   };
-  ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
+  const updateRecentPackPaths = (packPath: string) => {
+    const knownVanillaPackNames = [...vanillaPackNames, ...appData.allVanillaPackNames];
+    const nextRecentPackPaths = addRecentPackPath(appData.recentPackPaths, packPath, knownVanillaPackNames);
+    if (recentPackPathsEqual(appData.recentPackPaths, nextRecentPackPaths)) return;
+
+    appData.recentPackPaths = nextRecentPackPaths;
+    mainWindow?.webContents.send("setRecentPackPaths", nextRecentPackPaths);
+    windows.viewerWindow?.webContents.send("setRecentPackPaths", nextRecentPackPaths);
+  };
+  const openModInViewerWindow = (modPath: string) => {
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
       const baseVanillaPackName = vanillaPackData.name;
       if (modPath == baseVanillaPackName) {
@@ -6468,20 +11583,48 @@ export const registerIpcMainListeners = (
         );
       }
     }
+    updateRecentPackPaths(modPath);
     console.log("ON requestOpenModInViewer", modPath);
+    if (!appData.openViewerPackPaths.includes(modPath)) {
+      appData.openViewerPackPaths.push(modPath);
+      // Runs before the window exists on a cold start, so sendPackViewData can find no viewer to send
+      // or queue to. The viewerIsReady replay below re-requests every open pack, which is what covers
+      // that case - do not drop it.
+      getPackData(modPath, undefined, undefined, "viewer");
+    }
+    appData.activeViewerPackPath = modPath;
     let viewerWindow = getLiveViewerWindow();
     if (!viewerWindow) {
       createViewerWindow();
       viewerWindow = getLiveViewerWindow();
     }
-    getPackData(modPath);
     if (viewerWindow?.webContents && !viewerWindow.webContents.isDestroyed() && appData.isViewerReady) {
       viewerWindow.webContents.send("openModInViewer", modPath);
-      viewerWindow.setTitle(`WH3 Mod Manager v${version}: viewing ${nodePath.basename(modPath)}`);
+      viewerWindow.webContents.send("setUnsavedPacksData", modPath, appData.unsavedPacksData[modPath] ?? []);
+      viewerWindow.webContents.send("setDeletedPackFilePaths", modPath, appData.deletedPackFilePaths[modPath] ?? []);
       viewerWindow.focus();
     } else if (viewerWindow) {
       viewerWindow.focus();
     }
+    updateViewerTitle();
+  };
+  openModInViewerFromMainProcess = openModInViewerWindow;
+
+  ipcMain.on("requestOpenModInViewer", (_event, modPath: string) => openModInViewerWindow(modPath));
+  ipcMain.on("viewerClosedPack", (_event, packPath: string) => {
+    appData.openViewerPackPaths = appData.openViewerPackPaths.filter((path) => path !== packPath);
+    if (appData.activeViewerPackPath === packPath) {
+      appData.activeViewerPackPath = appData.openViewerPackPaths.at(-1);
+    }
+    // The user confirmed the edits are gone, so main must not keep them and later write them.
+    delete appData.unsavedPacksData[packPath];
+    delete appData.deletedPackFilePaths[packPath];
+    broadcastPackStagingState(packPath);
+    updateViewerTitle();
+  });
+  ipcMain.on("setViewerActivePack", (_event, packPath: string) => {
+    appData.activeViewerPackPath = packPath;
+    updateViewerTitle();
   });
   ipcMain.on("requestOpenSkillsWindow", async (event, mods: Mod[]) => {
     console.log("ON requestOpenSkillsWindow");
@@ -6521,6 +11664,7 @@ export const registerIpcMainListeners = (
   });
   ipcMain.on("setSkillsViewOptions", (event, skillsViewOptions: SkillsViewOptions) => {
     appData.isShowingSkillNodeSetNames = skillsViewOptions.isShowingSkillNodeSetNames;
+    appData.hideRepeatedKeyPrefixes = skillsViewOptions.hideRepeatedKeyPrefixes;
     appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
     appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
     appData.isCheckingSkillRequirements = skillsViewOptions.isCheckingSkillRequirements;
@@ -6531,38 +11675,48 @@ export const registerIpcMainListeners = (
     console.log("requestLanguageChange:", language);
     await i18n.changeLanguage(language);
     appData.currentLanguage = language as SupportedLanguage;
+    cachedTechnologyData = undefined;
+    cachedTechnologyDataKey = undefined;
     windows.mainWindow?.webContents.send("setCurrentLanguage", language);
     windows.skillsWindow?.webContents.send("setCurrentLanguage", language);
     windows.viewerWindow?.webContents.send("setCurrentLanguage", language);
     windows.techTreesWindow?.webContents.send("setCurrentLanguage", language);
   });
-  ipcMain.on("requestGameChange", async (event, game: SupportedGames, appState: AppState) => {
+  ipcMain.on("requestGameChange", async (event, game: SupportedGames, payload: ConfigSavePayload) => {
     // console.log("game before change is", appData.currentGame, "to", game);
     console.log(`Requesting game change to ${game}`);
-    console.log(`Current game is ${appState.currentGame}`);
-    appData.gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
-    appData.gameToPresets[appState.currentGame] = appState.presets;
-    await setCurrentGame(game);
-    if (appData.gamesToGameFolderPaths[game].contentFolder) {
-      const currentPreset = appData.gameToCurrentPreset[game];
-      // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
-      const presets = appData.gameToPresets[game];
-      console.log("SENDING setCurrentGame", game);
-      mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
-    }
+    console.log(`Current game is ${payload.currentGame}`);
+    // Capture even a not-yet-debounced edit before leaving. writeAppConfig updates gameToConfig
+    // synchronously before its queued disk write, so returning later uses this exact state.
+    applyConfigSavePayloadToAppData(payload);
+    writeAppConfig(payload);
+    const didSwitchGame = await setCurrentGame(game);
+    // Until the requested game's folders are configured, main and renderer both remain on the old
+    // game. refreshModsIfFoldersValid completes the switch after a folder is selected.
+    if (!didSwitchGame) return;
+
+    const gameConfig = appData.gameToConfig[game];
+    console.log("SENDING setCurrentGame", game);
+    mainWindow?.webContents.send(
+      "setCurrentGame",
+      game,
+      gameConfig.currentPreset,
+      gameConfig.presets,
+      gameConfig.modUserData,
+    );
   });
   const terminateCurrentGame = () => {
     const name = gameToProcessName[appData.currentGame];
     try {
       switch (process.platform) {
         case "win32": {
-          exec(`taskkill /f /t /im ${name}`, (error) => {
+          execFile("taskkill", ["/f", "/t", "/im", name], (error) => {
             if (error) console.error("taskkill error:", error);
           });
           break;
         }
         case "linux": {
-          exec(`pkill -f ${name}`, (error) => {
+          execFile("pkill", ["-f", name], (error) => {
             if (error) console.error("pkill error:", error);
           });
           break;
@@ -6576,10 +11730,63 @@ export const registerIpcMainListeners = (
     terminateCurrentGame();
   });
   const dbTableToString = (dbTable: DBTable) => {
-    return `db\\${dbTable.dbName}\\${dbTable.dbSubname}`;
+    // Honours dbFolder so a spare copy is read from where it actually lives, not from db\.
+    return getDBPackedFilePath(dbTable as DBTableSelection);
   };
-  const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
+  const viewerTableRequests = createInFlightTableRequests();
+  const resolveVanillaViewerFilePackPath = async (packPath: string, fileName: string): Promise<string> => {
+    if (!canUseVanillaDbCacheForPack(packPath)) return packPath;
+
+    const vanillaIndex = await getVanillaPackIndex();
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+    const vanillaPackName = vanillaIndex ? findVanillaPackContaining(vanillaIndex, fileName) : undefined;
+    return dataFolder && vanillaPackName ? nodePath.join(dataFolder, vanillaPackName) : packPath;
+  };
+  type PackDataDestination = "main" | "viewer";
+  const sendPackViewData = (packViewData: PackViewData | undefined, destination: PackDataDestination) => {
+    if (!packViewData) return;
+    if (destination === "main") {
+      mainWindow?.webContents.send("setPacksData", [packViewData]);
+      return;
+    }
+
+    const viewerWindow = getLiveViewerWindow();
+    if (!viewerWindow) return;
+
+    viewerWindow.webContents.send("setPacksData", [packViewData]);
+    if (!appData.isViewerReady) {
+      console.log("VIEWER NOT READY, QUEUEING");
+      appData.queuedViewerData = [packViewData];
+    }
+  };
+
+  const getLoadedPackViewData = (pack: Pack, table: DBTable): PackViewData | undefined => {
+    const packedFilePath = dbTableToString(table);
+    const packedFiles = pack.packedFiles.filter(
+      (packedFile) =>
+        packedFile.name.startsWith(packedFilePath) &&
+        packedFile.tableSchema != undefined &&
+        packedFile.schemaFields != undefined,
+    );
+    if (packedFiles.length === 0) return undefined;
+
+    return {
+      packName: pack.name,
+      packPath: pack.path,
+      tables: pack.packedFiles.map((packedFile) => packedFile.name),
+      packedFiles: Object.fromEntries(packedFiles.map((packedFile) => [packedFile.name, packedFile])),
+    };
+  };
+
+  const getPackData = async (
+    packPath: string,
+    table?: DBTable,
+    getLocs?: boolean,
+    destination: PackDataDestination = "viewer",
+  ) => {
     console.log(`getPackData ${packPath}`);
+    // A loc is parsed by the loc reader, not the db one, so asking for it has to turn that on.
+    if (table && isLocPackedFilePath(dbTableToString(table))) getLocs = true;
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (table) console.log("GETTING TABLE ", table.dbName, table.dbSubname);
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
@@ -6589,7 +11796,7 @@ export const registerIpcMainListeners = (
           console.log("WAIT FOR DATAFOLDER TO BE SET");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           console.log("DONE WAITING FOR DATAFOLDER");
-          getPackData(packPath, table, getLocs);
+          getPackData(packPath, table, getLocs, destination);
           return;
         }
         if (packPath == baseVanillaPackName) {
@@ -6598,82 +11805,151 @@ export const registerIpcMainListeners = (
         }
       }
     }
-    console.log("CURRENTLY READING:", appData.currentlyReadingModPaths);
-    console.log("before join", dataFolder, packPath);
+    console.log("CURRENTLY READING:", packReads.reading());
     if (!packPath.includes("\\")) {
       // if we provided pack name instead of pack path as argument
       if (!dataFolder) {
         console.log("WAIT FOR DATAFOLDER TO BE SET");
         await new Promise((resolve) => setTimeout(resolve, 1000));
         console.log("DONE WAITING FOR DATAFOLDER");
-        getPackData(packPath, table, getLocs);
+        getPackData(packPath, table, getLocs, destination);
         return;
       }
       packPath = nodePath.join(dataFolder as string, packPath);
     }
-    const packData = appData.packsData.find((pack) => pack.path === packPath);
-    // console.log("packsdata is", appData.packsData);
-    // console.log("to read:", packPath);
-    // console.log("found packs for reading:", packData);
-    console.log(
-      "getPackData:",
-      appData.currentlyReadingModPaths.every((path) => path != packPath),
-    );
-    console.log("getPackData:", !packData);
-    console.log("getPackData:", table);
-    if (packData && table)
-      console.log(
-        "getPackData:",
-        packData.packedFiles
-          .filter((packedFile) => packedFile.schemaFields)
-          .every((packedFile) => packedFile.name != dbTableToString(table)),
-      );
-    if (
-      appData.currentlyReadingModPaths.every((path) => path != packPath) &&
-      (!packData ||
-        (table &&
-          packData.packedFiles
-            .filter((packedFile) => packedFile.schemaFields)
-            .every((packedFile) => packedFile.name != dbTableToString(table))))
-    ) {
-      appData.currentlyReadingModPaths.push(packPath);
-      console.log(`READING ${packPath}`);
-      const newPack = await readPack(
-        packPath,
-        table && { tablesToRead: [dbTableToString(table)], readLocs: getLocs },
-      );
-      appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != packPath);
+    const packedFilePath = table ? dbTableToString(table) : "";
+    const requestKey = JSON.stringify([destination, packPath, packedFilePath, Boolean(getLocs)]);
+    await viewerTableRequests.run(requestKey, async () => {
+      const packData = appData.packsData.find((pack) => pack.path === packPath);
+
+      if (packData && !table) {
+        sendPackViewData(getPackViewData(packData, undefined, getLocs), destination);
+        return;
+      }
+
+      // A parsed table retained by the main process is already in renderer-ready form. Do not amend
+      // every cell again merely because a second window asked for it.
+      if (packData && table && !getLocs) {
+        const loaded = getLoadedPackViewData(packData, table);
+        if (loaded) {
+          sendPackViewData(loaded, destination);
+          return;
+        }
+      }
+
+      console.log(`READING ${packPath}${packedFilePath ? `:${packedFilePath}` : ""}`);
+      // The retained pack supplies the file index. Only when this is the first request for the pack
+      // do we read that index from disk. The selected descriptor is cloned because filling and view
+      // preparation mutate it.
+      const readFromCache = async () => {
+        if (!packedFilePath || getLocs || !canUseVanillaDbCacheForPack(packPath)) return undefined;
+
+        const indexedPack = packData ?? (await readPack(packPath, { skipParsingTables: true }));
+        const cloned = clonePackIndexForTable(indexedPack, packedFilePath);
+        if (!cloned) return undefined;
+        // getDBVersion is the same resolver getPackViewData uses below, so a disagreement about the
+        // layout is caught here rather than chunking the rows by the wrong field count.
+        const filled = await fillPackedFileFromVanillaCache(packPath, packedFilePath, cloned.packedFile, getDBVersion);
+        if (!filled) return undefined;
+        console.log(`vanilla db cache served ${packedFilePath}`);
+        return cloned.pack;
+      };
+
+      const newPack =
+        (await readFromCache()) ??
+        // Opening a pack only needs its file index for the tree. Parse DB payloads lazily when the
+        // selected table is requested; parsing the whole pack here blocks the first tab switch.
+        (await readPack(
+          packPath,
+          table
+            ? { tablesToRead: [packedFilePath], readLocs: getLocs }
+            : { skipParsingTables: true, readLocs: getLocs },
+        ));
       if (appData.packsData.every((pack) => pack.path != packPath)) {
         console.log("APPENDING packsData", packPath);
         appendPacksData(newPack);
       }
-      const toSend = [getPackViewData(newPack, table, getLocs)];
-      mainWindow?.webContents.send("setPacksData", toSend);
-      windows.viewerWindow?.webContents.send("setPacksData", toSend);
-      if (!appData.isViewerReady) {
-        console.log("VIEWER NOT READY, QUEUEING");
-        appData.queuedViewerData = toSend;
-      }
-    } else {
-      if (appData.currentlyReadingModPaths.some((path) => path == packPath)) {
-        console.log("WAIT");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        console.log("DONE WAITING");
-        getPackData(packPath, table, getLocs);
-        return;
-      }
-      const packData = appData.packsData.find((pack) => pack.path === packPath);
-      if (packData) {
-        const toSend = [getPackViewData(packData, table, getLocs)];
-        mainWindow?.webContents.send("setPacksData", toSend);
-        windows.viewerWindow?.webContents.send("setPacksData", toSend);
-        if (!appData.isViewerReady) {
-          console.log("VIEWER NOT READY, QUEUEING");
-          appData.queuedViewerData = toSend;
-        }
-      }
-    }
+      sendPackViewData(getPackViewData(newPack, table, getLocs), destination);
+    });
   };
+  const getPackDataDestination = (sender: Electron.WebContents): PackDataDestination =>
+    getLiveViewerWindow()?.webContents === sender ? "viewer" : "main";
+  const VANILLA_FILE_SEARCH_MAX_RESULTS = 1000;
+
+  ipcMain.on("getPackData", (event, packPath: string, table?: DBTable) => {
+    getPackData(packPath, table, undefined, getPackDataDestination(event.sender));
+  });
+  ipcMain.on("getPackDataWithLocs", (event, packPath: string, table?: DBTable) => {
+    getPackData(packPath, table, true, getPackDataDestination(event.sender));
+  });
+  ipcMain.handle(
+    "getVanillaPackFileTree",
+    async (
+      _event,
+      packPath: string,
+      prefix: string,
+    ): Promise<{ success: boolean; children?: { path: string; isBranch: boolean }[]; error?: string }> => {
+      try {
+        if (!canUseVanillaDbCacheForPack(packPath)) return { success: false, error: "Not the current DB pack" };
+
+        const vanillaIndex = await getVanillaPackIndex();
+        if (!vanillaIndex) return { success: true, children: [] };
+
+        return {
+          success: true,
+          children: collectVanillaPackTreeChildren(
+            vanillaIndex,
+            prefix,
+            (filePath) => parseDBTablePath(filePath) == undefined,
+            (folderPath) => folderPath !== "db" && folderPath !== "unusedtables",
+          ),
+        };
+      } catch (error) {
+        console.error("Could not load vanilla pack file tree:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Could not load vanilla pack file tree",
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    "searchVanillaPackFiles",
+    async (
+      _event,
+      packPath: string,
+      query: string,
+    ): Promise<{
+      success: boolean;
+      filePaths?: string[];
+      folderPaths?: string[];
+      truncated?: boolean;
+      error?: string;
+    }> => {
+      try {
+        if (!canUseVanillaDbCacheForPack(packPath)) return { success: false, error: "Not the current DB pack" };
+
+        const vanillaIndex = await getVanillaPackIndex();
+        if (!vanillaIndex) return { success: true, filePaths: [], folderPaths: [], truncated: false };
+
+        return {
+          success: true,
+          ...searchVanillaPackFileTree(
+            vanillaIndex,
+            query,
+            VANILLA_FILE_SEARCH_MAX_RESULTS,
+            (filePath) => parseDBTablePath(filePath) == undefined,
+          ),
+        };
+      } catch (error) {
+        console.error("Could not search vanilla pack files:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Could not search vanilla pack files",
+        };
+      }
+    },
+  );
   const readMods = async (
     mods: Mod[],
     skipParsingTables = true,
@@ -6688,14 +11964,16 @@ export const registerIpcMainListeners = (
       appData.packsData = appData.packsData.filter((pack) => !mods.some((mod) => mod.path == pack.path));
     }
     for (const mod of mods) {
-      if (
-        appData.currentlyReadingModPaths.every((path) => path != mod.path) &&
-        appData.packsData.every((pack) => pack.path != mod.path)
-      ) {
+      // Wait for a read of this mod already in flight before deciding. Skipping on it left the mod
+      // out of packsData entirely when parsing was asked for, since the filter above has already
+      // dropped it - a catalog built here would then be missing that mod altogether.
+      if (!(await packReads.waitUntilFree(mod.path))) {
+        console.log("readMods: waited too long for a read of", mod.path, "to end, reading it anyway");
+      }
+      if (appData.packsData.every((pack) => pack.path != mod.path)) {
         console.log("READING " + mod.name);
-        appData.currentlyReadingModPaths.push(mod.path);
         if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
-        const newPack = await readPack(mod.path, {
+        const newPack = await readPackRegistered(mod.path, {
           skipParsingTables,
           readScripts,
           tablesToRead,
@@ -6703,9 +11981,6 @@ export const registerIpcMainListeners = (
           readLocs,
         });
         if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
-        appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
-          (path) => path != mod.path,
-        );
         if (appData.packsData.every((pack) => pack.path != mod.path)) {
           appendPacksData(newPack, mod, emitToMainWindow);
         }
@@ -6735,9 +12010,7 @@ export const registerIpcMainListeners = (
       if (canUseCustomizableCache) {
         const customizableModsCache = await loadCustomizableModsCache();
         const customizableModsCachePaths = Object.keys(customizableModsCache);
-        const modsNotInCustomizableCache = mods.filter(
-          (mod) => !customizableModsCachePaths.includes(mod.path),
-        );
+        const modsNotInCustomizableCache = mods.filter((mod) => !customizableModsCachePaths.includes(mod.path));
         if (modsNotInCustomizableCache.length == 0) {
           console.log("Skipping readMods, all are already in the customizable mods cache!");
           if (customizableModsHash != hash(appData.customizableMods)) {
@@ -6758,6 +12031,28 @@ export const registerIpcMainListeners = (
       readMods(modsToRead, skipCollisionCheck, skipCollisionCheck);
     },
   );
+  /**
+   * Replays every open pack to a viewer that has just come up. The renderer activates whichever pack
+   * it hears about last, so the active one is sent last and the title it produces stays true.
+   */
+  const replayOpenPacksToViewer = (skipReadFor?: Set<string>) => {
+    const activePackPath = appData.activeViewerPackPath;
+    const packPathsInSendOrder = [
+      ...appData.openViewerPackPaths.filter((packPath) => packPath !== activePackPath),
+      ...appData.openViewerPackPaths.filter((packPath) => packPath === activePackPath),
+    ];
+    for (const packPath of packPathsInSendOrder) {
+      if (!skipReadFor?.has(packPath)) getPackData(packPath, undefined, undefined, "viewer");
+      windows.viewerWindow?.webContents.send("openModInViewer", packPath);
+      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, appData.unsavedPacksData[packPath] ?? []);
+      windows.viewerWindow?.webContents.send(
+        "setDeletedPackFilePaths",
+        packPath,
+        appData.deletedPackFilePaths[packPath] ?? [],
+      );
+    }
+    updateViewerTitle();
+  };
   const sendQueuedDataToViewer = async () => {
     if (!appData.isViewerReady) {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -6765,13 +12060,17 @@ export const registerIpcMainListeners = (
       return;
     }
     console.log("SENDING QUEUED DATA TO VIEWER");
+    const queuedPackPath = appData.queuedViewerData[0]?.packPath;
+    if (queuedPackPath) {
+      if (!appData.openViewerPackPaths.includes(queuedPackPath)) appData.openViewerPackPaths.push(queuedPackPath);
+      appData.activeViewerPackPath = queuedPackPath;
+    }
+    const queuedPackPaths = new Set(
+      appData.queuedViewerData.map((packViewData) => packViewData?.packPath).filter((path): path is string => !!path),
+    );
     windows.viewerWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
     windows.viewerWindow?.webContents.send("setPacksData", appData.queuedViewerData);
-    windows.viewerWindow?.webContents.send("openModInViewer", appData.queuedViewerData[0]?.packPath);
-    if (appData.queuedViewerData[0]?.packPath)
-      windows.viewerWindow?.setTitle(
-        `WH3 Mod Manager v${version}: viewing ${nodePath.basename(appData.queuedViewerData[0]?.packPath)}`,
-      );
+    replayOpenPacksToViewer(queuedPackPaths);
     windows.viewerWindow?.focus();
     appData.queuedViewerData = [];
   };
@@ -6793,14 +12092,15 @@ export const registerIpcMainListeners = (
     );
     windows.viewerWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.viewerWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
-    windows.viewerWindow?.webContents.send(
-      "setIsFeaturesForModdersEnabled",
-      appData.isFeaturesForModdersEnabled,
-    );
+    windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
     windows.viewerWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
+    windows.viewerWindow?.webContents.send("setRecentPackPaths", appData.recentPackPaths);
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
+    } else {
+      windows.viewerWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
+      replayOpenPacksToViewer();
     }
   });
   const sendQueuedDataToSkills = async () => {
@@ -6816,10 +12116,7 @@ export const registerIpcMainListeners = (
     console.log("SENDING QUEUED DATA TO SKILLS");
     // windows.skillsWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
     windows.skillsWindow?.webContents.send("setSkillsData", appData.queuedSkillsData);
-    windows.skillsWindow?.webContents.send(
-      "setIsFeaturesForModdersEnabled",
-      appData.isFeaturesForModdersEnabled,
-    );
+    windows.skillsWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
     windows.skillsWindow?.focus();
     appData.queuedSkillsData = undefined;
   };
@@ -6837,13 +12134,11 @@ export const registerIpcMainListeners = (
     }
     windows.skillsWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.skillsWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
-    windows.skillsWindow?.webContents.send(
-      "setIsFeaturesForModdersEnabled",
-      appData.isFeaturesForModdersEnabled,
-    );
+    windows.skillsWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
     windows.skillsWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
     windows.skillsWindow?.webContents.send("setSkillsViewOptions", {
       isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
+      hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
       isShowingHiddenSkills: appData.isShowingHiddenSkills,
       isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
       isCheckingSkillRequirements: appData.isCheckingSkillRequirements,
@@ -6862,20 +12157,70 @@ export const registerIpcMainListeners = (
     }
     windows.techTreesWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.techTreesWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
-    windows.techTreesWindow?.webContents.send(
-      "setIsFeaturesForModdersEnabled",
-      appData.isFeaturesForModdersEnabled,
-    );
+    windows.techTreesWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
     windows.techTreesWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
   });
   ipcMain.on("openFolderInExplorer", (event, path: string) => {
     shell.showItemInFolder(path);
   });
-  const openInSteam = (url: string) => {
-    exec(`start steam://openurl/${url}`);
+  ipcMain.on("openDirectoryInExplorer", (event, path: string) => {
+    void shell.openPath(path);
+  });
+  ipcMain.removeHandler("openDiagnosticPath");
+  ipcMain.handle(
+    "openDiagnosticPath",
+    async (_event, target: DiagnosticPathTarget, copyPath: boolean): Promise<DiagnosticPathResult> => {
+      try {
+        let targetPath: string;
+
+        if (target === "appLogFile") {
+          targetPath = electronLog.transports.file.getFile().path;
+        } else if (target === "appLogsFolder") {
+          targetPath = nodePath.dirname(electronLog.transports.file.getFile().path);
+        } else if (target === "latestGameScriptLog") {
+          const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+          if (!gamePath) {
+            return { success: false, error: "The game folder is not configured." };
+          }
+
+          const latestScriptLog = await findLatestScriptLog(gamePath);
+          if (!latestScriptLog) {
+            return {
+              success: false,
+              error: `No script_log_* files were found in ${gamePath}.`,
+            };
+          }
+          targetPath = latestScriptLog;
+        } else {
+          return { success: false, error: "Unknown log path target." };
+        }
+
+        if (copyPath) {
+          clipboard.writeText(targetPath);
+          return { success: true, path: targetPath };
+        }
+
+        const openError = await shell.openPath(targetPath);
+        if (openError) return { success: false, path: targetPath, error: openError };
+        return { success: true, path: targetPath };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
+  const openInSteam = async (url: string) => {
+    try {
+      await shell.openExternal(`steam://openurl/${url}`);
+    } catch (error) {
+      console.error("Failed to open Steam URL:", error);
+      mainWindow?.webContents.send("handleLog", `Failed to open Steam URL: ${url}`);
+    }
   };
   ipcMain.on("openInSteam", (event, url: string) => {
-    openInSteam(url);
+    void openInSteam(url);
   });
   ipcMain.on("openPack", (event, path: string) => {
     shell.openPath(path);
@@ -6890,6 +12235,21 @@ export const registerIpcMainListeners = (
     const destPath = nodePath.join(dataFolder, baseName);
     fs.copyFileSync(path, destPath);
   });
+  ipcMain.removeHandler("compareModsByteForByte");
+  ipcMain.handle(
+    "compareModsByteForByte",
+    async (
+      _event,
+      modPath: string,
+      workshopModPath: string,
+    ): Promise<{ success: boolean; identical?: boolean; error?: string }> => {
+      try {
+        return { success: true, identical: await compareFilesByteForByte(modPath, workshopModPath) };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
   const checkIsModThumbnailValid = (modThumbnailPath: string) => {
     if (modThumbnailPath == "" || !fs.existsSync(modThumbnailPath)) {
       mainWindow?.webContents.send("addToast", {
@@ -6911,11 +12271,7 @@ export const registerIpcMainListeners = (
   };
   ipcMain.on("uploadMod", async (event, mod: Mod) => {
     if (!checkIsModThumbnailValid(mod.imgPath)) return;
-    const child = fork(
-      nodePath.join(__dirname, "sub.js"),
-      [gameToSteamId[appData.currentGame], "upload"],
-      {},
-    );
+    const child = fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "upload"], {});
     child.on("message", (response: ModUploadResponseError | ModUploadResponseSuccess) => {
       console.log("upload response:", response);
       if (response && "type" in response) {
@@ -6933,7 +12289,7 @@ export const registerIpcMainListeners = (
                 startTime: Date.now(),
               } as Toast);
             }
-            updateMod(mod, response.workshopId, mod.tags, mod.name, true);
+            void updateMod(mod, response.workshopId, mod.tags, mod.name, true);
             break;
           case "error":
             mainWindow?.webContents.send("addToast", {
@@ -6953,9 +12309,30 @@ export const registerIpcMainListeners = (
     modTitle?: string,
     openInSteamAfterUpdate = false,
   ) => {
+    if (!checkIsModThumbnailValid(mod.imgPath)) return;
+
+    if (appData.compressModsOnUpload && appData.currentGame === "wh3") {
+      const compressionResponse = await compressPackWithAnalysis(mod.path, appData.isRigidModelV2CompressionEnabled, {
+        allowNoEligible: true,
+      });
+      if (!compressionResponse.success) {
+        const message = i18n.t("compressModsOnUploadFailed", {
+          mod: mod.name,
+          error: compressionResponse.error || "Unknown compression error.",
+        });
+        console.error(message);
+        mainWindow?.webContents.send("handleLog", message);
+        mainWindow?.webContents.send("addToast", {
+          type: "warning",
+          messages: [message],
+          startTime: Date.now(),
+        } as Toast);
+        return;
+      }
+    }
+
     const uploadFolderName = workshopId;
     const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_uploads_" + uploadFolderName);
-    if (!checkIsModThumbnailValid(mod.imgPath)) return;
     await fs.rmSync(uploadFolderPath, { recursive: true, force: true });
     await fs.mkdirSync(uploadFolderPath, { recursive: true });
     await fs.linkSync(mod.path, nodePath.join(uploadFolderPath, mod.name));
@@ -6972,94 +12349,80 @@ export const registerIpcMainListeners = (
     // return;
     if (modTitle) args.push(modTitle);
     const child = fork(nodePath.join(__dirname, "sub.js"), args, {});
-    child.on(
-      "message",
-      (response: ModUpdateResponseError | ModUpdateResponseProgress | ModUpdateResponseSuccess) => {
-        console.log("update response:", response);
-        if (response && "type" in response) {
-          switch (response.type) {
-            case "success":
+    child.on("message", (response: ModUpdateResponseError | ModUpdateResponseProgress | ModUpdateResponseSuccess) => {
+      console.log("update response:", response);
+      if (response && "type" in response) {
+        switch (response.type) {
+          case "success":
+            mainWindow?.webContents.send("addToast", {
+              type: "success",
+              messages: ["loc:modUpdated"],
+              startTime: Date.now(),
+            } as Toast);
+            if ("needsToAcceptAgreement" in response && response.needsToAcceptAgreement) {
               mainWindow?.webContents.send("addToast", {
-                type: "success",
-                messages: ["loc:modUpdated"],
+                type: "info",
+                messages: ["loc:needsToAcceptSteamWorkshopAgreement"],
                 startTime: Date.now(),
               } as Toast);
-              if ("needsToAcceptAgreement" in response && response.needsToAcceptAgreement) {
-                mainWindow?.webContents.send("addToast", {
-                  type: "info",
-                  messages: ["loc:needsToAcceptSteamWorkshopAgreement"],
-                  startTime: Date.now(),
-                } as Toast);
+            }
+            fs.rmSync(uploadFolderPath, { recursive: true, force: true });
+            if (openInSteamAfterUpdate) {
+              void openInSteam(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`);
+            }
+            break;
+          case "error":
+            mainWindow?.webContents.send("addToast", {
+              type: "warning",
+              messages: ["loc:failedUpdatingMod"],
+              startTime: Date.now(),
+            } as Toast);
+            if ("err" in response) {
+              try {
+                console.log(response.err);
+              } catch (e) {
+                /* empty */
               }
-              fs.rmSync(uploadFolderPath, { recursive: true, force: true });
-              if (openInSteamAfterUpdate) {
-                openInSteam(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`);
-              }
-              break;
-            case "error":
+            }
+            fs.rmSync(uploadFolderPath, { recursive: true, force: true });
+            break;
+          case "progress":
+            if ("progress" in response && "total" in response && response.total > 0) {
               mainWindow?.webContents.send("addToast", {
-                type: "warning",
-                messages: ["loc:failedUpdatingMod"],
+                type: "info",
+                messages: [
+                  "loc:uploadingMod",
+                  `${Math.round((<number>response.progress / <number>response.total + Number.EPSILON) * 100)}%`,
+                ],
                 startTime: Date.now(),
+                staticToastId: uploadFolderPath,
               } as Toast);
-              if ("err" in response) {
-                try {
-                  console.log(response.err);
-                } catch (e) {
-                  /* empty */
-                }
-              }
-              fs.rmSync(uploadFolderPath, { recursive: true, force: true });
-              break;
-            case "progress":
-              if ("progress" in response && "total" in response && response.total > 0) {
-                mainWindow?.webContents.send("addToast", {
-                  type: "info",
-                  messages: [
-                    "loc:uploadingMod",
-                    `${Math.round(
-                      (<number>response.progress / <number>response.total + Number.EPSILON) * 100,
-                    )}%`,
-                  ],
-                  startTime: Date.now(),
-                  staticToastId: uploadFolderPath,
-                } as Toast);
-              }
-              break;
-          }
+            }
+            break;
         }
-        //
-      },
-    );
+      }
+      //
+    });
   };
   ipcMain.on("updateMod", async (event, mod: Mod, contentMod: Mod) => {
-    updateMod(mod, contentMod.workshopId, contentMod.tags);
+    void updateMod(mod, contentMod.workshopId, contentMod.tags);
   });
   ipcMain.on("fakeUpdatePack", async (event, mod: Mod) => {
     try {
       const backupFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_backups");
       const backupFilePath = nodePath.join(
         backupFolderPath,
-        nodePath.parse(mod.name).name +
-          "-" +
-          format(new Date(), "dd-MM-yyyy-HH-mm") +
-          nodePath.parse(mod.name).ext,
+        nodePath.parse(mod.name).name + "-" + format(new Date(), "dd-MM-yyyy-HH-mm") + nodePath.parse(mod.name).ext,
       );
       const uploadFilePath = nodePath.join(
         backupFolderPath,
-        nodePath.parse(mod.name).name +
-          "-NEW-" +
-          format(new Date(), "dd-MM-yyyy-HH-mm") +
-          nodePath.parse(mod.name).ext,
+        nodePath.parse(mod.name).name + "-NEW-" + format(new Date(), "dd-MM-yyyy-HH-mm") + nodePath.parse(mod.name).ext,
       );
       await fs.mkdirSync(backupFolderPath, { recursive: true });
       await fs.copyFileSync(mod.path, backupFilePath);
       await addFakeUpdate(mod.path, uploadFilePath);
-      const command = `cd /d "${nodePath.dirname(mod.path)}" && del "${nodePath.basename(
-        mod.path,
-      )}" && move /y "whmm_backups\\${nodePath.basename(uploadFilePath)}" "${nodePath.basename(mod.path)}"`;
-      console.log(command);
-      exec(command);
+      await fsExtra.remove(mod.path);
+      await fsExtra.move(uploadFilePath, mod.path, { overwrite: true });
     } catch (e) {
       console.log(e);
     }
@@ -7069,10 +12432,7 @@ export const registerIpcMainListeners = (
       const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_backups");
       const backupFilePath = nodePath.join(
         uploadFolderPath,
-        nodePath.parse(mod.name).name +
-          "-" +
-          format(new Date(), "dd-MM-yyyy-HH-mm") +
-          nodePath.parse(mod.name).ext,
+        nodePath.parse(mod.name).name + "-" + format(new Date(), "dd-MM-yyyy-HH-mm") + nodePath.parse(mod.name).ext,
       );
       await fs.mkdirSync(uploadFolderPath, { recursive: true });
       await fs.copyFileSync(mod.path, backupFilePath);
@@ -7120,11 +12480,7 @@ export const registerIpcMainListeners = (
   );
   ipcMain.on("forceModDownload", async (event, mod: Mod) => {
     try {
-      fork(
-        nodePath.join(__dirname, "sub.js"),
-        [gameToSteamId[appData.currentGame], "download", mod.workshopId],
-        {},
-      );
+      fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "download", mod.workshopId], {});
     } catch (e) {
       console.log(e);
     }
@@ -7150,11 +12506,7 @@ export const registerIpcMainListeners = (
           appData.waitForModIds.push(id);
         }
       }
-      fork(
-        nodePath.join(__dirname, "sub.js"),
-        [gameToSteamId[appData.currentGame], "download", modIds.join(";")],
-        {},
-      );
+      fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "download", modIds.join(";")], {});
     } catch (e) {
       console.log(e);
     }
@@ -7214,6 +12566,172 @@ export const registerIpcMainListeners = (
       console.log(e);
     }
   };
+  let activeWorkshopRepair:
+    | {
+        workshopIds: Set<string>;
+        cancelAndGetMods: () => Mod[];
+      }
+    | undefined;
+  ipcMain.on("repairOutdatedWorkshopMods", (event, requests: WorkshopModRepairRequest[]) => {
+    const validRequests = requests.flatMap(({ mod, remoteTimestampMs }) => {
+      if (!/^\d+$/.test(mod.workshopId) || !Number.isFinite(remoteTimestampMs) || remoteTimestampMs <= 0) {
+        return [];
+      }
+      const knownWorkshopMod = appData.allMods.find(
+        (knownMod) => isWorkshopMod(knownMod) && knownMod.workshopId === mod.workshopId,
+      );
+      return knownWorkshopMod ? [{ mod: knownWorkshopMod, remoteTimestampMs }] : [];
+    });
+    if (validRequests.length === 0) return;
+
+    const workshopIds = validRequests.map(({ mod }) => mod.workshopId);
+    const expectedTimestamps = validRequests
+      .map(({ mod, remoteTimestampMs }) => `${mod.workshopId}:${Math.floor(remoteTimestampMs / 1000)}`)
+      .join(";");
+    let receivedFinalResult = false;
+    let startedItems: WorkshopUpdateCheckItem[] = [];
+    let didStartFallback = false;
+    let repairChild: ReturnType<typeof fork> | undefined;
+    let thisWorkshopRepair: typeof activeWorkshopRepair;
+
+    const clearActiveWorkshopRepair = () => {
+      if (activeWorkshopRepair === thisWorkshopRepair) activeWorkshopRepair = undefined;
+    };
+
+    const cancelAndGetMods = () => {
+      const repairMods = validRequests.map(({ mod }) => mod);
+      if (receivedFinalResult || didStartFallback) return repairMods;
+      receivedFinalResult = true;
+      didStartFallback = true;
+      clearActiveWorkshopRepair();
+      const items =
+        startedItems.length > 0
+          ? startedItems
+          : validRequests.map(({ mod }): WorkshopUpdateCheckItem => ({
+              workshopId: mod.workshopId,
+              initialState: 0,
+              finalState: 0,
+              status: "requested",
+              requestAccepted: true,
+            }));
+      mainWindow.webContents.send("workshopUpdateCheck", {
+        type: "finished",
+        checkedCount: validRequests.length,
+        items: items.map((item) => ({
+          ...item,
+          status: "resubscribing" as const,
+          error: "Force update cancelled by the user.",
+        })),
+      } satisfies WorkshopUpdateCheckMessage);
+      if (repairChild) terminateSteamWorker(repairChild);
+      log(`[Workshop repair] force update cancelled; resubscribing ${repairMods.length} mod(s)`);
+      return repairMods;
+    };
+
+    const fallbackToResubscribe = (items: WorkshopUpdateCheckItem[], reason: string) => {
+      if (didStartFallback) return;
+      didStartFallback = true;
+      clearActiveWorkshopRepair();
+      const failedIds = new Set(items.map((item) => item.workshopId));
+      const modsToResubscribe = validRequests.filter(({ mod }) => failedIds.has(mod.workshopId)).map(({ mod }) => mod);
+      if (modsToResubscribe.length === 0) return;
+
+      const resubscribingItems = items.map((item) => ({
+        ...item,
+        status: "resubscribing" as const,
+        error: item.error || reason,
+      }));
+      const fallbackMessage: WorkshopUpdateCheckMessage = {
+        type: "finished",
+        checkedCount: validRequests.length,
+        items: resubscribingItems,
+      };
+      mainWindow.webContents.send("workshopUpdateCheck", fallbackMessage);
+      log(`[Workshop repair] force download failed for ${modsToResubscribe.length} mod(s); resubscribing`);
+      forceResubscribeMods(modsToResubscribe);
+    };
+
+    try {
+      repairChild = fork(
+        nodePath.join(__dirname, "sub.js"),
+        [gameToSteamId[appData.currentGame], "checkState", workshopIds.join(";"), expectedTimestamps, "force"],
+        {},
+      );
+      thisWorkshopRepair = {
+        workshopIds: new Set(workshopIds),
+        cancelAndGetMods,
+      };
+      activeWorkshopRepair = thisWorkshopRepair;
+      repairChild.on("message", (message: WorkshopUpdateCheckMessage) => {
+        if (didStartFallback) return;
+        mainWindow.webContents.send("workshopUpdateCheck", message);
+        if (message.type === "started") {
+          startedItems = message.items;
+          log(`[Workshop repair] forcing download for ${message.items.length} mod(s)`);
+          return;
+        }
+        if (message.type === "progress") return;
+
+        receivedFinalResult = true;
+        clearActiveWorkshopRepair();
+        const failedItems = message.items.filter((item) => item.status !== "updated");
+        if (failedItems.length > 0) {
+          fallbackToResubscribe(failedItems, "Force download did not install the Workshop version.");
+        } else {
+          log(`[Workshop repair] force download updated ${message.items.length} mod(s)`);
+        }
+      });
+      repairChild.once("error", (error) => {
+        const fallbackItems =
+          startedItems.length > 0
+            ? startedItems
+            : validRequests.map(({ mod }): WorkshopUpdateCheckItem => ({
+                workshopId: mod.workshopId,
+                initialState: 0,
+                finalState: 0,
+                status: "request-failed",
+                requestAccepted: false,
+                error: error.message,
+              }));
+        fallbackToResubscribe(fallbackItems, error.message);
+      });
+      repairChild.once("exit", (code, signal) => {
+        if (receivedFinalResult || didStartFallback) return;
+        const fallbackItems =
+          startedItems.length > 0
+            ? startedItems
+            : validRequests.map(({ mod }): WorkshopUpdateCheckItem => ({
+                workshopId: mod.workshopId,
+                initialState: 0,
+                finalState: 0,
+                status: "request-failed",
+                requestAccepted: false,
+              }));
+        fallbackToResubscribe(
+          fallbackItems,
+          `Workshop update worker exited without a result (code=${code}, signal=${signal}).`,
+        );
+      });
+    } catch (error) {
+      const fallbackItems = validRequests.map(({ mod }): WorkshopUpdateCheckItem => ({
+        workshopId: mod.workshopId,
+        initialState: 0,
+        finalState: 0,
+        status: "request-failed",
+        requestAccepted: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+      fallbackToResubscribe(fallbackItems, "Could not start the Workshop update worker.");
+    }
+  });
+  ipcMain.on("cancelWorkshopRepairAndResubscribeMods", (event, mods: Mod[]) => {
+    const requestedWorkshopIds = new Set(mods.map((mod) => mod.workshopId));
+    const shouldCancelActiveRepair = [...(activeWorkshopRepair?.workshopIds ?? [])].some((workshopId) =>
+      requestedWorkshopIds.has(workshopId),
+    );
+    const modsToResubscribe = shouldCancelActiveRepair ? (activeWorkshopRepair?.cancelAndGetMods() ?? mods) : mods;
+    forceResubscribeMods(modsToResubscribe);
+  });
   ipcMain.on("forceResubscribeMods", async (event, mods: Mod[]) => {
     console.log(
       "in forceResubscribeMods, mods are:",
@@ -7272,14 +12790,8 @@ export const registerIpcMainListeners = (
   ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
     await subscribeToMods(ids);
   });
-  ipcMain.on("exportModsToClipboard", async (event, mods: Mod[]) => {
-    const sortedMods = sortByNameAndLoadOrder(mods);
-    const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
-    const exportedMods = enabledMods
-      .filter((mod) => !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId)))
-      .map((mod) => mod.workshopId + (mod.loadOrder != null ? `;${mod.loadOrder}` : ""))
-      .join("|");
-    clipboard.writeText(exportedMods);
+  ipcMain.on("exportModsToClipboard", async (event, mods: Mod[], availableMods: Mod[]) => {
+    clipboard.writeText(serializeSharedModList(mods, availableMods));
   });
   ipcMain.on("exportModNamesToClipboard", async (event, mods: Mod[]) => {
     const sortedMods = sortByNameAndLoadOrder(mods);
@@ -7298,61 +12810,34 @@ export const registerIpcMainListeners = (
     );
     clipboard.writeText(scriptWithIDs);
   });
-  const appendToSearchInsidePacks = (
+  const appendToSearchInsidePacks = async (
     mods: Mod[],
     modsIndex: number,
     packNamesAll: string[],
     searchTerm: string,
   ) => {
-    if (mods.length < modsIndex * 10) {
+    if (modsIndex * 10 >= mods.length) {
       console.log("setPackSearchResults", modsIndex);
-      mainWindow?.webContents.send("setPackSearchResults", Array.from(new Set([...packNamesAll])));
+      mainWindow?.webContents.send("setPackSearchResults", Array.from(new Set(packNamesAll)));
       return;
     }
+
     const slicedMods = mods.slice(modsIndex * 10, modsIndex * 10 + 10);
-    const modsArray = slicedMods.map((mod) => `'${mod.path.replaceAll("'", "''")}'`).join(",");
-    console.log("modsArray is", modsArray, "i is", modsIndex, searchTerm, "num mods is", slicedMods.length);
-    exec(
-      `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`exec error: ${error}`);
-          mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
-          return;
-        }
-        console.log("stdout:", stdout);
-        console.log("stderr:", stderr);
-        const packNames = stdout
-          .split("\n")
-          .map((line) => line.split(".pack:")[0])
-          .filter((packName) => packName != "");
-        console.log("packNames:", packNames);
-        // Then search again for unicode text.
-        exec(
-          `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
-          (error, stdout) => {
-            if (error) {
-              console.error(`exec error: ${error}`);
-              mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
-              return;
-            }
-            const packNamesUnicodeSearch = stdout
-              .split("\n")
-              .map((line) => line.split(".pack:")[0])
-              .filter((packName) => packName != "");
-            console.log("packNames unicode:", packNames, packNamesUnicodeSearch);
-            packNamesAll = packNamesAll.concat(packNames);
-            packNamesAll = packNamesAll.concat(packNamesUnicodeSearch);
-            appendToSearchInsidePacks(mods, modsIndex + 1, packNamesAll, searchTerm);
-          },
-        );
-      },
-    );
+    console.log("Searching pack batch", modsIndex, searchTerm, "num mods:", slicedMods.length);
+    for (const mod of slicedMods) {
+      try {
+        if (await packFileContains(mod.path, searchTerm)) packNamesAll.push(mod.path);
+      } catch (error) {
+        console.error(`Failed to search pack ${mod.path}:`, error);
+      }
+    }
+
+    await appendToSearchInsidePacks(mods, modsIndex + 1, packNamesAll, searchTerm);
   };
   ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
     const packNamesAll = [] as string[];
     console.log("search inside mods:", searchTerm, "num mods:", mods.length);
-    appendToSearchInsidePacks(mods, 0, packNamesAll, searchTerm);
+    await appendToSearchInsidePacks(mods, 0, packNamesAll, searchTerm);
   });
   const readTablesFromMods = async (mods: Mod[], tablesToRead: string[]) => {
     for (const mod of mods) {
@@ -7408,6 +12893,45 @@ export const registerIpcMainListeners = (
     } as Toast);
     await readTablesFromMods(mods, tablesToRead);
   };
+  const createGeneratedModdingPackMod = async (result: ModdingFolderPackResult): Promise<Mod> => {
+    const sourceMod = result.sourceMod;
+    let size = sourceMod?.size || 0;
+    let lastChangedLocal = sourceMod?.lastChangedLocal;
+    try {
+      const stats = await fs.promises.stat(result.packPath);
+      size = stats.size;
+      lastChangedLocal = stats.mtimeMs;
+    } catch (error) {
+      console.error(`Failed to stat generated modding pack ${result.packPath}:`, error);
+    }
+
+    return {
+      humanName: sourceMod?.humanName || "",
+      name: result.packName,
+      path: result.packPath,
+      imgPath: sourceMod?.imgPath || "",
+      workshopId: "",
+      isEnabled: true,
+      modDirectory: nodePath.dirname(result.packPath),
+      isInData: false,
+      isInModding: false,
+      lastChanged: sourceMod?.lastChanged,
+      lastChangedLocal,
+      loadOrder: sourceMod?.loadOrder,
+      author: sourceMod?.author || "",
+      isDeleted: false,
+      isMovie: sourceMod?.isMovie || false,
+      hasStartpos: sourceMod?.hasStartpos,
+      dependencyPacks: sourceMod?.dependencyPacks,
+      reqModIdToName: sourceMod?.reqModIdToName,
+      size,
+      mergedModsData: sourceMod?.mergedModsData,
+      isSymbolicLink: false,
+      tags: sourceMod?.tags || ["mod"],
+      sourceId: WHMM_MODDING_FOLDER,
+      sourceKind: "custom",
+    };
+  };
   ipcMain.handle(
     "executeDBDuplication",
     async (
@@ -7420,12 +12944,12 @@ export const registerIpcMainListeners = (
       treeData: IViewerTreeNodeWithData,
       DBCloneSaveOptions: DBCloneSaveOptions,
     ) => {
-      const { executeDBDuplication } = await import("./DBClone");
       const webContentsId = event.sender.id;
       const cancelState = { canceled: false };
       dbDuplicationCancelStateByWebContentsId.set(webContentsId, cancelState);
       try {
-        return await executeDBDuplication(
+        const { executeDBDuplication } = await import("./DBClone");
+        const result = await executeDBDuplication(
           packPath,
           nodesNamesToDuplicate,
           nodeNameToRef,
@@ -7435,9 +12959,23 @@ export const registerIpcMainListeners = (
           DBCloneSaveOptions,
           {
             isCanceled: () => cancelState.canceled,
-            report: (progress) => event.sender.send("setDBDuplicationProgress", progress),
+            report: (progress) => {
+              if (event.sender.isDestroyed()) return;
+              try {
+                event.sender.send("setDBDuplicationProgress", progress);
+              } catch (error) {
+                console.log("Couldn't report DB duplication progress:", error);
+              }
+            },
           },
         );
+        return result;
+      } catch (error) {
+        console.log("executeDBDuplication IPC failed:", error);
+        return {
+          ok: false,
+          error: `DB duplication failed: ${error instanceof Error ? error.message : String(error)}`,
+        } as DBCloneExecutionResult;
       } finally {
         dbDuplicationCancelStateByWebContentsId.delete(webContentsId);
       }
@@ -7554,6 +13092,26 @@ export const registerIpcMainListeners = (
   ipcMain.handle("getDefaultTableVersions", async (event) => {
     return await getDefaultTableVersions();
   });
+  /** The current game's data folder, so windows other than the main one can offer it as a default. */
+  ipcMain.handle("getDataFolder", async (event) => {
+    return appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+  });
+  const getRealDataPackNames = async (dataFolder: string): Promise<Set<string>> => {
+    const names = new Set(appData.allMods.filter((mod) => mod.isInData).map((mod) => mod.name.toLowerCase()));
+    const collectPackNames = async (folderPath: string) => {
+      try {
+        const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+        entries
+          .filter((entry) => (entry.isFile() || entry.isSymbolicLink()) && entry.name.toLowerCase().endsWith(".pack"))
+          .forEach((entry) => names.add(entry.name.toLowerCase()));
+      } catch {
+        // The configured Data folder is normally present, but a missing optional modding folder is valid.
+      }
+    };
+    await collectPackNames(dataFolder);
+    await collectPackNames(nodePath.join(dataFolder, "modding"));
+    return names;
+  };
   ipcMain.on(
     "startGame",
     async (
@@ -7562,11 +13120,95 @@ export const registerIpcMainListeners = (
       areModsPresorted: boolean,
       startGameOptions: StartGameOptions,
       saveName?: string,
+      requestedRunId?: string,
     ) => {
+      const requestedWorkshopStaging =
+        startGameOptions?.workshopModStagingMode === "copy" || startGameOptions?.workshopModStagingMode === "symlink";
+      const runId = requestedWorkshopStaging
+        ? typeof requestedRunId === "string" && requestedRunId.trim().length > 0 && requestedRunId.length <= 128
+          ? requestedRunId
+          : randomUUID()
+        : undefined;
+
+      if (requestedWorkshopStaging && activeWorkshopStagingRun) {
+        sendWorkshopStagingProgress(event.sender, {
+          runId: runId || randomUUID(),
+          status: "failed",
+          stage: "preparing",
+          completedMods: 0,
+          totalMods: 0,
+          detail: "Another Workshop mod staging launch is already in progress.",
+          error: "alreadyRunning",
+        });
+        return;
+      }
+
+      const workshopStagingRun: ActiveWorkshopStagingRun | undefined = runId
+        ? {
+            runId,
+            senderId: event.sender.id,
+            controller: new AbortController(),
+            canceled: false,
+            lastProgress: { phase: "planning", current: 0, total: 0 },
+          }
+        : undefined;
+      if (workshopStagingRun) {
+        activeWorkshopStagingRun = workshopStagingRun;
+        sendWorkshopStagingProgress(event.sender, {
+          runId: workshopStagingRun.runId,
+          status: "running",
+          stage: "preparing",
+          completedMods: 0,
+          totalMods: 0,
+          detail: "Preparing Workshop mods…",
+        });
+      }
+
+      let stagingCompleted = false;
+      let stagingFailureMessage: string | undefined;
       console.log("before start:");
       for (const pack of appData.packsData) {
         console.log(pack.name, pack.readTables);
       }
+      const reportGameLaunchError = (message: string, error?: unknown) => {
+        console.error(message, error);
+        mainWindow?.webContents.send("handleLog", message);
+        mainWindow?.webContents.send("addToast", {
+          type: "warning",
+          messages: [message],
+          startTime: Date.now(),
+        } as Toast);
+      };
+      let workshopStagingResult: WorkshopStagingResult | undefined;
+      let stagedGamePath: string | undefined;
+      const cleanStagingAfterFailedLaunch = async () => {
+        if (!workshopStagingResult || !stagedGamePath) return;
+        try {
+          await cleanupWorkshopModStaging(stagedGamePath);
+          appData.workshopStagingCleanupPending = false;
+          appData.workshopStagingCleanupGamePath = undefined;
+          log(`Cleaned ${WORKSHOP_MOD_STAGING_FOLDER} after the game failed to launch.`);
+        } catch (error) {
+          reportWorkshopCleanupFailure(error);
+        }
+      };
+      const reportStagingProgress = (
+        progress: WorkshopStagingProgress,
+        status: WorkshopModStagingProgressStatus = "running",
+        overrides: Partial<WorkshopModStagingProgressEvent> = {},
+      ) => {
+        if (!workshopStagingRun) return;
+        workshopStagingRun.lastProgress = progress;
+        sendWorkshopStagingProgress(
+          event.sender,
+          makeWorkshopStagingProgressEvent(workshopStagingRun.runId, progress, status, overrides),
+        );
+      };
+      const throwIfWorkshopStagingCanceled = () => {
+        if (workshopStagingRun?.canceled) {
+          throw new WorkshopModStagingError("CANCELED", "Workshop mod staging was canceled.");
+        }
+      };
       try {
         // getSkillsData(mods.filter((mod) => mod.isEnabled));
         // return;
@@ -7584,7 +13226,101 @@ export const registerIpcMainListeners = (
         const appDataPath = app.getPath("userData");
         const myModsPath = nodePath.join(gamePath, "my_mods.txt");
         const usedModsPath = nodePath.join(gamePath, "used_mods.txt");
-        const sortedMods = sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled));
+        let sortedMods = sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled));
+        const workshopModStagingMode =
+          startGameOptions.workshopModStagingMode === "copy" || startGameOptions.workshopModStagingMode === "symlink"
+            ? startGameOptions.workshopModStagingMode
+            : "disabled";
+        const cleanUpWorkshopModStagingAfterGameExit = !!startGameOptions.cleanUpWorkshopModStagingAfterGameExit;
+        const compressWorkshopMods =
+          appData.currentGame === "wh3" &&
+          workshopModStagingMode === "copy" &&
+          startGameOptions.compressWorkshopModsOnStart === true;
+        let realDataPackNames = new Set<string>();
+        let stagedWorkshopModNames = new Set<string>();
+        if (workshopModStagingMode !== "disabled") {
+          throwIfWorkshopStagingCanceled();
+          realDataPackNames = await getRealDataPackNames(dataFolder);
+          stagedGamePath = gamePath;
+          workshopStagingResult = await stageWorkshopMods({
+            gameFolder: gamePath,
+            mode: workshopModStagingMode,
+            workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod)),
+            realDataPackNames,
+            canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
+            recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
+            compressMods: compressWorkshopMods,
+            includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
+            signal: workshopStagingRun?.controller.signal,
+            onProgress: (progress) => reportStagingProgress(progress),
+          });
+          stagingCompleted = true;
+          reportStagingProgress(
+            {
+              phase: "completed",
+              current: workshopStagingResult.entries.length,
+              total: workshopStagingResult.entries.length,
+              message: "Workshop mods ready",
+            },
+            "complete",
+            { stage: "complete", percent: 100, detail: "Workshop mods ready" },
+          );
+          if (activeWorkshopStagingRun === workshopStagingRun) activeWorkshopStagingRun = undefined;
+          stagedWorkshopModNames = new Set(workshopStagingResult.stagedModNames.map((name) => name.toLowerCase()));
+          log(
+            `Prepared ${stagedWorkshopModNames.size} Workshop mod(s) in ${workshopStagingResult.destinationPath}; ` +
+              `${workshopStagingResult.changedEntries.length} changed entr${
+                workshopStagingResult.changedEntries.length === 1 ? "y" : "ies"
+              }.`,
+          );
+          for (const warning of workshopStagingResult.compressionWarnings) {
+            const localizedWarning = i18n.t("automaticWorkshopStagingWarning", { warning });
+            console.warn(localizedWarning);
+            mainWindow?.webContents.send("handleLog", localizedWarning);
+            mainWindow?.webContents.send("addToast", {
+              type: "warning",
+              messages: [localizedWarning],
+              startTime: Date.now(),
+            } as Toast);
+          }
+        }
+        const moddingFolderPacks = await createModdingFolderPacks(
+          nodePath.join(dataFolder, "modding"),
+          nodePath.join(gamePath, WHMM_MODDING_FOLDER),
+          sortedMods,
+          readPack,
+          writePack,
+          () => getSchemaForGame(appData.currentGame),
+        );
+        if (moddingFolderPacks.length > 0) {
+          const generatedModdingPacks = await Promise.all(
+            moddingFolderPacks.map((result) => createGeneratedModdingPackMod(result)),
+          );
+          for (const result of moddingFolderPacks) {
+            if (!result.sourceMod || result.sourceMod.path === result.packPath) continue;
+
+            const sourcePath = result.sourceMod.path;
+            const generatedPath = result.packPath;
+            const packDataOverwrites = startGameOptions.packDataOverwrites;
+            if (packDataOverwrites[sourcePath] && !packDataOverwrites[generatedPath]) {
+              packDataOverwrites[generatedPath] = packDataOverwrites[sourcePath];
+            }
+            delete packDataOverwrites[sourcePath];
+
+            const userFlowOptions = startGameOptions.userFlowOptions;
+            if (userFlowOptions[sourcePath] && !userFlowOptions[generatedPath]) {
+              userFlowOptions[generatedPath] = userFlowOptions[sourcePath];
+            }
+            delete userFlowOptions[sourcePath];
+          }
+          sortedMods = replaceEnabledModsWithGeneratedPacks(sortedMods, generatedModdingPacks);
+          console.log(
+            `Generated ${generatedModdingPacks.length} pack(s) from Data/modding in ${nodePath.join(
+              gamePath,
+              WHMM_MODDING_FOLDER,
+            )}`,
+          );
+        }
         const linuxBit = process.platform === "linux" ? "Z:" : "";
         const vanillaPacks = [];
         for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
@@ -7676,16 +13412,18 @@ export const registerIpcMainListeners = (
           (iterMod) => !startGameOptions.packDataOverwrites[iterMod.path],
         );
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
+        const overwriteModEntries: Array<{ sourcePath: string; name: string }> = [];
+        /** Original pack path -> the overwrite copy a flow should read in its place. */
+        const packPathSubstitutes = new Map<string, string>();
+        /** Packs a flow wrote a whole replacement for; the original must not be loaded alongside it. */
+        const replacedPackPaths = new Set<string>();
         if (enabledModsWithOverwrites.length > 0) {
           const overwritesDirPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "/whmm_overwrites/",
           );
           if (!fsExtra.existsSync(overwritesDirPath)) {
-            exec(`mkdir "${overwritesDirPath}"`);
-            await new Promise((resolve) => {
-              setTimeout(resolve, 100);
-            });
+            await fsExtra.ensureDir(overwritesDirPath);
           }
           extraEnabledMods += `\nadd_working_directory "${linuxBit + overwritesDirPath}";`;
           for (const pack of enabledModsWithOverwrites) {
@@ -7694,16 +13432,17 @@ export const registerIpcMainListeners = (
               nodePath.join(overwritesDirPath, pack.name),
               startGameOptions.packDataOverwrites[pack.path],
             );
-            extraEnabledMods += `\nmod "${pack.name}";`;
+            // Held back rather than appended, because a flow may still replace this pack outright -
+            // and that decision is only known once flows have run, further down.
+            overwriteModEntries.push({ sourcePath: pack.path, name: pack.name });
+            // Flows must read this copy, not the original, or they would work from data the user
+            // has already edited away.
+            packPathSubstitutes.set(pack.path, nodePath.join(overwritesDirPath, pack.name));
           }
         }
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
         const whmmFlowsPath = nodePath.join(gamePath as string, "whmm_flows");
-        const flowExecutionSignatureHash = await buildFlowExecutionSignature(
-          sortedMods,
-          startGameOptions,
-          dataFolder,
-        );
+        const flowExecutionSignatureHash = await buildFlowExecutionSignature(sortedMods, startGameOptions, dataFolder);
         let shouldExecuteFlows = true;
         let enabledModsWithFlows: Mod[] = [];
         let createdFlowPacks: string[] = [];
@@ -7731,6 +13470,9 @@ export const registerIpcMainListeners = (
                 enabledModsWithFlows = sortedMods.filter((mod) =>
                   cachedEntry.modsWithFlows.some((cachedMod) => cachedMod.path === mod.path),
                 );
+                for (const replacedPath of cachedEntry.replacedPackPaths ?? []) {
+                  replacedPackPaths.add(replacedPath);
+                }
                 mainWindow?.webContents.send("addToast", {
                   type: "info",
                   messages: ["Using cached flow output..."],
@@ -7741,18 +13483,14 @@ export const registerIpcMainListeners = (
                   createdFlowPacks,
                 );
               } else {
-                console.log(
-                  `Flow execution cache miss: ${missingCachedFlowPacks.length} cached flow pack(s) missing.`,
-                );
+                console.log(`Flow execution cache miss: ${missingCachedFlowPacks.length} cached flow pack(s) missing.`);
               }
             }
           } else {
             console.log("Flow execution cache miss: signature changed or no prior cache entry.");
           }
         } else {
-          console.log(
-            "Flow execution cache unavailable: failed to build signature, executing flows normally.",
-          );
+          console.log("Flow execution cache unavailable: failed to build signature, executing flows normally.");
         }
         if (shouldExecuteFlows) {
           for (const packPath of sortedMods.map((mod) => mod.path)) {
@@ -7775,7 +13513,7 @@ export const registerIpcMainListeners = (
           // Execute flows for enabled mods
           enabledModsWithFlows = sortedMods.filter((iterMod) => {
             const pack = appData.packsData.find((packData) => packData.path == iterMod.path);
-            return pack && pack.packedFiles.some((file) => file.name.startsWith("whmmflows\\"));
+            return !!pack?.packedFiles.some((file) => isPackedFlowName(file.name));
           });
           if (enabledModsWithFlows.length > 0) {
             console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
@@ -7790,9 +13528,7 @@ export const registerIpcMainListeners = (
                 console.log("Successfully cleared whmm_flows contents");
               }
             } catch (error) {
-              console.log(
-                `Error clearing whmm_flows: ${error instanceof Error ? error.message : "Unknown error"}`,
-              );
+              console.log(`Error clearing whmm_flows: ${error instanceof Error ? error.message : "Unknown error"}`);
             }
             // Create whmm_flows directory
             if (!fsExtra.existsSync(whmmFlowsPath)) {
@@ -7812,14 +13548,10 @@ export const registerIpcMainListeners = (
             // This ensures counters are maintained across all flows in all packs
             const { resetCounterTracking } = await import("./nodeExecutor");
             resetCounterTracking();
-            console.log(
-              "Reset counter tracking for game launch - counters will be maintained across all flows",
-            );
+            console.log("Reset counter tracking for game launch - counters will be maintained across all flows");
             for (const pack of enabledModsWithFlows) {
               // Check if this pack has overwrites - if so, use the overwritten pack
-              const hasOverwrites = enabledModsWithOverwrites.some(
-                (overwritePack) => overwritePack.path === pack.path,
-              );
+              const hasOverwrites = enabledModsWithOverwrites.some((overwritePack) => overwritePack.path === pack.path);
               const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
               const sourcePackForFlowExecution = hasOverwrites
                 ? undefined
@@ -7827,14 +13559,20 @@ export const registerIpcMainListeners = (
               console.log(
                 `Executing flows for pack: ${pack.name} (using ${hasOverwrites ? "overwritten" : "original"} pack)`,
               );
-              const { createdPackPaths, hadErrors } = await executeFlowsForPack(
+              const {
+                createdPackPaths,
+                replacedPackPaths: flowReplacedPackPaths,
+                hadErrors,
+              } = await executeFlowsForPack(
                 packPathToUse,
                 "", // No target path needed
                 startGameOptions.userFlowOptions,
                 pack.name,
                 sourcePackForFlowExecution,
+                packPathSubstitutes,
               );
               createdFlowPacks.push(...createdPackPaths);
+              for (const replacedPath of flowReplacedPackPaths) replacedPackPaths.add(replacedPath);
               flowExecutionHadErrors = flowExecutionHadErrors || hadErrors;
             }
             console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
@@ -7854,15 +13592,26 @@ export const registerIpcMainListeners = (
                 signatureHash: flowExecutionSignatureHash,
                 createdAt: Date.now(),
                 modsWithFlows: enabledModsWithFlows.map((mod) => ({ path: mod.path, name: mod.name })),
-                createdFlowPackFileNames: [
-                  ...new Set(createdFlowPacks.map((path) => nodePath.basename(path))),
-                ],
+                createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))],
+                replacedPackPaths: [...replacedPackPaths],
               };
               await saveFlowExecutionCache();
             } else {
               console.log("Skipping flow execution cache update because at least one flow failed.");
             }
           }
+        }
+        // A flow that copied a pack wholesale wrote a replacement for it, so the original is dropped
+        // from the mod list - loading both would put the files the flow removed back in.
+        if (replacedPackPaths.size > 0) {
+          console.log("Packs replaced by flow output:", [...replacedPackPaths]);
+          enabledModsWithoutMergedInMods = enabledModsWithoutMergedInMods.filter(
+            (iterMod) => !replacedPackPaths.has(iterMod.path),
+          );
+        }
+        for (const overwriteEntry of overwriteModEntries) {
+          if (replacedPackPaths.has(overwriteEntry.sourcePath)) continue;
+          extraEnabledMods += `\nmod "${overwriteEntry.name}";`;
         }
         // Add flow packs to the mod list
         if (createdFlowPacks.length > 0) {
@@ -7873,19 +13622,23 @@ export const registerIpcMainListeners = (
             console.log(`Added flow pack to mod list: ${packFileName}`);
           }
         }
+        const workingDirectoryLines = buildWorkshopStagingWorkingDirectoryLines({
+          dataFolder: dataFolder as string,
+          destinationPath:
+            workshopStagingResult?.destinationPath || nodePath.join(gamePath, WORKSHOP_MOD_STAGING_FOLDER),
+          stagedModNames: stagedWorkshopModNames,
+          realDataPackNames,
+          pathPrefix: linuxBit,
+          mods: enabledModsWithoutMergedInMods.map((mod) => ({
+            name: mod.name,
+            modDirectory: mod.modDirectory,
+            isInModding: mod.isInModding,
+            isWorkshop: isWorkshopMod(mod),
+          })),
+        });
         const text =
-          enabledModsWithoutMergedInMods
-            .filter((mod) => !mod.isInModding)
-            .filter(
-              (mod) =>
-                nodePath.relative(
-                  appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string,
-                  mod.modDirectory,
-                ) != "",
-            )
-            .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
-            .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
-            .join("\n") + extraEnabledMods;
+          workingDirectoryLines.concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`)).join("\n") +
+          extraEnabledMods;
         try {
           enabledModsWithoutMergedInMods
             .filter((mod) => mod.isInModding)
@@ -7902,9 +13655,7 @@ export const registerIpcMainListeners = (
                     messages: [`Mod ${mod.name} in modding is older than the one in data!`],
                     startTime: Date.now(),
                   } as Toast);
-                  throw new Error(
-                    `Mod ${mod.path} is older than the one in data, user needs to resolve this!`,
-                  );
+                  throw new Error(`Mod ${mod.path} is older than the one in data, user needs to resolve this!`);
                 }
               }
               fs.copyFileSync(mod.path, newPath);
@@ -7912,6 +13663,7 @@ export const registerIpcMainListeners = (
             });
         } catch (e) {
           console.error(e);
+          await cleanStagingAfterFailedLaunch();
           return;
         }
         let fileNameWithModList = "used_mods.txt";
@@ -7924,33 +13676,26 @@ export const registerIpcMainListeners = (
           fileNameWithModList = "my_mods.txt";
           await fs.writeFileSync(myModsPath, text);
         }
-        let batData = `start /d "${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}" ${
-          gameToProcessName[appData.currentGame]
-        }`;
-        if (process.platform === "linux") {
-          if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) {
-            // should throw an error here?
-            console.error("Game path is undefined for current game");
-            return;
-          }
-          const gamePath = join(
-            appData.gamesToGameFolderPaths[appData.currentGame].gamePath!,
-            gameToProcessName[appData.currentGame],
-          );
-          batData = `protontricks-launch --cwd-app --appid ${gameToSteamId[appData.currentGame]} "${gamePath}"`;
+        const gameExecutablePath = nodePath.join(gamePath, gameToProcessName[appData.currentGame]);
+        if (!fs.existsSync(gameExecutablePath)) {
+          reportGameLaunchError(`Game executable not found: ${gameExecutablePath}`);
+          await cleanStagingAfterFailedLaunch();
+          return;
         }
-        console.log("batData so far:", batData);
-        if (saveName) {
-          batData += ` game_startup_mode campaign_load "${saveName}" ;`;
+
+        const launchPlan = resolveGameLaunchPlan({
+          gameExecutablePath,
+          steamId: gameToSteamId[appData.currentGame],
+          modListFileName: fileNameWithModList,
+          saveName,
+        });
+        if (launchPlan.kind === "error") {
+          reportGameLaunchError(launchPlan.message);
+          await cleanStagingAfterFailedLaunch();
+          return;
         }
-        // file with the list of mods for the game to use, used_mods.txt or my_mods.txt
-        batData += ` ${fileNameWithModList};`;
         // Create steam_appid.txt for Attila
-        if (
-          appData.currentGame === "attila" ||
-          appData.currentGame === "rome2" ||
-          appData.currentGame == "shogun2"
-        ) {
+        if (appData.currentGame === "attila" || appData.currentGame === "rome2" || appData.currentGame == "shogun2") {
           const steamAppIdPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "steam_appid.txt",
@@ -7963,10 +13708,22 @@ export const registerIpcMainListeners = (
           }
         }
         mainWindow?.webContents.send("handleLog", "starting game:");
-        mainWindow?.webContents.send("handleLog", batData);
-        exec(batData, (error) => {
-          console.error(error);
-        });
+        for (const candidate of launchPlan.candidates) {
+          const description = [candidate.command, ...candidate.args].map((arg) => JSON.stringify(arg)).join(" ");
+          console.log("Game launch candidate:", description);
+          mainWindow?.webContents.send("handleLog", description);
+        }
+
+        const launchResult = await launchGame(launchPlan.candidates, gamePath);
+        if (!launchResult.started) {
+          reportGameLaunchError(launchResult.message);
+          await cleanStagingAfterFailedLaunch();
+          return;
+        }
+        if (cleanUpWorkshopModStagingAfterGameExit && workshopStagingResult) {
+          appData.workshopStagingCleanupPending = true;
+          appData.workshopStagingCleanupGamePath = gamePath;
+        }
         appData.compatData = {
           packTableCollisions: [],
           packFileCollisions: [],
@@ -7985,14 +13742,184 @@ export const registerIpcMainListeners = (
           app.exit();
         }
       } catch (e) {
-        console.log(e);
+        const wasCanceled =
+          !stagingCompleted &&
+          (workshopStagingRun?.canceled || workshopStagingRun?.controller.signal.aborted || event.sender.isDestroyed());
+        if (wasCanceled || (e instanceof WorkshopModStagingError && e.code === "CANCELED")) {
+          if (e instanceof WorkshopModStagingError && e.code === "CANCELED" && workshopStagingRun) {
+            workshopStagingRun.canceled = true;
+          }
+          stagingFailureMessage = "Workshop mod staging canceled.";
+          return;
+        }
+
+        await cleanStagingAfterFailedLaunch();
+        if (e instanceof WorkshopModStagingError) {
+          const message =
+            e.code === "INSUFFICIENT_SPACE"
+              ? i18n.t("automaticWorkshopStagingInsufficientSpace", {
+                  required: formatWorkshopStagingBytes(e.requiredBytes ?? 0),
+                  available: formatWorkshopStagingBytes(e.availableBytes ?? 0),
+                  destination: e.destinationPath || WORKSHOP_MOD_STAGING_FOLDER,
+                })
+              : e.code === "SYMLINK_UNAVAILABLE"
+                ? i18n.t("automaticWorkshopStagingSymlinkUnavailable")
+                : i18n.t("automaticWorkshopStagingFailed", { error: e.message });
+          stagingFailureMessage = message;
+          reportGameLaunchError(message, e);
+        } else {
+          stagingFailureMessage = e instanceof Error ? e.message : String(e);
+          console.log(e);
+        }
+      } finally {
+        if (workshopStagingRun && !stagingCompleted) {
+          const canceled =
+            workshopStagingRun.canceled || workshopStagingRun.controller.signal.aborted || event.sender.isDestroyed();
+          if (canceled) {
+            reportStagingProgress(
+              {
+                ...workshopStagingRun.lastProgress,
+                phase: "canceled",
+                message: "Workshop mod staging canceled.",
+              },
+              "cancelled",
+              { stage: "canceled", detail: "Workshop mod staging canceled." },
+            );
+          } else {
+            reportStagingProgress(
+              {
+                ...workshopStagingRun.lastProgress,
+                message: stagingFailureMessage || "Workshop mod staging failed.",
+              },
+              "failed",
+              {
+                stage: "failed",
+                detail: stagingFailureMessage || "Workshop mod staging failed.",
+                error: stagingFailureMessage,
+              },
+            );
+          }
+          if (activeWorkshopStagingRun === workshopStagingRun) activeWorkshopStagingRun = undefined;
+        }
       }
     },
   );
-  ipcMain.handle("selectDirectory", async () => {
+  ipcMain.on("cancelWorkshopModStaging", (event, requestedRunId?: string) => {
+    const run = activeWorkshopStagingRun;
+    if (!run || run.senderId !== event.sender.id) return;
+    if (typeof requestedRunId === "string" && requestedRunId.length > 0 && requestedRunId !== run.runId) return;
+    if (run.canceled) return;
+
+    run.canceled = true;
+    run.controller.abort();
+    sendWorkshopStagingProgress(event.sender, {
+      ...makeWorkshopStagingProgressEvent(run.runId, run.lastProgress, "canceling", {
+        stage: "cleaning",
+        detail: "Canceling Workshop mod staging…",
+      }),
+      status: "canceling",
+    });
+  });
+  /**
+   * Writes a compatibility report to a file the user picks.
+   *
+   * The renderer supplies either canonical JSON for comparing builds or a self-contained HTML view;
+   * this handler selects the matching save-dialog filter and writes the text unchanged.
+   */
+  ipcMain.handle("exportCompatReport", async (event, reportText: string, suggestedName: string) => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
-      const result = await dialog.showOpenDialog(mainWindow || new BrowserWindow(), {
+      const extension = nodePath.extname(suggestedName).slice(1).toLowerCase();
+      const filters =
+        extension === "html" ? [{ name: "HTML", extensions: ["html"] }] : [{ name: "JSON", extensions: ["json"] }];
+      const result = await dialog.showSaveDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        defaultPath: nodePath.join(app.getPath("documents"), suggestedName),
+        filters,
+      });
+      if (result.canceled || !result.filePath) return { success: false, canceled: true };
+
+      await fs.promises.writeFile(result.filePath, reportText, "utf8");
+      return { success: true, savedPath: result.filePath };
+    } catch (error) {
+      console.error("Error exporting compat report:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    } finally {
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
+  /**
+   * Writes the campaign map data to a JSON file the user picks.
+   *
+   * Defaults to the game folder because that is where the game reads a hand-written map.json from.
+   */
+  ipcMain.handle(
+    "exportRegionOwnership",
+    async (
+      event,
+      json: string,
+      suggestedName: string,
+    ): Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }> => {
+      const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+      let savedPath: string | undefined;
+      try {
+        const defaultDirectory =
+          appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath || app.getPath("documents");
+        const result = await dialog.showSaveDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+          defaultPath: nodePath.join(defaultDirectory, suggestedName || "map.json"),
+          filters: [{ name: "JSON", extensions: ["json"] }],
+        });
+        if (result.canceled || !result.filePath) return { success: false, canceled: true };
+
+        savedPath = result.filePath.toLowerCase().endsWith(".json") ? result.filePath : `${result.filePath}.json`;
+        await fs.promises.writeFile(savedPath, json, "utf8");
+        return { success: true, savedPath };
+      } catch (error) {
+        console.error("Error exporting region ownership:", error);
+        return {
+          success: false,
+          savedPath,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      } finally {
+        if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+      }
+    },
+  );
+  /** Reads a region ownership file the user picks. Parsing stays in the renderer, with the map it applies to. */
+  ipcMain.handle(
+    "importRegionOwnership",
+    async (
+      event,
+    ): Promise<{ success: boolean; text?: string; filePath?: string; canceled?: boolean; error?: string }> => {
+      const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+      try {
+        const defaultDirectory =
+          appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath || app.getPath("documents");
+        const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+          properties: ["openFile"],
+          defaultPath: defaultDirectory,
+          filters: [{ name: "JSON", extensions: ["json"] }],
+        });
+        if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
+
+        const filePath = result.filePaths[0];
+        return { success: true, text: await fs.promises.readFile(filePath, "utf8"), filePath };
+      } catch (error) {
+        console.error("Error importing region ownership:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      } finally {
+        if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+      }
+    },
+  );
+  ipcMain.handle("selectDirectory", async (event, defaultPath?: string) => {
+    // Parent the dialog on whichever window asked, not always the main one: parenting it elsewhere
+    // moves focus to that window, and the caller is left behind when the dialog closes.
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
         properties: ["openDirectory"],
+        ...(defaultPath ? { defaultPath } : {}),
       });
       if (!result.canceled && result.filePaths.length > 0) {
         return result.filePaths[0];
@@ -8001,6 +13928,661 @@ export const registerIpcMainListeners = (
     } catch (error) {
       console.error("Error selecting directory:", error);
       return undefined;
+    } finally {
+      // A modal dialog on Windows can hand focus back to the main window rather than its own parent.
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
+  ipcMain.handle("selectImportFiles", async (event): Promise<string[]> => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        properties: ["openFile", "multiSelections"],
+      });
+      return result.canceled ? [] : result.filePaths;
+    } catch (error) {
+      console.error("Error selecting import files:", error);
+      return [];
+    } finally {
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
+  ipcMain.handle("selectImportFolders", async (event): Promise<string[]> => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        properties: ["openDirectory", "multiSelections"],
+      });
+      return result.canceled ? [] : result.filePaths;
+    } catch (error) {
+      console.error("Error selecting import folders:", error);
+      return [];
+    } finally {
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
+  ipcMain.handle(
+    "planPackImportFromDisk",
+    async (event, packPath: string, sources: PackImportSource[], targetFolder: string): Promise<PackImportPlan> => {
+      try {
+        const unsavedPath = appData.unsavedPacksData[packPath] ?? [];
+        const deletedKeys = new Set((appData.deletedPackFilePaths[packPath] ?? []).map(normalizePackFilePathKey));
+        const packPathKey = packPath.replaceAll("/", "\\").toLowerCase();
+        const loadedPack = appData.packsData.find(
+          (pack) => pack.path === packPath || pack.path.replaceAll("/", "\\").toLowerCase() === packPathKey,
+        );
+        let packFilePaths = loadedPack?.packedFiles
+          .filter((packedFile) => !deletedKeys.has(normalizePackFilePathKey(packedFile.name)))
+          .map((packedFile) => packedFile.name);
+        if (!packFilePaths && !packPath.startsWith("memory://")) {
+          try {
+            packFilePaths = (await readPack(packPath, { skipParsingTables: true })).packedFiles
+              .filter((packedFile) => !deletedKeys.has(normalizePackFilePathKey(packedFile.name)))
+              .map((packedFile) => packedFile.name);
+          } catch {
+            packFilePaths = [];
+          }
+        }
+
+        return await planPackImport({
+          sources,
+          targetFolder,
+          existingPackFilePaths: {
+            pack: packFilePaths ?? [],
+            unsaved: unsavedPath.map((packedFile) => packedFile.name),
+          },
+          readDir: async (directoryPath) =>
+            (await fs.promises.readdir(directoryPath, { withFileTypes: true })).map((entry) => ({
+              name: entry.name,
+              kind: entry.isDirectory() ? "folder" : "file",
+            })),
+        });
+      } catch (error) {
+        console.error("Error planning pack import:", error);
+        return {
+          items: [],
+          errors: [
+            {
+              diskPath: "",
+              message: error instanceof Error ? error.message : "Failed to plan pack import",
+            },
+          ],
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    "applyPackImportFromDisk",
+    async (event, packPath: string, items: PackImportItem[]): Promise<PackImportApplyResult> => {
+      const errors: Array<{ diskPath: string; message: string }> = [];
+      let importedCount = 0;
+      const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+      let tableSchemasPromise: Promise<Record<string, DBVersion[]>> | undefined;
+
+      try {
+        if (!Array.isArray(items)) {
+          return {
+            success: false,
+            importedCount: 0,
+            errors: [{ diskPath: "", message: "Invalid pack import item list" }],
+          };
+        }
+
+        for (const item of items) {
+          try {
+            const buffer = await fs.promises.readFile(item.diskPath);
+            // Only a TSV needs the schema, and loading it decompresses the whole schema file - a
+            // folder of loose assets must not pay for that.
+            const tableSchemas = item.isRpfmTsv
+              ? await (tableSchemasPromise ??= getSchemaForGame(appData.currentGame))
+              : {};
+            const importedFile = buildImportedPackedFile(item, buffer, tableSchemas, decodePackedFileText);
+
+            const existingIndex = unsavedFiles.findIndex(
+              (packedFile) => normalizePackFilePathKey(packedFile.name) === normalizePackFilePathKey(importedFile.name),
+            );
+            if (existingIndex >= 0) unsavedFiles.splice(existingIndex, 1, importedFile);
+            else unsavedFiles.push(importedFile);
+            importedCount += 1;
+          } catch (error) {
+            errors.push({
+              diskPath: item.diskPath,
+              message: error instanceof Error ? error.message : "Failed to import file",
+            });
+          }
+        }
+
+        appData.unsavedPacksData[packPath] = unsavedFiles;
+        broadcastPackStagingState(packPath);
+        return { success: errors.length === 0, importedCount, errors };
+      } catch (error) {
+        console.error("Error applying pack import:", error);
+        return {
+          success: false,
+          importedCount,
+          errors: [
+            ...errors,
+            { diskPath: "", message: error instanceof Error ? error.message : "Failed to import files" },
+          ],
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    "exportPackedFilesToDirectory",
+    async (
+      event,
+      packPath: string,
+      outputDirectory: string,
+      filePaths: string[] | "all",
+    ): Promise<PackExportResult> => {
+      const skipped: Array<{ name: string; reason: string }> = [];
+      let writtenCount = 0;
+      const writeErrors: string[] = [];
+
+      const addSkipped = (name: string, reason: string) => skipped.push({ name, reason });
+      const writeOutput = async (name: string, relativePath: string, contents: string | Buffer) => {
+        const outputPath = resolveExportOutputPath(outputDirectory, relativePath);
+        if (!outputPath) {
+          addSkipped(name, "Invalid output path");
+          return false;
+        }
+        try {
+          await fsExtra.ensureDir(nodePath.dirname(outputPath));
+          await fs.promises.writeFile(outputPath, contents);
+          writtenCount += 1;
+          return true;
+        } catch (error) {
+          writeErrors.push(`${name}: ${error instanceof Error ? error.message : "Failed to write file"}`);
+          return false;
+        }
+      };
+
+      try {
+        if (!outputDirectory) return { success: false, writtenCount, skipped, error: "No output directory selected" };
+        if (filePaths !== "all" && !Array.isArray(filePaths)) {
+          return { success: false, writtenCount, skipped, error: "Invalid export file list" };
+        }
+
+        const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+        const deletedKeys = new Set((appData.deletedPackFilePaths[packPath] ?? []).map(normalizePackFilePathKey));
+        const packPathKey = packPath.replaceAll("/", "\\").toLowerCase();
+        let indexedPack = appData.packsData.find(
+          (pack) => pack.path === packPath || pack.path.replaceAll("/", "\\").toLowerCase() === packPathKey,
+        );
+        if (!indexedPack && !packPath.startsWith("memory://")) {
+          try {
+            indexedPack = await readPack(packPath, { skipParsingTables: true, skipSorting: true });
+          } catch (error) {
+            writeErrors.push(error instanceof Error ? error.message : "Could not read pack index");
+          }
+        }
+
+        const requestedKeys =
+          filePaths === "all" ? undefined : new Set(filePaths.map((filePath) => normalizePackFilePathKey(filePath)));
+        const candidates = new Map<string, { name: string; source: "unsaved" | "pack"; packedFile?: PackedFile }>();
+        for (const packedFile of unsavedFiles) {
+          const key = normalizePackFilePathKey(packedFile.name);
+          if (requestedKeys && !requestedKeys.has(key)) continue;
+          candidates.set(key, { name: packedFile.name, source: "unsaved", packedFile });
+        }
+        for (const packedFile of indexedPack?.packedFiles ?? []) {
+          const key = normalizePackFilePathKey(packedFile.name);
+          if (deletedKeys.has(key)) continue;
+          if (requestedKeys && !requestedKeys.has(key)) continue;
+          if (!candidates.has(key)) candidates.set(key, { name: packedFile.name, source: "pack" });
+        }
+        if (requestedKeys) {
+          for (const requestedPath of filePaths) {
+            const key = normalizePackFilePathKey(requestedPath);
+            if (deletedKeys.has(key)) continue;
+            if (!candidates.has(key))
+              candidates.set(key, { name: normalizePackFilePath(requestedPath), source: "pack" });
+          }
+        }
+
+        const dbCandidates = [...candidates.values()].filter((candidate) => parseDBTablePath(candidate.name));
+        const rawCandidates = [...candidates.values()].filter((candidate) => !parseDBTablePath(candidate.name));
+        const unsavedKeys = new Set<string>();
+        const rawPackKeys = new Set<string>();
+
+        for (const candidate of dbCandidates.filter((entry) => entry.source === "unsaved")) {
+          unsavedKeys.add(normalizePackFilePathKey(candidate.name));
+          const packedFile = candidate.packedFile;
+          const parsedPath = parseDBTablePath(candidate.name);
+          const schema = isLocPackedFilePath(candidate.name)
+            ? LocVersion
+            : (packedFile?.tableSchema ?? (packedFile && getDBVersion(packedFile)));
+          if (!packedFile?.schemaFields || !schema || !parsedPath) {
+            addSkipped(candidate.name, "No matching parsed table schema");
+            continue;
+          }
+          const rows = chunkSchemaIntoRows(packedFile.schemaFields, schema);
+          const content = buildRpfmTsvContent({
+            packedFilePath: candidate.name,
+            tableName: isLocPackedFilePath(candidate.name) ? "Loc" : parsedPath.dbName,
+            version: isLocPackedFilePath(candidate.name) ? LocVersion.version : (packedFile.version ?? schema.version),
+            schema,
+            rows,
+          });
+          await writeOutput(candidate.name, getRpfmTsvExportPath(candidate.name), content);
+        }
+
+        for (const candidate of rawCandidates.filter((entry) => entry.source === "unsaved")) {
+          unsavedKeys.add(normalizePackFilePathKey(candidate.name));
+          const packedFile = candidate.packedFile;
+          const buffer =
+            packedFile?.buffer ?? (packedFile?.text != null ? Buffer.from(packedFile.text, "utf8") : undefined);
+          if (!buffer) {
+            addSkipped(candidate.name, "No readable unsaved payload");
+            continue;
+          }
+          await writeOutput(candidate.name, candidate.name.replaceAll("\\", "/"), buffer);
+        }
+
+        const rawNames = rawCandidates
+          .filter(
+            (candidate) => candidate.source === "pack" && !unsavedKeys.has(normalizePackFilePathKey(candidate.name)),
+          )
+          .map((candidate) => {
+            const key = normalizePackFilePathKey(candidate.name);
+            rawPackKeys.add(key);
+            return key;
+          });
+        const rawNameKeys = new Set(rawNames);
+        if (rawNameKeys.size > 0 && !packPath.startsWith("memory://")) {
+          try {
+            await forEachPackedFileBuffer(
+              packPath,
+              (name) => rawNameKeys.has(normalizePackFilePathKey(name)),
+              async (packedFile, buffer) => {
+                const key = normalizePackFilePathKey(packedFile.name);
+                await writeOutput(packedFile.name, packedFile.name.replaceAll("\\", "/"), buffer);
+                rawPackKeys.delete(key);
+              },
+              {
+                onSkipped: (packedFile, reason) => {
+                  rawPackKeys.delete(normalizePackFilePathKey(packedFile.name));
+                  addSkipped(packedFile.name, reason === "tooLarge" ? "File is too large" : "Could not read payload");
+                },
+              },
+            );
+          } catch (error) {
+            writeErrors.push(error instanceof Error ? error.message : "Could not read raw pack files");
+          }
+        }
+        for (const key of rawPackKeys) {
+          const candidate = rawCandidates.find((entry) => normalizePackFilePathKey(entry.name) === key);
+          if (candidate) addSkipped(candidate.name, "File was not found in the pack");
+        }
+
+        const packDBCandidates = dbCandidates.filter((entry) => entry.source === "pack");
+        for (let start = 0; start < packDBCandidates.length; start += 50) {
+          const chunk = packDBCandidates.slice(start, start + 50);
+          const tablePaths = chunk.map((candidate) => candidate.name);
+          const chunkHasLoc = chunk.some((candidate) => isLocPackedFilePath(candidate.name));
+          let parsedPack: Pack;
+          try {
+            parsedPack = await readPack(packPath, { tablesToRead: tablePaths, readLocs: chunkHasLoc });
+          } catch (error) {
+            for (const candidate of chunk) {
+              addSkipped(candidate.name, error instanceof Error ? error.message : "Could not read DB table");
+            }
+            continue;
+          }
+
+          for (const candidate of chunk) {
+            const packedFile = findPackedFileInList(parsedPack.packedFiles, candidate.name);
+            const parsedPath = parseDBTablePath(candidate.name);
+            const schema = isLocPackedFilePath(candidate.name) ? LocVersion : packedFile && getDBVersion(packedFile);
+            if (!packedFile?.schemaFields || !schema || !parsedPath) {
+              addSkipped(candidate.name, "No matching parsed table schema");
+              continue;
+            }
+            const rows = chunkSchemaIntoRows(packedFile.schemaFields, schema);
+            const content = buildRpfmTsvContent({
+              packedFilePath: candidate.name,
+              tableName: isLocPackedFilePath(candidate.name) ? "Loc" : parsedPath.dbName,
+              version: isLocPackedFilePath(candidate.name)
+                ? LocVersion.version
+                : (packedFile.version ?? schema.version),
+              schema,
+              rows,
+            });
+            await writeOutput(candidate.name, getRpfmTsvExportPath(candidate.name), content);
+          }
+        }
+
+        const error = writeErrors.length > 0 ? writeErrors.join("\n") : undefined;
+        return { success: !error, writtenCount, skipped, ...(error ? { error } : {}) };
+      } catch (error) {
+        console.error("Error exporting packed files:", error);
+        return {
+          success: false,
+          writtenCount,
+          skipped,
+          error: error instanceof Error ? error.message : "Failed to export packed files",
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    "extractVisualsFilesToDirectory",
+    async (
+      _event,
+      sessionId: string,
+      outputDirectory: string,
+      filePaths: string[],
+      preserveFolders = true,
+      preferredPackPath?: string,
+      excludeCommonTextures = false,
+      recursive = false,
+    ): Promise<PackExportResult> => {
+      const skipped: Array<{ name: string; reason: string }> = [];
+      let writtenCount = 0;
+      const errors: string[] = [];
+
+      try {
+        const session = visualsSessions.get(sessionId);
+        if (!session) return { success: false, writtenCount, skipped, error: "Visuals session expired or missing" };
+        if (!outputDirectory) return { success: false, writtenCount, skipped, error: "No output directory selected" };
+        if (!Array.isArray(filePaths) || filePaths.length === 0) {
+          return { success: false, writtenCount, skipped, error: "No files to extract" };
+        }
+
+        let filePathsToExtract = filePaths;
+        const recursivelyResolvedFiles = new Map<
+          string,
+          { pack: Pack; packPath: string; fileName: string }
+        >();
+        if (recursive) {
+          if (filePaths.length !== 1) {
+            return {
+              success: false,
+              writtenCount,
+              skipped,
+              error: "Recursive Visuals extraction requires exactly one root file",
+            };
+          }
+
+          const dependencyFileIds = new Map<string, number>();
+          const dependencyTextCache = new Map<string, string | undefined>();
+          const dependencyPackCache = new Map<string, Pack | undefined>();
+          const dependencyResolveStartedAt = performance.now();
+          const getDependencyFileId = (packPath: string) => {
+            const packKey = packPath.replaceAll("\\", "/").toLowerCase();
+            const existing = dependencyFileIds.get(packKey);
+            if (existing !== undefined) return existing;
+            const fileId = fs.openSync(packPath, "r");
+            dependencyFileIds.set(packKey, fileId);
+            return fileId;
+          };
+
+          let dependencyClosure: VisualDependencyClosure;
+          try {
+            dependencyClosure = await collectVisualDependencyClosure(filePaths[0], async (requestedPath) => {
+              const requestedExtension = getSupportedVisualDependencyExtension(requestedPath);
+              const resolved = await resolveVisualsFileInSession(session, requestedPath, {
+                variantMeshDefinitionFallback: requestedExtension === "variantmeshdefinition",
+                preferredPackPath,
+                packCache: dependencyPackCache,
+              });
+              if (!resolved?.pack || !resolved.packPath || !resolved.fileName) return undefined;
+
+              recursivelyResolvedFiles.set(normalizePackFilePathKey(resolved.fileName), {
+                pack: resolved.pack,
+                packPath: resolved.packPath,
+                fileName: resolved.fileName,
+              });
+
+              const resolvedExtension = getSupportedVisualDependencyExtension(resolved.fileName);
+              let text: string | undefined;
+              if (
+                resolvedExtension === "variantmeshdefinition" ||
+                resolvedExtension === "wsmodel" ||
+                resolvedExtension === "xml.material"
+              ) {
+                const cacheKey = `${resolved.packPath.replaceAll("\\", "/").toLowerCase()}|${normalizePackFilePathKey(
+                  resolved.fileName,
+                )}`;
+                if (dependencyTextCache.has(cacheKey)) {
+                  text = dependencyTextCache.get(cacheKey);
+                } else {
+                  const packedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+                  if (packedFile) {
+                    let buffer = Buffer.allocUnsafe(packedFile.file_size);
+                    fs.readSync(
+                      getDependencyFileId(resolved.packPath),
+                      buffer,
+                      0,
+                      buffer.length,
+                      packedFile.start_pos,
+                    );
+                    if (packedFile.is_compressed) {
+                      buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+                    }
+                    text = decodePackedAssetText(buffer);
+                  }
+                  dependencyTextCache.set(cacheKey, text);
+                }
+              }
+
+              return { resolvedPath: resolved.fileName, text };
+            });
+          } finally {
+            for (const fileId of dependencyFileIds.values()) {
+              try {
+                fs.closeSync(fileId);
+              } catch (error) {
+                console.warn("Failed to close Visuals dependency pack handle:", error);
+              }
+            }
+          }
+
+          console.log(
+            `[Visuals isolated] resolved ${dependencyClosure.paths.length} supported file(s) from ${filePaths[0]} in ${(
+              performance.now() - dependencyResolveStartedAt
+            ).toFixed(0)}ms`,
+          );
+          filePathsToExtract = dependencyClosure.paths;
+          skipped.push(
+            ...dependencyClosure.missing.map((name) => ({
+              name,
+              reason: "Referenced file was not found in the visuals packs",
+            })),
+          );
+          if (filePathsToExtract.length === 0) {
+            return {
+              success: false,
+              writtenCount,
+              skipped,
+              error: "No supported Visuals files were resolved from the root file",
+            };
+          }
+        }
+
+        const uniqueRequestedPaths = Array.from(
+          new Map(
+            filePathsToExtract
+              .map((filePath) => [normalizePackFilePathKey(filePath), filePath] as const)
+              .filter(([key]) => key.length > 0),
+          ).values(),
+        );
+        const filesByPack = new Map<
+          string,
+          {
+            pack: Pack;
+            packPath: string;
+            files: Array<{ requestedPath: string; fileName: string; outputPath: string }>;
+          }
+        >();
+        const outputDirectories = new Set<string>();
+        const flatOutputNames = new Set<string>();
+
+        for (const requestedPath of uniqueRequestedPaths) {
+          const recursiveResolved = recursive
+            ? recursivelyResolvedFiles.get(normalizePackFilePathKey(requestedPath))
+            : undefined;
+          const resolved =
+            recursiveResolved ??
+            (await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath }));
+          if (!resolved?.pack || !resolved.packPath || !resolved.fileName) {
+            skipped.push({ name: requestedPath, reason: "File was not found in the visuals packs" });
+            continue;
+          }
+
+          if (excludeCommonTextures && /(?:^|[\\/])commontextures(?:[\\/]|$)/i.test(resolved.fileName)) {
+            skipped.push({ name: requestedPath, reason: "Commontextures file excluded" });
+            continue;
+          }
+
+          if (!preserveFolders) {
+            const flatName = nodePath.posix.basename(resolved.fileName.replaceAll("\\", "/"));
+            const flatKey = flatName.toLowerCase();
+            if (flatOutputNames.has(flatKey)) {
+              skipped.push({ name: requestedPath, reason: `Flat extraction name collision: ${flatName}` });
+              continue;
+            }
+            flatOutputNames.add(flatKey);
+          }
+
+          const normalizedPath = resolved.fileName.replaceAll("\\", "/");
+          const relativePath = preserveFolders ? normalizedPath : nodePath.posix.basename(normalizedPath);
+          const outputPath = resolveExportOutputPath(outputDirectory, relativePath);
+          if (!outputPath) {
+            skipped.push({ name: requestedPath, reason: "Invalid output path" });
+            continue;
+          }
+          outputDirectories.add(nodePath.dirname(outputPath));
+
+          const packKey = resolved.packPath.replaceAll("\\", "/").toLowerCase();
+          const group = filesByPack.get(packKey);
+          if (group) group.files.push({ requestedPath, fileName: resolved.fileName, outputPath });
+          else {
+            filesByPack.set(packKey, {
+              pack: resolved.pack,
+              packPath: resolved.packPath,
+              files: [{ requestedPath, fileName: resolved.fileName, outputPath }],
+            });
+          }
+        }
+
+        const writeOutput = async (name: string, outputPath: string, contents: Buffer) => {
+          try {
+            await fs.promises.writeFile(outputPath, contents);
+            writtenCount += 1;
+          } catch (error) {
+            errors.push(`${name}: ${error instanceof Error ? error.message : "Failed to write file"}`);
+          }
+        };
+
+        const extractionStartedAt = performance.now();
+        const ensureDirResults = await Promise.allSettled(
+          Array.from(outputDirectories, (directory) => fsExtra.ensureDir(directory)),
+        );
+        for (const result of ensureDirResults) {
+          if (result.status === "rejected") {
+            errors.push(result.reason instanceof Error ? result.reason.message : "Failed to create extraction directory");
+          }
+        }
+
+        const maxConcurrentWrites = 8;
+        const pendingWrites = new Set<Promise<void>>();
+        const enqueueWrite = async (name: string, outputPath: string, contents: Buffer) => {
+          let writePromise!: Promise<void>;
+          writePromise = writeOutput(name, outputPath, contents).finally(() => {
+            pendingWrites.delete(writePromise);
+          });
+          pendingWrites.add(writePromise);
+          if (pendingWrites.size >= maxConcurrentWrites) {
+            await Promise.race(pendingWrites);
+          }
+        };
+        for (const group of filesByPack.values()) {
+          let fileId = -1;
+          try {
+            fileId = fs.openSync(group.packPath, "r");
+            for (const target of group.files) {
+              const packedFile = findPackedFileCaseInsensitive(group.pack, target.fileName);
+              if (!packedFile) {
+                skipped.push({ name: target.requestedPath, reason: "File was not found in the pack" });
+                continue;
+              }
+
+              try {
+                let buffer = Buffer.allocUnsafe(packedFile.file_size);
+                fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
+                if (packedFile.is_compressed) {
+                  buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+                }
+                await enqueueWrite(target.requestedPath, target.outputPath, buffer);
+              } catch (error) {
+                skipped.push({
+                  name: target.requestedPath,
+                  reason: error instanceof Error ? error.message : "Could not read payload",
+                });
+              }
+            }
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message : "Could not read visual files");
+          } finally {
+            if (fileId >= 0) {
+              try {
+                fs.closeSync(fileId);
+              } catch (error) {
+                console.warn("Failed to close Visuals extraction pack handle:", error);
+              }
+            }
+          }
+        }
+        await Promise.all(pendingWrites);
+        if (recursive) {
+          console.log(
+            `[Visuals isolated] wrote ${writtenCount} file(s) from ${filesByPack.size} pack(s) in ${(
+              performance.now() - extractionStartedAt
+            ).toFixed(0)}ms`,
+          );
+        }
+
+        const error = errors.length > 0 ? errors.join("\n") : undefined;
+        return { success: !error, writtenCount, skipped, ...(error ? { error } : {}) };
+      } catch (error) {
+        console.error("Error extracting Visuals files:", error);
+        return {
+          success: false,
+          writtenCount,
+          skipped,
+          error: error instanceof Error ? error.message : "Failed to extract Visuals files",
+        };
+      }
+    },
+  );
+  ipcMain.handle("selectFlowPackFile", async (event) => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        properties: ["openFile"],
+        filters: [{ name: "Pack files", extensions: ["pack"] }],
+      });
+      return result.canceled ? undefined : result.filePaths[0];
+    } finally {
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
+  ipcMain.handle("selectFlowPackSavePath", async (event, suggestedName?: string) => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const defaultDirectory =
+        appData.gamesToGameFolderPaths[appData.currentGame].dataFolder || app.getPath("documents");
+      const defaultName = suggestedName?.trim() || "flows.pack";
+      const result = await dialog.showSaveDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        defaultPath: nodePath.join(defaultDirectory, defaultName),
+        filters: [{ name: "Pack files", extensions: ["pack"] }],
+      });
+      if (result.canceled || !result.filePath) return undefined;
+      return result.filePath.toLowerCase().endsWith(".pack") ? result.filePath : `${result.filePath}.pack`;
+    } finally {
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
     }
   });
   ipcMain.handle(
@@ -8020,15 +14602,8 @@ export const registerIpcMainListeners = (
         const resolvedBaseDirectory = nodePath.resolve(baseDirectory);
         const writtenFiles: string[] = [];
         for (const file of files) {
-          const normalizedRelativePath = file.relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-          if (normalizedRelativePath.includes("..")) {
-            return { success: false, error: `Invalid relative path: ${file.relativePath}` };
-          }
-          const outputPath = nodePath.resolve(resolvedBaseDirectory, normalizedRelativePath);
-          const baseWithSep = resolvedBaseDirectory.endsWith(nodePath.sep)
-            ? resolvedBaseDirectory
-            : `${resolvedBaseDirectory}${nodePath.sep}`;
-          if (outputPath !== resolvedBaseDirectory && !outputPath.startsWith(baseWithSep)) {
+          const outputPath = resolveExportOutputPath(resolvedBaseDirectory, file.relativePath);
+          if (!outputPath) {
             return { success: false, error: `Invalid output path: ${file.relativePath}` };
           }
           await fsExtra.ensureDir(nodePath.dirname(outputPath));
@@ -8072,6 +14647,7 @@ export const registerIpcMainListeners = (
   ipcMain.on("syncIsFeaturesForModdersEnabled", (event, isFeaturesForModdersEnabled: boolean) => {
     console.log("syncIsFeaturesForModdersEnabled:", isFeaturesForModdersEnabled);
     appData.isFeaturesForModdersEnabled = isFeaturesForModdersEnabled;
+    if (!isFeaturesForModdersEnabled) appData.isCompatCheckingVanillaPacks = false;
     // Send to viewer window
     windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
     windows.skillsWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);

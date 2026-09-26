@@ -8,15 +8,8 @@ import TopBar from "./components/TopBar";
 import { Toasts } from "./components/Toasts";
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
-import { endTiming, perfMonitor, startTiming } from "./utility/performanceMonitor";
 
-const SkillsViewer = React.lazy(() => {
-  const startTime = performance.now();
-  return import("./components/skillsViewer/SkillsViewer").then((module) => {
-    perfMonitor.trackComponentLoad("SkillsViewer", startTime);
-    return module;
-  });
-});
+const SkillsViewer = React.lazy(() => import("./components/skillsViewer/SkillsViewer"));
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center h-64">
@@ -36,13 +29,6 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 const AppSkills = React.memo(() => {
-  useEffect(() => {
-    startTiming("app_skills_mount");
-    return () => {
-      endTiming("app_skills_mount");
-    };
-  }, []);
-
   const [localization, setLocalization] = useState<Record<string, string>>({});
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
 
@@ -69,7 +55,6 @@ const AppSkills = React.memo(() => {
 });
 
 export function renderSkillsWindow() {
-  startTiming("react_render_skills");
   const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <StrictMode>
@@ -78,5 +63,4 @@ export function renderSkillsWindow() {
       </Provider>
     </StrictMode>,
   );
-  endTiming("react_render_skills");
 }

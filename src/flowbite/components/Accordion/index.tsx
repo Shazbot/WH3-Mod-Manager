@@ -29,9 +29,9 @@ const AccordionComponent: FC<AccordionProps> = ({
   const panels = useMemo(
     () =>
       Children.map(children, (child, i) =>
-        cloneElement(child, { alwaysOpen, arrowIcon, flush, isOpen: isOpen === i, setOpen: () => setOpen(i) })
+        cloneElement(child, { alwaysOpen, arrowIcon, flush, isOpen: isOpen === i, setOpen: () => setOpen(i) }),
       ),
-    [alwaysOpen, arrowIcon, children, flush, isOpen]
+    [alwaysOpen, arrowIcon, children, flush, isOpen],
   );
   const theme = useTheme().theme.accordion;
 

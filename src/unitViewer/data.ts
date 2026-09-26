@@ -1,0 +1,1055 @@
+import type {
+  UnitViewerAbility,
+  UnitViewerCatalogGroup,
+  UnitViewerUiGroup,
+  UnitViewerConstants,
+  UnitViewerCharacterExperienceData,
+  UnitViewerCharacterExperienceTier,
+  UnitViewerFactionAgentPermittedSubtype,
+  UnitViewerEntity,
+  UnitViewerFatigue,
+  UnitViewerMeleeWeapon,
+  UnitViewerMissileWeapon,
+  UnitViewerProjectile,
+  UnitViewerUnitModel,
+  UnitViewerUnitSize,
+  UnitViewerLordOption,
+} from "./types";
+import { resolveTextReplacements } from "../skills";
+import { toVariantMeshDefinitionPath } from "../visuals/paths";
+
+export type UnitViewerTableRows = Record<string, Array<Record<string, string>>>;
+
+/** The part of a loc trie a lookup needs. */
+export interface UnitViewerLocTrie {
+  get(key: string): string | undefined;
+}
+
+/**
+ * Resolves loc keys across pack tries without flattening them into one map: the game ships ~240k
+ * loc entries and a build reads a few thousand, so copying them all is pure waste.
+ *
+ * Takes tries in pack order and consults them in reverse, so a later pack still shadows an earlier
+ * one exactly as it did when it overwrote the earlier entry.
+ *
+ * Note this returns "" for a key a pack maps to an empty string, where the flattened map dropped
+ * those keys outright. Callers fall back with `||`, which treats the two the same; a caller using
+ * `??` would not.
+ */
+export const createLocLookup = (triesInPackOrder: Array<UnitViewerLocTrie | undefined>) => {
+  const tries = triesInPackOrder.filter((trie): trie is UnitViewerLocTrie => !!trie).toReversed();
+  return (key: string) => {
+    for (const trie of tries) {
+      const value = trie.get(key);
+      if (value != undefined) return value;
+    }
+    return undefined;
+  };
+};
+
+export const UNIT_VIEWER_TABLES = [
+  "main_units_tables",
+  "land_units_tables",
+  "battle_entities_tables",
+  "mounts_tables",
+  "battlefield_engines_tables",
+  "land_unit_articulated_vehicles_tables",
+  "unit_armour_types_tables",
+  "unit_shield_types_tables",
+  "melee_weapons_tables",
+  "missile_weapons_tables",
+  "projectiles_tables",
+  "projectiles_explosions_tables",
+  "units_custom_battle_mounts_tables",
+  "units_custom_battle_permissions_tables",
+  "factions_tables",
+  "agent_subtypes_tables",
+  "agent_subtype_subculture_overrides_tables",
+  "character_experience_skill_tiers_tables",
+  "faction_agent_permitted_subtypes_tables",
+  "unit_variants_tables",
+  "unit_variants_colours_tables",
+  "land_units_to_unit_abilites_junctions_tables",
+  "unit_attributes_to_groups_junctions_tables",
+  "special_ability_groups_to_units_junctions_tables",
+  "special_ability_groups_to_unit_abilities_junctions_tables",
+  "unit_abilities_tables",
+  "unit_special_abilities_tables",
+  "special_ability_to_special_ability_phase_junctions_tables",
+  "special_ability_phases_tables",
+  "special_ability_phase_stat_effects_tables",
+  "unit_abilities_to_additional_ui_effects_juncs_tables",
+  "unit_abilities_additional_ui_effects_tables",
+  "unit_experience_bonuses_tables",
+  "unit_stats_land_experience_bonuses_tables",
+  "unit_fatigue_effects_tables",
+  "unit_stat_to_size_scaling_values_tables",
+  "ui_unit_stats_tables",
+  "ui_unit_groupings_tables",
+  "ui_unit_group_parents_tables",
+  "ground_type_to_stat_effects_tables",
+  "_kv_morale_tables",
+  "variants_tables",
+] as const;
+
+/** Bucket that collects units the game does not assign to a roster group. */
+const EXTENDED_ROSTER_GROUP_KEY = "campaign_exclusives";
+
+/** Only used when ui_unit_group_parents has no usable `order` column to sort on. */
+const UI_UNIT_GROUP_FALLBACK_ORDER = [
+  "commander",
+  "heroes_agents",
+  "infantry",
+  "missile_infantry",
+  "cavalry_chariots",
+  "missile_cavalry_chariots",
+  "monster_beasts",
+  "missile_monster_beasts",
+  "flying_war_machine",
+  "artillery_war_machines",
+  "constructs",
+];
+
+const UNIT_VIEWER_USED_STAT_ICON_KEYS = new Set([
+  "scalar_charge_speed",
+  "scalar_missile_damage_ap",
+  "scalar_missile_damage_base",
+  "scalar_missile_explosion_damage_ap",
+  "scalar_missile_explosion_damage_base",
+  "scalar_missile_range",
+  "scalar_speed",
+  "stat_ammo",
+  "stat_armour",
+  "stat_bonus_vs_infantry",
+  "stat_bonus_vs_large",
+  "stat_charge_bonus",
+  "stat_health",
+  "stat_mass",
+  "stat_melee_attack",
+  "stat_melee_damage_ap",
+  "stat_melee_damage_base",
+  "stat_melee_defence",
+  "stat_missile_block_chance",
+  "stat_missile_damage_over_time",
+  "stat_morale",
+  "stat_reloading",
+  "stat_resistance_all",
+  "stat_resistance_flame",
+  "stat_resistance_magic",
+  "stat_resistance_missile",
+  "stat_resistance_physical",
+  "stat_weapon_damage",
+]);
+
+const asString = (value: unknown) => (value == null ? "" : String(value));
+const normalizeHexColour = (value: unknown) => {
+  const hex = asString(value).trim().replace(/^#/, "");
+  return /^[0-9a-f]{6}$/i.test(hex) ? `#${hex.toLowerCase()}` : undefined;
+};
+
+const normalizePackedColourRgb = (value: unknown) => {
+  const raw = asString(value).trim();
+  if (!raw) return undefined;
+
+  // Parsed ColourRGB fields are exposed by WHMM as signed/unsigned decimal Int32 strings.
+  if (/^-?\d+$/.test(raw)) {
+    const parsed = Number(raw);
+    if (Number.isSafeInteger(parsed)) {
+      const rgb = (parsed >>> 0) & 0xffffff;
+      return `#${rgb.toString(16).padStart(6, "0")}`;
+    }
+  }
+
+  // Keep hand-built/test/TSV-shaped rows useful too.
+  return normalizeHexColour(raw);
+};
+
+const normalizeRgbComponents = (
+  red: unknown,
+  green: unknown,
+  blue: unknown,
+) => {
+  const values = [red, green, blue].map((value) => Number(asString(value).trim()));
+  if (!values.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) return undefined;
+  return `#${values.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+};
+
+const readFactionUniformColour = (
+  row: Record<string, string> | undefined,
+  fieldName: "uniform_colour_primary" | "uniform_colour_secondary" | "uniform_colour_tertiary",
+) => {
+  if (!row) return undefined;
+  return normalizePackedColourRgb(row[fieldName])
+    ?? normalizeHexColour(row[`${fieldName}_hex`]);
+};
+
+const readUnitVariantColour = (
+  row: Record<string, string>,
+  prefix: "primary" | "secondary" | "tertiary",
+) =>
+  normalizeHexColour(row[`${prefix}_colour_hex`])
+  ?? normalizeRgbComponents(
+    row[`${prefix}_colour_r`],
+    row[`${prefix}_colour_g`],
+    row[`${prefix}_colour_b`],
+  );
+const asNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const asBool = (value: unknown) => value === true || value === "true" || value === "1" || value === 1;
+
+const indexRows = (rows: Array<Record<string, string>> | undefined, key: string) => {
+  const result = new Map<string, Record<string, string>>();
+  for (const row of rows || []) {
+    const rowKey = asString(row[key]);
+    if (rowKey) result.set(rowKey, row);
+  }
+  return result;
+};
+
+const groupRows = (rows: Array<Record<string, string>> | undefined, key: string) => {
+  const result = new Map<string, Array<Record<string, string>>>();
+  for (const row of rows || []) {
+    const rowKey = asString(row[key]);
+    if (!rowKey) continue;
+    const group = result.get(rowKey) || [];
+    group.push(row);
+    result.set(rowKey, group);
+  }
+  return result;
+};
+
+const parseFiniteInteger = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+};
+
+const effectiveCharacterExperienceData = (tables: UnitViewerTableRows): UnitViewerCharacterExperienceData => {
+  // These two tables have compound keys.  `indexRows` is intentionally only for one-column keys,
+  // so keep the last row for each complete database key here; that is the same last-pack-wins
+  // behaviour used by the game's effective DB and by the rest of this module.
+  const tierRows = new Map<string, { row: Record<string, string>; order: number }>();
+  for (const [order, row] of (tables.character_experience_skill_tiers_tables ?? []).entries()) {
+    const agentKey = asString(row.agent_key).trim();
+    const rank = parseFiniteInteger(row.skill_rank);
+    const campaignKey = asString(row.optional_campaign_key).trim();
+    const forArmy = asBool(row.for_army);
+    const forNavy = asBool(row.for_navy);
+    if (rank === undefined || rank < 0) continue;
+    const key = `${agentKey.toLowerCase()}|${rank}|${campaignKey.toLowerCase()}|${forArmy ? 1 : 0}|${forNavy ? 1 : 0}`;
+    tierRows.set(key, { row, order });
+  }
+  const tiers: UnitViewerCharacterExperienceTier[] = Array.from(tierRows.values())
+    .sort((first, second) => first.order - second.order)
+    .flatMap(({ row }) => {
+      const rank = parseFiniteInteger(row.skill_rank)!;
+      const experienceThreshold = Number(row.experience_threshold);
+      if (!Number.isFinite(experienceThreshold) || experienceThreshold < 0) return [];
+      return [
+        {
+          agentKey: asString(row.agent_key).trim(),
+          rank,
+          experienceThreshold,
+          ...(asString(row.optional_campaign_key).trim()
+            ? { campaignKey: asString(row.optional_campaign_key).trim() }
+            : {}),
+          forArmy: asBool(row.for_army),
+          forNavy: asBool(row.for_navy),
+        },
+      ];
+    });
+
+  const permittedRows = new Map<string, { row: Record<string, string>; order: number }>();
+  for (const [order, row] of (tables.faction_agent_permitted_subtypes_tables ?? []).entries()) {
+    const faction = asString(row.faction).trim();
+    const agentKey = asString(row.agent).trim();
+    const subtype = asString(row.subtype).trim();
+    if (!faction || !agentKey || !subtype) continue;
+    const key = `${faction.toLowerCase()}|${agentKey.toLowerCase()}|${subtype.toLowerCase()}`;
+    permittedRows.set(key, { row, order });
+  }
+  const permittedSubtypes: UnitViewerFactionAgentPermittedSubtype[] = Array.from(permittedRows.values())
+    .sort((first, second) => first.order - second.order)
+    .filter(({ row }) => !asBool(row.mod_disabled))
+    .map(({ row }) => ({
+      faction: asString(row.faction).trim(),
+      agentKey: asString(row.agent).trim(),
+      subtype: asString(row.subtype).trim(),
+    }));
+  return { tiers, permittedSubtypes };
+};
+
+export interface UnitViewerCharacterExperienceQuery {
+  faction?: string;
+  subtype?: string;
+  agentKey?: string;
+  campaign?: string;
+  rank: number;
+  forArmy: boolean;
+  forNavy?: boolean;
+}
+
+/**
+ * Resolves the absolute XP threshold for a campaign character rank.  Campaign- and agent-specific
+ * rows win over neutral rows; army/navy-specific rows win over the neutral row when both exist.
+ * Returning `undefined` is deliberate: an importer must not guess a threshold for a modded agent.
+ */
+export const resolveCharacterExperienceThreshold = (
+  data: UnitViewerCharacterExperienceData,
+  query: UnitViewerCharacterExperienceQuery,
+): number | undefined => {
+  if (!Number.isSafeInteger(query.rank)) return undefined;
+  const campaign = query.campaign?.trim().toLowerCase() || "";
+  const faction = query.faction?.trim().toLowerCase() || "";
+  const subtype = query.subtype?.trim().toLowerCase() || "";
+  const requestedAgent =
+    query.agentKey?.trim().toLowerCase() ||
+    data.permittedSubtypes
+      .find((row) => row.faction.toLowerCase() === faction && row.subtype.toLowerCase() === subtype)
+      ?.agentKey.toLowerCase() ||
+    "";
+  const forArmy = !!query.forArmy;
+  const forNavy = !!query.forNavy;
+  let best: { score: number; order: number; threshold: number } | undefined;
+  data.tiers.forEach((tier, order) => {
+    if (tier.rank !== query.rank) return;
+    const tierCampaign = tier.campaignKey?.trim().toLowerCase() || "";
+    const tierAgent = tier.agentKey.trim().toLowerCase();
+    const contextExact = tier.forArmy === forArmy && tier.forNavy === forNavy;
+    const contextNeutral = !tier.forArmy && !tier.forNavy;
+    if (!contextExact && !contextNeutral) return;
+    if (tierAgent && tierAgent !== requestedAgent) return;
+    if (tierCampaign && tierCampaign !== campaign) return;
+    const score = (tierCampaign ? 4 : 0) + (tierAgent ? 2 : 0) + (contextExact ? 1 : 0);
+    if (!best || score > best.score || (score === best.score && order > best.order))
+      best = { score, order, threshold: tier.experienceThreshold };
+  });
+  return best?.threshold;
+};
+
+const stripGameMarkup = (value: string) =>
+  value
+    .replace(/\\n/g, "\n")
+    .replace(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "")
+    .replace(/\[\[\/?(?:b|i|col(?::[^\]]+)?)\]\]/gi, "")
+    .trim();
+
+const resolveGameText = (value: string, getLoc: (key: string) => string | undefined) =>
+  stripGameMarkup(resolveTextReplacements(value, getLoc) || value);
+
+const splitAttributeText = (value: string, fallback: string, getLoc: (key: string) => string | undefined) => {
+  const [name, ...description] = resolveGameText(value, getLoc).split("||");
+  return { name: name || fallback, description: description.join("||") };
+};
+
+const getCasteSortOrder = (caste: string) => {
+  const normalized = caste.toLowerCase();
+  if (normalized === "lord") return 0;
+  if (normalized === "hero") return 1;
+  return 2;
+};
+
+const getUiGroupKey = (
+  caste: string,
+  parentGroupKey: string,
+  uiUnitGroupParents: Map<string, Record<string, string>>,
+) => {
+  // A few vanilla lord rows (notably Drycha) point at the heroes parent despite their caste. Keep
+  // the leader section consistent with the badge, but preserve other custom battle groupings.
+  if (
+    caste.trim().toLowerCase() === "lord" &&
+    parentGroupKey === "heroes_agents" &&
+    uiUnitGroupParents.has("commander")
+  )
+    return "commander";
+  return uiUnitGroupParents.has(parentGroupKey) ? parentGroupKey : EXTENDED_ROSTER_GROUP_KEY;
+};
+
+const toEntity = (row: Record<string, string> | undefined): UnitViewerEntity | undefined => {
+  if (!row) return undefined;
+  return {
+    key: asString(row.key),
+    type: asString(row.type),
+    walkSpeed: asNumber(row.walk_speed),
+    runSpeed: asNumber(row.run_speed),
+    flySpeed: asNumber(row.fly_speed),
+    chargeSpeed: asNumber(row.charge_speed),
+    mass: asNumber(row.mass),
+    hitPoints: asNumber(row.hit_points),
+    size: asString(row.size),
+  };
+};
+
+const toMeleeWeapon = (row: Record<string, string> | undefined): UnitViewerMeleeWeapon => ({
+  key: asString(row?.key),
+  baseDamage: asNumber(row?.damage),
+  apDamage: asNumber(row?.ap_damage),
+  bonusVsLarge: asNumber(row?.bonus_v_large),
+  bonusVsInfantry: asNumber(row?.bonus_v_infantry),
+  attackInterval: asNumber(row?.melee_attack_interval),
+  splashTargetSize: asString(row?.splash_attack_target_size) || undefined,
+  splashMaxAttacks: asNumber(row?.splash_attack_max_attacks),
+  isMagical: asBool(row?.is_magical),
+  ignitionAmount: asNumber(row?.ignition_amount),
+});
+
+const buildProjectile = (
+  projectileRow: Record<string, string> | undefined,
+  explosions: Map<string, Record<string, string>>,
+): UnitViewerProjectile | undefined => {
+  if (!projectileRow) return undefined;
+  const explosion = explosions.get(asString(projectileRow.explosion_type));
+  return {
+    key: asString(projectileRow.key),
+    range: asNumber(projectileRow.effective_range),
+    baseDamage: asNumber(projectileRow.damage),
+    apDamage: asNumber(projectileRow.ap_damage),
+    projectileNumber: Math.max(1, asNumber(projectileRow.projectile_number)),
+    shotsPerVolley: Math.max(1, asNumber(projectileRow.shots_per_volley)),
+    burstSize: Math.max(1, asNumber(projectileRow.burst_size)),
+    baseReloadTime: asNumber(projectileRow.base_reload_time),
+    bonusVsLarge: asNumber(projectileRow.bonus_v_large),
+    bonusVsInfantry: asNumber(projectileRow.bonus_v_infantry),
+    explosionBaseDamage: asNumber(explosion?.detonation_damage),
+    explosionApDamage: asNumber(explosion?.detonation_damage_ap),
+    explosionRadius: asNumber(explosion?.detonation_radius),
+    isMagical: asBool(projectileRow.is_magical) || asBool(explosion?.is_magical),
+    ignitionAmount: asNumber(projectileRow.ignition_amount) || asNumber(explosion?.ignition_amount),
+  };
+};
+
+const buildMissileWeapon = (
+  key: string,
+  weapons: Map<string, Record<string, string>>,
+  projectiles: Map<string, Record<string, string>>,
+  explosions: Map<string, Record<string, string>>,
+): UnitViewerMissileWeapon | undefined => {
+  const weapon = weapons.get(key);
+  if (!weapon) return undefined;
+  const projectile = buildProjectile(projectiles.get(asString(weapon.default_projectile)), explosions);
+  if (!projectile) return undefined;
+  return {
+    key,
+    useSecondaryAmmoPool: asBool(weapon.use_secondary_ammo_pool),
+    projectile,
+  };
+};
+
+const normalizeIconPath = (iconName: string) => {
+  if (!iconName) return undefined;
+  const withExtension = /\.(png|jpg|jpeg|webp)$/i.test(iconName) ? iconName : `${iconName}.png`;
+  return `ui\\battle ui\\ability_icons\\${withExtension}`.toLowerCase();
+};
+
+const normalizeUiPath = (path: string) => path.replace(/\//g, "\\").replace(/\\+/g, "\\").toLowerCase();
+
+const getBonusValuePresentation = (how: string, value: number, key: string) => {
+  if (how === "mult") {
+    const rawPercentage = (value - 1) * 100;
+    const percentage = Number.isInteger(rawPercentage) ? rawPercentage : Math.round(rawPercentage * 100) / 100;
+    return {
+      valueText: `${percentage > 0 ? "+" : ""}${percentage}%`,
+      numericValue: percentage,
+      valueSuffix: "%",
+    };
+  }
+
+  const rounded = Number.isInteger(value) ? value : Math.round(value * 100) / 100;
+  const suffix = key.startsWith("scalar_") ? "%" : "";
+  return {
+    valueText: `${rounded > 0 ? "+" : ""}${rounded}${suffix}`,
+    numericValue: rounded,
+    valueSuffix: suffix,
+  };
+};
+
+const buildAbility = (
+  key: string,
+  isSpell: boolean,
+  abilities: Map<string, Record<string, string>>,
+  specialAbilities: Map<string, Record<string, string>>,
+  abilityPhases: Map<string, Array<Record<string, string>>>,
+  phases: Map<string, Record<string, string>>,
+  phaseStatEffects: Map<string, Array<Record<string, string>>>,
+  uiUnitStats: Map<string, Record<string, string>>,
+  additionalEffectsByAbility: Map<string, Array<Record<string, string>>>,
+  additionalEffects: Map<string, Record<string, string>>,
+  getLoc: (key: string) => string | undefined,
+): UnitViewerAbility | undefined => {
+  const ability = abilities.get(key);
+  const special = specialAbilities.get(key);
+  if (!ability && !special) return undefined;
+  const type = asString(ability?.type);
+  const sourceType = asString(ability?.source_type);
+  const phaseIds = Array.from(
+    new Set((abilityPhases.get(key) || []).map((row) => asString(row.phase)).filter(Boolean)),
+  );
+  const bonuses: AbilityTooltipBonusData[] = [];
+  for (const phaseId of phaseIds) {
+    for (const effect of phaseStatEffects.get(phaseId) || []) {
+      const stat = asString(effect.stat);
+      const how = asString(effect.how);
+      if (!stat || !how) continue;
+      const value = asNumber(effect.value);
+      const presentation = getBonusValuePresentation(how, value, stat);
+      bonuses.push({
+        key: `${phaseId}:${stat}:${how}`,
+        compareKey: `${stat}:${how}`,
+        label: resolveGameText(getLoc(`unit_stat_localisations_onscreen_name_${stat}`) || stat, getLoc),
+        valueText: presentation.valueText,
+        numericValue: presentation.numericValue,
+        valueSuffix: presentation.valueSuffix,
+        isPositive: (how === "mult" && value >= 1) || (how !== "mult" && value >= 0),
+        iconPath: normalizeUiPath(asString(uiUnitStats.get(stat)?.icon)) || undefined,
+      });
+    }
+
+    const fatigueChangeRatio = asNumber(phases.get(phaseId)?.fatigue_change_ratio);
+    if (fatigueChangeRatio !== 0) {
+      const fatiguePerSecond = Math.round(fatigueChangeRatio * 100);
+      bonuses.push({
+        key: `${phaseId}:fatigue_change_ratio`,
+        compareKey: "fatigue_change_ratio",
+        label: resolveGameText(getLoc("random_localisation_strings_string_fatigue") || "Vigour per second", getLoc),
+        valueText: `${fatiguePerSecond > 0 ? "+" : ""}${fatiguePerSecond}%`,
+        numericValue: fatiguePerSecond,
+        valueSuffix: "%",
+        isPositive: fatiguePerSecond >= 0,
+      });
+    }
+  }
+  const additionalUiEffects = Array.from(
+    new Set((additionalEffectsByAbility.get(key) || []).map((row) => asString(row.effect)).filter(Boolean)),
+  )
+    .map((effectKey) => {
+      const effect = additionalEffects.get(effectKey);
+      return {
+        key: effectKey,
+        text: resolveGameText(
+          getLoc(`unit_abilities_additional_ui_effects_localised_text_${effectKey}`) || effectKey,
+          getLoc,
+        ),
+        sortOrder: effect ? asNumber(effect.sort_order) : undefined,
+        effectState: asString(effect?.effect_state) || undefined,
+      };
+    })
+    .sort((first, second) => (first.sortOrder || 0) - (second.sortOrder || 0));
+  return {
+    key,
+    passive: asBool(special?.passive),
+    isSpell,
+    tooltip: {
+      key,
+      name: resolveGameText(getLoc(`unit_abilities_onscreen_name_${key}`) || key, getLoc),
+      description: resolveGameText(getLoc(`unit_abilities_tooltip_text_${key}`) || "", getLoc),
+      sourceTypeName: resolveGameText(getLoc(`unit_ability_source_types_name_${sourceType}`) || sourceType, getLoc),
+      loreGroupName: "",
+      abilityTypeName: resolveGameText(getLoc(`unit_ability_types_onscreen_name_${type}`) || type, getLoc),
+      overpowerOption: asString(ability?.overpower_option) || undefined,
+      iconPath: normalizeIconPath(asString(ability?.icon_name)),
+      stats: {
+        range: asNumber(special?.target_intercept_range) > 0 ? asNumber(special?.target_intercept_range) : undefined,
+        cooldown: asNumber(special?.recharge_time) > 0 ? asNumber(special?.recharge_time) : undefined,
+        duration: asNumber(special?.active_time) > 0 ? asNumber(special?.active_time) : undefined,
+        effectRange: asNumber(special?.effect_range) > 0 ? asNumber(special?.effect_range) : undefined,
+        womCost: asNumber(special?.mana_cost) > 0 ? asNumber(special?.mana_cost) : undefined,
+        miscastChance: asNumber(special?.miscast_chance) > 0 ? asNumber(special?.miscast_chance) * 100 : undefined,
+        minRange: asNumber(special?.min_range) > 0 ? asNumber(special?.min_range) : undefined,
+      },
+      bonuses,
+      additionalUiEffects,
+    },
+  };
+};
+
+export interface BuiltUnitViewerData {
+  groups: UnitViewerCatalogGroup[];
+  unitGroups: UnitViewerUiGroup[];
+  units: Map<string, UnitViewerUnitModel>;
+  constants: UnitViewerConstants;
+  iconPathsByUnit: Map<string, string[]>;
+  statIcons: Record<string, string>;
+  lordOptions: UnitViewerLordOption[];
+  characterExperience: UnitViewerCharacterExperienceData;
+}
+
+export const buildUnitViewerData = (
+  tables: UnitViewerTableRows,
+  getLoc: (key: string) => string | undefined,
+  originPackPathByUnit = new Map<string, string>(),
+): BuiltUnitViewerData => {
+  const landUnits = indexRows(tables.land_units_tables, "key");
+  const entities = indexRows(tables.battle_entities_tables, "key");
+  const mounts = indexRows(tables.mounts_tables, "key");
+  const engines = indexRows(tables.battlefield_engines_tables, "key");
+  const articulated = indexRows(tables.land_unit_articulated_vehicles_tables, "key");
+  const variants = indexRows(tables.variants_tables, "variant_name");
+  const armour = indexRows(tables.unit_armour_types_tables, "key");
+  const shields = indexRows(tables.unit_shield_types_tables, "key");
+  const meleeWeapons = indexRows(tables.melee_weapons_tables, "key");
+  const missileWeapons = indexRows(tables.missile_weapons_tables, "key");
+  const projectiles = indexRows(tables.projectiles_tables, "key");
+  const explosions = indexRows(tables.projectiles_explosions_tables, "key");
+  const factions = indexRows(tables.factions_tables, "key");
+  const agentSubtypes = indexRows(tables.agent_subtypes_tables, "key");
+  const agentSubtypeOverrides = groupRows(tables.agent_subtype_subculture_overrides_tables, "subtype");
+  const unitVariants = groupRows(tables.unit_variants_tables, "unit");
+  const unitVariantColours = groupRows(tables.unit_variants_colours_tables, "unit_variant");
+  const customBattleMountsByMountedUnit = groupRows(tables.units_custom_battle_mounts_tables, "mounted_unit");
+  const permissions = groupRows(tables.units_custom_battle_permissions_tables, "unit");
+  const directAbilities = groupRows(tables.land_units_to_unit_abilites_junctions_tables, "land_unit");
+  const attributesByGroup = groupRows(tables.unit_attributes_to_groups_junctions_tables, "attribute_group");
+  const abilityGroupsByUnit = groupRows(tables.special_ability_groups_to_units_junctions_tables, "unit");
+  const abilitiesByGroup = groupRows(
+    tables.special_ability_groups_to_unit_abilities_junctions_tables,
+    "special_ability_groups",
+  );
+  const abilities = indexRows(tables.unit_abilities_tables, "key");
+  const specialAbilities = indexRows(tables.unit_special_abilities_tables, "key");
+  const abilityPhases = groupRows(tables.special_ability_to_special_ability_phase_junctions_tables, "special_ability");
+  const phases = indexRows(tables.special_ability_phases_tables, "id");
+  const phaseStatEffects = new Map<string, Array<Record<string, string>>>();
+  for (const row of tables.special_ability_phase_stat_effects_tables || []) {
+    const phase = asString(row.phase);
+    const stat = asString(row.stat);
+    const how = asString(row.how);
+    if (!phase || !stat || !how) continue;
+    const effects = phaseStatEffects.get(phase) || [];
+    const existingIndex = effects.findIndex((effect) => asString(effect.stat) === stat && asString(effect.how) === how);
+    if (existingIndex >= 0) effects[existingIndex] = row;
+    else effects.push(row);
+    phaseStatEffects.set(phase, effects);
+  }
+  const additionalEffectsByAbility = groupRows(tables.unit_abilities_to_additional_ui_effects_juncs_tables, "ability");
+  const additionalEffects = indexRows(tables.unit_abilities_additional_ui_effects_tables, "key");
+  const groundEffectsByGroup = groupRows(tables.ground_type_to_stat_effects_tables, "affected_group");
+  const uiUnitStats = indexRows(tables.ui_unit_stats_tables, "key");
+  const uiUnitGroupings = indexRows(tables.ui_unit_groupings_tables, "key");
+  const uiUnitGroupParents = indexRows(tables.ui_unit_group_parents_tables, "key");
+
+  const experienceBonusRows = indexRows(tables.unit_experience_bonuses_tables, "stat");
+  const rankBonusRows = indexRows(tables.unit_stats_land_experience_bonuses_tables, "xp_level");
+  const usedStatIconKeys = new Set(UNIT_VIEWER_USED_STAT_ICON_KEYS);
+  for (const effects of phaseStatEffects.values()) {
+    for (const effect of effects) {
+      const stat = asString(effect.stat);
+      if (stat) usedStatIconKeys.add(stat);
+    }
+  }
+  const sizeScalingRows = new Map<string, Record<string, string>>();
+  for (const row of tables.unit_stat_to_size_scaling_values_tables || []) {
+    sizeScalingRows.set(`${asString(row.stat)}|${asString(row.size)}`, row);
+  }
+
+  const constants: UnitViewerConstants = {
+    experienceBonuses: Array.from(experienceBonusRows.values()).map((row) => ({
+      stat: asString(row.stat),
+      growthRate: asNumber(row.growth_rate),
+      growthScalar: asNumber(row.growth_scalar),
+    })),
+    rankBonuses: Array.from(rankBonusRows.values()).map((row) => ({
+      rank: asNumber(row.xp_level),
+      fatigueModifier: asNumber(row.fatigue),
+      multiplayerFixedCost: asNumber(row.mp_fixed_cost),
+      multiplayerCostMultiplier: asNumber(row.mp_experience_cost_multiplier) || 1,
+    })),
+    fatigueEffects: {},
+    fatigueMorale: {},
+    sizeScaling: Array.from(sizeScalingRows.values()).map((row) => ({
+      stat: asString(row.stat),
+      size: asString(row.size) as UnitViewerUnitSize,
+      singleEntityValue: asNumber(row.single_entity_value) || 1,
+      multiEntityValue: asNumber(row.multi_entity_value) || 1,
+    })),
+    statIconPaths: Object.fromEntries(
+      Array.from(uiUnitStats.values())
+        .map((row) => [asString(row.key), normalizeUiPath(asString(row.icon))] as const)
+        .filter(([key, iconPath]) => usedStatIconKeys.has(key) && !!iconPath),
+    ),
+  };
+  for (const row of tables.unit_fatigue_effects_tables || []) {
+    const fatigue = asString(row.fatigue_level) as UnitViewerFatigue;
+    constants.fatigueEffects[fatigue] ||= {};
+    constants.fatigueEffects[fatigue]![asString(row.stat)] = asNumber(row.value);
+  }
+  const moraleByKey = indexRows(tables._kv_morale_tables, "key");
+  for (const fatigue of [
+    "threshold_fresh",
+    "threshold_active",
+    "threshold_winded",
+    "threshold_tired",
+    "threshold_very_tired",
+    "threshold_exhausted",
+  ] as UnitViewerFatigue[]) {
+    const moraleKey = `ume_concerned_${fatigue.replace("threshold_", "")}`;
+    constants.fatigueMorale[fatigue] = asNumber(moraleByKey.get(moraleKey)?.value);
+  }
+
+  const units = new Map<string, UnitViewerUnitModel>();
+  const iconPathsByUnit = new Map<string, string[]>();
+  const subcultureToUnits = new Map<string, Set<string>>();
+  const uiGroupKeyByUnit = new Map<string, string>();
+  const collator = new Intl.Collator("en");
+
+  const mountNameByUnit = new Map<string, string>();
+  for (const [mountedUnit, mountRows] of customBattleMountsByMountedUnit) {
+    for (const row of mountRows) {
+      const baseUnit = asString(row.base_unit);
+      if (!baseUnit) continue;
+      const localizedMountName = getLoc(`units_custom_battle_mounts_mount_name_${baseUnit}${mountedUnit}`);
+      if (!localizedMountName) continue;
+      const mountName = resolveGameText(localizedMountName, getLoc);
+      if (mountName) mountNameByUnit.set(mountedUnit, mountName);
+    }
+  }
+
+  for (const main of indexRows(tables.main_units_tables, "unit").values()) {
+    const key = asString(main.unit);
+    const landUnitKey = asString(main.land_unit);
+    const land = landUnits.get(landUnitKey);
+    if (!key || !land) continue;
+    const baseEntity = toEntity(entities.get(asString(land.man_entity)));
+    if (!baseEntity) continue;
+    const mount = mounts.get(asString(land.mount));
+    const engine = engines.get(asString(land.engine));
+    const articulatedVehicle = articulated.get(asString(land.articulated_record));
+    const mountEntity = toEntity(entities.get(asString(mount?.entity)));
+    const engineEntity = toEntity(entities.get(asString(engine?.battle_entity)));
+    const articulatedEntity = toEntity(entities.get(asString(articulatedVehicle?.articulated_entity)));
+    const directAbilityKeys = (directAbilities.get(landUnitKey) || []).map((row) => asString(row.ability));
+    const spellGroupRows = [
+      ...(abilityGroupsByUnit.get(landUnitKey) || []),
+      ...(key === landUnitKey ? [] : abilityGroupsByUnit.get(key) || []),
+    ];
+    const spellAbilityKeys = spellGroupRows
+      .flatMap((row) => abilitiesByGroup.get(asString(row.ability_group)) || [])
+      .map((row) => asString(row.unit_special_abilities));
+    const unitAbilities = Array.from(new Set([...directAbilityKeys, ...spellAbilityKeys]))
+      .map((abilityKey) =>
+        buildAbility(
+          abilityKey,
+          spellAbilityKeys.includes(abilityKey),
+          abilities,
+          specialAbilities,
+          abilityPhases,
+          phases,
+          phaseStatEffects,
+          uiUnitStats,
+          additionalEffectsByAbility,
+          additionalEffects,
+          getLoc,
+        ),
+      )
+      .filter((ability): ability is UnitViewerAbility => !!ability)
+      .sort(
+        (first, second) =>
+          collator.compare(first.tooltip.name, second.tooltip.name) || collator.compare(first.key, second.key),
+      );
+    const attributeRows = attributesByGroup.get(asString(land.attribute_group)) || [];
+    const unitAttributes = attributeRows
+      .map((row) => {
+        const attributeKey = asString(row.attribute);
+        const localized = splitAttributeText(
+          getLoc(`unit_attributes_bullet_text_${attributeKey}`) || "",
+          attributeKey,
+          getLoc,
+        );
+        return {
+          key: attributeKey,
+          ...localized,
+          iconPath: normalizeIconPath(attributeKey)!,
+        };
+      })
+      .sort((first, second) => collator.compare(first.name, second.name) || collator.compare(first.key, second.key));
+    const variantRows = (unitVariants.get(landUnitKey) || []).toReversed();
+    const variant = variantRows.find((row) => !asString(row.faction)) || variantRows[0];
+    const variantName = asString(variant?.variant);
+    const variantDefinition = variants.get(variantName);
+    const unitCardName = asString(variant?.unit_card) || key;
+    const variantMeshPath =
+      toVariantMeshDefinitionPath(asString(variantDefinition?.variant_filename)) || undefined;
+    const availableVariantFactions = Array.from(
+      new Set([
+        ...(permissions.get(key) || []).map((permission) => asString(permission.faction)).filter(Boolean),
+        ...variantRows.map((row) => asString(row.faction)).filter(Boolean),
+      ]),
+    ).sort((first, second) => collator.compare(first, second));
+    const variantColourRows = unitVariantColours.get(landUnitKey) || [];
+    const previewSubcultures = new Set(
+      [
+        ...availableVariantFactions.map((faction) => asString(factions.get(faction)?.subculture)),
+        ...variantColourRows.map((row) => asString(row.subculture)),
+      ].filter(Boolean),
+    );
+    const factionColours = Array.from(factions.entries())
+      .flatMap(([faction, row]) => {
+        const subculture = asString(row.subculture);
+        if (
+          previewSubcultures.size > 0
+          && !previewSubcultures.has(subculture)
+          && !availableVariantFactions.includes(faction)
+        ) {
+          return [];
+        }
+        const primary = readFactionUniformColour(row, "uniform_colour_primary");
+        const secondary = readFactionUniformColour(row, "uniform_colour_secondary");
+        const tertiary = readFactionUniformColour(row, "uniform_colour_tertiary");
+        if (!primary || !secondary || !tertiary) return [];
+        return [{ faction, subculture, primary, secondary, tertiary }];
+      })
+      .sort((first, second) => collator.compare(first.faction, second.faction));
+    const variantColours = variantColourRows.flatMap((row) => {
+      const primary = readUnitVariantColour(row, "primary");
+      const secondary = readUnitVariantColour(row, "secondary");
+      const tertiary = readUnitVariantColour(row, "tertiary");
+      if (!primary || !secondary || !tertiary) return [];
+      return [{
+        faction: asString(row.faction),
+        subculture: asString(row.subculture),
+        soldierType: asString(row.soldier_type),
+        primary,
+        secondary,
+        tertiary,
+      }];
+    });
+    const painterVariantContext =
+      variant && variantName && variantDefinition
+        ? {
+            unitKey: landUnitKey,
+            faction: asString(variant.faction),
+            variantName,
+            unitVariantName: asString(variant.name),
+            unitCard: asString(variant.unit_card),
+            variantDetails: {
+              techFolder: asString(variantDefinition.tech_folder),
+              variantFilename: asString(variantDefinition.variant_filename),
+              lowPolyFilename: asString(variantDefinition.low_poly_filename),
+              mountScale: asString(variantDefinition.mount_scale),
+              scale: asString(variantDefinition.scale),
+              scaleVariation: asString(variantDefinition.scale_variation),
+              superLowPolyFilename: asString(variantDefinition.super_low_poly_filename),
+            },
+            availableFactions: availableVariantFactions,
+            ...(factionColours.length > 0 ? { factionColours } : {}),
+            ...(variantColours.length > 0 ? { unitVariantColours: variantColours } : {}),
+          }
+        : undefined;
+    const generalPortrait = (permissions.get(key) || [])
+      .toReversed()
+      .map((permission) => asString(permission.general_portrait))
+      .find(Boolean);
+    const unitCardPath = generalPortrait
+      ? generalPortrait
+          .replace(/\//g, "\\")
+          .replace(/portholes/gi, "units")
+          .toLowerCase()
+      : `ui\\units\\icons\\${unitCardName}.png`.toLowerCase();
+    const engineMissileKey = asString(engine?.missile_weapon);
+    const landMissileKey = asString(land.primary_missile_weapon);
+    const missileCandidates = [engineMissileKey, landMissileKey]
+      .filter((candidate, index, all) => !!candidate && all.indexOf(candidate) === index)
+      .map((candidate) => buildMissileWeapon(candidate, missileWeapons, projectiles, explosions))
+      .filter((candidate): candidate is UnitViewerMissileWeapon => !!candidate);
+    const primaryMissileWeapon = missileCandidates.find((candidate) => !candidate.useSecondaryAmmoPool);
+    const secondaryMissileWeapon = missileCandidates.find((candidate) => candidate.useSecondaryAmmoPool);
+
+    const model: UnitViewerUnitModel = {
+      key,
+      landUnitKey,
+      name: resolveGameText(getLoc(`land_units_onscreen_name_${landUnitKey}`) || key, getLoc),
+      mountName: mountNameByUnit.get(key),
+      caste: asString(main.caste),
+      category: asString(land.category),
+      numMen: asNumber(main.num_men),
+      multiplayerCost: asNumber(main.multiplayer_cost),
+      recruitmentCost: asNumber(main.recruitment_cost),
+      upkeepCost: asNumber(main.upkeep_cost),
+      barrierHealth: asNumber(main.barrier_health),
+      isRenown: asBool(main.is_renown),
+      isHighThreat: asBool(main.is_high_threat),
+      canSiege: asBool(main.can_siege),
+      canSkirmish: asBool(land.can_skirmish),
+      accuracy: asNumber(land.accuracy),
+      armour: asNumber(armour.get(asString(land.armour))?.armour_value),
+      shieldBlock: asNumber(
+        shields.get(asString(land.shield))?.missile_block_chance ?? shields.get(asString(land.shield))?.parry_chance,
+      ),
+      chargeBonus: asNumber(land.charge_bonus),
+      meleeAttack: asNumber(land.melee_attack),
+      meleeDefence: asNumber(land.melee_defence),
+      leadership: asNumber(land.morale),
+      bonusHitPoints: asNumber(land.bonus_hit_points),
+      numMounts: asNumber(land.num_mounts),
+      numEngines: asNumber(land.num_engines),
+      reload: asNumber(land.reload),
+      primaryAmmo: asNumber(land.primary_ammo),
+      secondaryAmmo: asNumber(land.secondary_ammo),
+      fireResistance: asNumber(land.damage_mod_flame),
+      magicResistance: asNumber(land.damage_mod_magic),
+      physicalResistance: asNumber(land.damage_mod_physical),
+      missileResistance: asNumber(land.damage_mod_missile),
+      wardSave: asNumber(land.damage_mod_all),
+      groundStatEffectGroup: asString(land.ground_stat_effect_group),
+      groundStatEffects: (groundEffectsByGroup.get(asString(land.ground_stat_effect_group)) || []).map((row) => ({
+        groundType: resolveGameText(
+          getLoc(`ground_types_onscreen_name_${asString(row.ground_type)}`) || asString(row.ground_type),
+          getLoc,
+        ),
+        stat: resolveGameText(
+          getLoc(`unit_stat_localisations_onscreen_name_${asString(row.affected_stat)}`) || asString(row.affected_stat),
+          getLoc,
+        ),
+        multiplier: asNumber(row.multiplier),
+      })),
+      baseEntity,
+      mountEntity,
+      engineEntity,
+      articulatedEntity,
+      meleeWeapon: toMeleeWeapon(meleeWeapons.get(asString(land.primary_melee_weapon))),
+      primaryMissileWeapon,
+      secondaryMissileWeapon,
+      unitCardPath,
+      variantMeshPath,
+      painterVariantContext,
+      attributes: unitAttributes,
+      abilities: unitAbilities,
+    };
+    units.set(key, model);
+    iconPathsByUnit.set(
+      key,
+      Array.from(
+        new Set(
+          [
+            ...unitAbilities.map((ability) => ability.tooltip.iconPath),
+            ...unitAttributes.map((attribute) => attribute.iconPath),
+          ].filter((path): path is string => !!path),
+        ),
+      ),
+    );
+
+    const parentGroupKey = asString(uiUnitGroupings.get(asString(main.ui_unit_group_land))?.parent_group);
+    uiGroupKeyByUnit.set(key, getUiGroupKey(model.caste, parentGroupKey, uiUnitGroupParents));
+
+    const subcultures = new Set<string>();
+    for (const permission of permissions.get(key) || []) {
+      const subculture = asString(factions.get(asString(permission.faction))?.subculture);
+      if (subculture) subcultures.add(subculture);
+    }
+    if (subcultures.size === 0) subcultures.add("__unassigned");
+    for (const subculture of subcultures) {
+      const unitKeys = subcultureToUnits.get(subculture) || new Set<string>();
+      unitKeys.add(key);
+      subcultureToUnits.set(subculture, unitKeys);
+    }
+  }
+
+  const unitGroups: UnitViewerUiGroup[] = Array.from(new Set(uiGroupKeyByUnit.values()))
+    .map((key) => ({
+      key,
+      name:
+        key === EXTENDED_ROSTER_GROUP_KEY && !uiUnitGroupParents.has(key)
+          ? "Extended Roster"
+          : resolveGameText(getLoc(`ui_unit_group_parents_onscreen_name_${key}`) || key, getLoc),
+      order: asNumber(uiUnitGroupParents.get(key)?.order),
+    }))
+    .sort((first, second) => {
+      const extendedFirst = first.key === EXTENDED_ROSTER_GROUP_KEY ? 1 : 0;
+      const extendedSecond = second.key === EXTENDED_ROSTER_GROUP_KEY ? 1 : 0;
+      const fallbackFirst = UI_UNIT_GROUP_FALLBACK_ORDER.indexOf(first.key);
+      const fallbackSecond = UI_UNIT_GROUP_FALLBACK_ORDER.indexOf(second.key);
+      return (
+        extendedFirst - extendedSecond ||
+        first.order - second.order ||
+        (fallbackFirst < 0 ? UI_UNIT_GROUP_FALLBACK_ORDER.length : fallbackFirst) -
+          (fallbackSecond < 0 ? UI_UNIT_GROUP_FALLBACK_ORDER.length : fallbackSecond) ||
+        collator.compare(first.name, second.name)
+      );
+    });
+
+  const groups: UnitViewerCatalogGroup[] = Array.from(subcultureToUnits.entries())
+    .map(([key, unitKeys]) => ({
+      key,
+      name:
+        key === "__unassigned"
+          ? "Unassigned"
+          : resolveGameText(getLoc(`cultures_subcultures_name_${key}`) || key, getLoc),
+      units: Array.from(unitKeys)
+        .map((unitKey) => units.get(unitKey)!)
+        .filter(Boolean)
+        .map((unit) => ({
+          key: unit.key,
+          name: unit.name,
+          mountName: unit.mountName,
+          category: unit.category,
+          caste: unit.caste,
+          subcultureKeys: Array.from(subcultureToUnits.entries())
+            .filter(([, keys]) => keys.has(unit.key))
+            .map(([subculture]) => subculture),
+          uiGroupKey: uiGroupKeyByUnit.get(unit.key) || EXTENDED_ROSTER_GROUP_KEY,
+          unitCardPath: unit.unitCardPath,
+          variantMeshPath: unit.variantMeshPath,
+          originPackPath: originPackPathByUnit.get(unit.key),
+        }))
+        .sort(
+          (first, second) =>
+            getCasteSortOrder(first.caste) - getCasteSortOrder(second.caste) ||
+            collator.compare(first.name, second.name) ||
+            collator.compare(first.key, second.key),
+        ),
+    }))
+    .sort((first, second) => {
+      if (first.key === "__unassigned") return 1;
+      if (second.key === "__unassigned") return -1;
+      return collator.compare(first.name, second.name);
+    });
+
+  const lordOptions: UnitViewerLordOption[] = [];
+  for (const [subtype, row] of agentSubtypes) {
+    const baseAssociatedUnit = asString(row.associated_unit_override);
+    const overrideRows = agentSubtypeOverrides.get(subtype) || [];
+    const associatedUnitBySubculture: Record<string, string> = {};
+    for (const override of overrideRows) {
+      const subculture = asString(override.subculture);
+      const associatedUnit = asString(override.associated_unit_override);
+      if (subculture && associatedUnit && units.get(associatedUnit)?.caste.toLowerCase() === "lord") {
+        associatedUnitBySubculture[subculture] = associatedUnit;
+      }
+    }
+    const associatedUnits = [baseAssociatedUnit, ...Object.values(associatedUnitBySubculture)].filter(Boolean);
+    const associatedUnit = associatedUnits.find((unitKey) => units.get(unitKey)?.caste.toLowerCase() === "lord");
+    if (!associatedUnit) continue;
+    const subcultureKeys = [
+      ...Object.keys(associatedUnitBySubculture),
+      ...Array.from(subcultureToUnits.entries())
+        .filter(([, unitKeys]) => associatedUnits.some((unitKey) => unitKeys.has(unitKey)))
+        .map(([subculture]) => subculture),
+    ];
+    lordOptions.push({
+      subtype,
+      name: resolveGameText(
+        getLoc(`agent_subtypes_onscreen_name_override_${subtype}`) ||
+          getLoc(`agent_subtypes_onscreen_name_${subtype}`) ||
+          subtype,
+        getLoc,
+      ),
+      associatedUnit,
+      subcultureKeys: [...new Set(subcultureKeys)],
+      ...(Object.keys(associatedUnitBySubculture).length > 0 ? { associatedUnitBySubculture } : {}),
+    });
+  }
+  lordOptions.sort(
+    (first, second) => collator.compare(first.name, second.name) || collator.compare(first.subtype, second.subtype),
+  );
+
+  return {
+    groups,
+    unitGroups,
+    units,
+    constants,
+    iconPathsByUnit,
+    statIcons: {},
+    lordOptions,
+    characterExperience: effectiveCharacterExperienceData(tables),
+  };
+};

@@ -55,6 +55,12 @@ export interface Pack {
   readTables: string[] | "all";
 }
 
+/** Lightweight provenance carried through flow results instead of the complete pack index. */
+export interface PackSource {
+  name: string;
+  path: string;
+}
+
 export interface PackFileCollision {
   firstPackName: string;
   secondPackName: string;
@@ -146,29 +152,10 @@ export interface PackCollisions {
 }
 
 export type SCHEMA_FIELD_TYPE =
-  | "Boolean"
-  | "OptionalStringU8"
-  | "StringU8"
-  | "F32"
-  | "I16"
-  | "I32"
-  | "I64"
-  | "F64"
-  | "ColourRGB"
-  | "StringU16";
+  "Boolean" | "OptionalStringU8" | "StringU8" | "F32" | "I16" | "I32" | "I64" | "F64" | "ColourRGB" | "StringU16";
 
-export type FIELD_TYPE =
-  | "Int16"
-  | "Int8"
-  | "UInt8"
-  | "String"
-  | "Buffer"
-  | "F32"
-  | "I32"
-  | "I16"
-  | "I64"
-  | "F64";
-export type FIELD_VALUE = number | string | Buffer | undefined;
+export type FIELD_TYPE = "Int16" | "Int8" | "UInt8" | "String" | "Buffer" | "F32" | "I32" | "I16" | "I64" | "F64";
+export type FIELD_VALUE = number | string | Buffer | number[] | undefined;
 
 export interface Field {
   type: FIELD_TYPE;
@@ -190,7 +177,7 @@ export interface DBField {
   is_filename: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   filename_relative_path?: any;
-  is_reference: string[];
+  is_reference: string[] | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   lookup?: any;
   description: string;

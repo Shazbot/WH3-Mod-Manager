@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 
 type DrawerProps = {
   children: React.ReactNode;
@@ -7,8 +7,22 @@ type DrawerProps = {
 };
 
 export default function Drawer({ children, isOpen, setIsOpen }: DrawerProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setIsOpen(false);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, setIsOpen]);
+
   return (
     <main
+      aria-hidden={!isOpen}
       className={
         " fixed overflow-hidden z-50 bg-gray-900 bg-opacity-25 inset-0 transform ease-in-out " +
         (isOpen

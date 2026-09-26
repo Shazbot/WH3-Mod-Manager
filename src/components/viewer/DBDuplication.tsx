@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppSelector } from "@/src/hooks";
 import { FaSquare, FaCheckSquare, FaMinusSquare, FaArrowRight } from "react-icons/fa";
 import { IoMdArrowDropright } from "react-icons/io";
@@ -6,23 +6,33 @@ import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-acce
 import cx from "classnames";
 import "./DBDuplicationStyles.css";
 import { IconBaseProps } from "react-icons";
-import { chunkTableIntoRows, findNodeInTree } from "./viewerHelpers";
+import { chunkTableIntoRows } from "./viewerHelpers";
 import { packDataStore } from "./packDataStore";
 import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
 import { Spinner } from "flowbite-react";
 import { FloatingOverlay } from "@floating-ui/react";
 import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
+import DBCloneRenameInput from "./DBCloneRenameInput";
+import {
+  BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
+  BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES,
+  filterDBCloneRedundantIndirectReferences,
+  getDBCloneAutoSelectedParentNames,
+  getDBCloneExpandedNodeNamesForSelection,
+  getDBCloneInitialSelectedNodeNames,
+} from "./dbCloneSelection";
+import type { PackedFile } from "../../packFileTypes";
+import { applyDBCloneGlobalKey, getDBCloneGlobalKey, normalizeDBCloneModdersPrefix } from "./dbCloneGlobalKey";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
     tree: IViewerTreeNodeWithData | IViewerTreeNode,
-    acc: (IViewerTreeNodeWithData | IViewerTreeNode)[]
+    acc: (IViewerTreeNodeWithData | IViewerTreeNode)[],
   ) => {
     acc.push(tree);
     if (tree.children) {
       for (const child of tree.children) {
-        acc.push(child);
         getAllNodesInTreeIter(child, acc);
       }
     }
@@ -31,31 +41,80 @@ const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   return getAllNodesInTreeIter(tree, []);
 };
 
-const getAllRefsFromTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
-  const nodes = getAllNodesInTree(tree);
-  return nodes
-    .map((node) => node as IViewerTreeNodeWithData)
-    .map((node) => [node.tableName, node.columnName, node.value] as DBCell);
-};
-
-const getDBCellKey = (tableName: string, columnName: string, value: string) => `${tableName}|${columnName}|${value}`;
-
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 
-const DBDuplication = memo(() => {
+const DBCloneOperationOverlay = ({
+  statusText,
+  cancelLabel,
+  onCancel,
+}: {
+  statusText: string;
+  cancelLabel: string;
+  onCancel?: () => void;
+}) => (
+  <MemoizedFloatingOverlay
+    className="absolute h-full w-full z-50 dark flex justify-center bg-black opacity-25"
+    id="DBDuplicationOverlay"
+  >
+    <div className="self-center text-center flex flex-col items-center gap-4 bg-gray-900/80 px-6 py-5 rounded-xl">
+      <div className="scale-[2] self-center">
+        <Spinner color="purple" size="xl" />
+      </div>
+      <div className="text-white text-sm max-w-[520px]">{statusText}</div>
+      {onCancel && (
+        <button
+          className="bg-red-700 border-red-500 border-2 hover:bg-red-800 text-white font-medium text-sm px-4 rounded h-8"
+          onClick={onCancel}
+        >
+          {cancelLabel}
+        </button>
+      )}
+    </div>
+  </MemoizedFloatingOverlay>
+);
+
+export type DBDuplicationLaunchSource = "modsViewer" | "buildings" | "ancillaries";
+
+/**
+ * Launch sources that keep a pending-row store of their own, so the generated rows can be added to
+ * that panel. The Mods Viewer has none and only offers "Save to pack".
+ */
+const SOURCES_WITH_PENDING_ROWS: DBDuplicationLaunchSource[] = ["buildings", "ancillaries"];
+
+export type DBDuplicationProps = {
+  launchSource: DBDuplicationLaunchSource;
+  /** Receives the generated rows when the user adds them to the target panel. */
+  onSaveToBuildings?: (packedFiles: PackedFile[]) => void;
+};
+
+const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationProps) => {
+  const localized = useLocalizations();
+  const canSaveToMemory = SOURCES_WITH_PENDING_ROWS.includes(launchSource);
+  const memoryTargetName =
+    launchSource === "ancillaries"
+      ? localized.viewerAncillaries || "Ancillaries"
+      : localized.viewerBuildings || "Buildings";
+  const memoryActionLabel = canSaveToMemory
+    ? (localized.viewerAddToPanel || "Add to {{name}} panel").replace("{{name}}", memoryTargetName)
+    : localized.viewerSaveToMemory || "Save to memory";
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   // important to reload the component
   useAppSelector((state) => state.app.referencesHash);
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
+  const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const packPath = currentDBTableSelection?.packPath ?? "db.pack";
 
   const [selectedNodesByName, setSelectedNodesByName] = useState<string[]>([]);
   const [expandedNodesByName, setExpandedNodesByName] = useState<string[]>([]);
   const [nodeNameToRenameValue, setNodeNameToRenameValue] = useState<Record<string, string>>({});
+  const [globalRenameValue, setGlobalRenameValue] = useState("");
+  const [appendModdersPrefix, setAppendModdersPrefix] = useState(true);
+  const [hideRepeatedIndirectTables, setHideRepeatedIndirectTables] = useState(true);
   const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const [pendingOperations, setPendingOperations] = useState(0);
   const [isAppendSave, setIsAppendSave] = useState<boolean>(false);
+  const [openInWindows, setOpenInWindows] = useState<boolean>(false);
   const [savePackedFileName, setSavePackedFileName] = useState<string>("");
   const [savePackFileName, setSavePackFileName] = useState<string>("");
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
@@ -65,27 +124,28 @@ const DBDuplication = memo(() => {
   const [duplicationSuccessMessage, setDuplicationSuccessMessage] = useState<string>("");
   const [duplicationProgress, setDuplicationProgress] = useState<DBDuplicationProgress | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const loadedIndirectNodeNames = useRef<Set<string>>(new Set());
-  const allRefsLookup = useRef<Set<string>>(new Set());
-  const allRefsList = useRef<DBCell[]>([]);
   const isProgressSubscribed = useRef(false);
-  const pendingOperations = useRef(0);
+  const treeBuildRequestId = useRef(0);
 
-  const localized = useLocalizations();
+  const displayedTreeData = useMemo(
+    () => (treeData && hideRepeatedIndirectTables ? filterDBCloneRedundantIndirectReferences(treeData) : treeData),
+    [hideRepeatedIndirectTables, treeData],
+  );
+
+  useEffect(() => {
+    if (!hideRepeatedIndirectTables || !displayedTreeData) return;
+    const visibleNodeNames = new Set(getAllNodesInTree(displayedTreeData).map((node) => node.name));
+    setSelectedNodesByName((selectedNames) => selectedNames.filter((nodeName) => visibleNodeNames.has(nodeName)));
+    setExpandedNodesByName((expandedNames) => expandedNames.filter((nodeName) => visibleNodeNames.has(nodeName)));
+  }, [displayedTreeData, hideRepeatedIndirectTables]);
 
   const beginOverlayOperation = () => {
-    pendingOperations.current += 1;
-    if (overlayRef.current) overlayRef.current.style.visibility = "visible";
+    setPendingOperations((current) => current + 1);
   };
 
   const endOverlayOperation = () => {
-    pendingOperations.current = Math.max(0, pendingOperations.current - 1);
-    if (pendingOperations.current == 0 && overlayRef.current) overlayRef.current.style.visibility = "hidden";
+    setPendingOperations((current) => Math.max(0, current - 1));
   };
-
-  useEffect(() => {
-    if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
-  }, []);
 
   useEffect(() => {
     if (!window.api || isProgressSubscribed.current) return;
@@ -99,77 +159,20 @@ const DBDuplication = memo(() => {
     });
   }, []);
 
-  const resetRefsCache = () => {
-    allRefsLookup.current = new Set();
-    allRefsList.current = [];
-  };
-
-  const rebuildRefsCacheFromTree = (nextTreeData: IViewerTreeNodeWithData) => {
-    const refs = getAllRefsFromTree(nextTreeData);
-    allRefsList.current = refs;
-    allRefsLookup.current = new Set(refs.map(([tableName, columnName, value]) => getDBCellKey(tableName, columnName, value)));
-  };
-
-  const addRefToCache = (node: IViewerTreeNodeWithData) => {
-    const key = getDBCellKey(node.tableName, node.columnName, node.value);
-    if (allRefsLookup.current.has(key)) return false;
-    allRefsLookup.current.add(key);
-    allRefsList.current.push([node.tableName, node.columnName, node.value]);
-    return true;
-  };
-
-  const getIndirectReferences = async (nodeName: string, treeData: IViewerTreeNodeWithData) => {
-    if (loadedIndirectNodeNames.current.has(nodeName)) return;
-
-    const selectedNode = findNodeInTree(treeData, nodeName) as IViewerTreeNodeWithData | undefined;
-    if (!selectedNode) return;
-
-    try {
-      beginOverlayOperation();
-
-      const indirectRefsResult = await window.api?.buildDBIndirectReferences(
-        packPath,
-        selectedNode,
-        allRefsList.current,
-      );
-
-      loadedIndirectNodeNames.current.add(nodeName);
-
-      if (indirectRefsResult) {
-        console.log("Indirect references received:", indirectRefsResult);
-        const targetNode = findNodeInTree(treeData, nodeName) as IViewerTreeNodeWithData | undefined;
-        if (targetNode) {
-          let hasAddedAnyNode = false;
-          for (const indirectNode of indirectRefsResult) {
-            if (!targetNode.children.some((existingChild) => existingChild.name === indirectNode.name)) {
-              targetNode.children.push(indirectNode);
-              addRefToCache(indirectNode);
-              hasAddedAnyNode = true;
-            }
-          }
-          if (hasAddedAnyNode) {
-            setTreeData({ ...treeData });
-          }
-        }
-      } else {
-        console.log("ERROR: no indirectRefsResult");
-      }
-    } catch (error) {
-      console.error("Failed to get indirect references:", error);
-    } finally {
-      endOverlayOperation();
-    }
-  };
-
   // Fetch tree data from backend
   useEffect(() => {
     if (!currentDBTableSelection || !deepCloneTarget) return;
 
+    const requestId = ++treeBuildRequestId.current;
+    let isCurrentRequest = true;
+    setTreeData(null);
+    setSelectedNodesByName([]);
+    setExpandedNodesByName([]);
+
     const buildTree = async () => {
       try {
         beginOverlayOperation();
-        loadedIndirectNodeNames.current = new Set();
-        resetRefsCache();
+        setDuplicationError("");
         const treeNodeResult = await window.api?.buildDBReferenceTree(
           packPath,
           {
@@ -178,10 +181,12 @@ const DBDuplication = memo(() => {
             packPath: currentDBTableSelection.packPath,
           } as DBTableSelection,
           deepCloneTarget,
-          treeData ? getAllRefsFromTree(treeData) : [],
           [],
-          treeData ?? undefined
+          [],
+          undefined,
         );
+
+        if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
 
         if (treeNodeResult) {
           console.log("buildDBReferenceTree RECIEVED", treeNodeResult);
@@ -190,32 +195,39 @@ const DBDuplication = memo(() => {
             currentDBTableSelection,
             "deepCloneTarget:",
             deepCloneTarget,
-            "selectedNodesByName:",
-            selectedNodesByName,
             "packPath:",
-            packPath
+            packPath,
           );
           setTreeData(treeNodeResult);
-          rebuildRefsCacheFromTree(treeNodeResult);
           setNodeNameToRenameValue({});
-          if (treeNodeResult.children.length > 0) {
-            const rootNodeName = treeNodeResult.children[0].name;
-            setSelectedNodesByName([rootNodeName]);
-            setExpandedNodesByName([rootNodeName]);
-          } else {
-            setSelectedNodesByName([]);
-            setExpandedNodesByName([]);
-          }
+          const preselectedTables =
+            launchSource == "buildings" && currentDBTableSelection.dbName == "building_culture_variants_tables"
+              ? BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES
+              : [];
+          const preselectedNodeNames = getDBCloneInitialSelectedNodeNames(
+            treeNodeResult,
+            preselectedTables,
+            BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
+          );
+          setSelectedNodesByName(preselectedNodeNames);
+          setExpandedNodesByName(getDBCloneExpandedNodeNamesForSelection(treeNodeResult, preselectedNodeNames));
+        } else {
+          setDuplicationError(localized.viewerDbCloneBuildFailed || "DB Clone could not build the reference tree.");
         }
       } catch (error) {
+        if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
         console.error("Failed to build reference tree:", error);
+        setDuplicationError(error instanceof Error ? error.message : String(error));
       } finally {
         endOverlayOperation();
       }
     };
 
     buildTree();
-  }, [currentDBTableSelection, deepCloneTarget, packPath]);
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [currentDBTableSelection, deepCloneTarget, launchSource, localized, packPath]);
   // }, [currentDBTableSelection, deepCloneTarget, selectedNodesByName, packPath]);
 
   if (!currentDBTableSelection) {
@@ -281,7 +293,7 @@ const DBDuplication = memo(() => {
     "packDataStore:",
     packDataStore[packData.packPath]?.packedFiles
       ?.filter((pf) => pf.name.startsWith("db\\") && pf.schemaFields)
-      .map((pf) => pf.name)
+      .map((pf) => pf.name),
   );
 
   const rootNode = {
@@ -289,9 +301,26 @@ const DBDuplication = memo(() => {
     children: [],
   } as ITreeNode;
 
-  if (!treeData) return <></>;
+  if (!treeData || !displayedTreeData) {
+    if (duplicationError) {
+      return (
+        <div className="m-8 rounded border border-red-600 bg-red-950/50 p-4 text-red-100" role="alert">
+          {(localized.viewerDbCloneLoadFailed || "Failed to load DB Clone references: {{error}}").replace(
+            "{{error}}",
+            duplicationError,
+          )}
+        </div>
+      );
+    }
+    return (
+      <DBCloneOperationOverlay
+        statusText={localized.viewerLoadingReferences || "Loading references..."}
+        cancelLabel={localized.cancel || "Cancel"}
+      />
+    );
+  }
 
-  const data = flattenTree(treeData);
+  const data = flattenTree(displayedTreeData);
   const nodeById = new Map<INode["id"], INode>();
   const nodeIdsByName = new Map<string, INode["id"][]>();
   for (const node of data) {
@@ -306,7 +335,7 @@ const DBDuplication = memo(() => {
     return nodeById.get(ids[0]);
   };
   const nodeNameToData = {} as Record<string, IViewerTreeNodeWithData>;
-  for (const node of getAllNodesInTree(treeData)) {
+  for (const node of getAllNodesInTree(displayedTreeData)) {
     const currentNode = node as IViewerTreeNodeWithData;
     nodeNameToData[currentNode.name] = currentNode;
   }
@@ -325,12 +354,15 @@ const DBDuplication = memo(() => {
   console.log("SELECTED NODES ARE", selectedNodesByName);
   console.log("EXPANDED NODES ARE", expandedNodesByName);
 
-  const rootNodeName = (treeData.children[0] as IViewerTreeNodeWithData | undefined)?.name ?? rootNode.name;
+  const rootNodeName = (displayedTreeData.children[0] as IViewerTreeNodeWithData | undefined)?.name ?? rootNode.name;
 
-  const defaultNodeNameToRenameValue = data.reduce((acc, current) => {
-    acc[current.name] = (nodeNameToDataLookup[current.name] && nodeNameToDataLookup[current.name].value) || "";
-    return acc;
-  }, {} as Record<string, string>);
+  const defaultNodeNameToRenameValue = data.reduce(
+    (acc, current) => {
+      acc[current.name] = (nodeNameToDataLookup[current.name] && nodeNameToDataLookup[current.name].value) || "";
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
 
   console.log("tryign to amend", rows[deepCloneTarget.row][deepCloneTarget.col]);
 
@@ -364,7 +396,7 @@ const DBDuplication = memo(() => {
     for (const nodeName of [...newselectedNodesByName]) {
       const node = getFirstNodeByName(nodeName);
       if (node) {
-        const parentNodesNames = getParentNodeNames([], node);
+        const parentNodesNames = getDBCloneAutoSelectedParentNames(getParentNodeNames([], node), nodeNameToDataLookup);
         for (const parentNodeName of parentNodesNames) {
           if (!newselectedNodesByName.includes(parentNodeName)) newselectedNodesByName.push(parentNodeName);
         }
@@ -383,7 +415,6 @@ const DBDuplication = memo(() => {
     //   .map((id) => data.find((node) => node.id == id)?.name)
     //   .filter((name): name is string => !!name);
 
-    const isExpanding = !expandedNodesByName.includes(currentName);
     let newExpandedNodesByName = [...expandedNodesByName];
     if (expandedNodesByName.includes(currentName))
       newExpandedNodesByName = newExpandedNodesByName.filter((name) => name != currentName);
@@ -400,30 +431,12 @@ const DBDuplication = memo(() => {
     }
 
     setExpandedNodesByName(newExpandedNodesByName);
-    if (isExpanding) {
-      void getIndirectReferences(currentName, treeData);
-    }
   };
 
-  const ensureNodeExpanded = (nodeName: string) => {
-    if (isSaving) return;
-    const newExpandedNodesByName = [...expandedNodesByName];
-    if (!newExpandedNodesByName.includes(nodeName)) {
-      newExpandedNodesByName.push(nodeName);
-    }
-
-    for (const expandedNodeName of [...newExpandedNodesByName]) {
-      const node = getFirstNodeByName(expandedNodeName);
-      if (node) {
-        const parentNodesNames = getParentNodeNames([], node);
-        for (const parentNodeName of parentNodesNames) {
-          if (!newExpandedNodesByName.includes(parentNodeName)) newExpandedNodesByName.push(parentNodeName);
-        }
-      }
-    }
-
-    setExpandedNodesByName(newExpandedNodesByName);
-    void getIndirectReferences(nodeName, treeData);
+  const ensureNodesExpanded = (nodeNames: string[]) => {
+    if (isSaving || !displayedTreeData) return;
+    const requiredExpandedNames = getDBCloneExpandedNodeNamesForSelection(displayedTreeData, nodeNames);
+    setExpandedNodesByName((currentNames) => [...new Set([...currentNames, ...requiredExpandedNames])]);
   };
 
   const onNodeToggled = (nodeName: string) => {
@@ -434,14 +447,13 @@ const DBDuplication = memo(() => {
 
     const isSelecting = !selectedNodesByName.includes(currentName);
     let newselectedNodesByName = [...selectedNodesByName];
-    if (!isSelecting)
-      newselectedNodesByName = newselectedNodesByName.filter((name) => name != currentName);
+    if (!isSelecting) newselectedNodesByName = newselectedNodesByName.filter((name) => name != currentName);
     else newselectedNodesByName.push(currentName);
 
     for (const nodeName of [...newselectedNodesByName]) {
       const node = getFirstNodeByName(nodeName);
       if (node) {
-        const parentNodesNames = getParentNodeNames([], node);
+        const parentNodesNames = getDBCloneAutoSelectedParentNames(getParentNodeNames([], node), nodeNameToDataLookup);
         for (const parentNodeName of parentNodesNames) {
           if (!newselectedNodesByName.includes(parentNodeName)) newselectedNodesByName.push(parentNodeName);
         }
@@ -454,7 +466,7 @@ const DBDuplication = memo(() => {
     console.log("SELECTED NODES ARE NOW:", newselectedNodesByName);
     setSelectedNodesByName(newselectedNodesByName);
     if (isSelecting) {
-      ensureNodeExpanded(currentName);
+      ensureNodesExpanded([currentName]);
     }
   };
 
@@ -468,23 +480,10 @@ const DBDuplication = memo(() => {
 
   console.log("expandedIds:", expandedIds);
 
-  const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>, nodeName: string) => {
+  const onFilterChange = (value: string, nodeName: string) => {
     if (isSaving) return;
-    console.log("textbox change:", e.target.value, nodeName);
-    setNodeNameToRenameValue((prev) => ({ ...prev, [nodeName]: e.target.value }));
-    e.stopPropagation();
-    e.preventDefault();
-  };
-
-  const onFocusChange = (e: React.FocusEvent<HTMLInputElement, Element>, node: INode) => {
-    // console.log("new focus:", e.relatedTarget?.tagName);
-    // if (e.relatedTarget?.tagName == "INPUT") return;
-    // e.target.focus();
-  };
-
-  const onInputClick = (e: React.MouseEvent<HTMLInputElement, MouseEvent>): void => {
-    e.stopPropagation();
-    e.preventDefault();
+    console.log("textbox change:", value, nodeName);
+    setNodeNameToRenameValue((prev) => ({ ...prev, [nodeName]: value }));
   };
 
   const needsWarningBorder = (nodeName: string) => {
@@ -492,17 +491,31 @@ const DBDuplication = memo(() => {
     if (nodeNameToDataLookup[nodeName]?.isIndirectRef) return false;
 
     return (
-      !nodeNameToRenameValue[nodeName] ||
-      nodeNameToRenameValue[nodeName] == defaultNodeNameToRenameValue[nodeName]
+      !nodeNameToRenameValue[nodeName] || nodeNameToRenameValue[nodeName] == defaultNodeNameToRenameValue[nodeName]
     );
   };
 
+  const hasGlobalRenameValue = globalRenameValue.trim() !== "";
+  const normalizedModdersPrefix = normalizeDBCloneModdersPrefix(moddersPrefix);
+  const effectiveGlobalRenameValue = getDBCloneGlobalKey(
+    globalRenameValue,
+    normalizedModdersPrefix,
+    appendModdersPrefix,
+  );
+
   const isSavingPossible = () => {
     const selectedDirectNodes = selectedNodesByName.filter(
-      (nodeName) => nodeNameToDataLookup[nodeName] && !nodeNameToDataLookup[nodeName].isIndirectRef
+      (nodeName) => nodeNameToDataLookup[nodeName] && !nodeNameToDataLookup[nodeName].isIndirectRef,
     );
 
     if (selectedDirectNodes.length < 1) return false;
+
+    if (hasGlobalRenameValue) {
+      if (!effectiveGlobalRenameValue) return false;
+      return selectedDirectNodes.every(
+        (nodeName) => effectiveGlobalRenameValue !== nodeNameToDataLookup[nodeName]?.value,
+      );
+    }
 
     for (const nodeName of selectedDirectNodes) {
       const newValue =
@@ -518,16 +531,16 @@ const DBDuplication = memo(() => {
   };
 
   const getProgressLabel = (progress: DBDuplicationProgress | null) => {
-    if (!progress) return "Working...";
+    if (!progress) return localized.viewerWorking || "Working...";
     const stageToLabel = {
-      validating: "Validating",
-      discovering_indirect: "Discovering indirect refs",
-      cloning: "Cloning rows",
-      localizing: "Generating localization",
-      writing: "Writing pack",
-      done: "Done",
-      error: "Error",
-      canceled: "Canceled",
+      validating: localized.viewerValidating || "Validating",
+      discovering_indirect: localized.viewerDiscoveringIndirectRefs || "Discovering indirect refs",
+      cloning: localized.viewerCloningRows || "Cloning rows",
+      localizing: localized.viewerGeneratingLocalization || "Generating localization",
+      writing: localized.viewerWritingPack || "Writing pack",
+      done: localized.viewerDone || "Done",
+      error: localized.viewerErrorStatus || "Error",
+      canceled: localized.viewerCanceled || "Canceled",
     } as Record<DBDuplicationStage, string>;
 
     const stageLabel = stageToLabel[progress.stage] ?? progress.stage;
@@ -544,13 +557,15 @@ const DBDuplication = memo(() => {
     window.api?.cancelDBDuplication();
     setDuplicationProgress({
       stage: "canceled",
-      message: "Cancel requested",
+      message: localized.viewerCancelRequested || "Cancel requested",
     });
   };
 
-  const overlayStatusText = isSaving ? getProgressLabel(duplicationProgress) : "Loading references...";
+  const overlayStatusText = isSaving
+    ? getProgressLabel(duplicationProgress)
+    : localized.viewerLoadingReferences || "Loading references...";
 
-  const onSave = async () => {
+  const onSave = async (destination: DBCloneSaveOptions["destination"]) => {
     console.log("SAVING");
 
     // const selecedNodesWithRootNode = [...selectedNodesByName, rootNode.name];
@@ -563,6 +578,14 @@ const DBDuplication = memo(() => {
     const selectedNodeNames = selectedNodesByName.includes(rootNodeName)
       ? selectedNodesByName
       : [rootNodeName, ...selectedNodesByName];
+    const renameValuesForSave = hasGlobalRenameValue
+      ? applyDBCloneGlobalKey(
+          nodeNameToRenameValue,
+          selectedNodeNames,
+          nodeNameToDataLookup,
+          effectiveGlobalRenameValue,
+        )
+      : nodeNameToRenameValue;
 
     try {
       beginOverlayOperation();
@@ -573,29 +596,60 @@ const DBDuplication = memo(() => {
       setIsSuccessOpen(false);
       setDuplicationProgress({
         stage: "validating",
-        message: "Starting clone",
+        message: localized.viewerStartingClone || "Starting clone",
       });
       const result = await window.api?.executeDBDuplication(
         packData.packPath,
         selectedNodeNames,
         nodeNameToDataLookup,
-        nodeNameToRenameValue,
+        renameValuesForSave,
         defaultNodeNameToRenameValue,
         treeData,
-        { isAppendSave, savePackedFileName, savePackFileName }
+        { isAppendSave, savePackedFileName, savePackFileName, destination },
       );
 
       if (!result?.ok) {
-        console.error("executeDBDuplication failed:", result?.error ?? "Unknown error");
-        setDuplicationError(result?.error ?? "Unknown duplication error");
+        console.error(
+          "executeDBDuplication failed:",
+          result?.error ?? (localized.viewerUnknownError || "Unknown error"),
+        );
+        setDuplicationError(result?.error ?? (localized.viewerUnknownDuplicationError || "Unknown duplication error"));
         setIsErrorOpen(true);
+      } else if (destination == "memory") {
+        if (!result.generatedPackedFiles) {
+          setDuplicationError(
+            localized.viewerCloneMissingRows || "DB Clone completed without returning any generated rows.",
+          );
+          setIsErrorOpen(true);
+          return;
+        }
+        if (!onSaveToBuildings) {
+          setDuplicationError(
+            (
+              localized.viewerCloneMemoryTargetUnavailable ||
+              "The {{name}} tab is not available to receive the generated rows."
+            ).replace("{{name}}", memoryTargetName),
+          );
+          setIsErrorOpen(true);
+          return;
+        }
+        onSaveToBuildings(result.generatedPackedFiles);
       } else {
         console.log("executeDBDuplication success, output:", result.outputPackPath);
+        if (openInWindows && result.outputPackPath) {
+          window.api?.openPack(result.outputPackPath);
+        }
         setDuplicationSuccessMessage(
-          result.outputPackPath ? `Created pack:\n${result.outputPackPath}` : "Clone completed successfully."
+          result.outputPackPath
+            ? (localized.viewerCreatedPack || "Created pack:\n{{path}}").replace("{{path}}", result.outputPackPath)
+            : localized.viewerCloneCompleted || "Clone completed successfully.",
         );
         setIsSuccessOpen(true);
       }
+    } catch (error) {
+      console.error("executeDBDuplication IPC failed:", error);
+      setDuplicationError(error instanceof Error ? error.message : String(error));
+      setIsErrorOpen(true);
     } finally {
       setIsSaving(false);
       endOverlayOperation();
@@ -607,6 +661,20 @@ const DBDuplication = memo(() => {
     //   console.log("node is", node, nodeNameToData[node]);
     // }
   };
+
+  const memoryActionButton = canSaveToMemory ? (
+    <button
+      className={`bg-cyan-700 border-cyan-600 border-2 hover:bg-cyan-800 text-white font-medium text-sm px-4 rounded h-8 min-w-44 m-auto ${
+        ((!isSavingPossible() || isSaving) &&
+          "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+        ""
+      }`}
+      onClick={async () => await onSave("memory")}
+      disabled={!isSavingPossible() || isSaving}
+    >
+      {memoryActionLabel}
+    </button>
+  ) : null;
 
   return (
     <>
@@ -632,48 +700,60 @@ const DBDuplication = memo(() => {
           <Modal.Body>
             <div className="flex flex-col gap-8">
               <p>
-                Deep DB Cloning allows you to clone a row in a table. We can only clone tables that have a key
-                column that uniquely identifies that row, for example for the main_units_table that would be
-                the "unit" column.
+                {localized.viewerDbCloneHelpIntro ||
+                  'Deep DB Cloning allows you to clone a row in a table. We can only clone tables that have a key column that uniquely identifies that row, for example for the main_units_table that would be the "unit" column.'}
               </p>
               <p>
-                We look at the row we're cloning and look at all the tables that are referenced from that row,
-                for main_units those would be: unit_castes_tables, land_units_tables, naval_units_tables,
-                unit_weights_tables, ui_unit_groupings_tables, unit_porthole_camera_settings_tables,
-                audio_vo_actor_groups_tables.
+                {localized.viewerDbCloneHelpReferences ||
+                  "We look at the row we're cloning and look at all the tables that are referenced from that row, for main_units those would be: unit_castes_tables, land_units_tables, naval_units_tables, unit_weights_tables, ui_unit_groupings_tables, unit_porthole_camera_settings_tables, audio_vo_actor_groups_tables."}
               </p>
               <p>
-                So we look inside each of those tables and find the rows that references the main_unit we're
-                aiming to clone. We then in turn find all the refences to other tables in those rows, and so
-                on.
+                {localized.viewerDbCloneHelpReverseReferences ||
+                  "So we look inside each of those tables and find the rows that reference the main_unit we're aiming to clone. We then in turn find all the references to other tables in those rows, and so on."}
               </p>
               <p>
-                We end up with a tree of refences and we select what refences we want to clone and which ones
-                should be left the same. So for example we could also clone the land_unit of our main_unit but
-                leave the unit_castes_tables the same.
+                {localized.viewerDbCloneHelpTree ||
+                  "We end up with a tree of references and we select what references we want to clone and which ones should be left the same. So for example we could also clone the land_unit of our main_unit but leave the unit_castes_tables the same."}
               </p>
               <p>
-                References in <span className="text-amber-500">yellow</span> are non-direct references. These
-                are from tables that reference the key we're duplicating but they're not directly referenced
-                from the table we're cloning. For example units_to_groupings_military_permissions_tables
-                refences the main_units table but the main_units table doesn't reference it.
+                {localized.viewerDbCloneHelpNonDirectBefore || "References in"}{" "}
+                <span className="text-amber-500">{localized.viewerDbCloneHelpYellow || "yellow"}</span>{" "}
+                {localized.viewerDbCloneHelpNonDirectAfter ||
+                  "are non-direct references. These are from tables that reference the key we're duplicating but they're not directly referenced from the table we're cloning. For example units_to_groupings_military_permissions_tables references the main_units table but the main_units table doesn't reference it."}
               </p>
               <p>
-                Non-direct refences are selectable. When you select one, we load its closure so you can choose
-                which additional non-direct references to include.
+                {localized.viewerDbCloneHelpNonDirectResolved ||
+                  "Non-direct references are selectable and are resolved with the rest of the dependency tree when the clone window opens."}
               </p>
               <p>
-                With "Append Existing Pack" enabled we will append an existing pack file instead of creating a
-                new one, using the pack name from "(Optional) Name for new pack".
+                {localized.viewerDbCloneHelpAppend ||
+                  'With "Append Existing Pack" enabled we will append an existing pack file instead of creating a new one, using the pack name from "(Optional) Name for new pack".'}
               </p>
               <p>
-                "(Optional) Name for new tables" specifices what name the new DB tables will have. Leave it
-                blank for an automaitc name with a timestamp (e.g. dbclone_140925_152525_).
+                {localized.viewerDbCloneHelpOpenWindows ||
+                  '"Open in Windows" opens the newly created pack with the operating system after the clone is saved.'}
+              </p>
+              {canSaveToMemory && (
+                <p>
+                  {(
+                    localized.viewerDbCloneHelpMemory ||
+                    '"{{action}}" adds every generated DB and localization row to the {{target}} tab. The generated tables can be inspected and edited under New rows before you save them to a pack.'
+                  )
+                    .replace("{{action}}", memoryActionLabel)
+                    .replace("{{target}}", memoryTargetName)}
+                </p>
+              )}
+              <p>
+                {localized.viewerDbCloneHelpGlobalKey ||
+                  '"New key for all cloned keys" assigns one replacement key to every selected direct key and hides the individual key inputs. Leave it empty to rename each selected key separately.'}
               </p>
               <p>
-                "(Optional) Name for new pack" specifices what name the new pack will have. Leave it blank for
-                an automaitc name with a timestamp (e.g. dbclone_140925_152525.pack). WARNING: Using an
-                existing pack name WITHOUT "Append Existing Pack" enabled will OVERWRITE the existing pack.
+                {localized.viewerDbCloneHelpNewTables ||
+                  '"(Optional) Name for new tables" specifies what name the new DB tables will have. Leave it blank for an automatic name with a timestamp (e.g. dbclone_140925_152525_).'}
+              </p>
+              <p>
+                {localized.viewerDbCloneHelpNewPack ||
+                  '"(Optional) Name for new pack" specifies what name the new pack will have. Leave it blank for an automatic name with a timestamp (e.g. dbclone_140925_152525.pack). WARNING: Using an existing pack name WITHOUT "Append Existing Pack" enabled will OVERWRITE the existing pack.'}
               </p>
             </div>
           </Modal.Body>
@@ -688,10 +768,10 @@ const DBDuplication = memo(() => {
           explicitClasses={["mt-8", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>
-            <span>DB Clone Error</span>
+            <span>{localized.viewerDbCloneErrorTitle || "DB Clone Error"}</span>
           </Modal.Header>
           <Modal.Body>
-            <p>{duplicationError || "Unknown duplication error"}</p>
+            <p>{duplicationError || localized.viewerUnknownDuplicationError || "Unknown duplication error"}</p>
           </Modal.Body>
         </Modal>
       )}
@@ -704,79 +784,76 @@ const DBDuplication = memo(() => {
           explicitClasses={["mt-8", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>
-            <span>DB Clone Complete</span>
+            <span>{localized.viewerDbCloneCompleteTitle || "DB Clone Complete"}</span>
           </Modal.Header>
           <Modal.Body>
-            <p className="whitespace-pre-wrap">{duplicationSuccessMessage || "Clone completed successfully."}</p>
+            <p className="whitespace-pre-wrap">
+              {duplicationSuccessMessage || localized.viewerCloneCompleted || "Clone completed successfully."}
+            </p>
           </Modal.Body>
         </Modal>
       )}
-      <MemoizedFloatingOverlay
-        ref={overlayRef}
-        className={`absolute h-full w-full z-50 dark flex justify-center bg-black opacity-25`}
-        id="DBDuplicationOverlay"
-      >
-        <div className="self-center text-center flex flex-col items-center gap-4 bg-gray-900/80 px-6 py-5 rounded-xl">
-          <div className="scale-[2] self-center">
-            <Spinner color="purple" size="xl" className="" />
-          </div>
-          <div className="text-white text-sm max-w-[520px]">{overlayStatusText}</div>
-          {isSaving && duplicationProgress?.stage != "writing" && (
-            <button
-              className="bg-red-700 border-red-500 border-2 hover:bg-red-800 text-white font-medium text-sm px-4 rounded h-8"
-              onClick={() => onCancelDuplication()}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </MemoizedFloatingOverlay>
+      {pendingOperations > 0 && (
+        <DBCloneOperationOverlay
+          statusText={overlayStatusText}
+          cancelLabel={localized.cancel || "Cancel"}
+          onCancel={isSaving && duplicationProgress?.stage != "writing" ? onCancelDuplication : undefined}
+        />
+      )}
 
-      <div className="absolute right-8 top-24 flex flex-col gap-6">
-        <div>
+      <div className="absolute right-8 top-24 flex flex-col items-center gap-6">
+        {launchSource === "buildings" && memoryActionButton}
+        <div className="flex w-60 flex-col items-center gap-3 rounded-lg border border-gray-600 bg-gray-800/60 p-3">
           <button
-            className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 w-24 m-auto ${
+            className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 min-w-32 m-auto ${
               ((!isSavingPossible() || isSaving) &&
                 "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
               ""
             }`}
-            onClick={async () => await onSave()}
+            onClick={async () => await onSave("pack")}
             disabled={!isSavingPossible() || isSaving}
           >
             <div>
-              <span>{"Save"}</span>
+              <span>{localized.viewerSaveToPack || "Save to pack"}</span>
             </div>
           </button>
-        </div>
-        <div className="flex items-center justify-center mt-2">
           <input
-            type="checkbox"
-            id="enable-closed-on-play"
-            checked={isAppendSave}
+            defaultValue={savePackFileName}
+            placeholder={localized.viewerOptionalNewPackName || "(Optional) Name for new pack"}
             disabled={isSaving}
-            onChange={() => setIsAppendSave(!isAppendSave)}
-          ></input>
-          <label className="ml-2" htmlFor="enable-closed-on-play">
-            {"Append Existing Pack"}
-          </label>
-        </div>
-        <div>
-          <input
-            defaultValue={savePackedFileName}
-            placeholder={"(Optional) Name for new tables"}
-            disabled={isSaving}
-            onChange={(e) => setSavePackedFileName(e.target.value)}
+            onChange={(e) => setSavePackFileName(e.target.value)}
             className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
               isSaving ? "opacity-60 cursor-not-allowed" : ""
             }`}
           />
+          <label className="flex w-52 items-center gap-2 text-sm text-gray-300" htmlFor="dbclone-append-existing-pack">
+            <input
+              type="checkbox"
+              id="dbclone-append-existing-pack"
+              checked={isAppendSave}
+              disabled={isSaving}
+              onChange={(event) => setIsAppendSave(event.target.checked)}
+            />
+            <span>{localized.viewerAppendExistingPack || "Append Existing Pack"}</span>
+          </label>
+          <label className="flex w-52 items-center gap-2 text-sm text-gray-300" htmlFor="dbclone-open-in-windows">
+            <input
+              type="checkbox"
+              id="dbclone-open-in-windows"
+              checked={openInWindows}
+              disabled={isSaving}
+              onChange={(event) => setOpenInWindows(event.target.checked)}
+            />
+            <span>{localized.viewerOpenInWindows || "Open in Windows"}</span>
+          </label>
         </div>
+        {launchSource !== "buildings" && memoryActionButton}
         <div>
           <input
-            defaultValue={savePackFileName}
-            placeholder={"(Optional) Name for new pack"}
+            defaultValue={savePackedFileName}
+            placeholder={localized.viewerOptionalNewTablesName || "(Optional) Name for new tables"}
             disabled={isSaving}
-            onChange={(e) => setSavePackFileName(e.target.value)}
+            onChange={(e) => setSavePackedFileName(e.target.value)}
             className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
               isSaving ? "opacity-60 cursor-not-allowed" : ""
             }`}
@@ -791,12 +868,59 @@ const DBDuplication = memo(() => {
             {localized.help}
           </button>
         </div>
+        <label className="mx-auto flex w-52 items-start gap-2 text-sm text-gray-300">
+          <input
+            type="checkbox"
+            checked={hideRepeatedIndirectTables}
+            disabled={isSaving}
+            onChange={(event) => setHideRepeatedIndirectTables(event.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            {localized.viewerHideIndirectReferences ||
+              "Hide indirect references when their table already appears above"}
+          </span>
+        </label>
       </div>
-      <div>Cloning {toClone.resolvedKeyValue}</div>
+      <div className="mx-auto mb-4 flex w-full max-w-xl flex-col gap-2 px-4 text-left">
+        <label htmlFor="dbclone-global-rename" className="text-sm font-medium text-gray-200">
+          {localized.viewerNewKeyAllCloned || "New key for all cloned keys"}
+        </label>
+        <input
+          id="dbclone-global-rename"
+          type="text"
+          value={globalRenameValue}
+          disabled={isSaving}
+          onChange={(event) => setGlobalRenameValue(event.target.value)}
+          placeholder={localized.viewerIndividualKeyPlaceholder || "Leave empty to rename keys individually"}
+          className="block w-full rounded-lg border border-gray-600 bg-gray-700 p-2.5 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        {normalizedModdersPrefix && (
+          <label className="flex items-center gap-2 text-sm text-gray-300" htmlFor="dbclone-append-modders-prefix">
+            <input
+              id="dbclone-append-modders-prefix"
+              type="checkbox"
+              checked={appendModdersPrefix}
+              disabled={isSaving}
+              onChange={(event) => setAppendModdersPrefix(event.target.checked)}
+            />
+            {localized.viewerAppendModderPrefix || "Append modder prefix"}
+          </label>
+        )}
+        {hasGlobalRenameValue && effectiveGlobalRenameValue !== globalRenameValue.trim() && (
+          <div className="text-xs text-gray-400">
+            {localized.viewerNewKey || "New key:"} {effectiveGlobalRenameValue}
+          </div>
+        )}
+      </div>
+      <div>
+        {localized.viewerCloning || "Cloning"} {toClone.resolvedKeyValue}
+      </div>
       <div className="checkbox dark:text-gray-300">
         <TreeView
+          key={hideRepeatedIndirectTables ? "hide-repeated-indirect-tables" : "show-all-indirect-tables"}
           data={data}
-          aria-label="Checkbox tree"
+          aria-label={localized.viewerCheckboxTree || "Checkbox tree"}
           multiSelect
           onSelect={(props) => onTreeSelect(props)}
           selectedIds={selectedIds}
@@ -833,31 +957,22 @@ const DBDuplication = memo(() => {
                   }}
                   variant={isHalfSelected ? "some" : isSelected ? "all" : "none"}
                 />
-                <span
-                  className={`name ${nodeNameToDataLookup[element.name].isIndirectRef ? "text-amber-500" : ""}`}
-                >
+                <span className={`name ${nodeNameToDataLookup[element.name].isIndirectRef ? "text-amber-500" : ""}`}>
                   {element.name}
                 </span>
-                {!nodeNameToDataLookup[element.name].isIndirectRef && (
+                {!hasGlobalRenameValue && !nodeNameToDataLookup[element.name].isIndirectRef && (
                   <span className="flex items-center">
                     <span className="text-slate-100 ml-4">
                       <FaArrowRight></FaArrowRight>
                     </span>
                     <span className="relative">
-                      <input
-                        onClick={(e) => onInputClick(e)}
-                        onBlur={(e) => onFocusChange(e, element)}
-                        id="filterInput"
-                        type="text"
+                      <DBCloneRenameInput
+                        id={`dbclone-rename-${element.id}`}
                         disabled={isSaving}
-                        onChange={(e) => onFilterChange(e, element.name)}
-                        value={
-                          nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]
-                        }
-                        className={`ml-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 ${
-                          needsWarningBorder(element.name) ? "!border-yellow-300" : ""
-                        }`}
-                      ></input>
+                        value={nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]}
+                        hasWarning={needsWarningBorder(element.name)}
+                        onChange={(value) => onFilterChange(value, element.name)}
+                      />
                     </span>
                   </span>
                 )}
@@ -872,12 +987,7 @@ const DBDuplication = memo(() => {
 
 const ArrowIcon = ({ isOpen, className }: { isOpen: boolean; className?: string }) => {
   const baseClass = "arrow";
-  const classes = cx(
-    baseClass,
-    { [`${baseClass}--closed`]: !isOpen },
-    { [`${baseClass}--open`]: isOpen },
-    className
-  );
+  const classes = cx(baseClass, { [`${baseClass}--closed`]: !isOpen }, { [`${baseClass}--open`]: isOpen }, className);
   return <IoMdArrowDropright className={classes} />;
 };
 

@@ -177,9 +177,7 @@ const run = async () => {
 
   const missingInEn = keysToProcess.filter((k) => !(k in en));
   if (missingInEn.length > 0) {
-    console.warn(
-      `Warning: ${missingInEn.length} selected keys are not present in ${enPath} (skipping them).`,
-    );
+    console.warn(`Warning: ${missingInEn.length} selected keys are not present in ${enPath} (skipping them).`);
   }
 
   const selectedKeys = keysToProcess.filter((k) => k in en);
@@ -190,9 +188,7 @@ const run = async () => {
     const target = loadJson(outPath);
 
     const keysNeedingUpdate = selectedKeys.filter((k) => !(k in target) || target[k] === en[k]);
-    const uniqueTexts = [
-      ...new Set(keysNeedingUpdate.map((k) => en[k]).filter((v) => typeof v === "string")),
-    ];
+    const uniqueTexts = [...new Set(keysNeedingUpdate.map((k) => en[k]).filter((v) => typeof v === "string"))];
     const cache = new Map();
 
     console.log(
@@ -243,9 +239,7 @@ const run = async () => {
     }
 
     if (opts.dryRun) {
-      console.log(
-        `[${lang}] dry-run: would write ${outPath} (translated unique strings: ${translatedCount})`,
-      );
+      console.log(`[${lang}] dry-run: would write ${outPath} (translated unique strings: ${translatedCount})`);
     } else {
       saveJson(outPath, target);
       console.log(`[${lang}] wrote ${outPath} (translated unique strings: ${translatedCount})`);

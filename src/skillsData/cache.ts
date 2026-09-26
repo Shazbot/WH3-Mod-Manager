@@ -1,16 +1,19 @@
-import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as nodePath from "path";
 import appData from "../appData";
-import { readFromExistingPack } from "../packFileSerializer";
-import { Pack, PackedFile } from "../packFileTypes";
-import { SkillAndIcons } from "../skills";
+import { readPackedFileBuffersFromIndex } from "../packFileSerializer";
+import { Pack } from "../packFileTypes";
+import { normalizeSkillIconPath, SkillAndIcons } from "../skills";
 import { gameToPackWithDBTablesName, SupportedGames } from "../supportedGames";
-import { collator } from "../utility/packFileSorting";
-import Trie from "../utility/trie";
+import { getPackedFileMimeType } from "../utility/packFileViewing";
+import { iconAssetUrl, type AssetBytes } from "../assetUrls";
+import Trie, { type KeyedLookup } from "../utility/trie";
 
-export type SkillsDataCacheCore = Omit<NonNullable<typeof appData.skillsData>, "locs" | "icons" | "skillsDataPackPaths">;
+export type SkillsDataCacheCore = Omit<
+  NonNullable<typeof appData.skillsData>,
+  "locs" | "icons" | "iconGeneration" | "skillsDataPackPaths"
+>;
 
 interface VanillaSkillsDataCoreCachePayload {
   version: number;
@@ -33,8 +36,13 @@ export const getSkillAndEffectIconPaths = (
 ) => {
   const skillIconPathsSet = new Set(
     skills
-      .map((skill) => `ui\\campaign ui\\skills\\${skill.iconPath}`)
-      .concat(skills.map((skill) => `ui\\battle ui\\ability_icons\\${skill.iconPath}`)),
+      .map((skill) => normalizeSkillIconPath(skill.iconPath))
+      .map((iconPath) => `ui\\campaign ui\\skills\\${iconPath}`)
+      .concat(
+        skills
+          .map((skill) => normalizeSkillIconPath(skill.iconPath))
+          .map((iconPath) => `ui\\battle ui\\ability_icons\\${iconPath}`),
+      ),
   );
 
   const effectIcons = new Set<string>();
@@ -51,8 +59,45 @@ export const getSkillAndEffectIconPaths = (
   return Array.from(new Set([...skillIconPathsSet, ...effectIcons]));
 };
 
+/**
+ * The icons one subtype's tree draws, out of the record holding every skill and effect icon in the
+ * game.
+ *
+ * That record is around 1,600 base64 encoded images and used to be sent to the renderer whole on
+ * every subtype switch, where a tree draws a few dozen of them. The editor's pickers are the only
+ * consumer of the rest and ask for it separately, so they are the only ones that pay for it.
+ *
+ * Both icon folders are offered for each skill because the renderer falls back from one to the other
+ * and only the presence of the file says which one a skill uses.
+ *
+ * The values are asset protocol URLs, not the icons themselves.
+ */
+export const pickIconsForSkills = (
+  icons: Record<string, AssetBytes>,
+  iconGeneration: number,
+  skills: readonly Skill[],
+  extraIconPaths: readonly string[] = [],
+) => {
+  const picked: Record<string, string> = {};
+  const take = (iconPath: string) => {
+    if (icons[iconPath] !== undefined) picked[iconPath] = iconAssetUrl(iconGeneration, iconPath);
+  };
+  for (const skill of skills) {
+    if (skill.img) {
+      const iconPath = normalizeSkillIconPath(skill.img);
+      take(`ui\\campaign ui\\skills\\${iconPath}`);
+      take(`ui\\battle ui\\ability_icons\\${iconPath}`);
+    }
+    for (const effect of skill.effects) {
+      if (effect.icon) take(`ui\\campaign ui\\effect_bundles\\${effect.icon}`);
+    }
+  }
+  for (const iconPath of extraIconPaths) take(iconPath);
+  return picked;
+};
+
 export const getLocsFromPacks = (packs: Pack[], getLocsTrie: (pack: Pack) => Trie<string> | undefined) => {
-  const locs: Record<string, Trie<string>> = {};
+  const locs: Record<string, KeyedLookup<string>> = {};
   for (const pack of packs) {
     const locsTrie = getLocsTrie(pack);
     if (locsTrie) locs[pack.name] = locsTrie;
@@ -60,19 +105,23 @@ export const getLocsFromPacks = (packs: Pack[], getLocsTrie: (pack: Pack) => Tri
   return locs;
 };
 
+/**
+ * The icon files themselves, as the bytes read out of the packs.
+ *
+ * Kept as buffers rather than base64: these are served to the renderer over the asset protocol now,
+ * and encoding them was both a third more memory and a string per icon that nothing could evict.
+ */
 export const loadIconsFromPacks = async (packs: Pack[], iconPaths: string[]) => {
+  const icons: Record<string, AssetBytes> = {};
   for (const pack of packs) {
-    await readFromExistingPack(pack, { filesToRead: iconPaths, skipParsingTables: true });
-  }
-
-  const icons: Record<string, string> = {};
-  for (const pack of packs) {
+    const payloads = await readPackedFileBuffersFromIndex(pack, iconPaths);
     for (const iconPath of iconPaths) {
-      const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
-      if (iconIndex < 0) continue;
-      const iconPackedFile = pack.packedFiles[iconIndex];
-      if (!iconPackedFile.buffer) continue;
-      icons[iconPath] = iconPackedFile.buffer.toString("base64");
+      const buffer = payloads.get(iconPath);
+      if (!buffer) continue;
+      icons[iconPath] = {
+        buffer,
+        mimeType: getPackedFileMimeType(iconPath) || "image/png",
+      };
     }
   }
   return icons;
@@ -134,7 +183,7 @@ export const saveVanillaSkillsDataCoreCache = async ({
   try {
     const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName[currentGame]);
     const dbPackStat = await fs.promises.stat(dbPackPath);
-    const { locs, icons, skillsDataPackPaths, ...core } = skillsData;
+    const { locs, icons, iconGeneration, skillsDataPackPaths, ...core } = skillsData;
     const payload: VanillaSkillsDataCoreCachePayload = {
       version: VANILLA_SKILLS_DATA_CORE_CACHE_VERSION,
       game: currentGame,

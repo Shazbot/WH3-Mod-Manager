@@ -4,9 +4,11 @@ import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
+import { buildKeyPrefixDisplay } from "../viewer/viewerHelpers";
 
 type SkillsTreeViewProps = {
   tableFilter: string;
+  hideRepeatedKeyPrefixes?: boolean;
   onSelect?: (subtype: string, subtypeIndex: number) => void;
   onHover?: (subtype: string, subtypeIndex: number) => void;
   onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
@@ -18,6 +20,25 @@ const collator = new Intl.Collator("en");
 const NO_SELECTED_IDS: string[] = [];
 // How long the pointer rests on a row before `onHover`, so sweeping past rows does not load their trees.
 const HOVER_DELAY_MS = 100;
+const SKILL_NODE_SET_PREFIX = "set_";
+/** Known game/DLC prefixes that are boilerplate in skill node-set keys. */
+const SKILL_NODE_SET_OUTLIER_PREFIXES = [
+  /^wh_pro\d+_skill_node_set_/,
+  /^wh2_dlc\d+_/,
+  /^wh_dlc\d+_skill_node_set_/,
+  /^wh2_pro\d+_skill_node_/,
+  /^wh3_dlc\d+_skill_node_set_/,
+  /^wh3_dlc\d+_/,
+  /^wh3_pro\d+_/,
+] as const;
+
+const stripKnownSkillNodeSetPrefix = (value: string) => {
+  for (const prefix of SKILL_NODE_SET_OUTLIER_PREFIXES) {
+    const match = prefix.exec(value);
+    if (match) return value.slice(match[0].length);
+  }
+  return value;
+};
 
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const firstClickSelected = useRef(false);
@@ -52,14 +73,12 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     { name: "", children: [], metadata: { subtype: "", subtypeIndex: 0 } } as TreeData,
   );
 
-  // console.log(result);
-  const data = flattenTree(result);
+  const hideRepeatedKeyPrefixes = props.hideRepeatedKeyPrefixes ?? true;
 
   const getSkillNodeSetKey = (metadata: TreeMetadata) =>
     skillsData.subtypesToSet?.[metadata.subtype]?.[metadata.subtypeIndex] ?? metadata.subtype;
 
-  const getNodeLabel = (element: INode) => {
-    const metadata = element.metadata as TreeMetadata;
+  const getFullNodeLabel = (metadata: TreeMetadata) => {
     if (isShowingSkillNodeSetNames) {
       return getSkillNodeSetKey(metadata);
     }
@@ -67,13 +86,63 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     const subtypeName = isLocalizingSubtypes
       ? (skillsData.subtypesToLocalizedNames[metadata.subtype] ?? metadata.subtype)
       : metadata.subtype;
-    const indexSuffix =
-      (skillsData.subtypeToNumSets[metadata.subtype] ?? 0) > 1 ? ` ${metadata.subtypeIndex + 1}` : "";
+    const indexSuffix = (skillsData.subtypeToNumSets[metadata.subtype] ?? 0) > 1 ? ` ${metadata.subtypeIndex + 1}` : "";
     return `${subtypeName}${indexSuffix}`;
   };
 
+  const fullNodeLabels = (result.children ?? []).map((node) => getFullNodeLabel(node.metadata));
+  const displayNodeLabels = (() => {
+    if (!hideRepeatedKeyPrefixes) return undefined;
+
+    const shortened = buildKeyPrefixDisplay(fullNodeLabels).shortened;
+    const candidates = fullNodeLabels.map((fullLabel) => {
+      let shortenedLabel = shortened.get(fullLabel) ?? fullLabel;
+      if (isShowingSkillNodeSetNames) {
+        shortenedLabel = stripKnownSkillNodeSetPrefix(shortenedLabel);
+        if (shortenedLabel.startsWith(SKILL_NODE_SET_PREFIX)) {
+          shortenedLabel = shortenedLabel.slice(SKILL_NODE_SET_PREFIX.length);
+        }
+      }
+      return shortenedLabel;
+    });
+    const candidateCounts = new Map<string, number>();
+    for (const candidate of candidates) {
+      candidateCounts.set(candidate, (candidateCounts.get(candidate) ?? 0) + 1);
+    }
+
+    const displayLabels = new Map<string, string>();
+    for (let index = 0; index < fullNodeLabels.length; index++) {
+      const fullLabel = fullNodeLabels[index];
+      const candidate = candidates[index];
+      if (candidate !== fullLabel && candidateCounts.get(candidate) === 1) {
+        displayLabels.set(fullLabel, candidate);
+      }
+    }
+    return displayLabels;
+  })();
+
+  const getDisplayLabel = (fullLabel: string) => displayNodeLabels?.get(fullLabel) ?? fullLabel;
+
+  if (hideRepeatedKeyPrefixes) {
+    result.children?.sort((first, second) => {
+      const firstLabel = getDisplayLabel(getFullNodeLabel(first.metadata));
+      const secondLabel = getDisplayLabel(getFullNodeLabel(second.metadata));
+      return collator.compare(firstLabel, secondLabel);
+    });
+  }
+
+  // console.log(result);
+  const data = flattenTree(result);
+
+  const getFullNodeLabelForElement = (element: INode) => getFullNodeLabel(element.metadata as TreeMetadata);
+
+  const getNodeLabel = (element: INode) => getDisplayLabel(getFullNodeLabelForElement(element));
+
   const getNodeTooltip = (element: INode) => {
     const metadata = element.metadata as TreeMetadata;
+    const fullLabel = getFullNodeLabelForElement(element);
+    if (displayNodeLabels?.has(fullLabel)) return fullLabel;
+
     if (isShowingSkillNodeSetNames) {
       return metadata.subtype;
     }
@@ -133,7 +202,11 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
 
     const res = childNodes.reduce((isShown, currentNode) => {
       if (!currentNode) return isShown;
-      return isShown || getNodeLabel(currentNode).includes(props.tableFilter) || areNodeChildrenShown(currentNode);
+      return (
+        isShown ||
+        getFullNodeLabelForElement(currentNode).includes(props.tableFilter) ||
+        areNodeChildrenShown(currentNode)
+      );
     }, false);
 
     return res;
@@ -147,7 +220,8 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     let isParentFiltered = false;
     const parentNode = data.find((node) => node.id == element.parent);
     if (parentNode)
-      isParentFiltered = getNodeLabel(parentNode).includes(props.tableFilter) || isAnyNodeParentShown(parentNode);
+      isParentFiltered =
+        getFullNodeLabelForElement(parentNode).includes(props.tableFilter) || isAnyNodeParentShown(parentNode);
 
     return isParentFiltered;
   };
@@ -156,7 +230,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     if (props.tableFilter == "") return false;
 
     return !(
-      getNodeLabel(element).includes(props.tableFilter) ||
+      getFullNodeLabelForElement(element).includes(props.tableFilter) ||
       areNodeChildrenShown(element) ||
       isAnyNodeParentShown(element)
     );
@@ -165,7 +239,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   // console.log("TREE DATA is", data);
 
   return (
-    <div>
+    <div className="skills-node-sets-tree">
       <TreeView
         data={data}
         aria-label="Controlled expanded node tree"

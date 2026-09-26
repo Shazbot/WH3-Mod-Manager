@@ -93,4 +93,27 @@ describe("AddTechNodeModal", () => {
       }),
     );
   });
+
+  it("rejects a custom technology key already staged in the tree", () => {
+    const onAdd = vi.fn();
+
+    render(
+      <AddTechNodeModal
+        tier={1}
+        indent={2}
+        onAdd={onAdd}
+        onClose={() => undefined}
+        allTechnologies={[]}
+        reservedTechnologyKeys={["wh_test_custom_01"]}
+        allTechnologyIcons={[]}
+        allEffects={[]}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Technology Key *"), { target: { value: "wh_test_custom_01" } });
+    fireEvent.change(screen.getByLabelText("Display Name *"), { target: { value: "Duplicate" } });
+
+    expect(screen.getByRole("button", { name: "Add Node" })).toBeDisabled();
+    expect(onAdd).not.toHaveBeenCalled();
+  });
 });

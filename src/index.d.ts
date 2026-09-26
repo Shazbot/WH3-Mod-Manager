@@ -2,13 +2,65 @@ import { AmendedSchemaField, NewPackedFile, Pack, PackedFile, PackCollisions } f
 import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
-import { string } from "ts-pattern/dist/patterns";
 
 export {};
 
 declare global {
   interface Window {
     api?: api;
+  }
+
+  type VanillaDbCacheBuildProgress = import("./vanillaDbCache/progress").VanillaDbCacheBuildProgress;
+  type CompressionAnalysisProgress = import("./compressionAnalysis").CompressionAnalysisProgress;
+  type CompressionAnalysisRequest = import("./compressionAnalysis").CompressionAnalysisRequest;
+  type CompressionAnalysisResult = import("./compressionAnalysis").CompressionAnalysisResult;
+  type CompressionAnalysisStartResponse = import("./compressionAnalysis").CompressionAnalysisStartResponse;
+  type CompressPackRequest = import("./compressionAnalysis").CompressPackRequest;
+  type CompressPackResponse = import("./compressionAnalysis").CompressPackResponse;
+  type WorkshopStagingProgress = import("./utility/workshopModStaging").WorkshopStagingProgress;
+  type WorkshopStagingProgressPhase = import("./utility/workshopModStaging").WorkshopStagingProgressPhase;
+
+  type WorkshopModStagingProgressStatus = "running" | "canceling" | "cancelled" | "complete" | "failed";
+
+  /** Progress envelope sent to the renderer for one Workshop-aware game-start request. */
+  interface WorkshopModStagingProgressEvent {
+    runId: string;
+    status: WorkshopModStagingProgressStatus;
+    stage: string;
+    percent?: number;
+    completedMods?: number;
+    totalMods?: number;
+    bytesCopied?: number;
+    totalBytes?: number;
+    fileIndex?: number;
+    fileCount?: number;
+    currentMod?: string;
+    currentFile?: string;
+    detail?: string;
+    error?: string;
+  }
+
+  type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
+
+  interface DiagnosticPathResult {
+    success: boolean;
+    path?: string;
+    error?: string;
+  }
+
+  type LoadOrderRule = import("./loadOrderRules").LoadOrderRule;
+  type LoadOrderEdges = import("./loadOrderRules").LoadOrderEdges;
+  type LoadOrderRuleConflict = import("./loadOrderRules").LoadOrderRuleConflict;
+
+  /**
+   * What resolving the rules produced, minus the edge map, which holds Sets and so cannot live in
+   * redux. Components rebuild the map from `rules` with buildLoadOrderEdges.
+   */
+  interface LoadOrderRulesResolution {
+    rules: LoadOrderRule[];
+    conflicts: LoadOrderRuleConflict[];
+    disabledRules: LoadOrderRule[];
+    supersededRules: LoadOrderRule[];
   }
 
   type MergedModsData = {
@@ -33,6 +85,7 @@ declare global {
     author: string;
     isDeleted: boolean;
     isMovie: boolean;
+    hasStartpos?: boolean;
     dependencyPacks?: string[];
     reqModIdToName?: [string, string][];
     size: number;
@@ -42,6 +95,15 @@ declare global {
     categories?: string[];
     tags: string[];
     isInModding?: boolean;
+    sourceId?: string;
+    sourceKind?: ModSourceKind;
+  }
+
+  type ModSourceKind = "data" | "workshop" | "custom";
+
+  interface CustomModFolder {
+    id: string;
+    path: string;
   }
 
   interface ModData {
@@ -54,11 +116,23 @@ declare global {
     isDeleted: boolean;
     subscriptionTime: number;
     tags: string[];
+    workshopInstallTimestamp?: number;
+    workshopState?: number;
+  }
+
+  interface WorkshopInstallStatus {
+    installedTimestamp?: number;
+    state?: number;
   }
 
   interface PackHeaderData {
     path: string;
     isMovie: boolean;
+    hasStartpos: boolean;
+    /** Whether the pack ships its own whmm\load_order.whmm, spotted during the header's index walk. */
+    hasLoadOrderRules?: boolean;
+    /** That file's name as the pack spells it, which is what a targeted read has to ask for. */
+    loadOrderRulesFileName?: string;
     dependencyPacks: string[];
   }
 
@@ -68,10 +142,42 @@ declare global {
     author: string;
   }
 
+  /**
+   * The live mod list of the currently selected game. Only ever used for AppState.currentPreset —
+   * saved presets are SavedPreset and hold lightweight entries instead of full Mod records.
+   */
   interface Preset {
     mods: Mod[];
     name: string;
     version?: number;
+  }
+
+  /**
+   * A mod's membership in a preset. `name` (the pack file name) is the join key against the installed
+   * mods; array order is the display/load order.
+   */
+  interface PresetModEntry {
+    name: string;
+    /** Absent means enabled. Saved user presets omit it; full-list snapshots write false explicitly. */
+    isEnabled?: boolean;
+    /** Only set when the user pinned this mod to a position. */
+    loadOrder?: number;
+  }
+
+  /** What AppState.presets and the config file hold. */
+  interface SavedPreset {
+    name: string;
+    mods: PresetModEntry[];
+    version?: number;
+  }
+
+  /** Per-mod state that is neither preset membership nor re-derivable from a disk scan. */
+  interface StoredModUserData {
+    categories?: string[];
+    /** Workshop title cache, so mod names show up before Steam responds (or offline). */
+    humanName?: string;
+    author?: string;
+    reqModIdToName?: [string, string][];
   }
   interface NewMergedPack {
     path: string;
@@ -99,16 +205,28 @@ declare global {
     unsavedFileData: PackedFile[];
   }
 
+  interface SetDeletedPackFilePathsPayload {
+    packPath: string;
+    deletedFilePaths: string[];
+  }
+
+  interface ApplySavedPackDataPayload {
+    packPath: string;
+    savedFileData: PackedFile[];
+    deletedFilePaths: string[];
+  }
+
   interface AppState {
     categories: string[];
     categoryColors: Record<string, string>;
     currentPreset: Preset;
     importedMods: ModIdAndLoadOrder[];
-    presets: Preset[];
-    lastSelectedPreset: Preset | null;
+    pendingUsedModsImport: string[] | undefined;
+    presets: SavedPreset[];
+    lastSelectedPreset: SavedPreset | null;
     filter: string;
-    alwaysEnabledMods: Mod[];
-    hiddenMods: Mod[];
+    alwaysEnabledModNames: string[];
+    hiddenModNames: string[];
     saves: GameSave[];
     isOnboardingToRun: boolean;
     hasConfigBeenRead: boolean;
@@ -117,10 +235,39 @@ declare global {
     lastModThatWasRead: ModReadingInfo | undefined;
     currentlyReadingMod: ModReadingInfo | undefined;
     isClosedOnPlay: boolean;
+    workshopModStagingMode: WorkshopModStagingMode;
+    compressWorkshopModsOnStart: boolean;
+    cleanUpWorkshopModStagingAfterGameExit: boolean;
+    /** Read the game's English locs even when the app is set to another language. */
+    isUsingEnglishLocalizations: boolean;
     isCompatCheckingVanillaPacks: boolean;
     isAuthorEnabled: boolean;
+    /** Split the All Mods tab into a disabled-mods list on the left and an enabled-mods list on the right. */
+    isDualModListLayoutEnabled: boolean;
+    /** How much room a row gets in the dual layout, where two lists share the width one used to have. */
+    modListDensity: ModListDensity;
+    /**
+     * Number the rows of the dual layout's disabled list. The index is the mod's rank among every mod
+     * rather than a prediction of where it lands once enabled, so it can be turned off for a quieter
+     * list. Pinned load orders show either way.
+     */
+    isShowingDisabledModsLoadOrder: boolean;
+    /**
+     * Group the dual layout's left list under category headers instead of showing one flat list. Only
+     * that list is grouped: the enabled pane's row order is the load order, which grouping would scramble.
+     */
+    isModListCategoryViewEnabled: boolean;
+    /** Show the mod author under the mod name in the presets tab lists. */
+    isPresetAuthorEnabled: boolean;
+    /** Show a thumbnail column in the presets tab lists. */
+    arePresetThumbnailsEnabled: boolean;
+    /** Show the mod author under the mod name in the categories tab grid. */
+    isCategoryAuthorEnabled: boolean;
+    /** Show a thumbnail column in the categories tab grid. */
+    areCategoryThumbnailsEnabled: boolean;
     isDev: boolean;
     isAdmin: boolean;
+    canCreateSymbolicLinks: boolean;
     startArgs: string[];
     isMakeUnitsGeneralsEnabled: boolean;
     isScriptLoggingEnabled: boolean;
@@ -129,12 +276,21 @@ declare global {
     isChangingGameProcessPriority: boolean;
     isFeaturesForModdersEnabled: boolean;
     moddersPrefix: string;
+    /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
+    isRigidModelV2CompressionEnabled: boolean;
+    /** Compress mod packs in place before updating them on the Steam Workshop. */
+    compressModsOnUpload: boolean;
     allMods: Mod[];
+    workshopInstallStatuses: Record<string, WorkshopInstallStatus>;
+    workshopUpdateCheckResults: Record<string, WorkshopUpdateCheckItem>;
     packsData: Record<string, PackViewData>;
     unsavedPacksData: Record<string, PackedFile[]>;
+    deletedPackFilePaths: Record<string, string[]>;
+    /** Physical packs most recently opened in the mod viewer, newest first. */
+    recentPackPaths: string[];
     packCollisions: PackCollisions;
     packCollisionsCheckProgress: PackCollisionsCheckProgressData;
-    dataFromConfig?: AppStateToRead;
+    dataFromConfig?: ConfigForRenderer;
     newMergedPacks: NewMergedPack[];
     pathsOfReadPacks: string[];
     appFolderPaths: GameFolderPaths;
@@ -144,9 +300,39 @@ declare global {
     outdatedPackFiles: Record<string, string[]>;
     dataModLastChangedLocal?: number;
     currentDBTableSelection?: DBTableSelection;
+    packOpenRequest?: PackOpenRequest;
     currentFlowFileSelection?: string;
     currentFlowFilePackPath?: string;
+    /** Bumped to make the node editor re-read the open flow when the selection itself cannot change. */
+    currentFlowFileReloadNonce: number;
     currentTab: MainWindowTab;
+    /** Ordering rules the user made, for the current game. */
+    loadOrderRules: LoadOrderRule[];
+    disabledModLoadOrderRules: string[];
+    loadOrderRuleDisabledPacks: string[];
+    /** Pack name -> the rules that pack ships inside itself. Rebuilt by each mod scan. */
+    modLoadOrderRules: Record<string, LoadOrderRule[]>;
+    /** Derived from the four above; never persisted. */
+    loadOrderRulesResolution: LoadOrderRulesResolution;
+    /**
+     * Left sidebar tabs the user has hidden. All Mods can never be in here: it is what the current
+     * tab falls back to. Skill Trees and Tech Trees are steered by the tree display modes instead.
+     */
+    hiddenMainWindowTabs: MainWindowTab[];
+    /** Group the Visuals unit list by culture and then by unit caste. */
+    isVisualsSortByCultureEnabled: boolean;
+    /** Hide repeated variant files in the Visuals Lord and Hero culture groups. */
+    isVisualsHideDuplicatesEnabled: boolean;
+    /** Whether the Unit Viewer shows one unit for visualization or multiple units for comparison. */
+    unitViewerMode: UnitViewerMode;
+    /** Whether the Unit Viewer shows the render wireframe beneath the unit visualization. */
+    unitViewerShowWireframe: boolean;
+    /** Whether the Unit Viewer starts comparison animations at independent points in their cycles. */
+    unitViewerUnsyncedAnimations: boolean;
+    /** Whether the Unit Viewer shows the unit card alongside the visualization. */
+    unitViewerShowUnitCard: boolean;
+    mapCampaignName: string;
+    mapSelectedRegion?: MapRegionSelection;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;
     isPackSearcherOpen: boolean;
@@ -157,6 +343,11 @@ declare global {
     dataModsToEnableByName: string[];
     removedModsData: RemovedModData[];
     modRowsSortingType: SortingType;
+    /**
+     * How the dual layout's enabled pane is sorted. The other pane keeps using modRowsSortingType, which
+     * is also what the single list and the Enabled Mods tab sort by, so the two panes sort separately.
+     */
+    enabledModsPaneSortingType: SortingType;
     availableLanguages: string[];
     currentLanguage?: SupportedLanguages;
     currentLocalization: Record<string, string>;
@@ -170,6 +361,8 @@ declare global {
     skillsData?: SkillsData;
     packSearchResults?: string[];
     userFlowOptions: UserFlowOptions;
+    /** Node types pinned to the top of the node editor sidebar, in the user's own order. */
+    nodeEditorFavorites: FlowNodeType[];
 
     // DB viewer
     deepCloneTarget?: DeepCloneTarget;
@@ -180,6 +373,7 @@ declare global {
     //skills view
     isLocalizingSubtypes: boolean;
     isShowingSkillNodeSetNames: boolean;
+    hideRepeatedKeyPrefixes: boolean;
     isShowingHiddenSkills: boolean;
     isShowingHiddenModifiersInsideSkills: boolean;
     isCheckingSkillRequirements: boolean;
@@ -189,23 +383,42 @@ declare global {
     currentRank: number;
   }
 
+  interface MapRegionSelection {
+    campaign: string;
+    region: string;
+  }
+
   type TreeDisplayMode = "off" | "tab" | "window";
+
+  type ModListDensity = "compact" | "comfortable" | "roomy";
+
+  type UnitViewerMode = "visualize" | "compare";
+
+  type WorkshopModStagingMode = import("./utility/workshopModStaging").WorkshopModStagingMode;
 
   type SkillsViewOptions = Pick<
     AppState,
     | "isShowingSkillNodeSetNames"
+    | "hideRepeatedKeyPrefixes"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
     | "isCheckingSkillRequirements"
   >;
 
-  type AppStateToWrite = Pick<
+  /** The options block shared by the config file and the renderer payload. */
+  type ConfigOptions = Pick<
     AppState,
-    | "alwaysEnabledMods"
-    | "hiddenMods"
     | "wasOnboardingEverRun"
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
+    | "isDualModListLayoutEnabled"
+    | "modListDensity"
+    | "isShowingDisabledModsLoadOrder"
+    | "isModListCategoryViewEnabled"
+    | "isPresetAuthorEnabled"
+    | "arePresetThumbnailsEnabled"
+    | "isCategoryAuthorEnabled"
+    | "areCategoryThumbnailsEnabled"
     | "isMakeUnitsGeneralsEnabled"
     | "isScriptLoggingEnabled"
     | "isSkipIntroMoviesEnabled"
@@ -213,43 +426,85 @@ declare global {
     | "isChangingGameProcessPriority"
     | "isFeaturesForModdersEnabled"
     | "moddersPrefix"
+    | "isRigidModelV2CompressionEnabled"
+    | "compressModsOnUpload"
     | "isClosedOnPlay"
+    | "workshopModStagingMode"
+    | "compressWorkshopModsOnStart"
+    | "cleanUpWorkshopModStagingAfterGameExit"
+    | "isUsingEnglishLocalizations"
     | "categories"
     | "categoryColors"
     | "modRowsSortingType"
+    | "enabledModsPaneSortingType"
     | "currentLanguage"
     | "currentGame"
     | "packDataOverwrites"
     | "isCompatCheckingVanillaPacks"
     | "userFlowOptions"
+    | "nodeEditorFavorites"
     | "isShowingSkillNodeSetNames"
+    | "hideRepeatedKeyPrefixes"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
     | "isCheckingSkillRequirements"
     | "skillTreesDisplayMode"
     | "technologyTreesDisplayMode"
-  > &
-    AppStateMainProcessExtras;
+    | "hiddenMainWindowTabs"
+    | "isVisualsSortByCultureEnabled"
+    | "isVisualsHideDuplicatesEnabled"
+    | "unitViewerMode"
+    | "unitViewerShowWireframe"
+    | "unitViewerUnsyncedAnimations"
+    | "unitViewerShowUnitCard"
+    | "recentPackPaths"
+  >;
 
-  // main process (index.ts) specific properties that are writtend and read from the app config file
-  type AppStateMainProcessExtras = {
+  /** Everything stored for one game. Per-mod data lives in modUserData, one copy, not once per preset. */
+  interface GameConfig {
+    /** Membership and order of that game's live mod list. */
+    currentPreset: SavedPreset;
+    presets: SavedPreset[];
+    /** Mod name -> data. */
+    modUserData: Record<string, StoredModUserData>;
+    /**
+     * Ordering rules the user made. Per game rather than global because a pack name only means
+     * something within one game.
+     */
+    loadOrderRules: LoadOrderRule[];
+    /** Canonical keys of individual mod-supplied rules the user switched off. */
+    disabledModLoadOrderRules: string[];
+    /** Packs whose own rules the user ignores wholesale, including any they add later. */
+    loadOrderRuleDisabledPacks: string[];
+  }
+
+  /** The config.json document. */
+  type AppConfig = ConfigOptions & {
+    configVersion: number;
     gameFolderPaths: Record<SupportedGames, GameFolderPaths>;
-    gameToCurrentPreset: Record<SupportedGames, Preset | undefined>;
-    gameToPresets: Record<SupportedGames, Preset[]>;
+    games: Record<SupportedGames, GameConfig>;
+    alwaysEnabledModNames: string[];
+    hiddenModNames: string[];
   };
 
-  // renderer redux app state specific properties
-  type AppStateRendererExtras = {
-    appFolderPaths: GameFolderPaths;
-    presets: Preset[];
-    currentPreset: Preset;
+  /** The flattened single-game view of the config that main sends to the renderer. */
+  type ConfigForRenderer = ConfigOptions &
+    GameConfig & {
+      configVersion: number;
+      alwaysEnabledModNames: string[];
+      hiddenModNames: string[];
+      appFolderPaths: GameFolderPaths;
+    };
+
+  /**
+   * What the renderer sends to main on every debounced store change. The mod lists are only included
+   * when they actually changed, since main needs them for appData/window title but they are large.
+   */
+  type ConfigSavePayload = {
+    config: Omit<ConfigForRenderer, "appFolderPaths">;
+    currentGame: SupportedGames;
+    mods?: { allMods: Mod[]; currentPresetMods: Mod[] };
   };
-
-  type AppStateToWriteWithDeprecatedProperties = AppStateToWrite & AppStateRendererExtras;
-
-  type AppStateWithRendererExtras = AppStateToWrite & AppStateRendererExtras;
-
-  type AppStateToRead = Omit<AppStateWithRendererExtras, keyof AppStateMainProcessExtras>;
 
   type StartGameSpecificOptions = Pick<
     AppState,
@@ -260,18 +515,21 @@ declare global {
   >;
 
   type StartGameOptions = StartGameSpecificOptions &
-    Pick<AppState, "isClosedOnPlay" | "packDataOverwrites" | "userFlowOptions">;
-
-  interface ModLoadOrderPayload {
-    modName: string;
-    loadOrder: number;
-    originalOrder?: number;
-  }
+    Pick<
+      AppState,
+      | "isClosedOnPlay"
+      | "workshopModStagingMode"
+      | "compressWorkshopModsOnStart"
+      | "cleanUpWorkshopModStagingAfterGameExit"
+      | "packDataOverwrites"
+      | "userFlowOptions"
+    >;
 
   interface SetCurrentGamePayload {
     game: SupportedGames;
-    currentPreset: Preset;
-    presets: Preset[];
+    currentPreset: SavedPreset;
+    presets: SavedPreset[];
+    modUserData: Record<string, StoredModUserData>;
   }
 
   interface ModLoadOrderRelativeTo {
@@ -287,7 +545,9 @@ declare global {
     releaseNotesURL?: string;
   }
 
-  type ModIdAndLoadOrder = Pick<Mod, "workshopId" | "loadOrder">;
+  type ModIdAndLoadOrder = Pick<Mod, "workshopId" | "loadOrder"> & {
+    modName?: string;
+  };
 
   interface GameSave {
     name: string;
@@ -318,10 +578,22 @@ declare global {
   interface DBTable {
     dbName: string;
     dbSubname: string;
+    /**
+     * Folder the table file sits in, e.g. "unusedtables". Absent means "db", so a selection made
+     * before spare folders existed - including one restored from persisted state - still means the
+     * live table.
+     */
+    dbFolder?: string;
   }
 
   interface DBTableSelection extends DBTable {
     packPath: string;
+  }
+
+  interface PackOpenRequest {
+    packPath: string;
+    /** Monotonic: reopening the same pack must still be an event. */
+    nonce: number;
   }
 
   interface PackViewData {
@@ -341,12 +613,39 @@ declare global {
     readFlows?: boolean;
   }
 
+  type PackImportSource = import("./utility/packImportPlan").PackImportSource;
+  type PackImportItem = import("./utility/packImportPlan").PackImportItem;
+  type PackImportPlan = import("./utility/packImportPlan").PackImportPlan;
+  type PackImportPlanError = import("./utility/packImportPlan").PackImportPlanError;
+  type PackFileRenameEntry = import("./utility/packFileRenamePlan").PackFileRenameEntry;
+
+  interface PackImportApplyResult {
+    success: boolean;
+    importedCount: number;
+    errors: { diskPath: string; message: string }[];
+  }
+
+  interface PackExportResult {
+    success: boolean;
+    writtenCount: number;
+    skipped: { name: string; reason: string }[];
+    error?: string;
+  }
+
+  interface PackImportConflictRequest {
+    packPath: string;
+    plan: PackImportPlan;
+  }
+
   interface FlowExecutionContext {
     readPackCache: Map<string, Promise<Pack>>;
+    packIndexCache: Map<string, Promise<import("./utility/compactPackIndex").CompactPackIndex>>;
     tableFilesByPackAndTable: Map<string, PackedFile[]>;
     rowsByPackedFile: WeakMap<PackedFile, AmendedSchemaField[][]>;
     columnIndexesByPackedFile: WeakMap<PackedFile, Map<string, number>>;
     outputPackByPath: Map<string, NewPackedFile[]>;
+    /** Packs to read from somewhere other than their own path, keyed by original path. */
+    packPathSubstitutes: Map<string, string>;
     isDebug: boolean;
   }
 
@@ -570,6 +869,8 @@ declare global {
   }
 
   interface SkillsData {
+    /** Renderer request token used to discard out-of-order subtype responses. */
+    requestId?: string;
     // subtypeToSkills: Record<string, Skill[]>;
     currentSubtype: string;
     currentSubtypeIndex: number;
@@ -592,16 +893,32 @@ declare global {
         child: string;
         childLinkPosition?: string;
         parentLinkPosition?: string;
+        childLinkPositionOffset?: string;
+        parentLinkPositionOffset?: string;
         linkType?: "REQUIRED" | "SUBSET_REQUIRED";
       }[]
     >;
     nodeRequirements: Record<string, { single: string[]; multiple: string[]; numMultiple: number }>;
+    /**
+     * Asset protocol URLs keyed by pack path, covering what this subtype's tree draws.
+     *
+     * The editor's pickers need every icon in the game and ask for those separately.
+     */
     icons: Record<string, string>;
     subtypes: string[];
     subtypesToLocalizedNames: Record<string, string>;
     nodeToSkillLocks: NodeToSkillLocks;
     abilityTooltipsByKey: Record<string, AbilityTooltipData>;
     effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
+  }
+  /**
+   * What the skill tree editor's pickers need, which is everything rather than one subtype's worth.
+   *
+   * Kept out of SkillsData and fetched over `getSkillsEditorData` when the editor opens: it is
+   * several megabytes and only modders ever see it, where SkillsData is sent on every subtype
+   * switch.
+   */
+  interface SkillsEditorData {
     allEffects: { effectKey: string; localizedKey: string; icon?: string; priority: string }[];
     allSkills: {
       key: string;
@@ -610,9 +927,18 @@ declare global {
       iconPath: string;
       maxLevel: number;
       unlockRank: number;
-      effects: { effectKey: string; effectScope: string; level: number; value: string; icon?: string; priority: string }[];
+      effects: {
+        effectKey: string;
+        effectScope: string;
+        level: number;
+        value: string;
+        icon?: string;
+        priority: string;
+      }[];
     }[];
     allSkillIcons: { path: string; name: string }[];
+    /** Every skill and effect icon in the game, as asset protocol URLs keyed by pack path. */
+    icons: Record<string, string>;
   }
   interface SaveSkillsPackPayload {
     subtype: string;
@@ -633,11 +959,19 @@ declare global {
       group?: string;
       requiredNumParents: number;
       existingSkillKey?: string;
+      /** Preserve the source node's visibility when exporting an edited/full tree. */
+      visibleInUI?: boolean;
+      /** Clone an existing skill row when the editor changed its metadata. */
+      cloneSkill?: boolean;
     }[];
     edges: {
       source: string;
       target: string;
       linkType: "REQUIRED" | "SUBSET_REQUIRED";
+      parentLinkPosition?: string;
+      childLinkPosition?: string;
+      parentLinkPositionOffset?: string;
+      childLinkPositionOffset?: string;
     }[];
     skillLocks: {
       lockedNodeId: string;
@@ -664,16 +998,26 @@ declare global {
       faction: string;
       subculture: string;
       requiredNumParents: number;
+      visibleInUI?: boolean;
     }[];
     replacedNodes: {
       originalNodeKey: string;
       newNodeKey: string;
       characterSkillKey: string;
+      /** Set when this replacement carries a cloned/edited character skill row. */
+      newSkillKey?: string;
+      label?: string;
+      description?: string;
+      imgPath?: string;
+      unlockRank?: number;
+      effects?: Effect[];
+      maxLevel?: number;
       tier: number;
       indent: number;
       faction: string;
       subculture: string;
       requiredNumParents: number;
+      visibleInUI?: boolean;
     }[];
     newNodes: {
       newNodeKey: string;
@@ -690,12 +1034,17 @@ declare global {
       unlockRank: number;
       effects: Effect[];
       maxLevel: number;
+      visibleInUI?: boolean;
     }[];
     deletedNodeKeys: string[];
     edges: {
       parentKey: string;
       childKey: string;
       linkType: "REQUIRED" | "SUBSET_REQUIRED";
+      parentLinkPosition?: string;
+      childLinkPosition?: string;
+      parentLinkPositionOffset?: string;
+      childLinkPositionOffset?: string;
     }[];
     skillLocks: {
       lockedNodeKey: string;
@@ -712,6 +1061,7 @@ declare global {
 
   interface TechnologyNodeSetSummary {
     key: string;
+    nodeCount: number;
     campaignKey?: string;
     factionKey?: string;
     culture?: string;
@@ -838,17 +1188,17 @@ declare global {
       tier: number;
       indent: number;
       requiredParents: number;
-      campaignKey?: string;
-      factionKey?: string;
+      campaignKey?: string | null;
+      factionKey?: string | null;
       pixelOffsetX: number;
       pixelOffsetY: number;
       optionalUiGroup?: string;
       researchPointsRequired: number;
-      buildingLevel?: string;
+      buildingLevel?: string | null;
       displayName: string;
-      shortDescription?: string;
-      longDescription?: string;
-      iconPath?: string;
+      shortDescription?: string | null;
+      longDescription?: string | null;
+      iconPath?: string | null;
       isHidden: boolean;
       effects?: TechEffect[];
     }[];
@@ -880,35 +1230,37 @@ declare global {
       indent: number;
       setKey: string;
       requiredParents: number;
+      optionalUiGroup?: string;
       researchPointsRequired: number;
-      campaignKey?: string;
-      factionKey?: string;
+      campaignKey?: string | null;
+      factionKey?: string | null;
       isHidden: boolean;
       pixelOffsetX: number;
       pixelOffsetY: number;
-      buildingLevel?: string;
-      shortDescription?: string;
-      longDescription?: string;
-      iconPath?: string;
+      buildingLevel?: string | null;
+      shortDescription?: string | null;
+      longDescription?: string | null;
+      iconPath?: string | null;
       effects?: TechEffect[];
     }[];
     deletedNodeKeys?: string[];
     deletedLinkKeys?: string[];
+    uiTabToNodes?: Record<string, string[]>;
     editedNodes?: {
       nodeKey: string;
       technologyKey?: string;
       displayName?: string;
       requiredParents?: number;
       researchPointsRequired?: number;
-      campaignKey?: string;
-      factionKey?: string;
+      campaignKey?: string | null;
+      factionKey?: string | null;
       isHidden?: boolean;
       pixelOffsetX?: number;
       pixelOffsetY?: number;
-      buildingLevel?: string;
-      shortDescription?: string;
-      longDescription?: string;
-      iconPath?: string;
+      buildingLevel?: string | null;
+      shortDescription?: string | null;
+      longDescription?: string | null;
+      iconPath?: string | null;
       effects?: TechEffect[];
     }[];
   }
@@ -922,9 +1274,14 @@ declare global {
     | "categories"
     | "skills"
     | "visuals"
+    | "unitViewer"
     | "twui"
     | "techTrees"
+    | "buildings"
+    | "ancillaries"
+    | "map"
     | "nodeEditor"
+    | "loadOrderRules"
     | "presets";
 
   export interface WorkshopItemStatisticStringified {
@@ -979,6 +1336,45 @@ declare global {
     dependencies: Record<string, string[]>;
     authors: Record<string, string>;
     mods: WorkshopItemStringInsteadOfBigInt[];
+    installInfoDiagnostics?: WorkshopInstallInfoDiagnostic[];
+  }
+
+  export interface WorkshopInstallInfoDiagnostic {
+    workshopId: string;
+    remoteTimestamp: number;
+    installedTimestamp?: number;
+    state?: number;
+    installFolder?: string;
+    sizeOnDisk?: string;
+    error?: string;
+  }
+
+  type WorkshopUpdateCheckStatus =
+    "requested" | "already-downloading" | "downloading" | "updated" | "request-failed" | "timed-out" | "resubscribing";
+
+  interface WorkshopModRepairRequest {
+    mod: Mod;
+    remoteTimestampMs: number;
+  }
+
+  export interface WorkshopUpdateCheckItem {
+    workshopId: string;
+    initialState: number;
+    finalState: number;
+    status: WorkshopUpdateCheckStatus;
+    requestAccepted: boolean;
+    retryAccepted?: boolean;
+    installTimestampBefore?: number;
+    installTimestampAfter?: number;
+    downloadedBytes?: string;
+    totalBytes?: string;
+    error?: string;
+  }
+
+  export interface WorkshopUpdateCheckMessage {
+    type: "started" | "progress" | "finished";
+    checkedCount: number;
+    items: WorkshopUpdateCheckItem[];
   }
 
   interface TreeNode<T> {
@@ -1009,7 +1405,7 @@ declare global {
     maxIndex: number,
     firstPackName: string,
     secondPackName: string,
-    type: PackCollisionCheckType
+    type: PackCollisionCheckType,
   ) => void;
 
   type PackCollisionCheckType = "Files" | "TableKeys" | "MissingKeys";
@@ -1072,23 +1468,19 @@ declare global {
     isAppendSave: boolean;
     savePackedFileName: string;
     savePackFileName: string;
+    destination: "pack" | "memory";
   }
 
   interface DBCloneExecutionResult {
     ok: boolean;
     outputPackPath?: string;
+    /** Generated clone output returned to the Buildings tab's in-memory edit model. */
+    generatedPackedFiles?: PackedFile[];
     error?: string;
   }
 
   type DBDuplicationStage =
-    | "validating"
-    | "discovering_indirect"
-    | "cloning"
-    | "localizing"
-    | "writing"
-    | "done"
-    | "error"
-    | "canceled";
+    "validating" | "discovering_indirect" | "cloning" | "localizing" | "writing" | "done" | "error" | "canceled";
 
   interface DBDuplicationProgress {
     stage: DBDuplicationStage;
@@ -1112,6 +1504,7 @@ declare global {
   type FlowNodeType =
     | "packedfiles"
     | "packfilesdropdown"
+    | "removepacksource"
     | "allenabledmods"
     | "tableselection"
     | "tableselectiondropdown"
@@ -1145,7 +1538,15 @@ declare global {
     | "customrowsinput"
     | "multifilter"
     | "addnewcolumn"
-    | "deduplicate";
+    | "deduplicate"
+    | "combinesametables"
+    | "deepclone"
+    | "conditionalbranch"
+    | "removetables"
+    | "editloctext"
+    | "edittextfile"
+    | "editxmlfile"
+    | "packfileoperations";
 
   // FlowNodeData = "string"|
 
@@ -1175,7 +1576,18 @@ declare global {
       | CustomSchemaData;
     elseData?: DBTablesNodeData; // For filter node's "else" output handle
     multiOutputs?: Record<string, any>; // For multi-output nodes like generaterows and multifilter
+    /**
+     * Control-flow gate: when set, only connections leaving these handles are followed, so the
+     * branch not taken never runs. Absent means every outgoing connection is followed as usual.
+     */
+    activeOutputHandles?: string[];
     error?: string;
+    /**
+     * Things that went wrong without failing the node - a rule that matched nothing, a pack that
+     * could not be read. A node that quietly produces no output looks identical to one with nothing
+     * to do, so these are reported rather than only logged.
+     */
+    warnings?: string[];
   }
 
   interface PackFilesNodeFile {
@@ -1192,11 +1604,36 @@ declare global {
     loadedCount: number;
   }
 
+  interface PackSource {
+    name: string;
+    path: string;
+  }
+
   interface DBTablesNodeTable {
     name: string;
     fileName: string;
-    sourceFile: Pack;
+    sourceFile: PackSource;
     table: PackedFile;
+    /**
+     * Overrides the default `db\<tableName>\` output folder when this table is written by the save
+     * changes node. Used for non-db payloads such as generated loc files ("text\\db\\").
+     */
+    outputPathPrefix?: string;
+    /** Appended after the generated file name, e.g. ".loc". Only meaningful with outputPathPrefix. */
+    outputPathSuffix?: string;
+    /**
+     * Exact output path, used verbatim instead of any generated name. For payloads whose name is
+     * meaningful to the game, such as art addressed by a unit key. Paired with a raw buffer on
+     * `table` rather than schemaFields.
+     */
+    outputFileName?: string;
+    /**
+     * Path of a pack this entry is a copy of a file from, when the flow is producing a whole
+     * replacement for that pack. The save node collects these so the game can be launched with the
+     * output pack in place of the original - without that, a file the flow removed would still load
+     * from the pack it came from.
+     */
+    replacesSourcePackPath?: string;
   }
 
   interface DBTablesNodeData {
@@ -1208,12 +1645,13 @@ declare global {
 
   interface DumpToTSVNodeData extends DBTablesNodeData {
     openInWindows: boolean;
+    openInViewer?: boolean;
   }
 
   interface DBColumnSelectionTableValues {
     tableName: string;
     fileName: string;
-    sourcePack: Pack;
+    sourcePack: PackSource;
     sourceTable: PackedFile;
     selectedColumns: string[];
     data: { col: string; data: string }[];
@@ -1239,6 +1677,8 @@ declare global {
     format: string;
     fileName?: string;
     message: string;
+    /** Packs this output was written as a replacement for, so they can be left out of the mod list. */
+    replacedPackPaths?: string[];
   }
 
   interface GroupedTextNodeData {

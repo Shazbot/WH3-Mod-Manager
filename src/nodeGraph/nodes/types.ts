@@ -1,5 +1,5 @@
 import { DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
-import { FlowNodeDataPatch } from "../types";
+import type { FilterRow, FlowNodeDataPatch } from "../types";
 
 export interface NodeData extends Record<string, unknown> {
   label: string;
@@ -54,6 +54,9 @@ export interface SaveChangesNodeData extends NodeData {
   textValue: string;
   packName: string;
   packedFileName: string;
+  openInWindows: boolean;
+  /** Open the written pack in the viewer window after a manual run. */
+  openInViewer?: boolean;
   inputType: "ChangedColumnSelection" | "Text" | "TableSelection";
 }
 
@@ -92,6 +95,13 @@ export interface PackFilesDropdownNodeData extends NodeData {
   useCurrentPack?: boolean;
 }
 
+export interface RemovePackSourceNodeData extends NodeData {
+  selectedPack: string;
+  inputType: "PackFiles";
+  outputType: "PackFiles";
+  useCurrentPack?: boolean;
+}
+
 export interface AllEnabledModsNodeData extends NodeData {
   outputType: "PackFiles";
   includeBaseGame?: boolean;
@@ -122,13 +132,6 @@ export interface GroupByColumnsNodeData extends NodeData {
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
   onlyForMultiple?: boolean;
-}
-
-export interface FilterRow {
-  column: string;
-  value: string;
-  not: boolean;
-  operator: "AND" | "OR";
 }
 
 export interface FilterNodeData extends NodeData {
@@ -175,7 +178,7 @@ export interface LookupNodeData extends NodeData {
   lookupColumn: string;
   indexJoinColumn?: string;
   indexColumns?: string[];
-  joinType: "inner" | "left" | "nested" | "cross";
+  joinType: "inner" | "left" | "anti" | "nested" | "cross";
   inputType: "TableSelection";
   indexedInputType: "IndexedTable" | "TableSelection";
   outputType: "TableSelection" | "NestedTableSelection";
@@ -219,13 +222,7 @@ export interface AggregateNestedNodeData extends NodeData {
   sourceTableName?: string; // Source table name
   DBNameToDBVersions: Record<string, DBVersion[]>;
   filterColumn?: string;
-  filterOperator?:
-    | "equals"
-    | "notEquals"
-    | "greaterThan"
-    | "lessThan"
-    | "greaterThanOrEqual"
-    | "lessThanOrEqual";
+  filterOperator?: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
   filterValue?: string;
 }
 
@@ -307,6 +304,18 @@ export interface AddColumnTransformation {
   regexPattern?: string; // For regex_replace
   regexReplacement?: string; // For regex_replace
   outputColumnName: string;
+  /**
+   * Write the result back into sourceColumn instead of appending a column, leaving the table's shape
+   * untouched. Needed wherever the columns are fixed, such as a loc's key/text/tooltip.
+   */
+  overwriteSource?: boolean;
+  /**
+   * Apply this transformation only to rows where the condition holds; other rows keep their value.
+   * Distinct from the filter transformations, which remove the row from the output altogether.
+   */
+  conditionColumn?: string;
+  conditionOperator?: "startsWith" | "equals" | "notEquals" | "contains";
+  conditionValue?: string;
 }
 
 export interface AddNewColumnNodeData extends NodeData {
@@ -362,6 +371,13 @@ export interface DeduplicateNodeData extends NodeData {
   inputColumnNames?: string[];
 }
 
+export interface CombineSameTablesNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  columnNames: string[];
+  connectedTableName?: string;
+}
+
 export interface CustomSchemaNodeData extends NodeData {
   schemaColumns: CustomSchemaColumnWithId[];
   outputType: "CustomSchema";
@@ -397,4 +413,224 @@ export interface MultiFilterNodeData extends NodeData {
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
+/** One text change applied to the loc rows whose key starts with keyPrefix. */
+export interface LocTextRule {
+  id: string;
+  keyPrefix: string;
+  find?: string;
+  replaceWith?: string;
+  prepend?: string;
+  append?: string;
+}
+
+export interface EditLocTextNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  locRules: LocTextRule[];
+  /** Every prefix the schema can produce, for autocomplete only. */
+  locKeyPrefixes: string[];
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions?: Record<string, DBVersion[]>;
+}
+
+export interface EditTextFileNodeData extends NodeData {
+  inputType: "PackFiles" | "TableSelection";
+  outputType: "TableSelection";
+  textFileRules: TextFileEditRuleData[];
+  textFileFormatter?: "none" | "autoIndent" | "prettyXml" | "compactXml";
+  /** Do not use the pack containing this flow as the original source of a file to edit. */
+  ignoreFlowSourcePack?: boolean;
+}
+
+/** One exact attribute constraint in an Edit XML File locator step. */
+export interface XmlLocatorAttribute {
+  id: string;
+  name: string;
+  value: string;
+}
+
+/** One hop in the structural locator used by Edit XML File. */
+export interface XmlLocatorStep {
+  id: string;
+  elementName: string;
+  attributes: XmlLocatorAttribute[];
+}
+
+/** How an existing XML attribute is transformed by the editAttributes action. */
+export type XmlAttributeEditOperation = "replace" | "regexReplace" | "formula";
+
+/** One attribute mutation used by the setAttributes and editAttributes actions. */
+export interface XmlAttributeEdit {
+  id: string;
+  name: string;
+  newValue: string;
+  /** Literal text or regular expression to replace. Unused by formula edits. */
+  match?: string;
+  /** Defaults to literal replace for authoring/backwards compatibility. */
+  operation?: XmlAttributeEditOperation;
+}
+
+/** Authoring-only shape for the UI-only XML editing node. Runtime support is intentionally separate. */
+export interface EditXmlFileNodeData extends NodeData {
+  inputType: "PackFiles" | "TableSelection";
+  outputType: "TableSelection";
+  targetMode: "path" | "input";
+  filePath: string;
+  ignoreHierarchy: boolean;
+  locatorSteps: XmlLocatorStep[];
+  action: "setAttributes" | "editAttributes" | "replaceElement";
+  attributeEdits: XmlAttributeEdit[];
+  replacementXml: string;
+}
+
+/**
+ * Whether a target names a path while the rule only matches on the file name.
+ *
+ * Name matching compares the last path segment, so a target with a separator in it can never match
+ * anything - the rule silently does nothing. Shared by every node that targets files this way.
+ */
+export const targetHasPathButMatchesName = (
+  targetMatch: "path" | "name" | "regex" | "input",
+  target: string,
+): boolean => targetMatch === "name" && /[\\/]/.test(target.trim());
+
+/** Mirrors TextFileEditRule in textFileEdits.ts, which the renderer must not import. */
+export interface TextFileEditRuleData {
+  id: string;
+  targetMatch: "path" | "name" | "regex" | "input";
+  target: string;
+  mode: "xml" | "lua" | "text";
+  selector: string;
+  /** Closing snippet for insertBetween; the value goes in the gap after `selector`. */
+  selectorEnd?: string;
+  operation: "replace" | "regexReplace" | "insertBefore" | "insertAfter" | "insertBetween" | "delete" | "setAttribute";
+  attributeName?: string;
+  value?: string;
+  /** Leave the file alone if it already contains this, so one rule can skip the files that have it. */
+  skipIfContains?: string;
+  /** Conditions joined by AND/OR; AND binds more tightly. Supersedes skipIfContains when non-empty. */
+  skipConditions?: Array<{ id: string; value: string; operator?: "and" | "or" }>;
+  required?: boolean;
+}
+
+export interface PackFileOperationsNodeData extends NodeData {
+  inputType: "PackFiles" | "TableSelection";
+  outputType: "TableSelection";
+  fileOperations: PackFileOperationRuleData[];
+}
+
+/** Mirrors PackFileOperationRule in packFileOperations.ts, which the renderer must not import. */
+export interface PackFileOperationRuleData {
+  id: string;
+  operation: "copy" | "move" | "rename" | "delete";
+  targetMatch: "path" | "name" | "regex";
+  target: string;
+  destination?: string;
+  overwrite?: boolean;
+  required?: boolean;
+}
+
+export interface RemoveTablesNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  /** Entries to drop, matched against each table's name. */
+  tablesToRemove: string[];
+  /** Every table in the game schema, for autocomplete only. */
+  tableNames: string[];
+  columnNames: string[];
+  connectedTableName?: string;
+}
+
+export interface ConditionalBranchNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  /** Id of the checkbox flow option that decides which branch runs. */
+  selectedFlowOptionId: string;
+  /**
+   * Resolved from the option at prepare time, so the executor never needs the option list. Undefined
+   * until then; treated as false.
+   */
+  flowOptionChecked?: boolean;
+  /** "checkbox" gives two outputs, "radio" one per choice. Resolved alongside the value. */
+  flowOptionKind?: "checkbox" | "radio";
+  /** The radio choice that won, as a choice id. */
+  flowOptionChoiceId?: string;
+  /** The radio's choices, so the node can draw a handle for each without the option list. */
+  flowOptionChoices?: Array<{ id: string; label: string }>;
+  columnNames: string[];
+  connectedTableName?: string;
+}
+
+/** One hop of the deep clone plan: a table reached from its parent by a schema reference. */
+export interface DeepCloneTreeNode {
+  /** Table reached by this hop, e.g. "land_units_tables". Root node uses the input table. */
+  table: string;
+  /** Identity column of `table`; empty for keyless junction tables (nothing to rename). */
+  keyColumn: string;
+  /** Forward hops: the referencing column on the PARENT. Reverse hops: the referencing column on `table`. */
+  linkColumn: string;
+  /** "forward" follows the parent's is_reference; "reverse" finds rows pointing back at the parent. */
+  direction: "forward" | "reverse";
+  /** When false the reference is left pointing at the original row instead of being cloned. */
+  selected: boolean;
+  /** Overrides the node-level nameTemplate for this table only. */
+  nameTemplate?: string;
+  children: DeepCloneTreeNode[];
+}
+
+/** Forces a single column of a single cloned table to a literal value. */
+export interface DeepCloneOverride {
+  table: string;
+  column: string;
+  value: string;
+}
+
+/**
+ * One dimension of the variant product, e.g. "shield" with _shielded / _unshielded.
+ *
+ * A "range" axis generates its values from a counter instead of listing them, which is how you get
+ * hundreds of numbered clones without typing every suffix.
+ */
+export interface DeepCloneVariantAxis {
+  id: string;
+  kind?: "list" | "range";
+  values: Array<{
+    id: string;
+    suffix: string;
+    overrides: DeepCloneOverride[];
+  }>;
+  /** Range bounds are strings so they can carry a flow option placeholder. */
+  rangeStart?: string;
+  rangeEnd?: string;
+  rangeStep?: string;
+  /** Suffix pattern for a generated value; {n} is the counter. Defaults to "_{n}". */
+  rangeSuffix?: string;
+  /** Applied to every generated value, with {n} available in the value. */
+  rangeOverrides?: DeepCloneOverride[];
+}
+
+export interface DeepCloneNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  connectedTableName?: string;
+  columnNames: string[];
+  DBNameToDBVersions?: Record<string, DBVersion[]>;
+  /** Root of the clone plan; root.table matches connectedTableName. */
+  cloneTree?: DeepCloneTreeNode;
+  /** Supports {original}, {selfOriginal} and {variant}. Defaults to "{original}{variant}". */
+  nameTemplate: string;
+  useModdersPrefix: boolean;
+  /**
+   * Captured from the author's settings and saved with the flow, so a game-start run on someone
+   * else's machine produces the author's keys rather than that machine's prefix (usually empty).
+   */
+  moddersPrefix: string;
+  variantAxes: DeepCloneVariantAxis[];
+  columnOverrides: DeepCloneOverride[];
+  generateLoc: boolean;
+  /** Also clone every row that referenced a renamed key, re-pointed at the new key. */
+  autoFollowReferences: boolean;
 }

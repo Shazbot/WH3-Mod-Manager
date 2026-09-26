@@ -21,9 +21,10 @@ const usage = () => {
   console.log(
     [
       "Usage:",
-      "  node scripts/translate-updated-locale-keys-from-commits.mjs [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--langs de,es,...] [--dry-run]",
+      "  node scripts/translate-updated-locale-keys-from-commits.mjs [--since YYYY-MM-DD|COMMIT_HASH] [--until YYYY-MM-DD] [--langs de,es,...] [--dry-run]",
       "",
       "Finds commits touching locales/en/translation.json in the given date range.",
+      "When --since is a commit hash, finds all commits after it on the current branch (excluding that commit).",
       "Only keys whose English value changed while the key already existed are selected.",
       "Those keys are then translated from the current committed English locale into each target locale.",
       "",
@@ -82,17 +83,20 @@ const git = (args) =>
 const loadJson = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf8"));
 const saveJson = (filePath, value) => fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n");
 
+const resolveCommit = (revision) => {
+  try {
+    return git(["rev-parse", "--verify", "--quiet", `${revision}^{commit}`]);
+  } catch {
+    return null;
+  }
+};
+
 const getCommits = ({ since, until }) => {
-  const output = git([
-    "log",
-    "--since",
-    `${since} 00:00`,
-    "--until",
-    `${until} 23:59:59`,
-    "--format=%H",
-    "--",
-    LOCALE_FILE,
-  ]);
+  const sinceCommit = resolveCommit(since);
+  const logArgs = sinceCommit
+    ? ["log", `${sinceCommit}..HEAD`]
+    : ["log", "--since", `${since} 00:00`, "--until", `${until} 23:59:59`];
+  const output = git([...logArgs, "--format=%H", "--", LOCALE_FILE]);
 
   if (!output) return [];
   return output
@@ -128,17 +132,14 @@ const getChangedExistingKeys = (commits) => {
   return [...changedKeys];
 };
 
+const describeRange = ({ since, until }) =>
+  resolveCommit(since) ? `after commit ${since} (exclusive) on the current branch` : `between ${since} and ${until}`;
+
 const protectPlaceholders = (text) => {
   const tokens = [];
   let protectedText = text;
 
-  const patterns = [
-    /\{\{[^}]+\}\}/g,
-    /\{[0-9]+\}/g,
-    /\\n/g,
-    /\\t/g,
-    /\\r/g,
-  ];
+  const patterns = [/\{\{[^}]+\}\}/g, /\{[0-9]+\}/g, /\\n/g, /\\t/g, /\\r/g];
 
   for (const pattern of patterns) {
     protectedText = protectedText.replace(pattern, (match) => {
@@ -190,15 +191,16 @@ const translateViaGoogle = async ({ text, sourceLang, targetLang }) => {
 const run = async () => {
   const opts = parseArgs();
   const commits = getCommits(opts);
+  const rangeDescription = describeRange(opts);
 
   if (commits.length === 0) {
-    console.log(`No commits found for ${LOCALE_FILE} between ${opts.since} and ${opts.until}.`);
+    console.log(`No commits found for ${LOCALE_FILE} ${rangeDescription}.`);
     return;
   }
 
   const changedKeys = getChangedExistingKeys(commits);
   if (changedKeys.length === 0) {
-    console.log(`No existing-key value changes found in ${LOCALE_FILE} between ${opts.since} and ${opts.until}.`);
+    console.log(`No existing-key value changes found in ${LOCALE_FILE} ${rangeDescription}.`);
     return;
   }
 
@@ -226,9 +228,7 @@ const run = async () => {
     ];
     const cache = new Map();
 
-    console.log(
-      `\n[${lang}] updating ${changedKeys.length} keys (unique strings to translate: ${uniqueTexts.length})`,
-    );
+    console.log(`\n[${lang}] updating ${changedKeys.length} keys (unique strings to translate: ${uniqueTexts.length})`);
 
     let translatedCount = 0;
     for (const text of uniqueTexts) {

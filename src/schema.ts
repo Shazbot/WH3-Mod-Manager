@@ -1,7 +1,6 @@
 // Schema files are now loaded lazily on-demand
 import { DBFieldName, DBFileName, DBVersion } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
-import { perfMonitor } from "./utility/performanceMonitor";
 import { decompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as path from "path";
@@ -34,7 +33,8 @@ const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
   secondVersion.version - firstVersion.version;
 
 // Schema loading functions
-const getSchemaFileName = (game: SupportedGames): string => {
+/** Exported so anything keyed on the schema can hash the same bundled file this loads. */
+export const getSchemaFileName = (game: SupportedGames): string => {
   const schemaMap: Record<SupportedGames, string> = {
     wh3: "schema_wh3.json.zst",
     wh2: "schema_wh2.json.zst",
@@ -59,7 +59,6 @@ const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
     return schemaLoadingPromises.get(game);
   }
 
-  const startTime = performance.now();
   const loadingPromise = (async () => {
     try {
       const schemaFileName = getSchemaFileName(game);
@@ -71,10 +70,9 @@ const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
       const schemaData = JSON.parse(Buffer.from(decompressedBuffer).toString("utf8"));
 
       schemaCache.set(game, schemaData);
-      perfMonitor.trackSchemaLoad(game, startTime);
       return schemaData;
     } catch (error) {
-      console.log(`Failed to load schema for game ${game}:`, error);
+      console.error(`Failed to load schema for game ${game}:`, error);
       return { definitions: {} };
     } finally {
       // Clean up the promise from the map once it's resolved
@@ -226,10 +224,7 @@ export const getReferencesForGame = async (game: SupportedGames): Promise<Record
 //       "condition_key": ["agent_conditions_tables", "condition_key"]
 //     },
 
-export const gameToDBFieldsThatReference: Record<
-  SupportedGames,
-  Record<DBFileName, Record<DBFieldName, string[]>>
-> = {
+export const gameToDBFieldsThatReference: Record<SupportedGames, Record<DBFileName, Record<DBFieldName, string[]>>> = {
   wh3: {},
   wh2: {},
   threeKingdoms: {},
@@ -262,8 +257,7 @@ const processDBFieldsThatReferenceForGame = async (game: SupportedGames): Promis
                 continue;
               }
 
-              gameToDBFieldsThatReference[game][tableName] =
-                gameToDBFieldsThatReference[game][tableName] || {};
+              gameToDBFieldsThatReference[game][tableName] = gameToDBFieldsThatReference[game][tableName] || {};
               gameToDBFieldsThatReference[game][tableName][field.name] = [dbFileNameRef, dbFieldNameRef];
             }
           }
@@ -280,7 +274,7 @@ const processDBFieldsThatReferenceForGame = async (game: SupportedGames): Promis
 };
 
 export const getDBFieldsThatReferenceForGame = async (
-  game: SupportedGames
+  game: SupportedGames,
 ): Promise<Record<DBFileName, Record<DBFieldName, string[]>>> => {
   if (Object.keys(gameToDBFieldsThatReference[game]).length === 0) {
     await processDBFieldsThatReferenceForGame(game);
@@ -288,10 +282,7 @@ export const getDBFieldsThatReferenceForGame = async (
   return gameToDBFieldsThatReference[game];
 };
 
-export const gameToDBFieldsReferencedBy: Record<
-  SupportedGames,
-  Record<DBFileName, Record<DBFieldName, string[][]>>
-> = {
+export const gameToDBFieldsReferencedBy: Record<SupportedGames, Record<DBFileName, Record<DBFieldName, string[][]>>> = {
   wh3: {},
   wh2: {},
   threeKingdoms: {},
@@ -324,13 +315,10 @@ const processDBFieldsReferencedByForGame = async (game: SupportedGames): Promise
 
           if (
             !gameToDBFieldsReferencedBy[game][referencedTableName][referencedFieldName].some(
-              (reference) => reference[0] == tableName && reference[1] == dbFieldName
+              (reference) => reference[0] == tableName && reference[1] == dbFieldName,
             )
           ) {
-            gameToDBFieldsReferencedBy[game][referencedTableName][referencedFieldName].push([
-              tableName,
-              dbFieldName,
-            ]);
+            gameToDBFieldsReferencedBy[game][referencedTableName][referencedFieldName].push([tableName, dbFieldName]);
           }
         }
       }
@@ -345,7 +333,7 @@ const processDBFieldsReferencedByForGame = async (game: SupportedGames): Promise
 };
 
 export const getDBFieldsReferencedByForGame = async (
-  game: SupportedGames
+  game: SupportedGames,
 ): Promise<Record<DBFileName, Record<DBFieldName, string[][]>>> => {
   if (Object.keys(gameToDBFieldsReferencedBy[game]).length === 0) {
     await processDBFieldsReferencedByForGame(game);

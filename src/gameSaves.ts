@@ -4,6 +4,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { gameToAppDataFolderName, gameToSteamId } from "./supportedGames";
 import appData from "./appData";
+import { findSteamAppsFolderSync, getCompatDataPrefixSync } from "./steamPaths";
 
 let savesWatcher: chokidar.FSWatcher | undefined;
 
@@ -14,16 +15,20 @@ export const getSavesFolderPath = () => {
 
   if (process.platform === "linux") {
     const homeDir = app.getPath("home");
-    appDataPath = `${homeDir}/.local/share/Steam/steamapps/compatdata/${gameToSteamId[appData.currentGame]}/pfx/drive_c/users/steamuser/AppData/Roaming/`;
+    const steamId = gameToSteamId[appData.currentGame];
+    const steamAppsFolder =
+      appData.gamesToSteamAppsFolderPaths[appData.currentGame] ||
+      findSteamAppsFolderSync(steamId, undefined, process.platform, homeDir);
+    if (steamAppsFolder) appData.gamesToSteamAppsFolderPaths[appData.currentGame] = steamAppsFolder;
+
+    const compatDataPrefix = getCompatDataPrefixSync(steamId, steamAppsFolder);
+    appDataPath =
+      compatDataPrefix ?? path.join(homeDir, ".local", "share", "Steam", "steamapps", "compatdata", steamId, "pfx");
+    appDataPath = path.join(appDataPath, "drive_c", "users", "steamuser", "AppData", "Roaming");
   }
 
-  return path.join(
-    appDataPath,
-    "The Creative Assembly",
-    gameToAppDataFolderName[appData.currentGame],
-    "save_games"
-  );
-}
+  return path.join(appDataPath, "The Creative Assembly", gameToAppDataFolderName[appData.currentGame], "save_games");
+};
 
 export const getSaveFiles = async () => {
   saves = [];
@@ -33,9 +38,9 @@ export const getSaveFiles = async () => {
   try {
     files = fs.readdirSync(folderPath, { withFileTypes: true });
   } catch (e) {
-    console.error(e)
+    console.error(e);
 
-    return []
+    return [];
   }
 
   for (const saveFile of files) {

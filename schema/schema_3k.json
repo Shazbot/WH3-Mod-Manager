@@ -111972,6 +111972,1272 @@
         "localised_key_order": []
       }
     ],
+    "ceo_active_permissions_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "permissions_granted_while_active",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_permissions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_anti_ceo_pairs_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "anti_ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_can_equip_requirements_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "equip_ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "checking_is_ceo_active_or_is_ceo_equipped",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_1",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_2",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_3",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_categories_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "title",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "icon_path",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "is_hidden_from_display",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "event_feed_category",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_event_feed_categories",
+              "event_feed_category"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [
+          {
+            "name": "title",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_key_order": [
+          0
+        ]
+      }
+    ],
+    "ceo_effect_list_to_effects_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "effect_list",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_effect_lists",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "effect",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "effects",
+              "effect"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "value",
+            "field_type": "F64",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "effect_scope",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "campaign_effect_scopes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "optional_only_in_game_mode",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "game_modes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_effect_lists_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipment_category_managers_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "category",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_categories",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "minimum_slots",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "maximum_slots",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "slots_can_be_empty",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "slots_allow_equipped_inactive_ceos",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "slot_ceos_are_permanent_once_equipped",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "slot_ceos_are_selectable",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_source_location_1",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 8,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_source_location_2",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 9,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_source_location_3",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 10,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipment_manager_all_possible_ceos_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "equipment_manager",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "include_ceo_group",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_groups",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipment_manager_campaign_lookups_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "campaign",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "campaigns",
+              "campaign_name"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "faction",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "factions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "subculture",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "cultures_subcultures",
+              "subculture"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "culture",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "cultures",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "equipment_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "agent",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "agents",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "agent_subtype",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "agent_subtypes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "character_generation_template",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "character_generation_templates",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 8,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipment_manager_to_category_managers_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "equipment_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "category_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_category_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipment_manager_types_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipment_managers_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "exists_in_location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipped_set_bonus_ceos_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "equipped_set_bonus",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipped_set_bonuses",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_in_set",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipped_set_bonus_effect_bundles_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "equipped_set_bonus",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipped_set_bonuses",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "num_ceos_equipped",
+            "field_type": "I32",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_effect_list",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_effect_lists",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_equipped_set_bonuses_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "title",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "icon_path",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "sort_order",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [
+          {
+            "name": "title",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_key_order": [
+          0
+        ]
+      }
+    ],
     "ceo_equipped_set_bonuses_to_incident_junctions_tables": [
       {
         "version": 0,
@@ -112030,11 +113296,1093 @@
         ],
         "localised_fields": [],
         "localised_key_order": []
+      },
+      {
+        "version": -1,
+        "fields": [
+          {
+            "name": "id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "incident",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "incidents",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_set_key",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipped_set_bonuses",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_event_feed_categories_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "event_feed_category",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_group_ceos_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ceo_group",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_groups",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "trigger_weighting",
+            "field_type": "F64",
+            "is_key": false,
+            "default_value": "1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_group_spawners_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ceo_group",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_groups",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_spawner",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_spawners",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_groups_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_initial_data_active_ceos_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "initial_data_stage",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_initial_data_stages",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "active_ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "starting_points_delta",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_initial_data_active_spawners_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "initial_data_stage",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_initial_data_stages",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "spawner",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_spawners",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "starting_points",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_initial_data_equipments_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "initial_data_stage",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_initial_data_stages",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "category",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_categories",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "slot_index",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "equipped_ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_initial_data_scripted_permissions_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "initial_data_stage",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_initial_data_stages",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "scripted_permissions",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_scripted_permissions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_initial_data_stages_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_initial_data_to_stages_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ceo_initial_data",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_initial_datas",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "stage",
+            "field_type": "I32",
+            "is_key": true,
+            "default_value": "1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "initial_data_stage",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_initial_data_stages",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_initial_data_triggers_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "initial_data_stage",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_initial_data_stages",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "trigger",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_triggers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "process_order_priority",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
       }
     ],
     "ceo_initial_datas_tables": [
       {
         "version": 1,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      },
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "template_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_location_enums_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_nodes_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_effect_list",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_effect_lists",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_change_per_turn_if_active",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "title",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "placeholder",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "placeholder",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "icon_path",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": true,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "opinion_topic_modifier",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "character_relationship_opinion_topic_sets",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [
+          {
+            "name": "title",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "placeholder",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "placeholder",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_key_order": [
+          0
+        ]
+      }
+    ],
+    "ceo_permissions_groups_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "permissions",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_permissions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "group",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_groups",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_gain_enabled_override",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_gain_disabled_override",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "state_active_override",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "state_inactive_override",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_permissions_tables": [
+      {
+        "version": 0,
         "fields": [
           {
             "name": "key",
@@ -112098,19 +114446,133 @@
         "localised_key_order": []
       }
     ],
-    "ceo_set_items_tables": [
+    "ceo_rarities_tables": [
       {
         "version": 0,
         "fields": [
           {
-            "name": "ceo",
+            "name": "key",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "rarity_value",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "rarity_name",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_scripted_permissions_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "exists_in_and_provides_permission_to_location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
             "is_reference": [
-              "ceos",
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_scripted_permissions_to_permissions_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "scripted_permissions",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_scripted_permissions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "permissions",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_permissions",
               "key"
             ],
             "lookup": null,
@@ -112120,6 +114582,30 @@
             "enum_values": {},
             "is_part_of_colour": null
           },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_set_items_tables": [
+      {
+        "version": 0,
+        "fields": [
           {
             "name": "ceo_set",
             "field_type": "StringU8",
@@ -112134,6 +114620,24 @@
             "lookup": null,
             "description": "",
             "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -112167,14 +114671,32 @@
         "localised_key_order": []
       }
     ],
-    "ceo_to_target_ceo_junctions_tables": [
+    "ceo_spawner_can_spawn_requirements_tables": [
       {
         "version": 0,
         "fields": [
           {
-            "name": "child_ceo",
+            "name": "spawner",
             "field_type": "StringU8",
-            "is_key": true,
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_spawners",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_1",
+            "field_type": "StringU8",
+            "is_key": false,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
@@ -112190,6 +114712,1122 @@
             "is_part_of_colour": null
           },
           {
+            "name": "required_ceo_2",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_3",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target_ceo_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target_equipment_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_spawners_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "exists_in_location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "spawns_ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "spawn_threshold",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "min_points",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "max_points",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "points_change_per_turn_if_spawing_enabled",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "points_change_per_turn_if_spawing_disabled",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "reset_if_point_gain_disabled",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 8,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "reset_if_spawning_disabled",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 9,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "destroy_if_point_gain_disabled",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 10,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "destroy_if_spawning_disabled",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 11,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "provides_scripted_permissions_on_spawn",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_scripted_permissions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 12,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_template_manager_all_possible_ceos_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "template_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "include_ceo_group",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_groups",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_template_manager_campaign_lookups_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "campaign",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "campaigns",
+              "campaign_name"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "faction",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "factions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "subculture",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "cultures_subcultures",
+              "subculture"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "culture",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "cultures",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "template_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "agent",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "agents",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "agent_subtype",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "agent_subtypes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "character_generation_template",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "character_generation_templates",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 8,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_template_manager_ceo_limits_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "template_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "scoped_limit_or_local_only_limit",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_to_limit",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_node_to_limit",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_nodes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_category_to_limit",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_categories",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "max_limit_that_can_exist_at_once",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_template_manager_ceo_spawn_limits_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "template_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "spawn_limit",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_template_manager_supported_categories_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "template_manager_key",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_managers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "supported_category",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_categories",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_spawn_ceos",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_own_ceos",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_template_manager_types_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_template_managers_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "behviour",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_threshold_nodes_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ceo_threshold",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_thresholds",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_node",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_nodes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "points_threshold_to_activate_node",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_downgrade_to_previous_node",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "true",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_thresholds_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_threshold_to_activate",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_theshold_to_destroy",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "starting_points",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "max_points",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "resets_to_starting_points_when_deactivated",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_to_target_ceo_junctions_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
             "name": "parent_ceo",
             "field_type": "StringU8",
             "is_key": true,
@@ -112203,6 +115841,24 @@
             "lookup": null,
             "description": "",
             "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "child_ceo",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -112284,6 +115940,30 @@
             "lookup": null,
             "description": "",
             "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_to_target_junction_reasons_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "reason",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -112387,85 +116067,6 @@
         ],
         "localised_fields": [],
         "localised_key_order": []
-      },
-      {
-        "version": 0,
-        "fields": [
-          {
-            "name": "ceo",
-            "field_type": "StringU8",
-            "is_key": false,
-            "default_value": null,
-            "is_filename": false,
-            "filename_relative_path": null,
-            "is_reference": [
-              "ceos",
-              "key"
-            ],
-            "lookup": null,
-            "description": "",
-            "ca_order": 1,
-            "is_bitwise": 0,
-            "enum_values": {},
-            "is_part_of_colour": null
-          },
-          {
-            "name": "id",
-            "field_type": "I64",
-            "is_key": true,
-            "default_value": null,
-            "is_filename": false,
-            "filename_relative_path": null,
-            "is_reference": [
-              "ceos",
-              "key"
-            ],
-            "lookup": null,
-            "description": "",
-            "ca_order": -1,
-            "is_bitwise": 0,
-            "enum_values": {},
-            "is_part_of_colour": null
-          },
-          {
-            "name": "target_province",
-            "field_type": "StringU8",
-            "is_key": false,
-            "default_value": null,
-            "is_filename": false,
-            "filename_relative_path": null,
-            "is_reference": [
-              "provinces",
-              "key"
-            ],
-            "lookup": null,
-            "description": "",
-            "ca_order": 2,
-            "is_bitwise": 0,
-            "enum_values": {},
-            "is_part_of_colour": null
-          },
-          {
-            "name": "target_settlement",
-            "field_type": "OptionalStringU8",
-            "is_key": false,
-            "default_value": null,
-            "is_filename": false,
-            "filename_relative_path": null,
-            "is_reference": [
-              "campaign_map_settlements",
-              "settlement_id"
-            ],
-            "lookup": null,
-            "description": "",
-            "ca_order": 3,
-            "is_bitwise": 0,
-            "enum_values": {},
-            "is_part_of_colour": null
-          }
-        ],
-        "localised_fields": [],
-        "localised_key_order": []
       }
     ],
     "ceo_to_ui_display_junctions_tables": [
@@ -112516,6 +116117,781 @@
             "lookup": null,
             "description": "",
             "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      },
+      {
+        "version": -1,
+        "fields": [
+          {
+            "name": "ceo",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "male_image",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "female_image",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_trigger_behaviour_enums_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_trigger_target_requirements_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "trigger_target",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_trigger_targets",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_1",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_2",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_ceo_3",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target_ceo_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target_equipment_manager",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_trigger_targets_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "trigger_behaviour",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_trigger_behaviour_enums",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target_individual_ceo",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target_group",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_groups",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "num_to_target",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "min_points_applied",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "max_points_applied",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_trigger_to_trigger_targets_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "trigger",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_triggers",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "trigger_target",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_trigger_targets",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "process_order_priority",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceo_triggers_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "payload_description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "target_location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceos_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "exists_in_location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_template_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "category",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_categories",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "priority",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "turns_to_expire",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_change_per_turn_if_inactive",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "Remove this number of points from the CEO when its inactive",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_change_per_turn_while_active",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "Remove this number of points from the CEO when its active",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "provides_scripted_permissions_on_spawn",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_scripted_permissions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "Does the CEO grant any permenant permissions?",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_be_looted_post_battle",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 8,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "inheritance_chance",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 9,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_be_traded_in_diplomacy",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 10,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_be_stolen",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 11,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "rarity",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_rarities",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 12,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_be_unequipped",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "true",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 13,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "can_be_transferred_if_equipped",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 14,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "cannot_reequip_until_next_round_if_unequipped",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "true",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 15,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "equipped_in_location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceo_equipment_manager_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 16,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "point_change_per_turn_while_equipped",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "Remove this number of points from the CEO when its equipped",
+            "ca_order": 17,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -113277,6 +117653,355 @@
             "lookup": null,
             "description": "Game mode that this applies to",
             "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      },
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ceos_key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "male_vmd",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "variants",
+              "variant_name"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "female_vmd",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "variants",
+              "variant_name"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "armour",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "unit_armour_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "primary_melee_weapon",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "melee_weapons",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "shield",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "unit_shield_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "primary_missile_weapon",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "missile_weapons",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "mount",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "mounts",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "man_animation",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "battle_animations_table",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 8,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "mount_animation",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "battle_animations_table",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 9,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "game_mode",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "game_modes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 10,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "secondary_weapon_animation",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "battle_animations_table",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 11,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "remap_general_unit_to_hero_unit",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 12,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "priority",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 13,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "autonomous_rider_group",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "autonomous_rider_groups_junctions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 14,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ground_type_stat_effect_group",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ground_type_stat_effect_groups",
+              "group_name"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 15,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ceos_to_incident_junctions_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "auto_id",
+            "field_type": "I64",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "incident",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "incidents",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ceo_key",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ceos",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -124740,7 +129465,10 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0,
+          1
+        ]
       }
     ],
     "custom_loading_screens_tables": [
@@ -200595,7 +205323,10 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          2,
+          0
+        ]
       }
     ],
     "ui_tooltips_tables": [
@@ -213372,6 +218103,11 @@
         "is_filename": "true"
       }
     },
+    "campaign_post_battle_captive_options_tables": {
+      "sound_event": {
+        "is_filename": "true"
+      }
+    },
     "campaign_progression_level_details_tables": {
       "level_icon": {
         "is_filename": "true"
@@ -213464,7 +218200,7 @@
     },
     "incidents_tables": {
       "ui_image": {
-        "filename_relative_path": "ui/eventpics/%;ui/eventpics/%.png",
+        "filename_relative_path": "ui/eventpics/%.png",
         "is_filename": "true"
       }
     },
@@ -213548,7 +218284,7 @@
     },
     "ui_ceo_node_overrides_tables": {
       "icon_path": {
-        "filename_relative_path": "ui/ancillaries/%;ui/ancillaries/large/%"
+        "filename_relative_path": "ui/ancillaries/%"
       }
     },
     "ui_character_assignment_categories_tables": {

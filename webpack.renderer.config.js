@@ -12,7 +12,7 @@ rules.push(
   {
     test: /\.(png|svg|jpg|jpeg|gif|ico)$/i,
     type: "asset/resource",
-  }
+  },
 );
 
 module.exports = {

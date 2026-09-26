@@ -1,7 +1,9 @@
 .react-tabs {
   display: flex;
   margin-left: 36px;
-  height: 400px;
+  height: auto;
+  max-height: calc(100vh - 3rem);
+  min-height: 0;
   border: 1px solid #3c3e43;
   color: white;
   background: #1c1d1f;
@@ -14,6 +16,8 @@
   padding: 0;
   color: white;
   background: #394250;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .react-tabs__tab {

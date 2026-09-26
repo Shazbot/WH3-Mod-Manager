@@ -56,10 +56,7 @@ const REFERENCE_TARGET_TYPES = new Set([
   "generaterowsschema",
 ]);
 
-const REVERSE_REFERENCE_TARGET_TYPES = new Set([
-  ...REFERENCE_TARGET_TYPES,
-  "reversereferencelookup",
-]);
+const REVERSE_REFERENCE_TARGET_TYPES = new Set([...REFERENCE_TARGET_TYPES, "reversereferencelookup"]);
 
 const updateConnectedTargetNodes = (
   nodes: Node[],
@@ -124,11 +121,7 @@ export const applyNodeDataPatch = (
   if (patch.selectedReferenceTable !== undefined && sourceNode.type === "referencelookup") {
     const selectedReferenceTable = (sourceNode.data as Partial<ReferenceTableLookupNodeData>).selectedReferenceTable;
     if (selectedReferenceTable) {
-      const fieldNames = getFieldNamesForTable(
-        selectedReferenceTable,
-        DBNameToDBVersions,
-        defaultTableVersions,
-      );
+      const fieldNames = getFieldNamesForTable(selectedReferenceTable, DBNameToDBVersions, defaultTableVersions);
       nextNodes = updateConnectedTargetNodes(nextNodes, state.edges, nodeId, REFERENCE_TARGET_TYPES, {
         connectedTableName: selectedReferenceTable,
         columnNames: fieldNames,
@@ -140,22 +133,12 @@ export const applyNodeDataPatch = (
   if (patch.selectedReverseTable !== undefined && sourceNode.type === "reversereferencelookup") {
     const selectedReverseTable = (sourceNode.data as Partial<ReverseReferenceLookupNodeData>).selectedReverseTable;
     if (selectedReverseTable) {
-      const fieldNames = getFieldNamesForTable(
-        selectedReverseTable,
-        DBNameToDBVersions,
-        defaultTableVersions,
-      );
-      nextNodes = updateConnectedTargetNodes(
-        nextNodes,
-        state.edges,
-        nodeId,
-        REVERSE_REFERENCE_TARGET_TYPES,
-        {
-          connectedTableName: selectedReverseTable,
-          columnNames: fieldNames,
-          inputColumnNames: fieldNames,
-        },
-      );
+      const fieldNames = getFieldNamesForTable(selectedReverseTable, DBNameToDBVersions, defaultTableVersions);
+      nextNodes = updateConnectedTargetNodes(nextNodes, state.edges, nodeId, REVERSE_REFERENCE_TARGET_TYPES, {
+        connectedTableName: selectedReverseTable,
+        columnNames: fieldNames,
+        inputColumnNames: fieldNames,
+      });
     }
   }
 
@@ -246,6 +229,31 @@ export const applyNodeDataPatch = (
   );
 };
 
+export const applyNodeDataPatchFromRef = (
+  nodesRef: { current: Node[] },
+  edges: Edge[],
+  nodeId: string,
+  patch: FlowNodeDataPatch,
+  context: SchemaContext,
+): GraphMutationResult => {
+  const nextGraph = applyNodeDataPatch(
+    {
+      nodes: nodesRef.current,
+      edges,
+    },
+    nodeId,
+    patch,
+    context,
+  );
+
+  // A node can dispatch multiple related patches before React commits a render.
+  // Keep the imperative snapshot current so every subsequent patch composes with
+  // the preceding one instead of restoring stale node data.
+  nodesRef.current = nextGraph.nodes;
+
+  return nextGraph;
+};
+
 export const deleteSelectedNodesFromGraph = (nodes: Node[], edges: Edge[]) => {
   const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
 
@@ -259,5 +267,84 @@ export const deleteSelectedNodesFromGraph = (nodes: Node[], edges: Edge[]) => {
       (edge) => !selectedNodeIds.includes(edge.source || "") && !selectedNodeIds.includes(edge.target || ""),
     ),
     deletedNodeIds: selectedNodeIds,
+  };
+};
+
+/**
+ * Marks every node selected, for ctrl+A.
+ *
+ * Edges are left alone: an edge only exists between two nodes, and every operation that acts on a
+ * selection - delete, copy, disable - already brings along the edges between the nodes it touches.
+ */
+export const selectAllNodes = (nodes: Node[]) => {
+  if (nodes.length === 0 || nodes.every((node) => node.selected)) {
+    return { nodes, changed: false };
+  }
+
+  return {
+    nodes: nodes.map((node) => (node.selected ? node : { ...node, selected: true })),
+    changed: true,
+  };
+};
+
+export const getNodesDisabledByUpstream = (nodes: Node[], edges: Edge[]) => {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const manuallyDisabledNodeIds = new Set(nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id));
+  const reachableNodeIds = new Set(manuallyDisabledNodeIds);
+  const nodesToVisit = [...manuallyDisabledNodeIds];
+  const outgoingTargetIdsBySource = new Map<string, string[]>();
+
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      continue;
+    }
+
+    const targetIds = outgoingTargetIdsBySource.get(edge.source);
+    if (targetIds) {
+      targetIds.push(edge.target);
+    } else {
+      outgoingTargetIdsBySource.set(edge.source, [edge.target]);
+    }
+  }
+
+  for (let index = 0; index < nodesToVisit.length; index += 1) {
+    const sourceId = nodesToVisit[index];
+    for (const targetId of outgoingTargetIdsBySource.get(sourceId) || []) {
+      if (reachableNodeIds.has(targetId)) {
+        continue;
+      }
+
+      reachableNodeIds.add(targetId);
+      nodesToVisit.push(targetId);
+    }
+  }
+
+  return new Set([...reachableNodeIds].filter((nodeId) => !manuallyDisabledNodeIds.has(nodeId)));
+};
+
+export const toggleSelectedNodesDisabled = (nodes: Node[]) => {
+  const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
+
+  if (selectedNodeIds.length === 0) {
+    return { nodes, selectedNodeIds, disabled: false };
+  }
+
+  const selectedNodeIdSet = new Set(selectedNodeIds);
+  const disabled = nodes.some((node) => selectedNodeIdSet.has(node.id) && node.data.isDisabled !== true);
+
+  return {
+    nodes: nodes.map((node) =>
+      selectedNodeIdSet.has(node.id)
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              isDisabled: disabled,
+            },
+          }
+        : node,
+    ),
+    selectedNodeIds,
+    disabled,
   };
 };

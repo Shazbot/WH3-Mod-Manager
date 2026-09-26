@@ -1,6 +1,33 @@
 import type { XYPosition } from "@xyflow/react";
 
 import { DBVersion } from "../packFileTypes";
+import type { DeepCloneOverride, DeepCloneTreeNode, DeepCloneVariantAxis } from "./nodes/types";
+
+export type FilterMatchMode = "full" | "partial" | "regex";
+
+/** One row of the table-row filter node. `matchMode` is optional for old saved flows. */
+export interface FilterRow {
+  column: string;
+  value: string;
+  not: boolean;
+  operator: "AND" | "OR";
+  matchMode?: FilterMatchMode;
+  /**
+   * Execution-only marker for a flow option that resolved to an empty value, which must stay a
+   * non-match rather than becoming an unfilled row. Never persisted: `prepareGraphForExecution`
+   * copies the node data before substitution and the prepared graph goes straight to the backend,
+   * so `getSerializableNodeData` only ever sees the original rows.
+   */
+  flowOptionResolvedEmpty?: boolean;
+}
+
+/** Old filter rows have no mode, which deliberately resolves to the legacy full-match behavior. */
+export const normalizeFilterMatchMode = (mode: unknown): FilterMatchMode =>
+  mode === "partial" || mode === "regex" ? mode : "full";
+
+/** The mode a newly added filter row should start with: the last row's effective mode. */
+export const getLastFilterMatchMode = (filters: ReadonlyArray<{ matchMode?: unknown }>): FilterMatchMode =>
+  filters.length > 0 ? normalizeFilterMatchMode(filters[filters.length - 1].matchMode) : "full";
 
 export interface BaseFlowOption {
   id: string;
@@ -27,7 +54,69 @@ export interface CheckboxFlowOption extends BaseFlowOption {
   value: boolean;
 }
 
-export type FlowOption = TextboxFlowOption | RangeSliderFlowOption | CheckboxFlowOption;
+/**
+ * A textarea whose value is a list: one entry per line. Substituted into a node field as the raw
+ * newline-separated text, which the filter node reads as a set of values to match against.
+ */
+export interface MultilineTextboxFlowOption extends BaseFlowOption {
+  type: "multiline";
+  value: string;
+  placeholder?: string;
+}
+
+/** One choice of a radio option. Ids are what nodes bind to, so a label can change freely. */
+export interface RadioFlowOptionChoice {
+  id: string;
+  label: string;
+}
+
+/** A set of mutually exclusive choices, of which exactly one is selected. */
+export interface RadioFlowOption extends BaseFlowOption {
+  type: "radio";
+  /** The id of the selected choice. */
+  value: string;
+  choices: RadioFlowOptionChoice[];
+}
+
+export type FlowOption =
+  TextboxFlowOption | RangeSliderFlowOption | CheckboxFlowOption | MultilineTextboxFlowOption | RadioFlowOption;
+
+/**
+ * The choice a radio option resolves to: the selected one, falling back to the first.
+ *
+ * A stored selection can point at a choice the author has since removed, and a branch that activates
+ * nothing would silently skip every path, so the first choice stands in.
+ */
+export const resolveRadioChoiceId = (option: RadioFlowOption, userValue?: unknown): string => {
+  const choices = option.choices || [];
+  const selected = typeof userValue === "string" ? userValue : option.value;
+  if (choices.some((choice) => choice.id === selected)) return selected;
+  return choices[0]?.id ?? "";
+};
+
+/** Splits a multiline option value into its entries, ignoring blank lines and surrounding spaces. */
+export const splitMultilineOptionValue = (value: string): string[] =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+/** A single-line value stays one value; newline-separated flow options become an any-of list. */
+export const getFilterValueCandidates = (value: string): string[] =>
+  value.includes("\n") || value.includes("\r") ? splitMultilineOptionValue(value) : [value];
+
+/** Returns the first invalid case-insensitive regex in a filter value, if any. */
+export const getFilterRegexError = (value: string): string | undefined => {
+  for (const candidate of getFilterValueCandidates(value)) {
+    try {
+      new RegExp(candidate, "i");
+    } catch (error) {
+      return error instanceof Error ? error.message : "Invalid regular expression";
+    }
+  }
+
+  return undefined;
+};
 
 export interface SerializedNode {
   id: string;
@@ -36,6 +125,7 @@ export interface SerializedNode {
   data: {
     label: string;
     type: FlowNodeType;
+    isDisabled?: boolean;
     textValue?: string;
     selectedPack?: string;
     selectedTable?: string;
@@ -50,7 +140,7 @@ export interface SerializedNode {
     afterText?: string;
     useCurrentPack?: boolean;
     onlyForMultiple?: boolean;
-    filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }>;
+    filters?: FilterRow[];
     splitValues?: Array<{ id: string; value: string; enabled: boolean }>;
     columnNames?: string[];
     dedupeByColumns?: string[];
@@ -69,19 +159,13 @@ export interface SerializedNode {
     flowExecutionId?: string;
     indexColumns?: string[];
     lookupColumn?: string;
-    joinType?: "inner" | "left" | "nested" | "cross";
+    joinType?: "inner" | "left" | "anti" | "nested" | "cross";
     tablePrefix?: string;
     tablePrefixes?: string[];
     aggregateColumn?: string;
     aggregateType?: "min" | "max" | "sum" | "avg" | "count";
     filterColumn?: string;
-    filterOperator?:
-      | "equals"
-      | "notEquals"
-      | "greaterThan"
-      | "lessThan"
-      | "greaterThanOrEqual"
-      | "lessThanOrEqual";
+    filterOperator?: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
     filterValue?: string;
     transformations?: Array<Record<string, unknown>>;
     outputTables?: Array<{
@@ -99,13 +183,43 @@ export interface SerializedNode {
     schemaColumns?: Array<Record<string, unknown>>;
     customRows?: Array<Record<string, unknown>>;
     newColumnName?: string;
+    filename?: string;
     tsvFileName?: string;
     tableName?: string;
     sourceInputColumns?: string[] | null;
     indexedTableColumns?: string[] | null;
     openInWindows?: boolean;
+    openInViewer?: boolean;
     customSchemaColumns?: string[];
     customSchemaData?: unknown;
+    cloneTree?: DeepCloneTreeNode;
+    nameTemplate?: string;
+    useModdersPrefix?: boolean;
+    moddersPrefix?: string;
+    variantAxes?: DeepCloneVariantAxis[];
+    columnOverrides?: DeepCloneOverride[];
+    generateLoc?: boolean;
+    autoFollowReferences?: boolean;
+    selectedFlowOptionId?: string;
+    flowOptionChecked?: boolean;
+    flowOptionKind?: "checkbox" | "radio";
+    flowOptionChoiceId?: string;
+    flowOptionChoices?: Array<{ id: string; label: string }>;
+    tablesToRemove?: string[];
+    locRules?: Array<Record<string, unknown>>;
+    textFileRules?: Array<Record<string, unknown>>;
+    textFileFormatter?: "none" | "autoIndent" | "prettyXml" | "compactXml";
+    ignoreFlowSourcePack?: boolean;
+    /** Runtime-only identity injected while preparing a manual or automatic execution. */
+    flowSourcePack?: string;
+    fileOperations?: Array<Record<string, unknown>>;
+    targetMode?: "path" | "input";
+    filePath?: string;
+    ignoreHierarchy?: boolean;
+    locatorSteps?: Array<Record<string, unknown>>;
+    action?: "setAttributes" | "editAttributes" | "replaceElement";
+    attributeEdits?: Array<Record<string, unknown>>;
+    replacementXml?: string;
   };
 }
 

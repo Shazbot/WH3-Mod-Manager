@@ -1,4 +1,3 @@
-import { fork } from "child_process";
 import { parse, getTime } from "date-fns";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
@@ -8,29 +7,119 @@ import fetch from "electron-fetch";
 import { zonedTimeToUtc } from "date-fns-tz";
 import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
-import * as os from "os";
 import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from "./supportedGames";
 import { decodeHTML } from "entities";
+import { DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID } from "./modSources";
+import { registerModThumbnailPath } from "./modThumbnailAssets";
+import { parseWorkshopSubscriptionTimes } from "./workshopSubscriptions";
+import { findSteamAppLocation, findSteamAppsFolder, findSteamInstallPath } from "./steamPaths";
+import { forkSteamWorker as fork } from "./steamWorker";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
 
 const wh3mmWorkshopId = "2845454582";
 
+export const WORKSHOP_METADATA_RETRY_DELAYS_MS = [5_000, 30_000] as const;
+
+export const getWorkshopMetadataRetryDelay = (retryIndex: number) => WORKSHOP_METADATA_RETRY_DELAYS_MS[retryIndex];
+
 export function fetchModData(
   ids: string[],
   cb: (modData: ModData) => void,
   log: (msg: string) => void,
   retryIndex = 0,
+  workerRetryIndex = 0,
 ) {
-  const joinedIds = ids.filter((id) => !isNaN(parseFloat(id))).join(",");
+  const workshopIds = ids.filter((id) => !isNaN(parseFloat(id)));
+  if (workshopIds.length === 0) return;
+
+  const joinedIds = workshopIds.join(",");
+  let gotModsData = false;
+  let hasHandledWorkerFailure = false;
+
+  const scheduleBatchRetry = (reason: string) => {
+    const retryDelay = getWorkshopMetadataRetryDelay(workerRetryIndex);
+    const attemptNumber = workerRetryIndex + 1;
+    const totalAttempts = WORKSHOP_METADATA_RETRY_DELAYS_MS.length + 1;
+
+    if (retryDelay === undefined) {
+      log(
+        `Workshop metadata unavailable for ${workshopIds.length} mod(s) after ${attemptNumber} attempt(s) ` +
+          `(${reason}); keeping local metadata.`,
+      );
+      return;
+    }
+
+    const nextAttemptNumber = attemptNumber + 1;
+    log(
+      `Workshop metadata unavailable for ${workshopIds.length} mod(s) (${reason}); ` +
+        `retrying in ${retryDelay / 1000}s (attempt ${nextAttemptNumber}/${totalAttempts}).`,
+    );
+    const retryTimer = setTimeout(() => {
+      fetchModData(workshopIds, cb, log, retryIndex, workerRetryIndex + 1);
+    }, retryDelay);
+    retryTimer.unref?.();
+  };
+
+  const handleWorkerFailure = (reason: string) => {
+    if (hasHandledWorkerFailure || gotModsData) return;
+    hasHandledWorkerFailure = true;
+    scheduleBatchRetry(reason);
+  };
+
+  const emitWorkshopData = (
+    workshopData: WorkshopItemStringInsteadOfBigInt[],
+    modsData: ModsData,
+    depModsData: WorkshopItemStringInsteadOfBigInt[] = [],
+  ) => {
+    const modIdToModName = new Map<string, string>();
+    for (const modData of depModsData.concat(workshopData)) {
+      modIdToModName.set(modData.publishedFileId, modData.title);
+    }
+
+    for (let i = 0; i < workshopData.length; i++) {
+      const workshopItem = workshopData[i];
+
+      if (workshopItem) {
+        const reqModIdToName = [] as [string, string][];
+        const depIds = modsData.dependencies[workshopItem.publishedFileId];
+        if (depIds) {
+          for (const depId of depIds.filter((id) => id != wh3mmWorkshopId)) {
+            reqModIdToName.push([depId, modIdToModName.get(depId) ?? ""]);
+          }
+        }
+
+        const modId = workshopItem.owner.steamId64.toString();
+        const installDiagnostic = modsData.installInfoDiagnostics?.find(
+          (diagnostic) => diagnostic.workshopId === workshopItem.publishedFileId,
+        );
+
+        const modData = {
+          workshopId: workshopItem.publishedFileId,
+          humanName: workshopItem.title,
+          author: modsData.authors[modId] ?? "",
+          reqModIdToName: reqModIdToName,
+          reqModIds: modsData.dependencies[workshopItem.publishedFileId] ?? [],
+          lastChanged: workshopItem.timeUpdated * 1000,
+          subscriptionTime: workshopItem.timeAddedToUserList * 1000,
+          isDeleted: false,
+          tags: workshopItem.tags,
+          workshopInstallTimestamp: installDiagnostic?.installedTimestamp,
+          workshopState: installDiagnostic?.state,
+        } as ModData;
+        cb(modData);
+      }
+    }
+  };
 
   const child = fork(
     nodePath.join(__dirname, "sub.js"),
     [gameToSteamId[appData.currentGame], "getModsData", joinedIds],
     {},
   );
-  child.on("message", (modsData: ModsData) => {
+  child.once("message", (modsData: ModsData) => {
+    gotModsData = true;
     const workshopData = modsData.mods;
 
     const dedupedDependencyIds = Array.from(new Set(Object.values(modsData.dependencies).flat()));
@@ -38,46 +127,38 @@ export function fetchModData(
       (depId) => !modsData.mods.some((mod) => mod.publishedFileId == depId),
     );
 
+    if (unsubbedDepIds.length === 0) {
+      emitWorkshopData(workshopData, modsData);
+      return;
+    }
+
     const child = fork(
       nodePath.join(__dirname, "sub.js"),
       [gameToSteamId[appData.currentGame], "getItems", unsubbedDepIds.join(",")],
       {},
     );
-    child.on("message", (depModsData: WorkshopItemStringInsteadOfBigInt[]) => {
-      const modIdToModName = new Map<string, string>();
-      for (const modData of depModsData.concat(workshopData)) {
-        modIdToModName.set(modData.publishedFileId, modData.title);
-      }
-
-      for (let i = 0; i < workshopData.length; i++) {
-        const workshopItem = workshopData[i];
-
-        if (workshopItem) {
-          const reqModIdToName = [] as [string, string][];
-          const depIds = modsData.dependencies[workshopItem.publishedFileId];
-          if (depIds) {
-            for (const depId of depIds.filter((id) => id != wh3mmWorkshopId)) {
-              reqModIdToName.push([depId, modIdToModName.get(depId) ?? ""]);
-            }
-          }
-
-          const modId = workshopItem.owner.steamId64.toString();
-
-          const modData = {
-            workshopId: workshopItem.publishedFileId,
-            humanName: workshopItem.title,
-            author: modsData.authors[modId] ?? "",
-            reqModIdToName: reqModIdToName,
-            reqModIds: modsData.dependencies[modId] ?? [],
-            lastChanged: workshopItem.timeUpdated * 1000,
-            subscriptionTime: workshopItem.timeAddedToUserList * 1000,
-            isDeleted: false,
-            tags: workshopItem.tags,
-          } as ModData;
-          cb(modData);
-        }
+    let gotDependencyData = false;
+    child.once("message", (depModsData: WorkshopItemStringInsteadOfBigInt[]) => {
+      gotDependencyData = true;
+      emitWorkshopData(workshopData, modsData, depModsData);
+    });
+    child.once("error", (error) => {
+      log(`Workshop dependency child process error for ids ${unsubbedDepIds.join(",")}: ${error.message}`);
+    });
+    child.once("exit", (code, signal) => {
+      if (!gotDependencyData) {
+        log(
+          `Workshop dependency child exited before returning data for ids ${unsubbedDepIds.join(",")} (code=${code}, signal=${signal})`,
+        );
+        emitWorkshopData(workshopData, modsData);
       }
     });
+  });
+  child.once("error", (error) => {
+    handleWorkerFailure(`process error: ${error.message}`);
+  });
+  child.once("exit", (code, signal) => {
+    if (!gotModsData) handleWorkerFailure(`worker exited with code=${code}, signal=${signal}`);
   });
 
   for (let i = 0; i < ids.length; i++) {
@@ -139,9 +220,7 @@ export function fetchModData(
                   .map((matchAllResult) => matchAllResult[1]);
 
                 const requiredItemHumanNameIdsRegex = /class="requiredItem">[\n\r\t]+(.*?)[\n\r\t]+/gs;
-                const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(
-                  requiredItemHumanNameIdsRegex,
-                );
+                const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(requiredItemHumanNameIdsRegex);
                 const reqHumanNames = [...requiredItemHumanNameIds]
                   .filter((matchAllResult) => matchAllResult && matchAllResult[1])
                   .map((matchAllResult) => matchAllResult[1]);
@@ -214,7 +293,7 @@ export function fetchModData(
           if (retryIndex < 3) {
             log(`Retrying fetching mod data for mod with id ${workshopId}, retry number ${retryIndex}`);
             await new Promise((resolve) => setTimeout(resolve, 1000));
-            fetchModData([workshopId], cb, log, retryIndex + 1);
+            fetchModData([workshopId], cb, log, retryIndex + 1, workerRetryIndex);
           }
         });
     }, i * 50);
@@ -252,7 +331,6 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   try {
     await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
     doesThumbnailExist = true;
-    // eslint-disable-next-line no-empty
   } catch {
     try {
       thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".jpg"));
@@ -269,6 +347,8 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     // console.log(mergedModsData);
     // eslint-disable-next-line no-empty
   } catch {}
+
+  if (doesThumbnailExist) registerModThumbnailPath(thumbnailPath);
 
   const linuxBit = process.platform === "linux" ? "Z:" : "";
   const mod: Mod = {
@@ -290,15 +370,13 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     mergedModsData,
     isSymbolicLink,
     tags: ["mod"],
+    sourceId: DATA_MOD_SOURCE_ID,
+    sourceKind: "data",
   };
   return mod;
 }
 
-const getDataMods = async (
-  gameDir: string,
-  log: (msg: string) => void,
-  subFolder?: string,
-): Promise<Mod[]> => {
+const getDataMods = async (gameDir: string, log: (msg: string) => void, subFolder?: string): Promise<Mod[]> => {
   let dataPath = await getDataPath(log);
   if (!dataPath) throw new Error("Data folder not found");
 
@@ -362,63 +440,112 @@ const regKeyValuesAsPromise = (regKey: Registry.Registry): Promise<{ name: strin
   });
 };
 
+const getSteamInstallPath = async (): Promise<string | undefined> => {
+  if (process.platform === "win32") {
+    for (const key of ["\\SOFTWARE\\Wow6432Node\\Valve\\Steam", "\\SOFTWARE\\Valve\\Steam"]) {
+      try {
+        const items = await regKeyValuesAsPromise(
+          new Registry({
+            hive: Registry.HKLM,
+            key,
+          }),
+        );
+        const installPathObj = items.find((x) => x.name === "InstallPath");
+        if (installPathObj?.value) return installPathObj.value;
+      } catch {
+        // The other registry location may contain the Steam installation.
+      }
+    }
+    console.log("Unable to find InstallPath in Windows registry");
+    return;
+  }
+
+  const steamPath = await findSteamInstallPath();
+  if (steamPath) return steamPath;
+
+  console.log("Unable to find Steam installation directory");
+};
+
+const getSteamUserIds = async (steamInstallPath: string): Promise<string[]> => {
+  const userIds: string[] = [];
+
+  // Prefer the account Steam marks as most recently used when more than one account is present locally.
+  try {
+    const loginUsersPath = nodePath.join(steamInstallPath, "config", "loginusers.vdf");
+    const loginUsers = VDF.parse(await dumbfs.promises.readFile(loginUsersPath, "utf8")) as {
+      users?: Record<string, unknown>;
+    };
+    const mostRecentUser = Object.entries(loginUsers.users ?? {}).find(([, user]) => {
+      if (user === null || typeof user !== "object") return false;
+      return String((user as Record<string, unknown>).MostRecent) === "1";
+    })?.[0];
+    if (mostRecentUser && /^\d+$/.test(mostRecentUser)) userIds.push(mostRecentUser);
+  } catch {
+    // loginusers.vdf is not required for reading the per-user subscription files.
+  }
+
+  try {
+    const userdataPath = nodePath.join(steamInstallPath, "userdata");
+    const entries = await dumbfs.promises.readdir(userdataPath, { withFileTypes: true });
+    userIds.push(
+      ...entries.filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name)).map((entry) => entry.name),
+    );
+  } catch {
+    // Steam may not have created userdata yet, or it may be installed somewhere else.
+  }
+
+  return [...new Set(userIds)];
+};
+
+const getWorkshopSubscriptionTimes = async (
+  game: SupportedGames,
+  log: (msg: string) => void,
+): Promise<Map<string, number>> => {
+  const appLocation = process.platform === "win32" ? undefined : await findSteamAppLocation(gameToSteamId[game]);
+  const steamInstallPath = appLocation?.steamInstallPath ?? (await getSteamInstallPath());
+  if (!steamInstallPath) return new Map();
+
+  const subscriptionTimes = new Map<string, number>();
+  for (const userId of await getSteamUserIds(steamInstallPath)) {
+    const subscriptionsPath = nodePath.join(
+      steamInstallPath,
+      "userdata",
+      userId,
+      "ugc",
+      `${gameToSteamId[game]}_subscriptions.vdf`,
+    );
+
+    try {
+      const contents = await dumbfs.promises.readFile(subscriptionsPath, "utf8");
+      // The most-recently-used account is first, so do not let another local account override it.
+      for (const [workshopId, timestamp] of parseWorkshopSubscriptionTimes(contents)) {
+        if (!subscriptionTimes.has(workshopId)) subscriptionTimes.set(workshopId, timestamp);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        log(`Unable to read Steam Workshop subscriptions at ${subscriptionsPath}: ${error}`);
+      }
+    }
+  }
+
+  return subscriptionTimes;
+};
+
 // Find the steamapps folder, e.g. K:\SteamLibrary\steamapps\
 const getSteamAppsFolder = async (newGame?: SupportedGames) => {
   const game = newGame || appData.currentGame;
-  let installPath = "";
-  if (process.platform === "win32") {
-    const regKey = new Registry({
-      hive: Registry.HKLM,
-      key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
-    });
+  // Windows obtains its install root from the registry. Unix discovery must inspect every
+  // conventional installation because native, Flatpak, and Snap Steam can coexist.
+  const installPath = process.platform === "win32" ? await getSteamInstallPath() : undefined;
+  if (process.platform === "win32" && !installPath) return;
 
-    const items = await regKeyValuesAsPromise(regKey);
-    const installPathObj = items.find((x) => x.name === "InstallPath");
-    if (!installPathObj) {
-      console.log("Unable to find InstallPath in Windows registry");
-      return;
-    }
-    installPath = installPathObj.value;
-  } else if (process.platform === "linux") {
-    const steamPath = os.homedir() + "/.steam/steam";
-    try {
-      await dumbfs.promises.access(steamPath);
-    } catch {
-      console.log("Unable to find steam directory at " + steamPath);
-      return;
-    }
-    installPath = steamPath;
-  }
+  const steamAppsFolderPath = await findSteamAppsFolder(gameToSteamId[game], installPath);
+  if (!steamAppsFolderPath) return;
 
-  const libFoldersPath = nodePath.join(installPath, "steamapps", "libraryfolders.vdf");
-  console.log(`Check lib vdf at ${libFoldersPath}`);
-  try {
-    await dumbfs.promises.access(libFoldersPath);
-  } catch {
-    return;
-  }
-  console.log(`Found libraryfolders.vdf at ${libFoldersPath}`);
-
-  const data = await dumbfs.promises.readFile(libFoldersPath, "utf8");
-  const object = VDF.parse(data).libraryfolders;
-  const paths = [];
-  for (const property in object) {
-    paths.push(object[property].path);
-  }
-
-  for (const basepath of paths) {
-    const path = basepath.replaceAll("\\\\", "\\").replaceAll("//", "/");
-    const worshopFilePath = nodePath.join(path, "steamapps", `appmanifest_${gameToSteamId[game]}.acf`);
-    try {
-      await dumbfs.promises.readFile(worshopFilePath, "utf8"); // try to read the file to check for its existence
-      console.log(`Found appmanifest_${gameToSteamId[game]}.acf at ${worshopFilePath}`);
-
-      const steamAppsFolderPath = nodePath.join(path, "steamapps");
-      appData.gamesToSteamAppsFolderPaths[game] = steamAppsFolderPath;
-      return steamAppsFolderPath;
-      // eslint-disable-next-line no-empty
-    } catch (err) {}
-  }
+  const appManifestPath = nodePath.join(steamAppsFolderPath, `appmanifest_${gameToSteamId[game]}.acf`);
+  console.log(`Found ${appManifestPath}`);
+  appData.gamesToSteamAppsFolderPaths[game] = steamAppsFolderPath;
+  return steamAppsFolderPath;
 };
 
 export const getLastUpdated = async () => {
@@ -444,8 +571,7 @@ export const getLastUpdated = async () => {
 export const getFolderPaths = async (log: (msg: string) => void, newGame?: SupportedGames) => {
   const game = newGame || appData.currentGame;
   console.log(`getFolderPaths for ${game}`);
-  const steamAppsFolderPath =
-    appData.gamesToSteamAppsFolderPaths[game] || (await getSteamAppsFolder(newGame));
+  const steamAppsFolderPath = appData.gamesToSteamAppsFolderPaths[game] || (await getSteamAppsFolder(newGame));
 
   appData.gamesToGameFolderPaths[game] = appData.gamesToGameFolderPaths[game] || {};
   if (!steamAppsFolderPath) return;
@@ -464,30 +590,33 @@ export const getFolderPaths = async (log: (msg: string) => void, newGame?: Suppo
 export async function getContentModInFolder(
   contentSubFolderName: string,
   log: (msg: string) => void,
+  subscriptionTimes?: ReadonlyMap<string, number>,
 ): Promise<Mod> {
   if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder)
-    throw new Error("Content folder not found");
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
   const contentSubfolder = nodePath.join(contentFolder, contentSubFolderName);
 
-  let subbedTime = -1;
+  let directoryBirthTime: number | undefined;
   try {
     const stats = await dumbfs.promises.stat(contentSubfolder);
-    subbedTime = stats.birthtimeMs;
+    directoryBirthTime = stats.birthtimeMs;
   } catch (err) {
     log(`ERROR: ${err}`);
   }
+
+  const steamSubscriptionTime =
+    subscriptionTimes?.get(contentSubFolderName) ??
+    (await getWorkshopSubscriptionTimes(appData.currentGame, log)).get(contentSubFolderName);
 
   const files = await dumbfs.readdirSync(contentSubfolder, {
     withFileTypes: true,
   });
 
   const pack = files.find((file) => file.name.endsWith(".pack"));
-  const img =
-    files.find((file) => file.name.endsWith(".png")) ?? files.find((file) => file.name.endsWith(".jpg"));
+  const img = files.find((file) => file.name.endsWith(".png")) ?? files.find((file) => file.name.endsWith(".jpg"));
 
   if (!pack) throw new Error(`Content folder ${contentSubFolderName} doesn't contain a pack!`);
 
@@ -506,6 +635,7 @@ export async function getContentModInFolder(
   // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
   const packPath = nodePath.join(contentSubfolder, pack.name);
   const imgPath = (img && nodePath.join(contentSubfolder, img.name)) || "";
+  registerModThumbnailPath(imgPath);
   const mod: Mod = {
     author: "",
     humanName: "",
@@ -520,13 +650,108 @@ export async function getContentModInFolder(
     lastChangedLocal,
     isDeleted: false,
     isMovie: false,
-    subbedTime: (subbedTime != -1 && subbedTime) || lastChangedLocal,
+    subbedTime: steamSubscriptionTime ?? directoryBirthTime ?? lastChangedLocal,
     size,
     isSymbolicLink,
     tags: ["mod"],
+    sourceId: WORKSHOP_MOD_SOURCE_ID,
+    sourceKind: "workshop",
   };
   return mod;
 }
+
+export async function getCustomMod(filePath: string, sourceId: string, log: (msg: string) => void): Promise<Mod> {
+  const fileName = nodePath.basename(filePath);
+  const modDirectory = nodePath.dirname(filePath);
+  let lastChangedLocal: number | undefined;
+  let size = -1;
+  let isSymbolicLink = false;
+  try {
+    const stats = await dumbfs.promises.lstat(filePath);
+    lastChangedLocal = stats.mtimeMs;
+    size = stats.size;
+    isSymbolicLink = stats.isSymbolicLink();
+  } catch (error) {
+    log(`ERROR: ${error}`);
+  }
+
+  const thumbnailBasePath = nodePath.join(modDirectory, fileName.replace(/\.pack$/i, ""));
+  const thumbnailCandidates = [`${thumbnailBasePath}.png`, `${thumbnailBasePath}.jpg`];
+  let imgPath = thumbnailCandidates.find((candidate) => fsExtra.existsSync(candidate)) || "";
+  if (!imgPath) {
+    try {
+      const siblingFiles = await dumbfs.promises.readdir(modDirectory);
+      const fallbackImage = siblingFiles.find((name) => /\.(png|jpg)$/i.test(name));
+      if (fallbackImage) imgPath = nodePath.join(modDirectory, fallbackImage);
+    } catch {
+      // A missing thumbnail is valid.
+    }
+  }
+  registerModThumbnailPath(imgPath);
+
+  let mergedModsData = null;
+  try {
+    mergedModsData = await fsExtra.readJSON(filePath.replace(/\.pack$/i, ".json"));
+  } catch {
+    // Companion merge metadata is optional.
+  }
+
+  return {
+    humanName: "",
+    name: fileName,
+    path: filePath,
+    modDirectory,
+    imgPath,
+    workshopId: fileName,
+    isEnabled: false,
+    isInData: false,
+    isInModding: false,
+    loadOrder: undefined,
+    lastChangedLocal,
+    author: "",
+    isDeleted: false,
+    isMovie: false,
+    size,
+    mergedModsData,
+    isSymbolicLink,
+    tags: ["mod"],
+    sourceId,
+    sourceKind: "custom",
+  };
+}
+
+const getCustomModPaths = async (folderPath: string): Promise<string[]> => {
+  if (!fsExtra.existsSync(folderPath)) return [];
+  const rootEntries = await dumbfs.promises.readdir(folderPath, { withFileTypes: true });
+  const packPaths = rootEntries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".pack"))
+    .map((entry) => nodePath.join(folderPath, entry.name));
+
+  const childDirectories = rootEntries.filter((entry) => entry.isDirectory() && entry.name !== "whmm_backups");
+  const childPackPaths = await Promise.all(
+    childDirectories.map(async (entry) => {
+      const childPath = nodePath.join(folderPath, entry.name);
+      try {
+        const childEntries = await dumbfs.promises.readdir(childPath, { withFileTypes: true });
+        return childEntries
+          .filter((childEntry) => childEntry.isFile() && childEntry.name.endsWith(".pack"))
+          .map((childEntry) => nodePath.join(childPath, childEntry.name));
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  return [...packPaths, ...childPackPaths.flat()];
+};
+
+export const getCustomMods = async (folder: CustomModFolder, log: (msg: string) => void): Promise<Mod[]> => {
+  const modPaths = await getCustomModPaths(folder.path);
+  const settledMods = await Promise.allSettled(modPaths.map((modPath) => getCustomMod(modPath, folder.id, log)));
+  return (settledMods.filter((result) => result.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map(
+    (result) => result.value,
+  );
+};
 
 export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const mods: Mod[] = [];
@@ -534,11 +759,12 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder)
-    throw new Error("Content folder not found");
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
 
   if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) throw new Error("Game folder not found");
+
+  const workshopSubscriptionTimes = await getWorkshopSubscriptionTimes(appData.currentGame, log);
 
   const moddingDataMods = await getDataMods(
     appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
@@ -550,10 +776,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   });
   mods.push(...moddingDataMods);
 
-  const dataMods = await getDataMods(
-    appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
-    log,
-  );
+  const dataMods = await getDataMods(appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string, log);
   mods.push(...dataMods);
 
   console.log(
@@ -567,7 +790,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
       .filter((file) => file.isDirectory())
       .map(async (contentSubFolder) => {
         // log(`Reading folder ${contentFolder}\\${file.name}`);
-        return getContentModInFolder(contentSubFolder.name, log);
+        return getContentModInFolder(contentSubFolder.name, log, workshopSubscriptionTimes);
       });
 
     const settledMods = await Promise.allSettled(newMods);
@@ -578,6 +801,10 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
         mods.push(mod);
       }
     });
+  }
+
+  for (const customFolder of appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || []) {
+    mods.push(...(await getCustomMods(customFolder, log)));
   }
 
   // if a mod in data is missing a thumbnail, use the content mod's thumbnail

@@ -31,6 +31,7 @@ vi.mock("../src/components/skillsViewer/SkillsTreeView", () => ({
       <div data-testid="tree-selection-cleared">{String(!!isSelectionCleared)}</div>
       <button onClick={() => onSelect?.("beta", 0)}>select-beta</button>
       <button onClick={() => onHover?.("beta", 0)}>hover-beta</button>
+      <button onClick={() => onSelect?.("delta", 0)}>select-delta</button>
       <button onClick={() => onDoubleClick?.("gamma", 0, false)}>open-gamma</button>
       <button onClick={() => onDoubleClick?.("beta", 0, true)}>open-beta</button>
     </div>
@@ -85,32 +86,32 @@ vi.mock("../src/components/skillsViewer/SkillsView", async () => {
   };
 });
 
-const createSkillsData = (subtype: string, subtypeIndex = 0): SkillsData =>
+const createSkillsData = (subtype: string, subtypeIndex = 0, requestId?: string): SkillsData =>
   ({
+    requestId,
     currentSubtype: subtype,
     currentSubtypeIndex: subtypeIndex,
     currentSkills: [],
     subtypeToNumSets: {
       alpha: 1,
       beta: 1,
+      delta: 1,
       gamma: 1,
     },
     subtypesToSet: {
       alpha: ["alpha"],
       beta: ["beta"],
+      delta: ["delta"],
       gamma: ["gamma"],
     },
     nodeLinks: {},
     nodeRequirements: {},
     icons: {},
-    subtypes: ["alpha", "beta", "gamma"],
+    subtypes: ["alpha", "beta", "delta", "gamma"],
     subtypesToLocalizedNames: {},
     nodeToSkillLocks: {},
     abilityTooltipsByKey: {},
     effectToUnitAbilityEnables: {},
-    allEffects: [],
-    allSkills: [],
-    allSkillIcons: [],
   }) as SkillsData;
 
 const renderViewer = (skillsData = createSkillsData("alpha")) => {
@@ -182,6 +183,18 @@ describe("SkillsViewer", () => {
     expect(screen.getByTestId("tree-filter")).toHaveTextContent("");
   });
 
+  it("hides repeated key prefixes by default and allows the list to show them", () => {
+    const store = renderViewer();
+
+    const prefixCheckbox = screen.getByRole("checkbox", { name: "Hide Repeated Key Prefixes" });
+    expect(prefixCheckbox).toBeChecked();
+
+    fireEvent.click(prefixCheckbox);
+
+    expect(prefixCheckbox).not.toBeChecked();
+    expect(store.getState().app.hideRepeatedKeyPrefixes).toBe(false);
+  });
+
   it("ignores stale async updates when a new tab request is still pending", () => {
     const store = renderViewer();
 
@@ -190,8 +203,8 @@ describe("SkillsViewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
     fireEvent.click(screen.getByRole("button", { name: "open-gamma" }));
 
-    expect(getSkillsForSubtypeMock).toHaveBeenNthCalledWith(1, "beta", 0);
-    expect(getSkillsForSubtypeMock).toHaveBeenNthCalledWith(2, "gamma", 0);
+    expect(getSkillsForSubtypeMock).toHaveBeenNthCalledWith(1, "beta", 0, expect.any(String));
+    expect(getSkillsForSubtypeMock).toHaveBeenNthCalledWith(2, "gamma", 0, expect.any(String));
 
     act(() => {
       store.dispatch(setSkillsData(createSkillsData("beta")));
@@ -207,6 +220,34 @@ describe("SkillsViewer", () => {
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-gamma-0");
     expect(screen.getByText("beta")).toBeInTheDocument();
     expect(screen.getByText("gamma")).toBeInTheDocument();
+
+    // The beta response can still arrive after gamma has been accepted. It must not
+    // overwrite the newly opened tab with the older selection.
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta")));
+    });
+
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-gamma-0");
+  });
+
+  it("ignores an older exact-token response after a newer active selection", () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    fireEvent.click(screen.getByRole("button", { name: "select-delta" }));
+
+    const betaRequestId = getSkillsForSubtypeMock.mock.calls[0][2];
+    const deltaRequestId = getSkillsForSubtypeMock.mock.calls[1][2];
+
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("delta", 0, deltaRequestId)));
+    });
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-delta-0");
+
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta", 0, betaRequestId)));
+    });
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-delta-0");
   });
 
   it("sends a double-clicked tree to a new tab when its first click is still loading", () => {
@@ -217,7 +258,7 @@ describe("SkillsViewer", () => {
 
     expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
     act(() => {
-      store.dispatch(setSkillsData(createSkillsData("beta")));
+      store.dispatch(setSkillsData(createSkillsData("beta", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
     });
 
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
@@ -230,7 +271,7 @@ describe("SkillsViewer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
     act(() => {
-      store.dispatch(setSkillsData(createSkillsData("beta")));
+      store.dispatch(setSkillsData(createSkillsData("beta", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
     });
     expect(screen.queryByText("alpha")).not.toBeInTheDocument();
 
@@ -249,7 +290,7 @@ describe("SkillsViewer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "open-gamma" }));
     act(() => {
-      store.dispatch(setSkillsData(createSkillsData("gamma")));
+      store.dispatch(setSkillsData(createSkillsData("gamma", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
     });
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-gamma-0");
 
@@ -268,7 +309,7 @@ describe("SkillsViewer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
     act(() => {
-      store.dispatch(setSkillsData(createSkillsData("beta")));
+      store.dispatch(setSkillsData(createSkillsData("beta", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
     });
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
     expect(screen.getByTestId("tree-selection-cleared")).toHaveTextContent("false");
@@ -313,7 +354,7 @@ describe("SkillsViewer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
     await act(async () => {});
-    expect(getSkillsForSubtypeMock).toHaveBeenCalledWith("beta", 0);
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledWith("beta", 0, expect.any(String));
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
   });
 });

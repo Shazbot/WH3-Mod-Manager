@@ -29,7 +29,7 @@ const ImportSteamCollection = memo(() => {
         doImportWithLoadOrder,
         doPresetImport,
         presetName,
-        doPresetImportWithLoadOrder
+        doPresetImportWithLoadOrder,
       );
   };
 
@@ -54,7 +54,7 @@ const ImportSteamCollection = memo(() => {
             messages: ["loc:failedFetchingSteamCollection"],
             startTime: Date.now(),
             type: "warning",
-          })
+          }),
         );
       }
     } catch (e) {
@@ -63,7 +63,7 @@ const ImportSteamCollection = memo(() => {
           messages: ["loc:failedFetchingSteamCollection"],
           startTime: Date.now(),
           type: "warning",
-        })
+        }),
       );
       console.log(e);
     }
@@ -151,9 +151,7 @@ const ImportSteamCollection = memo(() => {
                             {localized.importSteamCollectionDisableOtherMods}
                           </label>
                         </div>
-                        <div className="ml-6 text-sm">
-                          {localized.importSteamCollectionDisableOtherModsMsg}
-                        </div>
+                        <div className="ml-6 text-sm">{localized.importSteamCollectionDisableOtherModsMsg}</div>
                       </div>
 
                       <div>
@@ -215,9 +213,7 @@ const ImportSteamCollection = memo(() => {
                         <div className="ml-6 text-sm">
                           {localized.importSteamCollectionPresetNameMsg1}
                           {presetAlreadyExists && (
-                            <div className="text-yellow-300">
-                              {localized.importSteamCollectionPresetNameMsg2}
-                            </div>
+                            <div className="text-yellow-300">{localized.importSteamCollectionPresetNameMsg2}</div>
                           )}
                         </div>
                       </div>
@@ -238,9 +234,7 @@ const ImportSteamCollection = memo(() => {
                             {localized.importSteamCollectionUseLoadOrder}
                           </label>
                         </div>
-                        <div className="ml-6 text-sm">
-                          {localized.importSteamCollectionUsePresetLoadOrderMsg}
-                        </div>
+                        <div className="ml-6 text-sm">{localized.importSteamCollectionUsePresetLoadOrderMsg}</div>
                       </div>
                     </div>
                   </div>

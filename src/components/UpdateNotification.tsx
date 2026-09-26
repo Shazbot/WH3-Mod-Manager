@@ -24,7 +24,7 @@ export const UpdateNotification = memo(
           type: "info",
           messages: ["loc:downloadingUpdate"],
           startTime: Date.now(),
-        })
+        }),
       );
       await window.api?.downloadAndInstallUpdate(downloadURL);
     }, [downloadURL]);
@@ -61,5 +61,5 @@ export const UpdateNotification = memo(
         </div>
       </Toast>
     );
-  }
+  },
 );

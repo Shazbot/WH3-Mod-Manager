@@ -13,8 +13,10 @@ export interface ProgressProps extends PropsWithChildren<ComponentProps<"div">> 
   labelProgress?: boolean;
   progress: number;
 }
-export interface ProgressColor
-  extends Pick<FlowbiteColors, "dark" | "blue" | "red" | "green" | "yellow" | "indigo" | "purple"> {
+export interface ProgressColor extends Pick<
+  FlowbiteColors,
+  "dark" | "blue" | "red" | "green" | "yellow" | "indigo" | "purple"
+> {
   [key: string]: string;
 }
 export interface ProgressSizes extends Pick<FlowbiteSizes, "sm" | "md" | "lg" | "xl"> {

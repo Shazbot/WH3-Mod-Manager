@@ -5,6 +5,7 @@ import { addCategory, removeCategory, renameCategory, setCategoryColor } from ".
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faEdit, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useLocalizations } from "../localizationContext";
+import { uncategorizedCategoryName } from "../utility/categoryNames";
 
 interface EditCategoriesModalProps {
   isOpen: boolean;
@@ -24,51 +25,70 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
 
   const colorOptions = [
     {
+      key: "blue",
       name: localized.colorBlue,
       bg: "bg-blue-100 dark:bg-blue-900",
       text: "text-blue-800 dark:text-blue-300",
     },
     {
+      key: "emerald",
       name: localized.colorEmerald,
       bg: "bg-emerald-100 dark:bg-emerald-900",
       text: "text-emerald-800 dark:text-emerald-300",
     },
-    { name: localized.colorRed, bg: "bg-red-100 dark:bg-red-900", text: "text-red-800 dark:text-red-300" },
+    { key: "red", name: localized.colorRed, bg: "bg-red-100 dark:bg-red-900", text: "text-red-800 dark:text-red-300" },
     {
+      key: "amber",
       name: localized.colorAmber,
       bg: "bg-amber-100 dark:bg-amber-900",
       text: "text-amber-800 dark:text-amber-300",
     },
     {
+      key: "purple",
       name: localized.colorPurple,
       bg: "bg-purple-100 dark:bg-purple-900",
       text: "text-purple-800 dark:text-purple-300",
     },
     {
+      key: "rose",
       name: localized.colorRose,
       bg: "bg-rose-100 dark:bg-rose-900",
       text: "text-rose-800 dark:text-rose-300",
     },
     {
+      key: "teal",
       name: localized.colorTeal,
       bg: "bg-teal-100 dark:bg-teal-900",
       text: "text-teal-800 dark:text-teal-300",
     },
     // { name: "Orange", bg: "bg-orange-100 dark:bg-orange-900", text: "text-orange-800 dark:text-orange-300" },
     {
+      key: "slate",
       name: localized.colorSlate,
       bg: "bg-slate-100 dark:bg-slate-800",
       text: "text-slate-800 dark:text-slate-300",
     },
-    { name: localized.colorWhite, bg: "bg-white dark:bg-white", text: "text-gray-900 dark:text-gray-900" },
+    {
+      key: "white",
+      name: localized.colorWhite,
+      bg: "bg-white dark:bg-white",
+      text: "text-gray-900 dark:text-gray-900",
+    },
     // { name: "Black", bg: "bg-gray-900 dark:bg-gray-900", text: "text-white dark:text-white" },
     {
+      key: "lime",
       name: localized.colorLime,
       bg: "bg-lime-200 dark:bg-lime-200",
       text: "text-gray-900 dark:text-gray-900",
     },
-    { name: localized.colorSky, bg: "bg-sky-200 dark:bg-sky-200", text: "text-gray-900 dark:text-gray-900" },
     {
+      key: "sky",
+      name: localized.colorSky,
+      bg: "bg-sky-200 dark:bg-sky-200",
+      text: "text-gray-900 dark:text-gray-900",
+    },
+    {
+      key: "fuchsia",
       name: localized.colorFuchsia,
       bg: "bg-fuchsia-200 dark:bg-fuchsia-200",
       text: "text-gray-900 dark:text-gray-900",
@@ -76,8 +96,9 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
   ];
 
   const handleAddCategory = () => {
-    if (newCategoryName.trim() && !categories.includes(newCategoryName.trim())) {
-      dispatch(addCategory({ category: newCategoryName.trim(), mods: [] }));
+    const category = newCategoryName.trim();
+    if (category && category !== uncategorizedCategoryName && !categories.includes(category)) {
+      dispatch(addCategory({ category, mods: [] }));
       setNewCategoryName("");
     }
   };
@@ -97,13 +118,14 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
       editingCategory &&
       editingCategoryName.trim() &&
       editingCategoryName.trim() !== editingCategory &&
+      editingCategoryName.trim() !== uncategorizedCategoryName &&
       !categories.includes(editingCategoryName.trim())
     ) {
       dispatch(
         renameCategory({
           oldCategory: editingCategory,
           newCategory: editingCategoryName.trim(),
-        })
+        }),
       );
     }
     setEditingCategory(null);
@@ -115,7 +137,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
     setEditingCategoryName("");
   };
 
-  const filteredCategories = categories.filter((cat) => cat !== "Uncategorized");
+  const filteredCategories = categories.filter((cat) => cat !== uncategorizedCategoryName);
 
   return (
     <Modal show={isOpen} onClose={onClose} size="3xl">
@@ -124,9 +146,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
         <div className="space-y-4">
           {/* Add new category section */}
           <div className="border-b pb-4">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
-              {localized.addNewCategory}
-            </h3>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">{localized.addNewCategory}</h3>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -138,7 +158,11 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
               />
               <button
                 onClick={handleAddCategory}
-                disabled={!newCategoryName.trim() || categories.includes(newCategoryName.trim())}
+                disabled={
+                  !newCategoryName.trim() ||
+                  newCategoryName.trim() === uncategorizedCategoryName ||
+                  categories.includes(newCategoryName.trim())
+                }
                 className="px-4 py-2 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
               >
                 <FontAwesomeIcon icon={faPlus} className="mr-1" />
@@ -149,9 +173,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
 
           {/* Existing categories section */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
-              {localized.existingCategories}
-            </h3>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">{localized.existingCategories}</h3>
             <div className="space-y-1 max-h-96 overflow-y-auto">
               {/* Table Header */}
               <div className="grid grid-cols-12 gap-4 px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
@@ -186,6 +208,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
                           disabled={
                             !editingCategoryName.trim() ||
                             editingCategoryName.trim() === editingCategory ||
+                            editingCategoryName.trim() === uncategorizedCategoryName ||
                             categories.includes(editingCategoryName.trim())
                           }
                           className="px-2 py-1 text-white bg-green-600 hover:bg-green-700 rounded text-sm disabled:opacity-50"
@@ -203,20 +226,16 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
                   ) : (
                     <>
                       <div className="col-span-3">
-                        <span className="text-gray-900 dark:text-white font-medium truncate block">
-                          {category}
-                        </span>
+                        <span className="text-gray-900 dark:text-white font-medium truncate block">{category}</span>
                       </div>
                       <div className="col-span-7">
                         <div className="flex gap-1 flex-wrap">
                           {colorOptions.map((color) => (
                             <button
                               key={color.name}
-                              onClick={() =>
-                                dispatch(setCategoryColor({ category, color: color.name.toLowerCase() }))
-                              }
+                              onClick={() => dispatch(setCategoryColor({ category, color: color.key }))}
                               className={`w-6 h-6 rounded-full border-2 ${
-                                (categoryColors[category] || "blue") === color.name.toLowerCase()
+                                (categoryColors[category] || "blue") === color.key
                                   ? "border-gray-400 dark:border-gray-300"
                                   : "border-gray-200 dark:border-gray-600"
                               } ${color.bg}`}
@@ -248,9 +267,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
                 </div>
               ))}
               {filteredCategories.length === 0 && (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-4">
-                  {localized.noCategoriesFound}
-                </p>
+                <p className="text-gray-500 dark:text-gray-400 text-center py-4">{localized.noCategoriesFound}</p>
               )}
             </div>
           </div>

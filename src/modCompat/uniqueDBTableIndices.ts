@@ -1,15 +1,7 @@
 import bs from "binary-search";
 import appData from "../appData";
 import { resolveKeyValue } from "../packFileSerializer";
-import {
-  DBFileName,
-  UniqueId,
-  Pack,
-  DBVersion,
-  SchemaField,
-  PackName,
-  UniqueIdsCollision,
-} from "../packFileTypes";
+import { DBFileName, UniqueId, Pack, DBVersion, SchemaField, PackName, UniqueIdsCollision } from "../packFileTypes";
 import { gameToTablesWithNumericIds } from "../schema";
 import { getDBSubnameFromString } from "../utility/packFileHelpers";
 import { collator } from "../utility/packFileSorting";
@@ -27,7 +19,7 @@ export function appendToUniqueIdKeysRegistry(
   packFileName: string,
   dbName: string,
   dbversion: DBVersion,
-  chunkedSchemaIntoRows: SchemaField[][]
+  chunkedSchemaIntoRows: SchemaField[][],
 ) {
   if (appData.currentGame != "wh3") return;
 
@@ -67,7 +59,7 @@ export function processDuplicateKeysInSameTable(
   keyValues: UniqueId[],
   currentGameToTablesWithNumericIds: Record<string, string>,
   packName: string,
-  uniqueIdsCollisions: Record<PackName, UniqueIdsCollision[]>
+  uniqueIdsCollisions: Record<PackName, UniqueIdsCollision[]>,
 ) {
   // CA pack has duplicates here, ignore them
   if (packName == "db.pack" && tableName == "technologies_tables") return;
@@ -90,7 +82,7 @@ export function processDuplicateKeysInSameTable(
             collision.fieldName == newUniqueIdsCollision.fieldName &&
             collision.tableName == newUniqueIdsCollision.tableName &&
             collision.firstPackName == newUniqueIdsCollision.firstPackName &&
-            collision.secondPackName == newUniqueIdsCollision.secondPackName
+            collision.secondPackName == newUniqueIdsCollision.secondPackName,
         )
       ) {
         uniqueIdsCollisions[packName].push(newUniqueIdsCollision);
@@ -123,7 +115,7 @@ export function processPackToTablesWithUniqueIds() {
         keyValues,
         currentGameToTablesWithNumericIds,
         packName,
-        uniqueIdsCollisions
+        uniqueIdsCollisions,
       );
 
       for (
@@ -136,23 +128,16 @@ export function processPackToTablesWithUniqueIds() {
 
         const keyValuesInPackTwo = packToTablesWithUniqueIds[packTWoName][tableName];
         if (keyValuesInPackTwo) {
-          const keyValuesToSearch =
-            keyValues.length < keyValuesInPackTwo.length ? keyValues : keyValuesInPackTwo;
-          const keyValuesToSearchOther =
-            keyValues.length < keyValuesInPackTwo.length ? keyValuesInPackTwo : keyValues;
+          const keyValuesToSearch = keyValues.length < keyValuesInPackTwo.length ? keyValues : keyValuesInPackTwo;
+          const keyValuesToSearchOther = keyValues.length < keyValuesInPackTwo.length ? keyValuesInPackTwo : keyValues;
 
           for (let i = 0; i < keyValuesToSearch.length; i++) {
             // if it's a duplicates value skip it
-            if (
-              i + 1 < keyValuesToSearch.length &&
-              keyValuesToSearch[i].value == keyValuesToSearch[i + 1].value
-            )
+            if (i + 1 < keyValuesToSearch.length && keyValuesToSearch[i].value == keyValuesToSearch[i + 1].value)
               continue;
 
-            const keyValuesOtherIndex = bs(
-              keyValuesToSearchOther,
-              keyValuesToSearch[i],
-              (a: UniqueId, b: UniqueId) => collator.compare(a.value, b.value)
+            const keyValuesOtherIndex = bs(keyValuesToSearchOther, keyValuesToSearch[i], (a: UniqueId, b: UniqueId) =>
+              collator.compare(a.value, b.value),
             );
             if (keyValuesOtherIndex > -1) {
               const newUniqueIdsCollision = {
@@ -170,7 +155,7 @@ export function processPackToTablesWithUniqueIds() {
                     collision.fieldName == newUniqueIdsCollision.fieldName &&
                     collision.tableName == newUniqueIdsCollision.tableName &&
                     collision.firstPackName == newUniqueIdsCollision.firstPackName &&
-                    collision.secondPackName == newUniqueIdsCollision.secondPackName
+                    collision.secondPackName == newUniqueIdsCollision.secondPackName,
                 )
               ) {
                 uniqueIdsCollisions[packName].push(newUniqueIdsCollision);

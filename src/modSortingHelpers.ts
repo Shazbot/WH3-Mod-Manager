@@ -1,7 +1,54 @@
+import { decodeModText } from "./utility/htmlEntities";
+import { applyLoadOrderEdges, EMPTY_LOAD_ORDER_EDGES, type LoadOrderEdges } from "./loadOrderRules";
+
 const collator = new Intl.Collator("en");
 
-export function sortByNameAndLoadOrder(mods: Mod[]) {
-  const sortedMods = getModsSortedByName(mods);
+/** Works on anything with a name and an optional load order, so preset entries can use it too. */
+type Sortable = { name: string; loadOrder?: number };
+
+/**
+ * The rules currently in force, for the many callers that sort without being in a position to pass
+ * them - main process handlers, the used_mods.txt writer, the preset and config helpers.
+ *
+ * React must NOT rely on this: a memo cannot list a module variable as a dependency, so a component
+ * that let the rules arrive this way would keep showing a stale order. Those callers pass `edges`
+ * explicitly instead, from redux, which is what makes the change visible to their dependency arrays.
+ */
+let activeLoadOrderEdges: LoadOrderEdges = EMPTY_LOAD_ORDER_EDGES;
+
+export const setActiveLoadOrderEdges = (edges: LoadOrderEdges) => {
+  activeLoadOrderEdges = edges;
+};
+
+export const getActiveLoadOrderEdges = () => activeLoadOrderEdges;
+
+/** Test helper; module level state would otherwise leak from one test into the next. */
+export const resetActiveLoadOrderEdges = () => {
+  activeLoadOrderEdges = EMPTY_LOAD_ORDER_EDGES;
+};
+
+/**
+ * The automatic order: by name, then refined so it also satisfies the load order rules.
+ *
+ * Rules only reorder what they actually constrain, so with none set this is exactly the name sort
+ * it has always been.
+ */
+export function getModsSortedByNameAndRules<T extends { name: string }>(
+  mods: T[],
+  edges: LoadOrderEdges = activeLoadOrderEdges,
+): T[] {
+  return applyLoadOrderEdges(getModsSortedByName(mods), edges);
+}
+
+/**
+ * Rules refine the automatic order below; the pinned mods spliced in afterwards are untouched by
+ * them, which is what keeps a manual position winning over any rule.
+ */
+export function sortByNameAndLoadOrder<T extends Sortable>(
+  mods: T[],
+  edges: LoadOrderEdges = activeLoadOrderEdges,
+): T[] {
+  const sortedMods = getModsSortedByNameAndRules(mods, edges);
   const orderedMods = sortedMods
     .filter((mod) => mod.loadOrder != null)
     .sort((modF, modS) => (modF.loadOrder as number) - (modS.loadOrder as number));
@@ -10,7 +57,7 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
 
   const orderedModSet = new Set(orderedMods);
   const unorderedMods = sortedMods.filter((mod) => !orderedModSet.has(mod));
-  const newMods: Mod[] = [];
+  const newMods: T[] = [];
   let unorderedIndex = 0;
   let orderedIndex = 0;
 
@@ -35,13 +82,32 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
   return newMods;
 }
 
-export function sortAsInPreset(mods: Mod[], modsInPreset: Mod[]) {
-  const indexMap = new Map(modsInPreset.map((mod, i) => [mod.name, i]));
+export function getLoadOrderInsertionIndex(selectedIndex: number, placeholderIndex: number, remainingModCount: number) {
+  const adjustedIndex =
+    selectedIndex >= 0 && placeholderIndex > selectedIndex ? placeholderIndex - 1 : placeholderIndex;
+  return Math.max(0, Math.min(adjustedIndex, remainingModCount));
+}
+
+export function getSparseLoadOrderByModName(orderedMods: Mod[], movedModName?: string) {
+  const loadOrderByModName = new Map<string, number>();
+  orderedMods.forEach((mod, index) => {
+    if (mod.loadOrder != null || mod.name === movedModName) {
+      loadOrderByModName.set(mod.name, index);
+    }
+  });
+  return loadOrderByModName;
+}
+
+/** Orders mods to match a preset's entries, with mods the preset doesn't mention sorted after by name. */
+export function sortModsAsInEntries(mods: Mod[], entries: { name: string }[]) {
+  const indexMap = new Map(entries.map((entry, i) => [entry.name, i]));
   const newMods = [...mods].sort((modF, modS) => {
     const modInPresetIndexF = indexMap.get(modF.name) ?? -1;
     const modInPresetIndexS = indexMap.get(modS.name) ?? -1;
 
     if (modInPresetIndexF != -1 && modInPresetIndexS != -1) return modInPresetIndexF - modInPresetIndexS;
+    if (modInPresetIndexF != -1) return -1;
+    if (modInPresetIndexS != -1) return 1;
 
     return compareModNames(modF.name, modS.name);
   });
@@ -53,13 +119,11 @@ export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
   return [...mods].sort(
     (firstMod, secondMod) =>
       (orderedModIndices.get(firstMod) ?? Number.MAX_SAFE_INTEGER) -
-      (orderedModIndices.get(secondMod) ?? Number.MAX_SAFE_INTEGER)
+      (orderedModIndices.get(secondMod) ?? Number.MAX_SAFE_INTEGER),
   );
 }
 
 export function compareModNames(firstName: string, secondName: string): number {
-  firstName = firstName.toLowerCase();
-  secondName = secondName.toLowerCase();
   const len = Math.max(firstName.length, secondName.length);
   for (let i = 0; i < len; i++) {
     if (i === firstName.length) return 1;
@@ -73,7 +137,7 @@ export function compareModNames(firstName: string, secondName: string): number {
   return 0;
 }
 
-export function getModsSortedByName(mods: Mod[]) {
+export function getModsSortedByName<T extends { name: string }>(mods: T[]): T[] {
   return [...mods].sort((firstMod, secondMod) => {
     return compareModNames(firstMod.name, secondMod.name);
   });
@@ -94,33 +158,63 @@ export function getModsSortedBySize(mods: Mod[]) {
   });
 }
 
+/**
+ * The title the list shows for a mod: decoded, and the pack name where the mod has no title at all,
+ * which is what the row puts on its first line in that case.
+ *
+ * Sorting the raw humanName instead files a title that opens with an entity under "&" rather than under
+ * the letter it is displayed as, and sends every untitled data mod to the top on an empty string.
+ */
+export function getModSortName(mod: Mod) {
+  const decodedHumanName = decodeModText(mod.humanName).trim();
+  return decodedHumanName !== "" ? decodedHumanName : mod.name;
+}
+
 export function getModsSortedByHumanName(mods: Mod[]) {
-  return [...mods].sort((firstMod, secondMod) => collator.compare(firstMod.humanName, secondMod.humanName));
+  // Decoding inside the comparator would decode each title as many times as it is compared, so the
+  // keys are built once up front.
+  const sortNamesByMod = new Map(mods.map((mod) => [mod, getModSortName(mod)]));
+  return [...mods].sort((firstMod, secondMod) =>
+    collator.compare(sortNamesByMod.get(firstMod) ?? "", sortNamesByMod.get(secondMod) ?? ""),
+  );
 }
 
-export function getModsSortedByHumanNameAndName(mods: Mod[]) {
-  return [...mods].sort((firstMod, secondMod) => {
-    const firstModValue = (firstMod.humanName != "" && firstMod.humanName) || firstMod.name;
-    const secondModValue = (secondMod.humanName != "" && secondMod.humanName) || secondMod.name;
-    return collator.compare(firstModValue, secondModValue);
-  });
-}
-
-export function getModsSortedByEnabled(mods: Mod[]) {
+export function getModsSortedByEnabled(mods: Mod[], orderedMods: Mod[], enabledFirst: boolean) {
+  const orderedModIndices = new Map(orderedMods.map((mod, index) => [mod, index]));
   return [...mods].sort((firstMod, secondMod) => {
     if (firstMod.isEnabled == secondMod.isEnabled) {
-      return compareModNames(firstMod.name, secondMod.name);
+      return (
+        (orderedModIndices.get(firstMod) ?? Number.MAX_SAFE_INTEGER) -
+        (orderedModIndices.get(secondMod) ?? Number.MAX_SAFE_INTEGER)
+      );
     }
-    return firstMod.isEnabled ? -1 : 1;
+    return firstMod.isEnabled === enabledFirst ? -1 : 1;
   });
 }
 
-export function getModsSortedByAuthor(mods: Mod[]) {
+/**
+ * Sorts by the author as the row shows it, and keeps the mods that name no author at the end.
+ *
+ * An empty author is not a name that happens to sort first, it is nothing to sort on, so those mods sit
+ * out of the way at the bottom whichever way round the list is. That is also why the direction is a flag
+ * rather than a reverse of the finished list: reversing would drag them back to the top.
+ */
+export function getModsSortedByAuthor(mods: Mod[], isReversed = false) {
+  const authorsByMod = new Map(mods.map((mod) => [mod, decodeModText(mod.author).trim()]));
+
   return [...mods].sort((firstMod, secondMod) => {
-    if (firstMod.author == secondMod.author) {
-      return compareModNames(firstMod.name, secondMod.name);
+    const firstAuthor = authorsByMod.get(firstMod) ?? "";
+    const secondAuthor = authorsByMod.get(secondMod) ?? "";
+
+    if (firstAuthor === "" || secondAuthor === "") {
+      if (firstAuthor === secondAuthor) return compareModNames(firstMod.name, secondMod.name);
+      return firstAuthor === "" ? 1 : -1;
     }
-    return collator.compare(firstMod.author, secondMod.author);
+
+    const comparison = collator.compare(firstAuthor, secondAuthor);
+    if (comparison !== 0) return isReversed ? -comparison : comparison;
+    // One author's mods keep the same order either way round, which reads better than flipping them too.
+    return compareModNames(firstMod.name, secondMod.name);
   });
 }
 
@@ -160,7 +254,7 @@ export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: 
       (mod) =>
         mod.name.replace(".pack", "").toLowerCase().includes(needle) ||
         (mod.humanName && mod.humanName.toLowerCase().includes(needle)) ||
-        (doAuthorFiltering && mod.author.toLowerCase().includes(needle))
+        (doAuthorFiltering && mod.author.toLowerCase().includes(needle)),
     );
 
   if (filter.startsWith("/") && filter.endsWith("/")) {
@@ -171,7 +265,7 @@ export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: 
         (mod) =>
           regexFilter.test(mod.name.replace(".pack", "")) ||
           (mod.humanName && regexFilter.test(mod.humanName)) ||
-          (doAuthorFiltering && regexFilter.test(mod.author))
+          (doAuthorFiltering && regexFilter.test(mod.author)),
       );
     } catch {
       return filterBySubstring(regexPattern.toLowerCase());

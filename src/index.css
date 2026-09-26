@@ -10,8 +10,8 @@
   font-display: swap;
   src: url("./assets/fonts/librebaskerville/kmKhZrc3Hgbbcjq75U4uslyuy4kn0qNcWx8QDP2V.woff2") format("woff2");
   unicode-range:
-    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
-    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 /* latin */
 @font-face {
@@ -21,8 +21,8 @@
   font-display: swap;
   src: url("./assets/fonts/librebaskerville/kmKhZrc3Hgbbcjq75U4uslyuy4kn0qNcWxEQDA.woff2") format("woff2");
   unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
-    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 /* latin-ext */
 @font-face {
@@ -32,8 +32,8 @@
   font-display: swap;
   src: url("./assets/fonts/librebaskerville/kmKnZrc3Hgbbcjq75U4uslyuy4kn0qNXaxMICA.woff2") format("woff2");
   unicode-range:
-    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
-    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 /* latin */
 @font-face {
@@ -43,8 +43,8 @@
   font-display: swap;
   src: url("./assets/fonts/librebaskerville/kmKnZrc3Hgbbcjq75U4uslyuy4kn0qNZaxM.woff2") format("woff2");
   unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
-    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 /* latin-ext */
 @font-face {
@@ -54,8 +54,8 @@
   font-display: swap;
   src: url("./assets/fonts/librebaskerville/kmKiZrc3Hgbbcjq75U4uslyuy4kn0qviTgY5KcCsww.woff2") format("woff2");
   unicode-range:
-    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
-    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 /* latin */
 @font-face {
@@ -65,8 +65,58 @@
   font-display: swap;
   src: url("./assets/fonts/librebaskerville/kmKiZrc3Hgbbcjq75U4uslyuy4kn0qviTgY3KcA.woff2") format("woff2");
   unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
-    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Inter, self-hosted the same way Libre Baskerville is. One variable file per subset covers the
+   whole 400-600 range, which is why there are two faces here rather than one per weight. */
+/* latin-ext */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("./assets/fonts/inter/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7SUc.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("./assets/fonts/inter/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Roboto, self-hosted so the grid actually gets the font its theme has always named. Variable, so
+   one file per subset covers 400-500. */
+/* latin-ext */
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("./assets/fonts/roboto/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3KUBGEe.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("./assets/fonts/roboto/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @layer base {
@@ -178,6 +228,114 @@ body {
   grid-column: span 5 / span 5;
 }
 
+/*
+ * Dual layout panes. Each pane is roughly half the width the single list gets, so the wide columns are
+ * collapsed into one stacked name cell and the enabled checkbox column is dropped entirely. The column
+ * count is driven by the thumbnail option and by whether the pane shows the configuration column, so
+ * unlike .grid-mods* these do not change at a breakpoint.
+ *
+ * Every track here must be a fixed size or a fraction, never an intrinsic one like max-content. The
+ * header row and each virtualized mod row are separate grid containers that only share this template, so
+ * an intrinsic track resolves against each one's own contents - the header would size the thumbnail
+ * column to its little icon and the rows to a 4rem image, and every column after it would stop lining up.
+ * 4.5rem is the 4rem thumbnail plus the row cell's horizontal padding.
+ */
+.grid-mods-compact {
+  grid-template-columns: var(--mod-row-order-w) 1fr var(--mod-row-time-w);
+}
+.grid-mods-compact-thumbs {
+  grid-template-columns: var(--mod-row-order-w) var(--mod-row-thumb-col) 1fr var(--mod-row-time-w);
+}
+.grid-mods-compact-config {
+  grid-template-columns: var(--mod-row-order-w) 1fr var(--mod-row-time-w) var(--mod-row-gear-w);
+}
+.grid-mods-compact-thumbs-config {
+  grid-template-columns: var(--mod-row-order-w) var(--mod-row-thumb-col) 1fr var(--mod-row-time-w) var(--mod-row-gear-w);
+}
+
+/*
+ * Row density. These sit on the pane's grid container so the sticky header cells and the virtualized
+ * rows below both inherit one set of numbers - they are separate grid containers and would otherwise
+ * size their tracks independently. Every value is fixed rather than intrinsic, for the same reason.
+ */
+.mod-list-compact {
+  --mod-row-order-w: 56px;
+  --mod-row-thumb-col: 4.5rem;
+  --mod-row-time-w: 6.25rem;
+  --mod-row-gear-w: 44px;
+  --mod-row-thumb: 4rem;
+  --mod-row-pad-y: 0.5rem;
+  --mod-row-title-size: 1rem;
+  --mod-row-title-weight: 500;
+  --mod-row-meta-size: 0.875rem;
+  --mod-row-leading: 1.25;
+}
+
+.mod-list-compact.mod-list-comfortable {
+  --mod-row-order-w: 60px;
+  --mod-row-thumb-col: 5.5rem;
+  --mod-row-time-w: 6.75rem;
+  --mod-row-gear-w: 48px;
+  --mod-row-thumb: 5rem;
+  --mod-row-pad-y: 0.75rem;
+  --mod-row-title-size: 1.125rem;
+  --mod-row-meta-size: 1rem;
+  --mod-row-leading: 1.375;
+}
+
+.mod-list-compact.mod-list-roomy {
+  --mod-row-order-w: 64px;
+  --mod-row-thumb-col: 6.5rem;
+  --mod-row-time-w: 7.5rem;
+  --mod-row-gear-w: 52px;
+  --mod-row-thumb: 6rem;
+  --mod-row-pad-y: 1rem;
+  --mod-row-title-size: 1.25rem;
+  --mod-row-title-weight: 600;
+  --mod-row-meta-size: 1rem;
+  --mod-row-leading: 1.5;
+}
+
+.mod-row-thumb {
+  max-width: var(--mod-row-thumb);
+}
+
+.mod-row-title {
+  font-size: var(--mod-row-title-size);
+  font-weight: var(--mod-row-title-weight);
+  line-height: var(--mod-row-leading);
+}
+
+.mod-row-meta {
+  font-size: var(--mod-row-meta-size);
+  line-height: var(--mod-row-leading);
+}
+
+/*
+ * Each pane scrolls itself, so it needs a height rather than growing with its content. Subtracted:
+ * the top bar, the page container's top padding, the pane caption and the page's bottom padding.
+ *
+ * The gutter is reserved whether or not the pane currently overflows, because AutoSizer measures the
+ * pane before its vertical scrollbar exists and would otherwise size every row ~17px too wide. Setting
+ * only overflow-y makes overflow-x compute to auto, so it is pinned to hidden as well - without that,
+ * even a sub-pixel rounding in the measured width raises a horizontal scrollbar.
+ */
+.dual-mod-list-pane {
+  height: calc(100vh - 28px - 2.75rem - 1.75rem - 1rem);
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.grid-column-compact-3 {
+  grid-column: span 3 / span 3;
+}
+.grid-column-compact-4 {
+  grid-column: span 4 / span 4;
+}
+.grid-column-compact-5 {
+  grid-column: span 5 / span 5;
+}
+
 @media (min-width: 1024px) {
   .grid-mods {
     grid-template-columns: 57px 80px 1fr 1fr 0.5fr 80px;
@@ -229,12 +387,18 @@ body {
   width: 100%;
 }
 
-.row {
-  display: contents;
-}
-
 .row-div-paddings div {
   padding: 0.25rem;
+}
+
+/*
+ * Compact rows stack three lines of text, so neighbours need more separation than the single-line wide
+ * rows do. Padding rather than margin: react-virtualized places each row at its measured height, and a
+ * margin is not part of that measurement, so it would make rows overlap.
+ */
+.row-div-paddings-compact div {
+  padding-top: var(--mod-row-pad-y);
+  padding-bottom: var(--mod-row-pad-y);
 }
 
 .row-bg-color-manually > :not(.drop-ghost) {
@@ -249,6 +413,25 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   box-shadow:
     inset 0 1px 0 #71717a,
     0 1px 0 hsla(0, 0%, 0%, 0.5);
+}
+
+@keyframes recently-reordered-row-highlight {
+  0%,
+  70% {
+    background-color: rgba(8, 145, 178, 0.58);
+    box-shadow:
+      inset 0 2px 0 #22d3ee,
+      inset 0 -2px 0 #22d3ee;
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+.recently-reordered-row > :not(.drop-ghost) {
+  animation: recently-reordered-row-highlight 2.4s ease-out;
 }
 
 @media (max-width: 1024px) {
@@ -279,6 +462,21 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   position: sticky;
   top: -2.75rem;
   z-index: 11;
+  /* A header is a control, not text to select; dragging across one used to highlight its wording. */
+  user-select: none;
+}
+
+.mod-row-header:hover,
+.mod-row-header:focus-within {
+  z-index: 12;
+}
+
+/*
+ * The -2.75rem above compensates for the page scroll container's pt-11. A pane scrolls itself and has no
+ * such padding, so its headers stick to its own top edge.
+ */
+.mod-row-header-pane {
+  top: 0;
 }
 
 #top-bar {
@@ -396,6 +594,10 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   height: calc(100vh - 5.5rem);
 }
 
+.explicit-height-without-topbar-and-padding-35rem {
+  height: calc(100vh - 3.5rem);
+}
+
 .playButtonText {
   font-size: 1.3rem;
   letter-spacing: 0.15rem;
@@ -427,6 +629,79 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   fill: url(#p1);
   stroke-width: 10;
   stroke-opacity: 0.75;
+}
+
+.node-editor-flow .react-flow__node.selected {
+  outline: 4px solid #facc15;
+  outline-offset: 3px;
+  border-radius: 0.75rem;
+  filter: drop-shadow(0 0 8px rgb(250 204 21 / 75%));
+}
+
+.node-editor-flow .react-flow__node.quick-connect-source {
+  outline: 4px dashed #22d3ee;
+  outline-offset: 3px;
+  border-radius: 0.75rem;
+  filter: drop-shadow(0 0 8px rgb(34 211 238 / 80%));
+}
+
+.node-editor-flow .react-flow__node.node-disabled > * {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.node-editor-flow .react-flow__node.node-disabled::after {
+  content: "Disabled";
+  position: absolute;
+  top: -0.85rem;
+  left: 50%;
+  z-index: 2;
+  padding: 0.1rem 0.45rem;
+  transform: translateX(-50%);
+  border: 1px solid rgb(251 146 60 / 80%);
+  border-radius: 9999px;
+  background: rgb(67 20 7 / 95%);
+  color: #fed7aa;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1rem;
+  pointer-events: none;
+}
+
+.node-editor-flow .react-flow__node.node-disabled-by-upstream > * {
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}
+
+.node-editor-flow .react-flow__node.node-disabled-by-upstream::after {
+  content: "Blocked by disabled node";
+  position: absolute;
+  top: -0.85rem;
+  left: 50%;
+  z-index: 2;
+  padding: 0.1rem 0.45rem;
+  transform: translateX(-50%);
+  border: 1px solid rgb(167 139 250 / 80%);
+  border-radius: 9999px;
+  background: rgb(46 16 101 / 95%);
+  color: #ddd6fe;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.node-editor-flow .react-flow__edge.disabled-source .react-flow__edge-path {
+  stroke: #64748b;
+  stroke-dasharray: 8 6;
+  stroke-opacity: 0.35;
+}
+
+.node-editor-flow .react-flow__edge.disabled-consequence .react-flow__edge-path {
+  stroke: #a78bfa;
+  stroke-dasharray: 4 7;
+  stroke-opacity: 0.4;
 }
 
 .skillTooltip {
@@ -478,4 +753,413 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 
 .hide-placeholders .react-flow__node-addPlaceholder {
   display: none !important;
+}
+
+.ag-cell {
+  font-size: 1.1rem;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-cell-label {
+  align-items: flex-start;
+  position: relative;
+  width: calc(100% + 1.5rem);
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
+  /* Left is only 0.75rem - exactly cancelling the pull above - because the arrow gutter it used to
+     hold is now added back by the sorted rules further down, and only when there is an arrow. */
+  padding-left: 0.75rem;
+  padding-right: 1.25rem;
+  white-space: normal;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-cell-text {
+  display: -webkit-box;
+  flex: 1 1 100%;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.15;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-label-icon,
+.pack-tables-grid .pack-table-header .ag-sort-indicator-container,
+.pack-tables-grid .pack-table-header .ag-header-cell-filter-button {
+  position: absolute;
+  top: 0;
+  align-self: flex-start;
+}
+
+.pack-tables-grid .ag-ltr .pack-table-header .ag-header-label-icon,
+.pack-tables-grid .ag-ltr .pack-table-header .ag-header-menu-icon,
+.pack-tables-grid .ag-rtl .pack-table-header .ag-header-label-icon,
+.pack-tables-grid .ag-rtl .pack-table-header .ag-header-menu-icon {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-label-icon {
+  display: flex;
+  justify-content: center;
+  min-width: 1rem;
+  right: 0;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-cell-filter-button {
+  display: flex;
+  justify-content: center;
+  min-width: 1rem;
+  right: 0.2rem;
+  top: 0.5rem;
+}
+
+.pack-tables-grid .pack-table-header .ag-sort-indicator-container {
+  display: flex;
+  gap: 0.125rem;
+  justify-content: flex-start;
+  min-width: 1.5rem;
+  left: -0.75rem;
+  top: -0.2rem;
+}
+
+.pack-tables-grid .pack-table-header-right .ag-header-cell-label {
+  justify-content: flex-end;
+}
+
+.pack-tables-grid .pack-table-header-right .ag-header-cell-text {
+  text-align: right;
+}
+
+/* Header tooltips use plain text; preserve the line breaks between referenced tables. */
+.ag-theme-material-dark .ag-header-tooltip {
+  font-size: 14px;
+  white-space: pre-line;
+}
+
+/*
+ * Column separators. The theme rules rows but not columns, so wide tables of similar-looking values
+ * run together and it is easy to read a cell against the wrong header.
+ *
+ * Done through the theme's own variables rather than a border rule of our own: ag-grid already
+ * declares `.ag-ltr .ag-cell { border-right: var(--ag-cell-horizontal-border) }`, defaulting to
+ * `solid transparent` at 1px - the space is reserved and only the colour is missing.
+ *
+ * Both class names are needed. index.css is imported before ag-grid's stylesheets, so anything of
+ * ours at the same specificity loses on source order - which is what made a plain
+ * `.pack-tables-grid .ag-cell` border rule invisible against `.ag-ltr .ag-cell`, and would equally
+ * sink these variables against ag-grid's own `[class*=ag-theme-]` defaults. Two classes on the one
+ * element outrank both whatever the order.
+ */
+.ag-theme-material-dark.pack-tables-grid {
+  --ag-cell-horizontal-border: solid rgba(148, 163, 184, 0.32);
+  --ag-header-column-separator-display: block;
+  --ag-header-column-separator-height: 100%;
+  --ag-header-column-separator-width: 1px;
+  --ag-header-column-separator-color: rgba(148, 163, 184, 0.32);
+
+  /*
+   * Material reserves 24px each side of every cell, so a column of single digits still spends 48px
+   * on empty space. These tables are dense and read column by column, so the gutters buy little.
+   * CELL_CONTENT_PADDING_PX in PackTablesTableView.tsx has to stay in step with this.
+   */
+  --ag-cell-horizontal-padding: 10px;
+
+  /*
+   * The theme has always named Roboto but never shipped it, so on this platform the grid was really
+   * drawing in Arial. Both faces are now self-hosted, and whichever is named first here wins - swap
+   * the two names to compare. Numeric cells ask for `tabular-nums`, which both carry and the old
+   * fallback did not reliably.
+   *
+   * GRID_CELL_FONT and GRID_HEADER_FONT in PackTablesTableView.tsx measure column widths against
+   * this, so the stacks in the two places have to stay in the same order.
+   */
+  --ag-font-family: "Inter", "Roboto", Arial, sans-serif;
+
+  /*
+   * The theme draws cells in pure white on near-black, which is a harder contrast than a table this
+   * dense wants to be read at for any length of time. Slate 200 for values, a step down again for
+   * headers, which are read once and then navigated by position.
+   */
+  --ag-data-color: #e2e8f0;
+  --ag-header-foreground-color: #c3ccd8;
+}
+
+/* The tree beside the table reads as part of it, so it takes the same font. */
+.pack-tables-tree {
+  font-family: "Inter", "Roboto", Arial, sans-serif;
+}
+
+.skills-node-sets-tree {
+  font-family: "Inter", "Roboto", Arial, sans-serif;
+}
+
+/*
+ * Zebra striping plus row hover. A wide table is read by tracking one row across many
+ * near-identical numeric columns, and the eye loses the line long before the row ends.
+ *
+ * The stripe is translucent rather than a second flat colour, so it composites over whatever the
+ * row already sits on (theme background, and the pinned row-index column) and stays consistent.
+ * Both the theme's own dark defaults are near-invisible here: it ships the odd-row colour equal to
+ * the background, and its hover is a purple that clashes with the blue selection.
+ *
+ * The hover is kept fainter than `--ag-range-selection-background-color` so it never reads as a
+ * selection.
+ */
+.ag-theme-material-dark.pack-tables-grid {
+  --ag-odd-row-background-color: rgba(148, 163, 184, 0.07);
+  --ag-row-hover-color: rgba(96, 165, 250, 0.12);
+  /* Named because the expanded pinned key value has to composite the same tint itself - see below. */
+  --pack-table-cell-selected-color: rgba(59, 130, 246, 0.22);
+}
+
+/*
+ * The pinned key column is capped at PINNED_KEY_COLUMN_MAX_CONTENT_WIDTH_PX, so its longest values
+ * ellipsise instead of making every column to the right of it pay for them. Hovering the cell shows
+ * the whole value: the span the value is rendered into is lifted out of the cell's clipping and
+ * grown to fit, and the cell is raised over the scrolled columns the span now reaches across.
+ *
+ * ag-grid gives the pinned section no viewport of its own - `getElementParams` in
+ * rowContainerComp.ts only wraps the centre container - so `.ag-pinned-left-cols-container` does not
+ * clip, and the span is free to run out over the table as far as the grid's right edge.
+ *
+ * Which of the two sections paints on top has to be settled on the containers, below. A `z-index` on
+ * the cell cannot do it: ag-grid positions rows with `transform: translateY()` unless
+ * suppressRowTransform is set, and a transform makes every row a stacking context, so a cell's
+ * `z-index` only ever orders it against its own row's siblings. Left to the containers' source
+ * order the centre section wins, and the overhang is painted behind it - behind the opaque
+ * background of an even row, and behind the near-transparent stripe of an odd one, which is why
+ * getting this wrong showed up on one kind of row and not the other.
+ */
+
+/*
+ * Pinned columns sit above the columns that scroll under them. The two sections are siblings, so
+ * one line here outranks the centre section for everything in the pinned one, whatever stacking
+ * contexts the rows inside it make.
+ */
+.pack-tables-grid .ag-pinned-left-cols-container {
+  z-index: 1;
+}
+
+/* z-index orders the hovered cell within its own row; the section is raised by the rule above. */
+.pack-tables-grid .pack-table-pinned-key-cell:hover {
+  overflow: visible;
+  z-index: 2;
+}
+
+.pack-tables-grid .pack-table-pinned-key-cell:hover .pack-table-pinned-key-value {
+  /*
+   * Positioned against the cell's padding box, so the offset is the cell's own padding - the text
+   * has to stay exactly where it was drawn before the hover, or the value appears to jump sideways
+   * as the pointer arrives.
+   */
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--ag-cell-horizontal-padding) - 1px);
+  padding-right: calc(var(--ag-cell-horizontal-padding) - 1px);
+  display: flex;
+  align-items: center;
+  width: max-content;
+  /*
+   * The box must not extend the cell's hover area, or pointing at the part of it that overhangs the
+   * table would keep it open while the mouse is really over a data cell - and a drag-selection
+   * crossing it would land on this cell rather than the one underneath.
+   */
+  pointer-events: none;
+  /*
+   * Opaque, or the columns underneath show through the value. Built from the tokens the row itself
+   * is drawn with, in the order the row composites them, so the part of the box still inside the
+   * cell is invisible and only the overhang reads as a box: base colour, the zebra stripe on an odd
+   * row, the hover tint - always on, since the box only exists while the row is hovered - and the
+   * selection tint above that.
+   */
+  --pack-pinned-key-stripe: transparent;
+  --pack-pinned-key-selection: transparent;
+  background-color: var(--ag-background-color);
+  background-image:
+    linear-gradient(var(--pack-pinned-key-selection), var(--pack-pinned-key-selection)),
+    linear-gradient(var(--ag-row-hover-color), var(--ag-row-hover-color)),
+    linear-gradient(var(--pack-pinned-key-stripe), var(--pack-pinned-key-stripe));
+}
+
+/*
+ * The repeated prefix. Out of the flow entirely at rest, so the column is sized and drawn as if the
+ * value simply began at its first useful segment, and back in front of the value while the cell is
+ * hovered - the expansion is the one place the whole key is shown, so it has to be the whole key.
+ *
+ * Restoring it inline pushes the rest of the value right by the prefix's width, which is the one
+ * thing that does move on hover. Left where it is instead, the prefix would have to hang off the
+ * left of the cell and over the row numbers beside it.
+ *
+ * Dimmed to the same value as an untouched cell: it is there to be recognised, not read, and the
+ * part of the key that tells this row from the next one should stay the brighter of the two.
+ */
+.pack-tables-grid .pack-table-pinned-key-prefix {
+  display: none;
+}
+
+.pack-tables-grid .pack-table-pinned-key-cell:hover .pack-table-pinned-key-prefix {
+  display: inline;
+  color: rgba(226, 232, 240, 0.38);
+}
+
+.pack-tables-grid .ag-row-odd .pack-table-pinned-key-cell:hover .pack-table-pinned-key-value {
+  --pack-pinned-key-stripe: var(--ag-odd-row-background-color);
+}
+
+.pack-tables-grid .pack-table-cell-selected:hover .pack-table-pinned-key-value {
+  --pack-pinned-key-selection: var(--pack-table-cell-selected-color);
+}
+
+/*
+ * Headers keep the theme's wide gutter on the right, where the filter button sits, but not on the
+ * left: that one exists for the sort arrow, and most columns are not sorted.
+ *
+ * Stated as "narrow by default, widened when sorted" rather than the other way round. ag-grid only
+ * puts `ag-header-cell-sorted-none` on a header once its sort has been set and cleared again - a
+ * column that has never been sorted carries no sorted-* class at all - so a rule keyed on that
+ * class never fires for the columns this is meant to help.
+ */
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell {
+  padding-left: 10px;
+  padding-right: 24px;
+}
+
+/*
+ * Sorted: give the arrow back the gutter it is drawn into, on the cell and in the label. That room
+ * comes out of the header text, which can ellipsise while the sort is applied - the whole point is
+ * that the other columns are not paying for it. The full name stays on the header's tooltip.
+ */
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-asc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-desc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-asc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-desc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-mixed {
+  padding-left: 24px;
+}
+
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-asc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-desc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-asc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-desc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-mixed .ag-header-cell-label {
+  padding-left: 1.25rem;
+}
+
+.pack-tables-grid .pack-table-row-index-cell {
+  overflow: visible;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  text-overflow: clip;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.pack-tables-grid .pack-table-cell-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * The strip under the pinned columns is a spacer that lines the horizontal scrollbar up with the
+ * scrollable part of the grid, and ag-grid ships it as `overflow-x: scroll`. On a platform that
+ * draws scrollbar tracks - which Electron on Windows does - that paints a second, dead horizontal
+ * scrollbar beneath the pinned columns. ag-grid only suppresses it when the pinned section is
+ * narrower than a scrollbar, which stopped being true once a key column was pinned beside the row
+ * numbers. Two classes to outrank ag-grid's own single-class rule whatever the import order.
+ */
+.pack-tables-grid .ag-horizontal-left-spacer,
+.pack-tables-grid .ag-horizontal-right-spacer {
+  overflow-x: hidden;
+}
+
+/*
+ * Stand-in for the anchor the browser draws when its own middle-button auto-scroll takes over. Ours
+ * runs over the pinned columns, where the browser's does nothing sideways.
+ */
+.pack-table-autoscroll-anchor {
+  align-items: center;
+  background: rgba(17, 24, 39, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  border-radius: 9999px;
+  color: #e2e8f0;
+  display: flex;
+  font-size: 13px;
+  height: 22px;
+  justify-content: center;
+  line-height: 1;
+  margin-left: -11px;
+  margin-top: -11px;
+  pointer-events: none;
+  width: 22px;
+  z-index: 9998;
+}
+
+/*
+ * A cell nobody has set. Dimmed through the text colour rather than `opacity`, which would fade the
+ * selection and hover backgrounds underneath it along with the value.
+ */
+.pack-tables-grid .pack-table-cell-default {
+  color: rgba(226, 232, 240, 0.38);
+}
+
+.pack-tables-grid .pack-table-cell-selected {
+  background: var(--pack-table-cell-selected-color) !important;
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.7);
+}
+
+.pack-tables-grid .pack-table-header-selected {
+  background: rgba(37, 99, 235, 0.28) !important;
+}
+
+.pack-tables-grid .pack-table-row-index-selected {
+  background: rgba(37, 99, 235, 0.24) !important;
+  color: #fff;
+}
+
+.custom-mod-folder-tooltip {
+  background: transparent !important;
+  border: 0 !important;
+  isolation: isolate;
+  padding: 0 !important;
+}
+
+.custom-mod-folder-tooltip::before {
+  content: none !important;
+}
+
+.custom-mod-folder-tooltip > :first-child {
+  background-color: #24262b;
+  border: 2px solid #000;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.625rem;
+}
+
+.custom-mod-folder-tooltip [data-testid="flowbite-tooltip-arrow"] {
+  background-color: #000 !important;
+  border: 0 !important;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  height: 10px !important;
+  transform: none !important;
+  width: 18px !important;
+  z-index: 0 !important;
+}
+
+.custom-mod-folder-tooltip [data-testid="flowbite-tooltip-arrow"]::after {
+  background-color: #24262b;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  content: "";
+  inset: 2px 2px 0;
+  position: absolute;
+}
+
+.custom-mod-folder-tooltip [data-testid="flowbite-tooltip-arrow"][style*="top"] {
+  top: -8px !important;
+}
+
+.custom-mod-folder-tooltip [data-testid="flowbite-tooltip-arrow"][style*="bottom"] {
+  bottom: -8px !important;
 }

@@ -1,0 +1,11 @@
+# Keeps editors from writing CRLF in the first place, so .gitattributes
+# never has to clean up after them.
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+
+[*.ps1]
+end_of_line = crlf

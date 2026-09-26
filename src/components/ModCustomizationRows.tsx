@@ -8,13 +8,7 @@ import { removePackDataOverwrite, setPackDataOverwrites } from "../appSlice";
 import { getLocFromTree } from "../utility/frontend/packDataHandling";
 
 export type ModCustomizationSorts =
-  | "UnitKeyTableOrder"
-  | "UnitKey"
-  | "UnitKeyDesc"
-  | "UnitOwner"
-  | "UnitOwnerDesc"
-  | "Enabled"
-  | "EnabledDesc";
+  "UnitKeyTableOrder" | "UnitKey" | "UnitKeyDesc" | "UnitOwner" | "UnitOwnerDesc" | "Enabled" | "EnabledDesc";
 
 export interface ModCustomizationRowsProps {
   tablesData: Record<string, PlainPackFileData>;
@@ -84,7 +78,7 @@ const ModCustomizationRows = memo(
           );
         });
       },
-      [modFilter, firstColumnData, secondColumnData]
+      [modFilter, firstColumnData, secondColumnData],
     );
 
     const getSortedPlainData = useCallback(
@@ -94,24 +88,24 @@ const ModCustomizationRows = memo(
             const keyOne = `${firstMod[0]}_${firstMod[1]}`;
             const keyTwo = `${secondMod[0]}_${secondMod[1]}`;
             const existingOverwriteOne = currentPackDataOverwrites.find(
-              (iterOverwrite) => iterOverwrite.columnsId == keyOne
+              (iterOverwrite) => iterOverwrite.columnsId == keyOne,
             );
             const existingOverwriteTwo = currentPackDataOverwrites.find(
-              (iterOverwrite) => iterOverwrite.columnsId == keyTwo
+              (iterOverwrite) => iterOverwrite.columnsId == keyTwo,
             );
             const enabledOverwriteOne =
               existingOverwriteOne && existingOverwriteOne.overwriteData != undefined
                 ? (existingOverwriteOne.overwriteData as boolean)
                 : firstMod.length > 2
-                ? (firstMod[2] as boolean)
-                : true;
+                  ? (firstMod[2] as boolean)
+                  : true;
 
             const enabledOverwriteTwo =
               existingOverwriteTwo && existingOverwriteTwo.overwriteData != undefined
                 ? (existingOverwriteTwo.overwriteData as boolean)
                 : secondMod.length > 2
-                ? (secondMod[2] as boolean)
-                : true;
+                  ? (secondMod[2] as boolean)
+                  : true;
 
             if (enabledOverwriteOne && enabledOverwriteTwo) return 0;
             if (enabledOverwriteOne && !enabledOverwriteTwo) return -1;
@@ -156,7 +150,7 @@ const ModCustomizationRows = memo(
             break;
         }
       },
-      [modsMergeSort]
+      [modsMergeSort],
     );
 
     const onModCustomized = useCallback(
@@ -169,22 +163,18 @@ const ModCustomizationRows = memo(
         columnIndices: number[],
         getRowKey: (data: PlainPackFileDataRow) => string,
         columnIndexForEnabled: number | null,
-        operation?: PackDataOverwriteOperation
+        operation?: PackDataOverwriteOperation,
       ) => {
-        console.log("onModCustomized for:", rowData);
-        console.log("currentPackDataOverwrites are:", currentPackDataOverwrites);
         for (let i = 0; i < data.length; i++) {
           const isMatch = columnIndices.reduce((acc, currentIndex) => {
             return acc && data[i][currentIndex] == rowData[currentIndex];
           }, true);
           if (isMatch) {
             const columnsId = getRowKey(rowData);
-            console.log("currentPackDataOverwrites", currentPackDataOverwrites);
             const existingOverwrite =
               currentPackDataOverwrites &&
               currentPackDataOverwrites.find(
-                (iterOverwrite) =>
-                  iterOverwrite.packFilePath == packFilePath && iterOverwrite.columnsId == columnsId
+                (iterOverwrite) => iterOverwrite.packFilePath == packFilePath && iterOverwrite.columnsId == columnsId,
               );
 
             let newOverwriteData: PlainPackDataTypes | undefined = undefined;
@@ -194,8 +184,6 @@ const ModCustomizationRows = memo(
                 existingOverwrite && existingOverwrite.overwriteData != undefined
                   ? !existingOverwrite.overwriteData
                   : !data[i][columnIndexForEnabled];
-
-            console.log("modPath:", packPath);
 
             const dataOverwrite: PackDataOverwritePayload = {
               packName: packPath,
@@ -208,25 +196,23 @@ const ModCustomizationRows = memo(
               overwriteData: newOverwriteData,
             };
             if (existingOverwrite) {
-              console.log("REMOVING pack data overwrite:", dataOverwrite);
               dispatch(removePackDataOverwrite(dataOverwrite));
               break;
             }
 
-            console.log("dispatching setPackDataOverwrites:", dataOverwrite);
             dispatch(setPackDataOverwrites(dataOverwrite));
             break;
           }
         }
       },
-      []
+      [],
     );
 
     const getDefaultEnabledValue = useCallback(
       (
         operation: PackDataOverwriteOperation,
         existingOverwrite: PackDataOverwrite | undefined,
-        rowData: PlainPackFileDataRow
+        rowData: PlainPackFileDataRow,
       ) => {
         if (existingOverwrite == undefined) return getAllowedForRow(rowData);
         if (operation == "REMOVE") return false;
@@ -234,14 +220,12 @@ const ModCustomizationRows = memo(
 
         return existingOverwrite.overwriteData as boolean;
       },
-      [getAllowedForRow]
+      [getAllowedForRow],
     );
 
     const rowLocalizations = Object.values(tablesData).reduce((acc, current) => {
       current.forEach((rowData) => {
-        const firstColumnLocId = firstColumnLocBuilder
-          ? firstColumnLocBuilder(rowData)
-          : firstColumnData(rowData);
+        const firstColumnLocId = firstColumnLocBuilder ? firstColumnLocBuilder(rowData) : firstColumnData(rowData);
         const firstColumnLocalized =
           firstColumnTableLoc && getLocFromTree(locTree, firstColumnTableLoc, firstColumnLocId);
 
@@ -328,79 +312,65 @@ const ModCustomizationRows = memo(
           </div>
           {tablesData &&
             Object.entries(tablesData).map(([packFilePath, data]) => {
-              return getFilteredPlainData(
-                getSortedPlainData(data, currentPackDataOverwrites),
-                rowLocalizations
-              ).map((rowData, i) => {
-                const key = getRowKey(rowData);
-                const existingOverwrite = currentPackDataOverwrites.find(
-                  (iterOverwrite) => iterOverwrite.columnsId == key
-                );
+              return getFilteredPlainData(getSortedPlainData(data, currentPackDataOverwrites), rowLocalizations).map(
+                (rowData, i) => {
+                  const key = getRowKey(rowData);
+                  const existingOverwrite = currentPackDataOverwrites.find(
+                    (iterOverwrite) => iterOverwrite.columnsId == key,
+                  );
 
-                // console.log("firstColumnLocId", firstColumnLocId);
-                // console.log("firstColumnTableLoc", firstColumnTableLoc);
-                // console.log("firstColumnLocalized", firstColumnLocalized);
+                  const [firstColumnLocalized, secondColumnLocalized] = rowLocalizations.get(rowData) ?? ["", ""];
 
-                const [firstColumnLocalized, secondColumnLocalized] = rowLocalizations.get(rowData) ?? [
-                  "",
-                  "",
-                ];
-
-                return (
-                  <React.Fragment key={key}>
-                    {i == 0 && (
+                  return (
+                    <React.Fragment key={key}>
+                      {i == 0 && (
+                        <div className="grid grid-cols-10 items-center border-b gap-2 py-2 border-gray-600">
+                          <div className="col-span-10 -ml-7 pt-2">{packFilePath}</div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-10 items-center border-b gap-2 py-2 border-gray-600">
-                        <div className="col-span-10 -ml-7 pt-2">{packFilePath}</div>
+                        <div className="col-span-4">
+                          <label htmlFor={key + "_merge_checkbox"} className={existingOverwrite && "text-blue-600"}>
+                            <div>{firstColumnData(rowData)}</div>
+                            {firstColumnLocalized != "" && <div>{`${firstColumnLocalized}`}</div>}
+                          </label>
+                        </div>
+                        <div className="col-span-4">
+                          <label htmlFor={key + "_merge_checkbox"} className={existingOverwrite && "text-blue-600"}>
+                            <div>{secondColumnData(rowData)}</div>
+                            {secondColumnLocalized != "" && <div>{`${secondColumnLocalized}`}</div>}
+                          </label>
+                        </div>
+                        <div className="col-span-2 justify-center flex">
+                          <input
+                            type="checkbox"
+                            defaultChecked={getDefaultEnabledValue(operation, existingOverwrite, rowData)}
+                            onChange={() =>
+                              onModCustomized(
+                                packPath,
+                                packFilePath,
+                                data,
+                                currentPackDataOverwrites,
+                                rowData,
+                                columnIndices,
+                                getRowKey,
+                                columnIndexForEnabled,
+                                operation,
+                              )
+                            }
+                            id={key + "_merge_checkbox"}
+                            name={key}
+                          />
+                        </div>
                       </div>
-                    )}
-                    <div className="grid grid-cols-10 items-center border-b gap-2 py-2 border-gray-600">
-                      <div className="col-span-4">
-                        <label
-                          htmlFor={key + "_merge_checkbox"}
-                          className={existingOverwrite && "text-blue-600"}
-                        >
-                          <div>{firstColumnData(rowData)}</div>
-                          {firstColumnLocalized != "" && <div>{`${firstColumnLocalized}`}</div>}
-                        </label>
-                      </div>
-                      <div className="col-span-4">
-                        <label
-                          htmlFor={key + "_merge_checkbox"}
-                          className={existingOverwrite && "text-blue-600"}
-                        >
-                          <div>{secondColumnData(rowData)}</div>
-                          {secondColumnLocalized != "" && <div>{`${secondColumnLocalized}`}</div>}
-                        </label>
-                      </div>
-                      <div className="col-span-2 justify-center flex">
-                        <input
-                          type="checkbox"
-                          defaultChecked={getDefaultEnabledValue(operation, existingOverwrite, rowData)}
-                          onChange={() =>
-                            onModCustomized(
-                              packPath,
-                              packFilePath,
-                              data,
-                              currentPackDataOverwrites,
-                              rowData,
-                              columnIndices,
-                              getRowKey,
-                              columnIndexForEnabled,
-                              operation
-                            )
-                          }
-                          id={key + "_merge_checkbox"}
-                          name={key}
-                        />
-                      </div>
-                    </div>
-                  </React.Fragment>
-                );
-              });
+                    </React.Fragment>
+                  );
+                },
+              );
             })}
         </div>
       </>
     );
-  }
+  },
 );
 export default ModCustomizationRows;

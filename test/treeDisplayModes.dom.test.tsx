@@ -1,10 +1,14 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer from "../src/appSlice";
+import appReducer, {
+  setIsFeaturesForModdersEnabled,
+  setIsModEnabled,
+  setWorkshopUpdateCheckMessage,
+} from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import localizationContext from "../src/localizationContext";
 import LeftSidebar from "../src/components/LeftSidebar";
@@ -65,12 +69,18 @@ const localizedStrings = {
   presetsTab: "Presets",
   skillsViewer: "Skill Trees",
   techTreesTab: "Tech Trees",
+  unitViewerTab: "Unit Viewer",
   nodeEditorTab: "Node Editor",
   dbViewer: "DB Viewer",
   faqAbbreviated: "FAQ",
+  workshopModsMayBeOutdated: "Workshop mods may be outdated",
+  missingReqMods: "Missing required mods",
+  missing: "missing",
+  packsWithOutdatedFiles: "Packs with outdated files",
+  outdatedPacks: "Outdated packs!",
 };
 
-const createMod = (): Mod => ({
+const createMod = (overrides: Partial<Mod> = {}): Mod => ({
   humanName: "mod",
   name: "mod.pack",
   path: "/mods/mod.pack",
@@ -94,6 +104,7 @@ const createMod = (): Mod => ({
   categories: [],
   tags: [],
   isInModding: false,
+  ...overrides,
 });
 
 const renderWithState = (ui: React.ReactNode, stateOverrides: Partial<AppState> = {}) => {
@@ -115,13 +126,13 @@ const renderWithState = (ui: React.ReactNode, stateOverrides: Partial<AppState> 
     },
   });
 
-  return render(
+  const renderResult = render(
     <Provider store={store}>
-      <localizationContext.Provider value={localizedStrings}>
-        {ui}
-      </localizationContext.Provider>
+      <localizationContext.Provider value={localizedStrings}>{ui}</localizationContext.Provider>
     </Provider>,
   );
+
+  return { ...renderResult, store };
 };
 
 describe("tree display DOM behavior", () => {
@@ -132,6 +143,9 @@ describe("tree display DOM behavior", () => {
       requestOpenSkillsWindow: vi.fn(),
       requestOpenTechTreesWindow: vi.fn(),
       requestOpenModInViewer: vi.fn(),
+      repairOutdatedWorkshopMods: vi.fn(),
+      cancelWorkshopRepairAndResubscribeMods: vi.fn(),
+      forceResubscribeMods: vi.fn(),
     } as NonNullable<Window["api"]>;
   });
 
@@ -144,7 +158,29 @@ describe("tree display DOM behavior", () => {
 
     expect(screen.getByText("Skill Trees")).toBeInTheDocument();
     expect(screen.getByText("Tech Trees")).toBeInTheDocument();
+    expect(screen.getByText("Unit Viewer")).toBeInTheDocument();
     expect(screen.queryByText("Node Editor")).not.toBeInTheDocument();
+  });
+
+  it("shows Unit Viewer for WH3 without modder features and hides it for other games", () => {
+    const { rerender } = renderWithState(<LeftSidebar />, {
+      currentGame: "wh3",
+      isFeaturesForModdersEnabled: false,
+    });
+    expect(screen.getByText("Unit Viewer")).toBeInTheDocument();
+
+    const otherGameStore = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: { app: { ...initialState, currentGame: "wh2" as const } },
+    });
+    rerender(
+      <Provider store={otherGameStore}>
+        <localizationContext.Provider value={localizedStrings}>
+          <LeftSidebar />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+    expect(screen.queryByText("Unit Viewer")).not.toBeInTheDocument();
   });
 
   it("hides tree tabs when both are configured as windows", () => {
@@ -157,6 +193,23 @@ describe("tree display DOM behavior", () => {
     expect(screen.queryByText("Skill Trees")).not.toBeInTheDocument();
     expect(screen.queryByText("Tech Trees")).not.toBeInTheDocument();
     expect(screen.queryByText("Node Editor")).not.toBeInTheDocument();
+  });
+
+  it("selects the Node Editor after modder features are enabled at runtime", () => {
+    const { store } = renderWithState(<LeftSidebar />, {
+      isFeaturesForModdersEnabled: false,
+      skillTreesDisplayMode: "tab",
+      technologyTreesDisplayMode: "tab",
+    });
+
+    expect(screen.queryByText("Node Editor")).not.toBeInTheDocument();
+
+    act(() => {
+      store.dispatch(setIsFeaturesForModdersEnabled(true));
+    });
+    fireEvent.click(screen.getByText("Node Editor"));
+
+    expect(store.getState().app.currentTab).toBe("nodeEditor");
   });
 
   it("shows a combined Trees menu button when both trees use standalone windows", () => {
@@ -183,5 +236,207 @@ describe("tree display DOM behavior", () => {
     expect(screen.getByRole("button", { name: "Tech Trees" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Trees" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Skill Trees" })).not.toBeInTheDocument();
+  });
+
+  it("warns when multiple enabled mods contain startpos.esf", () => {
+    const firstMod = createMod({
+      name: "first-startpos.pack",
+      path: "/mods/first-startpos.pack",
+      workshopId: "1",
+      hasStartpos: true,
+    });
+    const secondMod = createMod({
+      name: "second-startpos.pack",
+      path: "/mods/second-startpos.pack",
+      workshopId: "2",
+      hasStartpos: true,
+    });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [firstMod, secondMod] },
+      allMods: [firstMod, secondMod],
+    });
+
+    expect(screen.getByText("Multiple startpos mods enabled!")).toBeInTheDocument();
+  });
+
+  it("does not warn for a single enabled startpos mod", () => {
+    const startposMod = createMod({ hasStartpos: true });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [startposMod] },
+      allMods: [startposMod],
+    });
+
+    expect(screen.queryByText("Multiple startpos mods enabled!")).not.toBeInTheDocument();
+  });
+
+  it("does not warn when one startpos mod depends on the other", () => {
+    const baseMod = createMod({
+      name: "base-startpos.pack",
+      path: "/mods/base-startpos.pack",
+      workshopId: "1",
+      hasStartpos: true,
+    });
+    const dependentMod = createMod({
+      name: "dependent-startpos.pack",
+      path: "/mods/dependent-startpos.pack",
+      workshopId: "2",
+      hasStartpos: true,
+      dependencyPacks: ["base-startpos.pack"],
+    });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [baseMod, dependentMod] },
+      allMods: [baseMod, dependentMod],
+    });
+
+    expect(screen.queryByText("Multiple startpos mods enabled!")).not.toBeInTheDocument();
+  });
+
+  it("clears an outdated-pack warning when that pack is disabled", () => {
+    const outdatedMod = createMod({ name: "outdated.pack", path: "/mods/outdated.pack" });
+    const otherMod = createMod({ name: "other.pack", path: "/mods/other.pack", workshopId: "2" });
+
+    const { store } = renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [outdatedMod, otherMod] },
+      allMods: [outdatedMod, otherMod],
+      outdatedPackFiles: {
+        [outdatedMod.name]: ["6.1: Changed in patch"],
+        [otherMod.name]: ["6.2: Changed in patch"],
+      },
+    });
+
+    expect(screen.getByText("Outdated packs!")).toBeInTheDocument();
+    expect(screen.getByText("outdated.pack:")).toBeInTheDocument();
+    expect(screen.getByText("other.pack:")).toBeInTheDocument();
+
+    act(() => {
+      store.dispatch(setIsModEnabled({ mod: outdatedMod, isEnabled: false }));
+    });
+
+    expect(screen.getByText("Outdated packs!")).toBeInTheDocument();
+    expect(screen.queryByText("outdated.pack:")).not.toBeInTheDocument();
+    expect(screen.getByText("other.pack:")).toBeInTheDocument();
+  });
+
+  it("renders sidebar warning tooltips outside the scrolling sidebar", () => {
+    const mod = createMod({
+      reqModIdToName: [["missing-dependency", "Missing dependency"]],
+    });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [mod] },
+      allMods: [mod],
+    });
+
+    const warning = screen.getByText("Missing required mods");
+    fireEvent.mouseEnter(warning);
+
+    const tooltip = [...document.querySelectorAll('[data-testid="flowbite-tooltip"]')].find((element) =>
+      element.textContent?.includes("Missing dependency"),
+    );
+    expect(tooltip).toBeDefined();
+    expect(tooltip?.parentElement).toBe(document.body);
+    expect(tooltip?.closest(".overflow-y-auto")).toBeNull();
+  });
+
+  it("warns when an enabled Workshop mod has an older installed timestamp", () => {
+    const mod = createMod({ lastChanged: 200_000 });
+
+    const { store } = renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [mod] },
+      allMods: [mod],
+      workshopInstallStatuses: {
+        "1": { installedTimestamp: 100, state: 5 },
+      },
+    });
+
+    expect(screen.getByText("Workshop mods may be outdated")).toBeInTheDocument();
+    expect(screen.getByText("Workshop mods may be outdated")).toHaveClass("cursor-pointer");
+
+    fireEvent.click(screen.getByText("Workshop mods may be outdated"));
+    expect(screen.getByText("Repair Workshop Mods")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Select the mods to repair. Only checked mods will be unsubscribed and resubscribed through Steam.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Force Update" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Force Resubscribe" }));
+    expect(window.api?.forceResubscribeMods).toHaveBeenCalledWith([mod]);
+
+    fireEvent.click(screen.getByText("Workshop mods may be outdated"));
+
+    act(() => {
+      store.dispatch(
+        setWorkshopUpdateCheckMessage({
+          type: "progress",
+          checkedCount: 1,
+          items: [
+            {
+              workshopId: "1",
+              initialState: 13,
+              finalState: 45,
+              status: "downloading",
+              requestAccepted: true,
+              installTimestampBefore: 100,
+              downloadedBytes: "0",
+              totalBytes: "0",
+            },
+          ],
+        }),
+      );
+    });
+    expect(screen.getByText("Update status: queued by Steam")).toBeInTheDocument();
+    expect(screen.queryByText(/0 B \/ 0 B/)).not.toBeInTheDocument();
+
+    act(() => {
+      store.dispatch(
+        setWorkshopUpdateCheckMessage({
+          type: "progress",
+          checkedCount: 1,
+          items: [
+            {
+              workshopId: "1",
+              initialState: 13,
+              finalState: 21,
+              status: "downloading",
+              requestAccepted: true,
+              installTimestampBefore: 100,
+              downloadedBytes: "1073741824",
+              totalBytes: "4294967296",
+            },
+          ],
+        }),
+      );
+    });
+    expect(screen.getByText("Update status: downloading (1 GB / 4 GB)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel and Resubscribe" }));
+    expect(window.api?.cancelWorkshopRepairAndResubscribeMods).toHaveBeenCalledWith([mod]);
+  });
+
+  it("suppresses the outdated warning while Steam is downloading the update", () => {
+    const mod = createMod({ lastChanged: 200_000 });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [mod] },
+      allMods: [mod],
+      workshopInstallStatuses: {
+        "1": { installedTimestamp: 100, state: 21 },
+      },
+      workshopUpdateCheckResults: {
+        "1": {
+          workshopId: "1",
+          initialState: 13,
+          finalState: 21,
+          status: "downloading",
+          requestAccepted: true,
+          installTimestampBefore: 100,
+        },
+      },
+    });
+
+    expect(screen.queryByText("Workshop mods may be outdated")).not.toBeInTheDocument();
   });
 });

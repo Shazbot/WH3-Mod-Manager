@@ -1,0 +1,36 @@
+/*
+ * Tile size is a variable rather than a transform: zooming by `scale()` blurs the text, leaves
+ * getBoundingClientRect reporting scaled pixels the arrow overlay would have to undo, and needs a
+ * hand-sized wrapper to keep the scroll extent right.
+ */
+.buildingsBoard {
+  --building-tile: 64px;
+  --building-gap: 18px;
+  /* Separate from band padding, so widening tile spacing does not move tiles away from set borders. */
+  --building-column-gap: 18px;
+}
+
+.buildingSetBand {
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--building-band-colour), 0.04),
+    rgba(var(--building-band-colour), 0.18)
+  );
+  border-left: 2px solid rgba(var(--building-band-colour), 0.5);
+  border-right: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.buildingSetLabel {
+  background: rgba(var(--building-band-colour), 0.3);
+  border-top: 2px solid rgba(var(--building-band-colour), 0.8);
+  color: #e5e7eb;
+}
+
+.buildingTile {
+  transition: filter 120ms ease-out;
+}
+
+.buildingTile:hover {
+  filter: brightness(1.25);
+  z-index: 5;
+}

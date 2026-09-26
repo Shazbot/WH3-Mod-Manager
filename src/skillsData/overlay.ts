@@ -1,5 +1,6 @@
 import { AmendedSchemaField } from "../packFileTypes";
 import { SkillsDataCacheCore } from "./cache";
+import { normalizeSkillIconPath } from "../skills";
 
 export type GetTableRowDataFn = (
   packsTableData: PackViewData[],
@@ -59,24 +60,20 @@ export const applyModOverlayToSkillsDataCore = (
   }
   core.subtypesToSet = rebuiltSubtypesToSet;
 
-  const setToNodesDisables: Record<string, string[]> = {};
+  const setItemOverrides = new Map<string, { set: string; node: string; disabled: boolean }>();
   getTableRowDataFn(modPacksTableData, "character_skill_node_set_items_tables", (schemaFieldRow) => {
     const set = schemaFieldRow.find((sF) => sF.name == "set")?.resolvedKeyValue;
     const node = schemaFieldRow.find((sF) => sF.name == "item")?.resolvedKeyValue;
     const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
     if (!set || !node || modDisabled == undefined) return;
 
-    core.setToNodes[set] = core.setToNodes[set] || [];
-    if (!core.setToNodes[set].includes(node)) {
-      core.setToNodes[set].push(node);
-    }
-    if (modDisabled != "0") {
-      setToNodesDisables[set] = setToNodesDisables[set] || [];
-      if (!setToNodesDisables[set].includes(node)) setToNodesDisables[set].push(node);
-    }
+    // set + item is the table key. Keep the last mod row so a later row can re-enable a
+    // node that an earlier mod disabled instead of letting the first disable win forever.
+    setItemOverrides.set(`${set}\u0000${node}`, { set, node, disabled: parseBool(modDisabled) });
   });
-  for (const [set, nodesToDisable] of Object.entries(setToNodesDisables)) {
-    core.setToNodes[set] = (core.setToNodes[set] || []).filter((node) => !nodesToDisable.includes(node));
+  for (const { set, node, disabled } of setItemOverrides.values()) {
+    core.setToNodes[set] = (core.setToNodes[set] || []).filter((currentNode) => currentNode !== node);
+    if (!disabled) core.setToNodes[set].push(node);
   }
 
   getTableRowDataFn(modPacksTableData, "character_skill_node_links_tables", (schemaFieldRow) => {
@@ -85,6 +82,12 @@ export const applyModOverlayToSkillsDataCore = (
     const linkType = schemaFieldRow.find((sF) => sF.name == "link_type")?.resolvedKeyValue;
     const parentLinkPosition = schemaFieldRow.find((sF) => sF.name == "parent_link_position")?.resolvedKeyValue;
     const childLinkPosition = schemaFieldRow.find((sF) => sF.name == "child_link_position")?.resolvedKeyValue;
+    const parentLinkPositionOffset = schemaFieldRow.find(
+      (sF) => sF.name == "parent_link_position_offset",
+    )?.resolvedKeyValue;
+    const childLinkPositionOffset = schemaFieldRow.find(
+      (sF) => sF.name == "child_link_position_offset",
+    )?.resolvedKeyValue;
     if (
       !childKey ||
       !parentKey ||
@@ -95,22 +98,17 @@ export const applyModOverlayToSkillsDataCore = (
       return;
     }
     core.nodeLinks[parentKey] = core.nodeLinks[parentKey] || [];
-    if (
-      !core.nodeLinks[parentKey].some(
-        (iterLink) =>
-          iterLink.child == childKey &&
-          iterLink.linkType == linkType &&
-          iterLink.parentLinkPosition == parentLinkPosition &&
-          iterLink.childLinkPosition == childLinkPosition,
-      )
-    ) {
-      core.nodeLinks[parentKey].push({
-        child: childKey,
-        parentLinkPosition,
-        childLinkPosition,
-        linkType,
-      });
-    }
+    // parent_key + child_key are the table's composite key. Replace the entire row so a mod can
+    // change link type or geometry without leaving the vanilla row alongside it.
+    core.nodeLinks[parentKey] = core.nodeLinks[parentKey].filter((iterLink) => iterLink.child != childKey);
+    core.nodeLinks[parentKey].push({
+      child: childKey,
+      parentLinkPosition,
+      childLinkPosition,
+      parentLinkPositionOffset,
+      childLinkPositionOffset,
+      linkType,
+    });
   });
 
   getTableRowDataFn(modPacksTableData, "character_skill_nodes_tables", (schemaFieldRow) => {
@@ -122,9 +120,7 @@ export const applyModOverlayToSkillsDataCore = (
     const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
     const requiredNumParents = schemaFieldRow.find((sF) => sF.name == "required_num_parents")?.resolvedKeyValue;
     const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue as
-      | "0"
-      | "1"
-      | undefined;
+      "0" | "1" | undefined;
     if (
       !node ||
       !skill ||
@@ -153,10 +149,10 @@ export const applyModOverlayToSkillsDataCore = (
     const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
     const iconPath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
     const unlockRank = schemaFieldRow.find((sF) => sF.name == "unlocked_at_rank")?.resolvedKeyValue;
-    if (!key || !iconPath || unlockRank == undefined) return;
+    if (!key || iconPath == undefined || unlockRank == undefined) return;
     const updated = {
       key,
-      iconPath,
+      iconPath: normalizeSkillIconPath(iconPath),
       maxLevel: 1,
       unlockRank: Number(unlockRank),
     };
@@ -175,7 +171,11 @@ export const applyModOverlayToSkillsDataCore = (
     if (!skill || !skillNode || level == undefined) return;
     core.nodeToSkillLocks[skillNode] = core.nodeToSkillLocks[skillNode] || [];
     const levelAsNumber = Number(level);
-    if (!core.nodeToSkillLocks[skillNode].some((iterSkillLevel) => iterSkillLevel[0] == skill && iterSkillLevel[1] == levelAsNumber)) {
+    if (
+      !core.nodeToSkillLocks[skillNode].some(
+        (iterSkillLevel) => iterSkillLevel[0] == skill && iterSkillLevel[1] == levelAsNumber,
+      )
+    ) {
       core.nodeToSkillLocks[skillNode].push([skill, levelAsNumber]);
     }
   });
@@ -198,17 +198,13 @@ export const applyModOverlayToSkillsDataCore = (
       icon: core.effectsToEffectData[effectKey]?.icon,
       priority: core.effectsToEffectData[effectKey]?.priority,
     };
-    if (
-      !core.skillsToEffects[key].some(
-        (iter) =>
-          iter.effectKey == newEffect.effectKey &&
-          iter.effectScope == newEffect.effectScope &&
-          iter.level == newEffect.level &&
-          iter.value == newEffect.value,
-      )
-    ) {
-      core.skillsToEffects[key].push(newEffect);
-    }
+    // character_skill_key + effect_key + level are the composite key. Replace mutable fields
+    // (scope/value) instead of appending a second row that the viewer may choose unpredictably.
+    const existingIndex = core.skillsToEffects[key].findIndex(
+      (iter) => iter.effectKey == newEffect.effectKey && iter.level == newEffect.level,
+    );
+    if (existingIndex >= 0) core.skillsToEffects[key].splice(existingIndex, 1, newEffect);
+    else core.skillsToEffects[key].push(newEffect);
   });
 
   for (const skillKey of Object.keys(core.skillsToEffects)) {
@@ -257,7 +253,9 @@ export const applyModOverlayToSkillsDataCore = (
     if (!key) return;
     core.unitSpecialAbilitiesByKey[key] = {
       key,
-      targetInterceptRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "target_intercept_range")?.resolvedKeyValue),
+      targetInterceptRange: parseNumber(
+        schemaFieldRow.find((sF) => sF.name == "target_intercept_range")?.resolvedKeyValue,
+      ),
       rechargeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "recharge_time")?.resolvedKeyValue),
       activeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "active_time")?.resolvedKeyValue),
       effectRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "effect_range")?.resolvedKeyValue),
@@ -332,15 +330,19 @@ export const applyModOverlayToSkillsDataCore = (
     };
   });
 
-  getTableRowDataFn(modPacksTableData, "special_ability_to_special_ability_phase_junctions_tables", (schemaFieldRow) => {
-    const abilityKey = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
-    const phaseId = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
-    if (!abilityKey || !phaseId) return;
-    core.abilityToPhaseIds[abilityKey] = core.abilityToPhaseIds[abilityKey] || [];
-    if (!core.abilityToPhaseIds[abilityKey].includes(phaseId)) {
-      core.abilityToPhaseIds[abilityKey].push(phaseId);
-    }
-  });
+  getTableRowDataFn(
+    modPacksTableData,
+    "special_ability_to_special_ability_phase_junctions_tables",
+    (schemaFieldRow) => {
+      const abilityKey = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
+      const phaseId = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
+      if (!abilityKey || !phaseId) return;
+      core.abilityToPhaseIds[abilityKey] = core.abilityToPhaseIds[abilityKey] || [];
+      if (!core.abilityToPhaseIds[abilityKey].includes(phaseId)) {
+        core.abilityToPhaseIds[abilityKey].push(phaseId);
+      }
+    },
+  );
 
   getTableRowDataFn(modPacksTableData, "special_ability_phases_tables", (schemaFieldRow) => {
     const id = schemaFieldRow.find((sF) => sF.name == "id")?.resolvedKeyValue;
@@ -348,16 +350,10 @@ export const applyModOverlayToSkillsDataCore = (
     core.phasesById[id] = {
       id,
       damageAmount: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage_amount")?.resolvedKeyValue),
-      maxDamagedEntities: parseNumber(
-        schemaFieldRow.find((sF) => sF.name == "max_damaged_entities")?.resolvedKeyValue,
-      ),
-      hpChangeFrequency: parseNumber(
-        schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue,
-      ),
+      maxDamagedEntities: parseNumber(schemaFieldRow.find((sF) => sF.name == "max_damaged_entities")?.resolvedKeyValue),
+      hpChangeFrequency: parseNumber(schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue),
       duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
-      fatigueChangeRatio: parseNumber(
-        schemaFieldRow.find((sF) => sF.name == "fatigue_change_ratio")?.resolvedKeyValue,
-      ),
+      fatigueChangeRatio: parseNumber(schemaFieldRow.find((sF) => sF.name == "fatigue_change_ratio")?.resolvedKeyValue),
       affectsAllies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_allies")?.resolvedKeyValue),
       affectsEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_enemies")?.resolvedKeyValue),
     };
@@ -424,15 +420,19 @@ export const applyModOverlayToSkillsDataCore = (
     }
   });
 
-  getTableRowDataFn(modPacksTableData, "special_ability_groups_to_unit_abilities_junctions_tables", (schemaFieldRow) => {
-    const group = schemaFieldRow.find((sF) => sF.name == "special_ability_groups")?.resolvedKeyValue;
-    const ability = schemaFieldRow.find((sF) => sF.name == "unit_special_abilities")?.resolvedKeyValue;
-    if (!ability || !group) return;
-    core.abilityToGroupKeys[ability] = core.abilityToGroupKeys[ability] || [];
-    if (!core.abilityToGroupKeys[ability].includes(group)) {
-      core.abilityToGroupKeys[ability].push(group);
-    }
-  });
+  getTableRowDataFn(
+    modPacksTableData,
+    "special_ability_groups_to_unit_abilities_junctions_tables",
+    (schemaFieldRow) => {
+      const group = schemaFieldRow.find((sF) => sF.name == "special_ability_groups")?.resolvedKeyValue;
+      const ability = schemaFieldRow.find((sF) => sF.name == "unit_special_abilities")?.resolvedKeyValue;
+      if (!ability || !group) return;
+      core.abilityToGroupKeys[ability] = core.abilityToGroupKeys[ability] || [];
+      if (!core.abilityToGroupKeys[ability].includes(group)) {
+        core.abilityToGroupKeys[ability].push(group);
+      }
+    },
+  );
 
   getTableRowDataFn(modPacksTableData, "special_ability_groups_tables", (schemaFieldRow) => {
     const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;

@@ -14,8 +14,7 @@ export interface AlertProps extends PropsWithChildren<Omit<ComponentProps<"div">
   withBorderAccent?: boolean;
 }
 
-export interface AlertColors
-  extends Pick<FlowbiteColors, "failure" | "gray" | "info" | "success" | "warning"> {
+export interface AlertColors extends Pick<FlowbiteColors, "failure" | "gray" | "info" | "success" | "warning"> {
   [key: string]: string;
 }
 
@@ -36,7 +35,7 @@ export const Alert: FC<AlertProps> = ({
         theme.base,
         theme.color[color],
         rounded && theme.rounded,
-        withBorderAccent && theme.borderAccent
+        withBorderAccent && theme.borderAccent,
       )}
       role="alert"
     >

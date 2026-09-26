@@ -15,20 +15,11 @@ const baseLabelClassName =
 const TechTreeLinkEdge = memo(({ id, markerEnd, style, data, interactionWidth }: EdgeProps) => {
   const typedData = (data || {}) as TechTreeLinkEdgeData;
   const path = typedData.path || "";
-  const hasLabel =
-    !!typedData.labelText &&
-    Number.isFinite(typedData.labelX) &&
-    Number.isFinite(typedData.labelY);
+  const hasLabel = !!typedData.labelText && Number.isFinite(typedData.labelX) && Number.isFinite(typedData.labelY);
 
   return (
     <>
-      <BaseEdge
-        id={id}
-        path={path}
-        markerEnd={markerEnd}
-        style={style}
-        interactionWidth={interactionWidth}
-      />
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={interactionWidth} />
       {hasLabel && (
         <EdgeLabelRenderer>
           <div

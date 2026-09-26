@@ -18,6 +18,8 @@ type TechTab = {
 
 const TechTreesTab = memo(() => {
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
+  const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const pendingSingleClickTimeoutRef = useRef<number | null>(null);
   const [isLoadingSets, setIsLoadingSets] = useState(false);
   const [nodeSets, setNodeSets] = useState<TechnologyNodeSetSummary[]>([]);
@@ -34,18 +36,34 @@ const TechTreesTab = memo(() => {
         const fetchedSets = await window.api?.getTechnologyNodeSets();
         if (!fetchedSets) return;
         setNodeSets(fetchedSets);
-        if (fetchedSets.length > 0) {
+        const fetchedSetsByKey = new Map(fetchedSets.map((nodeSet) => [nodeSet.key, nodeSet]));
+        setTabs((previousTabs) => {
+          const refreshedTabs = previousTabs
+            .filter((tab) => tab.isBlank || fetchedSetsByKey.has(tab.setKey))
+            .map((tab) => {
+              if (tab.isBlank) return tab;
+              const nodeSet = fetchedSetsByKey.get(tab.setKey);
+              return nodeSet ? { ...tab, label: nodeSet.localizedName || nodeSet.key } : tab;
+            });
+          if (refreshedTabs.length > 0 || fetchedSets.length < 1) {
+            setActiveTabId((currentTabId) =>
+              currentTabId && refreshedTabs.some((tab) => tab.id === currentTabId)
+                ? currentTabId
+                : refreshedTabs[0]?.id || null,
+            );
+            return refreshedTabs;
+          }
           const id = `tab_${nextTabId++}`;
           const firstSet = fetchedSets[0];
-          setTabs([{ id, setKey: firstSet.key, label: firstSet.localizedName || firstSet.key }]);
           setActiveTabId(id);
-        }
+          return [{ id, setKey: firstSet.key, label: firstSet.localizedName || firstSet.key }];
+        });
       } finally {
         setIsLoadingSets(false);
       }
     };
     loadNodeSets();
-  }, []);
+  }, [currentLanguage, isUsingEnglishLocalizations]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -131,22 +149,25 @@ const TechTreesTab = memo(() => {
     [openSetInNewTab],
   );
 
-  const createBlankTreeInNewTab = useCallback((nodeSetName: string) => {
-    const templateSetKey = tabs.find((tab) => tab.id === activeTabId && !tab.isBlank)?.setKey || nodeSets[0]?.key;
-    if (!templateSetKey) return;
-    const id = `tab_${nextTabId++}`;
-    setTabs((prev) => [
-      ...prev,
-      {
-        id,
-        setKey: nodeSetName,
-        label: nodeSetName,
-        isBlank: true,
-        templateSetKey,
-      },
-    ]);
-    setActiveTabId(id);
-  }, [activeTabId, nodeSets, tabs]);
+  const createBlankTreeInNewTab = useCallback(
+    (nodeSetName: string) => {
+      const templateSetKey = tabs.find((tab) => tab.id === activeTabId && !tab.isBlank)?.setKey || nodeSets[0]?.key;
+      if (!templateSetKey) return;
+      const id = `tab_${nextTabId++}`;
+      setTabs((prev) => [
+        ...prev,
+        {
+          id,
+          setKey: nodeSetName,
+          label: nodeSetName,
+          isBlank: true,
+          templateSetKey,
+        },
+      ]);
+      setActiveTabId(id);
+    },
+    [activeTabId, nodeSets, tabs],
+  );
 
   const openNewNodeSetModal = useCallback(() => {
     setNewNodeSetName("");
@@ -187,13 +208,22 @@ const TechTreesTab = memo(() => {
   const activeSetKey = tabs.find((t) => t.id === activeTabId)?.setKey;
 
   return (
-    <div className="flex h-[86vh] text-gray-200">
+    <div className="flex explicit-height-without-topbar-and-padding min-h-0 text-gray-200">
       {/* Left sidebar */}
       <Resizable
         defaultSize={{ width: 300, height: "100%" }}
         maxWidth="50%"
         minWidth={150}
-        enable={{ right: true, left: false, top: false, bottom: false, topLeft: false, topRight: false, bottomLeft: false, bottomRight: false }}
+        enable={{
+          right: true,
+          left: false,
+          top: false,
+          bottom: false,
+          topLeft: false,
+          topRight: false,
+          bottomLeft: false,
+          bottomRight: false,
+        }}
       >
         <div className="h-full border-r border-gray-700 p-3 overflow-hidden flex flex-col">
           <div className="mb-2 flex items-center justify-between gap-2">
@@ -232,20 +262,15 @@ const TechTreesTab = memo(() => {
                   title={nodeSet.key}
                 >
                   <div className="font-medium">{nodeSet.localizedName || nodeSet.key}</div>
-                  {nodeSet.localizedName && (
-                    <div className="text-xs opacity-70">{nodeSet.key}</div>
-                  )}
+                  {nodeSet.localizedName && <div className="text-xs opacity-70">{nodeSet.key}</div>}
+                  {nodeSet.nodeCount === 0 && <div className="text-xs text-yellow-400">No nodes</div>}
                   {(nodeSet.factionKey || nodeSet.subculture) && (
                     <div className="flex gap-1 mt-0.5 flex-wrap">
                       {nodeSet.factionKey && (
-                        <span className="text-[10px] bg-gray-700 rounded px-1 opacity-70">
-                          {nodeSet.factionKey}
-                        </span>
+                        <span className="text-[10px] bg-gray-700 rounded px-1 opacity-70">{nodeSet.factionKey}</span>
                       )}
                       {nodeSet.subculture && (
-                        <span className="text-[10px] bg-gray-700 rounded px-1 opacity-70">
-                          {nodeSet.subculture}
-                        </span>
+                        <span className="text-[10px] bg-gray-700 rounded px-1 opacity-70">{nodeSet.subculture}</span>
                       )}
                     </div>
                   )}
@@ -331,9 +356,7 @@ const TechTreesTab = memo(() => {
                 autoFocus
               />
             </label>
-            {newNodeSetNameExists && (
-              <p className="text-sm text-red-400">That technology node set already exists.</p>
-            )}
+            {newNodeSetNameExists && <p className="text-sm text-red-400">That technology node set already exists.</p>}
           </div>
         </Modal.Body>
         <Modal.Footer>

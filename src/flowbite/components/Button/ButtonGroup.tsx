@@ -5,9 +5,7 @@ import type { ButtonProps } from ".";
 import { excludeClassName } from "../../helpers/exclude";
 import { useTheme } from "../Flowbite/ThemeContext";
 
-export type ButtonGroupProps = PropsWithChildren<
-  ComponentProps<"div"> & Pick<ButtonProps, "outline" | "pill">
->;
+export type ButtonGroupProps = PropsWithChildren<ComponentProps<"div"> & Pick<ButtonProps, "outline" | "pill">>;
 
 export interface PositionInButtonGroup {
   none: string;
@@ -26,14 +24,10 @@ const ButtonGroup: FC<ButtonGroupProps> = ({ children, outline, pill, ...props }
           outline,
           pill,
           positionInGroup:
-            index === 0
-              ? "start"
-              : index === (children as ReactElement<ButtonProps>[]).length - 1
-              ? "end"
-              : "middle",
-        })
+            index === 0 ? "start" : index === (children as ReactElement<ButtonProps>[]).length - 1 ? "end" : "middle",
+        }),
       ),
-    [children, outline, pill]
+    [children, outline, pill],
   );
   const theme = useTheme().theme.buttonGroup;
 

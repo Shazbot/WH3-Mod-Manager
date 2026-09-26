@@ -1,11 +1,18 @@
 import { configureStore } from "@reduxjs/toolkit";
 
-import appReducer from "./appSlice";
+import appReducer, { setPacksData } from "./appSlice";
 
 const store = configureStore({
   reducer: {
     app: appReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredPaths: ["app.packsData"],
+        ignoredActions: [setPacksData.type],
+      },
+    }),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

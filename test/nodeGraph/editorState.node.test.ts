@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyNodeDataPatch, withNodeEditorActions } from "../../src/nodeGraph/editorState";
+import {
+  applyNodeDataPatch,
+  getNodesDisabledByUpstream,
+  selectAllNodes,
+  toggleSelectedNodesDisabled,
+  withNodeEditorActions,
+} from "../../src/nodeGraph/editorState";
 
 const createField = (name: string) => ({
   name,
@@ -64,12 +70,7 @@ describe("applyNodeDataPatch", () => {
       edges: [{ id: "edge", source: "source", target: "target" }] as any[],
     };
 
-    const result = applyNodeDataPatch(
-      state,
-      "source",
-      { selectedReferenceTable: "units" },
-      { DBNameToDBVersions },
-    );
+    const result = applyNodeDataPatch(state, "source", { selectedReferenceTable: "units" }, { DBNameToDBVersions });
 
     expect(result.nodes[1].data.connectedTableName).toBe("units");
     expect(result.nodes[1].data.columnNames).toEqual(["key", "value"]);
@@ -98,12 +99,7 @@ describe("applyNodeDataPatch", () => {
       edges: [{ id: "edge", source: "source", target: "target" }] as any[],
     };
 
-    const result = applyNodeDataPatch(
-      state,
-      "source",
-      { selectedReverseTable: "agents" },
-      { DBNameToDBVersions },
-    );
+    const result = applyNodeDataPatch(state, "source", { selectedReverseTable: "agents" }, { DBNameToDBVersions });
 
     expect(result.nodes[1].data.connectedTableName).toBe("agents");
     expect(result.nodes[1].data.columnNames).toEqual(["agent", "subtype"]);
@@ -206,5 +202,96 @@ describe("withNodeEditorActions", () => {
     (node.data as any).onUpdateNodeData({ textValue: "updated.pack" });
 
     expect(updateNodeData).toHaveBeenCalledWith("node_1", { textValue: "updated.pack" });
+  });
+});
+
+describe("toggleSelectedNodesDisabled", () => {
+  it("disables selected nodes together and enables them on the next toggle", () => {
+    const nodes = [
+      {
+        id: "selected-enabled",
+        selected: true,
+        data: { isDisabled: false },
+      },
+      {
+        id: "selected-disabled",
+        selected: true,
+        data: { isDisabled: true },
+      },
+      {
+        id: "unselected",
+        selected: false,
+        data: { isDisabled: false },
+      },
+    ] as any[];
+
+    const disabledResult = toggleSelectedNodesDisabled(nodes);
+
+    expect(disabledResult.disabled).toBe(true);
+    expect(disabledResult.nodes.map((node) => node.data.isDisabled)).toEqual([true, true, false]);
+
+    const enabledResult = toggleSelectedNodesDisabled(disabledResult.nodes);
+
+    expect(enabledResult.disabled).toBe(false);
+    expect(enabledResult.nodes.map((node) => node.data.isDisabled)).toEqual([false, false, false]);
+  });
+});
+
+describe("getNodesDisabledByUpstream", () => {
+  it("finds every downstream node while keeping manually disabled nodes separate", () => {
+    const nodes = [
+      { id: "manual-root", data: { isDisabled: true } },
+      { id: "blocked-child", data: {} },
+      { id: "manual-middle", data: { isDisabled: true } },
+      { id: "blocked-leaf", data: {} },
+      { id: "unrelated", data: {} },
+    ] as any[];
+    const edges = [
+      { source: "manual-root", target: "blocked-child" },
+      { source: "blocked-child", target: "manual-middle" },
+      { source: "manual-middle", target: "blocked-leaf" },
+      { source: "blocked-leaf", target: "blocked-child" },
+    ] as any[];
+
+    const disabledByUpstream = getNodesDisabledByUpstream(nodes, edges);
+
+    expect([...disabledByUpstream].sort()).toEqual(["blocked-child", "blocked-leaf"]);
+    expect(disabledByUpstream.has("manual-root")).toBe(false);
+    expect(disabledByUpstream.has("manual-middle")).toBe(false);
+    expect(disabledByUpstream.has("unrelated")).toBe(false);
+  });
+});
+
+describe("selectAllNodes", () => {
+  const graph = () =>
+    [
+      { id: "node_0", type: "packedfiles", position: { x: 0, y: 0 }, data: {}, selected: true },
+      { id: "node_1", type: "filter", position: { x: 0, y: 0 }, data: {} },
+      { id: "node_2", type: "savechanges", position: { x: 0, y: 0 }, data: {} },
+    ] as any[];
+
+  it("selects every node, including the ones already selected", () => {
+    const result = selectAllNodes(graph());
+
+    expect(result.changed).toBe(true);
+    expect(result.nodes.every((node) => node.selected)).toBe(true);
+  });
+
+  it("leaves node data alone, so selecting cannot disturb what a node holds", () => {
+    const nodes = [{ id: "node_0", type: "filter", position: { x: 0, y: 0 }, data: { textValue: "keep me" } }] as any[];
+
+    expect(selectAllNodes(nodes).nodes[0].data).toEqual({ textValue: "keep me" });
+  });
+
+  it("reports no change when everything is already selected, so no needless re-render", () => {
+    const selected = graph().map((node) => ({ ...node, selected: true }));
+    const result = selectAllNodes(selected);
+
+    expect(result.changed).toBe(false);
+    expect(result.nodes).toBe(selected);
+  });
+
+  it("reports no change on an empty graph", () => {
+    expect(selectAllNodes([]).changed).toBe(false);
   });
 });

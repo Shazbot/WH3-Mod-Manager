@@ -103,18 +103,8 @@ export const buildTechTreeLinkGeometry = (args: {
   rawSourceOffset: number | undefined;
   rawTargetOffset: number | undefined;
 }): TechTreeLinkGeometry => {
-  const sourceCompass = resolveRenderedCompass(
-    args.rawSourceCompass,
-    args.sourceRect,
-    args.targetRect,
-    "source",
-  );
-  const targetCompass = resolveRenderedCompass(
-    args.rawTargetCompass,
-    args.sourceRect,
-    args.targetRect,
-    "target",
-  );
+  const sourceCompass = resolveRenderedCompass(args.rawSourceCompass, args.sourceRect, args.targetRect, "source");
+  const targetCompass = resolveRenderedCompass(args.rawTargetCompass, args.sourceRect, args.targetRect, "target");
   const sourceOffset = clampLinkPositionOffset(args.rawSourceOffset);
   const targetOffset = clampLinkPositionOffset(args.rawTargetOffset);
   const sourcePoint = getNodeConnectionPoint(args.sourceRect, sourceCompass, sourceOffset);

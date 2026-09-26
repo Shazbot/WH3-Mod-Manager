@@ -16,12 +16,26 @@ import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Tooltip } from "flowbite-react";
 import { ActionMeta, SingleValue } from "react-select";
+import classNames from "classnames";
 
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { addCategory, removeCategory, selectCategory, setAreModsEnabled, toggleMod } from "../appSlice";
+import {
+  addCategory,
+  removeCategory,
+  selectCategory,
+  setAreModsEnabled,
+  toggleAreCategoryThumbnailsEnabled,
+  toggleIsCategoryAuthorEnabled,
+  toggleMod,
+} from "../appSlice";
 import { useLocalizations } from "../localizationContext";
-import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
+import { getModsSortedByHumanName } from "../modSortingHelpers";
+import { getDecodedModAuthor, getModThumbnailSrc } from "../utility/frontend/modDisplay";
+import { getModCategories } from "../utility/frontend/modListLayout";
+import { uncategorizedCategoryName } from "../utility/categoryNames";
+import { decodeModText } from "../utility/htmlEntities";
 import selectStyle from "../styles/selectStyle";
+import { getCategoryColorClasses } from "../utility/frontend/categoryColors";
 import EditCategoriesModal from "./EditCategoriesModal";
 import ModDropdownOptions from "./ModDropdownOptions";
 
@@ -30,7 +44,7 @@ type CategorySelectType = {
   label: string;
 };
 
-type ContextMenuSelection = { kind: "none" } | { kind: "many" } | { kind: "one"; mod: Mod };
+type ContextMenuSelection = { kind: "none" } | { kind: "many"; mods: Mod[] } | { kind: "one"; mod: Mod };
 
 type CategoryGroup = {
   category: string;
@@ -64,93 +78,6 @@ type ModGridRow = {
 type CategoriesGridRow = CategoryGridRow | ModGridRow;
 type EnabledSortMode = "none" | "enabledFirst" | "enabledLast";
 
-const COLOR_CLASS_MAP: Record<string, { bg: string; text: string; hover: string; button: string }> = {
-  blue: {
-    bg: "bg-blue-100 dark:bg-blue-900",
-    text: "text-blue-800 dark:text-blue-300",
-    hover: "hover:bg-blue-200 dark:hover:bg-blue-800",
-    button: "text-blue-400 hover:text-blue-900 dark:hover:text-blue-300",
-  },
-  emerald: {
-    bg: "bg-emerald-100 dark:bg-emerald-900",
-    text: "text-emerald-800 dark:text-emerald-300",
-    hover: "hover:bg-emerald-200 dark:hover:bg-emerald-800",
-    button: "text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300",
-  },
-  red: {
-    bg: "bg-red-100 dark:bg-red-900",
-    text: "text-red-800 dark:text-red-300",
-    hover: "hover:bg-red-200 dark:hover:bg-red-800",
-    button: "text-red-400 hover:text-red-900 dark:hover:text-red-300",
-  },
-  amber: {
-    bg: "bg-amber-100 dark:bg-amber-900",
-    text: "text-amber-800 dark:text-amber-300",
-    hover: "hover:bg-amber-200 dark:hover:bg-amber-800",
-    button: "text-amber-400 hover:text-amber-900 dark:hover:text-amber-300",
-  },
-  purple: {
-    bg: "bg-purple-100 dark:bg-purple-900",
-    text: "text-purple-800 dark:text-purple-300",
-    hover: "hover:bg-purple-200 dark:hover:bg-purple-800",
-    button: "text-purple-400 hover:text-purple-900 dark:hover:text-purple-300",
-  },
-  rose: {
-    bg: "bg-rose-100 dark:bg-rose-900",
-    text: "text-rose-800 dark:text-rose-300",
-    hover: "hover:bg-rose-200 dark:hover:bg-rose-800",
-    button: "text-rose-400 hover:text-rose-900 dark:hover:text-rose-300",
-  },
-  teal: {
-    bg: "bg-teal-100 dark:bg-teal-900",
-    text: "text-teal-800 dark:text-teal-300",
-    hover: "hover:bg-teal-200 dark:hover:bg-teal-800",
-    button: "text-teal-400 hover:text-teal-900 dark:hover:text-teal-300",
-  },
-  orange: {
-    bg: "bg-orange-100 dark:bg-orange-900",
-    text: "text-orange-800 dark:text-orange-300",
-    hover: "hover:bg-orange-200 dark:hover:bg-orange-800",
-    button: "text-orange-400 hover:text-orange-900 dark:hover:text-orange-300",
-  },
-  slate: {
-    bg: "bg-slate-100 dark:bg-slate-800",
-    text: "text-slate-800 dark:text-slate-300",
-    hover: "hover:bg-slate-200 dark:hover:bg-slate-700",
-    button: "text-slate-400 hover:text-slate-900 dark:hover:text-slate-300",
-  },
-  white: {
-    bg: "bg-white dark:bg-white",
-    text: "text-gray-900 dark:text-gray-900",
-    hover: "hover:bg-gray-50 dark:hover:bg-gray-100",
-    button: "text-gray-500 hover:text-gray-900 dark:hover:text-gray-900",
-  },
-  black: {
-    bg: "bg-gray-900 dark:bg-gray-900",
-    text: "text-white dark:text-white",
-    hover: "hover:bg-gray-800 dark:hover:bg-gray-800",
-    button: "text-gray-300 hover:text-white dark:hover:text-white",
-  },
-  lime: {
-    bg: "bg-lime-200 dark:bg-lime-200",
-    text: "text-gray-900 dark:text-gray-900",
-    hover: "hover:bg-lime-300 dark:hover:bg-lime-300",
-    button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
-  },
-  sky: {
-    bg: "bg-sky-200 dark:bg-sky-200",
-    text: "text-gray-900 dark:text-gray-900",
-    hover: "hover:bg-sky-300 dark:hover:bg-sky-300",
-    button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
-  },
-  fuchsia: {
-    bg: "bg-fuchsia-200 dark:bg-fuchsia-200",
-    text: "text-gray-900 dark:text-gray-900",
-    hover: "hover:bg-fuchsia-300 dark:hover:bg-fuchsia-300",
-    button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
-  },
-};
-
 const AG_GRID_MODULES_KEY = "__whmmAgGridModulesRegistered";
 const globalAny = globalThis as unknown as Record<string, unknown>;
 if (!globalAny[AG_GRID_MODULES_KEY]) {
@@ -158,11 +85,14 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
   globalAny[AG_GRID_MODULES_KEY] = true;
 }
 
-const isCategoryRow = (row: CategoriesGridRow | undefined | null): row is CategoryGridRow =>
-  row?.kind === "category";
+const isCategoryRow = (row: CategoriesGridRow | undefined | null): row is CategoryGridRow => row?.kind === "category";
 
-const normalizeModLabel = (mod: Mod) =>
-  mod.humanName !== "" ? mod.humanName : mod.name.replace(".pack", "");
+/**
+ * What the grid shows for a mod, and what its name filter matches against: the decoded title, or the
+ * pack name where the mod has no title. Steam leaves entities in the titles, so a raw one reads as
+ * "Bretonnia &amp; Co" on screen and sorts under "&".
+ */
+const normalizeModLabel = (mod: Mod) => decodeModText(mod.humanName).trim() || mod.name.replace(".pack", "");
 
 const buildCategoryRowId = (category: string) => `category:${category}`;
 const buildModRowId = (category: string, path: string) => `mod:${category}:${path}`;
@@ -170,6 +100,13 @@ const getNextEnabledSortMode = (mode: EnabledSortMode): EnabledSortMode => {
   if (mode === "none") return "enabledFirst";
   if (mode === "enabledFirst") return "enabledLast";
   return "none";
+};
+
+const isModEffectivelyEnabled = (mod: Mod, alwaysEnabledModNames: Set<string>) =>
+  mod.isEnabled || alwaysEnabledModNames.has(mod.name);
+
+const cancelDebounced = (callback: unknown) => {
+  (callback as { cancel?: () => void }).cancel?.();
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -208,7 +145,7 @@ const Badge = memo(
     onRemove: () => void;
     removeLabel: string;
   }) => {
-    const colorClasses = COLOR_CLASS_MAP[color || "blue"] || COLOR_CLASS_MAP.blue;
+    const colorClasses = getCategoryColorClasses(color);
 
     return (
       <span
@@ -298,6 +235,8 @@ const Categories = memo(() => {
   const [isEditCategoriesModalOpen, setIsEditCategoriesModalOpen] = useState(false);
   const [enabledSortMode, setEnabledSortMode] = useState<EnabledSortMode>("none");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+  const optionsMenuRef = useRef<HTMLDivElement>(null);
 
   const [categoryFilterInput, setCategoryFilterInput] = useState("");
   const [nameFilterInput, setNameFilterInput] = useState("");
@@ -309,8 +248,27 @@ const Categories = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const categories = useAppSelector((state) => state.app.categories);
   const categoryColors = useAppSelector((state) => state.app.categoryColors || {});
+  const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const isDev = useAppSelector((state) => state.app.isDev);
+  const isAuthorShown = useAppSelector((state) => state.app.isCategoryAuthorEnabled);
+  const isThumbnailShown = useAppSelector((state) => state.app.areCategoryThumbnailsEnabled);
+
+  useEffect(() => {
+    if (!isOptionsMenuOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (optionsMenuRef.current?.contains(event.target as Node)) return;
+      setIsOptionsMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [isOptionsMenuOpen]);
   const categoriesWithUncategorized = useMemo(
-    () => (categories.includes("Uncategorized") ? categories : categories.concat(["Uncategorized"])),
+    () =>
+      categories.includes(uncategorizedCategoryName) ? categories : categories.concat([uncategorizedCategoryName]),
     [categories],
   );
 
@@ -344,10 +302,7 @@ const Categories = memo(() => {
     };
   }, [setNewCategoriesFilter, setNewCategoryFilter, setNewNameFilter]);
 
-  const modByPath = useMemo(
-    () => new Map<string, Mod>((mods as Mod[]).map((mod) => [mod.path, mod])),
-    [mods],
-  );
+  const modByPath = useMemo(() => new Map<string, Mod>((mods as Mod[]).map((mod) => [mod.path, mod])), [mods]);
 
   const getSelectedMods = useCallback((): Mod[] => {
     const api = gridRef.current?.api;
@@ -371,37 +326,6 @@ const Categories = memo(() => {
     return selectedMods;
   }, [modByPath]);
 
-  const getSelectedModsPreview = useCallback(
-    (maxMods: number): { mods: Mod[]; isTruncated: boolean } => {
-      const api = gridRef.current?.api;
-      if (!api) return { mods: [], isTruncated: false };
-
-      const selectedMods: Mod[] = [];
-      const seenPaths = new Set<string>();
-
-      for (const node of api.getSelectedNodes()) {
-        const row = node.data;
-        if (!row || isCategoryRow(row)) continue;
-        if (seenPaths.has(row.path)) continue;
-
-        const mod = modByPath.get(row.path);
-        if (!mod) continue;
-
-        seenPaths.add(row.path);
-        selectedMods.push(mod);
-        if (selectedMods.length >= maxMods) {
-          const totalSelectedModCount = api
-            .getSelectedNodes()
-            .filter((selectedNode) => selectedNode.data && !isCategoryRow(selectedNode.data)).length;
-          return { mods: selectedMods, isTruncated: totalSelectedModCount > maxMods };
-        }
-      }
-
-      return { mods: selectedMods, isTruncated: false };
-    },
-    [modByPath],
-  );
-
   const clearSelection = useCallback(() => {
     gridRef.current?.api?.deselectAll();
   }, []);
@@ -413,15 +337,14 @@ const Categories = memo(() => {
 
       const activeElement = document.activeElement as HTMLElement | null;
       const isTypingInInput =
-        activeElement?.tagName === "INPUT" ||
-        activeElement?.tagName === "TEXTAREA" ||
-        activeElement?.isContentEditable;
+        activeElement?.tagName === "INPUT" || activeElement?.tagName === "TEXTAREA" || activeElement?.isContentEditable;
 
       if (event.key === " " && !isContextMenuOpen && !isTypingInInput) {
         const selectedMods = getSelectedMods();
         if (selectedMods.length === 0) return;
 
-        const toEnable = selectedMods.some((mod) => !mod.isEnabled);
+        const alwaysEnabledSet = new Set(alwaysEnabledModNames);
+        const toEnable = selectedMods.some((mod) => !isModEffectivelyEnabled(mod, alwaysEnabledSet));
         dispatch(setAreModsEnabled(selectedMods.map((mod) => ({ mod, isEnabled: toEnable }))));
         event.preventDefault();
       }
@@ -446,17 +369,14 @@ const Categories = memo(() => {
       document.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [dispatch, getSelectedMods, isContextMenuOpen]);
+  }, [alwaysEnabledModNames, dispatch, getSelectedMods, isContextMenuOpen]);
 
   const groupedCategories = useMemo<CategoryGroup[]>(() => {
-    const rowsByCategory = new Map<
-      string,
-      { category: string; mods: Mod[]; total: number; enabled: number }
-    >();
+    const rowsByCategory = new Map<string, { category: string; mods: Mod[]; total: number; enabled: number }>();
+    const alwaysEnabledSet = new Set(alwaysEnabledModNames);
 
-    for (const mod of getModsSortedByHumanNameAndName(mods) as Mod[]) {
-      let modCategories = mod.categories ?? ["Uncategorized"];
-      if (modCategories.length === 0) modCategories = ["Uncategorized"];
+    for (const mod of getModsSortedByHumanName(mods) as Mod[]) {
+      const modCategories = getModCategories(mod);
 
       for (const category of modCategories) {
         let categoryInfo = rowsByCategory.get(category);
@@ -467,7 +387,7 @@ const Categories = memo(() => {
 
         categoryInfo.mods.push(mod);
         categoryInfo.total += 1;
-        if (mod.isEnabled) categoryInfo.enabled += 1;
+        if (isModEffectivelyEnabled(mod, alwaysEnabledSet)) categoryInfo.enabled += 1;
       }
     }
 
@@ -479,11 +399,11 @@ const Categories = memo(() => {
         filteredMods: categoryInfo.mods,
       }))
       .sort((firstCategory, secondCategory) => {
-        if (firstCategory.category === "Uncategorized") return -1;
-        if (secondCategory.category === "Uncategorized") return 1;
+        if (firstCategory.category === uncategorizedCategoryName) return -1;
+        if (secondCategory.category === uncategorizedCategoryName) return 1;
         return firstCategory.category.localeCompare(secondCategory.category);
       });
-  }, [mods]);
+  }, [alwaysEnabledModNames, mods]);
 
   const filteredGroups = useMemo<CategoryGroup[]>(() => {
     let data = groupedCategories.map((group) => ({ ...group, filteredMods: [...group.mods] }));
@@ -497,9 +417,13 @@ const Categories = memo(() => {
         .filter((name) => name !== "");
 
       for (const categoryGroup of data) {
-        categoryGroup.filteredMods = categoryGroup.filteredMods.filter((mod) =>
-          filterNames.some((filterName) => normalizeModLabel(mod).toLowerCase().includes(filterName)),
-        );
+        categoryGroup.filteredMods = categoryGroup.filteredMods.filter((mod) => {
+          // Only search what's on screen - matching a hidden author would look like a phantom match.
+          const haystack = `${normalizeModLabel(mod)}${
+            isAuthorShown ? ` ${getDecodedModAuthor(mod)}` : ""
+          }`.toLowerCase();
+          return filterNames.some((filterName) => haystack.includes(filterName));
+        });
       }
 
       data = data.filter((categoryGroup) => categoryGroup.filteredMods.length > 0);
@@ -514,9 +438,7 @@ const Categories = memo(() => {
         .filter((category) => category !== "");
 
       data = data.filter((categoryGroup) =>
-        filterCategories.some((filterCategory) =>
-          categoryGroup.category.toLowerCase().includes(filterCategory),
-        ),
+        filterCategories.some((filterCategory) => categoryGroup.category.toLowerCase().includes(filterCategory)),
       );
     }
 
@@ -531,7 +453,7 @@ const Categories = memo(() => {
       for (const categoryGroup of data) {
         categoryGroup.filteredMods = categoryGroup.filteredMods.filter((mod) =>
           filterCategories.some((filterCategory) =>
-            (mod.categories ?? []).some((category) => category.toLowerCase().includes(filterCategory)),
+            getModCategories(mod).some((category) => category.toLowerCase().includes(filterCategory)),
           ),
         );
       }
@@ -552,20 +474,33 @@ const Categories = memo(() => {
     }
 
     if (enabledSortMode !== "none") {
+      const alwaysEnabledSet = new Set(alwaysEnabledModNames);
       for (const categoryGroup of data) {
         categoryGroup.filteredMods = [...categoryGroup.filteredMods].sort((firstMod, secondMod) => {
-          if (firstMod.isEnabled === secondMod.isEnabled) return 0;
-          if (enabledSortMode === "enabledFirst") return firstMod.isEnabled ? -1 : 1;
-          return firstMod.isEnabled ? 1 : -1;
+          const firstIsEnabled = isModEffectivelyEnabled(firstMod, alwaysEnabledSet);
+          const secondIsEnabled = isModEffectivelyEnabled(secondMod, alwaysEnabledSet);
+          if (firstIsEnabled === secondIsEnabled) return 0;
+          if (enabledSortMode === "enabledFirst") return firstIsEnabled ? -1 : 1;
+          return firstIsEnabled ? 1 : -1;
         });
       }
     }
 
     return data;
-  }, [categoriesFilter, categoryFilter, enabledSortMode, groupedCategories, localized.noMatches, nameFilter]);
+  }, [
+    categoriesFilter,
+    categoryFilter,
+    enabledSortMode,
+    groupedCategories,
+    alwaysEnabledModNames,
+    isAuthorShown,
+    localized.noMatches,
+    nameFilter,
+  ]);
 
   const displayedRows = useMemo(() => {
     const rows: CategoriesGridRow[] = [];
+    const alwaysEnabledSet = new Set(alwaysEnabledModNames);
 
     for (const group of filteredGroups) {
       const isCollapsed = hiddenCategories.includes(group.category);
@@ -590,7 +525,7 @@ const Categories = memo(() => {
           id: buildModRowId(group.category, mod.path),
           kind: "mod",
           category: group.category,
-          isEnabled: mod.isEnabled,
+          isEnabled: isModEffectivelyEnabled(mod, alwaysEnabledSet),
           path: mod.path,
           humanName: normalizeModLabel(mod),
           name: mod.name,
@@ -600,7 +535,7 @@ const Categories = memo(() => {
     }
 
     return rows;
-  }, [filteredGroups, hiddenCategories]);
+  }, [alwaysEnabledModNames, filteredGroups, hiddenCategories]);
 
   const onOverlayClick = useCallback(() => {
     clearSelection();
@@ -695,26 +630,24 @@ const Categories = memo(() => {
 
       contextMenuAnchorRef.current = { x: event.clientX, y: event.clientY };
 
-      const preview = getSelectedModsPreview(2);
+      const selectedMods = getSelectedMods();
       const selection =
-        preview.mods.length === 0
+        selectedMods.length === 0
           ? ({ kind: "none" } as const)
-          : preview.mods.length === 1 && !preview.isTruncated
-            ? ({ kind: "one", mod: preview.mods[0] } as const)
-            : ({ kind: "many" } as const);
+          : selectedMods.length === 1
+            ? ({ kind: "one", mod: selectedMods[0] } as const)
+            : ({ kind: "many", mods: selectedMods } as const);
 
       setContextMenuSelection(selection);
       setIsContextMenuOpen(true);
     },
-    [getSelectedModsPreview],
+    [getSelectedMods],
   );
 
   const handleToggleEnabled = useCallback(
     (row: CategoriesGridRow) => {
       if (isCategoryRow(row)) {
-        const modsForEnable = row.allModPaths
-          .map((path) => modByPath.get(path))
-          .filter((mod): mod is Mod => !!mod);
+        const modsForEnable = row.allModPaths.map((path) => modByPath.get(path)).filter((mod): mod is Mod => !!mod);
         if (modsForEnable.length === 0) return;
 
         const isEnabled = !row.isEnabled;
@@ -724,9 +657,10 @@ const Categories = memo(() => {
 
       const selectedMod = modByPath.get(row.path);
       if (!selectedMod) return;
+      if (alwaysEnabledModNames.includes(selectedMod.name)) return;
       dispatch(toggleMod(selectedMod));
     },
-    [dispatch, modByPath],
+    [alwaysEnabledModNames, dispatch, modByPath],
   );
 
   const onSelectCategoryChange = useCallback(
@@ -749,7 +683,7 @@ const Categories = memo(() => {
   const onCreateNewCategory = useCallback(
     (name: string) => {
       const trimmedName = name.trim();
-      if (trimmedName === "") return;
+      if (trimmedName === "" || trimmedName === uncategorizedCategoryName) return;
 
       dispatch(addCategory({ category: trimmedName, mods: getSelectedMods() }));
       clearSelection();
@@ -760,10 +694,12 @@ const Categories = memo(() => {
 
   const options = useMemo(
     () =>
-      categories.map((category) => ({
-        value: category,
-        label: category,
-      })),
+      categories
+        .filter((category) => category !== uncategorizedCategoryName)
+        .map((category) => ({
+          value: category,
+          label: category,
+        })),
     [categories],
   );
 
@@ -789,10 +725,7 @@ const Categories = memo(() => {
   );
 
   const resolveColumnSizing = useCallback(
-    (
-      colId: string,
-      defaults: Pick<ColDef<CategoriesGridRow>, "width" | "minWidth" | "maxWidth" | "flex">,
-    ) => {
+    (colId: string, defaults: Pick<ColDef<CategoriesGridRow>, "width" | "minWidth" | "maxWidth" | "flex">) => {
       const resizedWidth = columnWidths[colId];
       if (resizedWidth == null) return defaults;
 
@@ -805,6 +738,19 @@ const Categories = memo(() => {
     },
     [columnWidths],
   );
+
+  // Rows have to grow to fit whichever extras are switched on, otherwise the thumbnail gets clipped
+  // and the author line has nowhere to go.
+  const rowHeight = useMemo(() => {
+    if (isThumbnailShown) return 75;
+    if (isAuthorShown) return 48;
+    return 35;
+  }, [isAuthorShown, isThumbnailShown]);
+
+  // Already-rendered rows keep the height they were created with, so ask the grid to remeasure.
+  useEffect(() => {
+    gridRef.current?.api?.resetRowHeights();
+  }, [rowHeight]);
 
   const columnDefs = useMemo<Array<ColDef<CategoriesGridRow>>>(() => {
     const categorySizing = resolveColumnSizing("category", {
@@ -824,6 +770,12 @@ const Categories = memo(() => {
       minWidth: 260,
       maxWidth: undefined,
       flex: 1.8,
+    });
+    const thumbnailSizing = resolveColumnSizing("thumbnail", {
+      width: 70,
+      minWidth: 70,
+      maxWidth: undefined,
+      flex: undefined,
     });
     const categoriesSizing = resolveColumnSizing("categories", {
       width: undefined,
@@ -862,7 +814,9 @@ const Categories = memo(() => {
                 ) : (
                   <span className="w-5" />
                 )}
-                <span className="font-semibold">{row.category}</span>
+                <span className="font-semibold">
+                  {row.category === uncategorizedCategoryName ? localized.uncategorized || row.category : row.category}
+                </span>
               </div>
             );
           }
@@ -883,13 +837,23 @@ const Categories = memo(() => {
           const row = params.data;
           if (!row) return null;
 
-          const ariaLabel = isCategoryRow(row)
-            ? `Toggle category ${row.category}`
-            : `Toggle mod ${row.humanName}`;
-          const isDisabled = isCategoryRow(row) && row.allModPaths.length === 0;
+          const categoryLabel =
+            isCategoryRow(row) && row.category === uncategorizedCategoryName
+              ? localized.uncategorized || row.category
+              : isCategoryRow(row)
+                ? row.category
+                : undefined;
+          const ariaLabel = isCategoryRow(row) ? `Toggle category ${categoryLabel}` : `Toggle mod ${row.humanName}`;
+          const isDisabled = isCategoryRow(row)
+            ? row.allModPaths.length === 0 ||
+              row.allModPaths.every((path) => {
+                const mod = modByPath.get(path);
+                return mod ? alwaysEnabledModNames.includes(mod.name) : false;
+              })
+            : alwaysEnabledModNames.includes(modByPath.get(row.path)?.name ?? "");
 
           return (
-            <div className="flex h-full items-center justify-center">
+            <div className={`flex h-full items-center justify-center ${isThumbnailShown && "scale-125"}`}>
               <input
                 type="checkbox"
                 checked={row.isEnabled}
@@ -903,12 +867,65 @@ const Categories = memo(() => {
           );
         },
       },
+      ...(isThumbnailShown
+        ? [
+            {
+              headerName: localized.thumbnail,
+              colId: "thumbnail",
+              ...thumbnailSizing,
+              sortable: false,
+              resizable: false,
+              // The theme's horizontal cell padding eats most of a 70px column, leaving the image
+              // squished. This is the only column whose content is meant to span it edge to edge.
+              cellStyle: { padding: 0 },
+              cellRenderer: (params: CustomCellRendererProps<CategoriesGridRow>) => {
+                const row = params.data;
+                if (!row || isCategoryRow(row)) return null;
+
+                const mod = modByPath.get(row.path);
+                if (!mod) return null;
+
+                return (
+                  <div className="flex h-full items-center justify-center py-1">
+                    <img
+                      className="h-full aspect-square object-cover rounded-sm"
+                      src={getModThumbnailSrc(mod, isDev)}
+                      decoding="async"
+                    />
+                  </div>
+                );
+              },
+            } satisfies ColDef<CategoriesGridRow>,
+          ]
+        : []),
       {
         headerName: localized.name,
         colId: "humanName",
         ...nameSizing,
         valueGetter: (params) => (params.data && !isCategoryRow(params.data) ? params.data.humanName : ""),
         cellClass: (params) => (params.data && isCategoryRow(params.data) ? "font-semibold" : undefined),
+        cellRenderer: (params: CustomCellRendererProps<CategoriesGridRow>) => {
+          const row = params.data;
+          if (!row || isCategoryRow(row)) return null;
+
+          const mod = modByPath.get(row.path);
+          const author = mod ? getDecodedModAuthor(mod) : "";
+
+          return (
+            <div className="flex h-full flex-col justify-center leading-tight">
+              <span
+                className={classNames("truncate", {
+                  ["text-orange-500"]: mod?.isInData && !mod.isSymbolicLink,
+                  ["text-blue-400"]: mod?.isSymbolicLink,
+                  ["text-amber-400"]: mod?.isInModding,
+                })}
+              >
+                {row.humanName}
+              </span>
+              {author !== "" && <span className="truncate text-xs text-gray-400">{author}</span>}
+            </div>
+          );
+        },
       },
       {
         headerName: localized.categories,
@@ -943,6 +960,10 @@ const Categories = memo(() => {
     enabledSortMode,
     handleToggleEnabled,
     hiddenCategories,
+    alwaysEnabledModNames,
+    isAuthorShown,
+    isDev,
+    isThumbnailShown,
     localized.categories,
     localized.category,
     localized.collapseAll,
@@ -950,6 +971,8 @@ const Categories = memo(() => {
     localized.expandAll,
     localized.name,
     localized.removeBadge,
+    localized.thumbnail,
+    localized.uncategorized,
     modByPath,
     resolveColumnSizing,
     toggleCategoryVisibility,
@@ -1064,182 +1087,225 @@ const Categories = memo(() => {
             </li>
           </ul>
           {contextMenuSelection.kind === "many" && (
-            <div>
-              <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
-                <li>
-                  <a
-                    onClick={() => {
-                      const selectedMods = getSelectedMods();
-                      dispatch(setAreModsEnabled(selectedMods.map((mod) => ({ mod, isEnabled: true }))));
-                      setIsContextMenuOpen(false);
-                    }}
-                    href="#"
-                    className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                  >
-                    {localized.enableAll}
-                  </a>
-                </li>
-                <li>
-                  <a
-                    onClick={() => {
-                      const selectedMods = getSelectedMods();
-                      dispatch(setAreModsEnabled(selectedMods.map((mod) => ({ mod, isEnabled: false }))));
-                      setIsContextMenuOpen(false);
-                    }}
-                    href="#"
-                    className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                  >
-                    {localized.disableAll}
-                  </a>
-                </li>
-              </ul>
-            </div>
+            <>
+              <div>
+                <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
+                  <li>
+                    <a
+                      onClick={() => {
+                        dispatch(setAreModsEnabled(contextMenuSelection.mods.map((mod) => ({ mod, isEnabled: true }))));
+                        setIsContextMenuOpen(false);
+                      }}
+                      href="#"
+                      className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    >
+                      {localized.enableAll}
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      onClick={() => {
+                        dispatch(
+                          setAreModsEnabled(contextMenuSelection.mods.map((mod) => ({ mod, isEnabled: false }))),
+                        );
+                        setIsContextMenuOpen(false);
+                      }}
+                      href="#"
+                      className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    >
+                      {localized.disableAll}
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              <ModDropdownOptions
+                mods={mods}
+                selectedMods={contextMenuSelection.mods}
+                onAction={() => setIsContextMenuOpen(false)}
+              />
+            </>
           )}
           {contextMenuSelection.kind === "one" && contextMenuSelection.mod && (
-            <ModDropdownOptions mod={contextMenuSelection.mod} mods={mods} visibleMods={mods} />
+            <ModDropdownOptions
+              mod={contextMenuSelection.mod}
+              mods={mods}
+              onAction={() => setIsContextMenuOpen(false)}
+            />
           )}
         </div>
       </FloatingOverlay>
 
-      <div className="-mt-6 mr-10">
-        <div className="mt-5 flex">
-          <span className="relative ml-4">
-            <input
-              id="categoryFilterInput"
-              type="text"
-              value={categoryFilterInput}
-              placeholder={localized.categoryFilter}
-              onChange={(event) => {
-                setCategoryFilterInput(event.target.value);
-                setNewCategoryFilter(event.target.value);
-              }}
-              className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            />
-
-            <span className="absolute right-2 top-2 text-gray-400">
-              <button
-                onClick={() => {
-                  setCategoryFilterInput("");
-                  setCategoryFilter("");
+      <div className="flex explicit-height-without-topbar-and-padding min-h-0 flex-col">
+        <div className="-mt-6 mr-10 shrink-0">
+          <div className="mt-5 flex">
+            <span className="relative ml-4">
+              <input
+                id="categoryFilterInput"
+                type="text"
+                value={categoryFilterInput}
+                placeholder={localized.categoryFilter}
+                onChange={(event) => {
+                  setCategoryFilterInput(event.target.value);
+                  setNewCategoryFilter(event.target.value);
                 }}
+                className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              />
+
+              <span className="absolute right-2 top-2 text-gray-400">
+                <button
+                  onClick={() => {
+                    cancelDebounced(setNewCategoryFilter);
+                    setCategoryFilterInput("");
+                    setCategoryFilter("");
+                  }}
+                  type="button"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              </span>
+            </span>
+
+            <span className="relative ml-8">
+              <input
+                id="nameFilterInput"
+                type="text"
+                value={nameFilterInput}
+                placeholder={localized.nameFilter}
+                onChange={(event) => {
+                  setNameFilterInput(event.target.value);
+                  setNewNameFilter(event.target.value);
+                }}
+                className="bg-gray-50 w-72 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              />
+
+              <span className="absolute right-2 top-2 text-gray-400">
+                <button
+                  onClick={() => {
+                    cancelDebounced(setNewNameFilter);
+                    setNameFilterInput("");
+                    setNameFilter("");
+                  }}
+                  type="button"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              </span>
+            </span>
+
+            <span className="relative ml-10">
+              <input
+                id="categoriesFilterInput"
+                type="text"
+                value={categoriesFilterInput}
+                placeholder={localized.categoriesFilter}
+                onChange={(event) => {
+                  setCategoriesFilterInput(event.target.value);
+                  setNewCategoriesFilter(event.target.value);
+                }}
+                className="bg-gray-50 w-80 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              />
+
+              <span className="absolute right-2 top-2 text-gray-400">
+                <button
+                  onClick={() => {
+                    cancelDebounced(setNewCategoriesFilter);
+                    setCategoriesFilterInput("");
+                    setCategoriesFilter("");
+                  }}
+                  type="button"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              </span>
+            </span>
+
+            <div className="text-center ml-auto flex gap-2">
+              <div className="relative" ref={optionsMenuRef}>
+                <button
+                  onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
+                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                  type="button"
+                >
+                  {localized.options || "Options"}
+                </button>
+                {isOptionsMenuOpen && (
+                  <div className="absolute left-0 z-[250] w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                      onClick={() => dispatch(toggleIsCategoryAuthorEnabled())}
+                    >
+                      <input type="checkbox" readOnly checked={isAuthorShown} className="pointer-events-none" />
+                      {localized.showAuthor || "Show author"}
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                      onClick={() => dispatch(toggleAreCategoryThumbnailsEnabled())}
+                    >
+                      <input type="checkbox" readOnly checked={isThumbnailShown} className="pointer-events-none" />
+                      {localized.showThumbnail || "Show thumbnail"}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setIsEditCategoriesModalOpen(true)}
+                className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
                 type="button"
               >
-                <FontAwesomeIcon icon={faXmark} />
+                {localized.editCategories}
               </button>
-            </span>
-          </span>
-
-          <span className="relative ml-8">
-            <input
-              id="nameFilterInput"
-              type="text"
-              value={nameFilterInput}
-              placeholder={localized.nameFilter}
-              onChange={(event) => {
-                setNameFilterInput(event.target.value);
-                setNewNameFilter(event.target.value);
-              }}
-              className="bg-gray-50 w-72 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            />
-
-            <span className="absolute right-2 top-2 text-gray-400">
               <button
-                onClick={() => {
-                  setNameFilterInput("");
-                  setNameFilter("");
-                }}
+                onClick={collapseOrExpandAllCategories}
+                className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
                 type="button"
               >
-                <FontAwesomeIcon icon={faXmark} />
+                {hiddenCategories.length === 0 ? localized.collapseAll : localized.expandAll}
               </button>
-            </span>
-          </span>
+            </div>
+          </div>
+        </div>
 
-          <span className="relative ml-10">
-            <input
-              id="categoriesFilterInput"
-              type="text"
-              value={categoriesFilterInput}
-              placeholder={localized.categoriesFilter}
-              onChange={(event) => {
-                setCategoriesFilterInput(event.target.value);
-                setNewCategoriesFilter(event.target.value);
-              }}
-              className="bg-gray-50 w-80 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+        <div
+          id="categoriesTableContainer"
+          className="min-h-0 flex-1 overflow-hidden mr-10"
+          onMouseDownCapture={(event) => {
+            if (event.button === 1) event.stopPropagation();
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div className="ag-theme-material-dark h-full" style={{ width: "100%" }}>
+            <AgGridReact<CategoriesGridRow>
+              ref={gridRef}
+              theme="legacy"
+              rowData={displayedRows}
+              columnDefs={columnDefs}
+              defaultColDef={defaultColDef}
+              rowSelection={rowSelection}
+              rowHeight={rowHeight}
+              headerHeight={35}
+              animateRows={false}
+              suppressRowHoverHighlight={true}
+              suppressContextMenu={true}
+              preventDefaultOnContextMenu={true}
+              getRowId={(params) => params.data.id}
+              resetRowDataOnUpdate={true}
+              suppressScrollOnNewData={true}
+              onCellClicked={onCellClicked}
+              onCellContextMenu={onCellContextMenu}
+              onColumnResized={onColumnResized}
+              getRowStyle={(params) =>
+                params.data && isCategoryRow(params.data)
+                  ? { backgroundColor: "oklch(38.1% 0.176 304.987 / .5)" }
+                  : undefined
+              }
             />
-
-            <span className="absolute right-2 top-2 text-gray-400">
-              <button
-                onClick={() => {
-                  setCategoriesFilterInput("");
-                  setCategoriesFilter("");
-                }}
-                type="button"
-              >
-                <FontAwesomeIcon icon={faXmark} />
-              </button>
-            </span>
-          </span>
-
-          <div className="text-center ml-auto flex gap-2">
-            <button
-              onClick={() => setIsEditCategoriesModalOpen(true)}
-              className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
-              type="button"
-            >
-              {localized.editCategories}
-            </button>
-            <button
-              onClick={collapseOrExpandAllCategories}
-              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
-              type="button"
-            >
-              {hiddenCategories.length === 0 ? localized.collapseAll : localized.expandAll}
-            </button>
           </div>
         </div>
       </div>
 
-      <div
-        id="categoriesTableContainer"
-        className="overflow-hidden mr-10"
-        onMouseDownCapture={(event) => {
-          if (event.button === 1) event.stopPropagation();
-        }}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <div className="ag-theme-material-dark" style={{ height: "87vh", width: "100%" }}>
-          <AgGridReact<CategoriesGridRow>
-            ref={gridRef}
-            theme="legacy"
-            rowData={displayedRows}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            rowSelection={rowSelection}
-            rowHeight={36}
-            headerHeight={36}
-            animateRows={false}
-            suppressRowHoverHighlight={true}
-            suppressContextMenu={true}
-            preventDefaultOnContextMenu={true}
-            getRowId={(params) => params.data.id}
-            resetRowDataOnUpdate={true}
-            onCellClicked={onCellClicked}
-            onCellContextMenu={onCellContextMenu}
-            onColumnResized={onColumnResized}
-            getRowStyle={(params) =>
-              params.data && isCategoryRow(params.data)
-                ? { backgroundColor: "oklch(38.1% 0.176 304.987 / .5)" }
-                : undefined
-            }
-          />
-        </div>
-      </div>
-
-      <EditCategoriesModal
-        isOpen={isEditCategoriesModalOpen}
-        onClose={() => setIsEditCategoriesModalOpen(false)}
-      />
+      <EditCategoriesModal isOpen={isEditCategoriesModalOpen} onClose={() => setIsEditCategoriesModalOpen(false)} />
     </>
   );
 });

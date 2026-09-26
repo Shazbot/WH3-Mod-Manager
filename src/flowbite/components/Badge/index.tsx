@@ -12,8 +12,10 @@ export interface BadgeProps extends PropsWithChildren<Omit<ComponentProps<"span"
   size?: keyof BadgeSizes;
 }
 
-export interface BadgeColors
-  extends Pick<FlowbiteColors, "failure" | "gray" | "indigo" | "info" | "pink" | "purple" | "success"> {
+export interface BadgeColors extends Pick<
+  FlowbiteColors,
+  "failure" | "gray" | "indigo" | "info" | "pink" | "purple" | "success"
+> {
   [key: string]: string;
 }
 
@@ -35,12 +37,7 @@ export const Badge: FC<BadgeProps> = ({
 
   const Content = (): JSX.Element => (
     <span
-      className={classNames(
-        theme.base,
-        theme.color[color],
-        theme.icon[Icon ? "on" : "off"],
-        theme.size[size]
-      )}
+      className={classNames(theme.base, theme.color[color], theme.icon[Icon ? "on" : "off"], theme.size[size])}
       data-testid="flowbite-badge"
       {...theirProps}
     >

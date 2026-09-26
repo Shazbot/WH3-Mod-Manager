@@ -8,9 +8,17 @@ import type {
   AppendTextNodeData,
   ColumnSelectionDropdownNodeData,
   ColumnSelectionNodeData,
+  CombineSameTablesNodeData,
   CustomRowsInputNodeData,
+  ConditionalBranchNodeData,
   CustomSchemaNodeData,
+  EditLocTextNodeData,
+  EditTextFileNodeData,
+  EditXmlFileNodeData,
+  PackFileOperationsNodeData,
+  RemoveTablesNodeData,
   DeduplicateNodeData,
+  DeepCloneNodeData,
   DumpToTSVNodeData,
   ExtractTableNodeData,
   FilterNodeData,
@@ -29,6 +37,7 @@ import type {
   NumericAdjustmentNodeData,
   PackFilesDropdownNodeData,
   PackFilesNodeData,
+  RemovePackSourceNodeData,
   ReadTSVFromPackNodeData,
   ReferenceTableLookupNodeData,
   ReverseReferenceLookupNodeData,
@@ -72,6 +81,25 @@ interface NodeDefinition {
   descriptionFallback: string;
   createData: (context: NodeFactoryContext) => Record<string, unknown>;
 }
+
+/**
+ * Every loc key prefix the schema can produce: "<table without _tables>_<localised field>_".
+ *
+ * Only the prefix is knowable while authoring - what follows it is the cloned row's new key, which
+ * depends on which rows the run actually touches - so this is offered as autocomplete rather than as
+ * a closed list to pick from.
+ */
+export const buildLocKeyPrefixes = (DBNameToDBVersions: Record<string, DBVersion[]> | undefined): string[] => {
+  const prefixes = new Set<string>();
+  for (const [tableName, versions] of Object.entries(DBNameToDBVersions || {})) {
+    for (const field of versions?.[0]?.localised_fields ?? []) {
+      const indexOfSuffix = tableName.lastIndexOf("_tables");
+      const bareName = indexOfSuffix > -1 ? tableName.substring(0, indexOfSuffix) : tableName;
+      prefixes.add(`${bareName}_${field.name}_`);
+    }
+  }
+  return [...prefixes].toSorted();
+};
 
 const createDefaultNodeStyle = () => ({
   border: "2px solid #3b82f6",
@@ -121,6 +149,21 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       label,
       type: "packfilesdropdown",
       selectedPack: "",
+      outputType: "PackFiles",
+      useCurrentPack: false,
+    }),
+  }),
+  removepacksource: createNodeDefinition<RemovePackSourceNodeData>({
+    type: "removepacksource",
+    labelKey: "nodeEditorNodeRemovePackSourceLabel",
+    labelFallback: "Remove Pack Source",
+    descriptionKey: "nodeEditorNodeRemovePackSourceDescription",
+    descriptionFallback: "Removes one selected pack from incoming pack sources",
+    createData: ({ label }) => ({
+      label,
+      type: "removepacksource",
+      selectedPack: "",
+      inputType: "PackFiles",
       outputType: "PackFiles",
       useCurrentPack: false,
     }),
@@ -220,6 +263,21 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       columnNames: [],
     }),
   }),
+  combinesametables: createNodeDefinition<CombineSameTablesNodeData>({
+    type: "combinesametables",
+    labelKey: "nodeEditorNodeCombineSameTablesLabel",
+    labelFallback: "Combine Same Tables",
+    descriptionKey: "nodeEditorNodeCombineSameTablesDescription",
+    descriptionFallback: "Merges input entries for the same table into one, keeping every row",
+    createData: ({ label }) => ({
+      label,
+      type: "combinesametables",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      columnNames: [],
+      connectedTableName: "",
+    }),
+  }),
   filter: createNodeDefinition<FilterNodeData>({
     type: "filter",
     labelKey: "nodeEditorNodeFilterLabel",
@@ -229,7 +287,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
     createData: ({ label, DBNameToDBVersions }) => ({
       label,
       type: "filter",
-      filters: [{ column: "", value: "", not: false, operator: "AND" }],
+      filters: [{ column: "", value: "", not: false, operator: "AND", matchMode: "full" }],
       inputType: "TableSelection",
       outputType: "TableSelection",
       columnNames: [],
@@ -350,6 +408,8 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       textValue: "",
       packName: "",
       packedFileName: "",
+      openInWindows: false,
+      openInViewer: false,
       inputType: "ChangedColumnSelection",
     }),
   }),
@@ -431,9 +491,9 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
   addnewcolumn: createNodeDefinition<AddNewColumnNodeData>({
     type: "addnewcolumn",
     labelKey: "nodeEditorNodeAddNewColumnLabel",
-    labelFallback: "Add New Column",
+    labelFallback: "Add Or Transform Columns",
     descriptionKey: "nodeEditorNodeAddNewColumnDescription",
-    descriptionFallback: "Add transformed columns while preserving all original columns",
+    descriptionFallback: "Adds derived columns, or transforms existing ones in place, optionally only on matching rows",
     createData: ({ label }) => ({
       label,
       type: "addnewcolumn",
@@ -675,13 +735,144 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       outputType: "TableSelection",
     }),
   }),
+  deepclone: createNodeDefinition<DeepCloneNodeData>({
+    type: "deepclone",
+    labelKey: "nodeEditorNodeDeepCloneLabel",
+    labelFallback: "Deep Clone",
+    descriptionKey: "nodeEditorNodeDeepCloneDescription",
+    descriptionFallback: "Clones rows and their referenced tables, optionally into several variants",
+    createData: ({ label }) => ({
+      label,
+      type: "deepclone",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      connectedTableName: "",
+      columnNames: [],
+      DBNameToDBVersions: {},
+      cloneTree: undefined,
+      nameTemplate: "{original}{variant}",
+      useModdersPrefix: true,
+      moddersPrefix: "",
+      variantAxes: [],
+      columnOverrides: [],
+      generateLoc: true,
+      autoFollowReferences: true,
+    }),
+  }),
+  packfileoperations: createNodeDefinition<PackFileOperationsNodeData>({
+    type: "packfileoperations",
+    labelKey: "nodeEditorNodePackFileOperationsLabel",
+    labelFallback: "Move Or Copy Files",
+    descriptionKey: "nodeEditorNodePackFileOperationsDescription",
+    descriptionFallback: "Copies, moves, renames or deletes files, writing out a copy of the pack with the changes",
+    createData: ({ label }) => ({
+      label,
+      type: "packfileoperations",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      fileOperations: [],
+    }),
+  }),
+  edittextfile: createNodeDefinition<EditTextFileNodeData>({
+    type: "edittextfile",
+    labelKey: "nodeEditorNodeEditTextFileLabel",
+    labelFallback: "Edit Text File",
+    descriptionKey: "nodeEditorNodeEditTextFileDescription",
+    descriptionFallback: "Edits lua and xml files by selector, literal text or regex and can chain prior edits",
+    createData: ({ label }) => ({
+      label,
+      type: "edittextfile",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      textFileRules: [],
+      textFileFormatter: "none",
+      ignoreFlowSourcePack: false,
+    }),
+  }),
+  editxmlfile: createNodeDefinition<EditXmlFileNodeData>({
+    type: "editxmlfile",
+    labelKey: "nodeEditorNodeEditXmlFileLabel",
+    labelFallback: "Edit XML File",
+    descriptionKey: "nodeEditorNodeEditXmlFileDescription",
+    descriptionFallback: "Edits one exact XML element selected by a structural locator",
+    createData: ({ label }) => ({
+      label,
+      type: "editxmlfile",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      targetMode: "path",
+      filePath: "",
+      ignoreHierarchy: true,
+      locatorSteps: [{ id: "locator_1", elementName: "*", attributes: [] }],
+      action: "setAttributes",
+      attributeEdits: [{ id: "attribute_1", name: "", newValue: "" }],
+      replacementXml: "",
+    }),
+  }),
+  editloctext: createNodeDefinition<EditLocTextNodeData>({
+    type: "editloctext",
+    labelKey: "nodeEditorNodeEditLocTextLabel",
+    labelFallback: "Edit Loc Text",
+    descriptionKey: "nodeEditorNodeEditLocTextDescription",
+    descriptionFallback: "Changes the text of localisation rows whose key starts with a given prefix",
+    createData: ({ label, DBNameToDBVersions }) => ({
+      label,
+      type: "editloctext",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      locRules: [],
+      locKeyPrefixes: buildLocKeyPrefixes(DBNameToDBVersions),
+      columnNames: [],
+      connectedTableName: "",
+      DBNameToDBVersions: DBNameToDBVersions || {},
+    }),
+  }),
+  removetables: createNodeDefinition<RemoveTablesNodeData>({
+    type: "removetables",
+    labelKey: "nodeEditorNodeRemoveTablesLabel",
+    labelFallback: "Remove Tables",
+    descriptionKey: "nodeEditorNodeRemoveTablesDescription",
+    descriptionFallback: "Passes its input through with the named tables dropped",
+    createData: ({ label, sortedTableNames }) => ({
+      label,
+      type: "removetables",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      tablesToRemove: [],
+      tableNames: sortedTableNames,
+      columnNames: [],
+      connectedTableName: "",
+    }),
+  }),
+  conditionalbranch: createNodeDefinition<ConditionalBranchNodeData>({
+    type: "conditionalbranch",
+    labelKey: "nodeEditorNodeConditionalBranchLabel",
+    labelFallback: "Conditional Branch",
+    descriptionKey: "nodeEditorNodeConditionalBranchDescription",
+    descriptionFallback: "Sends rows down one of two branches based on a checkbox flow option",
+    createData: ({ label }) => ({
+      label,
+      type: "conditionalbranch",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      selectedFlowOptionId: "",
+      columnNames: [],
+      connectedTableName: "",
+    }),
+  }),
 };
 
 const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
-    titleKey: "nodeEditorSectionPackFiles",
-    titleFallback: "Pack Files",
-    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles"],
+    titleKey: "nodeEditorSectionPackSources",
+    titleFallback: "Pack Sources",
+    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles", "removepacksource"],
+  },
+  {
+    // Files inside a pack, as opposed to the packs themselves above.
+    titleKey: "nodeEditorSectionPackedFiles",
+    titleFallback: "Packed Files",
+    nodes: ["edittextfile", "editxmlfile", "packfileoperations"],
   },
   {
     titleKey: "nodeEditorSectionTableSelection",
@@ -691,7 +882,18 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionTableRowsFiltering",
     titleFallback: "Table Rows Filtering",
-    nodes: ["deduplicate", "filter", "multifilter"],
+    nodes: ["deduplicate", "filter", "multifilter", "removetables"],
+  },
+  {
+    // Nodes that decide what runs, rather than changing the data flowing through.
+    titleKey: "nodeEditorSectionControlFlow",
+    titleFallback: "Control Flow",
+    nodes: ["conditionalbranch"],
+  },
+  {
+    titleKey: "nodeEditorSectionLocalisation",
+    titleFallback: "Localisation",
+    nodes: ["editloctext"],
   },
   {
     titleKey: "nodeEditorSectionColumnSelection",
@@ -714,6 +916,8 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
     nodes: [
       "addnewcolumn",
       "aggregatenested",
+      "combinesametables",
+      "deepclone",
       "dumptotsv",
       "extracttable",
       "flattennested",
@@ -750,10 +954,7 @@ export const getNodeDefinition = (type: FlowNodeType) => nodeDefinitions[type];
 
 export const isRegisteredNodeType = (type: string): type is FlowNodeType => type in nodeDefinitions;
 
-export const createNodeFromDefinition = (
-  nodeType: FlowNodeType,
-  context: NodeFactoryContext,
-): Node => {
+export const createNodeFromDefinition = (nodeType: FlowNodeType, context: NodeFactoryContext): Node => {
   const definition = getNodeDefinition(nodeType);
 
   return {

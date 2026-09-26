@@ -1,31 +1,12 @@
-import * as path from "path";
-import { Worker } from "worker_threads";
-import * as schema from "../../schema/schema_wh3.json";
 import { PackCollisions, Pack } from "../packFileTypes";
 
 import { emptyPackFileToFileReferences, findMissingFileReferences } from "./fileToFileReferences";
 import { emptyPackFileAnalysisErrors, packFileAnalysisErrors } from "./fileSyntaxChecks";
 import { findPackTableReferencesOptimized, refSorting } from "./missingDBTableReferences";
-import {
-  emptyPackToScriptFilesWithListeners,
-  processPackToScriptFilesWithListeners,
-} from "./scriptFileListenerNames";
+import { emptyPackToScriptFilesWithListeners, processPackToScriptFilesWithListeners } from "./scriptFileListenerNames";
 import { emptyPackToTablesWithUniqueIds, processPackToTablesWithUniqueIds } from "./uniqueDBTableIndices";
 import { findPackFileCollisions } from "./packFileCollisions";
 import { findPackTableCollisions } from "./packTableCollisions";
-
-export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCollisions> {
-  return await new Promise<PackCollisions>((resolve, reject) => {
-    const worker = new Worker(path.join(__dirname, "readPacksWorker.js"), {
-      workerData: { checkCompat: true, packsData, schema },
-    });
-    worker.on("message", resolve);
-    worker.on("error", reject);
-    worker.on("exit", (code) => {
-      if (code !== 0) reject(new Error(`Stopped with  ${code} exit code`));
-    });
-  });
-}
 
 export function getCompatData(
   packsData: Pack[],
@@ -34,8 +15,8 @@ export function getCompatData(
     maxIndex: number,
     firstPackName: string,
     secondPackName: string,
-    type: PackCollisionCheckType
-  ) => void
+    type: PackCollisionCheckType,
+  ) => void,
 ): PackCollisions {
   const { missingRefs, uniqueIdsCollisions, scriptListenerCollisions, packFileAnalysisErrors } =
     findPackTableMissingReferencesAndRunAnalysis(packsData, onPackChecked);
@@ -72,10 +53,7 @@ export const emptyAllCompatDataCollections = () => {
   emptyPackFileToFileReferences();
 };
 
-export function findPackTableMissingReferencesAndRunAnalysis(
-  packsData: Pack[],
-  onPackChecked?: OnPackChecked
-) {
+export function findPackTableMissingReferencesAndRunAnalysis(packsData: Pack[], onPackChecked?: OnPackChecked) {
   // keep this at top, these are populated inside findPackTableReferencesOptimized
   emptyAllCompatDataCollections();
 

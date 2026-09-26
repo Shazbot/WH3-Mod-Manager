@@ -43,7 +43,7 @@ export const Flowbite: FC<FlowbiteProps> = ({ children, theme = {} }) => {
       mode,
       toggleMode,
     }),
-    [mode, toggleMode, mergedTheme]
+    [mode, toggleMode, mergedTheme],
   );
 
   return <ThemeContext.Provider value={themeContextValue}>{children}</ThemeContext.Provider>;

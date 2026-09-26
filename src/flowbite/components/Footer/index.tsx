@@ -15,11 +15,7 @@ export interface FooterProps extends Omit<ComponentProps<"footer">, "className">
   container?: boolean;
 }
 
-export const FooterComponent: FC<FooterProps> = ({
-  children,
-  bgDark = false,
-  container = false,
-}): JSX.Element => {
+export const FooterComponent: FC<FooterProps> = ({ children, bgDark = false, container = false }): JSX.Element => {
   const theme = useTheme().theme.footer;
   return (
     <footer

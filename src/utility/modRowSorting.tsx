@@ -121,7 +121,7 @@ export function getSortedMods(
   presetMods: Mod[],
   orderedMods: Mod[],
   sortingType: SortingType,
-  customizableMods: Record<string, string[]>
+  customizableMods: Record<string, string[]>,
 ) {
   let mods: Mod[] = [];
 
@@ -160,10 +160,7 @@ export function getSortedMods(
       break;
     case SortingType.IsEnabled:
     case SortingType.IsEnabledReverse:
-      mods = getModsSortedByEnabled(presetMods);
-      if (sortingType == SortingType.IsEnabledReverse) {
-        mods = mods.reverse();
-      }
+      mods = getModsSortedByEnabled(presetMods, orderedMods, sortingType === SortingType.IsEnabled);
       break;
     case SortingType.LastUpdated:
     case SortingType.LastUpdatedReverse:
@@ -183,17 +180,61 @@ export function getSortedMods(
       break;
     case SortingType.Author:
     case SortingType.AuthorReverse:
-      mods = getModsSortedByAuthor(presetMods);
-
-      if (sortingType == SortingType.AuthorReverse) {
-        mods = mods.reverse();
-      }
+      // The direction goes in rather than being applied after, so the authorless mods stay at the end.
+      mods = getModsSortedByAuthor(presetMods, sortingType === SortingType.AuthorReverse);
       break;
     case SortingType.IsCustomizable:
       mods = getModsSortedByCustomizable(presetMods, customizableMods);
       break;
   }
   return mods;
+}
+
+/**
+ * The fields the compact layout stacks into its one name column, in the order right clicking steps
+ * through them. Data mods are only worth a step in a list that holds any.
+ */
+export const getNameSortingCycle = (hasDataMods: boolean) =>
+  hasDataMods
+    ? [SortingType.HumanName, SortingType.PackName, SortingType.Author, SortingType.IsDataPack]
+    : [SortingType.HumanName, SortingType.PackName, SortingType.Author];
+
+/** Which of those fields a sorting type sorts by, or undefined when it belongs to another column. */
+export function getNameSortingField(sortingType: SortingType) {
+  if (isHumanNameSort(sortingType)) return SortingType.HumanName;
+  if (isPackNameSort(sortingType)) return SortingType.PackName;
+  if (isAuthorSort(sortingType)) return SortingType.Author;
+  if (isDataPackSort(sortingType)) return SortingType.IsDataPack;
+  return undefined;
+}
+
+/**
+ * The field right clicking the column moves to. A sort that belongs to another column starts the cycle
+ * from the top, and so does a data pack sort in a list that no longer has any data mods.
+ */
+export function getNextNameSortingType(sortingType: SortingType, hasDataMods: boolean) {
+  const cycle = getNameSortingCycle(hasDataMods);
+  const currentField = getNameSortingField(sortingType);
+  const currentIndex = currentField === undefined ? -1 : cycle.indexOf(currentField);
+  return cycle[(currentIndex + 1) % cycle.length];
+}
+
+/** The two dates the time column can sort by, in the order right clicking swaps between them. */
+export const getTimeSortingCycle = () => [SortingType.LastUpdated, SortingType.SubbedTime];
+
+/** Which of the two a sorting type sorts by, or undefined when it belongs to another column. */
+export function getTimeSortingField(sortingType: SortingType) {
+  if (isLastUpdatedSort(sortingType)) return SortingType.LastUpdated;
+  if (isSubbedTimeSort(sortingType)) return SortingType.SubbedTime;
+  return undefined;
+}
+
+/**
+ * The date right clicking the time column swaps to. A sort that belongs to another column lands on the
+ * subscribed date: it is the one a left click cannot reach, so the gesture always changes something.
+ */
+export function getNextTimeSortingType(sortingType: SortingType) {
+  return isSubbedTimeSort(sortingType) ? SortingType.LastUpdated : SortingType.SubbedTime;
 }
 
 const sortTypeToReverseType: { [key in SortingType]?: SortingType } = {
@@ -209,7 +250,5 @@ const sortTypeToReverseType: { [key in SortingType]?: SortingType } = {
 };
 
 export const getNewSortType = (newSortingType: SortingType, currentSortingType: SortingType) => {
-  return (
-    (currentSortingType == newSortingType && sortTypeToReverseType[currentSortingType]) || newSortingType
-  );
+  return (currentSortingType == newSortingType && sortTypeToReverseType[currentSortingType]) || newSortingType;
 };

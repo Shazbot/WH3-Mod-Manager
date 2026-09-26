@@ -8,15 +8,18 @@ import store from "./store";
 import { renderViewerWindow } from "./appViewer";
 import { setupRendererLogging } from "./rendererCommon";
 import {
-  selectDBTable,
+  requestOpenPackTab,
   setCurrentGameNaive,
   setCurrentLanguage,
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
   setPacksData,
+  setRecentPackPaths,
   setReferencesHash,
   setStartArgs,
+  setDeletedPackFilePaths,
   setUnsavedPacksData,
+  applySavedPackData,
 } from "./appSlice";
 import { DBFieldName, DBFileName, DBVersion, Pack, PackedFile } from "./packFileTypes";
 import { dataFromBackend, doneRequests, packDataStore } from "./components/viewer/packDataStore";
@@ -24,9 +27,9 @@ import { tableNameWithDBPrefix } from "./utility/packFileHelpers";
 
 setupRendererLogging();
 
-console.log("IN RENDERER (viewer)");
 
-window.api?.viewerIsReady();
+const stripUnsavedFileBuffers = (unsavedFileData: PackedFile[]): PackedFile[] =>
+  unsavedFileData.map(({ buffer, ...unsavedFile }) => unsavedFile);
 
 window.api?.setStartArgs((event, startArgs) => {
   store.dispatch(setStartArgs(startArgs));
@@ -48,14 +51,12 @@ window.api?.setCurrentGameNaive((event, game) => {
   store.dispatch(setCurrentGameNaive(game));
 });
 
+window.api?.setRecentPackPaths((event, packPaths) => {
+  store.dispatch(setRecentPackPaths(packPaths));
+});
+
 window.api?.openModInViewer((event, modPath: string) => {
-  store.dispatch(
-    selectDBTable({
-      packPath: modPath,
-      dbName: "main_units_tables",
-      dbSubname: "",
-    }),
-  );
+  store.dispatch(requestOpenPackTab(modPath));
 });
 
 window.api?.setPacksData((event, packsData: PackViewData[]) => {
@@ -63,38 +64,53 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
   store.dispatch(setPacksData(packsData));
 });
 
-window.api?.setUnsavedPacksData((event, packPath: string, unsavedFileData: PackedFile[]) => {
-  store.dispatch(setUnsavedPacksData({ packPath, unsavedFileData } as SetUnsavedPacksDataPayload));
+window.api?.applySavedPackData((event, payload: ApplySavedPackDataPayload) => {
+  store.dispatch(
+    applySavedPackData({
+      ...payload,
+      savedFileData: stripUnsavedFileBuffers(payload.savedFileData),
+    }),
+  );
 });
 
-window.api?.setPackDataStore(
-  (event, packPath: string, pack: Pack, tableReferenceRequests: TableReferenceRequest[]) => {
-    packDataStore[packPath] = pack;
+window.api?.setUnsavedPacksData((event, packPath: string, unsavedFileData: PackedFile[]) => {
+  store.dispatch(
+    setUnsavedPacksData({
+      packPath,
+      unsavedFileData: stripUnsavedFileBuffers(unsavedFileData),
+    } as SetUnsavedPacksDataPayload),
+  );
+});
 
-    doneRequests[packPath] = doneRequests[packPath] || [];
-    tableReferenceRequests
-      .filter(
-        (tableReferenceRequest) =>
-          !doneRequests[packPath].some(
-            (doneReq) =>
-              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
-          ),
-      )
-      .forEach((tableReferenceRequest) => {
-        doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
-      });
+window.api?.setDeletedPackFilePaths((event, packPath: string, deletedFilePaths: string[]) => {
+  store.dispatch(
+    setDeletedPackFilePaths({
+      packPath,
+      deletedFilePaths,
+    }),
+  );
+});
 
-    store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
-  },
-);
+window.api?.setPackDataStore((event, packPath: string, pack: Pack, tableReferenceRequests: TableReferenceRequest[]) => {
+  packDataStore[packPath] = pack;
+
+  doneRequests[packPath] = doneRequests[packPath] || [];
+  tableReferenceRequests
+    .filter(
+      (tableReferenceRequest) =>
+        !doneRequests[packPath].some(
+          (doneReq) => tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
+        ),
+    )
+    .forEach((tableReferenceRequest) => {
+      doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
+    });
+
+  store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
+});
 
 window.api?.appendPackDataStore(
-  (
-    event,
-    packPath: string,
-    packFilesToAppend: PackedFile[],
-    tableReferenceRequests: TableReferenceRequest[],
-  ) => {
+  (event, packPath: string, packFilesToAppend: PackedFile[], tableReferenceRequests: TableReferenceRequest[]) => {
     const pack = packDataStore[packPath];
     if (!pack) return;
 
@@ -107,8 +123,7 @@ window.api?.appendPackDataStore(
       .filter(
         (tableReferenceRequest) =>
           !doneRequests[packPath].some(
-            (doneReq) =>
-              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
+            (doneReq) => tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
           ),
       )
       .forEach((tableReferenceRequest) => {
@@ -145,14 +160,13 @@ window.api?.setDBNameToDBVersions(
             (reference) => reference[0] == tableName && reference[1] == dbFieldName,
           )
         ) {
-          dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].push([
-            tableName,
-            dbFieldName,
-          ]);
+          dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].push([tableName, dbFieldName]);
         }
       }
     }
   },
 );
+
+window.api?.viewerIsReady();
 
 renderViewerWindow();

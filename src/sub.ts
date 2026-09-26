@@ -1,7 +1,9 @@
-import * as steamworks from "./../steamworks";
+import * as steamworksNative from "./../steamworks";
+import type { Client as SteamworksClient } from "./../steamworks";
 import { workshop } from "../steamworks/client.d";
 import * as fs from "fs";
-import { string } from "ts-pattern/dist/patterns";
+import * as nodePath from "path";
+import * as os from "os";
 
 interface PlayerSteamIdStringInsteadOfBigInt {
   steamId64: string;
@@ -50,6 +52,87 @@ interface WorkshopItemStringInsteadOfBigInt {
   statistics: WorkshopItemStatisticStringified;
   children?: string[];
 }
+
+interface WorkshopInstallInfoDiagnostic {
+  workshopId: string;
+  remoteTimestamp: number;
+  installedTimestamp?: number;
+  state?: number;
+  installFolder?: string;
+  sizeOnDisk?: string;
+  error?: string;
+}
+
+type WorkshopUpdateCheckStatus =
+  "requested" | "already-downloading" | "downloading" | "updated" | "request-failed" | "timed-out" | "resubscribing";
+
+interface WorkshopUpdateCheckItem {
+  workshopId: string;
+  initialState: number;
+  finalState: number;
+  status: WorkshopUpdateCheckStatus;
+  requestAccepted: boolean;
+  retryAccepted?: boolean;
+  installTimestampBefore?: number;
+  installTimestampAfter?: number;
+  downloadedBytes?: string;
+  totalBytes?: string;
+  error?: string;
+}
+
+interface WorkshopUpdateCheckMessage {
+  type: "started" | "progress" | "finished";
+  checkedCount: number;
+  items: WorkshopUpdateCheckItem[];
+}
+
+const WORKSHOP_STATE_INSTALLED = 4;
+const WORKSHOP_STATE_NEEDS_UPDATE = 8;
+const WORKSHOP_STATE_DOWNLOADING = 16;
+const WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
+const WORKSHOP_UPDATE_POLL_INTERVAL_MS = 1000;
+const WORKSHOP_UPDATE_RETRY_AFTER_MS = 30_000;
+const WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS = 5 * 60_000;
+
+const sublogPath = process.env.WHMM_SUBLOG_PATH || nodePath.join(os.tmpdir(), "wh3-mod-manager", "sublog.txt");
+
+const appendSublog = (message: string) => {
+  try {
+    fs.mkdirSync(nodePath.dirname(sublogPath), { recursive: true });
+    fs.appendFileSync(sublogPath, `${message}\n`);
+  } catch (error) {
+    // Steam diagnostics must never hide the original initialization failure, especially when the
+    // application is installed below a read-only Linux directory.
+    console.error("Unable to write Steam worker diagnostics:", error);
+  }
+};
+
+const logSteamError = (operation: string, error: unknown, ids?: bigint[]) => {
+  const itemIds = ids?.map((id) => id.toString()).join(",") ?? "";
+  const suffix = itemIds ? ` ids=${itemIds}` : "";
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  appendSublog(`ERROR ${operation}${suffix}: ${errorMessage}`);
+};
+
+const steamworks = {
+  ...steamworksNative,
+  init: (appId: number): Omit<SteamworksClient, "init" | "runCallbacks"> => {
+    try {
+      return steamworksNative.init(appId);
+    } catch (error) {
+      logSteamError("init", error);
+      console.error("Steam is unavailable. Start Steam before using Workshop features.", error);
+      process.exit(1);
+    }
+  },
+};
+
+const parseItemIds = (rawIds: string | undefined) =>
+  (rawIds ?? "")
+    .split(/[;,]/)
+    .map((id) => id.trim())
+    .filter((id) => id !== "" && /^\d+$/.test(id))
+    .map((id) => BigInt(id));
 
 if (process.argv[3] == "justRun") {
   console.log("justRun");
@@ -109,9 +192,9 @@ if (process.argv[3] == "unsubscribe") {
 }
 
 const getAuthors = (
-  client: Omit<steamworks.Client, "init" | "runCallbacks">,
+  client: Omit<SteamworksClient, "init" | "runCallbacks">,
   ids: bigint[],
-  cb: (authorsMap: Map<string, string>) => void
+  cb: (authorsMap: Map<string, string>) => void,
 ) => {
   if (!process.send) {
     process.exit();
@@ -155,9 +238,9 @@ if (process.argv[3] == "getAuthors") {
 }
 
 const getDependencies = (
-  client: Omit<steamworks.Client, "init" | "runCallbacks">,
+  client: Omit<SteamworksClient, "init" | "runCallbacks">,
   ids: bigint[],
-  cb: (dependenciesMap: Map<string, string[]>) => void
+  cb: (dependenciesMap: Map<string, string[]>) => void,
 ) => {
   if (!process.send) {
     process.exit();
@@ -167,21 +250,22 @@ const getDependencies = (
 
   const promises = ids.map(
     (id) =>
-      new Promise<void>((resolve, reject) => {
+      new Promise<void>((resolve) => {
         client.workshop
           .getItemDependencies(id)
           .then((dependencyIds) => {
             dependenciesMap.set(
               id.toString(),
-              dependencyIds.map((depId) => depId.toString())
+              dependencyIds.map((depId) => depId.toString()),
             );
             resolve();
           })
           .catch((e) => {
-            fs.appendFileSync("sublog.txt", "ERROR:");
-            fs.appendFileSync("sublog.txt", e.toString());
+            dependenciesMap.set(id.toString(), []);
+            logSteamError("getItemDependencies", e, [id]);
+            resolve();
           });
-      })
+      }),
   );
 
   Promise.allSettled(promises).then(() => {
@@ -190,7 +274,7 @@ const getDependencies = (
 };
 if (process.argv[3] == "getDependencies") {
   console.log("getDependencies");
-  const ids = process.argv[4].split(",").map((id) => BigInt(id));
+  const ids = parseItemIds(process.argv[4]);
   const client = steamworks.init(Number(process.argv[2]));
 
   getDependencies(client, ids, (dependenciesMap) => {
@@ -202,86 +286,120 @@ if (process.argv[3] == "getDependencies") {
 }
 
 const getItems = (
-  client: Omit<steamworks.Client, "init" | "runCallbacks">,
+  client: Omit<SteamworksClient, "init" | "runCallbacks">,
   ids: bigint[],
-  cb: (data: WorkshopItemStringInsteadOfBigInt[]) => void
+  cb: (data: WorkshopItemStringInsteadOfBigInt[]) => void,
 ) => {
   if (!process.send) {
     process.exit();
   }
 
+  if (ids.length === 0) {
+    cb([]);
+    return;
+  }
+
+  const stringifyItems = (data: Awaited<ReturnType<typeof client.workshop.getItems>>) =>
+    data.items
+      .filter((data) => data)
+      .map(
+        (data) =>
+          data &&
+          ({
+            ...data,
+            owner: { ...data.owner, steamId64: data?.owner.steamId64.toString() },
+            publishedFileId: data.publishedFileId.toString(),
+            statistics: {
+              numSubscriptions: data.statistics.numSubscriptions ? data.statistics.numSubscriptions.toString() : "",
+              numFavorites: data.statistics.numFavorites ? data.statistics.numFavorites.toString() : "",
+              numFollowers: data.statistics.numFollowers ? data.statistics.numFollowers.toString() : "",
+              numUniqueSubscriptions: data.statistics.numUniqueSubscriptions
+                ? data.statistics.numUniqueSubscriptions.toString()
+                : "",
+              numUniqueFavorites: data.statistics.numUniqueFavorites
+                ? data.statistics.numUniqueFavorites.toString()
+                : "",
+              numUniqueFollowers: data.statistics.numUniqueFollowers
+                ? data.statistics.numUniqueFollowers.toString()
+                : "",
+              numUniqueWebsiteViews: data.statistics.numUniqueWebsiteViews
+                ? data.statistics.numUniqueWebsiteViews.toString()
+                : "",
+              reportScore: data.statistics.reportScore ? data.statistics.reportScore.toString() : "",
+              numSecondsPlayed: data.statistics.numSecondsPlayed ? data.statistics.numSecondsPlayed.toString() : "",
+              numPlaytimeSessions: data.statistics.numPlaytimeSessions
+                ? data.statistics.numPlaytimeSessions.toString()
+                : "",
+              numComments: data.statistics.numComments ? data.statistics.numComments.toString() : "",
+              numSecondsPlayedDuringTimePeriod: data.statistics.numSecondsPlayedDuringTimePeriod
+                ? data.statistics.numSecondsPlayedDuringTimePeriod.toString()
+                : "",
+              numPlaytimeSessionsDuringTimePeriod: data.statistics.numPlaytimeSessionsDuringTimePeriod
+                ? data.statistics.numPlaytimeSessionsDuringTimePeriod.toString()
+                : "",
+            },
+          } as WorkshopItemStringInsteadOfBigInt),
+      ) as WorkshopItemStringInsteadOfBigInt[];
+
   client.workshop
     .getItems(ids)
     .then((data) => {
-      const newData = data.items
-        .filter((data) => data)
-        .map(
-          (data) =>
-            data &&
-            ({
-              ...data,
-              owner: { ...data.owner, steamId64: data?.owner.steamId64.toString() },
-              publishedFileId: data.publishedFileId.toString(),
-              statistics: {
-                numSubscriptions: data.statistics.numSubscriptions
-                  ? data.statistics.numSubscriptions.toString()
-                  : "",
-                numFavorites: data.statistics.numFavorites ? data.statistics.numFavorites.toString() : "",
-                numFollowers: data.statistics.numFollowers ? data.statistics.numFollowers.toString() : "",
-                numUniqueSubscriptions: data.statistics.numUniqueSubscriptions
-                  ? data.statistics.numUniqueSubscriptions.toString()
-                  : "",
-                numUniqueFavorites: data.statistics.numUniqueFavorites
-                  ? data.statistics.numUniqueFavorites.toString()
-                  : "",
-                numUniqueFollowers: data.statistics.numUniqueFollowers
-                  ? data.statistics.numUniqueFollowers.toString()
-                  : "",
-                numUniqueWebsiteViews: data.statistics.numUniqueWebsiteViews
-                  ? data.statistics.numUniqueWebsiteViews.toString()
-                  : "",
-                reportScore: data.statistics.reportScore ? data.statistics.reportScore.toString() : "",
-                numSecondsPlayed: data.statistics.numSecondsPlayed
-                  ? data.statistics.numSecondsPlayed.toString()
-                  : "",
-                numPlaytimeSessions: data.statistics.numPlaytimeSessions
-                  ? data.statistics.numPlaytimeSessions.toString()
-                  : "",
-                numComments: data.statistics.numComments ? data.statistics.numComments.toString() : "",
-                numSecondsPlayedDuringTimePeriod: data.statistics.numSecondsPlayedDuringTimePeriod
-                  ? data.statistics.numSecondsPlayedDuringTimePeriod.toString()
-                  : "",
-                numPlaytimeSessionsDuringTimePeriod: data.statistics.numPlaytimeSessionsDuringTimePeriod
-                  ? data.statistics.numPlaytimeSessionsDuringTimePeriod.toString()
-                  : "",
-              },
-            } as WorkshopItemStringInsteadOfBigInt)
-        ) as WorkshopItemStringInsteadOfBigInt[];
-      cb(newData);
+      cb(stringifyItems(data));
     })
-    .catch((e) => {
-      fs.appendFileSync("sublog.txt", "ERROR:");
-      fs.appendFileSync("sublog.txt", e.toString());
-      process.exit();
+    .catch(async (e) => {
+      logSteamError("getItems.batch", e, ids);
+
+      const fallbackItems = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const data = await client.workshop.getItems([id]);
+            return stringifyItems(data)[0];
+          } catch (singleItemError) {
+            logSteamError("getItems.single", singleItemError, [id]);
+            return undefined;
+          }
+        }),
+      );
+
+      cb(fallbackItems.filter((item): item is WorkshopItemStringInsteadOfBigInt => item !== undefined));
     });
 };
 
 if (process.argv[3] == "getModsData") {
   console.log("getModsData");
-  const ids = process.argv[4].split(",").map((id) => BigInt(id));
+  const ids = parseItemIds(process.argv[4]);
   const client = steamworks.init(Number(process.argv[2]));
 
   getItems(client, ids, (data) => {
     getDependencies(client, ids, (dependenciesMap) => {
-      const dedupedAuthorIds = Array.from(new Set(data.map((data) => data.owner.steamId64))).map((id) =>
-        BigInt(id)
-      );
+      const dedupedAuthorIds = Array.from(new Set(data.map((data) => data.owner.steamId64))).map((id) => BigInt(id));
 
       getAuthors(client, dedupedAuthorIds, (authorsMap) => {
+        const installInfoDiagnostics = data.map((item): WorkshopInstallInfoDiagnostic => {
+          try {
+            const workshopId = BigInt(item.publishedFileId);
+            const installInfo = client.workshop.installInfo(workshopId);
+            return {
+              workshopId: item.publishedFileId,
+              remoteTimestamp: item.timeUpdated,
+              installedTimestamp: installInfo?.timestamp,
+              state: client.workshop.state(workshopId),
+              installFolder: installInfo?.folder,
+              sizeOnDisk: installInfo?.sizeOnDisk.toString(),
+            };
+          } catch (error) {
+            return {
+              workshopId: item.publishedFileId,
+              remoteTimestamp: item.timeUpdated,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        });
         const modsData = {
           mods: data,
           dependencies: Object.fromEntries(dependenciesMap),
           authors: Object.fromEntries(authorsMap),
+          installInfoDiagnostics,
         };
         if (process.send) process.send(modsData);
         setTimeout(() => {
@@ -294,27 +412,201 @@ if (process.argv[3] == "getModsData") {
 
 if (process.argv[3] == "checkState") {
   console.log("checkState");
-  const ids = process.argv[4].split(";"); //"2856936614";
+  const ids = parseItemIds(process.argv[4]);
+  const expectedInstallTimestamps = new Map(
+    (process.argv[5] ?? "")
+      .split(";")
+      .map((entry) => entry.split(":"))
+      .filter(
+        (entry): entry is [string, string] => entry.length === 2 && /^\d+$/.test(entry[0]) && /^\d+$/.test(entry[1]),
+      )
+      .map(([workshopId, timestamp]) => [workshopId, Number(timestamp)]),
+  );
+  const forceDownload = process.argv[6] === "force";
   const client = steamworks.init(Number(process.argv[2]));
 
-  const idsThatNeedUpdates = ids
-    .map((id) => [id, client.workshop.state(BigInt(id))] as [string, number])
-    .filter((num) => num[1] & 8)
-    .map((num) => num[0]);
+  const sendUpdateCheckMessage = (message: WorkshopUpdateCheckMessage) =>
+    new Promise<void>((resolve) => {
+      if (!process.send) {
+        resolve();
+        return;
+      }
+      process.send(message, (error: Error | null) => {
+        if (error) appendSublog(`ERROR checkState.send: ${error.message}`);
+        resolve();
+      });
+    });
 
-  idsThatNeedUpdates.forEach(async (id) => {
-    client.workshop.download(BigInt(id), false);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  void (async () => {
+    const updateItems: WorkshopUpdateCheckItem[] = [];
+    const retriedWorkshopIds = new Set<string>();
+
+    for (const workshopId of ids) {
+      try {
+        const initialState = client.workshop.state(workshopId);
+        const installTimestampBefore = client.workshop.installInfo(workshopId)?.timestamp;
+        const expectedInstallTimestamp = expectedInstallTimestamps.get(workshopId.toString());
+        const isExpectedVersionInstalled =
+          expectedInstallTimestamp != null &&
+          installTimestampBefore != null &&
+          installTimestampBefore >= expectedInstallTimestamp;
+        if (!forceDownload && (initialState & WORKSHOP_STATE_NEEDS_UPDATE) === 0) continue;
+        if (forceDownload && isExpectedVersionInstalled) {
+          updateItems.push({
+            workshopId: workshopId.toString(),
+            initialState,
+            finalState: initialState,
+            status: "updated",
+            requestAccepted: true,
+            installTimestampBefore,
+            installTimestampAfter: installTimestampBefore,
+          });
+          continue;
+        }
+
+        const isAlreadyDownloading =
+          (initialState & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+        const requestAccepted = isAlreadyDownloading || client.workshop.download(workshopId, true);
+        updateItems.push({
+          workshopId: workshopId.toString(),
+          initialState,
+          finalState: initialState,
+          status: isAlreadyDownloading ? "already-downloading" : requestAccepted ? "requested" : "request-failed",
+          requestAccepted,
+          installTimestampBefore,
+        });
+      } catch (error) {
+        updateItems.push({
+          workshopId: workshopId.toString(),
+          initialState: 0,
+          finalState: 0,
+          status: "request-failed",
+          requestAccepted: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await sendUpdateCheckMessage({ type: "started", checkedCount: ids.length, items: updateItems });
+    const startedAt = Date.now();
+    let lastActivityAt = startedAt;
+
+    const isPendingUpdate = (item: WorkshopUpdateCheckItem) =>
+      item.status === "requested" || item.status === "already-downloading" || item.status === "downloading";
+
+    while (updateItems.some(isPendingUpdate)) {
+      await new Promise((resolve) => setTimeout(resolve, WORKSHOP_UPDATE_POLL_INTERVAL_MS));
+      const elapsed = Date.now() - startedAt;
+      let didUpdateProgress = false;
+
+      for (const item of updateItems) {
+        if (!isPendingUpdate(item)) continue;
+
+        try {
+          const workshopId = BigInt(item.workshopId);
+          const state = client.workshop.state(workshopId);
+          const downloadInfo = client.workshop.downloadInfo(workshopId);
+          const installTimestamp = client.workshop.installInfo(workshopId)?.timestamp;
+          const expectedInstallTimestamp = expectedInstallTimestamps.get(item.workshopId);
+          const hasMeaningfulDownloadInfo =
+            downloadInfo != null && (downloadInfo.current > BigInt(0) || downloadInfo.total > BigInt(0));
+          if (item.finalState !== state) {
+            didUpdateProgress = true;
+            lastActivityAt = Date.now();
+          }
+          item.finalState = state;
+          if (downloadInfo) {
+            const downloadedBytes = downloadInfo.current.toString();
+            const totalBytes = downloadInfo.total.toString();
+            if (
+              hasMeaningfulDownloadInfo &&
+              (item.downloadedBytes !== downloadedBytes || item.totalBytes !== totalBytes)
+            ) {
+              didUpdateProgress = true;
+              lastActivityAt = Date.now();
+            }
+            if (hasMeaningfulDownloadInfo) {
+              item.downloadedBytes = downloadedBytes;
+              item.totalBytes = totalBytes;
+            }
+          }
+
+          if (
+            (state & WORKSHOP_STATE_NEEDS_UPDATE) === 0 &&
+            (state & WORKSHOP_STATE_INSTALLED) !== 0 &&
+            (expectedInstallTimestamp == null ||
+              (installTimestamp != null && installTimestamp >= expectedInstallTimestamp))
+          ) {
+            item.status = "updated";
+            item.installTimestampAfter = installTimestamp;
+            didUpdateProgress = true;
+            lastActivityAt = Date.now();
+            continue;
+          }
+
+          const isDownloadActive = (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+          if (isDownloadActive && item.status !== "downloading") {
+            item.status = "downloading";
+            didUpdateProgress = true;
+            lastActivityAt = Date.now();
+          } else if (!isDownloadActive && item.status === "downloading") {
+            item.status = "requested";
+            didUpdateProgress = true;
+          }
+          if (
+            elapsed >= WORKSHOP_UPDATE_RETRY_AFTER_MS &&
+            !hasMeaningfulDownloadInfo &&
+            !retriedWorkshopIds.has(item.workshopId)
+          ) {
+            retriedWorkshopIds.add(item.workshopId);
+            item.retryAccepted = client.workshop.download(workshopId, true);
+            didUpdateProgress = true;
+            if (item.retryAccepted) lastActivityAt = Date.now();
+          }
+        } catch (error) {
+          item.status = "request-failed";
+          item.error = error instanceof Error ? error.message : String(error);
+          didUpdateProgress = true;
+        }
+      }
+
+      if (Date.now() - lastActivityAt >= WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS) {
+        for (const item of updateItems) {
+          if (isPendingUpdate(item)) {
+            item.status = "timed-out";
+            didUpdateProgress = true;
+          }
+        }
+      }
+
+      if (didUpdateProgress) {
+        await sendUpdateCheckMessage({ type: "progress", checkedCount: ids.length, items: updateItems });
+      }
+    }
+
+    await sendUpdateCheckMessage({ type: "finished", checkedCount: ids.length, items: updateItems });
+    process.exit(0);
+  })().catch(async (error) => {
+    await sendUpdateCheckMessage({
+      type: "finished",
+      checkedCount: ids.length,
+      items: [
+        {
+          workshopId: "unknown",
+          initialState: 0,
+          finalState: 0,
+          status: "request-failed",
+          requestAccepted: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      ],
+    });
+    process.exit(1);
   });
-
-  const timeoutValue = (idsThatNeedUpdates.length > 0 && 200) || 0;
-  setTimeout(() => {
-    process.exit();
-  }, timeoutValue);
 }
 if (process.argv[3] == "getItems") {
   console.log("getItems");
-  const ids = process.argv[4].split(",").map((id) => BigInt(id));
+  const ids = parseItemIds(process.argv[4]);
   const client = steamworks.init(Number(process.argv[2]));
 
   getItems(client, ids, (data) => {
@@ -406,7 +698,7 @@ if (process.argv[3] == "update") {
           } as ModUpdateResponseProgress);
       }
     },
-    100
+    100,
   );
 }
 if (process.argv[3] == "sub") {

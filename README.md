@@ -12,7 +12,7 @@ Features not present in the CA launcher:
 - can also update your mods directly like the CA launcher
 - add tags/categories to organize your mods
 - customize individual mods by disabling units, buildings or agents (lords and heroes)
-  
+
 &nbsp;
 
 ![App image](https://i.imgur.com/tRpqhWN.png)
@@ -23,11 +23,15 @@ Features not present in the CA launcher:
 yarn start
 ```
 
-## Build for Windows
+## Build
 
 ```bash
 yarn make
 ```
+
+On Linux, build from an x86-64 desktop with Steam installed. Steam should be running when the manager
+uses Workshop features. Native Steam, Flatpak Steam, and Snap Steam are supported for game launching;
+Protontricks is an optional fallback. The Linux build currently does not include an ARM64 Steamworks addon.
 
 I build with yarn 1.22.22 and node v20.18.1. You can try using `yarn install --frozen-lockfile --ignore-engines` if you end up with dependency errors.
 

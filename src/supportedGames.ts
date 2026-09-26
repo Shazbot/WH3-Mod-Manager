@@ -19,10 +19,7 @@ export const supportedGameOptions = [
 ] as const;
 export type SupportedGameOptions = (typeof supportedGameOptions)[number];
 
-export const supportedGameOptionToStartGameOption: Record<
-  SupportedGameOptions,
-  keyof StartGameSpecificOptions
-> = {
+export const supportedGameOptionToStartGameOption: Record<SupportedGameOptions, keyof StartGameSpecificOptions> = {
   MakeUnitsGenerals: "isMakeUnitsGeneralsEnabled",
   SkipIntroMovies: "isSkipIntroMoviesEnabled",
   ScriptLogging: "isScriptLoggingEnabled",

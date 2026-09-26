@@ -1,9 +1,9 @@
 import { Tooltip } from "flowbite-react";
-import React, { memo, useCallback, useContext, useState } from "react";
+import React, { memo, useCallback, useContext, useMemo, useState } from "react";
 import {
+  addToast,
   setCurrentModToUpload,
   setIsModTagPickerOpen,
-  setModLoadOrderRelativeTo,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
 } from "../appSlice";
@@ -20,8 +20,8 @@ import {
   FaTrash,
   FaSync,
   FaClock,
+  FaExchangeAlt,
 } from "react-icons/fa";
-import { GoListOrdered } from "react-icons/go";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
 
 import { Modal } from "../flowbite";
@@ -29,11 +29,15 @@ import RenameModal from "./RenameModal";
 
 import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
+import { getModSourceKind, isWorkshopMod } from "../modSources";
 
 type ModDropdownOptionsProps = {
   mod?: Mod;
   mods: Mod[];
-  visibleMods: Mod[];
+  /** The mods the menu acts on. Defaults to the single `mod` used by the regular mod list. */
+  selectedMods?: Mod[];
+  /** Called after an action that can be completed immediately. */
+  onAction?: () => void;
 };
 
 const openInExplorer = (mod: Mod) => {
@@ -61,9 +65,9 @@ const deletePack = (mod: Mod) => {
   window.api?.deletePack(mod);
 };
 const unsubscribe = (mod: Mod, allMods: Mod[]) => {
-  const modInContent = mod.isInData
-    ? allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData)
-    : mod;
+  const modInContent = isWorkshopMod(mod)
+    ? mod
+    : allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
   if (!modInContent) return;
   window.api?.unsubscribeToMod(modInContent);
 };
@@ -71,183 +75,209 @@ const unsubscribe = (mod: Mod, allMods: Mod[]) => {
 const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const dispatch = useAppDispatch();
   const allMods = useAppSelector((state) => state.app.allMods);
-  const currentTab = useAppSelector((state) => state.app.currentTab);
   const isDev = useAppSelector((state) => state.app.isDev);
-  const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
-  const [loadOrderHasError, setLoadOrderHasError] = useState(false);
-  const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isComparingToWorkshop, setIsComparingToWorkshop] = useState(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
+  const { onAction } = props;
+
+  const workshopVersion =
+    props.mod && getModSourceKind(props.mod) !== "workshop"
+      ? allMods.find((iterMod) => iterMod.name === props.mod?.name && isWorkshopMod(iterMod))
+      : undefined;
+
+  const compareToWorkshop = useCallback(
+    async (mod: Mod, workshopMod: Mod) => {
+      if (isComparingToWorkshop) return;
+      setIsComparingToWorkshop(true);
+
+      try {
+        const result = await window.api?.compareModsByteForByte(mod.path, workshopMod.path);
+        if (!result?.success || result.identical === undefined) {
+          throw new Error(result?.error || "The comparison could not be completed.");
+        }
+
+        dispatch(
+          addToast({
+            type: result.identical ? "success" : "info",
+            messages: [
+              result.identical
+                ? localized.modMatchesWorkshop || `${mod.name} is byte-for-byte identical to the Workshop version.`
+                : localized.modDiffersFromWorkshop || `${mod.name} differs from the Workshop version.`,
+            ],
+            duration: 8000,
+            startTime: Date.now(),
+          }),
+        );
+      } catch (error) {
+        dispatch(
+          addToast({
+            type: "warning",
+            messages: [
+              `${localized.compareToWorkshopFailed || "Failed to compare with the Workshop version:"} ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            ],
+            duration: 8000,
+            startTime: Date.now(),
+          }),
+        );
+      } finally {
+        setIsComparingToWorkshop(false);
+      }
+    },
+    [dispatch, isComparingToWorkshop, localized],
+  );
+
+  const selectedMods = useMemo(
+    () => props.selectedMods ?? (props.mod ? [props.mod] : []),
+    [props.mod, props.selectedMods],
+  );
+  const primaryMod = selectedMods[0];
+  const allSelected = useCallback(
+    (predicate: (mod: Mod) => boolean) => selectedMods.length > 0 && selectedMods.every(predicate),
+    [selectedMods],
+  );
+  const runForSelectedMods = useCallback(
+    (action: (mod: Mod) => void) => {
+      selectedMods.forEach(action);
+      onAction?.();
+    },
+    [onAction, selectedMods],
+  );
+  const hasWorkshopMod = useCallback(
+    (mod: Mod) => isWorkshopMod(mod) || allMods.some((iterMod) => iterMod.name === mod.name && isWorkshopMod(iterMod)),
+    [allMods],
+  );
+  const hasWorkshopModForEverySelection = allSelected(hasWorkshopMod);
+  const isUpdateable = useCallback(
+    (mod: Mod) =>
+      mod.isInData && (isDev || allMods.some((iterMod) => iterMod.name === mod.name && isWorkshopMod(iterMod))),
+    [allMods, isDev],
+  );
+  const canUpdateEverySelection = allSelected(isUpdateable);
+  const canRenameEverySelection = allSelected((mod) => mod.isInData);
+  const canCopyEverySelectionToData = allSelected((mod) => !mod.isInData);
+  const canReMergeEverySelection = allSelected((mod) => !!mod.mergedModsData);
+  const canDeleteDataEverySelection = allSelected((mod) => mod.isInData);
+  const canDeleteMergedEverySelection = canReMergeEverySelection;
+  const canDeleteEverySelection = allSelected((mod) => mod.isInData || !!mod.mergedModsData);
+  const canDeleteMixedSelection =
+    canDeleteEverySelection && !canDeleteDataEverySelection && !canDeleteMergedEverySelection;
 
   const onGoToWorkshopPageClick = useCallback(
     (mod: Mod) => {
       let workshopId = mod.workshopId;
-      if (mod.isInData) {
-        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      if (!isWorkshopMod(mod)) {
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
         if (!contentMod) return;
         workshopId = contentMod.workshopId;
       }
       window.open(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
     },
-    [allMods]
+    [allMods],
   );
 
   const onOpenInSteam = useCallback(
     (mod: Mod) => {
       let workshopId = mod.workshopId;
-      if (mod.isInData) {
-        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      if (!isWorkshopMod(mod)) {
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
         if (!contentMod) return;
         workshopId = contentMod.workshopId;
       }
       window.api?.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
     },
-    [allMods]
+    [allMods],
   );
 
   const updateMod = useCallback(
     (mod: Mod) => {
-      const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
       if (contentMod == null) return;
 
       window.api?.updateMod(mod, contentMod);
     },
-    [allMods]
+    [allMods],
   );
   const uploadMod = useCallback(
     (mod: Mod) => {
       dispatch(setCurrentModToUpload(mod));
       dispatch(setIsModTagPickerOpen(true));
     },
-    [allMods]
+    [dispatch],
   );
   const fakeUpdatePack = useCallback(
     (mod: Mod) => {
       if (!isDev) {
-        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
         if (contentMod == null) return;
       }
 
       window.api?.fakeUpdatePack(mod);
     },
-    [allMods]
+    [allMods, isDev],
   );
   const forceModDownload = useCallback(
     (mod: Mod) => {
       let modToDownload: Mod | undefined = mod;
-      if (mod.isInData)
-        modToDownload = allMods.find((iterMod) => !iterMod.isInData && iterMod.name == mod.name);
+      if (!isWorkshopMod(mod))
+        modToDownload = allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == mod.name);
       if (!modToDownload) return;
 
       window.api?.forceModDownload(modToDownload);
     },
-    [allMods]
+    [allMods],
   );
-  const reMerge = (mod: Mod) => {
-    if (!mod) return;
-    if (!mod.mergedModsData) return;
+  const forceResubscribe = useCallback(
+    (modsToResubscribe: Mod[]) => {
+      const workshopMods = modsToResubscribe
+        .map((mod) =>
+          isWorkshopMod(mod) ? mod : allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name === mod.name),
+        )
+        .filter((mod): mod is Mod => !!mod);
+      if (workshopMods.length > 0) window.api?.forceResubscribeMods(workshopMods);
+    },
+    [allMods],
+  );
+  const reMerge = useCallback(
+    (mod: Mod) => {
+      if (!mod) return;
+      if (!mod.mergedModsData) return;
 
-    const modsToMerge = mod.mergedModsData
-      .map((mod) => allMods.find((iterMod) => iterMod.path == mod.path))
-      .filter((mod) => mod) as Mod[];
-    window.api?.reMerge(mod, modsToMerge);
-  };
+      const modsToMerge = mod.mergedModsData
+        .map((mod) => allMods.find((iterMod) => iterMod.path == mod.path))
+        .filter((mod) => mod) as Mod[];
+      window.api?.reMerge(mod, modsToMerge);
+    },
+    [allMods],
+  );
 
   return (
-    (props.mod == null && <></>) || (
+    (primaryMod == null && <></>) || (
       <>
-        <Modal
-          onClose={() => setIsSetLoadOrderOpen(false)}
-          // show={true}
-          show={isSetLoadOrderOpen}
-          size="2xl"
-          position="center"
-        >
-          <Modal.Header>
-            {localized.setLoadOrderFor} {props.mod?.name}
-          </Modal.Header>
-          <Modal.Body>
-            <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-              {`${localized.setLoadOrderMessage1} `}
-              <span className="text-red-600 font-semibold">{localized.setLoadOrderMessage2}</span>
-            </p>
-            <div className="flex mt-4 justify-center items-center">
-              <input
-                id="filterInput"
-                type="text"
-                onChange={(e) => {
-                  const loadOrder = e.target.value;
-                  setCurrentModLoadOrder(loadOrder);
-                  setLoadOrderHasError(loadOrder != "" && !Number(loadOrder));
-                }}
-                value={currentModLoadOrder}
-                className={
-                  "inline-block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-20 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 " +
-                  (loadOrderHasError ? "!border-red-700" : "")
-                }
-              ></input>
-              <div className="ml-4 justify-center inline-block">
-                <button
-                  className="make-tooltip-w-full px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
-                  onClick={() => {
-                    const numLordOrder = Number(currentModLoadOrder);
-                    if (numLordOrder == null || isNaN(numLordOrder)) return;
-                    if (numLordOrder < 0) return;
-                    console.log("set numLordOrder:", numLordOrder);
-                    let relativeMod = props.visibleMods[numLordOrder];
-                    let setAfterMod = false;
-                    if (!relativeMod) {
-                      relativeMod = props.visibleMods[numLordOrder - 1];
-                      setAfterMod = true;
-                    }
-                    if (!relativeMod) return;
-                    dispatch(
-                      setModLoadOrderRelativeTo({
-                        modNameToChange: props.mod?.name,
-                        modNameRelativeTo: relativeMod.name,
-                        visualModList: props.visibleMods,
-                        setAfterMod: setAfterMod,
-                      } as ModLoadOrderRelativeTo)
-                    );
-
-                    // dispatch(
-                    //   setModLoadOrder({
-                    //     modName: props.mod?.name ?? "",
-                    //     loadOrder: numLordOrder,
-                    //     originalOrder: props.mod?.loadOrder,
-                    //   })
-                    // );
-                    setIsSetLoadOrderOpen(false);
-                  }}
-                >
-                  <span className="uppercase">{localized.setLoadOrder}</span>
-                </button>
-              </div>
-            </div>
-          </Modal.Body>
-        </Modal>
-
-        {props.mod && (
-          <RenameModal show={isRenameModalOpen} onClose={() => setIsRenameModalOpen(false)} mod={props.mod} />
+        {primaryMod && (
+          <RenameModal
+            show={isRenameModalOpen}
+            onClose={() => setIsRenameModalOpen(false)}
+            mod={primaryMod}
+            mods={selectedMods}
+          />
         )}
 
-        <Modal
-          onClose={() => setIsDeleteConfirmOpen(false)}
-          show={isDeleteConfirmOpen}
-          size="md"
-          position="center"
-        >
-          <Modal.Header>
-            {localized.deleteMod || "Delete Mod"}
-          </Modal.Header>
+        <Modal onClose={() => setIsDeleteConfirmOpen(false)} show={isDeleteConfirmOpen} size="md" position="center">
+          <Modal.Header>{localized.deleteMod || "Delete Mod"}</Modal.Header>
           <Modal.Body>
             <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
               {localized.deleteModConfirmMessage || "Are you sure you want to delete this mod from the data folder?"}
               <br />
               <br />
-              <span className="font-semibold text-gray-900 dark:text-white">{props.mod?.name}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {primaryMod?.name}
+                {selectedMods.length > 1 && ` (+${selectedMods.length - 1})`}
+              </span>
               <br />
               <br />
               <span className="text-red-600 font-semibold">
@@ -265,9 +295,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <button
               className="px-4 py-2 bg-red-600 text-white font-medium text-sm rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
               onClick={() => {
-                if (props.mod) {
-                  deletePack(props.mod);
+                if (primaryMod) {
+                  selectedMods.forEach(deletePack);
                   setIsDeleteConfirmOpen(false);
+                  onAction?.();
                 }
               }}
             >
@@ -278,66 +309,45 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
 
         <div>
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
-            {currentTab != "categories" && (
-              <li>
-                <a
-                  onClick={() => setIsSetLoadOrderOpen(true)}
-                  href="#"
-                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                >
-                  <span className="flex items-center gap-2">
-                    <GoListOrdered className="w-5 h-5"></GoListOrdered>
-                    {localized.setLoadOrder}
-                  </span>
-                </a>
-              </li>
+            {hasWorkshopModForEverySelection && (
+              <>
+                <li>
+                  <a
+                    href="#"
+                    onClick={() => {
+                      runForSelectedMods(onGoToWorkshopPageClick);
+                    }}
+                    className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
+                  >
+                    <span className="flex items-center gap-2">
+                      <FaExternalLinkAlt className="w-5 h-5"></FaExternalLinkAlt>
+                      {localized.goToWorkshopPage}
+                    </span>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#"
+                    onClick={() => {
+                      runForSelectedMods(onOpenInSteam);
+                    }}
+                    className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
+                  >
+                    <span className="flex items-center gap-2">
+                      <FaSteam className="w-5 h-5"></FaSteam>
+                      {localized.openInSteam}
+                    </span>
+                  </a>
+                </li>
+              </>
             )}
-            {props.mod &&
-              (!props.mod?.isInData ||
-                allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData)) && (
-                <>
-                  <li>
-                    <a
-                      href="#"
-                      onClick={() => {
-                        if (props.mod) {
-                          onGoToWorkshopPageClick(props.mod);
-                        }
-                      }}
-                      className={
-                        "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      }
-                    >
-                      <span className="flex items-center gap-2">
-                        <FaExternalLinkAlt className="w-5 h-5"></FaExternalLinkAlt>
-                        {localized.goToWorkshopPage}
-                      </span>
-                    </a>
-                  </li>
-                  <li>
-                    <a
-                      href="#"
-                      onClick={() => {
-                        if (props.mod) {
-                          onOpenInSteam(props.mod);
-                        }
-                      }}
-                      className={
-                        "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      }
-                    >
-                      <span className="flex items-center gap-2">
-                        <FaSteam className="w-5 h-5"></FaSteam>
-                        {localized.openInSteam}
-                      </span>
-                    </a>
-                  </li>
-                </>
-              )}
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) dispatch(toggleAlwaysEnabledMods([props.mod]));
+                  if (selectedMods.length > 0) {
+                    dispatch(toggleAlwaysEnabledMods(selectedMods.map((mod) => mod.name)));
+                    onAction?.();
+                  }
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -357,7 +367,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) dispatch(toggleAlwaysHiddenMods([props.mod]));
+                  if (selectedMods.length > 0) {
+                    dispatch(toggleAlwaysHiddenMods(selectedMods.map((mod) => mod.name)));
+                    onAction?.();
+                  }
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -377,7 +390,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) openInExplorer(props.mod);
+                  runForSelectedMods(openInExplorer);
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -391,7 +404,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) openInRPFM(props.mod);
+                  runForSelectedMods(openInRPFM);
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -405,7 +418,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) openInViewer(props.mod);
+                  runForSelectedMods(openInViewer);
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -416,7 +429,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </span>
               </a>
             </li>
-            {props.mod?.isInData && (
+            {canRenameEverySelection && (
               <li>
                 <a
                   onClick={() => setIsRenameModalOpen(true)}
@@ -433,7 +446,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) putPathInClipboard(props.mod);
+                  runForSelectedMods(putPathInClipboard);
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -444,11 +457,11 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </span>
               </a>
             </li>
-            {!props.mod?.isInData && (
+            {canCopyEverySelectionToData && (
               <li>
                 <a
                   onClick={() => {
-                    if (props.mod) copyModToData(props.mod);
+                    runForSelectedMods(copyModToData);
                   }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -456,6 +469,26 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   <span className="flex items-center gap-2">
                     <FaRegCopy className="w-5 h-5"></FaRegCopy>
                     {localized.copyModToData}
+                  </span>
+                </a>
+              </li>
+            )}
+            {props.mod && workshopVersion && ["data", "custom"].includes(getModSourceKind(props.mod)) && (
+              <li>
+                <a
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (!isComparingToWorkshop) void compareToWorkshop(props.mod!, workshopVersion);
+                  }}
+                  href="#"
+                  aria-disabled={isComparingToWorkshop}
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <span className="flex items-center gap-2">
+                    <FaExchangeAlt className="w-5 h-5"></FaExchangeAlt>
+                    {isComparingToWorkshop
+                      ? localized.comparingToWorkshop || "Comparing to Workshop..."
+                      : localized.compareToWorkshop || "Compare to Workshop"}
                   </span>
                 </a>
               </li>
@@ -480,55 +513,54 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   </a>
                 </li>
               )} */}
-            {props.mod?.isInData &&
-              (allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) || isDev) && (
-                <>
-                  <li>
-                    <a
-                      onClick={() => {
-                        if (props.mod) updateMod(props.mod);
-                      }}
-                      href="#"
-                      className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+            {canUpdateEverySelection && (
+              <>
+                <li>
+                  <a
+                    onClick={() => {
+                      runForSelectedMods(updateMod);
+                    }}
+                    href="#"
+                    className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                  >
+                    <Tooltip
+                      placement="right"
+                      style="light"
+                      content={<div className="min-w-[10rem]">{localized.updateModTooltip}</div>}
                     >
-                      <Tooltip
-                        placement="right"
-                        style="light"
-                        content={<div className="min-w-[10rem]">{localized.updateModTooltip}</div>}
-                      >
-                        <span className="flex items-center gap-2">
-                          <FaSync className="w-5 h-5"></FaSync>
-                          {localized.updateMod}
-                        </span>
-                      </Tooltip>
-                    </a>
-                  </li>
-                  <li>
-                    <a
-                      onClick={() => {
-                        if (props.mod) fakeUpdatePack(props.mod);
-                      }}
-                      href="#"
-                      className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                      <span className="flex items-center gap-2">
+                        <FaSync className="w-5 h-5"></FaSync>
+                        {localized.updateMod}
+                      </span>
+                    </Tooltip>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    onClick={() => {
+                      runForSelectedMods(fakeUpdatePack);
+                    }}
+                    href="#"
+                    className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                  >
+                    <Tooltip
+                      placement="right"
+                      style="light"
+                      content={<div className="min-w-[10rem]">{localized.fakeUpdatePackTooltip}</div>}
                     >
-                      <Tooltip
-                        placement="right"
-                        style="light"
-                        content={<div className="min-w-[10rem]">{localized.fakeUpdatePackTooltip}</div>}
-                      >
-                        <span className="flex items-center gap-2">
-                          <FaClock className="w-5 h-5"></FaClock>
-                          {localized.fakeUpdatePack}
-                        </span>
-                      </Tooltip>
-                    </a>
-                  </li>
-                </>
-              )}
+                      <span className="flex items-center gap-2">
+                        <FaClock className="w-5 h-5"></FaClock>
+                        {localized.fakeUpdatePack}
+                      </span>
+                    </Tooltip>
+                  </a>
+                </li>
+              </>
+            )}
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) makePackBackup(props.mod);
+                  runForSelectedMods(makePackBackup);
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -545,12 +577,11 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </Tooltip>
               </a>
             </li>
-            {(!props.mod?.isInData ||
-              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name)) && (
+            {hasWorkshopModForEverySelection && (
               <li>
                 <a
                   onClick={() => {
-                    if (props.mod) forceModDownload(props.mod);
+                    runForSelectedMods(forceModDownload);
                   }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -568,12 +599,39 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {(!props.mod?.isInData ||
-              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name)) && (
+            {hasWorkshopModForEverySelection && (
               <li>
                 <a
                   onClick={() => {
-                    if (props.mod) unsubscribe(props.mod, allMods);
+                    forceResubscribe(selectedMods);
+                    onAction?.();
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip
+                    placement="right"
+                    content={
+                      <div className="min-w-[10rem]">
+                        {localized.forceResubscribeModTooltip ||
+                          "Force Steam to unsubscribe and re-subscribe to this mod."}
+                      </div>
+                    }
+                    style="light"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FaSync className="w-5 h-5"></FaSync>
+                      {localized.forceResubscribe || "Force Resubscribe"}
+                    </span>
+                  </Tooltip>
+                </a>
+              </li>
+            )}
+            {hasWorkshopModForEverySelection && (
+              <li>
+                <a
+                  onClick={() => {
+                    runForSelectedMods((mod) => unsubscribe(mod, allMods));
                   }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -591,11 +649,11 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {props.mod?.mergedModsData && (
+            {canReMergeEverySelection && (
               <li>
                 <a
                   onClick={() => {
-                    if (props.mod) reMerge(props.mod);
+                    runForSelectedMods(reMerge);
                   }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -610,7 +668,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {props.mod?.isInData && (
+            {canDeleteDataEverySelection && (
               <li>
                 <a
                   onClick={() => {
@@ -621,7 +679,11 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this mod from the data folder"}</div>}
+                    content={
+                      <div className="min-w-[10rem]">
+                        {localized.deleteModTooltip || "Delete this mod from the data folder"}
+                      </div>
+                    }
                     style="light"
                   >
                     <span className="flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -632,7 +694,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {props.mod?.mergedModsData && (
+            {canDeleteMergedEverySelection && (
               <li>
                 <a
                   onClick={() => {
@@ -643,7 +705,31 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this merged mod"}</div>}
+                    content={
+                      <div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this merged mod"}</div>
+                    }
+                    style="light"
+                  >
+                    <span className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                      <FaTrash className="w-5 h-5"></FaTrash>
+                      {localized.deleteMod || "Delete Mod"}
+                    </span>
+                  </Tooltip>
+                </a>
+              </li>
+            )}
+            {canDeleteMixedSelection && (
+              <li>
+                <a
+                  onClick={() => {
+                    setIsDeleteConfirmOpen(true);
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip
+                    placement="right"
+                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this mod"}</div>}
                     style="light"
                   >
                     <span className="flex items-center gap-2 text-red-600 dark:text-red-400">

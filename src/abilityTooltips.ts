@@ -234,9 +234,7 @@ const resolveAffectedUnitsText = (
     ability.numEffectedFriendlyUnits !== 0 ||
     (!hasExplicitTargeting && affectsAlliesFromPhase);
   const affectsEnemies =
-    ability.targetEnemies ||
-    ability.numEffectedEnemyUnits !== 0 ||
-    (!hasExplicitTargeting && affectsEnemiesFromPhase);
+    ability.targetEnemies || ability.numEffectedEnemyUnits !== 0 || (!hasExplicitTargeting && affectsEnemiesFromPhase);
   if (!affectsAllies && !affectsEnemies) return undefined;
   const groupLabel = affectsAllies && affectsEnemies ? "all units" : affectsAllies ? "allies" : "enemies";
   const count = affectsEnemies && !affectsAllies ? ability.numEffectedEnemyUnits : ability.numEffectedFriendlyUnits;
@@ -449,7 +447,11 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
         );
         const statIconPath = normalizeUiPath(params.uiUnitStatIconsByStat[phaseStatEffect.stat]);
         if (statIconPath) iconPathsToLoad.add(statIconPath);
-        const valuePresentation = getBonusValuePresentation(phaseStatEffect.how, phaseStatEffect.value, phaseStatEffect.stat);
+        const valuePresentation = getBonusValuePresentation(
+          phaseStatEffect.how,
+          phaseStatEffect.value,
+          phaseStatEffect.stat,
+        );
         bonuses.push({
           key: `${phaseId}:${phaseStatEffect.stat}:${phaseStatEffect.how}`,
           compareKey: `${phaseStatEffect.stat}:${phaseStatEffect.how}`,
@@ -471,12 +473,7 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
         bonuses.push({
           key: `${phaseId}:fatigue_change_ratio`,
           compareKey: "fatigue_change_ratio",
-          label: localize(
-            "random_localisation_strings_string_fatigue",
-            params.getLoc,
-            "Vigour per second",
-            true,
-          ),
+          label: localize("random_localisation_strings_string_fatigue", params.getLoc, "Vigour per second", true),
           valueText: `${sign}${fatiguePerSecond}%`,
           numericValue: fatiguePerSecond,
           valueSuffix: "%",
@@ -485,8 +482,7 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
       }
     }
     tooltip.bonuses = bonuses;
-    const isBombardmentAbility =
-      !!unitSpecialAbility.bombardment || unitAbility.type.toLowerCase().includes("bombard");
+    const isBombardmentAbility = !!unitSpecialAbility.bombardment || unitAbility.type.toLowerCase().includes("bombard");
     const isVortexAbility =
       !!unitSpecialAbility.vortex ||
       !!tooltip.projectile?.spawnedVortex ||

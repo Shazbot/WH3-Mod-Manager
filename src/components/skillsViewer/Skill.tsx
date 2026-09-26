@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useContext, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useState } from "react";
 import { Handle, NodeToolbar, Position } from "@xyflow/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
@@ -33,6 +33,7 @@ export type SkillData = {
   isEditMode?: boolean;
   editGroupColor?: string;
   existingSkillKey?: string;
+  requiredNumParents?: number;
 };
 const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean }) => {
   const dispatch = useAppDispatch();
@@ -43,7 +44,15 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
 
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const resolvedSkillIcon = skillIcon; //require(`../../../dumps/img/${skillIcon}`);
-  const [currentLevel, setCurrentLevel] = useState(0);
+  const reduxLevel = Math.min(skillNodesToLevel[data.nodeId] || 0, data.numLevels);
+  const [currentLevel, setCurrentLevel] = useState(reduxLevel);
+
+  // Skill nodes stay mounted while tab data and global state change. Keep the local click state in
+  // sync so switching tabs, resetting a tree, or changing a level elsewhere cannot leave the icon
+  // and tooltip one or more levels behind Redux.
+  useEffect(() => {
+    setCurrentLevel(reduxLevel);
+  }, [reduxLevel, data.nodeId]);
 
   const localized = useLocalizations();
 
@@ -68,7 +77,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         console.log(effect);
       }
     },
-    [setCurrentLevel],
+    [data, dispatch],
   );
 
   const onRightClick = useCallback(
@@ -78,7 +87,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         dispatch(setSkillNodeLevel({ skillNodeId: data.nodeId, level: currentLevel - 1 }));
       }
     },
-    [setCurrentLevel],
+    [data.nodeId, dispatch],
   );
 
   if (!skillsData) return <></>;
@@ -114,9 +123,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         areRequirementsValid = areRequirementsValid && (skillNodesToLevel[parentNode] || 0) > 0;
       }
       if (!areRequirementsValid) {
-        const reqParentNodeSkill = skillsData.currentSkills.find(
-          (skill) => skill.nodeId == nodeRequirements.single[0],
-        );
+        const reqParentNodeSkill = skillsData.currentSkills.find((skill) => skill.nodeId == nodeRequirements.single[0]);
         if (reqParentNodeSkill) {
           reqsMessage =
             localized.skillUnlockRequirementParent &&
@@ -207,9 +214,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
               </div>
             )}
-            {!areRequirementsValid && reqsMessage != "" && (
-              <div className="text-sm text-red-600">{reqsMessage}</div>
-            )}
+            {!areRequirementsValid && reqsMessage != "" && <div className="text-sm text-red-600">{reqsMessage}</div>}
             {skillsBeingDisabled.length > 0 && (
               <>
                 <div className="text-sm text-yellow-200">{localized.skillUnlockWillLock}</div>
@@ -237,7 +242,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               {effectsAtShownLevel.map((effect, i) => {
                 return (
                   <div key={effect.key + i} id={effect.key + i} className="flex gap-2 text-sm">
-                    <img className="h-6" src={`data:image/png;base64,${effect.iconData}`} alt={effect.icon} />
+                    <img className="h-6" src={effect.iconData} alt={effect.icon} />
                     {effect.localizedKey}
                   </div>
                 );
@@ -261,9 +266,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           onRightClick(currentLevel);
         }}
         className={`h-20 relative w-[260px] ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${
-          areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank)
-            ? ""
-            : "grayscale"
+          areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank) ? "" : "grayscale"
         } ${data.isEditMode && selected ? "outline-dashed outline-2 outline-offset-2 outline-cyan-400 rounded-sm" : ""}`}
         style={data.editGroupColor ? { boxShadow: `inset 4px 0 0 ${data.editGroupColor}` } : undefined}
       >
@@ -279,7 +282,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             className={`absolute ${
               data.isAbilityIcon ? "h-[70%] top-[8px] left-[53px]" : "h-[110%] top-[-6px] left-[14.5%]"
             }`}
-            src={`data:image/png;base64,${resolvedSkillIcon}`}
+            src={resolvedSkillIcon}
             alt={skillIcon}
           />
         </div>

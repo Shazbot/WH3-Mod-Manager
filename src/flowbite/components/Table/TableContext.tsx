@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext } from "react";
 
 export type TableContext = {
   striped?: boolean;
@@ -11,7 +11,7 @@ export function useTableContext(): TableContext {
   const context = useContext(TableContext);
 
   if (!context) {
-    throw new Error('useTableContext should be used within the TableContext provider!');
+    throw new Error("useTableContext should be used within the TableContext provider!");
   }
 
   return context;

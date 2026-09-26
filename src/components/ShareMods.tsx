@@ -1,65 +1,68 @@
 import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useCallback, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import {
-  disableAllMods,
-  orderImportedMods,
-  setAreModsEnabled,
-  setImportedMods,
-  setSharedMod,
-} from "../appSlice";
+import { orderImportedMods, setAreModsEnabled, setImportedMods } from "../appSlice";
 import { Spinner } from "flowbite-react";
-
-const subbedModIdsToWaitFor: ModIdAndLoadOrder[] = [];
+import { getMissingSharedWorkshopIds, parseSharedModList, sharedModMatchesInstalledMod } from "../sharedModList";
 
 export interface ShareModsProps {
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 const ShareMods = memo((props: ShareModsProps) => {
+  const { isOpen, setIsOpen } = props;
   const dispatch = useAppDispatch();
   const [importModsText, setImportModsText] = useState("");
   const [isSpinnerOpen, setIsSpinnerOpen] = useState(false);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const allMods = useAppSelector((state) => state.app.allMods);
   const importedMods = useAppSelector((state) => state.app.importedMods);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
   const onClose = useCallback(() => {
-    props.setIsOpen(!props.isOpen);
-  }, [props]);
+    setIsOpen(false);
+  }, [setIsOpen]);
+
+  const cancelPendingImport = useCallback(() => {
+    setIsSpinnerOpen(false);
+    dispatch(setImportedMods([]));
+  }, [dispatch]);
 
   const exportModsToClipboard = () => {
-    window.api?.exportModsToClipboard(mods);
+    window.api?.exportModsToClipboard(mods, allMods);
   };
 
   const importMods = () => {
-    dispatch(disableAllMods());
-    const imported: ModIdAndLoadOrder[] = importModsText
-      .trim()
-      .split("|")
-      .map((idAndOrder) => {
-        if (idAndOrder.indexOf(";") > -1) {
-          const [workshopId, loadOrderStr] = idAndOrder.split(";");
-          return { workshopId, loadOrder: Number(loadOrderStr) };
-        }
-        return { workshopId: idAndOrder, loadOrder: undefined };
-      });
-
-    console.log("imported mods:", imported);
-    dispatch(setImportedMods(imported));
-
-    const onlyIds = imported.map((idAndOrder) => idAndOrder.workshopId);
-    subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...imported);
-    console.log("waiting for: ", subbedModIdsToWaitFor);
-    props.setIsOpen(!props.isOpen);
-
-    const newMods = subbedModIdsToWaitFor.filter(
-      (subbedMod) => !mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
+    const imported = parseSharedModList(importModsText);
+    const missingLocalMods = imported.filter(
+      (importedMod) =>
+        importedMod.modName &&
+        !importedMod.workshopId &&
+        !mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)),
     );
-    if (newMods.length > 0) {
+    const importableMods = imported.filter(
+      (importedMod) =>
+        !importedMod.modName ||
+        !!importedMod.workshopId ||
+        mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)),
+    );
+
+    if (missingLocalMods.length > 0) {
+      console.warn(
+        "Skipping shared local mods that are not installed:",
+        missingLocalMods.map((mod) => mod.modName),
+      );
+    }
+    console.log("imported mods:", importableMods);
+    dispatch(setImportedMods(importableMods));
+
+    const missingWorkshopIds = getMissingSharedWorkshopIds(importableMods, allMods);
+    if (missingWorkshopIds.length > 0) {
       setIsSpinnerOpen(true);
-      window.api?.subscribeToMods(onlyIds);
+      window.api?.subscribeToMods(missingWorkshopIds);
+    } else {
+      setIsOpen(false);
     }
   };
 
@@ -68,42 +71,26 @@ const ShareMods = memo((props: ShareModsProps) => {
   };
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (
-        importedMods.length > 0 &&
-        importedMods.every((importedMod) => mods.some((mod) => mod.workshopId == importedMod.workshopId))
-      ) {
-        dispatch(orderImportedMods());
-      }
-
-      const newMods = subbedModIdsToWaitFor.filter((subbedMod) =>
-        mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
-      );
-      if (newMods.length == 0) return;
-
-      const restOfMods = subbedModIdsToWaitFor.filter(
-        (subbedMod) => !mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
-      );
-      console.log("waiting for:", restOfMods);
-      subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
-
-      dispatch(setSharedMod(newMods));
-    }, 100);
-    return () => clearInterval(interval);
-  }, [importedMods, subbedModIdsToWaitFor, mods]);
+    if (
+      importedMods.length > 0 &&
+      importedMods.every((importedMod) => mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)))
+    ) {
+      dispatch(orderImportedMods());
+      setIsSpinnerOpen(false);
+      setIsOpen(false);
+    }
+  }, [dispatch, importedMods, mods, setIsOpen]);
 
   return (
     <>
-      {props.isOpen && (
+      {isOpen && (
         <>
           <Modal
-            onClose={() => setIsSpinnerOpen(false)}
+            onClose={cancelPendingImport}
             // show={true}
             show={
               isSpinnerOpen &&
-              !subbedModIdsToWaitFor.every((subbedMod) =>
-                mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
-              )
+              !importedMods.every((subbedMod) => mods.some((mod) => sharedModMatchesInstalledMod(subbedMod, mod)))
             }
             size="2xl"
             position="center"
@@ -111,9 +98,9 @@ const ShareMods = memo((props: ShareModsProps) => {
             <Modal.Header>Waiting For Mods To Download...</Modal.Header>
             <Modal.Body>
               <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-                We're now subscribed to the mods, but there is a chance Steam won't download new mods while
-                the mod manager is running. Close the manager, wait for Steam to download the mods and import
-                mods agains if this takes more than 1 min.
+                We're now subscribed to the mods, but there is a chance Steam won't download new mods while the mod
+                manager is running. Close the manager, wait for Steam to download the mods and import mods agains if
+                this takes more than 1 min.
               </p>
               <div className="text-center mt-8">
                 <Spinner color="purple" size="xl" />
@@ -121,7 +108,7 @@ const ShareMods = memo((props: ShareModsProps) => {
             </Modal.Body>
           </Modal>
           <Modal
-            show={props.isOpen}
+            show={isOpen}
             // show={true}
             onClose={onClose}
             size="2xl"
@@ -134,8 +121,8 @@ const ShareMods = memo((props: ShareModsProps) => {
                 <div className="text-lg font-medium text-gray-900 dark:text-white">Export</div>
                 <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
                   <p>
-                    Share the enabled mods and their load order. Pressing the button will copy some text into
-                    your clipboard, share that text with the other person.
+                    Share the enabled mods and their load order. Pressing the button will copy some text into your
+                    clipboard, share that text with the other person.
                   </p>
 
                   <div className="flex mt-4 justify-center">
@@ -151,8 +138,8 @@ const ShareMods = memo((props: ShareModsProps) => {
 
               <div className="pt-10 text-lg font-medium text-gray-900 dark:text-white">Import</div>
               <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300 pb-4">
-                Import shared mods. Paste the exported text the other person has shared with you. This will
-                subscribe to, download and enable those mods.
+                Import shared mods. Workshop mods will be subscribed, downloaded, and enabled. Local packs are enabled
+                when a file with the same name is already installed.
               </p>
               <textarea
                 id="message"

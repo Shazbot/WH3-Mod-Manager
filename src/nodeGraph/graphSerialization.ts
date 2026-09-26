@@ -1,6 +1,13 @@
 import { Edge, Node } from "@xyflow/react";
 
-import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph } from "./types";
+import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph, resolveRadioChoiceId } from "./types";
+import {
+  substituteDeepCloneOptionValues,
+  substituteEditXmlOptionValues,
+  substituteFilterOptionValues,
+  substituteLocRuleValues,
+  substituteTextFileRuleValues,
+} from "./nestedOptionValues";
 
 interface SerializeGraphInput {
   nodes: Node[];
@@ -13,9 +20,24 @@ interface SerializeGraphInput {
 interface PrepareGraphForExecutionInput {
   nodes: Node[];
   edges: Edge[];
+  /** Working pack used by nodes whose "use current pack" option is enabled. */
   currentPackName?: string;
+  /** Pack containing the flow file itself; absent for new and locally loaded graphs. */
+  flowSourcePack?: string;
   flowOptions?: FlowOption[];
 }
+
+/** Transformation fields that accept a flow option placeholder. */
+export const transformationOptionFields = [
+  "rangeStart",
+  "endNumber",
+  "rangeIncrement",
+  "prefix",
+  "suffix",
+  "filterValue",
+  "conditionValue",
+  "replaceValue",
+] as const;
 
 const escapeForRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -42,6 +64,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
       data: {
         label: String(data.label || ""),
         type: String(data.type || "") as FlowNodeType,
+        isDisabled: data.isDisabled === true,
         textValue: maybeString(data.textValue),
         selectedPack: maybeString(data.selectedPack),
         selectedTable: maybeString(data.selectedTable),
@@ -90,13 +113,41 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         schemaColumns: data.schemaColumns || [],
         customRows: data.customRows || [],
         newColumnName: maybeString(data.newColumnName),
+        filename: maybeString(data.filename),
         tsvFileName: maybeString(data.tsvFileName),
         tableName: maybeString(data.tableName),
         sourceInputColumns: data.sourceInputColumns || null,
         indexedTableColumns: data.indexedTableColumns || null,
         openInWindows: data.openInWindows,
+        openInViewer: data.openInViewer,
         customSchemaColumns: data.customSchemaColumns || [],
         customSchemaData: data.customSchemaData || null,
+        cloneTree: data.cloneTree as SerializedNode["data"]["cloneTree"],
+        nameTemplate: maybeString(data.nameTemplate),
+        useModdersPrefix: data.useModdersPrefix as boolean | undefined,
+        moddersPrefix: maybeString(data.moddersPrefix),
+        variantAxes: (data.variantAxes || []) as SerializedNode["data"]["variantAxes"],
+        columnOverrides: (data.columnOverrides || []) as SerializedNode["data"]["columnOverrides"],
+        generateLoc: data.generateLoc as boolean | undefined,
+        autoFollowReferences: data.autoFollowReferences as boolean | undefined,
+        tablesToRemove: data.tablesToRemove || [],
+        locRules: (data.locRules || []) as SerializedNode["data"]["locRules"],
+        textFileRules: (data.textFileRules || []) as SerializedNode["data"]["textFileRules"],
+        textFileFormatter: data.textFileFormatter as SerializedNode["data"]["textFileFormatter"],
+        ignoreFlowSourcePack: data.ignoreFlowSourcePack as boolean | undefined,
+        fileOperations: (data.fileOperations || []) as SerializedNode["data"]["fileOperations"],
+        targetMode: data.targetMode as SerializedNode["data"]["targetMode"],
+        filePath: maybeString(data.filePath),
+        ignoreHierarchy: data.ignoreHierarchy as boolean | undefined,
+        locatorSteps: (data.locatorSteps || []) as SerializedNode["data"]["locatorSteps"],
+        action: data.action as SerializedNode["data"]["action"],
+        attributeEdits: (data.attributeEdits || []) as SerializedNode["data"]["attributeEdits"],
+        replacementXml: maybeString(data.replacementXml),
+        selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
+        flowOptionChecked: data.flowOptionChecked as boolean | undefined,
+        flowOptionKind: data.flowOptionKind as SerializedNode["data"]["flowOptionKind"],
+        flowOptionChoiceId: maybeString(data.flowOptionChoiceId),
+        flowOptionChoices: data.flowOptionChoices as SerializedNode["data"]["flowOptionChoices"],
       },
     };
   });
@@ -158,6 +209,7 @@ export const prepareGraphForExecution = ({
   nodes,
   edges,
   currentPackName,
+  flowSourcePack,
   flowOptions = [],
 }: PrepareGraphForExecutionInput) => {
   const flowExecutionId = new Date().toISOString().slice(0, 19).replace(/:/g, "-").replace("T", "_");
@@ -172,6 +224,22 @@ export const prepareGraphForExecution = ({
       modified = true;
     }
 
+    // Resolved outside the flowOptions guard on purpose: a gate whose option was deleted must fall
+    // back to false rather than keep whatever boolean was last saved with the flow.
+    if (node.type === "conditionalbranch") {
+      const selectedOption = flowOptions.find((option) => option.id === currentData.selectedFlowOptionId);
+      const isChecked = selectedOption?.type === "checkbox" ? selectedOption.value === true : false;
+      const isRadio = selectedOption?.type === "radio";
+
+      nodeData.flowOptionKind = isRadio ? "radio" : "checkbox";
+      nodeData.flowOptionChoices = isRadio ? selectedOption.choices : [];
+      nodeData.flowOptionChoiceId = isRadio ? resolveRadioChoiceId(selectedOption) : "";
+      if (nodeData.flowOptionChecked !== isChecked) {
+        nodeData.flowOptionChecked = isChecked;
+      }
+      modified = true;
+    }
+
     if (currentPackName && currentData.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {
         nodeData.selectedPack = currentPackName;
@@ -183,7 +251,17 @@ export const prepareGraphForExecution = ({
     }
 
     if (flowOptions.length > 0) {
-      const textFields = ["textValue", "pattern", "beforeText", "afterText", "joinSeparator", "packName", "packedFileName"];
+      const textFields = [
+        "textValue",
+        "pattern",
+        "beforeText",
+        "afterText",
+        "joinSeparator",
+        "packName",
+        "packedFileName",
+        "filePath",
+        "replacementXml",
+      ];
 
       for (const fieldName of textFields) {
         const fieldValue = nodeData[fieldName];
@@ -196,6 +274,41 @@ export const prepareGraphForExecution = ({
         }
       }
 
+      if (
+        node.type === "edittextfile" &&
+        substituteTextFileRuleValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
+      }
+
+      if (
+        node.type === "editxmlfile" &&
+        substituteEditXmlOptionValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
+      }
+
+      if (
+        node.type === "editloctext" &&
+        substituteLocRuleValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
+      }
+
+      if (
+        node.type === "filter" &&
+        substituteFilterOptionValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
+      }
+
+      if (
+        node.type === "deepclone" &&
+        substituteDeepCloneOptionValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
+      }
+
       if (Array.isArray(nodeData.transformations)) {
         nodeData.transformations = nodeData.transformations.map((transformation) => {
           if (!transformation || typeof transformation !== "object") {
@@ -205,7 +318,7 @@ export const prepareGraphForExecution = ({
           let transformationModified = false;
           const nextTransformation = { ...(transformation as Record<string, unknown>) };
 
-          for (const fieldName of ["rangeStart", "endNumber", "rangeIncrement", "prefix", "suffix", "filterValue"]) {
+          for (const fieldName of transformationOptionFields) {
             const fieldValue = nextTransformation[fieldName];
             if (typeof fieldValue === "string" && fieldValue) {
               const nextValue = replaceFlowOptionPlaceholders(fieldValue, flowOptions);
@@ -228,8 +341,18 @@ export const prepareGraphForExecution = ({
     return modified ? { ...node, data: nodeData } : node;
   });
 
+  const serializedNodes = serializeReactFlowNodes(preparedNodes);
+  if (flowSourcePack) {
+    for (const node of serializedNodes) {
+      if (node.type === "edittextfile") {
+        // Execution-only context: serializeNodeGraphState deliberately does not persist this path.
+        node.data.flowSourcePack = flowSourcePack;
+      }
+    }
+  }
+
   return {
-    nodes: serializeReactFlowNodes(preparedNodes),
+    nodes: serializedNodes,
     connections: serializeReactFlowEdges(preparedNodes, edges),
   };
 };
@@ -274,9 +397,7 @@ export const deserializeNodeGraph = (jsonContent: string) => {
   }));
 
   const maxNodeId = Math.max(
-    ...serializedGraph.nodes
-      .map((node) => parseInt(node.id.replace("node_", ""), 10))
-      .filter((id) => !isNaN(id)),
+    ...serializedGraph.nodes.map((node) => parseInt(node.id.replace("node_", ""), 10)).filter((id) => !isNaN(id)),
     -1,
   );
 

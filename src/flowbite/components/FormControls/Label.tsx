@@ -26,10 +26,7 @@ export const Label: FC<LabelProps> = ({
   const theme = useTheme().theme.formControls.label;
   const theirProps = excludeClassName(props);
   return (
-    <label
-      className={classNames(theme.base, theme.colors[color], disabled ?? theme.disabled)}
-      {...theirProps}
-    >
+    <label className={classNames(theme.base, theme.colors[color], disabled ?? theme.disabled)} {...theirProps}>
       {value ?? children ?? ""}
     </label>
   );

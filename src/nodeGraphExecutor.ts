@@ -22,13 +22,37 @@ interface NodeExecutionResult {
   data?: any;
   elseData?: any;
   multiOutputs?: Record<string, any>;
+  activeOutputHandles?: string[];
   error?: string;
+  warnings?: string[];
 }
+/** Connections are not guaranteed to carry an id, so identity falls back to their endpoints. */
+const getConnectionKey = (connection: SerializedConnection): string =>
+  connection.id ||
+  `${connection.sourceId}|${connection.sourceHandle ?? ""}|${connection.targetId}|${connection.targetHandle ?? ""}`;
+
 const isMultiOutputNodeType = (nodeType?: string): boolean =>
   nodeType === "generaterows" || nodeType === "generaterowsschema" || nodeType === "multifilter";
-const serializeNodeConfigForExecution = (node: SerializedNode): string => {
+
+const memorySnapshot = () => {
+  const memory = process.memoryUsage();
+  return {
+    rss: memory.rss,
+    heapUsed: memory.heapUsed,
+    heapTotal: memory.heapTotal,
+    external: memory.external,
+    arrayBuffers: memory.arrayBuffers,
+  };
+};
+
+const formatMemoryMb = (bytes: number): string => `${(bytes / 1048576).toFixed(1)}MB`;
+/** Exported for tests: every save-node option has to survive this hop on a manual run. */
+export const serializeNodeConfigForExecution = (node: SerializedNode): string => {
   if (node.type === "packfilesdropdown") {
     return node.data.selectedPack || "";
+  }
+  if (node.type === "removepacksource") {
+    return JSON.stringify({ selectedPack: node.data.selectedPack || "" });
   }
   if (node.type === "tableselectiondropdown") {
     return node.data.selectedTable || "";
@@ -64,6 +88,7 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
     return JSON.stringify({
       selectedReverseTable: (node.data as any).selectedReverseTable || "",
       includeBaseGame: (node.data as any).includeBaseGame !== false,
+      connectedTableName: (node.data as any).connectedTableName || "",
     });
   }
   if (node.type === "groupedcolumnstotext") {
@@ -78,6 +103,8 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       packedFileName: (node.data as any).packedFileName || "",
       additionalConfig: node.data.textValue || "",
       flowExecutionId: (node.data as any).flowExecutionId || "",
+      openInWindows: (node.data as any).openInWindows ?? false,
+      openInViewer: (node.data as any).openInViewer ?? false,
     });
   }
   if (node.type === "textsurround") {
@@ -155,6 +182,7 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
     return JSON.stringify({
       filename: (node.data as any).filename || "",
       openInWindows: (node.data as any).openInWindows ?? false,
+      openInViewer: (node.data as any).openInViewer ?? false,
     });
   }
   if (node.type === "getcountercolumn") {
@@ -178,6 +206,54 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
     return JSON.stringify({
       customRows: (node.data as any).customRows || [],
       tableName: (node.data as any).tableName || "",
+    });
+  }
+  if (node.type === "packfileoperations") {
+    return JSON.stringify({ fileOperations: (node.data as any).fileOperations || [] });
+  }
+  if (node.type === "edittextfile") {
+    return JSON.stringify({
+      textFileRules: (node.data as any).textFileRules || [],
+      textFileFormatter: (node.data as any).textFileFormatter || "none",
+      ignoreFlowSourcePack: (node.data as any).ignoreFlowSourcePack === true,
+      flowSourcePack: (node.data as any).flowSourcePack || "",
+    });
+  }
+  if (node.type === "editxmlfile") {
+    return JSON.stringify({
+      targetMode: (node.data as any).targetMode || "path",
+      filePath: (node.data as any).filePath || "",
+      ignoreHierarchy: (node.data as any).ignoreHierarchy !== false,
+      locatorSteps: (node.data as any).locatorSteps || [],
+      action: (node.data as any).action || "setAttributes",
+      attributeEdits: (node.data as any).attributeEdits || [],
+      replacementXml: (node.data as any).replacementXml || "",
+    });
+  }
+  if (node.type === "editloctext") {
+    return JSON.stringify({ locRules: (node.data as any).locRules || [] });
+  }
+  if (node.type === "removetables") {
+    return JSON.stringify({ tablesToRemove: (node.data as any).tablesToRemove || [] });
+  }
+  if (node.type === "conditionalbranch") {
+    return JSON.stringify({
+      selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",
+      flowOptionChecked: (node.data as any).flowOptionChecked === true,
+      flowOptionKind: (node.data as any).flowOptionKind || "checkbox",
+      flowOptionChoiceId: (node.data as any).flowOptionChoiceId || "",
+    });
+  }
+  if (node.type === "deepclone") {
+    return JSON.stringify({
+      cloneTree: (node.data as any).cloneTree,
+      nameTemplate: (node.data as any).nameTemplate || "{original}{variant}",
+      useModdersPrefix: (node.data as any).useModdersPrefix !== false,
+      moddersPrefix: (node.data as any).moddersPrefix || "",
+      variantAxes: (node.data as any).variantAxes || [],
+      columnOverrides: (node.data as any).columnOverrides || [],
+      generateLoc: (node.data as any).generateLoc !== false,
+      autoFollowReferences: (node.data as any).autoFollowReferences !== false,
     });
   }
   return node.data.textValue || "";
@@ -209,7 +285,7 @@ const mergeTableSelectionInputs = (
   executionResults: Map<string, NodeExecutionResult>,
   nodeMap: Map<string, SerializedNode>,
 ) => {
-  const mergedSourceFiles: any[] = [];
+  const mergedSourceFilesByPath = new Map<string, any>();
   const allTables: any[] = [];
   for (const connection of targetIncomingConnections) {
     const sourceData = extractConnectionData(connection, executionResults, nodeMap);
@@ -218,7 +294,11 @@ const mergeTableSelectionInputs = (
       allTables.push(...sourceData.tables);
     }
     if (sourceData.sourceFiles) {
-      mergedSourceFiles.push(...sourceData.sourceFiles);
+      for (const sourceFile of sourceData.sourceFiles) {
+        if (!mergedSourceFilesByPath.has(sourceFile.path)) {
+          mergedSourceFilesByPath.set(sourceFile.path, sourceFile);
+        }
+      }
     }
   }
   if (allTables.length === 0) {
@@ -227,7 +307,7 @@ const mergeTableSelectionInputs = (
   return {
     type: "TableSelection",
     tables: allTables,
-    sourceFiles: mergedSourceFiles,
+    sourceFiles: [...mergedSourceFilesByPath.values()],
     tableCount: allTables.length,
   };
 };
@@ -251,26 +331,32 @@ const buildInputDataForTarget = (
   if (targetNode.type === "savechanges") {
     const allTables: any[] = [];
     const allSourceFiles: any[] = [];
-    let changedColumnSelectionData = null;
+    const changedColumnSelectionInputs: any[] = [];
+    let sawTableSelection = false;
     let textData = null;
     for (const connection of targetIncomingConnections) {
       const inputData = extractConnectionData(connection, executionResults, nodeMap);
       if (inputData?.type === "Text" && !textData) {
         textData = inputData;
       } else if (inputData?.type === "TableSelection") {
+        sawTableSelection = true;
         if (inputData.tables) {
           allTables.push(...inputData.tables);
         }
         if (inputData.sourceFiles) {
           allSourceFiles.push(...inputData.sourceFiles);
         }
-      } else if (inputData?.type === "ChangedColumnSelection" && !changedColumnSelectionData) {
-        changedColumnSelectionData = inputData;
+      } else if (inputData?.type === "ChangedColumnSelection") {
+        changedColumnSelectionInputs.push(inputData);
       }
     }
     if (textData) return textData;
-    if (changedColumnSelectionData) return changedColumnSelectionData;
-    if (allTables.length > 0) {
+    if (changedColumnSelectionInputs.length === 1) return changedColumnSelectionInputs[0];
+    if (changedColumnSelectionInputs.length > 1) return changedColumnSelectionInputs;
+    // An empty selection is meaningful: an upstream edit may have deliberately skipped every file
+    // because its guard text was already present. Preserve the selection so Save Changes can treat
+    // that outcome as a successful no-op instead of receiving null and reporting invalid input.
+    if (sawTableSelection) {
       return {
         type: "TableSelection",
         tables: allTables,
@@ -305,7 +391,8 @@ const buildInputDataForTarget = (
   if (
     (targetNode.type === "generaterows" ||
       targetNode.type === "generaterowsschema" ||
-      targetNode.type === "dumptotsv") &&
+      targetNode.type === "dumptotsv" ||
+      targetNode.type === "combinesametables") &&
     targetIncomingConnections.length > 1
   ) {
     return mergeTableSelectionInputs(targetIncomingConnections, executionResults, nodeMap);
@@ -313,11 +400,16 @@ const buildInputDataForTarget = (
   if (targetIncomingConnections.length === 0) {
     return null;
   }
-  return extractConnectionData(targetIncomingConnections[targetIncomingConnections.length - 1], executionResults, nodeMap);
+  return extractConnectionData(
+    targetIncomingConnections[targetIncomingConnections.length - 1],
+    executionResults,
+    nodeMap,
+  );
 };
 export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Promise<NodeGraphExecutionResult> => {
   const { nodes, connections, nodeConfigs, executionContext, resetCounters = true } = request;
   const startTime = performance.now();
+  let peakMemory = executionContext?.isDebug ? memorySnapshot() : undefined;
   console.log(`Starting node graph execution: ${nodes.length} nodes, ${connections.length} connections`);
   if (resetCounters) {
     resetCounterTracking();
@@ -359,6 +451,44 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
     );
     const executionResults = new Map<string, NodeExecutionResult>();
     const executed = new Set<string>();
+    /** Edges pruned by a control-flow node, plus every edge leaving a node they made unreachable. */
+    const deadConnectionKeys = new Set<string>();
+    /** Nodes that can never run because every path into them was pruned. */
+    const skippedNodes = new Set<string>();
+
+    /**
+     * Marks an edge dead and, when that leaves its target with no live way in, marks the target
+     * skipped and kills its own outgoing edges too. That is what prunes a whole branch.
+     *
+     * A node fed by both branches keeps a live edge, so it still runs once that edge's source
+     * completes - a join must not be blocked forever by the branch that was not taken.
+     */
+    const markConnectionDead = (connection: SerializedConnection) => {
+      const connectionKey = getConnectionKey(connection);
+      if (deadConnectionKeys.has(connectionKey)) return;
+      deadConnectionKeys.add(connectionKey);
+
+      const targetId = connection.targetId;
+      if (skippedNodes.has(targetId) || executed.has(targetId)) return;
+
+      const targetIncoming = incomingConnectionsByTarget.get(targetId) || [];
+      const hasLiveWayIn = targetIncoming.some(
+        (incomingConnection) => !deadConnectionKeys.has(getConnectionKey(incomingConnection)),
+      );
+      if (hasLiveWayIn) return;
+
+      skippedNodes.add(targetId);
+      flowExecutionDebugLog(executionContext, `Skipping unreachable node ${targetId}`);
+      for (const outgoing of outgoingConnectionsBySource.get(targetId) || []) {
+        markConnectionDead(outgoing);
+      }
+    };
+
+    /** A dependency is satisfied when it succeeded, or when its edge was pruned and carries nothing. */
+    const isDependencySatisfied = (incomingConnection: SerializedConnection) =>
+      deadConnectionKeys.has(getConnectionKey(incomingConnection)) ||
+      (executed.has(incomingConnection.sourceId) &&
+        executionResults.get(incomingConnection.sourceId)?.success === true);
     const executionQueue = startingNodes.map((node) => ({ node, inputData: null as any }));
     let queueIndex = 0;
     while (queueIndex < executionQueue.length) {
@@ -366,8 +496,14 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       if (executed.has(node.id)) {
         continue;
       }
+      if (node.data.isDisabled === true) {
+        flowExecutionDebugLog(executionContext, `Skipping disabled node ${node.id} (${node.type})`);
+        executed.add(node.id);
+        continue;
+      }
       try {
         flowExecutionDebugLog(executionContext, `Executing node ${node.id} (${node.type})`);
+        const nodeStartedAt = performance.now();
         const config = nodeConfigs?.[node.id];
         const textValue =
           config === undefined ? serializeNodeConfigForExecution(node) : typeof config === "string" ? config : "";
@@ -379,6 +515,27 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
           config,
           executionContext,
         });
+        if (executionContext?.isDebug) {
+          const memory = memorySnapshot();
+          peakMemory = peakMemory
+            ? {
+                rss: Math.max(peakMemory.rss, memory.rss),
+                heapUsed: Math.max(peakMemory.heapUsed, memory.heapUsed),
+                heapTotal: Math.max(peakMemory.heapTotal, memory.heapTotal),
+                external: Math.max(peakMemory.external, memory.external),
+                arrayBuffers: Math.max(peakMemory.arrayBuffers, memory.arrayBuffers),
+              }
+            : memory;
+          flowExecutionDebugLog(
+            executionContext,
+            `[flow memory] ${node.id}(${node.type}) ${(performance.now() - nodeStartedAt).toFixed(1)}ms` +
+              ` rss=${formatMemoryMb(memory.rss)} heap=${formatMemoryMb(memory.heapUsed)}` +
+              ` external=${formatMemoryMb(memory.external)} arrayBuffers=${formatMemoryMb(memory.arrayBuffers)}` +
+              ` indexes=${executionContext.packIndexCache.size}` +
+              ` tables=${executionContext.tableFilesByPackAndTable.size}` +
+              ` retainedResults=${executionResults.size + 1}`,
+          );
+        }
         executionResults.set(node.id, result);
         executed.add(node.id);
         if (!result.success) {
@@ -386,22 +543,41 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
           continue;
         }
         const outgoingConnections = outgoingConnectionsBySource.get(node.id) || [];
+
+        // A control-flow node reports which of its handles the run continues through. Prune the
+        // other handles first, so the dependency check below already knows those edges are dead.
+        if (result.activeOutputHandles) {
+          for (const connection of outgoingConnections) {
+            if (result.activeOutputHandles.includes(connection.sourceHandle ?? "")) continue;
+            flowExecutionDebugLog(
+              executionContext,
+              `Skipping branch ${node.id}:${connection.sourceHandle} -> ${connection.targetId}`,
+            );
+            markConnectionDead(connection);
+          }
+        }
+
         for (const connection of outgoingConnections) {
+          if (deadConnectionKeys.has(getConnectionKey(connection))) {
+            continue;
+          }
           const targetNode = nodeMap.get(connection.targetId);
-          if (!targetNode || executed.has(targetNode.id)) {
+          if (!targetNode || executed.has(targetNode.id) || skippedNodes.has(targetNode.id)) {
             continue;
           }
           const targetIncomingConnections = incomingConnectionsByTarget.get(targetNode.id) || [];
-          const allDependenciesCompleted = targetIncomingConnections.every(
-            (incomingConnection) =>
-              executed.has(incomingConnection.sourceId) && executionResults.get(incomingConnection.sourceId)?.success,
-          );
+          const allDependenciesCompleted = targetIncomingConnections.every(isDependencySatisfied);
           if (!allDependenciesCompleted) {
             continue;
           }
+          // Dead edges carry no data, and counting them would push a join node down the
+          // multiple-inputs path with a null in the list.
+          const liveIncomingConnections = targetIncomingConnections.filter(
+            (incomingConnection) => !deadConnectionKeys.has(getConnectionKey(incomingConnection)),
+          );
           executionQueue.push({
             node: targetNode,
-            inputData: buildInputDataForTarget(targetNode, targetIncomingConnections, executionResults, nodeMap),
+            inputData: buildInputDataForTarget(targetNode, liveIncomingConnections, executionResults, nodeMap),
           });
         }
       } catch (error) {
@@ -419,8 +595,18 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
     console.log(
       `Node graph execution finished in ${elapsedTime.toFixed(2)}ms: ${successCount}/${executionResults.size} nodes succeeded`,
     );
+    if (executionContext?.isDebug && peakMemory) {
+      flowExecutionDebugLog(
+        executionContext,
+        `[flow memory] peak rss=${formatMemoryMb(peakMemory.rss)}` +
+          ` heap=${formatMemoryMb(peakMemory.heapUsed)}` +
+          ` heapTotal=${formatMemoryMb(peakMemory.heapTotal)}` +
+          ` external=${formatMemoryMb(peakMemory.external)}` +
+          ` arrayBuffers=${formatMemoryMb(peakMemory.arrayBuffers)}`,
+      );
+    }
     return {
-      success: successCount > 0,
+      success: failureCount === 0,
       executionResults,
       totalExecuted: executionResults.size,
       successCount,

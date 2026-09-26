@@ -1,7 +1,7 @@
 import { diff } from "deep-object-diff";
-import { getDBVersion, getDBVersionByTableName, matchDBFileRegex } from "../packFileSerializer";
+import { getDBVersion, getDBVersionByTableName } from "../packFileSerializer";
 import { Pack, PackTableCollision, PackedFile } from "../packFileTypes";
-import { getDBName } from "../utility/packFileHelpers";
+import { getDBName, parseLiveDBTablePath } from "../utility/packFileHelpers";
 import { collator } from "../utility/packFileSorting";
 import * as fs from "fs";
 import appData from "../appData";
@@ -15,22 +15,16 @@ export function findPackTableCollisionsBetweenPacks(
     if (!packFile.schemaFields) continue;
     if (packFile.name.endsWith(".rpfm_reserved")) continue;
 
-    const dbNameMatch1 = packFile.name.match(matchDBFileRegex);
-    // console.log("dbNameMatch1", dbNameMatch1);
-    if (dbNameMatch1 == null) continue;
-    const dbName1 = dbNameMatch1[1];
-    // console.log("dbName1", dbName1);
+    // Only the live db folder: a spare copy elsewhere in a pack is not loaded by the game, so it
+    // cannot collide with anything and must not be reported as a conflict.
+    const dbName1 = parseLiveDBTablePath(packFile.name)?.dbName;
     if (dbName1 == null) continue;
 
     for (const packTwoFile of packTwo.packedFiles) {
       if (!packTwoFile.schemaFields) continue;
       if (packTwoFile.name.endsWith(".rpfm_reserved")) continue;
 
-      const dbNameMatch2 = packTwoFile.name.match(matchDBFileRegex);
-      // console.log("dbNameMatch2", dbNameMatch2);
-      if (dbNameMatch2 == null) continue;
-      const dbName2 = dbNameMatch2[1];
-      // console.log("dbName2", dbName2);
+      const dbName2 = parseLiveDBTablePath(packTwoFile.name)?.dbName;
       if (dbName2 == null) continue;
 
       try {
@@ -63,8 +57,7 @@ export function findPackTableCollisionsBetweenPacks(
           for (let ii = 0; ii < v1Keys.length; ii++) {
             const v1Fields = v1Keys[ii].fields;
             const v1 =
-              (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) ||
-              v1Fields[0]?.val?.toString();
+              (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) || v1Fields[0]?.val?.toString();
             for (let jj = 0; jj < v2Keys.length; jj++) {
               const v2Fields = v2Keys[jj].fields;
               const v2 =
@@ -141,10 +134,8 @@ export function getCollisionsBetweenSameTables(
   if (!packFileTwo.schemaFields) return;
 
   // console.log("MATCHED", dbName1, dbName2);
-  const firstVer =
-    (dbNameOne && getDBVersionByTableName(packFileOne, dbNameOne)) || getDBVersion(packFileOne);
-  const secondVer =
-    (dbNameTwo && getDBVersionByTableName(packFileTwo, dbNameTwo)) || getDBVersion(packFileTwo);
+  const firstVer = (dbNameOne && getDBVersionByTableName(packFileOne, dbNameOne)) || getDBVersion(packFileOne);
+  const secondVer = (dbNameTwo && getDBVersionByTableName(packFileTwo, dbNameTwo)) || getDBVersion(packFileTwo);
   // console.log("ver", firstVer, secondVer);
   if (firstVer == null || secondVer == null) return;
 
@@ -169,13 +160,11 @@ export function getCollisionsBetweenSameTables(
 
   for (let ii = 0; ii < v1Keys.length; ii++) {
     const v1Fields = v1Keys[ii].fields;
-    const v1 =
-      (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) || v1Fields[0]?.val?.toString();
+    const v1 = (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) || v1Fields[0]?.val?.toString();
     for (let jj = 0; jj < v2Keys.length; jj++) {
       const v2Fields = v2Keys[jj].fields;
       const v2 =
-        (v2Fields[1] && v2Fields[1].val != null && v2Fields[1].val.toString()) ||
-        (v2Fields[0]?.val?.toString() ?? "");
+        (v2Fields[1] && v2Fields[1].val != null && v2Fields[1].val.toString()) || (v2Fields[0]?.val?.toString() ?? "");
 
       if (v1 === v2) {
         if (
@@ -316,20 +305,13 @@ export function findPackTableCollisionsBetweenPacksOptimized(
   }
 }
 
-export function removeFromPackTableCollisions(
-  packTableCollisions: PackTableCollision[],
-  removedPackName: string,
-) {
+export function removeFromPackTableCollisions(packTableCollisions: PackTableCollision[], removedPackName: string) {
   return packTableCollisions.filter((collision) => {
     return collision.firstPackName != removedPackName && collision.secondPackName != removedPackName;
   });
 }
 
-export function appendPackTableCollisions(
-  packsData: Pack[],
-  packTableCollisions: PackTableCollision[],
-  newPack: Pack,
-) {
+export function appendPackTableCollisions(packsData: Pack[], packTableCollisions: PackTableCollision[], newPack: Pack) {
   console.time("appendPackTableCollisions");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
@@ -349,18 +331,99 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
 
   console.time("findPackTableCollisionsBetweenPacksOptimized");
   if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "TableKeys");
+
+  interface TableKeyOccurrence {
+    packIndex: number;
+    packedFile: PackedFile;
+    keyFieldName: string;
+  }
+
+  // table -> key value -> files defining it. This turns row matching from a cross-product between
+  // every pair of same-name tables into one pass over keys plus the collisions that must be emitted.
+  const occurrencesByTableAndKey = new Map<string, Map<string, TableKeyOccurrence[]>>();
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
-    for (let j = i + 1; j < packsData.length; j++) {
-      const packTwo = packsData[j];
-      if (pack === packTwo) continue;
-      if (pack.name === packTwo.name) continue;
-      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
-        continue;
+    if (!appData.allVanillaPackNames.has(pack.name)) {
+      for (const packedFile of pack.packedFiles) {
+        if (!packedFile.schemaFields || packedFile.name.endsWith(".rpfm_reserved")) continue;
+        const dbName = parseLiveDBTablePath(packedFile.name)?.dbName;
+        if (!dbName) continue;
 
-      findPackTableCollisionsBetweenPacksOptimized(pack, packTwo, packTableCollisions);
+        const dbVersion = getDBVersionByTableName(packedFile, dbName);
+        if (!dbVersion) continue;
+        const keyFields = dbVersion.fields.filter((field) => field.is_key);
+        if (keyFields.length !== 1) continue;
+
+        const keyValues = new Set<string>();
+        for (const schemaField of packedFile.schemaFields) {
+          if (!schemaField.isKey) continue;
+          const fields = schemaField.fields;
+          const value = (fields[1]?.val != null && fields[1].val.toString()) || fields[0]?.val?.toString();
+          if (value != null) keyValues.add(value);
+        }
+
+        let occurrencesByKey = occurrencesByTableAndKey.get(dbName);
+        if (!occurrencesByKey) {
+          occurrencesByKey = new Map<string, TableKeyOccurrence[]>();
+          occurrencesByTableAndKey.set(dbName, occurrencesByKey);
+        }
+        for (const value of keyValues) {
+          const occurrences = occurrencesByKey.get(value) || [];
+          occurrences.push({ packIndex: i, packedFile, keyFieldName: keyFields[0].name });
+          occurrencesByKey.set(value, occurrences);
+        }
+      }
     }
     if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "TableKeys");
+  }
+
+  const emittedCollisions = new Set<string>();
+  const appendCollision = (
+    firstOccurrence: TableKeyOccurrence,
+    secondOccurrence: TableKeyOccurrence,
+    keyFieldName: string,
+    value: string,
+  ) => {
+    const firstPack = packsData[firstOccurrence.packIndex];
+    const secondPack = packsData[secondOccurrence.packIndex];
+    const collisionKey = JSON.stringify([
+      firstPack.name,
+      secondPack.name,
+      firstOccurrence.packedFile.name,
+      secondOccurrence.packedFile.name,
+      keyFieldName,
+      value,
+    ]);
+    if (emittedCollisions.has(collisionKey)) return;
+    emittedCollisions.add(collisionKey);
+    packTableCollisions.push({
+      firstPackName: firstPack.name,
+      secondPackName: secondPack.name,
+      fileName: firstOccurrence.packedFile.name,
+      secondFileName: secondOccurrence.packedFile.name,
+      key: keyFieldName,
+      value,
+    });
+  };
+
+  for (const occurrencesByKey of occurrencesByTableAndKey.values()) {
+    for (const [value, occurrences] of occurrencesByKey) {
+      for (let firstIndex = 0; firstIndex < occurrences.length; firstIndex++) {
+        const firstOccurrence = occurrences[firstIndex];
+        const firstPack = packsData[firstOccurrence.packIndex];
+        for (let secondIndex = firstIndex + 1; secondIndex < occurrences.length; secondIndex++) {
+          const secondOccurrence = occurrences[secondIndex];
+          const secondPack = packsData[secondOccurrence.packIndex];
+          if (firstOccurrence.packIndex === secondOccurrence.packIndex || firstPack.name === secondPack.name) {
+            continue;
+          }
+          // The pairwise implementation resolved the key from the first pack and used the same
+          // field name for both directional records. Retain that detail if mixed schemas are loaded.
+          appendCollision(firstOccurrence, secondOccurrence, firstOccurrence.keyFieldName, value);
+          appendCollision(secondOccurrence, firstOccurrence, firstOccurrence.keyFieldName, value);
+        }
+      }
+    }
   }
   console.timeEnd("findPackTableCollisionsBetweenPacksOptimized");
 
@@ -381,8 +444,7 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
-        continue;
+      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name)) continue;
 
       findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
     }

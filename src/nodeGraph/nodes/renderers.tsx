@@ -1,17 +1,31 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
 
+import { Modal } from "../../flowbite";
 import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
 import { SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { SupportedGames } from "../../supportedGames";
 import { getTableVersion } from "../connectionRules";
 import {
+  createRootTreeNode,
+  expandRangeAxis,
+  expandTreeNode,
+  findTemplatesMissingVariant,
+  getSelectedCloneTables,
+} from "../deepCloneTree";
+import { validateLookupSchemaReference } from "../lookupSchemaValidation";
+import { isSingleXmlElementTemplate, isValidXmlNameTemplate } from "../editXmlFileValidation";
+import {
   dispatchNodeDataUpdate,
   nodeEditorDebugLog,
+  useNodeEditorPanel,
   stopWheelPropagation,
   useDefaultTableVersions,
+  useFlowOptions,
 } from "./shared";
+import { getFilterRegexError, getLastFilterMatchMode, normalizeFilterMatchMode } from "../types";
+import type { FilterMatchMode, FilterRow } from "../types";
 import type {
   AddColumnTransformation,
   AddNewColumnNodeData,
@@ -21,13 +35,26 @@ import type {
   ColumnSelectionDropdownNodeData,
   ColumnSelectionNodeData,
   ColumnTransformation,
+  CombineSameTablesNodeData,
   CustomRowsInputNodeData,
+  ConditionalBranchNodeData,
   CustomSchemaNodeData,
+  EditLocTextNodeData,
+  EditTextFileNodeData,
+  EditXmlFileNodeData,
+  LocTextRule,
+  PackFileOperationRuleData,
+  PackFileOperationsNodeData,
+  TextFileEditRuleData,
+  RemoveTablesNodeData,
   DeduplicateNodeData,
+  DeepCloneNodeData,
+  DeepCloneOverride,
+  DeepCloneTreeNode,
+  DeepCloneVariantAxis,
   DumpToTSVNodeData,
   ExtractTableNodeData,
   FilterNodeData,
-  FilterRow,
   FlattenNestedNodeData,
   GenerateRowsNodeData,
   GetCounterColumnNodeData,
@@ -46,6 +73,7 @@ import type {
   OutputTableConfig,
   PackFilesDropdownNodeData,
   PackFilesNodeData,
+  RemovePackSourceNodeData,
   ReadTSVFromPackNodeData,
   ReferenceTableLookupNodeData,
   ReverseReferenceLookupNodeData,
@@ -54,9 +82,16 @@ import type {
   TableSelectionNodeData,
   TextJoinNodeData,
   TextSurroundNodeData,
+  XmlAttributeEdit,
+  XmlAttributeEditOperation,
+  XmlLocatorAttribute,
+  XmlLocatorStep,
 } from "./types";
+import { targetHasPathButMatchesName } from "./types";
 
 const collator = new Intl.Collator("en");
+
+const FILTER_MATCH_MODES: FilterMatchMode[] = ["full", "partial", "regex"];
 
 export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
   const localized = useLocalizations();
@@ -121,8 +156,7 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
 
   return (
     <div className="bg-gray-700 border-2 border-cyan-500 rounded-lg p-4 min-w-[200px]">
-      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-cyan-500" />
-
+      {/* No input handle: this node reads a pack by name, so nothing upstream feeds it. */}
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <select
@@ -140,12 +174,7 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
 
       <div className="mt-2">
         <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={useCurrentPack}
-            onChange={handleCheckboxChange}
-            className="w-4 h-4"
-          />
+          <input type="checkbox" checked={useCurrentPack} onChange={handleCheckboxChange} className="w-4 h-4" />
           <span className="text-xs text-gray-300">
             {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
           </span>
@@ -154,12 +183,87 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
 
       <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} PackFiles</div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-green-500"
-        data-output-type="PackFiles"
-      />
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-green-500" data-output-type="PackFiles" />
+    </div>
+  );
+};
+
+export const RemovePackSourceNode: React.FC<{ data: RemovePackSourceNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const currentGame = useAppSelector((state) => state.app.currentGame);
+  const baseGamePackNames: Record<SupportedGames, string> = {
+    wh2: "data.pack",
+    wh3: "db.pack",
+    threeKingdoms: "database.pack",
+    attila: "data.pack",
+    troy: "data.pack",
+    pharaoh: "data.pack",
+    dynasties: "data_db.pack",
+    rome2: "data_rome2.pack",
+    shogun2: "data.exe",
+  };
+  const baseGamePack = baseGamePackNames[currentGame];
+  const modsFromState = useAppSelector((state) => state.app.currentPreset.mods);
+  const modsWithBaseGame = modsFromState.some((mod) => mod.name === baseGamePack)
+    ? modsFromState.slice()
+    : [{ name: baseGamePack, humanName: baseGamePack, path: "" }, ...modsFromState];
+  const allMods = modsWithBaseGame.sort((firstMod, secondMod) => {
+    if (firstMod.name === baseGamePack) return -1;
+    if (secondMod.name === baseGamePack) return 1;
+    return collator.compare(firstMod.humanName || firstMod.name, secondMod.humanName || secondMod.name);
+  });
+
+  const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
+  const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
+
+  useEffect(() => setSelectedPack(data.selectedPack || ""), [data.selectedPack]);
+  useEffect(() => setUseCurrentPack(data.useCurrentPack || false), [data.useCurrentPack]);
+
+  const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedPack(newValue);
+    dispatchNodeDataUpdate(data, { nodeId: id, selectedPack: newValue });
+  };
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setUseCurrentPack(newValue);
+    dispatchNodeDataUpdate(data, { nodeId: id, useCurrentPack: newValue });
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-rose-500 rounded-lg p-4 min-w-[220px]">
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" data-input-type="PackFiles" />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <select
+        value={selectedPack}
+        onChange={handleDropdownChange}
+        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-rose-400"
+      >
+        <option value="">{localized.nodeEditorSelectPack || "Select a pack..."}</option>
+        {allMods.map((mod) => (
+          <option key={mod.name} value={mod.name}>
+            {mod.humanName || mod.name}
+          </option>
+        ))}
+      </select>
+
+      <div className="mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={useCurrentPack} onChange={handleCheckboxChange} className="w-4 h-4" />
+          <span className="text-xs text-gray-300">
+            {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorInput || "Input:"} PackFiles → {localized.nodeEditorOutput || "Output:"} PackFiles
+      </div>
+
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-green-500" data-output-type="PackFiles" />
     </div>
   );
 };
@@ -207,16 +311,10 @@ export const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: st
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} PackFiles (
-        {localized.nodeEditorAllEnabledMods || "All Enabled Mods"})
+        {localized.nodeEditorOutput || "Output:"} PackFiles ({localized.nodeEditorAllEnabledMods || "All Enabled Mods"})
       </div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-green-500"
-        data-output-type="PackFiles"
-      />
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-green-500" data-output-type="PackFiles" />
     </div>
   );
 };
@@ -246,12 +344,7 @@ export const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdown
 
   return (
     <div className="bg-gray-700 border-2 border-orange-500 rounded-lg p-4 min-w-[200px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-blue-500"
-        data-input-type="PackFiles"
-      />
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" data-input-type="PackFiles" />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
@@ -275,9 +368,7 @@ export const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdown
         )}
       </select>
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} TableSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} TableSelection</div>
 
       <Handle
         type="source"
@@ -319,8 +410,7 @@ export const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = 
 
   return (
     <div className="bg-gray-700 border-2 border-blue-500 rounded-lg p-4 min-w-[200px]">
-      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" />
-
+      {/* No input handle: this node reads a pack by name, so nothing upstream feeds it. */}
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <textarea
@@ -332,12 +422,7 @@ export const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = 
 
       <div className="mt-2">
         <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={useCurrentPack}
-            onChange={handleCheckboxChange}
-            className="w-4 h-4"
-          />
+          <input type="checkbox" checked={useCurrentPack} onChange={handleCheckboxChange} className="w-4 h-4" />
           <span className="text-xs text-gray-300">
             {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
           </span>
@@ -346,12 +431,7 @@ export const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = 
 
       <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} PackFiles</div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-green-500"
-        data-output-type="PackFiles"
-      />
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-green-500" data-output-type="PackFiles" />
     </div>
   );
 };
@@ -374,12 +454,7 @@ export const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: st
 
   return (
     <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[200px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-blue-500"
-        data-input-type="PackFiles"
-      />
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" data-input-type="PackFiles" />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
@@ -392,9 +467,7 @@ export const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: st
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-purple-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} TableSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} TableSelection</div>
 
       <Handle
         type="source"
@@ -442,9 +515,7 @@ export const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: 
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-emerald-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} ColumnSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} ColumnSelection</div>
 
       <Handle
         type="source"
@@ -543,9 +614,7 @@ export const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdo
         ))}
       </select>
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} ColumnSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} ColumnSelection</div>
 
       <Handle
         type="source"
@@ -637,9 +706,7 @@ export const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: st
 
       <div className="space-y-2">
         <div>
-          <label className="text-xs text-gray-300 block mb-1">
-            {localized.nodeEditorColumn1 || "Column 1"}
-          </label>
+          <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorColumn1 || "Column 1"}</label>
           <select
             value={selectedColumn1}
             onChange={handleDropdown1Change}
@@ -654,9 +721,7 @@ export const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: st
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-300 block mb-1">
-            {localized.nodeEditorColumn2 || "Column 2"}
-          </label>
+          <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorColumn2 || "Column 2"}</label>
           <select
             value={selectedColumn2}
             onChange={handleDropdown2Change}
@@ -674,12 +739,7 @@ export const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: st
 
       <div className="mt-3">
         <label className="flex items-center text-xs text-gray-300 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={onlyForMultiple}
-            onChange={handleOnlyForMultipleChange}
-            className="mr-2"
-          />
+          <input type="checkbox" checked={onlyForMultiple} onChange={handleOnlyForMultipleChange} className="mr-2" />
           {localized.nodeEditorOnlyForMultiple || "Only For Multiple"}
         </label>
       </div>
@@ -703,7 +763,7 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
   const [filters, setFilters] = useState<FilterRow[]>(
     data.filters && data.filters.length > 0
       ? data.filters
-      : [{ column: "", value: "", not: false, operator: "AND" }],
+      : [{ column: "", value: "", not: false, operator: "AND", matchMode: "full" }],
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
@@ -742,13 +802,22 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
   };
 
   const handleAddFilter = () => {
-    updateFilters([...filters, { column: "", value: "", not: false, operator: "AND" }]);
+    updateFilters([
+      ...filters,
+      {
+        column: "",
+        value: "",
+        not: false,
+        operator: "AND",
+        matchMode: getLastFilterMatchMode(filters),
+      },
+    ]);
   };
 
   const handleRemoveFilter = (index: number) => {
     const newFilters = filters.filter((_, i) => i !== index);
     updateFilters(
-      newFilters.length > 0 ? newFilters : [{ column: "", value: "", not: false, operator: "AND" }],
+      newFilters.length > 0 ? newFilters : [{ column: "", value: "", not: false, operator: "AND", matchMode: "full" }],
     );
   };
 
@@ -757,6 +826,24 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
     newFilters[index] = { ...newFilters[index], [field]: value };
     updateFilters(newFilters);
   };
+
+  const filterMatchModeTooltip =
+    localized.nodeEditorFilterMatchModeTooltip || "Choose how this condition matches the value.";
+  const filterMatchModeLabels: Record<FilterMatchMode, string> = {
+    full: localized.nodeEditorFilterMatchModeFull || "Full",
+    partial: localized.nodeEditorFilterMatchModePartial || "Partial",
+    regex: localized.nodeEditorFilterMatchModeRegex || "Regex",
+  };
+  const filterMatchModeDescriptions: Record<FilterMatchMode, string> = {
+    full:
+      localized.nodeEditorFilterMatchModeFullTooltip ||
+      "Case-insensitive whole-value matching (the original filter behavior).",
+    partial: localized.nodeEditorFilterMatchModePartialTooltip || "Case-insensitive substring matching.",
+    regex:
+      localized.nodeEditorFilterMatchModeRegexTooltip ||
+      "Case-insensitive JavaScript regular expression; matches anywhere unless anchored with ^ or $.",
+  };
+  const invalidFilterRegex = localized.nodeEditorInvalidFilterRegex || "Invalid regex: {{error}}";
 
   return (
     <div className="bg-gray-700 border-2 border-yellow-500 rounded-lg p-4 min-w-[300px] max-w-[400px]">
@@ -770,80 +857,125 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">{localized.nodeEditorInput || "Input:"} TableSelection</div>
 
-      <div
-        className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content"
-        onWheel={stopWheelPropagation}
-      >
-        {filters.map((filter, index) => (
-          <div key={index} className="bg-gray-800 p-2 rounded border border-gray-600">
-            <div className="flex items-center gap-2 mb-2">
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={filter.not}
-                  onChange={(e) => handleFilterChange(index, "not", e.target.checked)}
-                  className="w-3 h-3"
-                />
-                <span className="text-xs text-gray-300">{localized.nodeEditorNot || "NOT"}</span>
-              </label>
-              {filters.length > 1 && (
-                <button
-                  onClick={() => handleRemoveFilter(index)}
-                  className="ml-auto text-red-400 hover:text-red-300 text-xs"
-                >
-                  {localized.remove || "Remove"}
-                </button>
-              )}
-            </div>
+      <div className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+        {filters.map((filter, index) => {
+          const matchMode = normalizeFilterMatchMode(filter.matchMode);
+          const regexError =
+            matchMode === "regex" && filter.value.length > 0 ? getFilterRegexError(filter.value) : undefined;
 
-            <div className="mb-1">
-              <label className="text-xs text-gray-400 block mb-1">
-                {localized.nodeEditorColumnLabel || "Column:"}
-              </label>
-              {columnNames.length > 0 ? (
+          return (
+            <div key={index} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="flex shrink-0 items-center gap-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filter.not}
+                    onChange={(e) => handleFilterChange(index, "not", e.target.checked)}
+                    className="w-3 h-3"
+                  />
+                  <span className="text-xs text-gray-300">{localized.nodeEditorNot || "NOT"}</span>
+                </label>
+                {filters.length > 1 && (
+                  <button
+                    onClick={() => handleRemoveFilter(index)}
+                    className="ml-auto shrink-0 text-red-400 hover:text-red-300 text-xs"
+                  >
+                    {localized.remove || "Remove"}
+                  </button>
+                )}
+                <div
+                  className={`ml-auto flex shrink-0 items-center gap-1 rounded border bg-gray-700 px-1 py-1 ${
+                    regexError ? "border-red-500" : "border-gray-600"
+                  }`}
+                >
+                  <span className="whitespace-nowrap text-[10px] font-semibold text-gray-300">
+                    {localized.nodeEditorMatchLabel || "Match:"}
+                  </span>
+                  <div
+                    className="inline-flex overflow-hidden rounded-full border border-gray-600 bg-gray-800"
+                    role="group"
+                    aria-label={localized.nodeEditorFilterMatchMode || "Filter match mode"}
+                    title={filterMatchModeTooltip}
+                  >
+                    {FILTER_MATCH_MODES.map((mode) => {
+                      const selected = matchMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          aria-pressed={selected}
+                          title={filterMatchModeDescriptions[mode]}
+                          onClick={() => handleFilterChange(index, "matchMode", mode)}
+                          className={`px-2 py-0.5 text-[10px] leading-none transition-colors focus:outline-none focus:ring-1 focus:ring-yellow-400 ${
+                            selected ? "bg-yellow-600 text-white" : "text-gray-300 hover:bg-gray-600"
+                          }`}
+                        >
+                          {filterMatchModeLabels[mode]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-1">
+                <label className="text-xs text-gray-400 block mb-1">
+                  {localized.nodeEditorColumnLabel || "Column:"}
+                </label>
+                {columnNames.length > 0 ? (
+                  <select
+                    value={filter.column}
+                    onChange={(e) => handleFilterChange(index, "column", e.target.value)}
+                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+                  >
+                    <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
+                    {columnNames.map((columnName) => (
+                      <option key={columnName} value={columnName}>
+                        {columnName}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={filter.column}
+                    onChange={(e) => handleFilterChange(index, "column", e.target.value)}
+                    placeholder={localized.nodeEditorEnterColumnName || "Enter column name..."}
+                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+                  />
+                )}
+              </div>
+
+              <input
+                type="text"
+                value={filter.value}
+                onChange={(e) => handleFilterChange(index, "value", e.target.value)}
+                placeholder={localized.nodeEditorFilterValue || "Filter value..."}
+                aria-invalid={regexError ? true : undefined}
+                className={`w-full p-1 text-xs bg-gray-700 text-white border rounded mb-1 focus:outline-none ${
+                  regexError ? "border-red-500 focus:border-red-400" : "border-gray-600 focus:border-yellow-400"
+                }`}
+              />
+
+              {regexError && (
+                <div className="mb-1 text-[10px] text-red-300" role="alert">
+                  {invalidFilterRegex.replace("{{error}}", regexError)}
+                </div>
+              )}
+
+              {index < filters.length - 1 && (
                 <select
-                  value={filter.column}
-                  onChange={(e) => handleFilterChange(index, "column", e.target.value)}
+                  value={filter.operator}
+                  onChange={(e) => handleFilterChange(index, "operator", e.target.value as "AND" | "OR")}
                   className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
                 >
-                  <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
-                  {columnNames.map((columnName) => (
-                    <option key={columnName} value={columnName}>
-                      {columnName}
-                    </option>
-                  ))}
+                  <option value="AND">{localized.nodeEditorAnd || "AND"}</option>
+                  <option value="OR">{localized.nodeEditorOr || "OR"}</option>
                 </select>
-              ) : (
-                <input
-                  type="text"
-                  value={filter.column}
-                  onChange={(e) => handleFilterChange(index, "column", e.target.value)}
-                  placeholder={localized.nodeEditorEnterColumnName || "Enter column name..."}
-                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
-                />
               )}
             </div>
-
-            <input
-              type="text"
-              value={filter.value}
-              onChange={(e) => handleFilterChange(index, "value", e.target.value)}
-              placeholder={localized.nodeEditorFilterValue || "Filter value..."}
-              className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 focus:outline-none focus:border-yellow-400"
-            />
-
-            {index < filters.length - 1 && (
-              <select
-                value={filter.operator}
-                onChange={(e) => handleFilterChange(index, "operator", e.target.value as "AND" | "OR")}
-                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
-              >
-                <option value="AND">{localized.nodeEditorAnd || "AND"}</option>
-                <option value="OR">{localized.nodeEditorOr || "OR"}</option>
-              </select>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button
@@ -989,9 +1121,7 @@ export const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNode
           onChange={handleDropdownChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
         >
-          <option value="">
-            {localized.nodeEditorSelectReferencedTable || "Select referenced table..."}
-          </option>
+          <option value="">{localized.nodeEditorSelectReferencedTable || "Select referenced table..."}</option>
           {referenceTableNames.map((tableName) => (
             <option key={tableName} value={tableName}>
               {tableName}
@@ -1086,11 +1216,7 @@ export const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookup
           const tableFields = selectedVersion?.fields || [];
           for (const field of tableFields) {
             // Check if this field references the input table
-            if (
-              field.is_reference &&
-              field.is_reference.length > 0 &&
-              field.is_reference[0] === inputTableName
-            ) {
+            if (field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName) {
               reverseTables.add(tableName);
               break; // Found at least one reference, no need to check more fields
             }
@@ -1181,9 +1307,7 @@ export const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookup
           onChange={handleDropdownChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
         >
-          <option value="">
-            {localized.nodeEditorSelectReverseTable || "Select table to reverse to..."}
-          </option>
+          <option value="">{localized.nodeEditorSelectReverseTable || "Select table to reverse to..."}</option>
           {reverseTableNames.map((tableName) => (
             <option key={tableName} value={tableName}>
               {tableName}
@@ -1252,23 +1376,19 @@ export const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; 
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">
-        {localized.nodeEditorInput || "Input:"} ColumnSelection
-      </div>
+      <div className="text-xs text-gray-400 mb-2">{localized.nodeEditorInput || "Input:"} ColumnSelection</div>
 
       <textarea
         value={textValue}
         onChange={handleTextChange}
         placeholder={
           localized.nodeEditorEnterFormulaUsingX ||
-          "Enter formula using x as input (e.g., x + 10, x * 1.5, x^2 + 3*x - 5)..."
+          "Enter a number, or a formula using x (e.g., 10, x + 10, x * 1.5)..."
         }
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} ChangedColumnSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} ChangedColumnSelection</div>
 
       <Handle
         type="source"
@@ -1306,14 +1426,10 @@ export const MathMaxNode: React.FC<{ data: MathMaxNodeData; id: string }> = ({ d
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">
-        {localized.nodeEditorInput || "Input:"} ChangedColumnSelection
-      </div>
+      <div className="text-xs text-gray-400 mb-2">{localized.nodeEditorInput || "Input:"} ChangedColumnSelection</div>
 
       <div>
-        <label className="text-xs text-gray-300 block mb-1">
-          {localized.nodeEditorLowestValue || "Lowest Value"}
-        </label>
+        <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorLowestValue || "Lowest Value"}</label>
         <input
           type="text"
           value={textValue}
@@ -1323,9 +1439,7 @@ export const MathMaxNode: React.FC<{ data: MathMaxNodeData; id: string }> = ({ d
         />
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} ChangedColumnSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} ChangedColumnSelection</div>
 
       <Handle
         type="source"
@@ -1351,17 +1465,13 @@ export const MathCeilNode: React.FC<{ data: MathCeilNodeData; id: string }> = ({
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">
-        {localized.nodeEditorInput || "Input:"} ChangedColumnSelection
-      </div>
+      <div className="text-xs text-gray-400 mb-2">{localized.nodeEditorInput || "Input:"} ChangedColumnSelection</div>
 
       <div className="text-xs text-gray-300 italic">
         {localized.nodeEditorAppliesMathCeil || "Applies Math.ceil() to all values"}
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} ChangedColumnSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} ChangedColumnSelection</div>
 
       <Handle
         type="source"
@@ -1403,8 +1513,7 @@ export const MergeChangesNode: React.FC<{ data: MergeChangesNodeData; id: string
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} ChangedColumnSelection (
-        {localized.nodeEditorCombined || "Combined"})
+        {localized.nodeEditorOutput || "Output:"} ChangedColumnSelection ({localized.nodeEditorCombined || "Combined"})
       </div>
 
       <Handle
@@ -1423,6 +1532,8 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
   const [textValue, setTextValue] = useState(data.textValue || "");
   const [packName, setPackName] = useState(data.packName || "");
   const [packedFileName, setPackedFileName] = useState(data.packedFileName || "");
+  const [openInWindows, setOpenInWindows] = useState(!!data.openInWindows);
+  const [openInViewer, setOpenInViewer] = useState(!!data.openInViewer);
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
@@ -1456,12 +1567,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
 
   return (
     <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[250px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-cyan-500"
-        data-input-type={data.inputType}
-      />
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-cyan-500" data-input-type={data.inputType} />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
@@ -1481,9 +1587,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             type="text"
             value={packName}
             onChange={handlePackNameChange}
-            placeholder={
-              localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"
-            }
+            placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
             className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
           />
         </div>
@@ -1496,9 +1600,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             type="text"
             value={packedFileName}
             onChange={handlePackedFileNameChange}
-            placeholder={
-              localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"
-            }
+            placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
             className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
           />
         </div>
@@ -1515,6 +1617,44 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             }
             className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-green-400"
           />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={openInWindows}
+              onChange={(event) => {
+                const newValue = event.target.checked;
+                setOpenInWindows(newValue);
+
+                const updateEvent = {
+                  detail: { nodeId: id, openInWindows: newValue },
+                };
+                dispatchNodeDataUpdate(data, updateEvent.detail);
+              }}
+              className="w-4 h-4"
+            />
+            <span className="text-xs text-gray-300">
+              {localized.nodeEditorOpenFileInWindows || "Open file in Windows"}
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={openInViewer}
+              onChange={(event) => {
+                const newValue = event.target.checked;
+                setOpenInViewer(newValue);
+                dispatchNodeDataUpdate(data, { nodeId: id, openInViewer: newValue });
+              }}
+              className="w-4 h-4"
+            />
+            <span className="text-xs text-gray-300">
+              {localized.nodeEditorOpenFileInViewer || "Open pack in the viewer"}
+            </span>
+          </label>
         </div>
       </div>
 
@@ -1605,23 +1745,15 @@ export const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id
 
   // Sync inputColumnNames to node data whenever it changes (to persist when saved)
   React.useEffect(() => {
-    if (
-      inputColumnNames.length > 0 &&
-      JSON.stringify(inputColumnNames) !== JSON.stringify(data.inputColumnNames)
-    ) {
+    if (inputColumnNames.length > 0 && JSON.stringify(inputColumnNames) !== JSON.stringify(data.inputColumnNames)) {
       nodeEditorDebugLog(`[GetCounterColumn ${id}] Syncing inputColumnNames to node data:`, inputColumnNames);
-      dispatchNodeDataUpdate(data, { nodeId: id, inputColumnNames },);
+      dispatchNodeDataUpdate(data, { nodeId: id, inputColumnNames });
     }
   }, [inputColumnNames, id]);
 
   return (
     <div className="bg-gray-700 border-2 border-teal-600 rounded-lg p-4 min-w-[250px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-blue-500"
-        data-input-type="PackFiles"
-      />
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" data-input-type="PackFiles" />
 
       <div className="text-white font-medium text-sm mb-2">
         {data.label || localized.nodeEditorGetCounterColumn || "Get Counter Column"}
@@ -1630,9 +1762,7 @@ export const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id
       <div className="text-xs text-gray-400 mb-2">{localized.nodeEditorInput || "Input:"} PackFiles</div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">
-          {localized.nodeEditorTableLabel || "Table:"}
-        </label>
+        <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorTableLabel || "Table:"}</label>
         <select
           value={selectedTable}
           onChange={handleTableChange}
@@ -1680,13 +1810,10 @@ export const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id
       </div>
 
       <div className="text-xs text-gray-300 italic my-2">
-        {localized.nodeEditorCollectsValuesDescription ||
-          "Collects values from selected column across all tables"}
+        {localized.nodeEditorCollectsValuesDescription || "Collects values from selected column across all tables"}
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} TableSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} TableSelection</div>
 
       <Handle
         type="source"
@@ -1739,9 +1866,7 @@ export const DumpToTSVNode: React.FC<{ data: DumpToTSVNodeData; id: string }> = 
           type="text"
           value={filename}
           onChange={handleFilenameChange}
-          placeholder={
-            localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"
-          }
+          placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
         />
       </div>
@@ -1843,9 +1968,7 @@ export const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder={
-          localized.nodeEditorEnterSurroundTextConfiguration || "Enter surround text configuration..."
-        }
+        placeholder={localized.nodeEditorEnterSurroundTextConfiguration || "Enter surround text configuration..."}
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-rose-400"
       />
 
@@ -2027,12 +2150,7 @@ export const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({
 
   return (
     <div className="bg-gray-700 border-2 border-sky-500 rounded-lg p-4 min-w-[200px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-lime-500"
-        data-input-type={data.inputType}
-      />
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-lime-500" data-input-type={data.inputType} />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
@@ -2060,9 +2178,7 @@ export const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder={
-          localized.nodeEditorEnterJoinConfiguration || "Enter join configuration (separator, etc.)..."
-        }
+        placeholder={localized.nodeEditorEnterJoinConfiguration || "Enter join configuration (separator, etc.)..."}
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-sky-400"
       />
 
@@ -2070,12 +2186,7 @@ export const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({
         {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorText || "Text"}
       </div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-violet-500"
-        data-output-type="Text"
-      />
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-violet-500" data-output-type="Text" />
     </div>
   );
 };
@@ -2111,12 +2222,7 @@ export const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNode
 
   return (
     <div className="bg-gray-700 border-2 border-emerald-500 rounded-lg p-4 min-w-[250px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-fuchsia-500"
-        data-input-type="GroupedText"
-      />
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-fuchsia-500" data-input-type="GroupedText" />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
@@ -2153,12 +2259,7 @@ export const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNode
         {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorText || "Text"}
       </div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-violet-500"
-        data-output-type="Text"
-      />
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-violet-500" data-output-type="Text" />
     </div>
   );
 };
@@ -2187,9 +2288,7 @@ export const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> 
 
         // Prefer explicitly-provided columnNames (e.g. from generaterows with a specific tableVersion)
         const fieldNames =
-          data.columnNames && data.columnNames.length > 0
-            ? data.columnNames
-            : tableFields.map((field) => field.name);
+          data.columnNames && data.columnNames.length > 0 ? data.columnNames : tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
         const updateEvent = {
@@ -2250,10 +2349,7 @@ export const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> 
             </div>
           ) : (
             columnNames.map((columnName) => (
-              <label
-                key={columnName}
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded"
-              >
+              <label key={columnName} className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded">
                 <input
                   type="checkbox"
                   checked={indexColumns.includes(columnName)}
@@ -2291,7 +2387,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
   const defaultTableVersions = useDefaultTableVersions();
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
   const [indexJoinColumn, setIndexJoinColumn] = useState(data.indexJoinColumn || data.indexColumns?.[0] || "");
-  const [joinType, setJoinType] = useState<"inner" | "left" | "nested" | "cross">(data.joinType || "inner");
+  const [joinType, setJoinType] = useState<LookupNodeData["joinType"]>(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(
     data.columnNames ? Array.from(new Set(data.columnNames)) : [],
   );
@@ -2407,12 +2503,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
 
     // Fallback: extract from columnNames by removing the source table prefix
     // This handles the case where we loaded from JSON and lost the metadata
-    if (
-      indexedColumnNames.length === 0 &&
-      data.columnNames &&
-      data.columnNames.length > 0 &&
-      data.connectedTableName
-    ) {
+    if (indexedColumnNames.length === 0 && data.columnNames && data.columnNames.length > 0 && data.connectedTableName) {
       const sourcePrefix = `${data.connectedTableName}_`;
       // Get columns that don't have the source prefix (these are from the indexed table)
       const indexedColsWithPrefix = data.columnNames.filter(
@@ -2458,13 +2549,13 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
   React.useEffect(() => {
     let newColumns: string[] = [];
 
-    if (joinType === "nested") {
-      // For nested joins, output columns are just source columns (lookup is nested)
+    if (joinType === "nested" || joinType === "anti") {
+      // Nested and anti joins output only source columns.
       if (sourceColumnNames.length > 0) {
         newColumns = sourceColumnNames;
       }
     } else {
-      // For inner/left/cross joins, output is prefixed source + prefixed indexed columns
+      // For inner/left/cross joins, output is prefixed source + prefixed indexed columns.
       if (sourceColumnNames.length > 0 && indexedColumnNames.length > 0) {
         const sourceTableName = data.connectedTableName || "source";
         const indexedTableName = data.indexedTableName || data.connectedIndexTableName || "indexed";
@@ -2484,8 +2575,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
       const uniqueColumns = Array.from(new Set(newColumns));
 
       const columnsChanged =
-        uniqueColumns.length !== columnNames.length ||
-        uniqueColumns.some((col, idx) => col !== columnNames[idx]);
+        uniqueColumns.length !== columnNames.length || uniqueColumns.some((col, idx) => col !== columnNames[idx]);
 
       if (columnsChanged) {
         setColumnNames(uniqueColumns);
@@ -2527,11 +2617,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
       return;
     }
 
-    const defaultVersion = getTableVersion(
-      data.connectedTableName,
-      sourceTableVersions,
-      defaultTableVersions,
-    );
+    const defaultVersion = getTableVersion(data.connectedTableName, sourceTableVersions, defaultTableVersions);
     const version = defaultVersion ?? sourceTableVersions[0];
     // Find the lookup column in the source table schema
     const lookupField = version.fields?.find((field) => field.name === lookupColumn);
@@ -2540,29 +2626,24 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
       return;
     }
 
-    // Check if the lookup column has a reference to the indexed table
-    // is_reference format: [table1, column1, table2, column2, ...]
-    if (lookupField.is_reference && lookupField.is_reference.length > 0) {
-      // Parse the reference pairs
-      let hasValidReference = false;
-      let hasTableReference = false;
-      const referencedColumns: string[] = [];
+    const indexedTableVersions = data.DBNameToDBVersions[indexedTableName];
+    const indexedVersion =
+      indexedTableVersions && indexedTableVersions.length > 0
+        ? (getTableVersion(indexedTableName, indexedTableVersions, defaultTableVersions) ?? indexedTableVersions[0])
+        : undefined;
+    const indexedField = indexedVersion?.fields?.find((field) => field.name === indexJoinColumn);
+    const referenceValidation = validateLookupSchemaReference({
+      lookupField,
+      indexedField,
+      sourceTableName: data.connectedTableName,
+      lookupColumn,
+      indexedTableName,
+      indexJoinColumn,
+    });
 
-      for (let i = 0; i < lookupField.is_reference.length; i += 2) {
-        const refTable = lookupField.is_reference[i];
-        const refColumn = lookupField.is_reference[i + 1];
-
-        if (refTable === indexedTableName) {
-          hasTableReference = true;
-          referencedColumns.push(refColumn);
-          if (refColumn === indexJoinColumn) {
-            hasValidReference = true;
-          }
-        }
-      }
-
-      if (!hasValidReference) {
-        if (hasTableReference) {
+    if (!referenceValidation.hasValidReference) {
+      if (referenceValidation.lookupHasReferences) {
+        if (referenceValidation.lookupReferencesIndexedTable) {
           const template =
             localized.nodeEditorWarningColumnReferencesTableButNotColumn ||
             'Warning: Column "{{lookupColumn}}" references table "{{indexedTableName}}", but not column "{{indexJoinColumn}}". Expected reference columns: {{referencedColumns}}';
@@ -2571,26 +2652,24 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
               .replace("{{lookupColumn}}", lookupColumn)
               .replace("{{indexedTableName}}", indexedTableName)
               .replace("{{indexJoinColumn}}", indexJoinColumn)
-              .replace("{{referencedColumns}}", referencedColumns.join(", ")),
+              .replace("{{referencedColumns}}", referenceValidation.lookupReferencedColumns.join(", ")),
           );
         } else {
           const template =
             localized.nodeEditorWarningColumnDoesNotHaveSchemaReferenceToTable ||
             'Warning: Column "{{lookupColumn}}" does not have a schema reference to table "{{indexedTableName}}". This join may produce unexpected results.';
           setSchemaWarning(
-            template
-              .replace("{{lookupColumn}}", lookupColumn)
-              .replace("{{indexedTableName}}", indexedTableName),
+            template.replace("{{lookupColumn}}", lookupColumn).replace("{{indexedTableName}}", indexedTableName),
           );
         }
       } else {
-        setSchemaWarning(""); // Valid reference found
+        const template =
+          localized.nodeEditorWarningColumnDoesNotHaveAnySchemaReferences ||
+          'Warning: Column "{{lookupColumn}}" does not have any schema references. This join may produce unexpected results.';
+        setSchemaWarning(template.replace("{{lookupColumn}}", lookupColumn));
       }
     } else {
-      const template =
-        localized.nodeEditorWarningColumnDoesNotHaveAnySchemaReferences ||
-        'Warning: Column "{{lookupColumn}}" does not have any schema references. This join may produce unexpected results.';
-      setSchemaWarning(template.replace("{{lookupColumn}}", lookupColumn));
+      setSchemaWarning("");
     }
   }, [
     lookupColumn,
@@ -2599,6 +2678,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
     data.indexedTableName,
     data.connectedIndexTableName,
     data.DBNameToDBVersions,
+    defaultTableVersions,
     localized,
   ]);
 
@@ -2620,7 +2700,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
     dispatchNodeDataUpdate(data, updateEvent.detail);
   };
 
-  const handleJoinTypeChange = (newType: "inner" | "left" | "nested" | "cross") => {
+  const handleJoinTypeChange = (newType: LookupNodeData["joinType"]) => {
     setJoinType(newType);
     const newOutputType = newType === "nested" ? "NestedTableSelection" : "TableSelection";
     const updateEvent = {
@@ -2730,9 +2810,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
       )}
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">
-          {localized.nodeEditorJoinTypeLabel || "Join Type:"}
-        </label>
+        <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorJoinTypeLabel || "Join Type:"}</label>
         <div className="space-y-1">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -2755,13 +2833,22 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="radio"
+              checked={joinType === "anti"}
+              onChange={() => handleJoinTypeChange("anti")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">
+              {localized.nodeEditorAntiJoin || "Only source rows without a match"}
+            </span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
               checked={joinType === "nested"}
               onChange={() => handleJoinTypeChange("nested")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">
-              {localized.nodeEditorNestedJoin || "Nested (1-to-many)"}
-            </span>
+            <span className="text-xs text-white">{localized.nodeEditorNestedJoin || "Nested (1-to-many)"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -2784,12 +2871,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
           : localized.nodeEditorTableSelection || "TableSelection"}
       </div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-cyan-500"
-        data-output-type={outputType}
-      />
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-cyan-500" data-output-type={outputType} />
     </div>
   );
 };
@@ -2808,12 +2890,47 @@ export const FlattenNestedNode: React.FC<{ data: FlattenNestedNodeData; id: stri
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">
-        {localized.nodeEditorInput || "Input:"}{" "}
-        {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
+        {localized.nodeEditorInput || "Input:"} {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
       </div>
 
       <div className="text-xs text-gray-300 italic my-3">
         {localized.nodeEditorFlattenNestedDescription || "Expands nested arrays into separate flat rows"}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+// Combine Same Tables Node - Merges entries for the same table while preserving row order
+export const CombineSameTablesNode: React.FC<{ data: CombineSameTablesNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  return (
+    <div className="bg-gray-700 border-2 border-orange-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {localized.nodeEditorInput || "Input:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <div className="text-xs text-gray-300 italic my-3">
+        {localized.nodeEditorCombineSameTablesDescription ||
+          "Entries for the same table become one entry holding every row"}
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
@@ -3001,12 +3118,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
 
   const handleFilterOperatorChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value as
-      | "equals"
-      | "notEquals"
-      | "greaterThan"
-      | "lessThan"
-      | "greaterThanOrEqual"
-      | "lessThanOrEqual";
+      "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
     setFilterOperator(newValue);
     const updateEvent = {
       detail: { nodeId: id, filterOperator: newValue },
@@ -3034,8 +3146,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">
-        {localized.nodeEditorInput || "Input:"}{" "}
-        {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
+        {localized.nodeEditorInput || "Input:"} {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
       </div>
 
       <div className="mb-2">
@@ -3068,9 +3179,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
               onChange={() => handleTypeChange("min")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">
-              {localized.nodeEditorAggregationMinKeepRow || "MIN (Keep Row)"}
-            </span>
+            <span className="text-xs text-white">{localized.nodeEditorAggregationMinKeepRow || "MIN (Keep Row)"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3079,9 +3188,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
               onChange={() => handleTypeChange("max")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">
-              {localized.nodeEditorAggregationMaxKeepRow || "MAX (Keep Row)"}
-            </span>
+            <span className="text-xs text-white">{localized.nodeEditorAggregationMaxKeepRow || "MAX (Keep Row)"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3157,8 +3264,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"}{" "}
-        {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
       </div>
 
       <Handle
@@ -3189,10 +3295,7 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
 
   // Sync local state with prop changes (but prevent feedback loops)
   React.useEffect(() => {
-    if (
-      data.groupByColumns !== undefined &&
-      JSON.stringify(data.groupByColumns) !== JSON.stringify(groupByColumns)
-    ) {
+    if (data.groupByColumns !== undefined && JSON.stringify(data.groupByColumns) !== JSON.stringify(groupByColumns)) {
       setGroupByColumns(data.groupByColumns);
     }
   }, [data.groupByColumns]);
@@ -3240,23 +3343,20 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
 
   // Sync groupByColumns to node data
   React.useEffect(() => {
-    dispatchNodeDataUpdate(data, { nodeId: id, groupByColumns },);
+    dispatchNodeDataUpdate(data, { nodeId: id, groupByColumns });
   }, [groupByColumns, id]);
 
   // Sync aggregations to node data
   React.useEffect(() => {
     const aggregationsWithoutId = aggregations.map(({ id, ...rest }) => rest);
-    dispatchNodeDataUpdate(data, { nodeId: id, aggregations: aggregationsWithoutId },);
+    dispatchNodeDataUpdate(data, { nodeId: id, aggregations: aggregationsWithoutId });
   }, [aggregations, id]);
 
   // Sync inputColumnNames to node data whenever it changes (to persist when saved)
   React.useEffect(() => {
-    if (
-      inputColumnNames.length > 0 &&
-      JSON.stringify(inputColumnNames) !== JSON.stringify(data.inputColumnNames)
-    ) {
+    if (inputColumnNames.length > 0 && JSON.stringify(inputColumnNames) !== JSON.stringify(data.inputColumnNames)) {
       nodeEditorDebugLog(`[GroupBy ${id}] Syncing inputColumnNames to node data:`, inputColumnNames);
-      dispatchNodeDataUpdate(data, { nodeId: id, inputColumnNames },);
+      dispatchNodeDataUpdate(data, { nodeId: id, inputColumnNames });
     }
   }, [inputColumnNames, id]);
 
@@ -3269,7 +3369,7 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
 
     // Only update if output columns changed
     if (outputChanged) {
-      dispatchNodeDataUpdate(data, { nodeId: id, columnNames: outputColumnNames },);
+      dispatchNodeDataUpdate(data, { nodeId: id, columnNames: outputColumnNames });
     }
   }, [groupByColumns, aggregations, id, data.columnNames]);
 
@@ -3314,9 +3414,7 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
         data-input-type="TableSelection"
       />
 
-      <div className="text-sm font-bold text-white mb-3">
-        {localized.nodeEditorGroupByTitle || "Group By"}
-      </div>
+      <div className="text-sm font-bold text-white mb-3">{localized.nodeEditorGroupByTitle || "Group By"}</div>
 
       {/* Group By Columns Section */}
       <div className="mb-3">
@@ -3353,9 +3451,7 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
       {/* Aggregations Section */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-gray-300">
-            {localized.nodeEditorAggregationsLabel || "Aggregations:"}
-          </label>
+          <label className="text-xs text-gray-300">{localized.nodeEditorAggregationsLabel || "Aggregations:"}</label>
           <button
             onClick={addAggregation}
             className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded"
@@ -3364,20 +3460,12 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
           </button>
         </div>
 
-        <div
-          className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content"
-          onWheel={stopWheelPropagation}
-        >
+        <div className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {aggregations.map((agg) => (
             <div key={agg.id} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-400">
-                  {localized.nodeEditorAggregationLabel || "Aggregation"}
-                </span>
-                <button
-                  onClick={() => removeAggregation(agg.id)}
-                  className="text-xs text-red-400 hover:text-red-300"
-                >
+                <span className="text-xs text-gray-400">{localized.nodeEditorAggregationLabel || "Aggregation"}</span>
+                <button onClick={() => removeAggregation(agg.id)} className="text-xs text-red-400 hover:text-red-300">
                   ✕
                 </button>
               </div>
@@ -3426,8 +3514,7 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
                 value={agg.defaultValue || ""}
                 onChange={(e) => updateAggregation(agg.id, { defaultValue: e.target.value })}
                 placeholder={
-                  localized.nodeEditorDefaultValueIfNoRowsMatchPlaceholder ||
-                  "Default value (if no rows match)..."
+                  localized.nodeEditorDefaultValueIfNoRowsMatchPlaceholder || "Default value (if no rows match)..."
                 }
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
               />
@@ -3453,9 +3540,7 @@ export const GroupByNode: React.FC<{ data: GroupByNodeData; id: string }> = ({ d
 export const DeduplicateNode: React.FC<{ data: DeduplicateNodeData; id: string }> = ({ data, id }) => {
   const localized = useLocalizations();
   const [dedupeByColumns, setDedupeByColumns] = useState<string[]>(data.dedupeByColumns || []);
-  const [dedupeAgainstVanilla, setDedupeAgainstVanilla] = useState<boolean>(
-    data.dedupeAgainstVanilla || false,
-  );
+  const [dedupeAgainstVanilla, setDedupeAgainstVanilla] = useState<boolean>(data.dedupeAgainstVanilla || false);
 
   // inputColumnNames: columns available from the connected node (for dropdowns)
   const [inputColumnNames, setInputColumnNames] = useState<string[]>([]);
@@ -3502,22 +3587,19 @@ export const DeduplicateNode: React.FC<{ data: DeduplicateNodeData; id: string }
 
   // Sync dedupeByColumns to node data
   React.useEffect(() => {
-    dispatchNodeDataUpdate(data, { nodeId: id, dedupeByColumns },);
+    dispatchNodeDataUpdate(data, { nodeId: id, dedupeByColumns });
   }, [dedupeByColumns, id]);
 
   // Sync dedupeAgainstVanilla to node data
   React.useEffect(() => {
-    dispatchNodeDataUpdate(data, { nodeId: id, dedupeAgainstVanilla },);
+    dispatchNodeDataUpdate(data, { nodeId: id, dedupeAgainstVanilla });
   }, [dedupeAgainstVanilla, id]);
 
   // Sync inputColumnNames to node data whenever it changes (to persist when saved)
   React.useEffect(() => {
-    if (
-      inputColumnNames.length > 0 &&
-      JSON.stringify(inputColumnNames) !== JSON.stringify(data.inputColumnNames)
-    ) {
+    if (inputColumnNames.length > 0 && JSON.stringify(inputColumnNames) !== JSON.stringify(data.inputColumnNames)) {
       nodeEditorDebugLog(`[DeduplicateNode ${id}] Syncing inputColumnNames to node data:`, inputColumnNames);
-      dispatchNodeDataUpdate(data, { nodeId: id, inputColumnNames },);
+      dispatchNodeDataUpdate(data, { nodeId: id, inputColumnNames });
     }
   }, [inputColumnNames, id]);
 
@@ -3532,7 +3614,7 @@ export const DeduplicateNode: React.FC<{ data: DeduplicateNodeData; id: string }
 
     // Only update if output columns changed and we have input columns
     if (outputChanged) {
-      dispatchNodeDataUpdate(data, { nodeId: id, columnNames: outputColumnNames },);
+      dispatchNodeDataUpdate(data, { nodeId: id, columnNames: outputColumnNames });
     }
   }, [inputColumnNames, id, data.columnNames]);
 
@@ -3603,14 +3685,11 @@ export const DeduplicateNode: React.FC<{ data: DeduplicateNodeData; id: string }
           {localized.nodeEditorAgainstVanillaData || "Against vanilla data"}
         </label>
         <div className="text-xs text-gray-500 mt-1 ml-6">
-          {localized.nodeEditorRemoveRowsThatExistInVanilla ||
-            "Remove rows that exist in vanilla, keep modded rows"}
+          {localized.nodeEditorRemoveRowsThatExistInVanilla || "Remove rows that exist in vanilla, keep modded rows"}
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">
-        {localized.nodeEditorOutput || "Output:"} TableSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} TableSelection</div>
 
       <Handle
         type="source"
@@ -3684,13 +3763,13 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
   // Sync transformations to node data
   React.useEffect(() => {
     nodeEditorDebugLog(`[GenerateRows ${id}] Syncing transformations to node.data:`, transformations.length);
-    dispatchNodeDataUpdate(data, { nodeId: id, transformations },);
+    dispatchNodeDataUpdate(data, { nodeId: id, transformations });
   }, [transformations, id]);
 
   // Sync outputTables to node data
   React.useEffect(() => {
     nodeEditorDebugLog(`[GenerateRows ${id}] Syncing outputTables to node.data:`, outputTables.length);
-    dispatchNodeDataUpdate(data, { nodeId: id, outputTables, outputCount },);
+    dispatchNodeDataUpdate(data, { nodeId: id, outputTables, outputCount });
   }, [outputTables, outputCount, id]);
 
   const addTransformation = () => {
@@ -3793,9 +3872,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
     if (!versions || versions.length === 0) return [];
 
     const schema =
-      (output.tableVersion !== undefined
-        ? versions.find((v) => v.version === output.tableVersion)
-        : undefined) ??
+      (output.tableVersion !== undefined ? versions.find((v) => v.version === output.tableVersion) : undefined) ??
       getTableVersion(output.existingTableName, versions, defaultTableVersions) ??
       versions[0];
     const allColumns = schema.fields.map((field) => field.name);
@@ -3841,10 +3918,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
           </button>
         </div>
 
-        <div
-          className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content"
-          onWheel={stopWheelPropagation}
-        >
+        <div className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {transformations.map((trans, transIndex) => {
             // Build available source columns for this transformation
             // Include original columns + output columns from previous transformations
@@ -3865,9 +3939,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                       onClick={() => moveTransformationUp(trans.id)}
                       disabled={transIndex === 0}
                       className={`text-xs ${
-                        transIndex === 0
-                          ? "text-gray-600 cursor-not-allowed"
-                          : "text-blue-400 hover:text-blue-300"
+                        transIndex === 0 ? "text-gray-600 cursor-not-allowed" : "text-blue-400 hover:text-blue-300"
                       }`}
                       title={localized.nodeEditorMoveUp || "Move up"}
                     >
@@ -3900,9 +3972,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                   onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
-                  <option value="">
-                    {localized.nodeEditorSelectSourceColumn || "Select source column..."}
-                  </option>
+                  <option value="">{localized.nodeEditorSelectSourceColumn || "Select source column..."}</option>
                   {columnNames.map((col) => (
                     <option key={col} value={col}>
                       {col}
@@ -3913,8 +3983,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                     .filter((t) => t.outputColumnName && t.outputColumnName.trim() !== "")
                     .map((t) => (
                       <option key={t.outputColumnName} value={t.outputColumnName}>
-                        {t.outputColumnName} (
-                        {localized.nodeEditorFromTransformation || "from transformation"})
+                        {t.outputColumnName} ({localized.nodeEditorFromTransformation || "from transformation"})
                       </option>
                     ))}
                 </select>
@@ -3942,32 +4011,22 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                   <option value="none">
                     {localized.nodeEditorTransformationNonePassThrough || "None (pass through)"}
                   </option>
-                  <option value="prefix">
-                    {localized.nodeEditorTransformationAddPrefix || "Add Prefix"}
-                  </option>
-                  <option value="suffix">
-                    {localized.nodeEditorTransformationAddSuffix || "Add Suffix"}
-                  </option>
-                  <option value="add">
-                    {localized.nodeEditorTransformationAddNumber || "Add Number (+)"}
-                  </option>
+                  <option value="prefix">{localized.nodeEditorTransformationAddPrefix || "Add Prefix"}</option>
+                  <option value="suffix">{localized.nodeEditorTransformationAddSuffix || "Add Suffix"}</option>
+                  <option value="add">{localized.nodeEditorTransformationAddNumber || "Add Number (+)"}</option>
                   <option value="subtract">
                     {localized.nodeEditorTransformationSubtractNumber || "Subtract Number (-)"}
                   </option>
-                  <option value="multiply">
-                    {localized.nodeEditorTransformationMultiply || "Multiply (*)"}
-                  </option>
+                  <option value="multiply">{localized.nodeEditorTransformationMultiply || "Multiply (*)"}</option>
                   <option value="divide">{localized.nodeEditorTransformationDivide || "Divide (/)"}</option>
                   <option value="counter">
-                    {localized.nodeEditorTransformationCounterUniqueSequential ||
-                      "Counter (unique sequential)"}
+                    {localized.nodeEditorTransformationCounterUniqueSequential || "Counter (unique sequential)"}
                   </option>
                   <option value="counter_range">
                     {localized.nodeEditorTransformationCounterCustomRange || "Counter (custom range)"}
                   </option>
                   <option value="filterequal">
-                    {localized.nodeEditorTransformationFilterRowsEqual ||
-                      "Filter Rows: Equal (skip if equal)"}
+                    {localized.nodeEditorTransformationFilterRowsEqual || "Filter Rows: Equal (skip if equal)"}
                   </option>
                   <option value="filternotequal">
                     {localized.nodeEditorTransformationFilterRowsNotEqual ||
@@ -4003,9 +4062,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                     type="number"
                     placeholder={localized.nodeEditorNumberValuePlaceholder || "Number value..."}
                     value={trans.numericValue ?? ""}
-                    onChange={(e) =>
-                      updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
-                    }
+                    onChange={(e) => updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                   />
                 )}
@@ -4014,8 +4071,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                   <input
                     type="number"
                     placeholder={
-                      localized.nodeEditorStartNumberDefault10000Placeholder ||
-                      "Start number (default: 10000)..."
+                      localized.nodeEditorStartNumberDefault10000Placeholder || "Start number (default: 10000)..."
                     }
                     value={trans.startNumber ?? ""}
                     onChange={(e) =>
@@ -4029,18 +4085,14 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                   <div className="space-y-1">
                     <input
                       type="text"
-                      placeholder={
-                        localized.nodeEditorRangeStartPlaceholder || "Start (e.g., 1 or {{startOption}})"
-                      }
+                      placeholder={localized.nodeEditorRangeStartPlaceholder || "Start (e.g., 1 or {{startOption}})"}
                       value={trans.rangeStart ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { rangeStart: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
                     <input
                       type="text"
-                      placeholder={
-                        localized.nodeEditorRangeEndPlaceholder || "End (e.g., 10 or {{endOption}})"
-                      }
+                      placeholder={localized.nodeEditorRangeEndPlaceholder || "End (e.g., 10 or {{endOption}})"}
                       value={trans.endNumber ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { endNumber: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
@@ -4048,8 +4100,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                     <input
                       type="text"
                       placeholder={
-                        localized.nodeEditorRangeIncrementPlaceholder ||
-                        "Increment (e.g., 1 or {{incOption}})"
+                        localized.nodeEditorRangeIncrementPlaceholder || "Increment (e.g., 1 or {{incOption}})"
                       }
                       value={trans.rangeIncrement ?? "1"}
                       onChange={(e) => updateTransformation(trans.id, { rangeIncrement: e.target.value })}
@@ -4061,8 +4112,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                   </div>
                 )}
 
-                {(trans.transformationType === "filterequal" ||
-                  trans.transformationType === "filternotequal") && (
+                {(trans.transformationType === "filterequal" || trans.transformationType === "filternotequal") && (
                   <input
                     type="text"
                     placeholder={localized.nodeEditorFilterValue || "Filter value..."}
@@ -4085,9 +4135,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                   onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                 >
-                  <option value="">
-                    {localized.nodeEditorSelectTargetTable || "Select target table..."}
-                  </option>
+                  <option value="">{localized.nodeEditorSelectTargetTable || "Select target table..."}</option>
                   {outputTables.map((table) => (
                     <option key={table.handleId} value={table.handleId}>
                       {table.name || table.handleId}
@@ -4131,10 +4179,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
         <label className="text-xs text-gray-300 block mb-2">
           {localized.nodeEditorOutputTablesLabel || "Output Tables:"}
         </label>
-        <div
-          className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content"
-          onWheel={stopWheelPropagation}
-        >
+        <div className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {outputTables.map((output, idx) => (
             <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="text-xs text-gray-400 mb-1">
@@ -4143,9 +4188,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
 
               <select
                 value={output.existingTableName}
-                onChange={(e) =>
-                  updateOutputTable(idx, { existingTableName: e.target.value, tableVersion: undefined })
-                }
+                onChange={(e) => updateOutputTable(idx, { existingTableName: e.target.value, tableVersion: undefined })}
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               >
                 <option value="">{localized.nodeEditorSelectTableSchema || "Select table schema..."}</option>
@@ -4203,8 +4246,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
                       <span className="text-xs text-white">{trans.outputColumnName}</span>
                     </div>
                   ))}
-                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length ===
-                  0 && (
+                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length === 0 && (
                   <div className="text-xs text-gray-500 text-center py-1">
                     {localized.nodeEditorNoTransformationsForThisTable || "No transformations for this table"}
                   </div>
@@ -4212,8 +4254,7 @@ export const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string
               </div>
 
               <div className="text-xs text-gray-400 mb-1">
-                {localized.nodeEditorStaticValuesRemainingColumnsLabel ||
-                  "Static Values (remaining columns):"}
+                {localized.nodeEditorStaticValuesRemainingColumnsLabel || "Static Values (remaining columns):"}
               </div>
               <div
                 className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content"
@@ -4293,12 +4334,12 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
 
   // Sync transformations to node data
   React.useEffect(() => {
-    dispatchNodeDataUpdate(data, { nodeId: id, transformations },);
+    dispatchNodeDataUpdate(data, { nodeId: id, transformations });
   }, [transformations, id]);
 
   // Sync outputTables to node data
   React.useEffect(() => {
-    dispatchNodeDataUpdate(data, { nodeId: id, outputTables, outputCount },);
+    dispatchNodeDataUpdate(data, { nodeId: id, outputTables, outputCount });
   }, [outputTables, outputCount, id]);
 
   const addTransformation = () => {
@@ -4390,8 +4431,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
 
       {customSchemaColumns.length === 0 && (
         <div className="text-xs text-yellow-400 mb-2 p-2 bg-yellow-900/30 rounded">
-          {localized.nodeEditorConnectCustomSchemaToDefineColumns ||
-            "Connect a Custom Schema node to define columns"}
+          {localized.nodeEditorConnectCustomSchemaToDefineColumns || "Connect a Custom Schema node to define columns"}
         </div>
       )}
 
@@ -4409,10 +4449,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
           </button>
         </div>
 
-        <div
-          className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content"
-          onWheel={stopWheelPropagation}
-        >
+        <div className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {transformations.map((trans, transIndex) => {
             // Build available source columns (from previous transformations)
             const availableSourceColumns = transformations
@@ -4445,24 +4482,14 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
                   <option value="counter_range">
                     {localized.nodeEditorTransformationCounterCustomRange || "Counter (custom range)"}
                   </option>
-                  <option value="none">
-                    {localized.nodeEditorTransformationNoneUseSource || "None (use source)"}
-                  </option>
-                  <option value="prefix">
-                    {localized.nodeEditorTransformationAddPrefix || "Add Prefix"}
-                  </option>
-                  <option value="suffix">
-                    {localized.nodeEditorTransformationAddSuffix || "Add Suffix"}
-                  </option>
-                  <option value="add">
-                    {localized.nodeEditorTransformationAddNumber || "Add Number (+)"}
-                  </option>
+                  <option value="none">{localized.nodeEditorTransformationNoneUseSource || "None (use source)"}</option>
+                  <option value="prefix">{localized.nodeEditorTransformationAddPrefix || "Add Prefix"}</option>
+                  <option value="suffix">{localized.nodeEditorTransformationAddSuffix || "Add Suffix"}</option>
+                  <option value="add">{localized.nodeEditorTransformationAddNumber || "Add Number (+)"}</option>
                   <option value="subtract">
                     {localized.nodeEditorTransformationSubtractNumber || "Subtract Number (-)"}
                   </option>
-                  <option value="multiply">
-                    {localized.nodeEditorTransformationMultiply || "Multiply (*)"}
-                  </option>
+                  <option value="multiply">{localized.nodeEditorTransformationMultiply || "Multiply (*)"}</option>
                   <option value="divide">{localized.nodeEditorTransformationDivide || "Divide (/)"}</option>
                 </select>
 
@@ -4509,9 +4536,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
                     type="number"
                     placeholder={localized.nodeEditorNumberValuePlaceholder || "Number value..."}
                     value={trans.numericValue ?? ""}
-                    onChange={(e) =>
-                      updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
-                    }
+                    onChange={(e) => updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                   />
                 )}
@@ -4520,18 +4545,14 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
                   <div className="space-y-1">
                     <input
                       type="text"
-                      placeholder={
-                        localized.nodeEditorRangeStartPlaceholder || "Start (e.g., 1 or {{startOption}})"
-                      }
+                      placeholder={localized.nodeEditorRangeStartPlaceholder || "Start (e.g., 1 or {{startOption}})"}
                       value={trans.rangeStart ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { rangeStart: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
                     <input
                       type="text"
-                      placeholder={
-                        localized.nodeEditorRangeEndPlaceholder || "End (e.g., 10 or {{endOption}})"
-                      }
+                      placeholder={localized.nodeEditorRangeEndPlaceholder || "End (e.g., 10 or {{endOption}})"}
                       value={trans.endNumber ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { endNumber: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
@@ -4539,8 +4560,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
                     <input
                       type="text"
                       placeholder={
-                        localized.nodeEditorRangeIncrementPlaceholder ||
-                        "Increment (e.g., 1 or {{incOption}})"
+                        localized.nodeEditorRangeIncrementPlaceholder || "Increment (e.g., 1 or {{incOption}})"
                       }
                       value={trans.rangeIncrement ?? "1"}
                       onChange={(e) => updateTransformation(trans.id, { rangeIncrement: e.target.value })}
@@ -4565,9 +4585,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
                   onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                 >
-                  <option value="">
-                    {localized.nodeEditorSelectTargetTable || "Select target table..."}
-                  </option>
+                  <option value="">{localized.nodeEditorSelectTargetTable || "Select target table..."}</option>
                   {outputTables.map((table) => (
                     <option key={table.handleId} value={table.handleId}>
                       {table.name || table.handleId}
@@ -4611,10 +4629,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
         <label className="text-xs text-gray-300 block mb-2">
           {localized.nodeEditorOutputTablesLabel || "Output Tables:"}
         </label>
-        <div
-          className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content"
-          onWheel={stopWheelPropagation}
-        >
+        <div className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {outputTables.map((output, idx) => (
             <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="text-xs text-purple-400 mb-1">
@@ -4637,8 +4652,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
                       <span className="text-xs text-white">{trans.outputColumnName}</span>
                     </div>
                   ))}
-                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length ===
-                  0 && (
+                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length === 0 && (
                   <div className="text-xs text-gray-500 text-center py-1">
                     {localized.nodeEditorNoTransformationsForThisTable || "No transformations for this table"}
                   </div>
@@ -4646,8 +4660,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
               </div>
 
               <div className="text-xs text-gray-400 mb-1">
-                {localized.nodeEditorStaticValuesRemainingColumnsLabel ||
-                  "Static Values (remaining columns):"}
+                {localized.nodeEditorStaticValuesRemainingColumnsLabel || "Static Values (remaining columns):"}
               </div>
               <div
                 className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content"
@@ -4706,9 +4719,7 @@ export const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: 
 export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = ({ data, id }) => {
   const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
-  const [transformations, setTransformations] = useState<AddColumnTransformation[]>(
-    data.transformations || [],
-  );
+  const [transformations, setTransformations] = useState<AddColumnTransformation[]>(data.transformations || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
   // Sync local state with prop changes
@@ -4735,19 +4746,38 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
   React.useEffect(() => {
     // Calculate extended column names (original + new columns from transformations)
     // Use inputColumnNames (from source) as base, not data.columnNames (which may already include previous new columns)
-    const originalColumns = data.inputColumnNames || data.columnNames || [];
     const newColumns = transformations
-      .filter((t) => t.transformationType !== "filterequal" && t.transformationType !== "filternotequal")
+      .filter(
+        (t) =>
+          t.transformationType !== "filterequal" &&
+          t.transformationType !== "filternotequal" &&
+          t.overwriteSource !== true,
+      )
       .map((t) => t.outputColumnName)
       .filter((name) => name && name.trim() !== "");
 
+    // Without inputColumnNames the base has to come from columnNames, which already holds the
+    // columns this effect appended last time. Stripping them first makes the result idempotent -
+    // otherwise each run appends again, columnNames grows without bound, and the effect retriggers
+    // itself through its own dependency.
+    const newColumnNames = new Set(newColumns);
+    const originalColumns =
+      data.inputColumnNames && data.inputColumnNames.length > 0
+        ? data.inputColumnNames
+        : (data.columnNames || []).filter((name) => !newColumnNames.has(name));
+
     const extendedColumnNames = [...originalColumns, ...newColumns];
 
+    if (JSON.stringify(extendedColumnNames) === JSON.stringify(data.columnNames)) {
+      dispatchNodeDataUpdate(data, { nodeId: id, transformations });
+      return;
+    }
+
     dispatchNodeDataUpdate(data, {
-          nodeId: id,
-          transformations,
-          columnNames: extendedColumnNames,
-        },);
+      nodeId: id,
+      transformations,
+      columnNames: extendedColumnNames,
+    });
   }, [transformations, id, data.inputColumnNames, data.columnNames]);
 
   const addTransformation = () => {
@@ -4802,15 +4832,13 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
       />
 
       <div className="text-sm font-bold text-white mb-3">
-        {data.label || localized.nodeEditorNodeAddNewColumnLabel || "Add New Column"}
+        {data.label || localized.nodeEditorNodeAddNewColumnLabel || "Add Or Transform Columns"}
       </div>
 
       {/* Transformations Section */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-gray-300">
-            {localized.nodeEditorNewColumnsLabel || "New Columns:"}
-          </label>
+          <label className="text-xs text-gray-300">{localized.nodeEditorNewColumnsLabel || "New Columns:"}</label>
           <button
             onClick={addTransformation}
             className="text-xs bg-cyan-600 hover:bg-cyan-700 text-white px-2 py-1 rounded"
@@ -4819,32 +4847,33 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
           </button>
         </div>
 
-        <div
-          className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content"
-          onWheel={stopWheelPropagation}
-        >
+        <div className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {transformations.map((trans, transIndex) => {
             // Build available source columns for this transformation
             // Include original INPUT columns (not including new columns from transformations)
             // + output columns from PREVIOUS transformations only
-            const inputColumns = data.inputColumnNames || columnNames || [];
-            const previousTransformationColumns = transformations
-              .slice(0, transIndex)
-              .map((t) => t.outputColumnName)
-              .filter((name) => name && name.trim() !== "");
+            const inputColumns = [...new Set(data.inputColumnNames || columnNames || [])];
+            const previousTransformationColumns = [
+              ...new Set(
+                transformations
+                  .slice(0, transIndex)
+                  .map((t) => t.outputColumnName)
+                  .filter((name) => name && name.trim() !== "" && !inputColumns.includes(name)),
+              ),
+            ];
 
             return (
               <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-400">→ {trans.outputColumnName}</span>
+                  <span className="text-xs text-gray-400">
+                    → {trans.overwriteSource ? trans.sourceColumn || "?" : trans.outputColumnName}
+                  </span>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => moveTransformationUp(trans.id)}
                       disabled={transIndex === 0}
                       className={`text-xs ${
-                        transIndex === 0
-                          ? "text-gray-600 cursor-not-allowed"
-                          : "text-blue-400 hover:text-blue-300"
+                        transIndex === 0 ? "text-gray-600 cursor-not-allowed" : "text-blue-400 hover:text-blue-300"
                       }`}
                       title={localized.nodeEditorMoveUp || "Move up"}
                     >
@@ -4872,14 +4901,73 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                   </div>
                 </div>
 
+                <label className="flex items-center gap-2 cursor-pointer mb-1">
+                  <input
+                    type="checkbox"
+                    checked={trans.overwriteSource === true}
+                    onChange={(e) => updateTransformation(trans.id, { overwriteSource: e.target.checked })}
+                    className="w-3 h-3"
+                  />
+                  <span className="text-xs text-white">
+                    {localized.nodeEditorOverwriteSourceColumn || "Overwrite the source column"}
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-1 mb-1">
+                  <select
+                    value={trans.conditionColumn || ""}
+                    onChange={(e) =>
+                      updateTransformation(trans.id, {
+                        conditionColumn: e.target.value,
+                        conditionOperator: trans.conditionOperator || "startsWith",
+                      })
+                    }
+                    className="flex-1 bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    title={
+                      localized.nodeEditorTransformConditionTooltip ||
+                      "Apply this transformation only to rows where the condition holds. Other rows keep their value - unlike a filter transformation, which removes the row entirely."
+                    }
+                  >
+                    <option value="">{localized.nodeEditorTransformConditionAlways || "always"}</option>
+                    {inputColumns.map((col: string) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  {trans.conditionColumn && (
+                    <>
+                      <select
+                        value={trans.conditionOperator || "startsWith"}
+                        onChange={(e) =>
+                          updateTransformation(trans.id, {
+                            conditionOperator: e.target.value as AddColumnTransformation["conditionOperator"],
+                          })
+                        }
+                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                      >
+                        <option value="startsWith">{localized.nodeEditorConditionStartsWith || "starts with"}</option>
+                        <option value="equals">{localized.nodeEditorConditionEquals || "equals"}</option>
+                        <option value="notEquals">{localized.nodeEditorConditionNotEquals || "not equals"}</option>
+                        <option value="contains">{localized.nodeEditorConditionContains || "contains"}</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={trans.conditionValue || ""}
+                        onChange={(e) => updateTransformation(trans.id, { conditionValue: e.target.value })}
+                        placeholder={localized.nodeEditorValuePlaceholder || "value"}
+                        className="w-20 bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                      />
+                    </>
+                  )}
+                </div>
+
                 <select
                   value={trans.sourceColumn}
                   onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
-                  <option value="">
-                    {localized.nodeEditorSelectSourceColumn || "Select source column..."}
-                  </option>
+                  <option value="">{localized.nodeEditorSelectSourceColumn || "Select source column..."}</option>
                   {inputColumns.map((col: string) => (
                     <option key={col} value={col}>
                       {col}
@@ -4917,21 +5005,13 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                   <option value="none">
                     {localized.nodeEditorTransformationNonePassThrough || "None (pass through)"}
                   </option>
-                  <option value="prefix">
-                    {localized.nodeEditorTransformationAddPrefix || "Add Prefix"}
-                  </option>
-                  <option value="suffix">
-                    {localized.nodeEditorTransformationAddSuffix || "Add Suffix"}
-                  </option>
-                  <option value="add">
-                    {localized.nodeEditorTransformationAddNumber || "Add Number (+)"}
-                  </option>
+                  <option value="prefix">{localized.nodeEditorTransformationAddPrefix || "Add Prefix"}</option>
+                  <option value="suffix">{localized.nodeEditorTransformationAddSuffix || "Add Suffix"}</option>
+                  <option value="add">{localized.nodeEditorTransformationAddNumber || "Add Number (+)"}</option>
                   <option value="subtract">
                     {localized.nodeEditorTransformationSubtractNumber || "Subtract Number (-)"}
                   </option>
-                  <option value="multiply">
-                    {localized.nodeEditorTransformationMultiply || "Multiply (*)"}
-                  </option>
+                  <option value="multiply">{localized.nodeEditorTransformationMultiply || "Multiply (*)"}</option>
                   <option value="divide">{localized.nodeEditorTransformationDivide || "Divide (/)"}</option>
                   <option value="rename_whole">
                     {localized.nodeEditorTransformationRenameWhole || "Rename (whole text with new value)"}
@@ -4948,8 +5028,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                     {localized.nodeEditorTransformationRegexReplace || "Regex Replace"}
                   </option>
                   <option value="filterequal">
-                    {localized.nodeEditorTransformationFilterRowsEqual ||
-                      "Filter Rows: Equal (skip if equal)"}
+                    {localized.nodeEditorTransformationFilterRowsEqual || "Filter Rows: Equal (skip if equal)"}
                   </option>
                   <option value="filternotequal">
                     {localized.nodeEditorTransformationFilterRowsNotEqual ||
@@ -4985,9 +5064,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                     type="number"
                     placeholder={localized.nodeEditorNumberValuePlaceholder || "Number value..."}
                     value={trans.numericValue ?? ""}
-                    onChange={(e) =>
-                      updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
-                    }
+                    onChange={(e) => updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                   />
                 )}
@@ -4996,9 +5073,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                   <>
                     <input
                       type="text"
-                      placeholder={
-                        localized.nodeEditorMatchValueExactPlaceholder || "Match value (exact match)..."
-                      }
+                      placeholder={localized.nodeEditorMatchValueExactPlaceholder || "Match value (exact match)..."}
                       value={trans.matchValue || ""}
                       onChange={(e) => updateTransformation(trans.id, { matchValue: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5036,9 +5111,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                   <>
                     <input
                       type="text"
-                      placeholder={
-                        localized.nodeEditorIfContainsSubstringPlaceholder || "If contains substring..."
-                      }
+                      placeholder={localized.nodeEditorIfContainsSubstringPlaceholder || "If contains substring..."}
                       value={trans.findSubstring || ""}
                       onChange={(e) => updateTransformation(trans.id, { findSubstring: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5046,8 +5119,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                     <input
                       type="text"
                       placeholder={
-                        localized.nodeEditorReplaceEntireValueWithPlaceholder ||
-                        "Replace entire value with..."
+                        localized.nodeEditorReplaceEntireValueWithPlaceholder || "Replace entire value with..."
                       }
                       value={trans.replaceValue || ""}
                       onChange={(e) => updateTransformation(trans.id, { replaceValue: e.target.value })}
@@ -5061,8 +5133,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                     <input
                       type="text"
                       placeholder={
-                        localized.nodeEditorRegexPatternPlaceholder ||
-                        "Regex pattern (e.g., wh_(\\w+)_emp)..."
+                        localized.nodeEditorRegexPatternPlaceholder || "Regex pattern (e.g., wh_(\\w+)_emp)..."
                       }
                       value={trans.regexPattern || ""}
                       onChange={(e) => updateTransformation(trans.id, { regexPattern: e.target.value })}
@@ -5071,8 +5142,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                     <input
                       type="text"
                       placeholder={
-                        localized.nodeEditorRegexReplacementPlaceholder ||
-                        "Replacement (supports $1, $2, etc.)..."
+                        localized.nodeEditorRegexReplacementPlaceholder || "Replacement (supports $1, $2, etc.)..."
                       }
                       value={trans.regexReplacement || ""}
                       onChange={(e) => updateTransformation(trans.id, { regexReplacement: e.target.value })}
@@ -5081,8 +5151,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                   </>
                 )}
 
-                {(trans.transformationType === "filterequal" ||
-                  trans.transformationType === "filternotequal") && (
+                {(trans.transformationType === "filterequal" || trans.transformationType === "filternotequal") && (
                   <input
                     type="text"
                     placeholder={localized.nodeEditorFilterValue || "Filter value..."}
@@ -5114,10 +5183,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
       <div className="mt-2 text-xs text-gray-400">
         {localized.nodeEditorOutput || "Output:"}{" "}
         {localized.nodeEditorAllOriginalColumnsPlusNew || "All original columns +"}{" "}
-        {
-          transformations.filter((t) => !["filterequal", "filternotequal"].includes(t.transformationType))
-            .length
-        }{" "}
+        {transformations.filter((t) => !["filterequal", "filternotequal"].includes(t.transformationType)).length}{" "}
         {localized.nodeEditorNewLowercase || "new"}
       </div>
 
@@ -5156,21 +5222,21 @@ export const CustomSchemaNode: React.FC<{ data: CustomSchemaNodeData; id: string
     const newColumns = [...columns, newColumn];
     setColumns(newColumns);
 
-    dispatchNodeDataUpdate(data, { nodeId: id, schemaColumns: newColumns },);
+    dispatchNodeDataUpdate(data, { nodeId: id, schemaColumns: newColumns });
   };
 
   const removeColumn = (colId: string) => {
     const newColumns = columns.filter((col) => col.id !== colId);
     setColumns(newColumns);
 
-    dispatchNodeDataUpdate(data, { nodeId: id, schemaColumns: newColumns },);
+    dispatchNodeDataUpdate(data, { nodeId: id, schemaColumns: newColumns });
   };
 
   const updateColumn = (colId: string, field: "name" | "type", value: string) => {
     const newColumns = columns.map((col) => (col.id === colId ? { ...col, [field]: value } : col));
     setColumns(newColumns);
 
-    dispatchNodeDataUpdate(data, { nodeId: id, schemaColumns: newColumns },);
+    dispatchNodeDataUpdate(data, { nodeId: id, schemaColumns: newColumns });
   };
 
   return (
@@ -5179,8 +5245,7 @@ export const CustomSchemaNode: React.FC<{ data: CustomSchemaNodeData; id: string
         {data.label || localized.nodeEditorNodeCustomSchemaLabel || "Custom Schema"}
       </div>
       <div className="text-xs text-gray-400 mb-3">
-        {localized.nodeEditorNodeCustomSchemaDescription ||
-          "Define custom table schema with column names and types"}
+        {localized.nodeEditorNodeCustomSchemaDescription || "Define custom table schema with column names and types"}
       </div>
 
       <div className="space-y-2 mb-3 max-h-64 overflow-y-auto scrollable-node-content">
@@ -5261,7 +5326,7 @@ export const ReadTSVFromPackNode: React.FC<{ data: ReadTSVFromPackNodeData; id: 
     const newValue = event.target.value;
     setTsvFileName(newValue);
 
-    dispatchNodeDataUpdate(data, { nodeId: id, tsvFileName: newValue },);
+    dispatchNodeDataUpdate(data, { nodeId: id, tsvFileName: newValue });
   };
 
   return (
@@ -5297,9 +5362,7 @@ export const ReadTSVFromPackNode: React.FC<{ data: ReadTSVFromPackNodeData; id: 
 
       <input
         type="text"
-        placeholder={
-          localized.nodeEditorFullTsvFilePathPlaceholder || "Full TSV file path (e.g., my_data/data.tsv)"
-        }
+        placeholder={localized.nodeEditorFullTsvFilePathPlaceholder || "Full TSV file path (e.g., my_data/data.tsv)"}
         value={tsvFileName}
         onChange={handleFileNameChange}
         className="w-full p-2 mb-2 text-sm bg-gray-600 text-white border border-gray-500 rounded"
@@ -5316,7 +5379,7 @@ export const ReadTSVFromPackNode: React.FC<{ data: ReadTSVFromPackNodeData; id: 
           onChange={(e) => {
             const newName = e.target.value;
             setTableName(newName);
-            dispatchNodeDataUpdate(data, { nodeId: id, tableName: newName },);
+            dispatchNodeDataUpdate(data, { nodeId: id, tableName: newName });
           }}
           className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
         />
@@ -5377,21 +5440,21 @@ export const CustomRowsInputNode: React.FC<{ data: CustomRowsInputNodeData; id: 
     const newRows = [...customRows, newRow];
     setCustomRows(newRows);
 
-    dispatchNodeDataUpdate(data, { nodeId: id, customRows: newRows },);
+    dispatchNodeDataUpdate(data, { nodeId: id, customRows: newRows });
   };
 
   const removeRow = (rowIdx: number) => {
     const newRows = customRows.filter((_, idx) => idx !== rowIdx);
     setCustomRows(newRows);
 
-    dispatchNodeDataUpdate(data, { nodeId: id, customRows: newRows },);
+    dispatchNodeDataUpdate(data, { nodeId: id, customRows: newRows });
   };
 
   const updateCell = (rowIdx: number, colName: string, value: string) => {
     const newRows = customRows.map((row, idx) => (idx === rowIdx ? { ...row, [colName]: value } : row));
     setCustomRows(newRows);
 
-    dispatchNodeDataUpdate(data, { nodeId: id, customRows: newRows },);
+    dispatchNodeDataUpdate(data, { nodeId: id, customRows: newRows });
   };
 
   return (
@@ -5422,7 +5485,7 @@ export const CustomRowsInputNode: React.FC<{ data: CustomRowsInputNodeData; id: 
           onChange={(e) => {
             const newName = e.target.value;
             setTableName(newName);
-            dispatchNodeDataUpdate(data, { nodeId: id, tableName: newName },);
+            dispatchNodeDataUpdate(data, { nodeId: id, tableName: newName });
           }}
           className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
         />
@@ -5430,8 +5493,7 @@ export const CustomRowsInputNode: React.FC<{ data: CustomRowsInputNodeData; id: 
 
       {schemaColumns.length === 0 ? (
         <div className="text-xs text-gray-500 p-3 bg-gray-800 rounded mb-3">
-          {localized.nodeEditorConnectCustomSchemaToDefineColumns ||
-            "Connect a Custom Schema node to define columns"}
+          {localized.nodeEditorConnectCustomSchemaToDefineColumns || "Connect a Custom Schema node to define columns"}
         </div>
       ) : (
         <>
@@ -5572,7 +5634,7 @@ export const MultiFilterNode: React.FC<{ data: MultiFilterNodeData; id: string }
 
   const handleColumnChange = (column: string) => {
     setSelectedColumn(column);
-    dispatchNodeDataUpdate(data, { nodeId: id, selectedColumn: column },);
+    dispatchNodeDataUpdate(data, { nodeId: id, selectedColumn: column });
   };
 
   const addSplitValue = () => {
@@ -5583,19 +5645,19 @@ export const MultiFilterNode: React.FC<{ data: MultiFilterNodeData; id: string }
     };
     const newSplitValues = [...splitValues, newValue];
     setSplitValues(newSplitValues);
-    dispatchNodeDataUpdate(data, { nodeId: id, splitValues: newSplitValues },);
+    dispatchNodeDataUpdate(data, { nodeId: id, splitValues: newSplitValues });
   };
 
   const removeSplitValue = (splitId: string) => {
     const newSplitValues = splitValues.filter((s) => s.id !== splitId);
     setSplitValues(newSplitValues);
-    dispatchNodeDataUpdate(data, { nodeId: id, splitValues: newSplitValues },);
+    dispatchNodeDataUpdate(data, { nodeId: id, splitValues: newSplitValues });
   };
 
   const updateSplitValue = (splitId: string, updates: Partial<{ value: string; enabled: boolean }>) => {
     const newSplitValues = splitValues.map((s) => (s.id === splitId ? { ...s, ...updates } : s));
     setSplitValues(newSplitValues);
-    dispatchNodeDataUpdate(data, { nodeId: id, splitValues: newSplitValues },);
+    dispatchNodeDataUpdate(data, { nodeId: id, splitValues: newSplitValues });
   };
 
   return (
@@ -5680,10 +5742,7 @@ export const MultiFilterNode: React.FC<{ data: MultiFilterNodeData; id: string }
         </div>
       </div>
 
-      <button
-        onClick={addSplitValue}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs rounded p-1"
-      >
+      <button onClick={addSplitValue} className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs rounded p-1">
         + {localized.nodeEditorAddValue || "Add Value"}
       </button>
 
@@ -5713,6 +5772,2766 @@ export const MultiFilterNode: React.FC<{ data: MultiFilterNodeData; id: string }
           />
         );
       })}
+    </div>
+  );
+};
+
+/**
+ * A hover-help marker. The node editor has no tooltip component, so this is a native title
+ * attribute paired with a visible affordance — an invisible hover target helps nobody.
+ */
+const DeepCloneHelp: React.FC<{ text: string }> = ({ text }) => (
+  <span
+    className="ml-1 px-1 text-[10px] leading-none text-gray-300 border border-gray-500 rounded-full cursor-help select-none align-middle"
+    title={text}
+  >
+    ?
+  </span>
+);
+
+interface DeepCloneTreeRowProps {
+  node: DeepCloneTreeNode;
+  path: number[];
+  depth: number;
+  ancestorTables: string[];
+  expandedPaths: Set<string>;
+  onToggleExpanded: (pathKey: string) => void;
+  onToggleSelected: (path: number[]) => void;
+  onChangeTemplate: (path: number[], template: string) => void;
+  localized: ReturnType<typeof useLocalizations>;
+}
+
+const DeepCloneTreeRow: React.FC<DeepCloneTreeRowProps> = ({
+  node,
+  path,
+  depth,
+  ancestorTables,
+  expandedPaths,
+  onToggleExpanded,
+  onToggleSelected,
+  onChangeTemplate,
+  localized,
+}) => {
+  const pathKey = path.join(".");
+  const isExpanded = expandedPaths.has(pathKey);
+  const isRoot = path.length === 0;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 10}px` }}>
+        <button
+          onClick={() => onToggleExpanded(pathKey)}
+          className="text-xs text-gray-400 hover:text-white w-3"
+          title={localized.nodeEditorDeepCloneExpand || "Show referenced tables"}
+        >
+          {isExpanded ? "▾" : "▸"}
+        </button>
+        {isRoot ? (
+          <span className="w-3" />
+        ) : (
+          <input
+            type="checkbox"
+            checked={node.selected}
+            onChange={() => onToggleSelected(path)}
+            className="w-3 h-3"
+            title={localized.nodeEditorDeepCloneCloneToggle || "Clone this table too"}
+          />
+        )}
+        <span
+          className={`text-xs ${node.selected ? "text-white" : "text-gray-500"} ${
+            node.direction === "reverse" ? "italic" : ""
+          }`}
+          title={
+            node.direction === "reverse"
+              ? `${node.table}.${node.linkColumn} → ${localized.nodeEditorDeepCloneReverseRef || "points back at this row"}`
+              : `${node.linkColumn} → ${node.table}.${node.keyColumn}`
+          }
+        >
+          {node.table}
+          {node.keyColumn ? `.${node.keyColumn}` : ""}
+        </span>
+      </div>
+
+      {isExpanded && !isRoot && node.selected && (
+        <div className="flex items-center gap-1 mt-1" style={{ paddingLeft: `${(depth + 1) * 10}px` }}>
+          <input
+            type="text"
+            value={node.nameTemplate || ""}
+            onChange={(event) => onChangeTemplate(path, event.target.value)}
+            placeholder={localized.nodeEditorDeepCloneNameTemplatePlaceholder || "Name template (inherits)"}
+            className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          />
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneRowTemplateTooltip ||
+              `Key template for ${node.table} only. Leave empty to inherit the node's template above.\n\n` +
+                "Same placeholders: {original}, {selfOriginal}, {variant}."
+            }
+          />
+        </div>
+      )}
+
+      {isExpanded &&
+        (node.children || []).map((child, childIndex) => (
+          <DeepCloneTreeRow
+            key={`${child.direction}|${child.table}|${child.linkColumn}`}
+            node={child}
+            path={[...path, childIndex]}
+            depth={depth + 1}
+            ancestorTables={[...ancestorTables, node.table]}
+            expandedPaths={expandedPaths}
+            onToggleExpanded={onToggleExpanded}
+            onToggleSelected={onToggleSelected}
+            onChangeTemplate={onChangeTemplate}
+            localized={localized}
+          />
+        ))}
+    </div>
+  );
+};
+
+export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const DBNameToDBVersions = data.DBNameToDBVersions;
+  const connectedTableName = (data.connectedTableName || "").replace(/^db\\/, "").replace(/\\.*$/, "");
+
+  const [cloneTree, setCloneTree] = useState<DeepCloneTreeNode | undefined>(data.cloneTree);
+  const [nameTemplate, setNameTemplate] = useState<string>(data.nameTemplate || "{original}{variant}");
+  const [useModdersPrefix, setUseModdersPrefix] = useState<boolean>(data.useModdersPrefix !== false);
+  const [generateLoc, setGenerateLoc] = useState<boolean>(data.generateLoc !== false);
+  const [autoFollowReferences, setAutoFollowReferences] = useState<boolean>(data.autoFollowReferences !== false);
+  // Captured from this machine's settings and saved with the flow, so a game-start run elsewhere
+  // still produces the author's keys.
+  const appModdersPrefix = useAppSelector((state) => state.app.moddersPrefix);
+  const savedModdersPrefix = useModdersPrefix ? appModdersPrefix || "" : "";
+  const [variantAxes, setVariantAxes] = useState<DeepCloneVariantAxis[]>(data.variantAxes || []);
+  const [columnOverrides, setColumnOverrides] = useState<DeepCloneOverride[]>(data.columnOverrides || []);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set([""]));
+
+  // Rebuild the root whenever the upstream table changes; keep the existing plan if it still matches.
+  React.useEffect(() => {
+    if (!connectedTableName) return;
+    if (cloneTree && cloneTree.table === connectedTableName) return;
+    setCloneTree(expandTreeNode(DBNameToDBVersions, createRootTreeNode(DBNameToDBVersions, connectedTableName)));
+    setExpandedPaths(new Set([""]));
+  }, [connectedTableName, DBNameToDBVersions]);
+
+  React.useEffect(() => {
+    if (data.cloneTree !== undefined && JSON.stringify(data.cloneTree) !== JSON.stringify(cloneTree)) {
+      setCloneTree(data.cloneTree);
+    }
+  }, [data.cloneTree]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, cloneTree });
+  }, [cloneTree, id]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      nameTemplate,
+      useModdersPrefix,
+      moddersPrefix: savedModdersPrefix,
+      generateLoc,
+      autoFollowReferences,
+    });
+  }, [nameTemplate, useModdersPrefix, savedModdersPrefix, generateLoc, autoFollowReferences, id]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, variantAxes });
+  }, [variantAxes, id]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, columnOverrides });
+  }, [columnOverrides, id]);
+
+  /** Replaces the node at `path` with the result of `update`, rebuilding the spine immutably. */
+  const updateNodeAtPath = (
+    path: number[],
+    update: (node: DeepCloneTreeNode, ancestorTables: string[]) => DeepCloneTreeNode,
+  ) => {
+    setCloneTree((previous) => {
+      if (!previous) return previous;
+      const apply = (node: DeepCloneTreeNode, remaining: number[], ancestorTables: string[]): DeepCloneTreeNode => {
+        if (remaining.length === 0) return update(node, ancestorTables);
+        const [childIndex, ...rest] = remaining;
+        const children = [...(node.children || [])];
+        if (!children[childIndex]) return node;
+        children[childIndex] = apply(children[childIndex], rest, [...ancestorTables, node.table]);
+        return { ...node, children };
+      };
+      return apply(previous, path, []);
+    });
+  };
+
+  const toggleExpanded = (pathKey: string) => {
+    const path = pathKey === "" ? [] : pathKey.split(".").map(Number);
+    const nextExpanded = new Set(expandedPaths);
+    if (nextExpanded.has(pathKey)) {
+      nextExpanded.delete(pathKey);
+    } else {
+      nextExpanded.add(pathKey);
+      // Children are only materialized on expand — the full closure is far too large to build eagerly.
+      updateNodeAtPath(path, (node, ancestorTables) =>
+        (node.children || []).length > 0 ? node : expandTreeNode(DBNameToDBVersions, node, ancestorTables),
+      );
+    }
+    setExpandedPaths(nextExpanded);
+  };
+
+  const toggleSelected = (path: number[]) => {
+    updateNodeAtPath(path, (node, ancestorTables) => {
+      const selected = !node.selected;
+      // Selecting a node immediately populates its children so it can be drilled into.
+      if (selected && (node.children || []).length === 0) {
+        return { ...expandTreeNode(DBNameToDBVersions, node, ancestorTables), selected };
+      }
+      return { ...node, selected };
+    });
+  };
+
+  const changeTemplate = (path: number[], template: string) => {
+    updateNodeAtPath(path, (node) => ({ ...node, nameTemplate: template || undefined }));
+  };
+
+  const selectedTables = getSelectedCloneTables(cloneTree);
+  const getColumnsForTable = (tableName: string) =>
+    DBNameToDBVersions?.[tableName]?.[0]?.fields.map((field) => field.name) || [];
+
+  // The preview has to expand a range axis the same way execution does, or it would report one
+  // variant for an axis that generates hundreds.
+  const axisValues = (axis: DeepCloneVariantAxis) =>
+    axis.kind === "range" ? expandRangeAxis(axis) : axis.values || [];
+  const variantCount = variantAxes.reduce((total, axis) => total * Math.max(1, axisValues(axis).length), 1);
+  const variantSuffixes = variantAxes.reduce<string[]>(
+    (suffixes, axis) =>
+      axisValues(axis).length === 0
+        ? suffixes
+        : suffixes.flatMap((suffix) =>
+            axisValues(axis).map((value: { suffix: string }) => `${suffix}${value.suffix || ""}`),
+          ),
+    [""],
+  );
+
+  // Axes configured but no {variant} in the template means every variant lands on the same key.
+  const templatesMissingVariant = variantCount > 1 ? findTemplatesMissingVariant(cloneTree, nameTemplate) : [];
+
+  const addAxis = () => setVariantAxes([...variantAxes, { id: `axis_${Date.now()}`, values: [] }]);
+  const removeAxis = (axisId: string) => setVariantAxes(variantAxes.filter((axis) => axis.id !== axisId));
+  const updateAxis = (axisId: string, updates: Partial<DeepCloneVariantAxis>) =>
+    setVariantAxes(variantAxes.map((axis) => (axis.id === axisId ? { ...axis, ...updates } : axis)));
+  const addAxisValue = (axisId: string) => {
+    const axis = variantAxes.find((candidate) => candidate.id === axisId);
+    if (!axis) return;
+    updateAxis(axisId, {
+      values: [...(axis.values || []), { id: `value_${Date.now()}`, suffix: "", overrides: [] }],
+    });
+  };
+
+  const renderOverrideEditor = (overrides: DeepCloneOverride[], onChange: (next: DeepCloneOverride[]) => void) => (
+    <div className="space-y-1">
+      {overrides.map((override, overrideIndex) => (
+        <div key={overrideIndex} className="flex items-center gap-1">
+          <select
+            value={override.table}
+            onChange={(event) =>
+              onChange(
+                overrides.map((candidate, index) =>
+                  index === overrideIndex ? { ...candidate, table: event.target.value, column: "" } : candidate,
+                ),
+              )
+            }
+            className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          >
+            <option value="">{localized.nodeEditorSelectTable || "Select a table..."}</option>
+            {selectedTables.map((tableName) => (
+              <option key={tableName} value={tableName}>
+                {tableName}
+              </option>
+            ))}
+          </select>
+          <select
+            value={override.column}
+            onChange={(event) =>
+              onChange(
+                overrides.map((candidate, index) =>
+                  index === overrideIndex ? { ...candidate, column: event.target.value } : candidate,
+                ),
+              )
+            }
+            className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          >
+            <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
+            {getColumnsForTable(override.table).map((columnName) => (
+              <option key={columnName} value={columnName}>
+                {columnName}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={override.value}
+            onChange={(event) =>
+              onChange(
+                overrides.map((candidate, index) =>
+                  index === overrideIndex ? { ...candidate, value: event.target.value } : candidate,
+                ),
+              )
+            }
+            placeholder={localized.nodeEditorValuePlaceholder || "value"}
+            title={
+              localized.nodeEditorDeepCloneOverrideValueTooltip ||
+              "A literal value, or on a numeric column an expression in x, the cell's original value: x*2, x+10, 1.5*x.\n\n" +
+                "Flow options work too, on their own ({{myOption}}) or inside an expression ({{myOption}}*x).\n\n" +
+                "Also accepts {original}, {selfOriginal} and {variant}."
+            }
+            className="w-24 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          />
+          <button
+            onClick={() => onChange(overrides.filter((_, index) => index !== overrideIndex))}
+            className="text-xs text-red-400 hover:text-red-300"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...overrides, { table: selectedTables[0] || "", column: "", value: "" }])}
+        className="text-xs text-blue-400 hover:text-blue-300"
+      >
+        + {localized.nodeEditorDeepCloneAddOverride || "Add override"}
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[340px] max-w-[440px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">{localized.nodeEditorDeepCloneTitle || "Deep Clone"}</div>
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorDeepCloneNameTemplateLabel || "New key template:"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneNameTemplateTooltip ||
+              "The key given to every cloned row, in every cloned table.\n\n" +
+                "{original} - the key of the row you are cloning, the same value in every table\n" +
+                "{selfOriginal} - this table's own original key\n" +
+                "{variant} - the variant suffix, empty when there are no axes\n\n" +
+                "Example: my_new_unit{variant} gives main_units_tables and land_units_tables the same new key, so they stay linked.\n" +
+                "Use {selfOriginal}_clone{variant} instead to keep each table's own naming.\n\n" +
+                "Include {variant} whenever you use variant axes, or every variant produces the same key."
+            }
+          />
+        </label>
+        <input
+          type="text"
+          value={nameTemplate}
+          onChange={(event) => setNameTemplate(event.target.value)}
+          placeholder="{original}{variant}"
+          className="w-full p-1 text-xs bg-gray-800 text-white border border-gray-600 rounded"
+        />
+        <div className="text-xs text-gray-500 mt-1">
+          {localized.nodeEditorDeepCloneNameTemplateHelp ||
+            "{original} = source key, {selfOriginal} = this table's key, {variant} = variant suffix"}
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer mt-1">
+          <input
+            type="checkbox"
+            checked={useModdersPrefix}
+            onChange={(event) => setUseModdersPrefix(event.target.checked)}
+            className="w-3 h-3"
+          />
+          <span className="text-xs text-white">
+            {localized.nodeEditorDeepCloneUseModdersPrefix || "Prepend modders prefix"}
+          </span>
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneUseModdersPrefixTooltip ||
+              "Prepends the modders prefix from your app settings to every new key, so your keys cannot collide with another mod's.\n\n" +
+                "Skipped for a key that already starts with the prefix, so it is never applied twice."
+            }
+          />
+        </label>
+        {useModdersPrefix && !savedModdersPrefix && (
+          <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+            {localized.nodeEditorDeepCloneMissingPrefixWarning ||
+              "Set a modders prefix in the app options, or untick this. The flow will fail to run without one."}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorDeepCloneTreeLabel || "Tables to clone:"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneTreeTooltip ||
+              "Every table reachable from the input table by a schema reference.\n\n" +
+                "Checked - the referenced row is cloned too, and the clone points at the new copy.\n" +
+                "Unchecked - the reference is left alone, so the clone keeps pointing at the original shared row (what you usually want for things like unit_castes_tables).\n\n" +
+                "Upright rows are forward references: a column of this table points at them.\n" +
+                "Italic rows are reverse references: they point back at this table.\n\n" +
+                "Foreign keys between cloned rows are rewritten for you. Expand a checked row to give that table its own key template."
+            }
+          />
+        </label>
+        <div
+          className="max-h-48 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {!cloneTree ? (
+            <div className="text-xs text-gray-500">
+              {localized.nodeEditorDeepCloneNoTable || "Connect a table selection to start"}
+            </div>
+          ) : (
+            <DeepCloneTreeRow
+              node={cloneTree}
+              path={[]}
+              depth={0}
+              ancestorTables={[]}
+              expandedPaths={expandedPaths}
+              onToggleExpanded={toggleExpanded}
+              onToggleSelected={toggleSelected}
+              onChangeTemplate={changeTemplate}
+              localized={localized}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-300">
+            {localized.nodeEditorDeepCloneVariantAxesLabel || "Variant axes:"}
+            <DeepCloneHelp
+              text={
+                localized.nodeEditorDeepCloneVariantAxesTooltip ||
+                "Each axis is one dimension of variation. The variants produced are the cross product of all axes, with the suffixes joined in axis order.\n\n" +
+                  'axis "shield": _shielded, _unshielded\n' +
+                  'axis "tier":   _t1, _t2\n' +
+                  "= 4 variants: _shielded_t1, _shielded_t2, _unshielded_t1, _unshielded_t2\n\n" +
+                  "Every variant is a full clone of the whole checked tree, so 4 variants means 4 new rows in each cloned table, each properly cross-linked to its own copies.\n\n" +
+                  "A value's overrides apply to that variant only and can target any checked table, which is how one axis sets land_units_tables.shield while another sets main_units_tables cost.\n\n" +
+                  "No axes means one plain clone. Limit is 256 variants."
+              }
+            />
+          </label>
+          <button onClick={addAxis} className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded">
+            + {localized.add || "Add"}
+          </button>
+        </div>
+
+        <div className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+          {variantAxes.map((axis, axisIndex) => (
+            <div key={axis.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center gap-1 mb-2">
+                <span className="flex-1 text-xs text-gray-400">
+                  {localized.nodeEditorDeepCloneAxisLabel || "Axis"} {axisIndex + 1}
+                </span>
+                <select
+                  value={axis.kind || "list"}
+                  onChange={(event) => {
+                    const kind = event.target.value as DeepCloneVariantAxis["kind"];
+                    if (kind !== "range") {
+                      updateAxis(axis.id, { kind });
+                      return;
+                    }
+                    // Write the defaults the fields display, and carry the list's overrides across so
+                    // switching does not silently drop them.
+                    updateAxis(axis.id, {
+                      kind,
+                      rangeStart: axis.rangeStart ?? "1",
+                      rangeSuffix: axis.rangeSuffix ?? "_{n}",
+                      rangeOverrides:
+                        axis.rangeOverrides && axis.rangeOverrides.length > 0
+                          ? axis.rangeOverrides
+                          : (axis.values || []).flatMap((value) => value.overrides || []),
+                    });
+                  }}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                  title={
+                    localized.nodeEditorDeepCloneAxisKindTooltip ||
+                    "A list axis has the variants you type out. A range axis generates them from a counter, which is how you make hundreds of numbered clones without typing every suffix."
+                  }
+                >
+                  <option value="list">{localized.nodeEditorDeepCloneAxisKindList || "list"}</option>
+                  <option value="range">{localized.nodeEditorDeepCloneAxisKindRange || "range"}</option>
+                </select>
+                <button onClick={() => removeAxis(axis.id)} className="text-xs text-red-400 hover:text-red-300">
+                  ✕
+                </button>
+              </div>
+
+              {axis.kind === "range" && (
+                <div className="mb-2 pl-2 border-l border-gray-600">
+                  <div className="flex items-center gap-1 mb-1">
+                    <input
+                      type="text"
+                      value={axis.rangeStart ?? ""}
+                      onChange={(event) => updateAxis(axis.id, { rangeStart: event.target.value })}
+                      placeholder={localized.nodeEditorDeepCloneRangeFrom || "from"}
+                      className="w-14 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                    <input
+                      type="text"
+                      value={axis.rangeEnd ?? ""}
+                      onChange={(event) => updateAxis(axis.id, { rangeEnd: event.target.value })}
+                      placeholder={localized.nodeEditorDeepCloneRangeTo || "to"}
+                      className="w-14 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                    <input
+                      type="text"
+                      value={axis.rangeStep ?? ""}
+                      onChange={(event) => updateAxis(axis.id, { rangeStep: event.target.value })}
+                      placeholder={localized.nodeEditorDeepCloneRangeStep || "step"}
+                      className="w-14 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                    <input
+                      type="text"
+                      value={axis.rangeSuffix ?? ""}
+                      onChange={(event) => updateAxis(axis.id, { rangeSuffix: event.target.value })}
+                      placeholder="_{n}"
+                      className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500 mb-1">
+                    {localized.nodeEditorDeepCloneRangeHelp || "{n} is the counter. Bounds accept flow options."}
+                  </div>
+                  {renderOverrideEditor(axis.rangeOverrides || [], (next) =>
+                    updateAxis(axis.id, { rangeOverrides: next }),
+                  )}
+                </div>
+              )}
+
+              {axis.kind !== "range" &&
+                (axis.values || []).map((value) => (
+                  <div key={value.id} className="mb-2 pl-2 border-l border-gray-600">
+                    <div className="flex items-center gap-1 mb-1">
+                      <input
+                        type="text"
+                        value={value.suffix}
+                        onChange={(event) =>
+                          updateAxis(axis.id, {
+                            values: axis.values.map((candidate) =>
+                              candidate.id === value.id ? { ...candidate, suffix: event.target.value } : candidate,
+                            ),
+                          })
+                        }
+                        placeholder={localized.nodeEditorDeepCloneSuffixPlaceholder || "_suffix"}
+                        title={
+                          localized.nodeEditorDeepCloneSuffixTooltip ||
+                          "Substituted into {variant} for this variant, and joined with the other axes' suffixes.\n\n" +
+                            "The overrides below it apply to this variant only."
+                        }
+                        className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                      />
+                      <button
+                        onClick={() =>
+                          updateAxis(axis.id, {
+                            values: axis.values.filter((candidate) => candidate.id !== value.id),
+                          })
+                        }
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {renderOverrideEditor(value.overrides || [], (next) =>
+                      updateAxis(axis.id, {
+                        values: axis.values.map((candidate) =>
+                          candidate.id === value.id ? { ...candidate, overrides: next } : candidate,
+                        ),
+                      }),
+                    )}
+                  </div>
+                ))}
+
+              {axis.kind !== "range" && (
+                <button onClick={() => addAxisValue(axis.id)} className="text-xs text-blue-400 hover:text-blue-300">
+                  + {localized.nodeEditorDeepCloneAddVariant || "Add variant"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {variantAxes.length > 0 && (
+          <div className="text-xs text-gray-400 mt-1">
+            {variantCount} {localized.nodeEditorDeepCloneVariantsLabel || "variants"}:{" "}
+            {variantSuffixes.slice(0, 4).join(", ")}
+            {variantSuffixes.length > 4 ? ", …" : ""}
+          </div>
+        )}
+
+        {templatesMissingVariant.length > 0 && (
+          <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+            {localized.nodeEditorDeepCloneMissingVariantWarning ||
+              "Add {variant} to the key template, or every variant produces the same key:"}{" "}
+            {templatesMissingVariant.join(", ")}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorDeepCloneOverridesLabel || "Column overrides (all variants):"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneOverridesTooltip ||
+              "Forces a column to a fixed value on every cloned row of the chosen table, for every variant.\n\n" +
+                "Use this for a value that is the same across the whole clone. Put a value that differs per variant on a variant axis instead - a variant's own override wins over one set here.\n\n" +
+                "On a numeric column the value can be an expression in x, the cell's original value - x*2, x+10, 1.5*x. Flow options work on their own ({{myOption}}) or inside an expression ({{myOption}}*x).\n\n" +
+                "The table list shows only tables you have checked above. Values also accept {original}, {variant}, and {selfOriginal} (this column's original value)."
+            }
+          />
+        </label>
+        {renderOverrideEditor(columnOverrides, setColumnOverrides)}
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer mb-2">
+        <input
+          type="checkbox"
+          checked={autoFollowReferences}
+          onChange={(event) => setAutoFollowReferences(event.target.checked)}
+          className="w-3 h-3"
+        />
+        <span className="text-xs text-white">
+          {localized.nodeEditorDeepCloneAutoFollow || "Also clone rows that reference the new keys"}
+        </span>
+        <DeepCloneHelp
+          text={
+            localized.nodeEditorDeepCloneAutoFollowTooltip ||
+            "After the clone, every table that references a key you renamed is checked for rows pointing at the original key, and each of those rows is copied with the reference re-pointed at the new key.\n\n" +
+              "Cloning main_units_tables key xxx this way also copies the rows in the junction tables that mention xxx, so the new unit is recruitable, grouped and permitted exactly like the original.\n\n" +
+              'This covers the whole tree above, checked or not: checking a table means "clone it and give it a new key", while auto-follow repoints everything else that pointed at what you renamed. Copied rows keep their own key; only the reference changes.\n\n' +
+              "Turn this off to emit only the tables you checked."
+          }
+        />
+      </label>
+
+      <label className="flex items-center gap-2 cursor-pointer mb-2">
+        <input
+          type="checkbox"
+          checked={generateLoc}
+          onChange={(event) => setGenerateLoc(event.target.checked)}
+          className="w-3 h-3"
+        />
+        <span className="text-xs text-white">
+          {localized.nodeEditorDeepCloneGenerateLoc || "Generate localisation entries"}
+        </span>
+        <DeepCloneHelp
+          text={
+            localized.nodeEditorDeepCloneGenerateLocTooltip ||
+            "Adds a text\\db\\*.loc file to the output for every cloned row of a table that has localised fields, copying the original row's English text.\n\n" +
+              "Without this your cloned units show their raw keys in game instead of a name."
+          }
+        />
+      </label>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const flowOptions = useFlowOptions();
+  const [selectedFlowOptionId, setSelectedFlowOptionId] = useState<string>(data.selectedFlowOptionId || "");
+
+  // A checkbox gives two branches, a radio one per choice; the other option types cannot decide one.
+  const branchableOptions = flowOptions.filter((option) => option.type === "checkbox" || option.type === "radio");
+  const selectedOption = branchableOptions.find((option) => option.id === selectedFlowOptionId);
+  const radioChoices = selectedOption?.type === "radio" ? selectedOption.choices || [] : [];
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  // React Flow caches a node's handles, so it has to be told when their number changes.
+  React.useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, radioChoices.length, selectedOption?.type, updateNodeInternals]);
+
+  React.useEffect(() => {
+    if (data.selectedFlowOptionId !== undefined && data.selectedFlowOptionId !== selectedFlowOptionId) {
+      setSelectedFlowOptionId(data.selectedFlowOptionId);
+    }
+  }, [data.selectedFlowOptionId]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, selectedFlowOptionId });
+  }, [selectedFlowOptionId, id]);
+
+  return (
+    <div className="bg-gray-700 border-2 border-teal-500 rounded-lg p-4 min-w-[260px] max-w-[340px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorConditionalBranchTitle || "Conditional Branch"}
+      </div>
+
+      <label className="text-xs text-gray-300 block mb-1">
+        {localized.nodeEditorConditionalBranchOptionLabel || "Checkbox option:"}
+      </label>
+      <select
+        value={selectedFlowOptionId}
+        onChange={(event) => setSelectedFlowOptionId(event.target.value)}
+        className="w-full p-1 text-xs bg-gray-800 text-white border border-gray-600 rounded"
+      >
+        <option value="">{localized.nodeEditorConditionalBranchSelectOption || "Select a checkbox option..."}</option>
+        {branchableOptions.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.name} ({option.id})
+          </option>
+        ))}
+      </select>
+
+      {branchableOptions.length === 0 && (
+        <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+          {localized.nodeEditorConditionalBranchNoOptions ||
+            "This flow has no checkbox or radio options. Add one in Flow Options first."}
+        </div>
+      )}
+      {branchableOptions.length > 0 && selectedFlowOptionId && !selectedOption && (
+        <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+          {localized.nodeEditorConditionalBranchMissingOption ||
+            "The selected option no longer exists; the false branch will run."}
+        </div>
+      )}
+
+      {/*
+        Each handle is rendered inside its own label row and centred on it, so the dot always lines
+        up with the text. Absolute offsets from the node edge drift as soon as a warning or a longer
+        option name changes the node's height.
+      */}
+      <div className="mt-3 text-xs">
+        {selectedOption?.type === "radio"
+          ? radioChoices.map((choice) => (
+              <div key={choice.id} className="relative flex items-center justify-end h-6">
+                <span className="text-teal-300 truncate" title={choice.id}>
+                  {choice.label || choice.id}
+                </span>
+                <Handle
+                  id={`output-choice-${choice.id}`}
+                  type="source"
+                  position={Position.Right}
+                  className="w-3 h-3 bg-teal-400"
+                  data-output-type="TableSelection"
+                  style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+                />
+              </div>
+            ))
+          : [
+              <div key="true" className="relative flex items-center justify-end h-6">
+                <span className="text-green-400">{localized.nodeEditorConditionalBranchChecked || "checked"}</span>
+                <Handle
+                  id="output-true"
+                  type="source"
+                  position={Position.Right}
+                  className="w-3 h-3 bg-green-500"
+                  data-output-type="TableSelection"
+                  style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+                />
+              </div>,
+              <div key="false" className="relative flex items-center justify-end h-6">
+                <span className="text-red-400">{localized.nodeEditorConditionalBranchUnchecked || "unchecked"}</span>
+                <Handle
+                  id="output-false"
+                  type="source"
+                  position={Position.Right}
+                  className="w-3 h-3 bg-red-500"
+                  data-output-type="TableSelection"
+                  style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+                />
+              </div>,
+            ]}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorConditionalBranchHelp ||
+          "Only the matching branch runs; nodes on the other branch are skipped entirely."}
+      </div>
+    </div>
+  );
+};
+
+export const RemoveTablesNode: React.FC<{ data: RemoveTablesNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const [tablesToRemove, setTablesToRemove] = useState<string[]>(data.tablesToRemove || []);
+  const [draftTable, setDraftTable] = useState("");
+  const tableNames = data.tableNames || [];
+  const datalistId = `remove-tables-${id}`;
+
+  React.useEffect(() => {
+    if (data.tablesToRemove !== undefined && JSON.stringify(data.tablesToRemove) !== JSON.stringify(tablesToRemove)) {
+      setTablesToRemove(data.tablesToRemove);
+    }
+  }, [data.tablesToRemove]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, tablesToRemove });
+  }, [tablesToRemove, id]);
+
+  const addTable = () => {
+    const tableName = draftTable.trim();
+    if (!tableName || tablesToRemove.includes(tableName)) return;
+    setTablesToRemove([...tablesToRemove, tableName]);
+    setDraftTable("");
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-rose-500 rounded-lg p-4 min-w-[300px] max-w-[380px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorRemoveTablesTitle || "Remove Tables"}
+      </div>
+
+      <label className="text-xs text-gray-300 block mb-1">
+        {localized.nodeEditorRemoveTablesLabel || "Tables to remove:"}
+      </label>
+
+      <div className="flex items-center gap-1 mb-2">
+        {/* A free-text box with schema autocomplete: the input can also carry entries that are not
+            schema tables, such as a generated loc or a copied art file. */}
+        <input
+          type="text"
+          list={datalistId}
+          value={draftTable}
+          onChange={(event) => setDraftTable(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addTable();
+            }
+          }}
+          placeholder={localized.nodeEditorRemoveTablesPlaceholder || "Table name..."}
+          className="flex-1 p-1 text-xs bg-gray-800 text-white border border-gray-600 rounded"
+        />
+        <datalist id={datalistId}>
+          {tableNames.map((tableName) => (
+            <option key={tableName} value={tableName} />
+          ))}
+        </datalist>
+        <button onClick={addTable} className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded">
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div
+        className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
+        onWheel={stopWheelPropagation}
+      >
+        {tablesToRemove.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorRemoveTablesEmpty || "Nothing removed; input passes through"}
+          </div>
+        ) : (
+          tablesToRemove.map((tableName) => (
+            <div key={tableName} className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-xs text-white truncate" title={tableName}>
+                {tableName}
+              </span>
+              <button
+                onClick={() => setTablesToRemove(tablesToRemove.filter((name) => name !== tableName))}
+                className="text-xs text-red-400 hover:text-red-300"
+              >
+                ✕
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+export const EditLocTextNode: React.FC<{ data: EditLocTextNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const [locRules, setLocRules] = useState<LocTextRule[]>(data.locRules || []);
+  const datalistId = `loc-prefixes-${id}`;
+  const locKeyPrefixes = data.locKeyPrefixes || [];
+
+  React.useEffect(() => {
+    if (data.locRules !== undefined && JSON.stringify(data.locRules) !== JSON.stringify(locRules)) {
+      setLocRules(data.locRules);
+    }
+  }, [data.locRules]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      locRules: locRules as unknown as Record<string, unknown>[],
+    });
+  }, [locRules, id]);
+
+  const addRule = () => setLocRules([...locRules, { id: `loc_${Date.now()}`, keyPrefix: "", append: "" }]);
+  const updateRule = (ruleId: string, updates: Partial<LocTextRule>) =>
+    setLocRules(locRules.map((rule) => (rule.id === ruleId ? { ...rule, ...updates } : rule)));
+
+  return (
+    <div className="bg-gray-700 border-2 border-amber-500 rounded-lg p-4 min-w-[320px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-white">
+          {localized.nodeEditorEditLocTextTitle || "Edit Loc Text"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorEditLocTextTooltip ||
+              "Changes the text of localisation rows whose key starts with a prefix.\n\n" +
+                "A generated loc key reads <table>_<localised field>_<the row's new key>. Only the prefix is known while authoring - the rest depends on which rows the run actually clones - so rules match on that prefix.\n\n" +
+                "Every matching rule is applied in order. Rows and tables that match nothing pass through untouched, which is normal: whether a table produces locs at all depends on the run."
+            }
+          />
+        </div>
+        <button onClick={addRule} className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded">
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div className="space-y-2 max-h-72 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+        {locRules.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorEditLocTextEmpty || "No rules; localisation passes through unchanged"}
+          </div>
+        ) : (
+          locRules.map((rule) => (
+            <div key={rule.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-400">
+                  {localized.nodeEditorEditLocTextKeyPrefix || "key starts with"}
+                </span>
+                <button
+                  onClick={() => setLocRules(locRules.filter((candidate) => candidate.id !== rule.id))}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <input
+                type="text"
+                list={datalistId}
+                value={rule.keyPrefix}
+                onChange={(event) => updateRule(rule.id, { keyPrefix: event.target.value })}
+                placeholder={localized.nodeEditorEditLocTextPrefixPlaceholder || "land_units_onscreen_name_"}
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+              />
+
+              <div className="grid grid-cols-2 gap-1">
+                <input
+                  type="text"
+                  value={rule.prepend || ""}
+                  onChange={(event) => updateRule(rule.id, { prepend: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextPrepend || "prepend..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <input
+                  type="text"
+                  value={rule.append || ""}
+                  onChange={(event) => updateRule(rule.id, { append: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextAppend || "append..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <input
+                  type="text"
+                  value={rule.find || ""}
+                  onChange={(event) => updateRule(rule.id, { find: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextFind || "find..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <input
+                  type="text"
+                  value={rule.replaceWith || ""}
+                  onChange={(event) => updateRule(rule.id, { replaceWith: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextReplaceWith || "replace with..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <datalist id={datalistId}>
+        {locKeyPrefixes.map((prefix) => (
+          <option key={prefix} value={prefix} />
+        ))}
+      </datalist>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const [rules, setRules] = useState<TextFileEditRuleData[]>(data.textFileRules || []);
+
+  React.useEffect(() => {
+    if (data.textFileRules !== undefined && JSON.stringify(data.textFileRules) !== JSON.stringify(rules)) {
+      setRules(data.textFileRules);
+    }
+  }, [data.textFileRules]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      textFileRules: rules as unknown as Record<string, unknown>[],
+    });
+  }, [rules, id]);
+
+  const addRule = () =>
+    setRules([
+      ...rules,
+      {
+        id: `edit_${Date.now()}`,
+        targetMatch: "name",
+        target: "",
+        mode: "text",
+        selector: "",
+        operation: "replace",
+        value: "",
+      },
+    ]);
+  const updateRule = (ruleId: string, updates: Partial<TextFileEditRuleData>) =>
+    setRules(rules.map((rule) => (rule.id === ruleId ? { ...rule, ...updates } : rule)));
+
+  type SkipCondition = NonNullable<TextFileEditRuleData["skipConditions"]>[number];
+  const displayedSkipConditions = (rule: TextFileEditRuleData): SkipCondition[] =>
+    rule.skipConditions && rule.skipConditions.length > 0
+      ? rule.skipConditions
+      : [{ id: `skip_${rule.id}_0`, value: rule.skipIfContains || "" }];
+  const updateSkipConditions = (rule: TextFileEditRuleData, skipConditions: SkipCondition[]) =>
+    updateRule(rule.id, { skipConditions, skipIfContains: "" });
+  const skipGroupIndex = (conditions: SkipCondition[], conditionIndex: number) =>
+    conditions.slice(1, conditionIndex + 1).filter((condition) => condition.operator === "or").length;
+  const skipGroupBorderClasses = ["border-cyan-500", "border-fuchsia-500", "border-amber-500"];
+
+  const selectorPlaceholder = (mode: TextFileEditRuleData["mode"], operation: TextFileEditRuleData["operation"]) =>
+    operation === "regexReplace"
+      ? localized.nodeEditorEditTextFileRegexPlaceholder || "regex with (capture groups)..."
+      : mode === "xml"
+        ? 'SLOT[name="head"] MESH'
+        : mode === "lua"
+          ? "function my_mod.setup"
+          : localized.nodeEditorEditTextFileFindPlaceholder || "text to find...";
+
+  // Each way of matching wants a different shape of input, so show what one looks like.
+  const targetPlaceholder = (targetMatch: TextFileEditRuleData["targetMatch"]) =>
+    targetMatch === "name"
+      ? localized.nodeEditorEditTextFileTargetNamePlaceholder || "unit_card.twui.xml"
+      : targetMatch === "path"
+        ? localized.nodeEditorEditTextFileTargetPathPlaceholder || "ui/campaign ui/objectives.twui.xml"
+        : targetMatch === "regex"
+          ? localized.nodeEditorEditTextFileTargetRegexPlaceholder || "ui\\.*\\.twui\\.xml$"
+          : "";
+
+  return (
+    <div className="bg-gray-700 border-2 border-sky-500 rounded-lg p-4 min-w-[340px] max-w-[420px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-blue-500"
+        data-input-type="PackFiles,TableSelection"
+      />
+
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-white">
+          {localized.nodeEditorEditTextFileTitle || "Edit Text File"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorEditTextFileTooltip ||
+              "Edits lua scripts and xml files (variantmeshdefinition, twui) inside the input packs.\n\n" +
+                'XML rules use a CSS selector - SLOT[name="head"] MESH - which targets elements structurally instead of matching raw text. Only the matched span is rewritten, so the rest of the file stays byte-identical.\n\n' +
+                "The edited file goes into the output pack at its original path, and the output pack loads after every mod, so it wins over the pack the file came from. When two enabled mods carry the same file the higher-priority one is edited - the copy the game would have loaded.\n\n" +
+                'Lua rules take "function name" to find a declaration, or any other text to match literally. Regex replace applies a JavaScript regular expression globally and supports replacement references such as $1 and $<name>.\n\n' +
+                "Chain another Edit Text File node after this one and choose previous output to apply a rule directly to every file the earlier node produced. Name, path and regex can narrow that previous output instead.\n\n" +
+                "Insert between takes two snippets and puts the text in the gap between them, pairing each opening snippet with the first closing one after it.\n\n" +
+                "Skip conditions leave a file alone when their expression is true. AND binds more tightly than OR; conditions in the same AND group share a border color.\n\n" +
+                "Formatting runs after the rules. Auto-indent touches inserted XML fragments only. Pretty XML and compact XML reserialize the whole selected document and can normalize quotes, empty tags and whitespace.\n\n" +
+                "Ignore this flow's pack excludes the mod containing the flow before resolving which pack supplies a target file. It does not discard files explicitly passed in from a previous node.\n\n" +
+                "A rule that matches nothing is reported when you run the flow yourself. On the unattended run at game start it stays quiet unless you tick required, since a flow spanning many packs will have rules that do not apply to each one."
+            }
+          />
+        </div>
+        <button onClick={addRule} className="text-xs bg-sky-600 hover:bg-sky-700 text-white px-2 py-1 rounded">
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs text-gray-400">{localized.nodeEditorEditTextFileFormatter || "formatter"}</span>
+        <select
+          value={data.textFileFormatter || "none"}
+          onChange={(event) =>
+            dispatchNodeDataUpdate(data, {
+              nodeId: id,
+              textFileFormatter: event.target.value as NonNullable<EditTextFileNodeData["textFileFormatter"]>,
+            })
+          }
+          className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          title="Runs once after all edit rules"
+        >
+          <option value="none">{localized.nodeEditorEditTextFileFormatterNone || "none"}</option>
+          <option value="autoIndent">
+            {localized.nodeEditorEditTextFileFormatterAutoIndent || "auto-indent inserted XML"}
+          </option>
+          <option value="prettyXml">{localized.nodeEditorEditTextFileFormatterPrettyXml || "pretty XML"}</option>
+          <option value="compactXml">{localized.nodeEditorEditTextFileFormatterCompactXml || "compact XML"}</option>
+        </select>
+      </div>
+
+      <label
+        className="flex items-center gap-2 mb-2 cursor-pointer"
+        title="When several packs contain the target path, exclude the pack that contains this flow before choosing the winning source. Chained file output is not filtered."
+      >
+        <input
+          type="checkbox"
+          checked={data.ignoreFlowSourcePack === true}
+          onChange={(event) =>
+            dispatchNodeDataUpdate(data, {
+              nodeId: id,
+              ignoreFlowSourcePack: event.target.checked,
+            })
+          }
+          className="w-3 h-3"
+        />
+        <span className="text-xs text-gray-300">
+          {localized.nodeEditorEditTextFileIgnoreFlowPack || "ignore this flow's pack as a file source"}
+        </span>
+      </label>
+
+      <div className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+        {rules.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorEditTextFileEmpty || "No rules; files pass through unchanged"}
+          </div>
+        ) : (
+          rules.map((rule) => (
+            <div key={rule.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center gap-1 mb-1">
+                <select
+                  value={rule.targetMatch}
+                  onChange={(event) =>
+                    updateRule(rule.id, {
+                      targetMatch: event.target.value as TextFileEditRuleData["targetMatch"],
+                    })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="name">{localized.nodeEditorEditTextFileByName || "name"}</option>
+                  <option value="path">{localized.nodeEditorEditTextFileByPath || "path"}</option>
+                  <option value="regex">{localized.nodeEditorEditTextFileByRegex || "regex"}</option>
+                  {(data.inputType === "TableSelection" || rule.targetMatch === "input") && (
+                    <option value="input" disabled={data.inputType !== "TableSelection"}>
+                      {localized.nodeEditorEditTextFilePreviousOutput || "previous output"}
+                    </option>
+                  )}
+                </select>
+                {rule.targetMatch !== "input" && (
+                  <input
+                    type="text"
+                    value={rule.target}
+                    onChange={(event) => updateRule(rule.id, { target: event.target.value })}
+                    placeholder={targetPlaceholder(rule.targetMatch)}
+                    className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                  />
+                )}
+                <button
+                  onClick={() => setRules(rules.filter((candidate) => candidate.id !== rule.id))}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {targetHasPathButMatchesName(rule.targetMatch, rule.target) && (
+                <div className="text-xs text-amber-400 mb-1">
+                  {localized.nodeEditorTargetNameHasPath ||
+                    "Matching by name compares only the file name, so a path never matches. Switch to path or drop the folders."}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1 mb-1">
+                <select
+                  value={rule.mode}
+                  onChange={(event) => {
+                    const mode = event.target.value as TextFileEditRuleData["mode"];
+                    updateRule(rule.id, {
+                      mode,
+                      ...(mode === "xml" && rule.operation === "regexReplace" ? { operation: "replace" } : {}),
+                    });
+                  }}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="text">{localized.nodeEditorEditTextFileModeText || "plain text"}</option>
+                  <option value="xml">{localized.nodeEditorEditTextFileModeXml || "xml selector"}</option>
+                  <option value="lua">{localized.nodeEditorEditTextFileModeLua || "lua"}</option>
+                </select>
+                <select
+                  value={rule.operation}
+                  onChange={(event) =>
+                    updateRule(rule.id, {
+                      operation: event.target.value as TextFileEditRuleData["operation"],
+                    })
+                  }
+                  className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="replace">{localized.nodeEditorEditTextFileReplace || "replace"}</option>
+                  {rule.mode !== "xml" && (
+                    <option value="regexReplace">
+                      {localized.nodeEditorEditTextFileRegexReplace || "regex replace"}
+                    </option>
+                  )}
+                  <option value="insertBefore">
+                    {localized.nodeEditorEditTextFileInsertBefore || "insert before"}
+                  </option>
+                  <option value="insertAfter">{localized.nodeEditorEditTextFileInsertAfter || "insert after"}</option>
+                  {rule.mode !== "xml" && (
+                    <option value="insertBetween">
+                      {localized.nodeEditorEditTextFileInsertBetween || "insert between"}
+                    </option>
+                  )}
+                  <option value="delete">{localized.nodeEditorEditTextFileDelete || "delete"}</option>
+                  {rule.mode === "xml" && (
+                    <option value="setAttribute">
+                      {localized.nodeEditorEditTextFileSetAttribute || "set attribute"}
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              <input
+                type="text"
+                value={rule.selector}
+                onChange={(event) => updateRule(rule.id, { selector: event.target.value })}
+                placeholder={selectorPlaceholder(rule.mode, rule.operation)}
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+              />
+
+              {rule.operation === "insertBetween" && (
+                <input
+                  type="text"
+                  value={rule.selectorEnd || ""}
+                  onChange={(event) => updateRule(rule.id, { selectorEnd: event.target.value })}
+                  placeholder={localized.nodeEditorEditTextFileSelectorEndPlaceholder || "...and before this text"}
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+                />
+              )}
+
+              {rule.operation === "setAttribute" && (
+                <input
+                  type="text"
+                  value={rule.attributeName || ""}
+                  onChange={(event) => updateRule(rule.id, { attributeName: event.target.value })}
+                  placeholder={localized.nodeEditorEditTextFileAttributePlaceholder || "attribute name..."}
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+                />
+              )}
+
+              {rule.operation !== "delete" && (
+                <textarea
+                  value={rule.value || ""}
+                  onChange={(event) => updateRule(rule.id, { value: event.target.value })}
+                  placeholder={
+                    rule.operation === "regexReplace"
+                      ? localized.nodeEditorEditTextFileRegexValuePlaceholder || "new text using $1 or $<name>..."
+                      : localized.nodeEditorEditTextFileValuePlaceholder || "new text..."
+                  }
+                  rows={2}
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+                />
+              )}
+
+              <div className="mb-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span
+                    className="text-xs text-gray-400"
+                    title="AND is evaluated before OR. Matching the full expression skips this rule."
+                  >
+                    {localized.nodeEditorEditTextFileSkipConditions || "skip if contains"}
+                  </span>
+                  <button
+                    onClick={() => {
+                      const conditions = displayedSkipConditions(rule);
+                      updateSkipConditions(rule, [
+                        ...conditions,
+                        { id: `skip_${Date.now()}`, value: "", operator: "and" },
+                      ]);
+                    }}
+                    className="text-xs text-sky-400 hover:text-sky-300"
+                  >
+                    + {localized.add || "Add"}
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {displayedSkipConditions(rule).map((condition, conditionIndex, conditions) => {
+                    const groupIndex = skipGroupIndex(conditions, conditionIndex);
+                    const borderClass = skipGroupBorderClasses[groupIndex % skipGroupBorderClasses.length];
+                    return (
+                      <div key={condition.id} className="flex items-center gap-1">
+                        {conditionIndex > 0 && (
+                          <select
+                            value={condition.operator || "and"}
+                            onChange={(event) =>
+                              updateSkipConditions(
+                                rule,
+                                conditions.map((candidate) =>
+                                  candidate.id === condition.id
+                                    ? {
+                                        ...candidate,
+                                        operator: event.target.value as "and" | "or",
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                            className={`w-14 p-1 text-xs bg-gray-700 text-white border-2 ${borderClass} rounded`}
+                            title="AND binds more tightly than OR"
+                          >
+                            <option value="and">AND</option>
+                            <option value="or">OR</option>
+                          </select>
+                        )}
+                        <input
+                          type="text"
+                          value={condition.value}
+                          onChange={(event) =>
+                            updateSkipConditions(
+                              rule,
+                              conditions.map((candidate) =>
+                                candidate.id === condition.id ? { ...candidate, value: event.target.value } : candidate,
+                              ),
+                            )
+                          }
+                          placeholder={
+                            localized.nodeEditorEditTextFileSkipIfContainsPlaceholder ||
+                            "skip the file if it already contains..."
+                          }
+                          className={`flex-1 p-1 text-xs bg-gray-700 text-white border-2 ${borderClass} rounded font-mono`}
+                        />
+                        <button
+                          onClick={() => {
+                            const remaining = conditions.filter((candidate) => candidate.id !== condition.id);
+                            updateSkipConditions(
+                              rule,
+                              remaining.length > 0
+                                ? remaining.map((candidate, index) =>
+                                    index === 0 ? { ...candidate, operator: undefined } : candidate,
+                                  )
+                                : [{ id: `skip_${rule.id}_0`, value: "" }],
+                            );
+                          }}
+                          className="text-xs text-red-400 hover:text-red-300"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {displayedSkipConditions(rule).length > 1 && (
+                  <div className="mt-1 text-[10px] text-gray-500">
+                    {localized.nodeEditorEditTextFileSkipPrecedence ||
+                      "Same color = one AND group; OR separates color groups."}
+                  </div>
+                )}
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rule.required === true}
+                  onChange={(event) => updateRule(rule.id, { required: event.target.checked })}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-gray-300">
+                  {localized.nodeEditorEditTextFileRequired || "report if it matches nothing at game start"}
+                </span>
+              </label>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+type EditXmlFileDraft = Pick<
+  EditXmlFileNodeData,
+  "targetMode" | "filePath" | "ignoreHierarchy" | "locatorSteps" | "action" | "attributeEdits" | "replacementXml"
+>;
+
+type EditXmlFileValidationCode =
+  | "pathRequired"
+  | "inputUnavailable"
+  | "locatorRequired"
+  | "elementNameRequired"
+  | "elementNameInvalid"
+  | "locatorAttributeIncomplete"
+  | "locatorAttributeInvalidName"
+  | "locatorAttributeDuplicateName"
+  | "setAttributeRequired"
+  | "setAttributeInvalidName"
+  | "setAttributeDuplicateName"
+  | "editAttributeRequired"
+  | "editAttributeInvalidName"
+  | "editAttributeDuplicateName"
+  | "editAttributeInvalidRegex"
+  | "replacementRequired"
+  | "replacementInvalid";
+
+interface EditXmlFileValidationError {
+  code: EditXmlFileValidationCode;
+  stepIndex?: number;
+  attributeIndex?: number;
+  editIndex?: number;
+}
+
+const createEditXmlId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+const defaultXmlLocatorStep = (id = "locator_1"): XmlLocatorStep => ({
+  id,
+  elementName: "*",
+  attributes: [],
+});
+
+const defaultXmlAttributeEdit = (id = "attribute_1"): XmlAttributeEdit => ({
+  id,
+  name: "",
+  newValue: "",
+  match: "",
+  operation: "replace",
+});
+
+const normalizeXmlLocatorAttribute = (value: unknown, index: number): XmlLocatorAttribute => {
+  const candidate = value && typeof value === "object" ? (value as Partial<XmlLocatorAttribute>) : {};
+  return {
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `attribute_${index + 1}`,
+    name: typeof candidate.name === "string" ? candidate.name : "",
+    value: typeof candidate.value === "string" ? candidate.value : "",
+  };
+};
+
+const normalizeXmlLocatorStep = (value: unknown, index: number): XmlLocatorStep => {
+  const candidate = value && typeof value === "object" ? (value as Partial<XmlLocatorStep>) : {};
+  const attributes = Array.isArray(candidate.attributes) ? candidate.attributes.map(normalizeXmlLocatorAttribute) : [];
+  return {
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `locator_${index + 1}`,
+    elementName: typeof candidate.elementName === "string" ? candidate.elementName : "*",
+    attributes,
+  };
+};
+
+const normalizeXmlAttributeEdit = (value: unknown, index: number): XmlAttributeEdit => {
+  const candidate = value && typeof value === "object" ? (value as Partial<XmlAttributeEdit>) : {};
+  return {
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `attribute_${index + 1}`,
+    name: typeof candidate.name === "string" ? candidate.name : "",
+    newValue: typeof candidate.newValue === "string" ? candidate.newValue : "",
+    match: typeof candidate.match === "string" ? candidate.match : "",
+    operation:
+      candidate.operation === "regexReplace" || candidate.operation === "formula" || candidate.operation === "replace"
+        ? candidate.operation
+        : "replace",
+  };
+};
+
+const normalizeEditXmlFileDraft = (data: Partial<EditXmlFileNodeData>): EditXmlFileDraft => {
+  const locatorSteps = Array.isArray(data.locatorSteps)
+    ? data.locatorSteps.map(normalizeXmlLocatorStep)
+    : [defaultXmlLocatorStep()];
+  const attributeEdits = Array.isArray(data.attributeEdits)
+    ? data.attributeEdits.map(normalizeXmlAttributeEdit)
+    : [defaultXmlAttributeEdit()];
+
+  return {
+    targetMode: data.targetMode === "input" ? "input" : "path",
+    filePath: typeof data.filePath === "string" ? data.filePath : "",
+    ignoreHierarchy: data.ignoreHierarchy !== false,
+    locatorSteps: locatorSteps.length > 0 ? locatorSteps : [defaultXmlLocatorStep()],
+    action:
+      data.action === "replaceElement"
+        ? "replaceElement"
+        : data.action === "editAttributes"
+          ? "editAttributes"
+          : "setAttributes",
+    attributeEdits,
+    replacementXml: typeof data.replacementXml === "string" ? data.replacementXml : "",
+  };
+};
+
+export const getEditXmlFileValidationErrors = (
+  draft: EditXmlFileDraft,
+  inputType: EditXmlFileNodeData["inputType"],
+): EditXmlFileValidationError[] => {
+  const errors: EditXmlFileValidationError[] = [];
+
+  if (draft.targetMode === "path" && !draft.filePath.trim()) {
+    errors.push({ code: "pathRequired" });
+  }
+  if (draft.targetMode === "input" && inputType !== "TableSelection") {
+    errors.push({ code: "inputUnavailable" });
+  }
+  if (draft.locatorSteps.length === 0) {
+    errors.push({ code: "locatorRequired" });
+  }
+
+  draft.locatorSteps.forEach((step, stepIndex) => {
+    if (!step.elementName.trim()) {
+      errors.push({ code: "elementNameRequired", stepIndex });
+    } else if (step.elementName.trim() !== "*" && !isValidXmlNameTemplate(step.elementName.trim())) {
+      errors.push({ code: "elementNameInvalid", stepIndex });
+    }
+    const locatorAttributeNames = new Set<string>();
+    step.attributes.forEach((attribute, attributeIndex) => {
+      if (!attribute.name.trim() || !attribute.value.trim()) {
+        errors.push({ code: "locatorAttributeIncomplete", stepIndex, attributeIndex });
+        return;
+      }
+      if (!isValidXmlNameTemplate(attribute.name.trim())) {
+        errors.push({ code: "locatorAttributeInvalidName", stepIndex, attributeIndex });
+      } else if (locatorAttributeNames.has(attribute.name.trim())) {
+        errors.push({ code: "locatorAttributeDuplicateName", stepIndex, attributeIndex });
+      } else {
+        locatorAttributeNames.add(attribute.name.trim());
+      }
+    });
+  });
+
+  if (draft.action === "setAttributes") {
+    const hasCompleteEdit = draft.attributeEdits.some((edit) => edit.name.trim() && edit.newValue.trim());
+    if (!hasCompleteEdit) {
+      errors.push({ code: "setAttributeRequired" });
+    }
+    const mutationNames = new Set<string>();
+    draft.attributeEdits.forEach((edit, editIndex) => {
+      if ((edit.name.trim() || edit.newValue.trim()) && (!edit.name.trim() || !edit.newValue.trim())) {
+        errors.push({ code: "setAttributeRequired", editIndex });
+        return;
+      }
+      if (!edit.name.trim() || !edit.newValue.trim()) return;
+      if (!isValidXmlNameTemplate(edit.name.trim())) {
+        errors.push({ code: "setAttributeInvalidName", editIndex });
+      } else if (mutationNames.has(edit.name.trim())) {
+        errors.push({ code: "setAttributeDuplicateName", editIndex });
+      } else {
+        mutationNames.add(edit.name.trim());
+      }
+    });
+  }
+  if (draft.action === "editAttributes") {
+    const hasCompleteEdit = draft.attributeEdits.some((edit) => {
+      const operation = edit.operation || "replace";
+      const operationInput = operation === "formula" ? edit.newValue : edit.match || "";
+      return edit.name.trim() && operationInput.trim();
+    });
+    if (!hasCompleteEdit) {
+      errors.push({ code: "editAttributeRequired" });
+    }
+    const mutationNames = new Set<string>();
+    draft.attributeEdits.forEach((edit, editIndex) => {
+      const operation = edit.operation || "replace";
+      const match = edit.match || "";
+      const operationInput = operation === "formula" ? edit.newValue : match;
+      const hasAnyInput = Boolean(edit.name.trim() || match || edit.newValue);
+      if (!hasAnyInput) return;
+      if (!edit.name.trim() || !operationInput.trim()) {
+        errors.push({ code: "editAttributeRequired", editIndex });
+        return;
+      }
+      if (!isValidXmlNameTemplate(edit.name.trim())) {
+        errors.push({ code: "editAttributeInvalidName", editIndex });
+      } else if (mutationNames.has(edit.name.trim())) {
+        errors.push({ code: "editAttributeDuplicateName", editIndex });
+      } else {
+        mutationNames.add(edit.name.trim());
+      }
+      if (operation === "regexReplace") {
+        try {
+          new RegExp(match, "g");
+        } catch {
+          errors.push({ code: "editAttributeInvalidRegex", editIndex });
+        }
+      }
+    });
+  }
+  if (draft.action === "replaceElement") {
+    if (!draft.replacementXml.trim()) {
+      errors.push({ code: "replacementRequired" });
+    } else if (!isSingleXmlElementTemplate(draft.replacementXml)) {
+      errors.push({ code: "replacementInvalid" });
+    }
+  }
+
+  return errors;
+};
+
+const getEditXmlValidationMessage = (
+  error: EditXmlFileValidationError,
+  localized: ReturnType<typeof useLocalizations>,
+) => {
+  switch (error.code) {
+    case "pathRequired":
+      return localized.nodeEditorEditXmlFilePathRequired || "Enter an exact XML file path.";
+    case "inputUnavailable":
+      return localized.nodeEditorEditXmlFileInputUnavailable || "Previous output requires a TableSelection input.";
+    case "locatorRequired":
+      return localized.nodeEditorEditXmlFileLocatorRequired || "Add at least one locator step.";
+    case "elementNameRequired":
+      return `${localized.nodeEditorEditXmlFileElementNameRequired || "Enter an element name for locator step"} ${
+        (error.stepIndex ?? 0) + 1
+      }.`;
+    case "elementNameInvalid":
+      return `${localized.nodeEditorEditXmlFileElementNameInvalid || "Enter a valid XML element name for locator step"} ${
+        (error.stepIndex ?? 0) + 1
+      }.`;
+    case "locatorAttributeIncomplete":
+      return `${localized.nodeEditorEditXmlFileLocatorAttributeIncomplete || "Complete the name and value for locator step"} ${
+        (error.stepIndex ?? 0) + 1
+      }.`;
+    case "locatorAttributeInvalidName":
+      return localized.nodeEditorEditXmlFileAttributeNameInvalid || "Enter a valid XML attribute name.";
+    case "locatorAttributeDuplicateName":
+      return (
+        localized.nodeEditorEditXmlFileLocatorAttributeDuplicate ||
+        "Use each locator attribute name only once per step."
+      );
+    case "setAttributeRequired":
+      return localized.nodeEditorEditXmlFileSetAttributeRequired || "Add at least one complete attribute edit.";
+    case "setAttributeInvalidName":
+      return localized.nodeEditorEditXmlFileAttributeNameInvalid || "Enter a valid XML attribute name.";
+    case "setAttributeDuplicateName":
+      return localized.nodeEditorEditXmlFileAttributeDuplicate || "Use each attribute name only once per edit.";
+    case "editAttributeRequired":
+      return (
+        localized.nodeEditorEditXmlFileEditAttributeRequired ||
+        "Complete each edit with an attribute and match or formula."
+      );
+    case "editAttributeInvalidName":
+      return localized.nodeEditorEditXmlFileAttributeNameInvalid || "Enter a valid XML attribute name.";
+    case "editAttributeDuplicateName":
+      return localized.nodeEditorEditXmlFileAttributeDuplicate || "Use each attribute name only once per edit.";
+    case "editAttributeInvalidRegex":
+      return localized.nodeEditorEditXmlFileInvalidRegex || "Enter a valid regular expression.";
+    case "replacementRequired":
+      return localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML.";
+    case "replacementInvalid":
+      return localized.nodeEditorEditXmlFileReplacementInvalid || "Enter one well-formed XML element.";
+  }
+};
+
+const formatXmlLocatorStep = (step: XmlLocatorStep) => {
+  const attributes = step.attributes
+    .filter((attribute) => attribute.name || attribute.value)
+    .map((attribute) => `${attribute.name}="${attribute.value}"`)
+    .join(" AND ");
+  return `${step.elementName || "*"}${attributes ? ` [${attributes}]` : ""}`;
+};
+
+export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const { isActive: isNodeEditorActive, modalRoot } = useNodeEditorPanel();
+  const inputType = data.inputType || "PackFiles";
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isDiscardConfirmationOpen, setIsDiscardConfirmationOpen] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [draft, setDraft] = useState<EditXmlFileDraft>(() => normalizeEditXmlFileDraft(data));
+
+  // Keep the compact card in sync with external graph patches while preserving the local modal draft.
+  const displayedDraft = isEditorOpen ? draft : normalizeEditXmlFileDraft(data);
+  const validationErrors = getEditXmlFileValidationErrors(displayedDraft, inputType);
+  const isValid = validationErrors.length === 0;
+  const firstValidationMessage = validationErrors[0]
+    ? getEditXmlValidationMessage(validationErrors[0], localized)
+    : localized.nodeEditorEditXmlFileValidationValid || "Ready to edit one matching XML element.";
+
+  const requestClose = React.useCallback(() => {
+    if (isDirty) {
+      setIsDiscardConfirmationOpen(true);
+      return;
+    }
+
+    setIsEditorOpen(false);
+  }, [isDirty]);
+
+  React.useEffect(() => {
+    if (!isEditorOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      requestClose();
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isEditorOpen, requestClose]);
+
+  const openEditor = () => {
+    setDraft(normalizeEditXmlFileDraft(data));
+    setIsDirty(false);
+    setIsDiscardConfirmationOpen(false);
+    setIsEditorOpen(true);
+  };
+
+  const closeEditorWithoutSaving = () => {
+    setIsEditorOpen(false);
+    setIsDirty(false);
+    setIsDiscardConfirmationOpen(false);
+  };
+
+  const updateDraft = (updater: (current: EditXmlFileDraft) => EditXmlFileDraft) => {
+    setDraft((current) => updater(current));
+    setIsDirty(true);
+  };
+
+  const updateLocatorStep = (stepId: string, updates: Partial<XmlLocatorStep>) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) => (step.id === stepId ? { ...step, ...updates } : step)),
+    }));
+
+  const updateLocatorAttribute = (stepId: string, attributeId: string, updates: Partial<XmlLocatorAttribute>) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) =>
+        step.id === stepId
+          ? {
+              ...step,
+              attributes: step.attributes.map((attribute) =>
+                attribute.id === attributeId ? { ...attribute, ...updates } : attribute,
+              ),
+            }
+          : step,
+      ),
+    }));
+
+  const addLocatorStep = () =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: [...current.locatorSteps, defaultXmlLocatorStep(createEditXmlId("locator"))],
+    }));
+
+  const removeLocatorStep = (stepId: string) =>
+    updateDraft((current) =>
+      current.locatorSteps.length <= 1
+        ? current
+        : {
+            ...current,
+            locatorSteps: current.locatorSteps.filter((step) => step.id !== stepId),
+          },
+    );
+
+  const addLocatorAttribute = (stepId: string) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) =>
+        step.id === stepId
+          ? {
+              ...step,
+              attributes: [...step.attributes, { id: createEditXmlId("locator-attribute"), name: "", value: "" }],
+            }
+          : step,
+      ),
+    }));
+
+  const removeLocatorAttribute = (stepId: string, attributeId: string) =>
+    updateDraft((current) => ({
+      ...current,
+      locatorSteps: current.locatorSteps.map((step) =>
+        step.id === stepId
+          ? { ...step, attributes: step.attributes.filter((attribute) => attribute.id !== attributeId) }
+          : step,
+      ),
+    }));
+
+  const updateAttributeEdit = (editId: string, updates: Partial<XmlAttributeEdit>) =>
+    updateDraft((current) => ({
+      ...current,
+      attributeEdits: current.attributeEdits.map((edit) => (edit.id === editId ? { ...edit, ...updates } : edit)),
+    }));
+
+  const addAttributeEdit = () =>
+    updateDraft((current) => ({
+      ...current,
+      attributeEdits: [...current.attributeEdits, defaultXmlAttributeEdit(createEditXmlId("edit-attribute"))],
+    }));
+
+  const removeAttributeEdit = (editId: string) =>
+    updateDraft((current) => ({
+      ...current,
+      attributeEdits: current.attributeEdits.filter((edit) => edit.id !== editId),
+    }));
+
+  const handleDone = () => {
+    const errors = getEditXmlFileValidationErrors(draft, inputType);
+    if (errors.length > 0) return;
+
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      targetMode: draft.targetMode,
+      filePath: draft.filePath,
+      ignoreHierarchy: draft.ignoreHierarchy,
+      locatorSteps: draft.locatorSteps as unknown as Record<string, unknown>[],
+      action: draft.action,
+      attributeEdits: draft.attributeEdits as unknown as Record<string, unknown>[],
+      replacementXml: draft.replacementXml,
+    });
+    closeEditorWithoutSaving();
+  };
+
+  const targetSummary =
+    displayedDraft.targetMode === "input"
+      ? localized.nodeEditorEditXmlFilePreviousOutput || "Previous output"
+      : displayedDraft.filePath.trim() || localized.nodeEditorEditXmlFilePathRequired || "Exact path required";
+  const firstLocatorLabel = displayedDraft.ignoreHierarchy
+    ? localized.nodeEditorEditXmlFileFindInComponents || "Find in <components>"
+    : localized.nodeEditorEditXmlFileFindInDocument || "Find in document";
+  const locatorSummary = [firstLocatorLabel, ...displayedDraft.locatorSteps.map(formatXmlLocatorStep)].join(" › ");
+  const actionSummary =
+    displayedDraft.action === "setAttributes"
+      ? `${localized.nodeEditorEditXmlFileSetAttributes || "Set attributes"}: ${
+          displayedDraft.attributeEdits
+            .filter((edit) => edit.name || edit.newValue)
+            .map((edit) => `${edit.name} → ${edit.newValue}`)
+            .join(", ") ||
+          localized.nodeEditorEditXmlFileNoAttributeEdits ||
+          "no attribute edits"
+        }`
+      : displayedDraft.action === "editAttributes"
+        ? `${localized.nodeEditorEditXmlFileEditAttributes || "Edit attributes"}: ${
+            displayedDraft.attributeEdits
+              .filter((edit) => edit.name || edit.match || edit.newValue)
+              .map((edit) => `${edit.name} (${edit.operation || "replace"})`)
+              .join(", ") ||
+            localized.nodeEditorEditXmlFileNoAttributeEdits ||
+            "no attribute edits"
+          }`
+        : localized.nodeEditorEditXmlFileReplaceElement || "Replace element";
+
+  return (
+    <>
+      <div className="relative min-w-[300px] max-w-[360px] rounded-lg border-2 border-sky-500 bg-gray-700 p-3 text-white">
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="w-3 h-3 bg-blue-500"
+          data-input-type="PackFiles,TableSelection"
+        />
+
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-white">
+              {localized.nodeEditorEditXmlFileTitle || "Edit XML File"}
+              <DeepCloneHelp
+                text={
+                  localized.nodeEditorEditXmlFileHelp ||
+                  "An exact path resolves to the highest-priority pack copy. Previous output must contain one file. The locator must select exactly one XML element to edit. Text fields accept flow option placeholders such as {{optionId}}, including element and attribute names and values in the locator and action, and replacement XML."
+                }
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-300">
+              {localized.nodeEditorNodeEditXmlFileDescription ||
+                "Edits one exact XML element selected by a structural locator"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openEditor}
+            aria-haspopup="dialog"
+            className="shrink-0 rounded bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+          >
+            {localized.nodeEditorEditXmlFileEdit || "Edit"}
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-1 text-xs">
+          <div className="flex gap-1">
+            <span className="shrink-0 text-gray-400">{localized.nodeEditorEditXmlFileTargetLabel || "Target:"}</span>
+            <span className="min-w-0 truncate" title={targetSummary}>
+              {targetSummary}
+            </span>
+          </div>
+          <div className="flex gap-1">
+            <span className="shrink-0 text-gray-400">{localized.nodeEditorEditXmlFileLocatorLabel || "Locator:"}</span>
+            <span className="min-w-0 truncate" title={locatorSummary}>
+              {locatorSummary}
+            </span>
+          </div>
+          <div className="flex gap-1">
+            <span className="shrink-0 text-gray-400">{localized.nodeEditorEditXmlFileActionLabel || "Action:"}</span>
+            <span className="min-w-0 truncate" title={actionSummary}>
+              {actionSummary}
+            </span>
+          </div>
+        </div>
+
+        <div className={`mt-3 text-xs ${isValid ? "text-green-300" : "text-red-300"}`} role="status" aria-live="polite">
+          {isValid ? "✓ " : "! "}
+          {firstValidationMessage}
+        </div>
+
+        <div className="mt-2 text-xs text-gray-400">
+          {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+        </div>
+
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="w-3 h-3 bg-orange-500"
+          data-output-type="TableSelection"
+        />
+      </div>
+
+      {isEditorOpen && (
+        <Modal
+          root={modalRoot ?? undefined}
+          aria-labelledby={`edit-xml-file-title-${id}`}
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) requestClose();
+          }}
+          onClose={requestClose}
+          position="center"
+          show={isNodeEditorActive}
+          size="5xl"
+          explicitClasses={[
+            "!max-w-5xl",
+            "!h-[90vh]",
+            "!max-h-[90vh]",
+            "overflow-hidden",
+            "first-child-div-second-child-div-flex-grow",
+            "first-child-div-flex-col",
+          ]}
+        >
+          <Modal.Header>
+            <span id={`edit-xml-file-title-${id}`}>{localized.nodeEditorEditXmlFileTitle || "Edit XML File"}</span>
+          </Modal.Header>
+          <Modal.Body onWheel={stopWheelPropagation}>
+            {isDiscardConfirmationOpen ? (
+              <div className="flex min-h-48 flex-col justify-center gap-4" role="alertdialog" aria-live="assertive">
+                <h4 className="text-lg font-medium text-white">
+                  {localized.nodeEditorEditXmlFileDiscardTitle || "Discard XML edit changes?"}
+                </h4>
+                <p className="text-sm text-gray-300">
+                  {localized.nodeEditorEditXmlFileDiscardMessage ||
+                    "Your unsaved XML edit changes will be lost if you close this editor."}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsDiscardConfirmationOpen(false)}
+                    className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    {localized.nodeEditorEditXmlFileKeepEditing || "Keep editing"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditorWithoutSaving}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400"
+                  >
+                    {localized.nodeEditorEditXmlFileDiscard || "Discard changes"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5 text-sm text-gray-100">
+                {validationErrors.length > 0 && (
+                  <div className="rounded-lg border border-red-500 bg-red-900/30 p-3" role="alert">
+                    <p className="font-medium text-red-200">
+                      {localized.nodeEditorEditXmlFileValidationInvalid ||
+                        "Complete the highlighted fields before saving."}
+                    </p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-red-200">
+                      {validationErrors.map((error, errorIndex) => (
+                        <li key={`${error.code}-${errorIndex}`}>{getEditXmlValidationMessage(error, localized)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <section aria-labelledby={`edit-xml-file-target-${id}`} className="space-y-3">
+                  <h4 id={`edit-xml-file-target-${id}`} className="text-base font-medium text-white">
+                    {localized.nodeEditorEditXmlFileTargetLabel || "Target"}
+                  </h4>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[12rem_1fr]">
+                    <label className="flex flex-col gap-1 text-xs text-gray-300">
+                      <span>{localized.nodeEditorEditXmlFileTargetMode || "File target"}</span>
+                      <select
+                        aria-label={localized.nodeEditorEditXmlFileTargetMode || "File target"}
+                        value={draft.targetMode}
+                        onChange={(event) =>
+                          updateDraft((current) => ({
+                            ...current,
+                            targetMode: event.target.value as EditXmlFileDraft["targetMode"],
+                          }))
+                        }
+                        className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      >
+                        <option value="path">{localized.nodeEditorEditXmlFileTargetPath || "Exact path"}</option>
+                        <option value="input" disabled={inputType !== "TableSelection"}>
+                          {localized.nodeEditorEditXmlFilePreviousOutput || "Previous output"}
+                        </option>
+                      </select>
+                    </label>
+                    {draft.targetMode === "path" ? (
+                      <label className="flex flex-col gap-1 text-xs text-gray-300">
+                        <span>{localized.nodeEditorEditXmlFilePathLabel || "Exact XML path"}</span>
+                        <input
+                          autoFocus
+                          aria-invalid={validationErrors.some((error) => error.code === "pathRequired")}
+                          aria-label={localized.nodeEditorEditXmlFilePathLabel || "Exact XML path"}
+                          value={draft.filePath}
+                          onChange={(event) => updateDraft((current) => ({ ...current, filePath: event.target.value }))}
+                          placeholder={localized.nodeEditorEditXmlFilePathPlaceholder || "ui/campaign/objectives.xml"}
+                          className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                        {validationErrors.some((error) => error.code === "pathRequired") && (
+                          <span className="text-xs text-red-300">
+                            {localized.nodeEditorEditXmlFilePathRequired || "Enter an exact XML file path."}
+                          </span>
+                        )}
+                      </label>
+                    ) : (
+                      <div className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-gray-200">
+                        {localized.nodeEditorEditXmlFilePreviousOutput || "Previous output"}
+                        {inputType !== "TableSelection" && (
+                          <p className="mt-1 text-xs text-red-300">
+                            {localized.nodeEditorEditXmlFileInputUnavailable ||
+                              "Previous output requires a TableSelection input."}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={draft.ignoreHierarchy}
+                      onChange={(event) =>
+                        updateDraft((current) => ({ ...current, ignoreHierarchy: event.target.checked }))
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>
+                      {localized.nodeEditorEditXmlFileIgnoreHierarchy || "Ignore hierarchy (start in <components>)"}
+                    </span>
+                  </label>
+                </section>
+
+                <section aria-labelledby={`edit-xml-file-locator-${id}`} className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 id={`edit-xml-file-locator-${id}`} className="text-base font-medium text-white">
+                        {localized.nodeEditorEditXmlFileLocatorTitle || "Locator"}
+                      </h4>
+                      <p className="mt-1 text-xs text-gray-300">
+                        {localized.nodeEditorEditXmlFileExactOneHelp ||
+                          "The locator must match exactly one element. Each later step searches inside the previous match."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {draft.locatorSteps.map((step, stepIndex) => {
+                      const stepElementError = validationErrors.some(
+                        (error) =>
+                          (error.code === "elementNameRequired" || error.code === "elementNameInvalid") &&
+                          error.stepIndex === stepIndex,
+                      );
+                      return (
+                        <div key={step.id} className="rounded-lg border border-gray-600 bg-gray-800 p-3">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-gray-200">
+                                {stepIndex === 0
+                                  ? firstLocatorLabel
+                                  : localized.nodeEditorEditXmlFileInsidePrevious || "Inside previous match"}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-gray-400">
+                                {localized.nodeEditorEditXmlFileStep || "Step"} {stepIndex + 1}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeLocatorStep(step.id)}
+                              disabled={draft.locatorSteps.length <= 1}
+                              aria-label={`${localized.nodeEditorEditXmlFileRemoveStep || "Remove step"} ${stepIndex + 1}`}
+                              className="rounded px-2 py-1 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {localized.nodeEditorEditXmlFileRemoveStep || "Remove step"}
+                            </button>
+                          </div>
+
+                          <label className="flex flex-col gap-1 text-xs text-gray-300">
+                            <span>{localized.nodeEditorEditXmlFileElementName || "Element name"}</span>
+                            <input
+                              aria-invalid={stepElementError}
+                              aria-label={`${localized.nodeEditorEditXmlFileElementName || "Element name"} ${stepIndex + 1}`}
+                              value={step.elementName}
+                              onChange={(event) => updateLocatorStep(step.id, { elementName: event.target.value })}
+                              placeholder={localized.nodeEditorEditXmlFileElementNamePlaceholder || "*"}
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            <span className="text-[11px] text-gray-400">
+                              {localized.nodeEditorEditXmlFileElementNameWildcardHelp ||
+                                "Wildcard: * matches any element."}
+                            </span>
+                          </label>
+                          {stepElementError && (
+                            <p className="mt-1 text-xs text-red-300">
+                              {validationErrors.some(
+                                (error) => error.code === "elementNameInvalid" && error.stepIndex === stepIndex,
+                              )
+                                ? localized.nodeEditorEditXmlFileElementNameInvalid || "Enter a valid XML element name."
+                                : localized.nodeEditorEditXmlFileElementNameRequired || "Enter an element name."}
+                            </p>
+                          )}
+
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              {step.attributes.length > 0 && (
+                                <span className="text-xs text-gray-300">
+                                  {localized.nodeEditorEditXmlFileLocatorAttributes ||
+                                    "Match attributes (all must match)"}
+                                  <DeepCloneHelp
+                                    text={
+                                      localized.nodeEditorEditXmlFileLocatorAttributesTooltip ||
+                                      "Each listed name/value pair must match; other attributes are allowed."
+                                    }
+                                  />
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => addLocatorAttribute(step.id)}
+                                className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              >
+                                + {localized.nodeEditorEditXmlFileAddAttribute || "Add attribute"}
+                              </button>
+                            </div>
+                            {step.attributes.map((attribute, attributeIndex) => {
+                              const attributeError = validationErrors.some(
+                                (error) =>
+                                  (error.code === "locatorAttributeIncomplete" ||
+                                    error.code === "locatorAttributeInvalidName" ||
+                                    error.code === "locatorAttributeDuplicateName") &&
+                                  error.stepIndex === stepIndex &&
+                                  error.attributeIndex === attributeIndex,
+                              );
+                              return (
+                                <div key={attribute.id} className="grid grid-cols-[1fr_1fr_auto] items-start gap-2">
+                                  <input
+                                    aria-label={`${localized.nodeEditorEditXmlFileAttributeName || "Attribute name"} ${stepIndex + 1}.${attributeIndex + 1}`}
+                                    aria-invalid={attributeError}
+                                    value={attribute.name}
+                                    onChange={(event) =>
+                                      updateLocatorAttribute(step.id, attribute.id, { name: event.target.value })
+                                    }
+                                    placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
+                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                  <input
+                                    aria-label={`${localized.nodeEditorEditXmlFileAttributeValue || "Attribute value"} ${stepIndex + 1}.${attributeIndex + 1}`}
+                                    aria-invalid={attributeError}
+                                    value={attribute.value}
+                                    onChange={(event) =>
+                                      updateLocatorAttribute(step.id, attribute.id, { value: event.target.value })
+                                    }
+                                    placeholder={localized.nodeEditorEditXmlFileAttributeValue || "value"}
+                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLocatorAttribute(step.id, attribute.id)}
+                                    aria-label={`${localized.nodeEditorEditXmlFileRemoveAttribute || "Remove attribute"} ${stepIndex + 1}.${attributeIndex + 1}`}
+                                    className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                                  >
+                                    ✕
+                                  </button>
+                                  {attributeError && (
+                                    <p className="col-span-2 text-xs text-red-300">
+                                      {validationErrors.some(
+                                        (error) =>
+                                          error.code === "locatorAttributeInvalidName" &&
+                                          error.stepIndex === stepIndex &&
+                                          error.attributeIndex === attributeIndex,
+                                      )
+                                        ? localized.nodeEditorEditXmlFileAttributeNameInvalid ||
+                                          "Enter a valid XML attribute name."
+                                        : validationErrors.some(
+                                              (error) =>
+                                                error.code === "locatorAttributeDuplicateName" &&
+                                                error.stepIndex === stepIndex &&
+                                                error.attributeIndex === attributeIndex,
+                                            )
+                                          ? localized.nodeEditorEditXmlFileLocatorAttributeDuplicate ||
+                                            "Use each locator attribute name only once per step."
+                                          : localized.nodeEditorEditXmlFileLocatorAttributeIncomplete ||
+                                            "Complete both the attribute name and value."}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-center pt-1">
+                    <button
+                      type="button"
+                      onClick={addLocatorStep}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      + {localized.nodeEditorEditXmlFileAddStep || "Add step"}
+                    </button>
+                  </div>
+                </section>
+
+                <section aria-labelledby={`edit-xml-file-action-${id}`} className="space-y-3">
+                  <h4 id={`edit-xml-file-action-${id}`} className="text-base font-medium text-white">
+                    {localized.nodeEditorEditXmlFileActionLabel || "Action"}
+                  </h4>
+                  <label className="flex max-w-sm flex-col gap-1 text-xs text-gray-300">
+                    <span>{localized.nodeEditorEditXmlFileAction || "XML action"}</span>
+                    <select
+                      aria-label={localized.nodeEditorEditXmlFileAction || "XML action"}
+                      value={draft.action}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          action: event.target.value as EditXmlFileDraft["action"],
+                        }))
+                      }
+                      className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    >
+                      <option value="setAttributes">
+                        {localized.nodeEditorEditXmlFileSetAttributes || "Set attributes"}
+                      </option>
+                      <option value="editAttributes">
+                        {localized.nodeEditorEditXmlFileEditAttributes || "Edit attributes"}
+                      </option>
+                      <option value="replaceElement">
+                        {localized.nodeEditorEditXmlFileReplaceElement || "Replace element"}
+                      </option>
+                    </select>
+                  </label>
+
+                  {draft.action === "setAttributes" ? (
+                    <div className="space-y-2 rounded-lg border border-gray-600 bg-gray-800 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-gray-300">
+                          {localized.nodeEditorEditXmlFileAttributeEdits || "Attribute edits"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={addAttributeEdit}
+                          className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        >
+                          + {localized.nodeEditorEditXmlFileAddAttributeEdit || "Add attribute edit"}
+                        </button>
+                      </div>
+                      {draft.attributeEdits.map((edit, editIndex) => {
+                        const editError = validationErrors.some(
+                          (error) =>
+                            (error.code === "setAttributeRequired" ||
+                              error.code === "setAttributeInvalidName" ||
+                              error.code === "setAttributeDuplicateName") &&
+                            error.editIndex === editIndex,
+                        );
+                        return (
+                          <div key={edit.id} className="grid grid-cols-[1fr_1fr_auto] items-start gap-2">
+                            <input
+                              aria-label={`${localized.nodeEditorEditXmlFileAttributeName || "Attribute name"} ${editIndex + 1}`}
+                              aria-invalid={editError}
+                              value={edit.name}
+                              onChange={(event) => updateAttributeEdit(edit.id, { name: event.target.value })}
+                              placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            <input
+                              aria-label={`${localized.nodeEditorEditXmlFileNewValue || "New value"} ${editIndex + 1}`}
+                              aria-invalid={editError}
+                              value={edit.newValue}
+                              onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
+                              placeholder={localized.nodeEditorEditXmlFileNewValue || "new value"}
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeAttributeEdit(edit.id)}
+                              aria-label={`${localized.nodeEditorEditXmlFileRemoveAttributeEdit || "Remove attribute edit"} ${editIndex + 1}`}
+                              className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                            >
+                              ✕
+                            </button>
+                            {editError && (
+                              <p className="col-span-2 text-xs text-red-300">
+                                {validationErrors.some(
+                                  (error) => error.code === "setAttributeInvalidName" && error.editIndex === editIndex,
+                                )
+                                  ? localized.nodeEditorEditXmlFileAttributeNameInvalid ||
+                                    "Enter a valid XML attribute name."
+                                  : validationErrors.some(
+                                        (error) =>
+                                          error.code === "setAttributeDuplicateName" && error.editIndex === editIndex,
+                                      )
+                                    ? localized.nodeEditorEditXmlFileAttributeDuplicate ||
+                                      "Use each attribute name only once per edit."
+                                    : localized.nodeEditorEditXmlFileSetAttributeRequired ||
+                                      "Complete the attribute name and new value."}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : draft.action === "editAttributes" ? (
+                    <div className="space-y-2 rounded-lg border border-gray-600 bg-gray-800 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs text-gray-300">
+                            {localized.nodeEditorEditXmlFileAttributeEdits || "Attribute edits"}
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            {localized.nodeEditorEditXmlFileEditAttributesHelp ||
+                              "Edit an existing attribute. Literal and regex replacements keep all unmatched text; formulas use x as the original numeric value."}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addAttributeEdit}
+                          className="shrink-0 rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        >
+                          + {localized.nodeEditorEditXmlFileAddAttributeEdit || "Add attribute edit"}
+                        </button>
+                      </div>
+                      {draft.attributeEdits.map((edit, editIndex) => {
+                        const operation: XmlAttributeEditOperation = edit.operation || "replace";
+                        const editError = validationErrors.some(
+                          (error) =>
+                            (error.code === "editAttributeRequired" ||
+                              error.code === "editAttributeInvalidName" ||
+                              error.code === "editAttributeDuplicateName" ||
+                              error.code === "editAttributeInvalidRegex") &&
+                            error.editIndex === editIndex,
+                        );
+                        const matchLabel =
+                          operation === "regexReplace"
+                            ? localized.nodeEditorEditXmlFileRegexPattern || "Regex pattern"
+                            : localized.nodeEditorEditXmlFileMatchText || "Match text";
+                        const valueLabel =
+                          operation === "formula"
+                            ? localized.nodeEditorEditXmlFileFormula || "Formula"
+                            : operation === "regexReplace"
+                              ? localized.nodeEditorEditXmlFileReplacementValue || "Replacement"
+                              : localized.nodeEditorEditXmlFileNewValue || "New value";
+                        return (
+                          <div key={edit.id} className="space-y-2 rounded border border-gray-600 bg-gray-700 p-2">
+                            <div className="grid grid-cols-[1fr_10rem_auto] items-start gap-2">
+                              <input
+                                aria-label={`${localized.nodeEditorEditXmlFileAttributeName || "Attribute name"} ${editIndex + 1}`}
+                                aria-invalid={editError}
+                                value={edit.name}
+                                onChange={(event) => updateAttributeEdit(edit.id, { name: event.target.value })}
+                                placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
+                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              />
+                              <select
+                                aria-label={`${localized.nodeEditorEditXmlFileAttributeOperation || "Edit operation"} ${editIndex + 1}`}
+                                value={operation}
+                                onChange={(event) =>
+                                  updateAttributeEdit(edit.id, {
+                                    operation: event.target.value as XmlAttributeEditOperation,
+                                  })
+                                }
+                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-xs text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              >
+                                <option value="replace">
+                                  {localized.nodeEditorEditXmlFileReplaceText || "replace"}
+                                </option>
+                                <option value="regexReplace">
+                                  {localized.nodeEditorEditXmlFileRegexReplace || "regex replace"}
+                                </option>
+                                <option value="formula">{localized.nodeEditorEditXmlFileFormula || "formula"}</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeAttributeEdit(edit.id)}
+                                aria-label={`${localized.nodeEditorEditXmlFileRemoveAttributeEdit || "Remove attribute edit"} ${editIndex + 1}`}
+                                className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-600 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {operation === "formula" ? (
+                              <label className="flex flex-col gap-1 text-xs text-gray-300">
+                                <span>{valueLabel}</span>
+                                <input
+                                  aria-label={`${valueLabel} ${editIndex + 1}`}
+                                  aria-invalid={editError}
+                                  value={edit.newValue}
+                                  onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
+                                  placeholder={localized.nodeEditorEditXmlFileFormulaPlaceholder || "x * 2"}
+                                  className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                />
+                                <span className="text-[11px] text-gray-400">
+                                  {localized.nodeEditorEditXmlFileFormulaHelp ||
+                                    "x is the original numeric attribute value."}
+                                </span>
+                              </label>
+                            ) : (
+                              <div className="grid grid-cols-[1fr_1fr] items-start gap-2">
+                                <label className="flex flex-col gap-1 text-xs text-gray-300">
+                                  <span>{matchLabel}</span>
+                                  <input
+                                    aria-label={`${matchLabel} ${editIndex + 1}`}
+                                    aria-invalid={editError}
+                                    value={edit.match || ""}
+                                    onChange={(event) => updateAttributeEdit(edit.id, { match: event.target.value })}
+                                    placeholder={
+                                      operation === "regexReplace"
+                                        ? localized.nodeEditorEditXmlFileRegexPatternPlaceholder || "(capture)-(group)"
+                                        : localized.nodeEditorEditXmlFileMatchTextPlaceholder || "text to replace"
+                                    }
+                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                </label>
+                                <label className="flex flex-col gap-1 text-xs text-gray-300">
+                                  <span>{valueLabel}</span>
+                                  <input
+                                    aria-label={`${valueLabel} ${editIndex + 1}`}
+                                    value={edit.newValue}
+                                    onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
+                                    placeholder={
+                                      operation === "regexReplace"
+                                        ? localized.nodeEditorEditXmlFileRegexReplacementPlaceholder ||
+                                          "new text using $1 or $<name>..."
+                                        : localized.nodeEditorEditXmlFileNewValuePlaceholder || "new value"
+                                    }
+                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  />
+                                </label>
+                              </div>
+                            )}
+                            {editError && (
+                              <p className="text-xs text-red-300">
+                                {validationErrors.some(
+                                  (error) =>
+                                    error.code === "editAttributeInvalidRegex" && error.editIndex === editIndex,
+                                )
+                                  ? localized.nodeEditorEditXmlFileInvalidRegex || "Enter a valid regular expression."
+                                  : validationErrors.some(
+                                        (error) =>
+                                          error.code === "editAttributeInvalidName" && error.editIndex === editIndex,
+                                      )
+                                    ? localized.nodeEditorEditXmlFileAttributeNameInvalid ||
+                                      "Enter a valid XML attribute name."
+                                    : validationErrors.some(
+                                          (error) =>
+                                            error.code === "editAttributeDuplicateName" &&
+                                            error.editIndex === editIndex,
+                                        )
+                                      ? localized.nodeEditorEditXmlFileAttributeDuplicate ||
+                                        "Use each attribute name only once per edit."
+                                      : localized.nodeEditorEditXmlFileEditAttributeRequired ||
+                                        "Complete the attribute name and match or formula."}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <label className="flex flex-col gap-1 text-xs text-gray-300">
+                      <span>{localized.nodeEditorEditXmlFileReplacementXml || "Replacement XML"}</span>
+                      <textarea
+                        aria-label={localized.nodeEditorEditXmlFileReplacementXml || "Replacement XML"}
+                        aria-invalid={validationErrors.some(
+                          (error) => error.code === "replacementRequired" || error.code === "replacementInvalid",
+                        )}
+                        value={draft.replacementXml}
+                        onChange={(event) =>
+                          updateDraft((current) => ({ ...current, replacementXml: event.target.value }))
+                        }
+                        placeholder={localized.nodeEditorEditXmlFileReplacementPlaceholder || "<element />"}
+                        rows={8}
+                        className="w-full rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                      {validationErrors.some(
+                        (error) => error.code === "replacementRequired" || error.code === "replacementInvalid",
+                      ) && (
+                        <span className="text-xs text-red-300">
+                          {validationErrors.some((error) => error.code === "replacementInvalid")
+                            ? localized.nodeEditorEditXmlFileReplacementInvalid || "Enter one well-formed XML element."
+                            : localized.nodeEditorEditXmlFileReplacementRequired || "Enter replacement XML."}
+                        </span>
+                      )}
+                    </label>
+                  )}
+                </section>
+              </div>
+            )}
+          </Modal.Body>
+          {!isDiscardConfirmationOpen && (
+            <Modal.Footer>
+              <button
+                type="button"
+                onClick={requestClose}
+                className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                {localized.nodeEditorEditXmlFileCancel || localized.cancel || "Cancel"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDone}
+                disabled={!isValid}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {localized.nodeEditorEditXmlFileDone || "Done"}
+              </button>
+            </Modal.Footer>
+          )}
+        </Modal>
+      )}
+    </>
+  );
+};
+
+export const PackFileOperationsNode: React.FC<{ data: PackFileOperationsNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const [operations, setOperations] = useState<PackFileOperationRuleData[]>(data.fileOperations || []);
+
+  React.useEffect(() => {
+    if (data.fileOperations !== undefined && JSON.stringify(data.fileOperations) !== JSON.stringify(operations)) {
+      setOperations(data.fileOperations);
+    }
+  }, [data.fileOperations]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      fileOperations: operations as unknown as Record<string, unknown>[],
+    });
+  }, [operations, id]);
+
+  const addOperation = () =>
+    setOperations([
+      ...operations,
+      {
+        id: `op_${Date.now()}`,
+        operation: "copy",
+        targetMatch: "name",
+        target: "",
+        destination: "",
+        overwrite: true,
+      },
+    ]);
+  const updateOperation = (operationId: string, updates: Partial<PackFileOperationRuleData>) =>
+    setOperations(operations.map((rule) => (rule.id === operationId ? { ...rule, ...updates } : rule)));
+
+  return (
+    <div className="bg-gray-700 border-2 border-indigo-500 rounded-lg p-4 min-w-[320px] max-w-[400px]">
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" data-input-type="PackFiles" />
+
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-white">
+          {localized.nodeEditorPackFileOperationsTitle || "Move Or Copy Files"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorPackFileOperationsTooltip ||
+              "Copies, moves, renames or deletes files, writing out a copy of the pack with the changes applied.\n\n" +
+                "Given packs, each pack a rule changes is carried into the output pack with the operations applied - so a deleted file is simply not in the copy. A pack no rule touches is left alone entirely.\n\n" +
+                "The original pack is never edited. A replacement output keeps the original pack's file name. When the game starts it loads the output pack in place of the pack that was copied, so removals and renames take effect. Running manually writes the pack to data/ and you disable the original yourself.\n\n" +
+                "Given files from an earlier node it works on those and passes the rest along.\n\n" +
+                "Rename changes the file name and keeps the folder. Move and copy take a whole path, and accept {name}, {dir} and, when targeting by regex, the capture groups as $1."
+            }
+          />
+        </div>
+        <button
+          onClick={addOperation}
+          className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded"
+        >
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div className="space-y-2 max-h-80 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+        {operations.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorPackFileOperationsEmpty || "No operations; files pass through unchanged"}
+          </div>
+        ) : (
+          operations.map((rule) => (
+            <div key={rule.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center gap-1 mb-1">
+                <select
+                  value={rule.operation}
+                  onChange={(event) =>
+                    updateOperation(rule.id, {
+                      operation: event.target.value as PackFileOperationRuleData["operation"],
+                    })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="copy">{localized.nodeEditorPackFileCopy || "copy"}</option>
+                  <option value="move">{localized.nodeEditorPackFileMove || "move"}</option>
+                  <option value="rename">{localized.nodeEditorPackFileRename || "rename"}</option>
+                  <option value="delete">{localized.nodeEditorPackFileDelete || "delete"}</option>
+                </select>
+                <select
+                  value={rule.targetMatch}
+                  onChange={(event) =>
+                    updateOperation(rule.id, {
+                      targetMatch: event.target.value as PackFileOperationRuleData["targetMatch"],
+                    })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="name">{localized.nodeEditorEditTextFileByName || "name"}</option>
+                  <option value="path">{localized.nodeEditorEditTextFileByPath || "path"}</option>
+                  <option value="regex">{localized.nodeEditorEditTextFileByRegex || "regex"}</option>
+                </select>
+                <button
+                  onClick={() => setOperations(operations.filter((candidate) => candidate.id !== rule.id))}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <input
+                type="text"
+                value={rule.target}
+                onChange={(event) => updateOperation(rule.id, { target: event.target.value })}
+                placeholder={localized.nodeEditorPackFileSourcePlaceholder || "file to act on..."}
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+              />
+
+              {targetHasPathButMatchesName(rule.targetMatch, rule.target) && (
+                <div className="text-xs text-amber-400 mb-1">
+                  {localized.nodeEditorTargetNameHasPath ||
+                    "Matching by name compares only the file name, so a path never matches. Switch to path or drop the folders."}
+                </div>
+              )}
+
+              {rule.operation !== "delete" && (
+                <>
+                  <input
+                    type="text"
+                    value={rule.destination || ""}
+                    onChange={(event) => updateOperation(rule.id, { destination: event.target.value })}
+                    placeholder={
+                      rule.operation === "rename"
+                        ? localized.nodeEditorPackFileNewNamePlaceholder || "new file name..."
+                        : localized.nodeEditorPackFileNewPathPlaceholder || "new path..."
+                    }
+                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+                  />
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rule.overwrite !== false}
+                      onChange={(event) => updateOperation(rule.id, { overwrite: event.target.checked })}
+                      className="w-3 h-3"
+                    />
+                    <span className="text-xs text-gray-300">
+                      {localized.nodeEditorPackFileOverwrite || "overwrite a file already there"}
+                    </span>
+                  </label>
+                </>
+              )}
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rule.required === true}
+                  onChange={(event) => updateOperation(rule.id, { required: event.target.checked })}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-gray-300">
+                  {localized.nodeEditorEditTextFileRequired || "report if it matches nothing at game start"}
+                </span>
+              </label>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
     </div>
   );
 };

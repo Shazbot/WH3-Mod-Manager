@@ -8,7 +8,6 @@ type ModDropdownProps = {
   mod?: Mod;
   referenceElement: HTMLElement | undefined;
   mods: Mod[];
-  visibleMods: Mod[];
 };
 
 const VIEWPORT_PADDING = 8; // Padding from viewport edges
@@ -92,11 +91,7 @@ const ModDropdown = memo((props: ModDropdownProps) => {
           }}
           ref={modDropdownRef}
         >
-          <ModDropdownOptions
-            mod={props.mod}
-            mods={props.mods}
-            visibleMods={props.visibleMods}
-          ></ModDropdownOptions>
+          <ModDropdownOptions mod={props.mod} mods={props.mods}></ModDropdownOptions>
         </div>
       </>
     )

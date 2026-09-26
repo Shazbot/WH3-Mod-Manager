@@ -1,7 +1,9 @@
 import { Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
 import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
-import Trie from "./utility/trie";
+import { emptyGameConfig } from "./config/migrateAppConfig";
+import Trie, { type KeyedLookup } from "./utility/trie";
+import type { AssetBytes } from "./assetProtocol";
 
 interface AppData {
   skillsData?: {
@@ -21,8 +23,11 @@ interface AppData {
     nodeToSkill: Record<string, NodeSkill>;
     skillsToEffects: Record<string, Effect[]>;
     skills: SkillAndIcons;
-    locs: Record<string, Trie<string>>;
-    icons: Record<string, string>;
+    locs: Record<string, KeyedLookup<string>>;
+    /** The icon files themselves. The renderer gets asset protocol URLs pointing at these. */
+    icons: Record<string, AssetBytes>;
+    /** The generation these icons were registered under, which their URLs carry. */
+    iconGeneration: number;
     effectsToEffectData: Record<string, EffectData>;
     nodeToSkillLocks: NodeToSkillLocks;
     skillsDataPackPaths: string[];
@@ -145,7 +150,6 @@ interface AppData {
     >;
     abilityToAutoDeactivateFlags: Record<string, string[]>;
   };
-  presets: Preset[];
 
   // gamePaths: Record<string, string>;
   // contentFolders: Record<string, string>;
@@ -157,7 +161,12 @@ interface AppData {
   isMakeUnitsGeneralsEnabled: boolean;
   isFeaturesForModdersEnabled: boolean;
   moddersPrefix: string;
+  /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
+  isRigidModelV2CompressionEnabled: boolean;
+  /** Compress mod packs in place before updating them on the Steam Workshop. */
+  compressModsOnUpload: boolean;
   isShowingSkillNodeSetNames: boolean;
+  hideRepeatedKeyPrefixes: boolean;
   isShowingHiddenSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
   isCheckingSkillRequirements: boolean;
@@ -166,29 +175,44 @@ interface AppData {
   hasReadConfig: boolean;
   packsData: Pack[];
   unsavedPacksData: Record<string, PackedFile[]>;
+  deletedPackFilePaths: Record<string, string[]>;
+  /** Physical packs most recently opened in the mod viewer, newest first. */
+  recentPackPaths: string[];
   compatData: PackCollisions;
-  currentlyReadingModPaths: string[];
   vanillaPacks: Pack[];
   allVanillaPackNames: Set<string>;
   overwrittenDataPackedFiles: Record<string, string[]>;
   outdatedPackFiles: Record<string, string[]>;
   enabledMods: Mod[];
   allMods: Mod[];
+  /** Pack name -> the rules that pack ships inside itself, from the last mod scan. */
+  modLoadOrderRules: Record<string, LoadOrderRule[]>;
+  /** The current game's rules, mirrored from the last config payload the renderer sent. */
+  loadOrderRules: LoadOrderRule[];
+  disabledModLoadOrderRules: string[];
+  loadOrderRuleDisabledPacks: string[];
   startArgs: string[];
   isAdmin: boolean;
+  canCreateSymbolicLinks: boolean;
+  workshopStagingCleanupPending: boolean;
+  workshopStagingCleanupGamePath?: string;
   gameUpdates: GameUpdateData[];
   isWH3Running: boolean;
   currentGame: SupportedGames;
-  gameToCurrentPreset: Record<SupportedGames, Preset | undefined>;
-  gameToPresets: Record<SupportedGames, Preset[]>;
+  gameToConfig: Record<SupportedGames, GameConfig>;
   vanillaPacksDBFileNames: string[];
   waitForModIds: string[];
   subscribedModIds: string[];
   isCompatCheckingVanillaPacks: boolean;
+  isUsingEnglishLocalizations: boolean;
   modsToResubscribeTo: Mod[];
   isViewerReady: boolean;
   areSkillsReady: boolean;
   queuedViewerData: (PackViewData | undefined)[];
+  /** Packs the viewer currently has tabs for, oldest first; replayed when the viewer reloads. */
+  openViewerPackPaths: string[];
+  /** Which of those is in front, for the native window title. */
+  activeViewerPackPath?: string;
   queuedSkillsData: SkillsData | undefined;
   lastSkillsSelection?: {
     currentSubtype: string;
@@ -206,10 +230,11 @@ export type GameFolderPaths = {
   gamePath: string | undefined;
   contentFolder: string | undefined;
   dataFolder: string | undefined;
+  customModFolders?: CustomModFolder[];
+  modSourceOrder?: string[];
 };
 
 const appData = {
-  presets: [],
   // gamePaths: {},
   // contentFolders: {},
   // dataFolders: {},
@@ -220,7 +245,10 @@ const appData = {
   isMakeUnitsGeneralsEnabled: false,
   isFeaturesForModdersEnabled: false,
   moddersPrefix: "",
+  isRigidModelV2CompressionEnabled: true,
+  compressModsOnUpload: true,
   isShowingSkillNodeSetNames: false,
+  hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,
   isCheckingSkillRequirements: true,
@@ -229,6 +257,8 @@ const appData = {
   hasReadConfig: false,
   packsData: [],
   unsavedPacksData: {},
+  deletedPackFilePaths: {},
+  recentPackPaths: [],
   compatData: {
     packTableCollisions: [],
     packFileCollisions: [],
@@ -238,13 +268,19 @@ const appData = {
     packFileAnalysisErrors: {},
     missingFileRefs: {},
   },
-  currentlyReadingModPaths: [],
   overwrittenDataPackedFiles: {},
   outdatedPackFiles: {},
   enabledMods: [],
   allMods: [],
+  modLoadOrderRules: {},
+  loadOrderRules: [],
+  disabledModLoadOrderRules: [],
+  loadOrderRuleDisabledPacks: [],
   startArgs: [],
   isAdmin: false,
+  canCreateSymbolicLinks: false,
+  workshopStagingCleanupPending: false,
+  workshopStagingCleanupGamePath: undefined,
   gameUpdates: [],
   isWH3Running: false,
   currentGame: "wh3",
@@ -254,46 +290,32 @@ const appData = {
   waitForModIds: [],
   subscribedModIds: [],
   isCompatCheckingVanillaPacks: false,
+  isUsingEnglishLocalizations: false,
   modsToResubscribeTo: [],
   isViewerReady: false,
   areSkillsReady: false,
   queuedViewerData: [],
+  openViewerPackPaths: [],
+  activeViewerPackPath: undefined,
   queuedSkillsData: undefined,
   lastSkillsSelection: undefined,
   lastSkillsDataSignature: undefined,
   isChangingGameProcessPriority: false,
   customizableMods: {},
   packMetaData: {},
-} as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
+} as Omit<AppData, "gameToConfig">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
     gamePath: undefined,
     dataFolder: undefined,
     contentFolder: undefined,
+    customModFolders: [],
+    modSourceOrder: ["data", "workshop"],
   };
 }
 
-(appData as AppData).gameToCurrentPreset = {
-  wh2: undefined,
-  wh3: undefined,
-  threeKingdoms: undefined,
-  attila: undefined,
-  troy: undefined,
-  pharaoh: undefined,
-  dynasties: undefined,
-  rome2: undefined,
-  shogun2: undefined,
-};
-(appData as AppData).gameToPresets = {
-  wh2: [],
-  wh3: [],
-  threeKingdoms: [],
-  attila: [],
-  troy: [],
-  pharaoh: [],
-  dynasties: [],
-  rome2: [],
-  shogun2: [],
-};
+(appData as AppData).gameToConfig = Object.fromEntries(
+  supportedGames.map((game) => [game, emptyGameConfig()]),
+) as Record<SupportedGames, GameConfig>;
 
 export default appData as AppData;

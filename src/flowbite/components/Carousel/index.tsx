@@ -38,9 +38,9 @@ export const Carousel: FC<CarouselProps> = ({
       Children.map(children as ReactElement[], (child: ReactElement) =>
         cloneElement(child, {
           className: classNames(theme.item.base, child.props.className),
-        })
+        }),
       ),
-    [children, theme.item.base]
+    [children, theme.item.base],
   );
 
   const navigateTo = useCallback(
@@ -51,7 +51,7 @@ export const Carousel: FC<CarouselProps> = ({
       }
       setActiveItem(item);
     },
-    [items.length]
+    [items.length],
   );
 
   useEffect(() => {
@@ -62,10 +62,7 @@ export const Carousel: FC<CarouselProps> = ({
 
   useEffect(() => {
     if (slide) {
-      const intervalId = setInterval(
-        () => !isDragging && navigateTo(activeItem + 1)(),
-        slideInterval ?? 3000
-      );
+      const intervalId = setInterval(() => !isDragging && navigateTo(activeItem + 1)(), slideInterval ?? 3000);
 
       return () => clearInterval(intervalId);
     }
@@ -78,7 +75,7 @@ export const Carousel: FC<CarouselProps> = ({
       <ScrollContainer
         className={classNames(
           theme.scrollContainer.base,
-          (isDeviceMobile || !isDragging) && theme.scrollContainer.snap
+          (isDeviceMobile || !isDragging) && theme.scrollContainer.snap,
         )}
         draggingClassName="cursor-grab"
         innerRef={carouselContainer}
@@ -86,34 +83,30 @@ export const Carousel: FC<CarouselProps> = ({
         onStartScroll={handleDragging(true)}
         vertical={false}
       >
-        {items?.map(
-          (item, index): JSX.Element => (
-            <div
-              key={index}
-              className={theme.item.wrapper}
-              data-active={activeItem === index}
-              data-testid="carousel-item"
-            >
-              {item}
-            </div>
-          )
-        )}
+        {items?.map((item, index): JSX.Element => (
+          <div
+            key={index}
+            className={theme.item.wrapper}
+            data-active={activeItem === index}
+            data-testid="carousel-item"
+          >
+            {item}
+          </div>
+        ))}
       </ScrollContainer>
       {indicators && (
         <div className={theme.indicators.wrapper}>
-          {items.map(
-            (_, index): JSX.Element => (
-              <button
-                key={index}
-                className={classNames(
-                  theme.indicators.base,
-                  theme.indicators.active[index === activeItem ? "on" : "off"]
-                )}
-                onClick={navigateTo(index)}
-                data-testid="carousel-indicator"
-              />
-            )
-          )}
+          {items.map((_, index): JSX.Element => (
+            <button
+              key={index}
+              className={classNames(
+                theme.indicators.base,
+                theme.indicators.active[index === activeItem ? "on" : "off"],
+              )}
+              onClick={navigateTo(index)}
+              data-testid="carousel-indicator"
+            />
+          ))}
         </div>
       )}
       <div className={theme.leftControl}>

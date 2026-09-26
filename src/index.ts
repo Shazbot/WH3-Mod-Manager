@@ -1,9 +1,9 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
-import { exec, fork, spawn } from "child_process";
+import { exec, spawn, spawnSync } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
-import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-extension-installer";
+import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
-import isDev from "electron-is-dev";
+import electronIsDev from "electron-is-dev";
 import * as fs from "fs";
 import { updateAvailable } from "gh-release-fetch";
 import { version } from "../package.json";
@@ -12,12 +12,19 @@ import windowStateKeeper from "electron-window-state";
 import * as nodePath from "path";
 import { isMainThread } from "worker_threads";
 import electronLog from "electron-log/main";
-import i18n from "./configs/i18next.config";
+import i18n, { getLocaleDirectory } from "./configs/i18next.config";
 import { globSync } from "glob";
-import { windows, registerIpcMainListeners } from "./ipcMainListeners";
+import { cleanupWorkshopStagingAfterGameExit, windows, registerIpcMainListeners } from "./ipcMainListeners";
 import * as https from "https";
 import { Extract } from "unzipper";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
+import { flushAppConfigWrites } from "./appConfigFunctions";
+import { registerAssetSchemeAsPrivileged } from "./assetProtocol";
+import { findGameProcessIds, setGameProcessPriority } from "./utility/gameProcess";
+import { forkSteamWorker as fork } from "./steamWorker";
+import { buildWindowsUpdateBootstrapScript, buildWindowsUpdateScript } from "./utility/updateScripts";
+import { buildUpdateTempDirPath, removeStaleUpdateTempDirs } from "./utility/updateTempDirs";
+import { isWindowsDeveloperModeEnabled } from "./utility/windowsDeveloperMode";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -26,6 +33,8 @@ import { isSupportedLanguage } from "./utility/sharedHelpers";
 // whether you're running in development or production).
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+
+const isDev = electronIsDev || process.env.WHMM_FORCE_DEV !== undefined;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -37,15 +46,28 @@ if (!gotTheLock) {
   console.log("ONLY ONE INSTANCE ALLOWED!");
   app.quit();
 } else {
-  app.commandLine.appendSwitch("js-flags", "--max-old-space-size=12288");
+  app.commandLine.appendSwitch("js-flags", "--max-old-space-size=4096");
+  // Has to happen before the app is ready, so it cannot live beside the handler registered later.
+  registerAssetSchemeAsPrivileged();
 
-  console.log("ARGVS:", process.argv);
   appData.startArgs = process.argv.slice(1);
 
-  exec("NET SESSION", function (err, so, se) {
-    appData.isAdmin = se.length === 0;
-    console.log("isAdmin:", appData.isAdmin);
-  });
+  if (process.platform === "win32") {
+    exec("NET SESSION", function (err, so, se) {
+      appData.isAdmin = se.length === 0;
+      console.log("isAdmin:", appData.isAdmin);
+      void isWindowsDeveloperModeEnabled().then((isDeveloperModeEnabled) => {
+        appData.canCreateSymbolicLinks = appData.isAdmin || isDeveloperModeEnabled;
+        windows.mainWindow?.webContents.send("setCanCreateSymbolicLinks", appData.canCreateSymbolicLinks);
+        console.log("canCreateSymbolicLinks:", appData.canCreateSymbolicLinks);
+      });
+    });
+  } else {
+    // Creating symbolic links does not require an elevated process on Unix-like systems.
+    appData.isAdmin = true;
+    appData.canCreateSymbolicLinks = true;
+    console.log("isAdmin: true (Unix symbolic links do not require elevation)");
+  }
 
   if (process.argv.find((arg) => arg == "-nogpu")) {
     console.log("DISABLED HARDWARE ACCELERATION");
@@ -68,10 +90,22 @@ if (!gotTheLock) {
     console.log = (...args) => {
       electronLog.info(...args);
     };
+    // Without these two a console.warn/console.error only reaches stdout, which nobody has when the
+    // app is run normally - so the very messages that explain a failure were missing from main.log.
+    console.warn = (...args) => {
+      electronLog.warn(...args);
+    };
+    console.error = (...args) => {
+      electronLog.error(...args);
+    };
   }
 
   let checkWH3RunningInterval: NodeJS.Timer;
+  // Reported once per run: the answer is the same every time the game starts, so repeating it on
+  // each launch would just be noise.
+  let hasReportedProcessPriorityRefusal = false;
   let isAppQuitting = false;
+  let isQuittingAfterConfigFlush = false;
 
   const terminateForExternalUpdate = () => {
     isAppQuitting = true;
@@ -83,7 +117,11 @@ if (!gotTheLock) {
     // Skip the normal Electron quit flow here. The update helper already took over
     // and a hard exit is more reliable than waiting on app shutdown hooks/handles.
     setTimeout(() => {
-      process.exit(0);
+      const forcedExit = setTimeout(() => process.exit(0), 5_000);
+      void flushAppConfigWrites().finally(() => {
+        clearTimeout(forcedExit);
+        process.exit(0);
+      });
     }, 250);
   };
 
@@ -136,10 +174,85 @@ if (!gotTheLock) {
       icon: "./assets/modmanager.ico",
     });
 
-    mainWindowState.manage(windows.mainWindow);
+    const mainWindow = windows.mainWindow;
+    const mainWebContents = mainWindow.webContents;
+    const startupStartedAt = Date.now();
+    let hasRendererMainMounted = false;
+    const startupDiagnosticTimeout = setTimeout(() => {
+      if (!hasRendererMainMounted && !mainWindow.isDestroyed()) {
+        console.log("[startup] Main renderer did not report a React mount within 10 seconds", {
+          url: mainWebContents.getURL(),
+          isLoading: mainWebContents.isLoading(),
+          isCrashed: mainWebContents.isCrashed(),
+        });
+      }
+    }, 10_000);
+
+    const onRendererMainMounted = (event: Electron.IpcMainEvent) => {
+      if (event.sender.id !== mainWebContents.id) return;
+      hasRendererMainMounted = true;
+      clearTimeout(startupDiagnosticTimeout);
+      ipcMain.removeListener("rendererMainMounted", onRendererMainMounted);
+      console.log(`[startup] Main renderer React mounted after ${Date.now() - startupStartedAt}ms`);
+    };
+
+    ipcMain.on("rendererMainMounted", onRendererMainMounted);
+
+    mainWebContents.on("dom-ready", () => {
+      console.log(`[startup] Main renderer DOM ready after ${Date.now() - startupStartedAt}ms`);
+    });
+
+    mainWebContents.on("did-finish-load", () => {
+      console.log(`[startup] Main renderer finished loading after ${Date.now() - startupStartedAt}ms`);
+    });
+
+    mainWebContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return;
+      console.log("[startup] Main renderer failed to load", {
+        errorCode,
+        errorDescription,
+        validatedURL,
+      });
+    });
+
+    mainWebContents.on("preload-error", (_event, preloadPath, error) => {
+      console.log("[startup] Main renderer preload failed", {
+        preloadPath,
+        message: error.message,
+        stack: error.stack,
+      });
+    });
+
+    mainWebContents.on("render-process-gone", (_event, details) => {
+      console.log("[startup] Main renderer process exited", details);
+    });
+
+    mainWebContents.on("unresponsive", () => {
+      console.log("[startup] Main renderer became unresponsive");
+    });
+
+    mainWebContents.on("responsive", () => {
+      console.log("[startup] Main renderer became responsive again");
+    });
+
+    mainWebContents.on("console-message", (details) => {
+      if (details.level !== "warning" && details.level !== "error") return;
+      console.log(`[renderer console ${details.level}] ${details.message}`, {
+        sourceId: details.sourceId,
+        lineNumber: details.lineNumber,
+      });
+    });
+
+    mainWindowState.manage(mainWindow);
 
     // and load the index.html of the app.
-    windows.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+    mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY).catch((error) => {
+      console.log("[startup] Main renderer loadURL rejected", {
+        url: MAIN_WINDOW_WEBPACK_ENTRY,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    });
 
     windows.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
       shell.openExternal(url);
@@ -190,7 +303,9 @@ if (!gotTheLock) {
       evt.preventDefault();
     });
 
-    windows.mainWindow.on("closed", () => {
+    mainWindow.on("closed", () => {
+      clearTimeout(startupDiagnosticTimeout);
+      ipcMain.removeListener("rendererMainMounted", onRendererMainMounted);
       if (isAppQuitting) return;
       if (windows.viewerWindow && !windows.viewerWindow.isDestroyed()) windows.viewerWindow.close();
       if (windows.skillsWindow && !windows.skillsWindow.isDestroyed()) windows.skillsWindow.close();
@@ -216,8 +331,7 @@ if (!gotTheLock) {
       const idsToDownload: string[] = [];
       for (const modId of appData.waitForModIds) {
         console.log("checking", nodePath.join(contentFolder, modId));
-        if (globSync("*.pack", { cwd: nodePath.join(contentFolder, modId) }).length == 0)
-          idsToDownload.push(modId);
+        if (globSync("*.pack", { cwd: nodePath.join(contentFolder, modId) }).length == 0) idsToDownload.push(modId);
         else toRemoveFromWaitForModIds.push(modId);
       }
 
@@ -225,12 +339,10 @@ if (!gotTheLock) {
       fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "download", idsToDownload.join(";")],
-        {}
+        {},
       );
 
-      appData.waitForModIds = appData.waitForModIds.filter(
-        (modId) => !toRemoveFromWaitForModIds.includes(modId)
-      );
+      appData.waitForModIds = appData.waitForModIds.filter((modId) => !toRemoveFromWaitForModIds.includes(modId));
     };
     setInterval(waitForModDownloads, 3500);
 
@@ -240,10 +352,14 @@ if (!gotTheLock) {
     ipcMain.handle("getUpdateData", async () => {
       // if (isDev) return;
 
-      // clean up the temp_update folder
+      // Remove staging directories left behind by earlier update attempts. The helper script no
+      // longer deletes its own directory, so this is where they get cleaned up.
       try {
-        if (fs.existsSync("./temp_update")) {
-          fs.rmSync("./temp_update", { force: true, recursive: true });
+        const tempRoot = app.getPath("temp");
+        for (const entry of fs.readdirSync(tempRoot, { withFileTypes: true })) {
+          if (entry.isDirectory() && entry.name.startsWith("wh3mm-update")) {
+            fs.rmSync(nodePath.join(tempRoot, entry.name), { force: true, recursive: true });
+          }
         }
       } catch (e) {
         console.log(e);
@@ -257,18 +373,33 @@ if (!gotTheLock) {
       await fetch(`https://api.github.com/repos/Shazbot/WH3-Mod-Manager/releases/latest`)
         .then((res) => res.json())
         .then((body) => {
-          body.assets.forEach((asset: { content_type: string; browser_download_url: string }) => {
-            windows.mainWindow?.webContents.send(
-              "handleLog",
-              asset.content_type == "application/x-zip-compressed"
-            );
-            if (asset.content_type === "application/x-zip-compressed") {
-              modUpdatedExists = {
-                updateExists: true,
-                downloadURL: asset.browser_download_url,
-              } as ModUpdateExists;
-            }
-          });
+          const zipAssets = (
+            body.assets as Array<{
+              name?: string;
+              content_type: string;
+              browser_download_url: string;
+            }>
+          ).filter(
+            (asset) =>
+              asset.content_type === "application/x-zip-compressed" ||
+              asset.content_type === "application/zip" ||
+              asset.name?.toLowerCase().endsWith(".zip"),
+          );
+          const platformAssetPattern =
+            process.platform === "win32"
+              ? /(?:^|[-_.])(?:windows?|win32|win64)(?:[-_.]|$)/i
+              : process.platform === "darwin"
+                ? /(?:^|[-_.])(?:darwin|mac|osx)(?:[-_.]|$)/i
+                : /(?:^|[-_.])linux(?:[-_.]|$)/i;
+          const platformAsset =
+            [...zipAssets].reverse().find((asset) => platformAssetPattern.test(asset.name || "")) ||
+            (zipAssets.length === 1 ? zipAssets[0] : undefined);
+          if (platformAsset) {
+            modUpdatedExists = {
+              updateExists: true,
+              downloadURL: platformAsset.browser_download_url,
+            } as ModUpdateExists;
+          }
 
           if (body.html_url) modUpdatedExists.releaseNotesURL = body.html_url;
         })
@@ -286,13 +417,36 @@ if (!gotTheLock) {
 
       try {
         const appPath = app.getAppPath();
-        const tempDir = nodePath.join(appPath, "../..", "temp_update");
+        if (process.platform === "linux" && process.env.APPIMAGE) {
+          return { success: false, error: "AppImage updates are not supported yet." };
+        }
+
+        if (process.platform !== "win32" && process.platform !== "linux" && process.platform !== "darwin") {
+          return { success: false, error: `Updates are not supported on ${process.platform}.` };
+        }
+
+        // The helper script runs as this user, so check up front that it will be able to replace the
+        // installed files. Packaged Linux builds commonly live below a root-owned /opt or /usr, and
+        // discovering that only after the application has exited leaves it closed and not updated.
+        const appDir = nodePath.dirname(nodePath.join(appPath, ".."));
+        const writeProbePath = nodePath.join(appDir, `.wh3mm-write-probe-${process.pid}`);
+        try {
+          fs.writeFileSync(writeProbePath, "");
+        } catch {
+          return {
+            success: false,
+            error: `Cannot write to the installation directory ${appDir}, so the update cannot be applied. Reinstall somewhere writable or update through your package manager.`,
+          };
+        } finally {
+          fs.rmSync(writeProbePath, { force: true });
+        }
+
+        const tempDir = buildUpdateTempDirPath(app.getPath("temp"), process.pid);
         const zipPath = nodePath.join(tempDir, "update.zip");
 
-        // Create temp directory
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true });
-        }
+        // Create a clean, user-writable temporary directory.
+        if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.mkdirSync(tempDir, { recursive: true });
 
         // Download the update file
         const downloadFile = (url: string, dest: string, fileOut?: fs.WriteStream): Promise<void> => {
@@ -332,38 +486,60 @@ if (!gotTheLock) {
             .on("error", reject);
         });
 
-        // Create update script
-        const appDir = nodePath.dirname(nodePath.join(appPath, ".."));
-        const updateScript = nodePath.join(tempDir, "update.bat");
-        const appExeName = nodePath.basename(process.execPath);
+        // Release archives may contain either the application files directly or one top-level
+        // directory. Normalize both layouts before the helper script starts copying files.
+        const stagingEntries = fs.readdirSync(stagingDir, { withFileTypes: true });
+        const updateSourceDir =
+          stagingEntries.length === 1 && stagingEntries[0].isDirectory()
+            ? nodePath.join(stagingDir, stagingEntries[0].name)
+            : stagingDir;
 
+        // Create an external updater because the running application cannot replace itself. It has
+        // no console attached, so failures go to a log file rather than to a prompt nobody can see.
+        const updateLogPath = nodePath.join(app.getPath("userData"), "update.log");
+        const updateReadyPath = nodePath.join(tempDir, "update-ready");
+        const updateCancelPath = nodePath.join(tempDir, "update-cancelled");
         const processId = process.pid;
-        const scriptContent = `@echo off
-          echo Waiting for application to close...
-          :wait_loop
-          tasklist /FI "PID eq ${processId}" | find "${processId}" >nul
-          if errorlevel 1 goto continue_update
-          timeout /t 1 /nobreak >nul
-          goto wait_loop
+        let updateScript: string;
+        let windowsUpdateBootstrapScript: string | undefined;
+        let scriptContent: string;
 
-          :continue_update
-          echo Application closed. Starting update...
-          timeout /t 1 /nobreak >nul
-          xcopy /E /Y /I "${stagingDir}\\*" "${appDir}\\"
-          if errorlevel 1 (
-              echo Update failed!
-              pause
-              exit /b 1
-          )
-          echo Update complete! Starting application...
-          start "" "${nodePath.join(appDir, appExeName)}"
-          echo Cleaning up...
-          timeout /t 2 /nobreak >nul
-          rd /s /q "${tempDir}"
-          del "%~f0"
-          exit /b`;
+        if (process.platform === "win32") {
+          updateScript = nodePath.join(tempDir, "update.ps1");
+          windowsUpdateBootstrapScript = nodePath.join(tempDir, "update.cmd");
+          const appExeName = nodePath.basename(process.execPath);
+          scriptContent = buildWindowsUpdateScript({
+            processId,
+            updateSourceDir,
+            appDir,
+            updateLogPath,
+            appExecutablePath: nodePath.join(appDir, appExeName),
+            readyPath: updateReadyPath,
+            cancelPath: updateCancelPath,
+            tempDirPath: tempDir,
+          });
+        } else {
+          const quoteForShell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+          updateScript = nodePath.join(tempDir, "update.sh");
+          scriptContent = `#!/bin/sh
+set -u
+while kill -0 ${processId} 2>/dev/null; do
+  sleep 1
+done
+if ! cp -a ${quoteForShell(nodePath.join(updateSourceDir, "."))} ${quoteForShell(appDir)}; then
+  echo "$(date): copying the update into "${quoteForShell(appDir)}" failed, starting the previous version." >> ${quoteForShell(updateLogPath)}
+fi
+exec ${quoteForShell(process.execPath)}
+`;
+        }
 
-        fs.writeFileSync(updateScript, scriptContent);
+        // Windows PowerShell reads a .ps1 without a byte order mark in the ANSI code page, which
+        // mangles every path baked into the script for anyone whose user name is not pure ASCII.
+        fs.writeFileSync(updateScript, process.platform === "win32" ? `\uFEFF${scriptContent}` : scriptContent);
+        if (windowsUpdateBootstrapScript) {
+          fs.writeFileSync(windowsUpdateBootstrapScript, buildWindowsUpdateBootstrapScript(updateScript));
+        }
+        if (process.platform !== "win32") fs.chmodSync(updateScript, 0o755);
 
         // Show dialog and execute update
         const result = await dialog.showMessageBox(windows.mainWindow!, {
@@ -374,13 +550,80 @@ if (!gotTheLock) {
         });
 
         if (result.response === 0) {
-          // Launch update script and exit
-          const subprocess = spawn(`start cmd.exe /c update.bat`, [], {
-            cwd: tempDir,
-            shell: true,
-            detached: true,
-            windowsHide: true,
-          });
+          // Keep the Windows helper console-free. Invoke Unix helpers through the shell so a noexec
+          // temporary mount does not prevent the update. Do not close the application until the
+          // helper has actually spawned.
+          let subprocess: ReturnType<typeof spawn>;
+          if (process.platform === "win32") {
+            if (!windowsUpdateBootstrapScript) throw new Error("Windows update bootstrap script was not created.");
+            const helperLogFd = fs.openSync(updateLogPath, "a");
+            try {
+              subprocess = spawn("cmd.exe", ["/d", "/c", windowsUpdateBootstrapScript], {
+                cwd: app.getPath("temp"),
+                detached: true,
+                windowsHide: true,
+                stdio: ["ignore", helperLogFd, helperLogFd],
+              });
+            } finally {
+              fs.closeSync(helperLogFd);
+            }
+          } else {
+            subprocess = spawn("/bin/sh", [updateScript], {
+              cwd: app.getPath("temp"),
+              detached: true,
+              stdio: "ignore",
+            });
+          }
+
+          if (process.platform === "win32") {
+            await new Promise<void>((resolve, reject) => {
+              let isSettled = false;
+              const finish = (error?: Error) => {
+                if (isSettled) return;
+                isSettled = true;
+                clearInterval(readyPoll);
+                clearTimeout(readyTimeout);
+                subprocess.removeListener("error", onError);
+                subprocess.removeListener("exit", onExit);
+                if (error) reject(error);
+                else resolve();
+              };
+              const onError = (error: Error) => finish(error);
+              const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
+                finish(new Error(`Update helper exited before becoming ready (code=${code}, signal=${signal}).`));
+              const checkReady = () => {
+                if (fs.existsSync(updateReadyPath)) finish();
+              };
+              const readyPoll = setInterval(checkReady, 50);
+              const readyTimeout = setTimeout(() => {
+                // Killing only cmd.exe would orphan the PowerShell helper it launched, which is
+                // still waiting for this process to exit - it would apply the update whenever the
+                // user next closes the app, long after being told the update failed. Take the whole
+                // tree down, and leave a marker for a helper that somehow survives it anyway.
+                try {
+                  fs.writeFileSync(updateCancelPath, new Date().toISOString());
+                } catch (error) {
+                  console.error("Could not write the update cancellation marker:", error);
+                }
+                if (subprocess.pid !== undefined) {
+                  const kill = spawnSync("taskkill", ["/pid", String(subprocess.pid), "/t", "/f"], {
+                    windowsHide: true,
+                  });
+                  if (kill.error) console.error("Could not terminate the update helper:", kill.error);
+                }
+                subprocess.kill();
+                finish(new Error(`Update helper did not become ready. See ${updateLogPath} for details.`));
+              }, 10_000);
+              subprocess.once("error", onError);
+              subprocess.once("exit", onExit);
+              checkReady();
+            });
+          } else {
+            await new Promise<void>((resolve, reject) => {
+              subprocess.once("spawn", resolve);
+              subprocess.once("error", reject);
+            });
+          }
           subprocess.unref();
           terminateForExternalUpdate();
         } else {
@@ -395,7 +638,7 @@ if (!gotTheLock) {
         // Show error dialog
         await dialog.showErrorBox(
           i18n.t("updateFailed"),
-          `${i18n.t("updateFailedMessage")} ${error instanceof Error ? error.message : String(error)}`
+          `${i18n.t("updateFailedMessage")} ${error instanceof Error ? error.message : String(error)}`,
         );
 
         return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -407,15 +650,17 @@ if (!gotTheLock) {
       windows.mainWindow?.webContents.send("setIsDev", isDev);
       windows.mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       windows.mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
+      windows.mainWindow?.webContents.send("setCanCreateSymbolicLinks", appData.canCreateSymbolicLinks);
       windows.mainWindow?.webContents.send("setSkillsViewOptions", {
         isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
+        hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
         isShowingHiddenSkills: appData.isShowingHiddenSkills,
         isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
         isCheckingSkillRequirements: appData.isCheckingSkillRequirements,
       } as SkillsViewOptions);
 
       try {
-        const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";
+        const localesPath = getLocaleDirectory();
         const availableLocalizations = (await fs.readdirSync(localesPath, { withFileTypes: true }))
           .filter((dirent) => dirent.isDirectory())
           .map((dirent) => dirent.name);
@@ -427,38 +672,39 @@ if (!gotTheLock) {
       if (!checkWH3RunningInterval) {
         const isGameRuningCheck = async () => {
           try {
-            // if a game crashes you can end up with a tiny running process of the game, that's why we have a memory filter here
-            exec(
-              `tasklist /nh /fi "IMAGENAME eq ${
-                gameToProcessName[appData.currentGame]
-              }" /fi "MEMUSAGE gt 10000"`,
-              (_, stdout) => {
-                const isWH3Running = stdout.includes(gameToProcessName[appData.currentGame]);
-                if (appData.isWH3Running != isWH3Running) {
-                  if (appData.isChangingGameProcessPriority && isWH3Running && !appData.isWH3Running) {
-                    console.log("Setting process priority to high...");
-                    exec(
-                      `powershell.exe -Command "(Get-Process -Name '${gameToProcessName[
-                        appData.currentGame
-                      ].replace(".exe", "")}').PriorityClass = 'High'"`,
+            const processName = gameToProcessName[appData.currentGame];
+            const processIds = await findGameProcessIds(processName);
+            const isGameRunning = processIds.length > 0;
 
-                      (error) => {
-                        if (error) {
-                          console.error(`exec error: ${error}`);
-                          return;
-                        }
-                      }
-                    );
+            if (appData.isWH3Running !== isGameRunning) {
+              const didGameStop = appData.isWH3Running && !isGameRunning;
+              if (appData.isChangingGameProcessPriority && isGameRunning && !appData.isWH3Running) {
+                console.log("Setting process priority to high...");
+                try {
+                  const priority = await setGameProcessPriority(processName, processIds);
+                  if (!priority.changed && priority.error && !hasReportedProcessPriorityRefusal) {
+                    hasReportedProcessPriorityRefusal = true;
+                    const message = `Could not raise the game's process priority: ${priority.error}`;
+                    console.error(message);
+                    windows.mainWindow?.webContents.send("handleLog", message);
+                    windows.mainWindow?.webContents.send("addToast", {
+                      type: "warning",
+                      messages: [message],
+                      startTime: Date.now(),
+                    } as Toast);
                   }
-                  appData.isWH3Running = isWH3Running;
-                  windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+                } catch (error) {
+                  console.error("Failed to set game process priority:", error);
                 }
-                if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
               }
-            );
+              appData.isWH3Running = isGameRunning;
+              windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+              if (didGameStop) void cleanupWorkshopStagingAfterGameExit();
+            }
           } catch (e) {
-            console.log("psList coroutine error:", e);
+            console.log("Game process check failed:", e);
           }
+          if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
         };
         checkWH3RunningInterval = setTimeout(isGameRuningCheck, 500);
       }
@@ -476,40 +722,87 @@ if (!gotTheLock) {
   // not using a default menu
   Menu.setApplicationMenu(null);
 
-  // This method will be called when Electron has finished
-  // initialization and is ready to create browser windows.
-  // Some APIs can only be used after this event occurs.
-  app.on("ready", createWindow);
+  app.once("gpu-info-update", () => {
+    app
+      .getGPUInfo("basic")
+      .then((gpuInfo) => {
+        console.log("[startup] GPU diagnostics", {
+          hardwareAccelerationEnabled: app.isHardwareAccelerationEnabled(),
+          featureStatus: app.getGPUFeatureStatus(),
+          gpuInfo,
+        });
+      })
+      .catch((error) => {
+        console.log("[startup] Failed to read GPU diagnostics", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
 
-  app.whenReady().then(() => {
-    installExtension(REACT_DEVELOPER_TOOLS, {
-      loadExtensionOptions: {
-        allowFileAccess: true,
-      },
-    })
-      .then((name) => console.log(`Added Extension:  ${name}`))
-      .catch((err) => console.log("An error occurred: ", err));
+  app.whenReady().then(async () => {
+    if (isDev) {
+      const extensions = [
+        ["React Developer Tools", REACT_DEVELOPER_TOOLS],
+        ["Redux DevTools", REDUX_DEVTOOLS],
+      ] as const;
 
-    installExtension(REDUX_DEVTOOLS, {
-      loadExtensionOptions: {
-        allowFileAccess: true,
-      },
-    })
-      .then((name) => console.log(`Added Extension:  ${name}`))
-      .catch((err) => console.log("An error occurred: ", err));
+      await Promise.all(
+        extensions.map(async ([extensionName, extension]) => {
+          try {
+            const installedExtension = await installExtension(extension, {
+              loadExtensionOptions: {
+                allowFileAccess: true,
+              },
+            });
+            console.log(`[devtools] Added ${installedExtension.name}`);
+          } catch (error) {
+            console.log(`[devtools] Failed to install ${extensionName}`, error);
+          }
+        }),
+      );
+    }
+
+    createWindow();
+
+    // Applied updates clean up after themselves, so this is for the ones that did not get that far:
+    // cancelled updates, failed copies, and folders left by versions that shipped before the helper
+    // deleted its own. Off the startup path because a leftover holds hundreds of megabytes.
+    const sweepStaleUpdateTempDirs = (retriesLeft: number) => {
+      void removeStaleUpdateTempDirs(app.getPath("temp"), process.pid).then(({ removed, failed }) => {
+        if (removed.length > 0) console.log(`[update] Removed ${removed.length} leftover update folder(s).`);
+        if (failed.length === 0) return;
+        if (retriesLeft > 0) {
+          // Most likely the helper from the update this launch came out of: it holds the scripts it
+          // is running until it exits. Give it time rather than leaving the folder for a whole run.
+          setTimeout(() => sweepStaleUpdateTempDirs(retriesLeft - 1), 60_000);
+          return;
+        }
+        for (const { path, error } of failed) {
+          console.log(`[update] Left ${path} in place for a later run:`, error.message);
+        }
+      });
+    };
+    sweepStaleUpdateTempDirs(1);
   });
 
   // Quit when all windows are closed, except on macOS. There, it's common
   // for applications and their menu bar to stay active until the user quits
   // explicitly with Cmd + Q.
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
+    if (!isAppQuitting && process.platform !== "darwin") {
       app.quit();
     }
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     isAppQuitting = true;
+    if (isQuittingAfterConfigFlush) return;
+
+    event.preventDefault();
+    isQuittingAfterConfigFlush = true;
+    setTimeout(() => {
+      void flushAppConfigWrites().finally(() => app.quit());
+    }, 250);
   });
 
   app.on("activate", () => {

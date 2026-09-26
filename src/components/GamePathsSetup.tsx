@@ -148,9 +148,7 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
                       onSelectWarhammer3Folder(requestFolderPathsForGame);
                     }}
                   >
-                    <span className="uppercase">
-                      {localized[supportedGameToSelectFolderLocalization[currentGame]]}
-                    </span>
+                    <span className="uppercase">{localized[supportedGameToSelectFolderLocalization[currentGame]]}</span>
                   </button>
                 </div>
               </div>

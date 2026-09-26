@@ -32,7 +32,7 @@ const ModsMerger = React.memo(() => {
 
   const modsNotInDataSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (mods) => mods.filter((mod) => isDev || !mod.isInData)
+    (mods) => mods.filter((mod) => isDev || !mod.isInData),
   );
   const mods = useSelector(modsNotInDataSelector);
 
@@ -43,8 +43,7 @@ const ModsMerger = React.memo(() => {
       .map((mod) => mod.dependencyPacks)
       .filter((depPack) => depPack != null)
       .reduce((acc, val) => {
-        if (acc && val)
-          return acc?.concat(val.filter((depPack) => !acc.find((accPack) => accPack == depPack)));
+        if (acc && val) return acc?.concat(val.filter((depPack) => !acc.find((accPack) => accPack == depPack)));
         return [];
       }, [] as string[]) || [];
 
@@ -52,7 +51,7 @@ const ModsMerger = React.memo(() => {
 
   const mergerModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (mods) => mods.filter((mod) => mod.mergedModsData && mod.isEnabled)
+    (mods) => mods.filter((mod) => mod.mergedModsData && mod.isEnabled),
   );
   const mergerMods = useSelector(mergerModsSelector);
 
@@ -68,8 +67,8 @@ const ModsMerger = React.memo(() => {
   if (isHidingAlreadyMergedMods) {
     modsToUse = modsToUse.filter((mod) =>
       mergerMods.every((mergerMod) =>
-        mergerMod.mergedModsData?.every((mergedModData) => mergedModData.name != mod.name)
-      )
+        mergerMod.mergedModsData?.every((mergedModData) => mergedModData.name != mod.name),
+      ),
     );
   }
 
@@ -112,9 +111,7 @@ const ModsMerger = React.memo(() => {
   modsToUse = modsToUse.filter((mod) => (!useEnabledModsOnly && mod) || mod.isEnabled);
   if (useEnabledModsOnly) {
     const filteredSet = new Set(
-      Array.from(modsToMerge).filter((workshopId) =>
-        modsToUse.some((modToUse) => modToUse.workshopId == workshopId)
-      )
+      Array.from(modsToMerge).filter((workshopId) => modsToUse.some((modToUse) => modToUse.workshopId == workshopId)),
     );
     if (filteredSet.size != modsToMerge.size) setModsToMerge(filteredSet);
   }
@@ -130,7 +127,7 @@ const ModsMerger = React.memo(() => {
       }
       setModsToMerge(new Set<string>(modsToMerge));
     },
-    [modsToMerge]
+    [modsToMerge],
   );
 
   const modsWithoutDependencies = useCallback(
@@ -138,10 +135,10 @@ const ModsMerger = React.memo(() => {
       return mods.filter(
         (mod) =>
           (!mod.dependencyPacks || mod.dependencyPacks.length < 1) &&
-          !allDependencyPacks.some((packName) => packName == mod.name)
+          !allDependencyPacks.some((packName) => packName == mod.name),
       );
     },
-    [mods]
+    [mods],
   );
 
   const onSelectNumModsChange = useCallback(
@@ -153,12 +150,12 @@ const ModsMerger = React.memo(() => {
           new Set<string>(
             modsWithoutDependencies(modsToUse)
               .slice(0, newValue.value)
-              .map((mod) => mod.workshopId)
-          )
+              .map((mod) => mod.workshopId),
+          ),
         );
       }
     },
-    [modsToUse]
+    [modsToUse],
   );
   const onSelectExistingMergerChange = useCallback(
     (newValue: SingleValue<ExistingMergerOptionType>, actionMeta: ActionMeta<ExistingMergerOptionType>) => {
@@ -172,12 +169,12 @@ const ModsMerger = React.memo(() => {
           new Set<string>(
             modsWithoutDependencies(modsToUse)
               .filter((mod) => mergedData.some((mergedModData) => mergedModData.name == mod.name))
-              .map((mod) => mod.workshopId)
-          )
+              .map((mod) => mod.workshopId),
+          ),
         );
       }
     },
-    [mergerMods]
+    [mergerMods],
   );
 
   const options: NumModsOptionType[] = useMemo(
@@ -185,7 +182,7 @@ const ModsMerger = React.memo(() => {
       [5, 10, 15, 20, 25, 30, 35, 40, 50, 75, 100, 0].map((num) => {
         return { value: num, label: num };
       }),
-    []
+    [],
   );
 
   const mergerOptions = useMemo<ExistingMergerOptionType[]>(
@@ -193,14 +190,14 @@ const ModsMerger = React.memo(() => {
       mergerMods.map((mod) => {
         return { value: mod.name, label: mod.name };
       }),
-    [mergerMods]
+    [mergerMods],
   );
 
   const mergeMods = useCallback(() => {
     if (modsToMerge.size < 1) return;
     const modsToMergeArray = Array.from(modsToMerge);
     window.api?.mergeMods(
-      mods.filter((mod) => modsToMergeArray.some((modToMergeId) => modToMergeId == mod.workshopId))
+      mods.filter((mod) => modsToMergeArray.some((modToMergeId) => modToMergeId == mod.workshopId)),
     );
     setIsOpen(false);
   }, [modsToMerge]);

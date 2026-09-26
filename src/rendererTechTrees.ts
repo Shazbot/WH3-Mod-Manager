@@ -3,16 +3,10 @@ import "./index.css";
 import store from "./store";
 import { renderTechTreesWindow } from "./appTechTrees";
 import { setupRendererLogging } from "./rendererCommon";
-import {
-  setCurrentLanguage,
-  setIsFeaturesForModdersEnabled,
-  setModdersPrefix,
-  setStartArgs,
-} from "./appSlice";
+import { setCurrentLanguage, setIsFeaturesForModdersEnabled, setModdersPrefix, setStartArgs } from "./appSlice";
 
 setupRendererLogging();
 
-console.log("IN RENDERER (tech_trees)");
 
 window.api?.techTreesAreReady();
 

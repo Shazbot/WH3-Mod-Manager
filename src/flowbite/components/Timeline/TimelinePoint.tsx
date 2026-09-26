@@ -13,11 +13,7 @@ export type TimelnePointProps = PropsWithChildren<
 export const TimelinePoint: FC<TimelnePointProps> = ({ children, className, icon: Icon, ...props }) => {
   const { horizontal } = useTimelineContext();
   return (
-    <div
-      data-testid="timeline-point"
-      className={classNames({ "flex items-center": horizontal }, className)}
-      {...props}
-    >
+    <div data-testid="timeline-point" className={classNames({ "flex items-center": horizontal }, className)} {...props}>
       {children}
       {Icon ? (
         <span className="absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full bg-blue-200 ring-8 ring-white dark:bg-blue-900 dark:ring-gray-900">

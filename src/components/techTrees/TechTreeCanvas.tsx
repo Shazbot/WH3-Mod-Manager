@@ -8,6 +8,7 @@ import {
   MarkerType,
   Node,
   NodeTypes,
+  OnNodeDrag,
   Panel,
   ReactFlow,
   useEdgesState,
@@ -22,11 +23,7 @@ import TechGroupNode from "./TechGroupNode";
 import AddTechNodeModal, { TechNodeFormData } from "./AddTechNodeModal";
 import TechTreeLinkEdge from "./TechTreeLinkEdge";
 import { buildTechTreeLinkGeometry } from "./techTreeLinkGeometry";
-import {
-  getTechnologyNodeScopeValues,
-  hasBaseNodesOnlyNodes,
-  resolveTechTreeScopeSelection,
-} from "./techTreeScope";
+import { getTechnologyNodeScopeValues, hasBaseNodesOnlyNodes, resolveTechTreeScopeSelection } from "./techTreeScope";
 
 const NODE_WIDTH = 325;
 const NODE_HEIGHT = 140;
@@ -80,6 +77,9 @@ type TechClipboardEntry = {
   technologyKey: string;
   localizedName: string;
   requiredParents: number;
+  campaignKey?: string;
+  factionKey?: string;
+  optionalUiGroup?: string;
   researchPointsRequired: number;
   isHidden: boolean;
   pixelOffsetX: number;
@@ -87,12 +87,22 @@ type TechClipboardEntry = {
   buildingLevel?: string;
   shortDescription?: string;
   longDescription?: string;
+  iconPath?: string;
   iconData?: string;
   effects?: TechEffect[];
   relTier: number;
   relIndent: number;
 };
 let techClipboard: TechClipboardEntry[] = [];
+
+const hasOwnProperty = (value: object | undefined, key: PropertyKey) =>
+  !!value && Object.prototype.hasOwnProperty.call(value, key);
+
+const getTechnologyNodeSaveField = <K extends keyof TechnologyNodeData>(
+  node: TechnologyNodeData,
+  edits: Partial<TechnologyNodeData> | undefined,
+  key: K,
+) => (hasOwnProperty(edits, key) ? (edits?.[key] ?? null) : node[key]);
 
 type TechEditSnapshot = {
   changedNodePositions: Record<string, { tier: number; indent: number }>;
@@ -102,6 +112,7 @@ type TechEditSnapshot = {
   deletedLinks: string[];
   deletedNodeKeys: string[];
   editedNodes: Record<string, Partial<TechnologyNodeData>>;
+  uiTabToNodes: Record<string, string[]>;
 };
 
 type TechContextMenu =
@@ -124,6 +135,8 @@ const defaultTechNodeKeyTemplate = "${prefix}_tech_node_${nodeSet}_${row}_${colu
 const defaultTechnologyKeyTemplate = "${prefix}_tech_${nodeSet}_${row}_${column}";
 const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
 const defaultTechTableNameTemplate = "${prefix}_${nodeSet}_${timestamp}";
+let techNodeGenerationSequence = 0;
+const nextTechNodeGenerationId = () => `${Date.now()}_${techNodeGenerationSequence++}`;
 
 const resolveTechGenerationTemplate = (
   template: string,
@@ -140,8 +153,10 @@ const resolveTechGenerationTemplate = (
     .replaceAll("${column}", variables.column)
     .replaceAll("${c}", variables.column);
 const appendScopedTechNodeHash = async (nodeKey: string, campaignKey?: string, factionKey?: string) => {
-  const scopeSource = `${campaignKey || ""}${factionKey || ""}`.trim();
-  if (!scopeSource) return nodeKey;
+  const normalizedCampaignKey = campaignKey?.trim() || "";
+  const normalizedFactionKey = factionKey?.trim() || "";
+  if (!normalizedCampaignKey && !normalizedFactionKey) return nodeKey;
+  const scopeSource = JSON.stringify([normalizedCampaignKey, normalizedFactionKey]);
   const cryptoApi = globalThis.crypto;
   if (!cryptoApi?.subtle) return nodeKey;
   const scopeHashBuffer = new Uint8Array(
@@ -166,6 +181,7 @@ const buildBlankTechnologyTree = (
 ): TechnologyTreePayload => ({
   set: {
     key: blankSetKey,
+    nodeCount: 0,
     localizedName: blankSetKey,
     campaignKey: templateTree?.set.campaignKey,
     factionKey: templateTree?.set.factionKey,
@@ -187,11 +203,14 @@ const buildBlankTechnologyTree = (
 
 const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTreeCanvasProps) => {
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
+  const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
+  const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const canEditTechnologyTrees = isFeaturesForModdersEnabled;
   const isBlankTree = isBlank;
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [technologyTree, setTechnologyTree] = useState<TechnologyTreePayload | undefined>(undefined);
+  const [uiTabToNodes, setUiTabToNodes] = useState<Record<string, string[]>>({});
   const [selectedUiTab, setSelectedUiTab] = useState("all");
   const [selectedScopeKey, setSelectedScopeKey] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
@@ -211,9 +230,9 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     null,
   );
   const [isSaving, setIsSaving] = useState(false);
-  const [changedNodePositions, setChangedNodePositions] = useState<
-    Record<string, { tier: number; indent: number }>
-  >({});
+  const [changedNodePositions, setChangedNodePositions] = useState<Record<string, { tier: number; indent: number }>>(
+    {},
+  );
   const [changedLinks, setChangedLinks] = useState<Record<string, TechnologyLinkData>>({});
   const [hiddenOverrides, setHiddenOverrides] = useState<Record<string, boolean>>({});
   const [addedNodes, setAddedNodes] = useState<TechnologyNodeData[]>([]);
@@ -231,6 +250,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     linkKey: string;
     parentOffset: string;
     childOffset: string;
+    initialDescentTiers: string;
   } | null>(null);
   const [editNodeTarget, setEditNodeTarget] = useState<{
     nodeKey: string;
@@ -278,16 +298,22 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
   );
 
   useEffect(() => {
+    let cancelled = false;
     const loadTree = async () => {
       if (!setKey) return;
       setIsLoadingTree(true);
       try {
         if (isBlankTree) {
           const templateTree = templateSetKey ? await window.api?.getTechnologyTree(templateSetKey) : undefined;
-          setTechnologyTree(buildBlankTechnologyTree(setKey, templateTree));
+          if (cancelled) return;
+          const blankTree = buildBlankTechnologyTree(setKey, templateTree);
+          setTechnologyTree(blankTree);
+          setUiTabToNodes(blankTree.uiTabToNodes);
         } else {
           const fetchedTree = await window.api?.getTechnologyTree(setKey);
+          if (cancelled) return;
           setTechnologyTree(fetchedTree);
+          setUiTabToNodes(fetchedTree?.uiTabToNodes || {});
         }
         setSelectedUiTab("all");
         setSelectedScopeKey("");
@@ -311,11 +337,14 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         historyFuture.current = [];
         setHistorySize({ past: 0, future: 0 });
       } finally {
-        setIsLoadingTree(false);
+        if (!cancelled) setIsLoadingTree(false);
       }
     };
     loadTree();
-  }, [canEditTechnologyTrees, isBlankTree, setKey, templateSetKey]);
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditTechnologyTrees, currentLanguage, isBlankTree, isUsingEnglishLocalizations, setKey, templateSetKey]);
 
   useEffect(() => {
     if (canEditTechnologyTrees) return;
@@ -375,18 +404,19 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
   const baseVisibleNodeSet = useMemo(() => {
     if (!technologyTree) return new Set<string>();
     const visibleNodeKeys =
-      selectedUiTab === "all"
-        ? technologyTree.nodes.map((node) => node.nodeKey)
-        : technologyTree.uiTabToNodes[selectedUiTab] || [];
+      selectedUiTab === "all" ? technologyTree.nodes.map((node) => node.nodeKey) : uiTabToNodes[selectedUiTab] || [];
 
     const visibleNodeKeySet = new Set(visibleNodeKeys.filter((nodeKey) => !deletedNodeKeys.has(nodeKey)));
     for (const addedNode of addedNodes) {
-      if (!deletedNodeKeys.has(addedNode.nodeKey)) {
+      if (
+        !deletedNodeKeys.has(addedNode.nodeKey) &&
+        (selectedUiTab === "all" || (uiTabToNodes[selectedUiTab] || []).includes(addedNode.nodeKey))
+      ) {
         visibleNodeKeySet.add(addedNode.nodeKey);
       }
     }
     return visibleNodeKeySet;
-  }, [technologyTree, selectedUiTab, deletedNodeKeys, addedNodes]);
+  }, [technologyTree, selectedUiTab, deletedNodeKeys, addedNodes, uiTabToNodes]);
 
   const availableScopeOptions = useMemo(
     () =>
@@ -466,6 +496,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       deletedLinks: [...deletedLinks],
       deletedNodeKeys: [...deletedNodeKeys],
       editedNodes: { ...editedNodes },
+      uiTabToNodes: Object.fromEntries(Object.entries(uiTabToNodes).map(([key, nodeKeys]) => [key, [...nodeKeys]])),
     }),
     [
       changedNodePositions,
@@ -475,6 +506,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       deletedLinks,
       deletedNodeKeys,
       editedNodes,
+      uiTabToNodes,
     ],
   );
 
@@ -486,6 +518,9 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     setDeletedLinks(new Set(snap.deletedLinks));
     setDeletedNodeKeys(new Set(snap.deletedNodeKeys));
     setEditedNodes({ ...snap.editedNodes });
+    setUiTabToNodes(
+      Object.fromEntries(Object.entries(snap.uiTabToNodes).map(([key, nodeKeys]) => [key, [...nodeKeys]])),
+    );
   }, []);
 
   const captureHistory = useCallback(() => {
@@ -626,8 +661,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       const yOffsetInNodeUnits = toNodeUnitsFromPixelOffsetY(effectiveNode.pixelOffsetY || 0);
 
       const parentLinks = [...allEdgesMap.values()].filter(
-        (link) =>
-          link.childKey === technologyNode.nodeKey && !deletedLinks.has(`${link.parentKey}|${link.childKey}`),
+        (link) => link.childKey === technologyNode.nodeKey && !deletedLinks.has(`${link.parentKey}|${link.childKey}`),
       );
       const prerequisiteTechNames = parentLinks
         .map((link) => effectiveNodesByKey[link.parentKey]?.localizedName || link.parentKey)
@@ -858,8 +892,17 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         rawTargetOffset: link.childLinkPositionOffset,
       });
       const hasOffsetLabel =
-        isRequirementsMode &&
-        (link.parentLinkPositionOffset !== 0 || link.childLinkPositionOffset !== 0);
+        isRequirementsMode && (link.parentLinkPositionOffset !== 0 || link.childLinkPositionOffset !== 0);
+      const linkMetadataLabel = [
+        hasOffsetLabel
+          ? `P:${formatLinkOffsetLabel(link.parentLinkPositionOffset)} C:${formatLinkOffsetLabel(
+              link.childLinkPositionOffset,
+            )}`
+          : "",
+        link.initialDescentTiers !== 0 ? `D:${link.initialDescentTiers}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
       visibleEdges.push({
         id: `tech-link-${linkKey}`,
         source: link.parentKey,
@@ -871,10 +914,8 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
           path: geometry.path,
           labelX: geometry.labelX,
           labelY: geometry.labelY,
-          labelText: hasOffsetLabel
-            ? `P:${formatLinkOffsetLabel(link.parentLinkPositionOffset)} C:${formatLinkOffsetLabel(
-                link.childLinkPositionOffset,
-              )}`
+          labelText: linkMetadataLabel
+            ? linkMetadataLabel
             : !isRequirementsMode && requiredParents > 0
               ? `(${unlockedParentCount}/${requiredParents})`
               : undefined,
@@ -889,15 +930,12 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       });
     }
 
-    const uiGroupsByKey = Object.fromEntries(
-      technologyTree.uiGroups.map((uiGroup) => [uiGroup.key, uiGroup]),
-    );
+    const uiGroupsByKey = Object.fromEntries(technologyTree.uiGroups.map((uiGroup) => [uiGroup.key, uiGroup]));
     const groupNodes: Node[] = [];
     for (const bounds of technologyTree.uiGroupBounds) {
       const group = uiGroupsByKey[bounds.groupKey];
       if (!group) continue;
-      if (!visibleNodeKeySet.has(bounds.topLeftNode) || !visibleNodeKeySet.has(bounds.bottomRightNode))
-        continue;
+      if (!visibleNodeKeySet.has(bounds.topLeftNode) || !visibleNodeKeySet.has(bounds.bottomRightNode)) continue;
 
       const cornerNodeKeys = [
         bounds.topLeftNode,
@@ -946,7 +984,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
 
     // Placeholder + label nodes in edit mode
     const editNodes: Node[] = [];
-    if (isEditMode && (visibleNodes.length > 0 || isBlankTree)) {
+    if (isEditMode && (visibleNodes.length > 0 || isBlankTree || technologyTree.nodes.length === 0)) {
       const occupiedPositions = new Set<string>();
       let maxDisplayTier = 0;
       let minIndent = isBlankTree ? 0 : MIN_TECH_ROW;
@@ -1059,26 +1097,20 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       .map((node) => node.id)
       .sort();
     setSelectedNodeIds((prevSelectedNodeIds) =>
-      areStringArraysEqual(prevSelectedNodeIds, nextSelectedNodeIds)
-        ? prevSelectedNodeIds
-        : nextSelectedNodeIds,
+      areStringArraysEqual(prevSelectedNodeIds, nextSelectedNodeIds) ? prevSelectedNodeIds : nextSelectedNodeIds,
     );
   }, []);
 
-  const onNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+  const onNodeDragStop = useCallback<OnNodeDrag>(
+    (_event, node) => {
       if (!isEditMode) return;
       captureHistory();
       const baseNode = technologyTree?.nodes.find((n) => n.nodeKey === node.id);
       const addedNode = addedNodes.find((n) => n.nodeKey === node.id);
       const edits = editedNodes[node.id];
       const effectiveNode = edits ? { ...(baseNode || addedNode), ...edits } : baseNode || addedNode;
-      const xOffsetInNodeUnits = effectiveNode
-        ? toNodeUnitsFromPixelOffsetX(effectiveNode.pixelOffsetX || 0)
-        : 0;
-      const yOffsetInNodeUnits = effectiveNode
-        ? toNodeUnitsFromPixelOffsetY(effectiveNode.pixelOffsetY || 0)
-        : 0;
+      const xOffsetInNodeUnits = effectiveNode ? toNodeUnitsFromPixelOffsetX(effectiveNode.pixelOffsetX || 0) : 0;
+      const yOffsetInNodeUnits = effectiveNode ? toNodeUnitsFromPixelOffsetY(effectiveNode.pixelOffsetY || 0) : 0;
       const displayTier = Math.max(0, Math.round(node.position.x / NODE_WIDTH - xOffsetInNodeUnits));
       const indent = Math.max(MIN_TECH_ROW, Math.round(node.position.y / NODE_HEIGHT - yOffsetInNodeUnits));
       const actualTier = displayTier + currentTierOffset;
@@ -1102,7 +1134,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       if (!addNodeTarget || !technologyTree) return;
       captureHistory();
       const keyPrefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
-      const generatedNodeKey = `${keyPrefix}_node_${modalData.technologyKey}_${Date.now().toString()}`;
+      const generatedNodeKey = `${keyPrefix}_node_${modalData.technologyKey}_${nextTechNodeGenerationId()}`;
       const newNode: TechnologyNodeData = {
         nodeKey: generatedNodeKey,
         technologyKey: modalData.technologyKey,
@@ -1125,12 +1157,18 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         iconData: modalData.iconData || allTechnologiesByKey[modalData.technologyKey]?.iconData,
       };
       setAddedNodes((prev) => [...prev, newNode]);
+      if (selectedUiTab !== "all") {
+        setUiTabToNodes((prev) => ({
+          ...prev,
+          [selectedUiTab]: [...(prev[selectedUiTab] || []), newNode.nodeKey],
+        }));
+      }
       if (allTechnologiesByKey[modalData.technologyKey]) {
         setHiddenOverrides((prev) => ({ ...prev, [modalData.technologyKey]: modalData.isHidden }));
       }
       setAddNodeTarget(null);
     },
-    [addNodeTarget, technologyTree, captureHistory, allTechnologiesByKey, moddersPrefix],
+    [addNodeTarget, technologyTree, captureHistory, allTechnologiesByKey, moddersPrefix, selectedUiTab],
   );
 
   const onEditNode = useCallback(
@@ -1155,7 +1193,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                   buildingLevel: changes.buildingLevel,
                   shortDescription: changes.shortDescription,
                   longDescription: changes.longDescription,
-                  iconPath: changes.iconPath || allTechnologiesByKey[changes.technologyKey]?.iconPath,
+                  iconPath: changes.iconPath,
                   effects: changes.effects,
                   iconData: changes.iconData || allTechnologiesByKey[changes.technologyKey]?.iconData,
                 }
@@ -1179,7 +1217,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             buildingLevel: changes.buildingLevel,
             shortDescription: changes.shortDescription,
             longDescription: changes.longDescription,
-            iconPath: changes.iconPath || allTechnologiesByKey[changes.technologyKey]?.iconPath,
+            iconPath: changes.iconPath,
             effects: changes.effects,
             iconData: changes.iconData || allTechnologiesByKey[changes.technologyKey]?.iconData,
           },
@@ -1286,6 +1324,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         linkKey,
         parentOffset: link.parentLinkPositionOffset.toString(),
         childOffset: link.childLinkPositionOffset.toString(),
+        initialDescentTiers: link.initialDescentTiers.toString(),
       });
       closeContextMenu();
     },
@@ -1342,8 +1381,14 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     if (!editLinkTarget) return;
     const parentOffset = Number.parseFloat(editLinkTarget.parentOffset);
     const childOffset = Number.parseFloat(editLinkTarget.childOffset);
-    if (!Number.isFinite(parentOffset) || !Number.isFinite(childOffset)) {
-      setNotification({ message: "Link offsets must be valid numbers.", type: "error" });
+    const initialDescentTiers = Number.parseInt(editLinkTarget.initialDescentTiers, 10);
+    if (
+      !Number.isFinite(parentOffset) ||
+      !Number.isFinite(childOffset) ||
+      !Number.isInteger(initialDescentTiers) ||
+      initialDescentTiers < 0
+    ) {
+      setNotification({ message: "Link offsets and initial descent tiers must be valid numbers.", type: "error" });
       return;
     }
 
@@ -1352,6 +1397,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       ...link,
       parentLinkPositionOffset: parentOffset,
       childLinkPositionOffset: childOffset,
+      initialDescentTiers,
     }));
     setEditLinkTarget(null);
   }, [captureHistory, editLinkTarget, updateChangedLink]);
@@ -1391,6 +1437,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         indent: changedNodePositions[node.nodeKey]?.indent ?? node.indent,
         setKey: node.setKey,
         requiredParents: node.requiredParents,
+        optionalUiGroup: node.optionalUiGroup,
         researchPointsRequired: node.researchPointsRequired,
         campaignKey: node.campaignKey,
         factionKey: node.factionKey,
@@ -1404,9 +1451,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         effects: node.effects || [],
       }));
 
-    const deletedNodeKeysArray = [...deletedNodeKeys].filter(
-      (key) => !addedNodes.some((n) => n.nodeKey === key),
-    );
+    const deletedNodeKeysArray = [...deletedNodeKeys].filter((key) => !addedNodes.some((n) => n.nodeKey === key));
     const deletedLinkKeysArray = [...deletedLinks];
     const editedNodesArray = Object.entries(editedNodes).map(([nodeKey, changes]) => ({
       nodeKey,
@@ -1414,15 +1459,15 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       displayName: changes.localizedName,
       requiredParents: changes.requiredParents,
       researchPointsRequired: changes.researchPointsRequired,
-      campaignKey: changes.campaignKey,
-      factionKey: changes.factionKey,
+      campaignKey: changes.campaignKey ?? null,
+      factionKey: changes.factionKey ?? null,
       isHidden: changes.isHidden,
       pixelOffsetX: changes.pixelOffsetX,
       pixelOffsetY: changes.pixelOffsetY,
-      buildingLevel: changes.buildingLevel,
-      shortDescription: changes.shortDescription,
-      longDescription: changes.longDescription,
-      iconPath: changes.iconPath,
+      buildingLevel: changes.buildingLevel ?? null,
+      shortDescription: changes.shortDescription ?? null,
+      longDescription: changes.longDescription ?? null,
+      iconPath: changes.iconPath ?? null,
       effects: changes.effects || [],
     }));
 
@@ -1443,6 +1488,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       deletedNodeKeysArray,
       deletedLinkKeysArray,
       editedNodesArray,
+      uiTabToNodes,
       hasChanges,
     };
   }, [
@@ -1454,6 +1500,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     editedNodes,
     hiddenOverrides,
     originalHiddenByTechnologyKey,
+    uiTabToNodes,
   ]);
 
   const buildWholeTreePayload = useCallback((): SaveTechnologyPackPayload | undefined => {
@@ -1474,17 +1521,17 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         tier: positionOverride?.tier ?? node.tier,
         indent: positionOverride?.indent ?? node.indent,
         requiredParents: edits?.requiredParents ?? node.requiredParents ?? 0,
-        campaignKey: edits?.campaignKey ?? node.campaignKey,
-        factionKey: edits?.factionKey ?? node.factionKey,
+        campaignKey: getTechnologyNodeSaveField(node, edits, "campaignKey"),
+        factionKey: getTechnologyNodeSaveField(node, edits, "factionKey"),
         pixelOffsetX: edits?.pixelOffsetX ?? node.pixelOffsetX ?? 0,
         pixelOffsetY: edits?.pixelOffsetY ?? node.pixelOffsetY ?? 0,
         optionalUiGroup: node.optionalUiGroup,
         researchPointsRequired: edits?.researchPointsRequired ?? node.researchPointsRequired,
-        buildingLevel: edits?.buildingLevel ?? node.buildingLevel,
+        buildingLevel: getTechnologyNodeSaveField(node, edits, "buildingLevel"),
         displayName: edits?.localizedName ?? (node.localizedName || node.technologyKey),
-        shortDescription: edits?.shortDescription ?? node.shortDescription,
-        longDescription: edits?.longDescription ?? node.longDescription,
-        iconPath: edits?.iconPath ?? node.iconPath,
+        shortDescription: getTechnologyNodeSaveField(node, edits, "shortDescription"),
+        longDescription: getTechnologyNodeSaveField(node, edits, "longDescription"),
+        iconPath: getTechnologyNodeSaveField(node, edits, "iconPath"),
         isHidden: !!isHiddenNow,
         effects: edits?.effects ?? node.effects ?? [],
       });
@@ -1543,7 +1590,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       technologyKeyTemplate: technologyKeyTemplate.trim() || defaultTechnologyKeyTemplate,
       nodes: [...finalNodesByKey.values()],
       links: finalLinks,
-      uiTabToNodes: technologyTree.uiTabToNodes,
+      uiTabToNodes,
       uiGroupBounds: technologyTree.uiGroupBounds,
     };
   }, [
@@ -1560,6 +1607,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     tableNameOverride,
     technologyKeyTemplate,
     technologyTree,
+    uiTabToNodes,
     technologyNodeSetOverride,
     nodeKeyTemplate,
   ]);
@@ -1605,15 +1653,12 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     const generationPrefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
     const resolvedNewNodes = await Promise.all(
       newNodes.map(async (newNode) => {
-        const generatedNodeKey = resolveTechGenerationTemplate(
-          nodeKeyTemplate.trim() || defaultTechNodeKeyTemplate,
-          {
-            prefix: generationPrefix,
-            nodeSet: technologyTree.set.key,
-            row: newNode.indent.toString(),
-            column: newNode.tier.toString(),
-          },
-        );
+        const generatedNodeKey = resolveTechGenerationTemplate(nodeKeyTemplate.trim() || defaultTechNodeKeyTemplate, {
+          prefix: generationPrefix,
+          nodeSet: technologyTree.set.key,
+          row: newNode.indent.toString(),
+          column: newNode.tier.toString(),
+        });
         return {
           originalNodeKey: newNode.nodeKey,
           resolvedNode: {
@@ -1631,6 +1676,12 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       parentKey: remappedNodeKeys.get(link.parentKey) || link.parentKey,
       childKey: remappedNodeKeys.get(link.childKey) || link.childKey,
     }));
+    const remappedUiTabToNodes = Object.fromEntries(
+      Object.entries(uiTabToNodes).map(([tabKey, nodeKeys]) => [
+        tabKey,
+        nodeKeys.map((nodeKey) => remappedNodeKeys.get(nodeKey) || nodeKey),
+      ]),
+    );
 
     setIsSaving(true);
     try {
@@ -1646,6 +1697,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         deletedNodeKeys: deletedNodeKeysArray,
         deletedLinkKeys: deletedLinkKeysArray,
         editedNodes: editedNodesArray,
+        uiTabToNodes: remappedUiTabToNodes,
       });
 
       if (!result?.success) {
@@ -1659,7 +1711,10 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       });
       if (!isBlankTree) {
         const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
-        if (refreshedTree) setTechnologyTree(refreshedTree);
+        if (refreshedTree) {
+          setTechnologyTree(refreshedTree);
+          setUiTabToNodes(refreshedTree.uiTabToNodes);
+        }
         resetStateAfterSave();
       }
       setIsSaveModalOpen(false);
@@ -1676,6 +1731,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     savePackName,
     tableNameOverride,
     technologyTree,
+    uiTabToNodes,
   ]);
 
   const saveWholeTechnologyTree = useCallback(async () => {
@@ -1705,7 +1761,10 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       });
       if (!isBlankTree) {
         const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
-        if (refreshedTree) setTechnologyTree(refreshedTree);
+        if (refreshedTree) {
+          setTechnologyTree(refreshedTree);
+          setUiTabToNodes(refreshedTree.uiTabToNodes);
+        }
         resetStateAfterSave();
       }
       setIsSaveModalOpen(false);
@@ -1724,9 +1783,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       const timestamp = Date.now().toString();
       setSaveMode(mode);
       setSavePackName(
-        mode === "whole"
-          ? `technology_tree_${technologyTree.set.key}_${timestamp}`
-          : `technology_changes_${timestamp}`,
+        mode === "whole" ? `technology_tree_${technologyTree.set.key}_${timestamp}` : `technology_changes_${timestamp}`,
       );
       setSavePackDirectory(undefined);
       setTableNameOverride(defaultTechTableNameTemplate);
@@ -1982,9 +2039,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                   Browse
                 </button>
               </div>
-              {savePackDirectory && (
-                <p className="text-xs text-gray-400 mt-1 truncate">{savePackDirectory}</p>
-              )}
+              {savePackDirectory && <p className="text-xs text-gray-400 mt-1 truncate">{savePackDirectory}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Table Name (optional)</label>
@@ -2015,9 +2070,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             {saveMode === "whole" && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Technology Node Set (optional)
-                  </label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Technology Node Set (optional)</label>
                   <input
                     type="text"
                     value={technologyNodeSetOverride}
@@ -2040,9 +2093,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                   <span>Clone existing technologies</span>
                 </label>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Technology Key Template
-                  </label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Technology Key Template</label>
                   <input
                     type="text"
                     value={technologyKeyTemplate}
@@ -2051,8 +2102,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                     className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400 font-mono"
                   />
                   <p className="text-xs text-gray-400 mt-1">
-                    Used when cloning technologies. Tokens: ${"{prefix}"}, ${"{nodeSet}"}, ${"{row}"},{" "}
-                    ${"{column}"}
+                    Used when cloning technologies. Tokens: ${"{prefix}"}, ${"{nodeSet}"}, ${"{row}"}, ${"{column}"}
                   </p>
                 </div>
               </>
@@ -2100,6 +2150,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             column: addNodeTarget.tier.toString(),
           })}
           allTechnologies={technologyTree?.allTechnologies || []}
+          reservedTechnologyKeys={addedNodes.map((node) => node.technologyKey)}
           allTechnologyIcons={technologyTree?.allTechnologyIcons || []}
           allEffects={technologyTree?.allEffects || []}
         />
@@ -2113,6 +2164,9 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
           existingNode={editNodeTarget}
           onEdit={onEditNode}
           allTechnologies={technologyTree?.allTechnologies || []}
+          reservedTechnologyKeys={addedNodes
+            .filter((node) => node.nodeKey !== editNodeTarget.nodeKey)
+            .map((node) => node.technologyKey)}
           allTechnologyIcons={technologyTree?.allTechnologyIcons || []}
           allEffects={technologyTree?.allEffects || []}
         />
@@ -2131,9 +2185,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                 step="0.1"
                 value={editLinkTarget?.parentOffset || ""}
                 onChange={(event) =>
-                  setEditLinkTarget((prev) =>
-                    prev ? { ...prev, parentOffset: event.target.value } : prev,
-                  )
+                  setEditLinkTarget((prev) => (prev ? { ...prev, parentOffset: event.target.value } : prev))
                 }
                 className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
               />
@@ -2148,15 +2200,29 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                 step="0.1"
                 value={editLinkTarget?.childOffset || ""}
                 onChange={(event) =>
-                  setEditLinkTarget((prev) =>
-                    prev ? { ...prev, childOffset: event.target.value } : prev,
-                  )
+                  setEditLinkTarget((prev) => (prev ? { ...prev, childOffset: event.target.value } : prev))
+                }
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2" htmlFor="tech-link-initial-descent">
+                Initial descent tiers
+              </label>
+              <input
+                id="tech-link-initial-descent"
+                type="number"
+                step="1"
+                min="0"
+                value={editLinkTarget?.initialDescentTiers || ""}
+                onChange={(event) =>
+                  setEditLinkTarget((prev) => (prev ? { ...prev, initialDescentTiers: event.target.value } : prev))
                 }
                 className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
               />
             </div>
             <p className="text-xs text-gray-400">
-              `0` stays centered, `1` moves to the far right or bottom edge, `-1` moves to the far left or top edge.
+              Offsets use `-1` to `1`; initial descent tiers marks the beginning of a technology branch.
             </p>
           </div>
         </Modal.Body>
@@ -2172,9 +2238,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             type="button"
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200"
             onClick={() =>
-              setEditLinkTarget((prev) =>
-                prev ? { ...prev, parentOffset: "0", childOffset: "0" } : prev,
-              )
+              setEditLinkTarget((prev) => (prev ? { ...prev, parentOffset: "0", childOffset: "0" } : prev))
             }
           >
             Reset to 0
@@ -2197,11 +2261,13 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             const addedNode = addedNodes.find((n) => n.nodeKey === contextMenu.nodeId);
             return baseNode || addedNode || null;
           })();
-          const targetLink =
-            contextMenu.targetType === "techEdge" ? allEdgesMap.get(contextMenu.edgeId) || null : null;
+          const targetLink = contextMenu.targetType === "techEdge" ? allEdgesMap.get(contextMenu.edgeId) || null : null;
 
           const selectedNodeIds = nodes
-            .filter((n) => n.selected && n.type === "techNode" && n.id !== ("nodeId" in contextMenu ? contextMenu.nodeId : ""))
+            .filter(
+              (n) =>
+                n.selected && n.type === "techNode" && n.id !== ("nodeId" in contextMenu ? contextMenu.nodeId : ""),
+            )
             .map((n) => n.id);
           const isTargetSelected =
             "nodeId" in contextMenu && nodes.some((n) => n.id === contextMenu.nodeId && n.selected);
@@ -2294,6 +2360,14 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                         const keysToDelete = new Set(allSelectedIds);
                         setDeletedNodeKeys((prev) => new Set([...prev, ...keysToDelete]));
                         setAddedNodes((prev) => prev.filter((n) => !keysToDelete.has(n.nodeKey)));
+                        setUiTabToNodes((prev) =>
+                          Object.fromEntries(
+                            Object.entries(prev).map(([tabKey, nodeKeys]) => [
+                              tabKey,
+                              nodeKeys.filter((nodeKey) => !keysToDelete.has(nodeKey)),
+                            ]),
+                          ),
+                        );
                         // Cascade-delete links
                         const linksToDelete: string[] = [];
                         for (const [linkKey, link] of allEdgesMap.entries()) {
@@ -2389,6 +2463,9 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                             technologyKey: effective.technologyKey,
                             localizedName: effective.localizedName,
                             requiredParents: effective.requiredParents || 0,
+                            campaignKey: effective.campaignKey,
+                            factionKey: effective.factionKey,
+                            optionalUiGroup: effective.optionalUiGroup,
                             researchPointsRequired: effective.researchPointsRequired,
                             isHidden:
                               hiddenOverrides[effective.technologyKey] === undefined
@@ -2399,6 +2476,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                             buildingLevel: effective.buildingLevel,
                             shortDescription: effective.shortDescription,
                             longDescription: effective.longDescription,
+                            iconPath: effective.iconPath,
                             iconData: effective.iconData,
                             effects: effective.effects || [],
                             relTier: (pos?.tier ?? n.tier) - anchorTier,
@@ -2416,21 +2494,14 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                   <>
                     <button
                       className={menuItemClass}
-                      onClick={() =>
-                        openLinkOffsetEditor(
-                          `${targetLink.parentKey}|${targetLink.childKey}`,
-                        )
-                      }
+                      onClick={() => openLinkOffsetEditor(`${targetLink.parentKey}|${targetLink.childKey}`)}
                     >
                       Adjust Link Offsets...
                     </button>
                     <button
                       className={menuItemClass}
                       onClick={() =>
-                        toggleLinkVisibility(
-                          `${targetLink.parentKey}|${targetLink.childKey}`,
-                          !targetLink.visibleInUi,
-                        )
+                        toggleLinkVisibility(`${targetLink.parentKey}|${targetLink.childKey}`, !targetLink.visibleInUi)
                       }
                     >
                       {targetLink.visibleInUi ? "Hide Connection" : "Show Connection"}
@@ -2450,25 +2521,39 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                       const baseIndent = Number(match[2]);
                       const keyPrefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
                       captureHistory();
-                      const newNodes: TechnologyNodeData[] = techClipboard.map((entry) => ({
-                        nodeKey: `${keyPrefix}_node_${entry.technologyKey}_${Date.now()}`,
-                        technologyKey: `${entry.technologyKey}_copy_${Date.now()}`,
+                      const pasteGenerationId = nextTechNodeGenerationId();
+                      const newNodes: TechnologyNodeData[] = techClipboard.map((entry, index) => ({
+                        nodeKey: `${keyPrefix}_node_${entry.technologyKey}_${pasteGenerationId}_${index}`,
+                        technologyKey: `${entry.technologyKey}_copy_${pasteGenerationId}_${index}`,
                         setKey: technologyTree.set.key,
                         tier: baseTier + entry.relTier,
                         indent: baseIndent + entry.relIndent,
                         requiredParents: entry.requiredParents,
+                        campaignKey: entry.campaignKey,
+                        factionKey: entry.factionKey,
                         pixelOffsetX: entry.pixelOffsetX,
                         pixelOffsetY: entry.pixelOffsetY,
+                        optionalUiGroup: entry.optionalUiGroup,
                         researchPointsRequired: entry.researchPointsRequired,
                         localizedName: entry.localizedName,
                         shortDescription: entry.shortDescription,
                         longDescription: entry.longDescription,
+                        iconPath: entry.iconPath,
                         isHidden: entry.isHidden,
                         buildingLevel: entry.buildingLevel,
                         iconData: entry.iconData,
                         effects: entry.effects || [],
                       }));
                       setAddedNodes((prev) => [...prev, ...newNodes]);
+                      if (selectedUiTab !== "all") {
+                        setUiTabToNodes((prev) => ({
+                          ...prev,
+                          [selectedUiTab]: [
+                            ...(prev[selectedUiTab] || []),
+                            ...newNodes.map((newNode) => newNode.nodeKey),
+                          ],
+                        }));
+                      }
                       closeContextMenu();
                     }}
                   >

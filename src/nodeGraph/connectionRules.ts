@@ -46,8 +46,15 @@ const TABLE_SELECTION_SOURCES = new Set([
   "generaterowsschema",
   "addnewcolumn",
   "getcountercolumn",
+  "combinesametables",
   "customrowsinput",
   "readtsvfrompack",
+  "deepclone",
+  "conditionalbranch",
+  "removetables",
+  "editloctext",
+  "edittextfile",
+  "editxmlfile",
 ]);
 
 const TABLE_METADATA_TARGETS = new Set([
@@ -62,9 +69,14 @@ const TABLE_METADATA_TARGETS = new Set([
   "aggregatenested",
   "groupby",
   "deduplicate",
+  "combinesametables",
   "addnewcolumn",
   "generaterowsschema",
   "getcountercolumn",
+  "deepclone",
+  "conditionalbranch",
+  "removetables",
+  "editloctext",
 ]);
 
 type NodeWithData<TData extends Record<string, unknown>> = Node<TData>;
@@ -132,10 +144,7 @@ const updateNode = (nodes: Node[], nodeId: string, patch: Record<string, unknown
   });
 };
 
-const updateNodes = (
-  nodes: Node[],
-  updater: (node: Node) => Node,
-) => nodes.map((node) => updater(node));
+const updateNodes = (nodes: Node[], updater: (node: Node) => Node) => nodes.map((node) => updater(node));
 
 const getFieldNamesForTable = (
   tableName: string,
@@ -156,9 +165,7 @@ const getLookupIndexedMetadata = (
   lookupNode: NodeWithData<Partial<LookupNodeData>>,
   context: SchemaContext,
 ) => {
-  const incomingEdge = state.edges.find(
-    (edge) => edge.target === lookupNode.id && edge.targetHandle === "input-index",
-  );
+  const incomingEdge = state.edges.find((edge) => edge.target === lookupNode.id && edge.targetHandle === "input-index");
   if (!incomingEdge) {
     return null;
   }
@@ -184,19 +191,13 @@ const getLookupIndexedMetadata = (
 
   return {
     indexedTableName: tableName,
-    indexedInputType: sourceNode.type === "indextable" ? ("IndexedTable" as NodeEdgeTypes) : ("TableSelection" as NodeEdgeTypes),
-    indexedTableColumnNames: getFieldNamesForTable(
-      tableName,
-      context.DBNameToDBVersions,
-      context.defaultTableVersions,
-    ),
+    indexedInputType:
+      sourceNode.type === "indextable" ? ("IndexedTable" as NodeEdgeTypes) : ("TableSelection" as NodeEdgeTypes),
+    indexedTableColumnNames: getFieldNamesForTable(tableName, context.DBNameToDBVersions, context.defaultTableVersions),
   };
 };
 
-const getGenerateRowsSourceColumns = (
-  sourceNode: Node,
-  context: SchemaContext,
-): string[] => {
+const getGenerateRowsSourceColumns = (sourceNode: Node, context: SchemaContext): string[] => {
   const sourceData = sourceNode.data as GenerateRowsSourceData;
 
   if (Array.isArray(sourceData.inputColumnNames) && sourceData.inputColumnNames.length > 0) {
@@ -237,10 +238,7 @@ const getGenerateRowsSourceColumns = (
   return [];
 };
 
-export const synchronizeDerivedGraphState = (
-  state: GraphState,
-  context: SchemaContext,
-): GraphMutationResult => {
+export const synchronizeDerivedGraphState = (state: GraphState, context: SchemaContext): GraphMutationResult => {
   let nextNodes = withSchemaContext(state.nodes, context);
 
   nextNodes = nextNodes.map((node) => {
@@ -313,7 +311,9 @@ const needsSchemaContext = (node: Node) =>
   node.type === "aggregatenested" ||
   node.type === "getcountercolumn" ||
   node.type === "generaterows" ||
-  node.type === "generaterowsschema";
+  node.type === "generaterowsschema" ||
+  node.type === "deepclone" ||
+  node.type === "editloctext";
 
 export const getTableVersion = (
   tableName: string,
@@ -430,9 +430,7 @@ export const resolveTargetInputType = (
   } else if (targetNode.type === "generaterowsschema" && targetNode.data) {
     return "CustomSchema" as NodeEdgeTypes;
   } else if (targetNode.type === "dumptotsv" && targetNode.data) {
-    return sourceOutputType === "ChangedColumnSelection"
-      ? sourceOutputType
-      : ("TableSelection" as NodeEdgeTypes);
+    return sourceOutputType === "ChangedColumnSelection" ? sourceOutputType : ("TableSelection" as NodeEdgeTypes);
   } else if (targetNode.type === "readtsvfrompack" && targetNode.data) {
     if (params.targetHandle === "input-schema") {
       return "CustomSchema" as NodeEdgeTypes;
@@ -473,8 +471,17 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     (sourceOutputType === "Text" || sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
 
   const isTextJoinCompatible =
-    targetNode.type === "textjoin" &&
-    (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+    targetNode.type === "textjoin" && (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+
+  // Works on packs or on files already flowing through the graph, so it takes either.
+  const isPackFileOperationsCompatible =
+    targetNode.type === "packfileoperations" &&
+    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+
+  const isEditTextFileCompatible =
+    targetNode.type === "edittextfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isEditXmlFileCompatible =
+    targetNode.type === "editxmlfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
 
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
@@ -487,15 +494,14 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     isTextSurroundCompatible ||
     isAppendTextCompatible ||
     isTextJoinCompatible ||
+    isPackFileOperationsCompatible ||
+    isEditTextFileCompatible ||
+    isEditXmlFileCompatible ||
     isSaveChangesCompatible
   );
 };
 
-export const applyConnection = (
-  state: GraphState,
-  params: Connection,
-  context: SchemaContext,
-): GraphMutationResult => {
+export const applyConnection = (state: GraphState, params: Connection, context: SchemaContext): GraphMutationResult => {
   if (!params.source || !params.target) {
     return { ...state, accepted: false };
   }
@@ -504,6 +510,17 @@ export const applyConnection = (
   const targetNode = state.nodes.find((node) => node.id === params.target);
 
   if (!sourceNode || !targetNode) {
+    return { ...state, accepted: false };
+  }
+
+  const duplicateConnection = state.edges.some(
+    (edge) =>
+      edge.source === params.source &&
+      edge.target === params.target &&
+      (edge.sourceHandle ?? null) === (params.sourceHandle ?? null) &&
+      (edge.targetHandle ?? null) === (params.targetHandle ?? null),
+  );
+  if (duplicateConnection) {
     return { ...state, accepted: false };
   }
 
@@ -519,23 +536,32 @@ export const applyConnection = (
     targetNode.type === "appendtext" &&
     (sourceOutputType === "Text" || sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
   const isTextJoinCompatible =
-    targetNode.type === "textjoin" &&
-    (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+    targetNode.type === "textjoin" && (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+  // Works on packs or on files already flowing through the graph, so it takes either.
+  const isPackFileOperationsCompatible =
+    targetNode.type === "packfileoperations" &&
+    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isEditTextFileCompatible =
+    targetNode.type === "edittextfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isEditXmlFileCompatible =
+    targetNode.type === "editxmlfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
     (sourceOutputType === "ChangedColumnSelection" ||
       sourceOutputType === "Text" ||
       sourceOutputType === "TableSelection");
 
-  if (
-    !(
-      (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
-      isTextSurroundCompatible ||
-      isAppendTextCompatible ||
-      isTextJoinCompatible ||
-      isSaveChangesCompatible
-    )
-  ) {
+  if (!(
+    (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
+    isTextSurroundCompatible ||
+    isAppendTextCompatible ||
+    isTextJoinCompatible ||
+    isPackFileOperationsCompatible ||
+    isEditTextFileCompatible ||
+    isEditXmlFileCompatible ||
+    isSaveChangesCompatible
+  )) {
     return { ...state, accepted: false };
   }
 
@@ -551,6 +577,9 @@ export const applyConnection = (
     nextEdges = updater(nextEdges);
   };
 
+  const isLookupSourceConnection =
+    targetNode.type === "lookup" && (params.targetHandle === "input-source" || !params.targetHandle);
+
   setEdges((edges) => {
     const sourceHandlePart = params.sourceHandle ? `-${params.sourceHandle}` : "";
     const targetHandlePart = params.targetHandle ? `-${params.targetHandle}` : "";
@@ -564,11 +593,16 @@ export const applyConnection = (
 
     if (
       targetNode.type === "generaterows" ||
+      targetNode.type === "generaterowsschema" ||
       targetNode.type === "mergechanges" ||
       targetNode.type === "savechanges" ||
       targetNode.type === "numericadjustment" ||
       targetNode.type === "mathmax" ||
-      targetNode.type === "mathceil"
+      targetNode.type === "mathceil" ||
+      // The executor merges multiple table selections for these (buildInputDataForTarget), so
+      // replacing the existing edge here silently threw away a connection the run supports.
+      targetNode.type === "dumptotsv" ||
+      targetNode.type === "combinesametables"
     ) {
       return [...edges, newEdge];
     }
@@ -580,15 +614,32 @@ export const applyConnection = (
   });
 
   if (targetNode.type === "textsurround" && sourceOutputType) {
-    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType, outputType: sourceOutputType }));
+    setNodes((nodes) =>
+      updateNode(nodes, params.target!, { inputType: sourceOutputType, outputType: sourceOutputType }),
+    );
   }
 
   if (targetNode.type === "appendtext" && sourceOutputType) {
-    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType, outputType: sourceOutputType }));
+    setNodes((nodes) =>
+      updateNode(nodes, params.target!, { inputType: sourceOutputType, outputType: sourceOutputType }),
+    );
   }
 
   if (targetNode.type === "textjoin" && sourceOutputType === "GroupedText") {
     setNodes((nodes) => updateNode(nodes, params.target!, { inputType: "GroupedText" }));
+  }
+
+  // Remember which kind of input it was wired to, so the executor knows how to read it.
+  if (targetNode.type === "packfileoperations" && sourceOutputType) {
+    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
+  }
+
+  if (targetNode.type === "edittextfile" && sourceOutputType) {
+    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
+  }
+
+  if (targetNode.type === "editxmlfile" && sourceOutputType) {
+    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
   }
 
   if (targetNode.type === "savechanges" && sourceOutputType) {
@@ -697,7 +748,7 @@ export const applyConnection = (
   if (
     (TABLE_METADATA_TARGETS.has(targetNode.type as string) ||
       targetNode.type === "generaterows" ||
-      targetNode.type === "lookup") &&
+      isLookupSourceConnection) &&
     sourceNode.type === "getcountercolumn"
   ) {
     const counterData = getNodeData<GraphRuleNodeData>(sourceNode);
@@ -828,18 +879,18 @@ export const applyConnection = (
     if (tableName && DBNameToDBVersions?.[tableName]) {
       const selectedVersion = getTableVersion(tableName, DBNameToDBVersions[tableName], defaultTableVersions);
       const fieldNames = (selectedVersion?.fields || []).map((field) => field.name);
-      setNodes((nodes) => updateNode(nodes, params.target!, { columnNames: fieldNames, connectedTableName: tableName }));
+      setNodes((nodes) =>
+        updateNode(nodes, params.target!, { columnNames: fieldNames, connectedTableName: tableName }),
+      );
     }
   }
 
-  if (
-    targetNode.type === "generaterows" || targetNode.type === "generaterowsschema"
-  ) {
+  if (targetNode.type === "generaterows" || targetNode.type === "generaterowsschema") {
     // handled below for merge logic
   }
 
   if (
-    (targetNode.type === "lookup" || targetNode.type === "groupby" || targetNode.type === "deduplicate") &&
+    (isLookupSourceConnection || targetNode.type === "groupby" || targetNode.type === "deduplicate") &&
     (sourceNode.type === "tableselection" ||
       sourceNode.type === "tableselectiondropdown" ||
       sourceNode.type === "filter" ||
@@ -1096,7 +1147,8 @@ export const applyConnection = (
               columnNames: Array.from(allSourceColumns),
               inputColumnNames: Array.from(allSourceColumns),
               connectedTableName: tableNameToUse,
-              DBNameToDBVersions: hasSchemaColumns || isTableDropdown ? DBNameToDBVersions : sourceData.DBNameToDBVersions,
+              DBNameToDBVersions:
+                hasSchemaColumns || isTableDropdown ? DBNameToDBVersions : sourceData.DBNameToDBVersions,
             },
           };
         }),
@@ -1130,11 +1182,7 @@ export const applyConnection = (
   return { ...synchronizedGraph, accepted: true };
 };
 
-export const removeEdge = (
-  state: GraphState,
-  edgeId: string,
-  context: SchemaContext,
-): GraphMutationResult => {
+export const removeEdge = (state: GraphState, edgeId: string, context: SchemaContext): GraphMutationResult => {
   const edge = state.edges.find((candidate) => candidate.id === edgeId);
   if (!edge) {
     return { ...state };
@@ -1209,13 +1257,17 @@ export const rehydrateGraph = (state: GraphState, context: SchemaContext): Graph
       if (tableName && DBNameToDBVersions?.[tableName]) {
         const selectedVersion = getTableVersion(tableName, DBNameToDBVersions[tableName], defaultTableVersions);
         const fieldNames = (selectedVersion?.fields || []).map((field) => field.name);
-        setNodes((nodes) => updateNode(nodes, targetNode.id, { columnNames: fieldNames, connectedTableName: tableName }));
+        setNodes((nodes) =>
+          updateNode(nodes, targetNode.id, { columnNames: fieldNames, connectedTableName: tableName }),
+        );
       }
     }
 
     if (
       targetNode.type === "referencelookup" &&
-      (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+      (sourceNode.type === "filter" ||
+        sourceNode.type === "referencelookup" ||
+        sourceNode.type === "reversereferencelookup")
     ) {
       const sourceData = getNodeData<GraphRuleNodeData>(sourceNode);
       const outputInfo = getSourceNodeOutputInfo(
@@ -1237,7 +1289,9 @@ export const rehydrateGraph = (state: GraphState, context: SchemaContext): Graph
 
     if (
       targetNode.type === "reversereferencelookup" &&
-      (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+      (sourceNode.type === "filter" ||
+        sourceNode.type === "referencelookup" ||
+        sourceNode.type === "reversereferencelookup")
     ) {
       const sourceData = getNodeData<GraphRuleNodeData>(sourceNode);
       const outputInfo = getSourceNodeOutputInfo(
@@ -1323,7 +1377,9 @@ export const rehydrateGraph = (state: GraphState, context: SchemaContext): Graph
 
     if (
       (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
-      (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+      (sourceNode.type === "filter" ||
+        sourceNode.type === "referencelookup" ||
+        sourceNode.type === "reversereferencelookup")
     ) {
       const sourceData = getNodeData<GraphRuleNodeData>(sourceNode);
       let tableNameToUse = sourceData.connectedTableName;
@@ -1378,7 +1434,9 @@ export const rehydrateGraph = (state: GraphState, context: SchemaContext): Graph
 
     if (
       targetNode.type === "tableselectiondropdown" &&
-      (sourceNode.type === "packedfiles" || sourceNode.type === "packfilesdropdown" || sourceNode.type === "allenabledmods")
+      (sourceNode.type === "packedfiles" ||
+        sourceNode.type === "packfilesdropdown" ||
+        sourceNode.type === "allenabledmods")
     ) {
       const selectedPack =
         sourceNode.type === "packfilesdropdown" ? getNodeData<GraphRuleNodeData>(sourceNode).selectedPack : undefined;

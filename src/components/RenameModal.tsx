@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Modal } from "../flowbite";
 import { useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
+import { escapeRegExp } from "../utility/packFileRenamePlan";
 
 interface RenameModalProps {
   show: boolean;
   onClose: () => void;
   mod: Mod;
+  mods?: Mod[];
 }
 
 interface PreviewItem {
@@ -14,7 +16,20 @@ interface PreviewItem {
   newName: string;
 }
 
-const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
+// Helper function to extract the base filename from a packed file path
+const getBaseFilename = (filePath: string): string => {
+  const parts = filePath.split("\\");
+  return parts[parts.length - 1];
+};
+
+// Helper function to replace the base filename in a packed file path
+const replaceBaseFilename = (filePath: string, newBasename: string): string => {
+  const parts = filePath.split("\\");
+  parts[parts.length - 1] = newBasename;
+  return parts.join("\\");
+};
+
+const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod, mods }) => {
   const [searchRegex, setSearchRegex] = useState("");
   const [replaceText, setReplaceText] = useState("");
   const [pathFilter, setPathFilter] = useState("");
@@ -22,24 +37,12 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
   const [regexError, setRegexError] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
-  
+
   const isDev = useAppSelector((state) => state.app.isDev);
   const localizations = useLocalizations();
+  const targetMods = useMemo(() => (mods && mods.length > 0 ? mods : [mod]), [mod, mods]);
 
-  // Helper function to extract the base filename from a packed file path
-  const getBaseFilename = (filePath: string): string => {
-    const parts = filePath.split("\\");
-    return parts[parts.length - 1];
-  };
-
-  // Helper function to replace the base filename in a packed file path
-  const replaceBaseFilename = (filePath: string, newBasename: string): string => {
-    const parts = filePath.split("\\");
-    parts[parts.length - 1] = newBasename;
-    return parts.join("\\");
-  };
-
-  const generatePreview = () => {
+  const generatePreview = useCallback(async () => {
     try {
       if (!searchRegex) {
         setPreviewData([]);
@@ -53,66 +56,55 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
       }
       setRegexError("");
 
-      // Get pack files to preview
-      window.api?.getPackFilesList(mod.path).then((files: string[]) => {
-        const preview: PreviewItem[] = [];
-        
-        for (const fileName of files) {
-          // Check path filter first (if provided)
-          if (pathFilter.trim()) {
-            const filePath = fileName.substring(0, fileName.lastIndexOf("\\"));
-            if (!filePath.includes(pathFilter.trim())) {
-              continue; // Skip files that don't match path filter
+      const previews = await Promise.all(
+        targetMods.map(async (targetMod) => {
+          const files = (await window.api?.getPackFilesList(targetMod.path)) ?? [];
+          const preview: PreviewItem[] = [];
+
+          for (const fileName of files) {
+            // Check path filter first (if provided)
+            if (pathFilter.trim()) {
+              const filePath = fileName.substring(0, fileName.lastIndexOf("\\"));
+              if (!filePath.includes(pathFilter.trim())) continue;
             }
-          }
 
-          const baseFilename = getBaseFilename(fileName);
-          let newBaseFilename: string;
-          let shouldInclude = false;
+            const baseFilename = getBaseFilename(fileName);
+            let newBaseFilename: string;
+            let shouldInclude = false;
 
-          if (useRegex && regex) {
-            // Reset regex lastIndex for each iteration
-            regex.lastIndex = 0;
-            if (regex.test(baseFilename)) {
+            if (useRegex && regex) {
+              // Reset regex lastIndex for each iteration
               regex.lastIndex = 0;
-              newBaseFilename = baseFilename.replace(regex, replaceText);
-              shouldInclude = newBaseFilename !== baseFilename;
-            }
-          } else {
-            // Simple string replacement
-            if (baseFilename.includes(searchRegex)) {
+              if (regex.test(baseFilename)) {
+                regex.lastIndex = 0;
+                newBaseFilename = baseFilename.replace(regex, replaceText);
+                shouldInclude = newBaseFilename !== baseFilename;
+              }
+            } else if (baseFilename.includes(searchRegex)) {
               newBaseFilename = baseFilename.replace(new RegExp(escapeRegExp(searchRegex), "g"), replaceText);
               shouldInclude = newBaseFilename !== baseFilename;
             }
+
+            if (shouldInclude) {
+              const newFileName = replaceBaseFilename(fileName, newBaseFilename!);
+              preview.push({
+                originalName: fileName,
+                newName: newFileName,
+              });
+            }
           }
 
-          if (shouldInclude) {
-            const newFileName = replaceBaseFilename(fileName, newBaseFilename!);
-            preview.push({
-              originalName: fileName,
-              newName: newFileName
-            });
-          }
-        }
-        
-        setPreviewData(preview);
-      }).catch((error: any) => {
-        console.error("Failed to get pack files list:", error);
-        setPreviewData([]);
-      });
-
+          return preview;
+        }),
+      );
+      setPreviewData(previews.flat());
     } catch (error) {
       if (useRegex) {
         setRegexError(localizations.invalidRegularExpression);
       }
       setPreviewData([]);
     }
-  };
-
-  // Helper function to escape special regex characters for literal string matching
-  const escapeRegExp = (string: string): string => {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  };
+  }, [localizations.invalidRegularExpression, pathFilter, replaceText, searchRegex, targetMods, useRegex]);
 
   const handleRename = async () => {
     if (!searchRegex) return;
@@ -120,8 +112,12 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
 
     setIsRenaming(true);
     try {
-      await window.api?.renamePackedFiles(mod.path, searchRegex, replaceText, useRegex, isDev, pathFilter);
-      
+      await Promise.all(
+        targetMods.map((targetMod) =>
+          window.api?.renamePackedFiles(targetMod.path, searchRegex, replaceText, useRegex, isDev, pathFilter),
+        ),
+      );
+
       // Refresh the mod data or show success message
       console.log("Rename operation completed successfully");
       onClose();
@@ -148,21 +144,17 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
   useEffect(() => {
     // Debounce the preview generation
     const timer = setTimeout(() => {
-      generatePreview();
+      void generatePreview();
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchRegex, replaceText, pathFilter, useRegex, mod.path]);
+  }, [generatePreview]);
 
   return (
-    <Modal
-      show={show}
-      onClose={onClose}
-      size="4xl"
-      position="center"
-    >
+    <Modal show={show} onClose={onClose} size="4xl" position="center">
       <Modal.Header>
         {localizations.renamePackFiles} - {mod.name}
+        {targetMods.length > 1 && ` (+${targetMods.length - 1})`}
       </Modal.Header>
       <Modal.Body>
         <div className="space-y-4">
@@ -219,16 +211,15 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
               placeholder={localizations.pathFilterPlaceholder}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
             />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {localizations.pathFilterDescription}
-            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{localizations.pathFilterDescription}</p>
           </div>
 
           <div>
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
-              {localizations.preview} ({localizations.filesWillBeRenamed.replace('{{count}}', previewData.length.toString())})
+              {localizations.preview} (
+              {localizations.filesWillBeRenamed.replace("{{count}}", previewData.length.toString())})
             </h3>
-            
+
             {previewData.length > 0 ? (
               <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
                 <div className="space-y-2 p-3">
@@ -239,33 +230,25 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
                     const originalFilename = originalParts[originalParts.length - 1];
                     const newPath = newParts.slice(0, -1).join("\\");
                     const newFilename = newParts[newParts.length - 1];
-                    
+
                     return (
                       <div key={index} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 space-y-1">
                         <div className="font-mono text-xs">
-                          <span className="text-gray-500 dark:text-gray-400 text-xs font-semibold">{localizations.from}</span>
+                          <span className="text-gray-500 dark:text-gray-400 text-xs font-semibold">
+                            {localizations.from}
+                          </span>
                           <div className="ml-2">
-                            {originalPath && (
-                              <span className="text-gray-400 dark:text-gray-500">
-                                {originalPath}\
-                              </span>
-                            )}
-                            <span className="text-gray-900 dark:text-white font-medium">
-                              {originalFilename}
-                            </span>
+                            {originalPath && <span className="text-gray-400 dark:text-gray-500">{originalPath}\</span>}
+                            <span className="text-gray-900 dark:text-white font-medium">{originalFilename}</span>
                           </div>
                         </div>
                         <div className="font-mono text-xs">
-                          <span className="text-gray-500 dark:text-gray-400 text-xs font-semibold">{localizations.to}</span>
+                          <span className="text-gray-500 dark:text-gray-400 text-xs font-semibold">
+                            {localizations.to}
+                          </span>
                           <div className="ml-2">
-                            {newPath && (
-                              <span className="text-gray-400 dark:text-gray-500">
-                                {newPath}\
-                              </span>
-                            )}
-                            <span className="text-green-600 dark:text-green-400 font-medium">
-                              {newFilename}
-                            </span>
+                            {newPath && <span className="text-gray-400 dark:text-gray-500">{newPath}\</span>}
+                            <span className="text-green-600 dark:text-green-400 font-medium">{newFilename}</span>
                           </div>
                         </div>
                       </div>
@@ -294,7 +277,13 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod }) => {
             disabled={!searchRegex || isRenaming || !!regexError || (!isDev && previewData.length === 0)}
             className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
           >
-            {isRenaming ? localizations.renaming : previewData.length > 0 ? localizations.renameNFiles.replace('{{count}}', previewData.length.toString()) : isDev ? localizations.testRename : localizations.noFilesToRename}
+            {isRenaming
+              ? localizations.renaming
+              : previewData.length > 0
+                ? localizations.renameNFiles.replace("{{count}}", previewData.length.toString())
+                : isDev
+                  ? localizations.testRename
+                  : localizations.noFilesToRename}
           </button>
         </div>
       </Modal.Footer>

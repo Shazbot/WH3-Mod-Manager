@@ -24,7 +24,7 @@ export const NavbarLink: FC<NavbarLinkProps> = ({ active, disabled, href, childr
             [theme.active.on]: active,
             [theme.active.off]: !active && !disabled,
           },
-          theme.disabled[disabled ? "on" : "off"]
+          theme.disabled[disabled ? "on" : "off"],
         )}
         {...theirProps}
       >

@@ -1,6 +1,6 @@
 // source: https://stackoverflow.com/questions/27936772/how-to-deep-merge-instead-of-shallow-merge
 
-import { DeepPartial } from '../components';
+import { DeepPartial } from "../components";
 
 /**
  * Simple object check.
@@ -8,7 +8,7 @@ import { DeepPartial } from '../components';
  * @returns {boolean}
  */
 export function isObject(item: unknown) {
-  return item && typeof item === 'object' && !Array.isArray(item);
+  return item && typeof item === "object" && !Array.isArray(item);
 }
 
 /**

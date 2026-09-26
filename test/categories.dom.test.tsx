@@ -10,6 +10,7 @@ import Categories from "../src/components/Categories";
 import initialState from "../src/initialAppState";
 import localizationContext from "../src/localizationContext";
 import enTranslation from "../locales/en/translation.json";
+import esTranslation from "../locales/es/translation.json";
 
 vi.mock("../src/components/EditCategoriesModal", () => ({
   default: () => null,
@@ -54,7 +55,11 @@ const createMod = (overrides: Partial<Mod> & Pick<Mod, "name" | "path">): Mod =>
   ...overrides,
 });
 
-const renderCategories = (mods?: Mod[]) => {
+const renderCategories = (
+  mods?: Mod[],
+  alwaysEnabledModNames: string[] = [],
+  translation: typeof enTranslation = enTranslation,
+) => {
   const defaultMods = [
     createMod({
       name: "mod-one.pack",
@@ -95,6 +100,7 @@ const renderCategories = (mods?: Mod[]) => {
     preloadedState: {
       app: {
         ...initialState,
+        alwaysEnabledModNames,
         categories: categoryNames,
         categoryColors: {
           Alpha: "blue",
@@ -110,7 +116,7 @@ const renderCategories = (mods?: Mod[]) => {
 
   render(
     <Provider store={store}>
-      <localizationContext.Provider value={enTranslation}>
+      <localizationContext.Provider value={translation}>
         <Categories />
       </localizationContext.Provider>
     </Provider>,
@@ -147,6 +153,102 @@ describe("Categories", () => {
     expect(screen.getByText("Mod Two")).toBeInTheDocument();
   });
 
+  it("shows and sorts a mod by its decoded title, and by its pack name when it has none", async () => {
+    renderCategories([
+      createMod({
+        name: "encoded.pack",
+        path: "/mods/encoded.pack",
+        // Steam leaves entities in the titles; raw, this reads as "Bretonnia &amp; Co" and sorts on "&".
+        humanName: "Bretonnia &amp; Co",
+        categories: ["Alpha"],
+      }),
+      createMod({
+        name: "a_untitled.pack",
+        path: "/mods/a_untitled.pack",
+        humanName: "",
+        categories: ["Alpha"],
+      }),
+      createMod({
+        name: "zulu.pack",
+        path: "/mods/zulu.pack",
+        humanName: "Zulu",
+        categories: ["Alpha"],
+      }),
+    ]);
+
+    expect(await screen.findByText("Bretonnia & Co")).toBeInTheDocument();
+    // An untitled mod is listed by its pack name, without the extension.
+    expect(screen.getByText("a_untitled")).toBeInTheDocument();
+
+    const rowLabels = getRowOrder();
+    const indexOf = (label: string) => rowLabels.findIndex((row) => row.includes(label));
+    expect(indexOf("a_untitled")).toBeLessThan(indexOf("Bretonnia & Co"));
+    expect(indexOf("Bretonnia & Co")).toBeLessThan(indexOf("Zulu"));
+  });
+
+  it("colors mod names by their source", async () => {
+    renderCategories([
+      createMod({
+        name: "data.pack",
+        path: "/mods/data.pack",
+        humanName: "Data Mod",
+        categories: ["Alpha"],
+        isInData: true,
+      }),
+      createMod({
+        name: "link.pack",
+        path: "/mods/link.pack",
+        humanName: "Data Symlink",
+        categories: ["Alpha"],
+        isInData: true,
+        isSymbolicLink: true,
+      }),
+      createMod({
+        name: "modding.pack",
+        path: "/mods/modding.pack",
+        humanName: "Modding Folder Mod",
+        categories: ["Alpha"],
+        isInModding: true,
+      }),
+    ]);
+
+    expect(await screen.findByText("Data Mod")).toHaveClass("text-orange-500");
+    expect(screen.getByText("Data Symlink")).toHaveClass("text-blue-400");
+    expect(screen.getByText("Modding Folder Mod")).toHaveClass("text-amber-400");
+  });
+
+  it("filters on the decoded title rather than the entities behind it", async () => {
+    const user = userEvent.setup();
+    renderCategories([
+      createMod({
+        name: "encoded.pack",
+        path: "/mods/encoded.pack",
+        humanName: "Bretonnia &amp; Co",
+        categories: ["Alpha"],
+      }),
+      createMod({ name: "other.pack", path: "/mods/other.pack", humanName: "Zulu", categories: ["Alpha"] }),
+    ]);
+
+    await user.type(await screen.findByPlaceholderText(enTranslation.nameFilter), "bretonnia & co");
+
+    // The filter is debounced by 200ms, which a loaded machine can stretch well past the default wait.
+    await waitFor(() => expect(screen.queryByText("Zulu")).not.toBeInTheDocument(), { timeout: 5000 });
+    expect(screen.getByText("Bretonnia & Co")).toBeInTheDocument();
+  });
+
+  it("does not reapply a pending name filter after the filter is cleared", async () => {
+    const user = userEvent.setup();
+    renderCategories();
+
+    const input = await screen.findByPlaceholderText(enTranslation.nameFilter);
+    await user.type(input, "one");
+    await user.click(input.parentElement!.querySelector("button")!);
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByText("Mod Two")).toBeInTheDocument();
+    expect(screen.getByText("Mod Three")).toBeInTheDocument();
+  });
+
   it("selects visible children from a category row and toggles them with space", async () => {
     const user = userEvent.setup();
     const { store } = renderCategories();
@@ -177,6 +279,64 @@ describe("Categories", () => {
       expect(mods.find((mod) => mod.name === "mod-two.pack")?.isEnabled).toBe(true);
       expect(mods.find((mod) => mod.name === "mod-three.pack")?.isEnabled).toBe(true);
     });
+  });
+
+  it("counts always-enabled mods as enabled and leaves them enabled when a category is switched off", async () => {
+    const user = userEvent.setup();
+    const { store } = renderCategories(
+      [
+        createMod({ name: "always.pack", path: "/mods/always.pack", humanName: "Always", categories: ["Alpha"] }),
+        createMod({
+          name: "regular.pack",
+          path: "/mods/regular.pack",
+          humanName: "Regular",
+          categories: ["Alpha"],
+          isEnabled: true,
+        }),
+      ],
+      ["always.pack"],
+    );
+
+    const categoryToggle = await screen.findByLabelText("Toggle category Alpha");
+    expect(categoryToggle).toBeChecked();
+    expect(screen.getByLabelText("Toggle mod Always")).toBeDisabled();
+
+    await user.click(categoryToggle);
+
+    expect(store.getState().app.currentPreset.mods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "always.pack", isEnabled: true }),
+        expect.objectContaining({ name: "regular.pack", isEnabled: false }),
+      ]),
+    );
+  });
+
+  it("localizes the synthetic Uncategorized label without changing its stored key", async () => {
+    renderCategories(
+      [createMod({ name: "uncategorized.pack", path: "/mods/uncategorized.pack", humanName: "Uncategorized Mod" })],
+      [],
+      esTranslation as typeof enTranslation,
+    );
+
+    expect(await screen.findByText("Sin categoría")).toBeInTheDocument();
+    expect(screen.queryByText("Uncategorized")).not.toBeInTheDocument();
+  });
+
+  it("keeps the grid scroll position when toggling a mod or category visibility", async () => {
+    const user = userEvent.setup();
+    renderCategories();
+
+    await screen.findByLabelText("Toggle mod Mod One");
+    const viewport = document.querySelector<HTMLElement>(".ag-body-viewport");
+    expect(viewport).not.toBeNull();
+
+    viewport!.scrollTop = 140;
+    await user.click(screen.getByLabelText("Toggle mod Mod One"));
+    await waitFor(() => expect(viewport!.scrollTop).toBe(140));
+
+    viewport!.scrollTop = 210;
+    await user.click(screen.getByRole("button", { name: "Collapse All Alpha" }));
+    await waitFor(() => expect(viewport!.scrollTop).toBe(210));
   });
 
   it("removes a badge category from a mod row", async () => {
@@ -222,41 +382,21 @@ describe("Categories", () => {
 
     await screen.findByLabelText("Toggle category Alpha");
 
-    expect(getRowOrder()).toEqual([
-      "vAlpha",
-      "Alpha ModAlpha",
-      "Beta ModAlpha",
-      "Gamma ModAlpha",
-    ]);
+    expect(getRowOrder()).toEqual(["vAlpha", "Alpha ModAlpha", "Beta ModAlpha", "Gamma ModAlpha"]);
 
     await user.click(screen.getByRole("button", { name: "Enabled" }));
     await waitFor(() => {
-      expect(getRowOrder()).toEqual([
-        "vAlpha",
-        "Beta ModAlpha",
-        "Alpha ModAlpha",
-        "Gamma ModAlpha",
-      ]);
+      expect(getRowOrder()).toEqual(["vAlpha", "Beta ModAlpha", "Alpha ModAlpha", "Gamma ModAlpha"]);
     });
 
     await user.click(screen.getByRole("button", { name: "Enabled ↓" }));
     await waitFor(() => {
-      expect(getRowOrder()).toEqual([
-        "vAlpha",
-        "Alpha ModAlpha",
-        "Gamma ModAlpha",
-        "Beta ModAlpha",
-      ]);
+      expect(getRowOrder()).toEqual(["vAlpha", "Alpha ModAlpha", "Gamma ModAlpha", "Beta ModAlpha"]);
     });
 
     await user.click(screen.getByRole("button", { name: "Enabled ↑" }));
     await waitFor(() => {
-      expect(getRowOrder()).toEqual([
-        "vAlpha",
-        "Alpha ModAlpha",
-        "Beta ModAlpha",
-        "Gamma ModAlpha",
-      ]);
+      expect(getRowOrder()).toEqual(["vAlpha", "Alpha ModAlpha", "Beta ModAlpha", "Gamma ModAlpha"]);
     });
   });
 });

@@ -1,0 +1,668 @@
+import React from "react";
+import { configureStore } from "@reduxjs/toolkit";
+import { Provider } from "react-redux";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import appReducer, { setMods } from "../src/appSlice";
+import initialState from "../src/initialAppState";
+import UnitViewerTab from "../src/components/UnitViewerTab";
+import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
+import { iconAssetUrl, unitAssetUrl } from "../src/assetUrls";
+
+/** Icons reach the renderer as asset protocol URLs now, so the fixtures are URLs too. */
+const iconUrl = (name: string) => iconAssetUrl(1, `ui\\icons\\${name}.png`);
+
+vi.mock("react-virtualized", () => ({
+  AutoSizer: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) =>
+    children({ width: 320, height: 600 }),
+  List: ({
+    rowCount,
+    rowRenderer,
+  }: {
+    rowCount: number;
+    rowRenderer: (props: { index: number; key: string; style: React.CSSProperties }) => React.ReactNode;
+  }) => <div>{Array.from({ length: rowCount }, (_, index) => rowRenderer({ index, key: `${index}`, style: {} }))}</div>,
+}));
+
+const tables: UnitViewerTableRows = {
+  main_units_tables: [
+    {
+      unit: "unit_a",
+      land_unit: "land_a",
+      caste: "hero",
+      num_men: "10",
+      recruitment_cost: "100",
+      multiplayer_cost: "120",
+      ui_unit_group_land: "grouping_hero",
+    },
+    {
+      unit: "unit_b",
+      land_unit: "land_b",
+      caste: "lord",
+      num_men: "10",
+      recruitment_cost: "150",
+      multiplayer_cost: "170",
+      ui_unit_group_land: "grouping_lord",
+    },
+  ],
+  ui_unit_groupings_tables: [
+    { key: "grouping_hero", parent_group: "heroes_agents" },
+    { key: "grouping_lord", parent_group: "commander" },
+  ],
+  ui_unit_group_parents_tables: [
+    { key: "commander", order: "10" },
+    { key: "heroes_agents", order: "20" },
+  ],
+  land_units_tables: [
+    {
+      key: "land_a",
+      man_entity: "entity",
+      primary_melee_weapon: "weapon",
+      melee_attack: "20",
+      attribute_group: "group_a",
+    },
+    { key: "land_b", man_entity: "entity", primary_melee_weapon: "weapon", melee_attack: "30" },
+  ],
+  battle_entities_tables: [
+    { key: "entity", type: "man", hit_points: "100", mass: "50", run_speed: "3", charge_speed: "4" },
+  ],
+  melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5", melee_attack_interval: "4" }],
+  factions_tables: [{ key: "faction", subculture: "culture" }],
+  units_custom_battle_permissions_tables: [
+    { unit: "unit_a", faction: "faction" },
+    { unit: "unit_b", faction: "faction" },
+  ],
+  land_units_to_unit_abilites_junctions_tables: [{ land_unit: "land_a", ability: "ability_without_special" }],
+  unit_abilities_tables: [
+    { key: "ability_without_special", icon_name: "ability_icon", type: "active", source_type: "unit" },
+  ],
+  special_ability_to_special_ability_phase_junctions_tables: [
+    { special_ability: "ability_without_special", phase: "ability_phase" },
+  ],
+  special_ability_phases_tables: [{ id: "ability_phase", fatigue_change_ratio: "-0.1" }],
+  special_ability_phase_stat_effects_tables: [
+    { phase: "ability_phase", stat: "stat_melee_attack", value: "1.25", how: "mult" },
+  ],
+  unit_abilities_to_additional_ui_effects_juncs_tables: [{ ability: "ability_without_special", effect: "test_effect" }],
+  unit_abilities_additional_ui_effects_tables: [{ key: "test_effect", sort_order: "1", effect_state: "positive" }],
+  unit_attributes_to_groups_junctions_tables: [{ attribute_group: "group_a", attribute: "attribute_a" }],
+  ui_unit_stats_tables: [
+    { key: "stat_health", icon: "ui/skins/default/icon_stat_health.png" },
+    { key: "stat_melee_attack", icon: "ui/skins/default/icon_stat_melee_attack.png" },
+  ],
+};
+
+const built = buildUnitViewerData(
+  tables,
+  (key) =>
+    ({
+      land_units_onscreen_name_land_a: "Alpha",
+      land_units_onscreen_name_land_b: "Beta",
+      cultures_subcultures_name_culture: "Culture",
+      ui_unit_group_parents_onscreen_name_commander: "Lords",
+      ui_unit_group_parents_onscreen_name_heroes_agents: "Heroes",
+      unit_abilities_onscreen_name_ability_without_special: "Test Ability",
+      unit_abilities_tooltip_text_ability_without_special: "Ability description",
+      unit_stat_localisations_onscreen_name_stat_melee_attack: "Melee Attack",
+      random_localisation_strings_string_fatigue: "Vigour per second",
+      unit_abilities_additional_ui_effects_localised_text_test_effect: "Test active effect",
+      unit_attributes_bullet_text_attribute_a: "Test Attribute||Attribute description",
+    })[key],
+);
+
+const renderViewer = (mods: Mod[] = []) => {
+  const store = configureStore({
+    reducer: { app: appReducer },
+    preloadedState: {
+      app: {
+        ...initialState,
+        currentGame: "wh3" as const,
+        currentPreset: { ...initialState.currentPreset, mods },
+      },
+    },
+  });
+  return {
+    ...render(
+      <Provider store={store}>
+        <UnitViewerTab />
+      </Provider>,
+    ),
+    store,
+  };
+};
+
+const createEnabledMod = (): Mod => ({
+  humanName: "Example",
+  name: "example.pack",
+  path: "/game/data/example.pack",
+  imgPath: "",
+  workshopId: "123",
+  isEnabled: true,
+  modDirectory: "/game/data",
+  isInData: true,
+  loadOrder: undefined,
+  author: "",
+  isDeleted: false,
+  isMovie: false,
+  size: 1,
+  isSymbolicLink: false,
+  tags: ["mod"],
+});
+
+describe("Unit Viewer UI", () => {
+  beforeEach(() => {
+    window.api = {
+      ...window.api,
+      getUnitViewerCatalog: vi.fn().mockResolvedValue({
+        success: true,
+        sessionId: "session",
+        groups: built.groups,
+        unitGroups: built.unitGroups,
+        constants: built.constants,
+        statIcons: {
+          "ui\\skins\\default\\icon_stat_health.png": iconUrl("health"),
+          "ui\\skins\\default\\icon_stat_melee_attack.png": iconUrl("melee-attack"),
+        },
+      }),
+      getUnitViewerDetails: vi.fn().mockImplementation(async (_sessionId: string, unitKey: string) => ({
+        success: true,
+        unit: built.units.get(unitKey),
+        icons:
+          unitKey === "unit_a"
+            ? {
+                "ui\\battle ui\\ability_icons\\ability_icon.png": iconUrl("ability"),
+                "ui\\battle ui\\ability_icons\\attribute_a.png": iconUrl("attribute"),
+              }
+            : {},
+      })),
+      prewarmUnitViewerAssets: vi.fn().mockImplementation(async (_sessionId: string, assetPaths: string[]) => ({
+        success: true,
+        resolved: assetPaths,
+      })),
+    } as NonNullable<Window["api"]>;
+  });
+
+  it("filters the unit list to vanilla or an enabled mod", async () => {
+    const mod = createEnabledMod();
+    const emptyMod = { ...mod, humanName: "Empty", name: "empty.pack", path: "/game/data/empty.pack" };
+    const groups = built.groups.map((group) => ({
+      ...group,
+      units: group.units.map((unit) => ({
+        ...unit,
+        originPackPath: unit.key === "unit_b" ? mod.path : undefined,
+      })),
+    }));
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups,
+      unitGroups: built.unitGroups,
+      constants: built.constants,
+      statIcons: {},
+    });
+
+    renderViewer([mod, emptyMod]);
+    await screen.findByText("Culture");
+    const modFilter = screen.getByLabelText("Filter by mod");
+    expect(modFilter).toHaveValue("all");
+    expect(within(modFilter).getByRole("option", { name: "All" })).toBeInTheDocument();
+    expect(within(modFilter).getByRole("option", { name: "Vanilla" })).toBeInTheDocument();
+    expect(within(modFilter).getByRole("option", { name: "Example" })).toBeInTheDocument();
+    expect(within(modFilter).queryByRole("option", { name: "Empty" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Culture"));
+    expect(screen.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
+
+    fireEvent.change(modFilter, { target: { value: "vanilla" } });
+    expect(screen.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Beta" })).not.toBeInTheDocument();
+
+    fireEvent.change(modFilter, { target: { value: mod.path } });
+    expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
+  });
+
+  it("selects multiple units without duplicates and exposes the shared comparison controls", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(screen.getByTitle("Lord")).toHaveTextContent("L");
+    expect(screen.getByTitle("Hero")).toHaveTextContent("H");
+    const rosterButtons = screen.getAllByRole("button").filter((button) => button.title.startsWith("unit_"));
+    expect(rosterButtons.map((button) => button.getAttribute("aria-label"))).toEqual(["Beta", "Alpha"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    await waitFor(() => expect(window.api?.getUnitViewerDetails).toHaveBeenCalledWith("session", "unit_a"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    expect(screen.getByText(/2 selected/)).toBeInTheDocument();
+    const comparison = screen.getByLabelText("Comparison");
+    expect(comparison).toHaveValue("first");
+    expect(within(comparison).getByRole("option", { name: "Compare to Alpha" })).toBeInTheDocument();
+    expect(within(comparison).getByRole("option", { name: "Compare to Beta" })).toBeInTheDocument();
+    expect(within(comparison).getByRole("option", { name: "Compare to left position" })).toBeInTheDocument();
+
+    fireEvent.change(comparison, { target: { value: "left" } });
+    expect(comparison).toHaveValue("left");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Move Beta left" }));
+    const cards = document.querySelectorAll("article");
+    expect(within(cards[0] as HTMLElement).getByText("Beta")).toBeInTheDocument();
+    expect(within(cards[1] as HTMLElement).getByText("Alpha")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Unit Size"), { target: { value: "small" } });
+    fireEvent.change(screen.getByLabelText("Rank"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Vigour"), { target: { value: "threshold_tired" } });
+    expect(screen.getByLabelText("Unit Size")).toHaveValue("small");
+    expect(screen.getByLabelText("Rank")).toHaveValue("3");
+    expect(screen.getByLabelText("Vigour")).toHaveValue("threshold_tired");
+
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+  });
+
+  it("limits selection to one unit in visualize mode", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    expect(screen.getByText(/2 selected/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Comparison")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+  });
+
+  it("shows the wireframe option only in visualize mode and persists its choice", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+
+    const checkbox = screen.getByRole("checkbox", { name: "Show wireframe" });
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerShowWireframe).toBe(false);
+
+    const unsyncedAnimationsCheckbox = screen.getByRole("checkbox", { name: "Unsynced Anims" });
+    expect(unsyncedAnimationsCheckbox).toBeChecked();
+    fireEvent.click(unsyncedAnimationsCheckbox);
+    expect(unsyncedAnimationsCheckbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerUnsyncedAnimations).toBe(false);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(screen.queryByRole("checkbox", { name: "Show wireframe" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Unsynced Anims" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByRole("checkbox", { name: "Show wireframe" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Unsynced Anims" })).not.toBeChecked();
+  });
+
+  it("hides the unit card in visualize mode and persists its choice", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+
+    const cardCheckbox = screen.getByRole("checkbox", { name: "Show unit card" });
+    expect(cardCheckbox).toBeChecked();
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    await waitFor(() => expect(document.querySelector("article")).toBeInTheDocument());
+
+    fireEvent.click(cardCheckbox);
+    expect(cardCheckbox).not.toBeChecked();
+    expect(store.getState().app.unitViewerShowUnitCard).toBe(false);
+    expect(document.querySelector("article")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(screen.queryByRole("checkbox", { name: "Show unit card" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Visualize" }));
+    expect(screen.getByRole("checkbox", { name: "Show unit card" })).not.toBeChecked();
+  });
+
+  it("does not render the model preview in compare mode", async () => {
+    window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
+      success: true,
+      unit: { ...built.units.get("unit_a")!, variantMeshPath: "variant.unit.variantmeshdefinition" },
+      icons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    await screen.findByText("Alpha");
+    expect(screen.queryByRole("region", { name: "Unit render preview" })).not.toBeInTheDocument();
+  });
+
+  it("hides missile weapon sections when a unit has no missile weapons", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    const card = await waitFor(() => {
+      const article = document.querySelector("article");
+      expect(article).toBeInTheDocument();
+      return article as HTMLElement;
+    });
+    expect(within(card).queryByRole("heading", { name: "Missile Weapon" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("heading", { name: "Secondary Missile" })).not.toBeInTheDocument();
+  });
+
+  it("shows a custom battle mount name in the unit list and beneath the unit key", async () => {
+    const variantBuilt = buildUnitViewerData(
+      {
+        ...tables,
+        units_custom_battle_mounts_tables: [{ base_unit: "unit_b", mounted_unit: "unit_a" }],
+      },
+      (key) =>
+        ({
+          land_units_onscreen_name_land_a: "Alpha",
+          land_units_onscreen_name_land_b: "Beta",
+          cultures_subcultures_name_culture: "Culture",
+          ui_unit_group_parents_onscreen_name_commander: "Lords",
+          ui_unit_group_parents_onscreen_name_heroes_agents: "Heroes",
+          units_custom_battle_mounts_mount_name_unit_bunit_a: "On Horseback",
+        })[key],
+    );
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups: variantBuilt.groups,
+      unitGroups: variantBuilt.unitGroups,
+      constants: variantBuilt.constants,
+      statIcons: {},
+    });
+    window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
+      success: true,
+      unit: variantBuilt.units.get("unit_a"),
+      icons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    const variantButton = screen.getByRole("button", { name: "Alpha (On Horseback)" });
+    expect(variantButton).toHaveTextContent("Alpha");
+    expect(variantButton).toHaveTextContent("(On Horseback)");
+
+    fireEvent.click(variantButton);
+    const card = await waitFor(() => {
+      const article = document.querySelector("article");
+      expect(article).toBeInTheDocument();
+      return article as HTMLElement;
+    });
+    expect(within(card).getByText("On Horseback")).toBeInTheDocument();
+  });
+
+  it("browses unit cards grouped by roster category and adds them to the comparison", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
+    const browser = await screen.findByRole("dialog", { name: "Unit card browser" });
+    expect(within(browser).getByLabelText("Subculture")).toHaveValue("culture");
+    expect(
+      within(browser)
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(["Lords1", "Heroes1"]);
+
+    const addBeta = within(browser).getByRole("button", { name: "Add Beta to comparison" });
+    // The card is addressed rather than fetched: the asset protocol serves it out of the session.
+    await waitFor(() =>
+      expect(addBeta.querySelector("img")).toHaveAttribute(
+        "src",
+        unitAssetUrl("session", "ui\\units\\icons\\unit_b.png"),
+      ),
+    );
+    // One read for the whole subculture, which is all the batching that is left.
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledWith("session", [
+      "ui\\units\\icons\\unit_b.png",
+      "ui\\units\\icons\\unit_a.png",
+    ]);
+
+    fireEvent.click(addBeta);
+    expect(within(browser).getByText(/1 selected/)).toBeInTheDocument();
+    expect(within(browser).getByRole("button", { name: "Remove Beta from comparison" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await waitFor(() => expect(window.api?.getUnitViewerDetails).toHaveBeenCalledWith("session", "unit_b"));
+
+    fireEvent.change(within(browser).getByLabelText("Search unit cards"), { target: { value: "alpha" } });
+    expect(within(browser).queryByRole("button", { name: /Beta/ })).not.toBeInTheDocument();
+    fireEvent.click(within(browser).getByRole("button", { name: "Add Alpha to comparison" }));
+    expect(within(browser).getByText(/2 selected/)).toBeInTheDocument();
+    // Searching and selecting reuse the subculture that was already read.
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(within(browser).getByRole("button", { name: "Close unit card browser" }));
+    expect(screen.queryByRole("dialog", { name: "Unit card browser" })).not.toBeInTheDocument();
+    const cards = await waitFor(() => {
+      const articles = document.querySelectorAll("article");
+      expect(articles).toHaveLength(2);
+      return articles;
+    });
+    expect(within(cards[0] as HTMLElement).getByText("Beta")).toBeInTheDocument();
+    expect(within(cards[1] as HTMLElement).getByText("Alpha")).toBeInTheDocument();
+  });
+
+  it("does not rebuild the catalog when Redux replaces the mods array with equivalent mods", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+    expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(1);
+
+    const mod = createEnabledMod();
+    act(() => {
+      store.dispatch(setMods([mod]));
+    });
+    await waitFor(() => expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2));
+
+    // Pack reading hands Redux a fresh array of equal mods; that must not restart the load.
+    act(() => {
+      store.dispatch(setMods([{ ...mod }]));
+    });
+    act(() => {
+      store.dispatch(setMods([{ ...mod }]));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2);
+  });
+
+  it("requests card art in panel order rather than roster order", async () => {
+    // Roster order sorts lords first; panel order follows the roster sections, so the commander
+    // section comes first even though its unit is not a lord.
+    const orderTables: UnitViewerTableRows = {
+      main_units_tables: [
+        {
+          unit: "unit_lord_infantry",
+          land_unit: "land_x",
+          num_men: "1",
+          caste: "lord",
+          ui_unit_group_land: "grouping_infantry",
+        },
+        { unit: "unit_plain_commander", land_unit: "land_y", num_men: "1", ui_unit_group_land: "grouping_commander" },
+      ],
+      land_units_tables: [
+        { key: "land_x", man_entity: "entity", primary_melee_weapon: "weapon" },
+        { key: "land_y", man_entity: "entity", primary_melee_weapon: "weapon" },
+      ],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "50" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      ui_unit_groupings_tables: [
+        { key: "grouping_commander", parent_group: "commander" },
+        { key: "grouping_infantry", parent_group: "infantry" },
+      ],
+      ui_unit_group_parents_tables: [
+        { key: "commander", order: "10" },
+        { key: "infantry", order: "20" },
+      ],
+      factions_tables: [{ key: "faction", subculture: "culture" }],
+      units_custom_battle_permissions_tables: [
+        { unit: "unit_lord_infantry", faction: "faction" },
+        { unit: "unit_plain_commander", faction: "faction" },
+      ],
+    };
+    const orderBuilt = buildUnitViewerData(
+      orderTables,
+      (key) => ({ cultures_subcultures_name_culture: "Culture" })[key],
+    );
+    expect(orderBuilt.groups[0].units.map((unit) => unit.key)).toEqual(["unit_lord_infantry", "unit_plain_commander"]);
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups: orderBuilt.groups,
+      unitGroups: orderBuilt.unitGroups,
+      constants: orderBuilt.constants,
+      statIcons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
+    await screen.findByRole("dialog", { name: "Unit card browser" });
+
+    await waitFor(() => expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toEqual([
+      "ui\\units\\icons\\unit_plain_commander.png",
+      "ui\\units\\icons\\unit_lord_infantry.png",
+    ]);
+  });
+
+  it("reads a large subculture in one pass and draws every card from its own URL", async () => {
+    const unitCount = 120;
+    const largeTables: UnitViewerTableRows = {
+      main_units_tables: Array.from({ length: unitCount }, (_, index) => ({
+        unit: `unit_${index}`,
+        land_unit: `land_${index}`,
+        num_men: "10",
+        ui_unit_group_land: "grouping_lord",
+      })),
+      land_units_tables: Array.from({ length: unitCount }, (_, index) => ({
+        key: `land_${index}`,
+        man_entity: "entity",
+        primary_melee_weapon: "weapon",
+      })),
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "50" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      ui_unit_groupings_tables: [{ key: "grouping_lord", parent_group: "commander" }],
+      ui_unit_group_parents_tables: [{ key: "commander", order: "10" }],
+      factions_tables: [{ key: "faction", subculture: "culture" }],
+      units_custom_battle_permissions_tables: Array.from({ length: unitCount }, (_, index) => ({
+        unit: `unit_${index}`,
+        faction: "faction",
+      })),
+    };
+    const largeBuilt = buildUnitViewerData(
+      largeTables,
+      (key) => ({ cultures_subcultures_name_culture: "Culture" })[key],
+    );
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups: largeBuilt.groups,
+      unitGroups: largeBuilt.unitGroups,
+      constants: largeBuilt.constants,
+      statIcons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
+    await screen.findByRole("dialog", { name: "Unit card browser" });
+
+    // The whole subculture is read once, and no card travels through IPC.
+    await waitFor(() => expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toHaveLength(unitCount);
+    await waitFor(() => expect(document.querySelectorAll("img")).toHaveLength(unitCount));
+    expect(document.querySelector("img")).toHaveAttribute(
+      "src",
+      unitAssetUrl("session", "ui\\units\\icons\\unit_0.png"),
+    );
+  });
+
+  it("closes the unit card browser on Escape", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
+    await screen.findByRole("dialog", { name: "Unit card browser" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Unit card browser" })).not.toBeInTheDocument();
+  });
+
+  it("renders attribute icons and unclipped viewport tooltips for abilities without special rows", async () => {
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    const abilityButton = await screen.findByRole("button", { name: "Test Ability" });
+    const attribute = await screen.findByText("Test Attribute");
+    const attributeIcon = attribute.parentElement?.querySelector("img");
+    expect(attributeIcon).toHaveAttribute("src", iconUrl("attribute"));
+    const healthIcon = screen.getByText("Health").parentElement?.querySelector("img");
+    expect(healthIcon).toHaveAttribute("src", iconUrl("health"));
+
+    fireEvent.mouseEnter(abilityButton);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(within(tooltip).getByText("Ability description")).toBeInTheDocument();
+    const meleeAttackEffect = within(tooltip).getByText(/Melee Attack: \+25%/);
+    expect(meleeAttackEffect).toBeInTheDocument();
+    expect(within(tooltip).getByText(/Vigour per second: -10%/)).toBeInTheDocument();
+    expect(within(tooltip).getByText(/Test active effect/)).toBeInTheDocument();
+    expect(meleeAttackEffect.querySelector("img")).toHaveAttribute("src", iconUrl("melee-attack"));
+    expect(tooltip).toHaveClass("fixed");
+    expect(tooltip.closest("article")).toBeNull();
+  });
+
+  it("rebuilds an expired main-process session and retries selected units", async () => {
+    const getCatalog = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        sessionId: "expired-session",
+        groups: built.groups,
+        constants: built.constants,
+        statIcons: {},
+      })
+      .mockResolvedValue({
+        success: true,
+        sessionId: "replacement-session",
+        groups: built.groups,
+        constants: built.constants,
+        statIcons: {},
+      });
+    const getDetails = vi
+      .fn()
+      .mockImplementation(async (session: string, unitKey: string) =>
+        session === "expired-session"
+          ? { success: false, error: "Unit Viewer session expired" }
+          : { success: true, unit: built.units.get(unitKey), icons: {} },
+      );
+    window.api!.getUnitViewerCatalog = getCatalog;
+    window.api!.getUnitViewerDetails = getDetails;
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    await waitFor(() => expect(getCatalog).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getDetails).toHaveBeenCalledWith("replacement-session", "unit_a"));
+    expect(screen.queryByText("Unit Viewer session expired")).not.toBeInTheDocument();
+    expect(await screen.findByText("Test Attribute")).toBeInTheDocument();
+  });
+});

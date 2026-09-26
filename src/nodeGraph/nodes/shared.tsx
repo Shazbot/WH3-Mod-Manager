@@ -1,11 +1,36 @@
 import React from "react";
 
-import { FlowNodeDataPatch, NodeEditorActionData } from "../types";
+import { FlowNodeDataPatch, FlowOption, NodeEditorActionData } from "../types";
 
 export const DefaultTableVersionsContext = React.createContext<Record<string, number> | undefined>(undefined);
 
 export const useDefaultTableVersions = () => {
   return React.useContext(DefaultTableVersionsContext);
+};
+
+/**
+ * The flow's options, so a node can offer them for selection. Ambient editor state rather than node
+ * data: only the chosen option's id is persisted with the node.
+ */
+export const FlowOptionsContext = React.createContext<FlowOption[]>([]);
+
+export const useFlowOptions = () => {
+  return React.useContext(FlowOptionsContext);
+};
+
+export interface NodeEditorPanelContextValue {
+  isActive: boolean;
+  modalRoot: HTMLElement | null;
+}
+
+/** Keeps node-owned portals inside the mounted Node Editor panel. */
+export const NodeEditorPanelContext = React.createContext<NodeEditorPanelContextValue>({
+  isActive: true,
+  modalRoot: null,
+});
+
+export const useNodeEditorPanel = () => {
+  return React.useContext(NodeEditorPanelContext);
 };
 
 export const dispatchNodeDataUpdate = (

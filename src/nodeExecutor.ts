@@ -2,11 +2,14 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   chunkSchemaIntoRows,
+  getDBVersion,
   getPacksTableData,
   readPack,
+  readDBPackedFilesFromIndex,
   typeToBuffer,
   writePack,
 } from "./packFileSerializer";
+import { fillVanillaTablesFromCache, readVanillaPackFromCache } from "./vanillaDbCache/store";
 import appData from "./appData";
 import {
   AmendedSchemaField,
@@ -15,15 +18,65 @@ import {
   DBVersion,
   DBField,
   Pack,
+  PackSource,
   PackedFile,
 } from "./packFileTypes";
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
-import { getDefaultTableVersions } from "./ipcMainListeners";
-import { FlowExecutionContext, buildReadPackCacheKey, flowExecutionDebugLog } from "./flowExecutionSupport";
-import { getSchemaForGame } from "./schema";
+import { getDefaultTableVersions, getLocsTrie, getVanillaLocLookup, openModInViewer } from "./ipcMainListeners";
+import type { KeyedLookup } from "./utility/trie";
+import { evaluateFormula } from "./utility/formulaEvaluation";
+import {
+  FlowExecutionContext,
+  buildFlowOutputPackBaseName,
+  buildReadPackCacheKey,
+  flowExecutionDebugLog,
+  isFlowSourcePack,
+  isPackSource,
+  resolveFlowSourcePackPath,
+} from "./flowExecutionSupport";
+import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { buildPackPriority, resolveFileSourcePacks, sortPacksByAscendingPriority } from "./nodeGraph/packPriority";
+import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
+import {
+  VanillaPackIndex,
+  collectVanillaFilesMatching,
+  collectVanillaFilesUnderPrefix,
+  findVanillaPackContaining,
+  findVanillaPacksUnderPrefix,
+  normalizeVanillaPackPath,
+} from "./vanillaPackIndex/format";
+import { getVanillaPackIndex } from "./vanillaPackIndex/store";
+import {
+  getSchemaForGame,
+  getReferencesForGame,
+  getDBFieldsReferencedByForGame,
+  gameToTablesWithNumericIds,
+  tablesToIgnore,
+} from "./schema";
+import { getFilterValueCandidates, normalizeFilterMatchMode } from "./nodeGraph/types";
+import type { FilterRow } from "./nodeGraph/types";
+import { buildDefaultCellValue } from "./utility/dbRowCells";
+import { TextFileEditRule, applyTextFileEdits, matchesTextFileTarget } from "./nodeGraph/textFileEdits";
+import type { TextFileFormatter } from "./nodeGraph/textFileFormatting";
+import { PackFileOperationRule, planPackCopy, planPackFileOperations } from "./nodeGraph/packFileOperations";
+import { applyEditXmlFile } from "./nodeGraph/editXmlFile";
+import type { EditXmlFileConfig } from "./nodeGraph/editXmlFile";
+import {
+  DeepClonePlan,
+  LoadedTableFile,
+  buildFileCopyOutputs,
+  executeDeepClonePlan,
+  parseFilenameRelativePaths,
+} from "./flowDeepClone";
+import type { DeepCloneOverride, DeepCloneTreeNode, DeepCloneVariantAxis, LocTextRule } from "./nodeGraph/nodes/types";
+import {
+  buildCompactPackIndex,
+  findCompactPackFilesUnderPrefix,
+  forEachCompactPackFileName,
+} from "./utility/compactPackIndex";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
 // Map structure: sourceColumnId -> Set of used numbers
@@ -43,6 +96,74 @@ const hotPathLog = (executionContext: FlowExecutionContext | undefined, ...args:
 
   console.log(...args);
 };
+
+/** Avoid asking Node/Electron's console to inspect entire tables and pack indexes on hot paths. */
+const summarizeFlowInput = (input: any): Record<string, unknown> => {
+  if (Array.isArray(input)) {
+    return { inputCount: input.length, inputTypes: input.map((entry) => entry?.type ?? typeof entry) };
+  }
+  if (!input || typeof input !== "object") return { type: typeof input };
+  if (input.type === "PackFiles") return { type: input.type, packCount: input.files?.length ?? 0 };
+  if (input.type === "TableSelection") {
+    return { type: input.type, tableCount: input.tables?.length ?? 0, sourcePackCount: input.sourceFiles?.length ?? 0 };
+  }
+  if (input.type === "ColumnSelection") return { type: input.type, columnGroupCount: input.columns?.length ?? 0 };
+  if (input.type === "ChangedColumnSelection") {
+    return { type: input.type, columnGroupCount: input.adjustedInputData?.columns?.length ?? 0 };
+  }
+  return { type: input.type ?? "object" };
+};
+
+/**
+ * Compares a cell against a filter value, case-insensitively.
+ *
+ * Full mode keeps the old exact-match behavior. Partial mode treats each value as a case-insensitive
+ * substring, and regex mode uses each value as a case-insensitive JavaScript regular expression.
+ * Newline-separated values are lists in all three modes, matching if any entry matches.
+ */
+const matchesFilterValue = (
+  cellValue: string,
+  filterValue: string,
+  regexCache: Map<string, RegExp | null>,
+  matchMode?: unknown,
+): boolean => {
+  const mode = normalizeFilterMatchMode(matchMode);
+  const candidates = getFilterValueCandidates(filterValue);
+
+  if (mode === "regex") {
+    return candidates.some((candidate) => {
+      let regex: RegExp | null;
+      if (regexCache.has(candidate)) {
+        regex = regexCache.get(candidate) ?? null;
+      } else {
+        try {
+          regex = new RegExp(candidate, "i");
+        } catch {
+          // An invalid pattern cannot match. This also keeps a malformed flow from crashing execution.
+          regex = null;
+        }
+        regexCache.set(candidate, regex);
+      }
+      return regex?.test(cellValue) ?? false;
+    });
+  }
+
+  const loweredCell = cellValue.toLowerCase();
+  return candidates.some((candidate) =>
+    mode === "partial" ? loweredCell.includes(candidate.toLowerCase()) : candidate.toLowerCase() === loweredCell,
+  );
+};
+
+type EvaluatedFilterResult = { result: boolean; operator: "AND" | "OR" };
+
+export const CONDITIONAL_BRANCH_TRUE_HANDLE = "output-true";
+export const CONDITIONAL_BRANCH_FALSE_HANDLE = "output-false";
+
+/**
+ * The handle a radio choice drives. Built from the choice id, which is why a choice's label can be
+ * renamed without breaking the connections leaving the node.
+ */
+export const conditionalBranchChoiceHandle = (choiceId: string) => `output-choice-${choiceId}`;
 
 const getNodeConfig = <T>(config: unknown, textValue: string): T | undefined => {
   if (config !== undefined) {
@@ -81,6 +202,331 @@ const getRowsForPackedFile = (
   return rows;
 };
 
+/**
+ * The logical table a packed DB file belongs to. A DB file's first two path components are the
+ * table name; everything after that is a source-file variant/subname. Keep this comparison
+ * independent of the pack that supplied the file: the effective row is chosen by the packed DB
+ * filename alone.
+ */
+const getCanonicalLogicalTableName = (packedFileName: string): string => {
+  const normalizedName = packedFileName.replace(/[\\/]+/g, "\\").toLowerCase();
+  const [folder, tableName] = normalizedName.split("\\");
+  return folder === "db" && tableName ? `db\\${tableName}` : normalizedName;
+};
+
+const normalizePackedDbFileName = (packedFileName: string): string =>
+  packedFileName.replace(/[\\/]+/g, "\\").toLowerCase();
+
+const cloneEffectiveSchemaField = (field: AmendedSchemaField): AmendedSchemaField => structuredClone(field);
+
+type EffectiveRowCandidate = {
+  tableIndex: number;
+  rowIndex: number;
+  logicalTableName: string;
+  key: string;
+  normalizedFileName: string;
+};
+
+type PreparedEffectiveTable = {
+  tableData: DBTablesNodeTable;
+  rows: AmendedSchemaField[][];
+  keyFields: DBField[];
+  logicalTableName: string;
+  normalizedFileName: string;
+  hasSchemaRows: boolean;
+};
+
+/**
+ * Returns the rows the game would expose from a set of source-pack table entries.
+ *
+ * Rows are identities by the complete schema key tuple, while the source-file variant is the only
+ * winner signal. This is deliberately separate from pack load priority: a flow can receive the
+ * same packed DB file from different packs, and the requested effective-row semantics compare the
+ * file names/subnames rather than the packs carrying them. Equal normalized file names retain the
+ * first row encountered.
+ *
+ * Every output descriptor and schema field is copied. In particular, callers may safely amend the
+ * returned table without changing the PackedFile cached on the source Pack.
+ */
+export const resolveEffectiveTableRows = (
+  tableEntries: readonly DBTablesNodeTable[],
+  executionContext?: FlowExecutionContext,
+): DBTablesNodeTable[] => {
+  const preparedTables: PreparedEffectiveTable[] = tableEntries.map((tableData) => {
+    const table = tableData.table;
+    const keyFields = table.tableSchema?.fields?.filter((field) => field.is_key) ?? [];
+    const hasSchemaRows = !!table.tableSchema && !!table.schemaFields;
+
+    return {
+      tableData,
+      rows: hasSchemaRows ? getRowsForPackedFile(table, executionContext) : [],
+      keyFields,
+      logicalTableName: getCanonicalLogicalTableName(table.name),
+      normalizedFileName: normalizePackedDbFileName(table.name),
+      hasSchemaRows,
+    };
+  });
+
+  const getKeyForRow = (preparedTable: PreparedEffectiveTable, row: AmendedSchemaField[]): string | undefined => {
+    if (preparedTable.keyFields.length === 0) return undefined;
+
+    const keyValues: Array<[string, unknown]> = [];
+    for (const keyField of preparedTable.keyFields) {
+      const keyCell = row.find((cell) => cell.name === keyField.name);
+      if (!keyCell || keyCell.resolvedKeyValue === undefined || keyCell.resolvedKeyValue === null) {
+        return undefined;
+      }
+      keyValues.push([keyField.name, keyCell.resolvedKeyValue]);
+    }
+
+    // JSON array encoding is collision-safe for values containing separators or other delimiters.
+    return JSON.stringify(keyValues);
+  };
+
+  const winnersByLogicalTableAndKey = new Map<string, EffectiveRowCandidate>();
+  for (let tableIndex = 0; tableIndex < preparedTables.length; tableIndex++) {
+    const preparedTable = preparedTables[tableIndex];
+    if (!preparedTable.hasSchemaRows || preparedTable.keyFields.length === 0) continue;
+
+    for (let rowIndex = 0; rowIndex < preparedTable.rows.length; rowIndex++) {
+      const key = getKeyForRow(preparedTable, preparedTable.rows[rowIndex]);
+      // A row without a complete tuple cannot safely participate in deduplication; retain it.
+      if (key === undefined) continue;
+
+      const candidate: EffectiveRowCandidate = {
+        tableIndex,
+        rowIndex,
+        logicalTableName: preparedTable.logicalTableName,
+        key,
+        normalizedFileName: preparedTable.normalizedFileName,
+      };
+      const identity = JSON.stringify([candidate.logicalTableName, candidate.key]);
+      const currentWinner = winnersByLogicalTableAndKey.get(identity);
+
+      // Lower lexical filename wins. Keeping the existing winner on equality gives stable
+      // first-encountered behavior without consulting pack names or load order.
+      if (!currentWinner || candidate.normalizedFileName < currentWinner.normalizedFileName) {
+        winnersByLogicalTableAndKey.set(identity, candidate);
+      }
+    }
+  }
+
+  const cloneTableDataWithRows = (
+    tableData: DBTablesNodeTable,
+    rows: AmendedSchemaField[][] | undefined,
+  ): DBTablesNodeTable => ({
+    ...tableData,
+    table: {
+      ...tableData.table,
+      ...(rows ? { schemaFields: rows.flatMap((row) => row.map(cloneEffectiveSchemaField)) } : {}),
+      ...(rows === undefined && tableData.table.schemaFields
+        ? { schemaFields: tableData.table.schemaFields.map((field) => structuredClone(field)) }
+        : {}),
+    },
+  });
+
+  const effectiveTables: DBTablesNodeTable[] = [];
+  for (let tableIndex = 0; tableIndex < preparedTables.length; tableIndex++) {
+    const preparedTable = preparedTables[tableIndex];
+    if (!preparedTable.hasSchemaRows) {
+      // No schema data means there is no safe row extraction rule. Preserve the entry and clone its
+      // schema fields if present.
+      effectiveTables.push(cloneTableDataWithRows(preparedTable.tableData, undefined));
+      continue;
+    }
+
+    const retainedRows =
+      preparedTable.keyFields.length === 0
+        ? preparedTable.rows
+        : preparedTable.rows.filter((row, rowIndex) => {
+            const key = getKeyForRow(preparedTable, row);
+            if (key === undefined) return true;
+
+            const identity = JSON.stringify([preparedTable.logicalTableName, key]);
+            const winner = winnersByLogicalTableAndKey.get(identity);
+            return winner?.tableIndex === tableIndex && winner.rowIndex === rowIndex;
+          });
+
+    // A table entry that lost all of its rows should not be emitted at all.
+    if (retainedRows.length > 0) {
+      effectiveTables.push(cloneTableDataWithRows(preparedTable.tableData, retainedRows));
+    }
+  }
+
+  return effectiveTables;
+};
+
+type JoinTableLike = {
+  table: Pick<PackedFile, "tableSchema">;
+};
+
+/**
+ * Cross joins can combine different schema versions of the same table. Use the most complete
+ * schema as the preferred order, then add any fields only present in another version or in an
+ * already-amended row. The latter keeps this working for IndexedTable values, which do not retain
+ * every table that contributed rows.
+ */
+const getJoinSchemaFields = (tables: JoinTableLike[], rows: AmendedSchemaField[][] = []): DBField[] => {
+  const schemas = tables.map((table) => table.table.tableSchema?.fields ?? []).filter((fields) => fields.length > 0);
+  const preferredSchema = schemas.reduce<DBField[]>(
+    (preferred, fields) => (fields.length > preferred.length ? fields : preferred),
+    [],
+  );
+  const schemaFields: DBField[] = [];
+  const seenNames = new Set<string>();
+
+  const addField = (field: DBField) => {
+    if (!field.name || seenNames.has(field.name)) return;
+    seenNames.add(field.name);
+    schemaFields.push({ ...field });
+  };
+
+  for (const field of preferredSchema) addField(field);
+  for (const schema of schemas) {
+    for (const field of schema) addField(field);
+  }
+  for (const row of rows) {
+    for (const cell of row) {
+      if (!cell.name || seenNames.has(cell.name)) continue;
+      addField({
+        name: cell.name,
+        field_type: cell.type as SCHEMA_FIELD_TYPE,
+        is_key: cell.isKey || false,
+        default_value: "",
+        is_filename: false,
+        is_reference: [],
+        description: "Joined column",
+        ca_order: -1,
+        is_bitwise: 0,
+        enum_values: {},
+      });
+    }
+  }
+
+  return schemaFields;
+};
+
+const cloneJoinCell = (cell: AmendedSchemaField, name: string): AmendedSchemaField => ({
+  ...cell,
+  name,
+  fields: cell.fields.map((field) => ({ ...field })),
+});
+
+const createDefaultJoinCell = (field: DBField): AmendedSchemaField =>
+  buildDefaultCellValue(field.name, field.field_type, field.default_value ?? "", field.is_key);
+
+/**
+ * Give every row in a cross join the same cells, in the same order. Rows from an older schema are
+ * aligned by their field names and receive cells initialized from the schema defaults for columns
+ * that were added later. The positional fallback is for rows that have not gone through
+ * amendSchemaField yet.
+ */
+const normalizeRowsForJoinSchema = (
+  rows: AmendedSchemaField[][],
+  rowSchemaFields: DBField[],
+  joinSchemaFields: DBField[],
+): AmendedSchemaField[][] => {
+  if (joinSchemaFields.length === 0) return rows;
+
+  const defaultRowTemplate = joinSchemaFields.map((field) => createDefaultJoinCell(field));
+
+  return rows.map((row) => {
+    const cellsByName = new Map<string, AmendedSchemaField>();
+    row.forEach((cell, index) => {
+      const name = cell.name || rowSchemaFields[index]?.name;
+      if (name && !cellsByName.has(name)) cellsByName.set(name, cell);
+    });
+
+    return joinSchemaFields.map((field, index) => {
+      const cell = cellsByName.get(field.name);
+      return cell ? cloneJoinCell(cell, field.name) : cloneJoinCell(defaultRowTemplate[index], field.name);
+    });
+  });
+};
+
+const getMergeIdentityColumnNames = (
+  existingColumn: DBColumnSelectionTableValues,
+  currentColumn: DBColumnSelectionTableValues,
+): string[] => {
+  const tableFields =
+    currentColumn.sourceTable.tableSchema?.fields ?? existingColumn.sourceTable.tableSchema?.fields ?? [];
+  const keyColumnNames = tableFields.filter((field) => field.is_key).map((field) => field.name);
+  if (keyColumnNames.length > 0) {
+    return keyColumnNames;
+  }
+
+  const changedColumnNames = new Set([...existingColumn.selectedColumns, ...currentColumn.selectedColumns]);
+  return tableFields.filter((field) => !changedColumnNames.has(field.name)).map((field) => field.name);
+};
+
+const getRowMergeIdentity = (row: AmendedSchemaField[], identityColumnNames: string[]): string =>
+  JSON.stringify(
+    identityColumnNames.map((columnName) => {
+      const cell = row.find((candidate) => candidate.name === columnName);
+      return [columnName, cell?.resolvedKeyValue ?? cell?.fields.map((field) => field.val) ?? null];
+    }),
+  );
+
+const mergeChangedColumnRows = (
+  existingColumn: DBColumnSelectionTableValues,
+  currentColumn: DBColumnSelectionTableValues,
+  executionContext?: FlowExecutionContext,
+) => {
+  if (
+    !currentColumn.sourceTable.schemaFields ||
+    !existingColumn.sourceTable.schemaFields ||
+    !currentColumn.sourceTable.tableSchema ||
+    !existingColumn.sourceTable.tableSchema
+  ) {
+    return;
+  }
+
+  const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
+  const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
+  const currentSelectedSet = new Set(currentColumn.selectedColumns);
+  const identityColumnNames = getMergeIdentityColumnNames(existingColumn, currentColumn);
+
+  if (identityColumnNames.length === 0) {
+    for (let rowIndex = 0; rowIndex < currentRows.length; rowIndex++) {
+      if (!existingRows[rowIndex]) {
+        existingRows.push(structuredClone(currentRows[rowIndex]));
+        continue;
+      }
+      for (const currentCell of currentRows[rowIndex]) {
+        if (!currentSelectedSet.has(currentCell.name)) continue;
+        const existingCellIndex = existingRows[rowIndex].findIndex((cell) => cell.name === currentCell.name);
+        if (existingCellIndex !== -1) {
+          existingRows[rowIndex][existingCellIndex] = structuredClone(currentCell);
+        }
+      }
+    }
+  } else {
+    const existingRowsByIdentity = new Map(
+      existingRows.map((row) => [getRowMergeIdentity(row, identityColumnNames), row]),
+    );
+    for (const currentRow of currentRows) {
+      const identity = getRowMergeIdentity(currentRow, identityColumnNames);
+      const existingRow = existingRowsByIdentity.get(identity);
+      if (!existingRow) {
+        const addedRow = structuredClone(currentRow);
+        existingRows.push(addedRow);
+        existingRowsByIdentity.set(identity, addedRow);
+        continue;
+      }
+
+      for (const currentCell of currentRow) {
+        if (!currentSelectedSet.has(currentCell.name)) continue;
+        const existingCellIndex = existingRow.findIndex((cell) => cell.name === currentCell.name);
+        if (existingCellIndex !== -1) {
+          existingRow[existingCellIndex] = structuredClone(currentCell);
+        }
+      }
+    }
+  }
+
+  existingColumn.sourceTable.schemaFields = existingRows.flat();
+};
+
 const getColumnIndexForPackedFile = (
   packedFile: Pick<PackedFile, "tableSchema">,
   columnName: string,
@@ -106,30 +552,96 @@ const getColumnIndexForPackedFile = (
   return columnIndexes.get(columnName) ?? -1;
 };
 
+/**
+ * Load-order ranks for every pack a flow can be handed: vanilla first, then the enabled mods.
+ *
+ * Both lists run lowest priority first, so vanilla packs rank below every mod and, among
+ * themselves, in manifest order - the order the game loads them, where a later pack wins. Ranking
+ * vanilla explicitly rather than leaning on the "not in the load order" fallback matters now that a
+ * flow can be given the whole base game, because two vanilla packs can carry the same file.
+ */
+const buildFlowPackPriority = (): Map<string, number> =>
+  buildPackPriority([
+    ...getVanillaPackPathsInLoadOrder(),
+    ...sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path),
+  ]);
+
+/**
+ * The vanilla files these rules target, each mapped to the vanilla pack that wins for it.
+ *
+ * A rule naming an exact path is a single binary search, which is the case worth being fast: it is
+ * what a flow editing one known vanilla file does. Matching on file name or on a regex cannot be
+ * narrowed by sort order, so those rules cost one walk of the whole index between them.
+ */
+const resolveVanillaTargets = (vanillaIndex: VanillaPackIndex, packRules: TextFileEditRule[]): Map<string, string> => {
+  const packNameByFileName = new Map<string, string>();
+
+  for (const rule of packRules) {
+    if (rule.targetMatch !== "path") continue;
+    const fileName = normalizeVanillaPackPath((rule.target || "").trim());
+    if (!fileName) continue;
+    const packName = findVanillaPackContaining(vanillaIndex, fileName);
+    if (packName) packNameByFileName.set(fileName, packName);
+  }
+
+  const scanRules = packRules.filter((rule) => rule.targetMatch !== "path");
+  if (scanRules.length > 0) {
+    const matched = collectVanillaFilesMatching(vanillaIndex, (fileName) =>
+      scanRules.some((rule) => matchesTextFileTarget(fileName, rule)),
+    );
+    for (const [fileName, packName] of matched) packNameByFileName.set(fileName, packName);
+  }
+
+  return packNameByFileName;
+};
+
 const readPackCached = async (
   packPath: string,
   packReadingOptions: PackReadingOptions,
   executionContext?: FlowExecutionContext,
 ): Promise<Pack> => {
+  const resolvedPackPath = resolveFlowSourcePackPath(packPath, executionContext);
+  // The vanilla DB cache stands in for the parse when the request is only for db tables of the game's
+  // own pack. getDBVersion is what getPacksTableData resolves with downstream, so passing it here is
+  // what lets the cache refuse rather than hand back rows chunked by a different field count.
+  const readOrServe = async () =>
+    (await readVanillaPackFromCache(resolvedPackPath, packReadingOptions, getDBVersion)) ??
+    (await readPack(resolvedPackPath, packReadingOptions));
+
   if (!executionContext) {
-    return readPack(packPath, packReadingOptions);
+    return readOrServe();
   }
 
-  const cacheKey = buildReadPackCacheKey(packPath, packReadingOptions);
+  const cacheKey = buildReadPackCacheKey(resolvedPackPath, packReadingOptions);
   let cachedPackPromise = executionContext.readPackCache.get(cacheKey);
   if (!cachedPackPromise) {
-    cachedPackPromise = readPack(packPath, packReadingOptions);
+    cachedPackPromise = readOrServe();
     executionContext.readPackCache.set(cacheKey, cachedPackPromise);
   }
 
   return cachedPackPromise;
 };
 
-const cacheTableFilesForPack = (
-  pack: Pack,
-  tableNames: string[],
-  executionContext?: FlowExecutionContext,
-): void => {
+const getCompactPackIndexCached = async (packPath: string, executionContext: FlowExecutionContext) => {
+  const resolvedPackPath = resolveFlowSourcePackPath(packPath, executionContext);
+  let cached = executionContext.packIndexCache.get(resolvedPackPath);
+  if (!cached) {
+    const startedAt = performance.now();
+    cached = readPack(resolvedPackPath, { skipParsingTables: true, skipSorting: true }).then((pack) => {
+      const index = buildCompactPackIndex(pack);
+      flowExecutionDebugLog(
+        executionContext,
+        `[flow pack index] ${index.name}: ${index.names.count} files in ${(performance.now() - startedAt).toFixed(1)}ms`,
+      );
+      return index;
+    });
+    executionContext.packIndexCache.set(resolvedPackPath, cached);
+    cached.catch(() => executionContext.packIndexCache.delete(resolvedPackPath));
+  }
+  return cached;
+};
+
+const cacheTableFilesForPack = (pack: Pack, tableNames: string[], executionContext?: FlowExecutionContext): void => {
   if (!executionContext) {
     return;
   }
@@ -142,32 +654,150 @@ const cacheTableFilesForPack = (
 
     executionContext.tableFilesByPackAndTable.set(
       cacheKey,
-      pack.packedFiles.filter((packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`)),
+      pack.packedFiles.filter(
+        (packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`),
+      ),
     );
   }
+};
+
+/** Vanilla pack paths of the current game, lowercased, for telling them apart from mod packs. */
+const getVanillaPackPathSet = (): Set<string> =>
+  new Set(getVanillaPackPathsInLoadOrder().map((packPath) => packPath.toLowerCase()));
+
+/**
+ * The packs from `files` that can actually carry one of `tableNames`.
+ *
+ * "All Enabled Mods" hands every downstream node the whole base game - ~260 packs on Warhammer III -
+ * because a flow editing a vanilla asset needs the pack that holds it. Reading all of them to find a
+ * db table is pure waste: db tables live in one or two vanilla packs, and reading a pack means
+ * parsing and sorting its whole file index, which for the big packs is the dominant cost of a flow
+ * run. The prebuilt vanilla index already knows which pack wins each path, so ask it instead.
+ *
+ * Only vanilla packs are dropped - nothing here knows what a mod contains. A vanilla pack whose copy
+ * of the table is overridden by a later vanilla pack is dropped too, because the game would never
+ * load that copy and reading it only produces rows that lose anyway.
+ *
+ * Falls back to the full list whenever the index is unavailable, so a missing index costs speed
+ * rather than correctness.
+ *
+ * Exported for tests.
+ */
+export const narrowFilesToPacksWithTables = async <T extends { path: string }>(
+  files: readonly T[],
+  tableNames: readonly string[],
+  nodeLabel: string,
+): Promise<readonly T[]> => {
+  if (files.length < 2 || tableNames.length === 0) return files;
+
+  const vanillaPackPaths = getVanillaPackPathSet();
+  // With a single vanilla pack in the list there is at most one read to save, and that one is the db
+  // pack the flow is almost certainly after - so the index lookup would cost more than it saves.
+  const vanillaFileCount = files.filter((file) => vanillaPackPaths.has(file.path.toLowerCase())).length;
+  if (vanillaFileCount < 2) return files;
+
+  const vanillaIndex = await getVanillaPackIndex();
+  if (!vanillaIndex) return files;
+
+  // The same prefix test readPack applies to pick db files out of a pack, so this over-includes at
+  // worst (a table whose name extends another's) and never drops a pack that would have matched.
+  const packNamesWithTables = new Set<string>();
+  for (const tableName of tableNames) {
+    for (const packName of findVanillaPacksUnderPrefix(vanillaIndex, tableName)) {
+      packNamesWithTables.add(packName.toLowerCase());
+    }
+  }
+
+  const narrowed = files.filter((file) => {
+    const packPath = file.path.toLowerCase();
+    if (!vanillaPackPaths.has(packPath)) return true;
+    return packNamesWithTables.has(path.basename(packPath));
+  });
+
+  if (narrowed.length !== files.length) {
+    console.log(
+      `${nodeLabel}: reading ${narrowed.length}/${files.length} pack(s) for ${tableNames.join(", ")}` +
+        ` (${files.length - narrowed.length} vanilla pack(s) do not carry it)`,
+    );
+  }
+  return narrowed;
 };
 
 const getTableFilesForPackAndTables = async (
   packPath: string,
   tableNames: string[],
   executionContext?: FlowExecutionContext,
-): Promise<{ pack: Pack; matchingTablesByName: Map<string, PackedFile[]> }> => {
-  const pack = await readPackCached(packPath, { tablesToRead: tableNames }, executionContext);
+): Promise<{ sourceFile: PackSource; matchingTablesByName: Map<string, PackedFile[]> }> => {
+  if (executionContext) {
+    const resolvedPackPath = resolveFlowSourcePackPath(packPath, executionContext);
+    const index = await getCompactPackIndexCached(resolvedPackPath, executionContext);
+    const indexMissingTableNames = tableNames.filter(
+      (tableName) => !executionContext.tableFilesByPackAndTable.has(`${index.path}|${tableName}`),
+    );
+    if (indexMissingTableNames.length > 0) {
+      const indexedFilesByName = new Map<string, PackedFile>();
+      for (const tableName of indexMissingTableNames) {
+        for (const file of findCompactPackFilesUnderPrefix(index, tableName)) indexedFilesByName.set(file.name, file);
+      }
+      const indexedFiles = [...indexedFilesByName.values()];
+      const parsedPack: Pack = {
+        name: index.name,
+        path: index.path,
+        packedFiles: indexedFiles,
+        packHeader: index.packHeader,
+        lastChangedLocal: index.mtimeMs,
+        size: index.size,
+        dependencyPacks: index.dependencyPacks,
+        readTables: indexMissingTableNames,
+      };
+
+      // Keep the purpose-built vanilla DB cache, but give it the reusable compact directory's
+      // matches instead of making it parse the physical pack index again for every table request.
+      const { unservedPrefixes } = await fillVanillaTablesFromCache(parsedPack, indexMissingTableNames, getDBVersion);
+      if (unservedPrefixes.length > 0) {
+        const filesToRead = indexedFiles.filter((file) =>
+          unservedPrefixes.some((prefix) => file.name.startsWith(prefix)),
+        );
+        const filesReadFromPack =
+          filesToRead.length > 0 ? await readDBPackedFilesFromIndex(index.path, filesToRead) : [];
+        for (const file of filesReadFromPack) indexedFilesByName.set(file.name, file);
+        parsedPack.packedFiles = [...indexedFilesByName.values()];
+      }
+
+      getPacksTableData([parsedPack], indexMissingTableNames);
+      for (const tableName of indexMissingTableNames) {
+        executionContext.tableFilesByPackAndTable.set(
+          `${index.path}|${tableName}`,
+          parsedPack.packedFiles.filter((file) => file.name === tableName || file.name.startsWith(`${tableName}\\`)),
+        );
+      }
+    }
+
+    return {
+      sourceFile: { name: index.name, path: index.path },
+      matchingTablesByName: new Map(
+        tableNames.map((tableName) => [
+          tableName,
+          executionContext.tableFilesByPackAndTable.get(`${index.path}|${tableName}`) ?? [],
+        ]),
+      ),
+    };
+  }
+
+  const pack = await readPackCached(packPath, { tablesToRead: tableNames });
   getPacksTableData([pack], tableNames);
-  cacheTableFilesForPack(pack, tableNames, executionContext);
 
   const matchingTablesByName = new Map<string, PackedFile[]>();
   for (const tableName of tableNames) {
-    const cacheKey = `${pack.path}|${tableName}`;
-    const cachedTables = executionContext?.tableFilesByPackAndTable.get(cacheKey);
     matchingTablesByName.set(
       tableName,
-      cachedTables ??
-        pack.packedFiles.filter((packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`)),
+      pack.packedFiles.filter(
+        (packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`),
+      ),
     );
   }
 
-  return { pack, matchingTablesByName };
+  return { sourceFile: { name: pack.name, path: pack.path }, matchingTablesByName };
 };
 
 const cloneNewPackedFile = (packedFile: NewPackedFile): NewPackedFile => ({
@@ -263,6 +893,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "packfilesdropdown":
         return await executePackFilesDropdownNode(nodeId, textValue, config);
 
+      case "removepacksource":
+        return await executeRemovePackSourceNode(nodeId, textValue, inputData, config);
+
       case "allenabledmods":
         return await executeAllEnabledModsNode(nodeId, textValue, config);
 
@@ -341,6 +974,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "deduplicate":
         return await executeDeduplicateNode(nodeId, textValue, inputData, config, executionContext);
 
+      case "combinesametables":
+        return executeCombineSameTablesNode(nodeId, inputData, executionContext);
+
       case "generaterows":
       case "generaterowsschema":
         return await executeGenerateRowsNode(nodeId, textValue, inputData, config, executionContext);
@@ -362,6 +998,27 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "customrowsinput":
         return await executeCustomRowsInputNode(nodeId, textValue, inputData, config);
+
+      case "deepclone":
+        return await executeDeepCloneNode(nodeId, textValue, inputData, config, executionContext);
+
+      case "conditionalbranch":
+        return executeConditionalBranchNode(nodeId, textValue, inputData, config);
+
+      case "removetables":
+        return executeRemoveTablesNode(nodeId, textValue, inputData, config);
+
+      case "packfileoperations":
+        return await executePackFileOperationsNode(nodeId, textValue, inputData, config, executionContext);
+
+      case "edittextfile":
+        return await executeEditTextFileNode(nodeId, textValue, inputData, config, executionContext);
+
+      case "editxmlfile":
+        return await executeEditXmlFileNode(nodeId, textValue, inputData, config, executionContext);
+
+      case "editloctext":
+        return await executeEditLocTextNode(nodeId, textValue, inputData, config, executionContext);
 
       default:
         return {
@@ -512,9 +1169,7 @@ async function executePackFilesDropdownNode(
             });
             console.log(`PackFiles Dropdown Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
           } else {
-            console.warn(
-              `PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`,
-            );
+            console.warn(`PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`);
           }
         }
       }
@@ -534,6 +1189,41 @@ async function executePackFilesDropdownNode(
       files: packFiles,
       count: packFiles.length,
       loadedCount: packFiles.filter((f) => f.loaded).length,
+    } as PackFilesNodeData,
+  };
+}
+
+async function executeRemovePackSourceNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData,
+  config?: unknown,
+): Promise<NodeExecutionResult> {
+  if (!inputData || inputData.type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles data" };
+  }
+
+  const parsedConfig = getNodeConfig<{ selectedPack?: string }>(config, textValue);
+  const selectedPack = (parsedConfig?.selectedPack ?? textValue).trim();
+  if (!selectedPack) {
+    return {
+      success: false,
+      error: "No pack selected. Please select a pack to remove from the input.",
+    };
+  }
+
+  const files = inputData.files.filter((file) => !isPackSource(file, selectedPack));
+  console.log(
+    `Remove Pack Source Node ${nodeId}: Removed ${inputData.files.length - files.length} occurrence(s) of "${selectedPack}"`,
+  );
+
+  return {
+    success: true,
+    data: {
+      ...inputData,
+      files,
+      count: files.length,
+      loadedCount: files.filter((file) => file.loaded).length,
     } as PackFilesNodeData,
   };
 }
@@ -564,12 +1254,26 @@ async function executeAllEnabledModsNode(
       });
     }
 
-    // If includeBaseGame is true, add the base game pack from data folder
+    // "Include Base Game" means the whole of the base game, not just its DB pack: a flow editing a
+    // vanilla variantmeshdefinition, script or UI file needs the pack that actually holds it, and
+    // for Warhammer III that is one of ~260 packs rather than db.pack.
     if (includeBaseGame) {
-      const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
-      if (baseGamePackName) {
-        const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
-        if (baseGameFolder) {
+      const vanillaPackPaths = getVanillaPackPathsInLoadOrder();
+      for (const vanillaPackPath of vanillaPackPaths) {
+        packFiles.push({
+          name: path.basename(vanillaPackPath),
+          path: vanillaPackPath,
+          loaded: true,
+        });
+      }
+      if (vanillaPackPaths.length > 0) {
+        console.log(`AllEnabledMods Node ${nodeId}: Added ${vanillaPackPaths.length} vanilla pack(s)`);
+      } else {
+        // No readable manifest.txt, so fall back to the one pack whose name is known up front. A
+        // flow that only reads DB tables still works; one after a vanilla asset will not find it.
+        const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+        const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+        if (baseGamePackName && baseGameFolder) {
           const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
           if (fs.existsSync(baseGamePackPath)) {
             packFiles.push({
@@ -589,9 +1293,7 @@ async function executeAllEnabledModsNode(
       console.warn(`AllEnabledMods Node ${nodeId}: No mods found (includeBaseGame: ${includeBaseGame})`);
     }
 
-    console.log(
-      `AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`,
-    );
+    console.log(`AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`);
 
     return {
       success: true,
@@ -617,7 +1319,7 @@ async function executeTableSelectionNode(
   inputData: PackFilesNodeData,
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
-  console.log(`TableSelection Node ${nodeId}: Processing "${textValue}" with input:`, inputData);
+  console.log(`TableSelection Node ${nodeId}: Processing "${textValue}"`, summarizeFlowInput(inputData));
 
   if (!inputData || inputData.type !== "PackFiles") {
     return { success: false, error: "Invalid input: Expected PackFiles data" };
@@ -630,14 +1332,16 @@ async function executeTableSelectionNode(
     .map((name) => (name.startsWith("db\\") ? name : `db\\${name}`));
   const selectedTables = [] as DBTablesNodeTable[];
 
-  for (const file of inputData.files) {
+  const filesToRead = await narrowFilesToPacksWithTables(inputData.files, tableNames, `TableSelection Node ${nodeId}`);
+
+  for (const file of filesToRead) {
     if (!file.loaded) {
       console.warn(`Skipping unloaded file: ${file.path}`);
       continue;
     }
 
     try {
-      const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
+      const { sourceFile, matchingTablesByName } = await getTableFilesForPackAndTables(
         file.path,
         tableNames,
         executionContext,
@@ -650,7 +1354,7 @@ async function executeTableSelectionNode(
           selectedTables.push({
             name: tableName,
             fileName: table.name,
-            sourceFile: pack,
+            sourceFile,
             table,
           });
         }
@@ -660,13 +1364,15 @@ async function executeTableSelectionNode(
     }
   }
 
+  const effectiveTables = resolveEffectiveTableRows(selectedTables, executionContext);
+
   return {
     success: true,
     data: {
       type: "TableSelection",
-      tables: selectedTables,
+      tables: effectiveTables,
       sourceFiles: inputData.files,
-      tableCount: selectedTables.length,
+      tableCount: effectiveTables.length,
     } as DBTablesNodeData,
   };
 }
@@ -682,8 +1388,8 @@ async function executeTableSelectionDropdownNode(
   const selectedTable = parsedConfig?.selectedTable ?? textValue;
 
   console.log(
-    `TableSelection Dropdown Node ${nodeId}: Processing selected table "${selectedTable}" with input:`,
-    inputData,
+    `TableSelection Dropdown Node ${nodeId}: Processing selected table "${selectedTable}"`,
+    summarizeFlowInput(inputData),
   );
 
   if (!inputData || inputData.type !== "PackFiles") {
@@ -701,14 +1407,20 @@ async function executeTableSelectionDropdownNode(
   const tableName = selectedTable.startsWith("db\\") ? selectedTable : `db\\${selectedTable}`;
   const selectedTables = [] as DBTablesNodeTable[];
 
-  for (const file of inputData.files) {
+  const filesToRead = await narrowFilesToPacksWithTables(
+    inputData.files,
+    [tableName],
+    `TableSelection Dropdown Node ${nodeId}`,
+  );
+
+  for (const file of filesToRead) {
     if (!file.loaded) {
       console.warn(`Skipping unloaded file: ${file.path}`);
       continue;
     }
 
     try {
-      const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
+      const { sourceFile, matchingTablesByName } = await getTableFilesForPackAndTables(
         file.path,
         [tableName],
         executionContext,
@@ -738,7 +1450,7 @@ async function executeTableSelectionDropdownNode(
         selectedTables.push({
           name: tableName,
           fileName: table.name,
-          sourceFile: pack,
+          sourceFile,
           table: limitedTable,
         });
       }
@@ -747,13 +1459,15 @@ async function executeTableSelectionDropdownNode(
     }
   }
 
+  const effectiveTables = resolveEffectiveTableRows(selectedTables, executionContext);
+
   return {
     success: true,
     data: {
       type: "TableSelection",
-      tables: selectedTables,
+      tables: effectiveTables,
       sourceFiles: inputData.files,
-      tableCount: selectedTables.length,
+      tableCount: effectiveTables.length,
     } as DBTablesNodeData,
   };
 }
@@ -764,7 +1478,7 @@ async function executeColumnSelectionNode(
   inputData: DBTablesNodeData,
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
-  console.log(`ColumnSelection Node ${nodeId}: Processing "${textValue}" with input:`, inputData);
+  console.log(`ColumnSelection Node ${nodeId}: Processing "${textValue}"`, summarizeFlowInput(inputData));
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -778,11 +1492,7 @@ async function executeColumnSelectionNode(
   const columnData = [] as DBColumnSelectionTableValues[];
 
   for (const tableData of inputData.tables) {
-    if (
-      tableData.table.tableSchema &&
-      tableData.table.schemaFields &&
-      tableData.table.schemaFields.length != 0
-    ) {
+    if (tableData.table.tableSchema && tableData.table.schemaFields && tableData.table.schemaFields.length != 0) {
       const rows = getRowsForPackedFile(tableData.table, executionContext);
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
@@ -821,7 +1531,7 @@ async function executeGroupByColumnsNode(
   config?: unknown,
 ): Promise<NodeExecutionResult> {
   console.log(`GroupByColumns Node ${nodeId}: Processing with textValue:`, textValue);
-  console.log(`GroupByColumns Node ${nodeId}: Input data:`, inputData);
+  console.log(`GroupByColumns Node ${nodeId}: Input`, summarizeFlowInput(inputData));
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -850,11 +1560,7 @@ async function executeGroupByColumnsNode(
   const groupedData = new Map<string, string[]>();
 
   for (const tableData of inputData.tables) {
-    if (
-      !tableData.table.tableSchema ||
-      !tableData.table.schemaFields ||
-      tableData.table.schemaFields.length === 0
-    ) {
+    if (!tableData.table.tableSchema || !tableData.table.schemaFields || tableData.table.schemaFields.length === 0) {
       console.log(`Missing table data, skipping ${tableData.name}!`);
       continue;
     }
@@ -866,9 +1572,7 @@ async function executeGroupByColumnsNode(
     const column2Index = getColumnIndexForPackedFile(tableData.table, column2);
 
     if (column1Index === -1 || column2Index === -1) {
-      console.warn(
-        `Columns ${column1} or ${column2} not found in table ${tableData.name}. Skipping this table.`,
-      );
+      console.warn(`Columns ${column1} or ${column2} not found in table ${tableData.name}. Skipping this table.`);
       continue;
     }
 
@@ -895,9 +1599,7 @@ async function executeGroupByColumnsNode(
         filteredData.set(key, values);
       }
     }
-    console.log(
-      `GroupByColumns Node ${nodeId}: Filtered from ${groupedData.size} to ${filteredData.size} groups`,
-    );
+    console.log(`GroupByColumns Node ${nodeId}: Filtered from ${groupedData.size} to ${filteredData.size} groups`);
     groupedData.clear();
     for (const [key, values] of filteredData.entries()) {
       groupedData.set(key, values);
@@ -940,16 +1642,16 @@ async function executeFilterNode(
   console.log("filter text values:", textValue);
 
   // Parse filters from textValue
-  const parsed = getNodeConfig<{ filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }> }>(
-    config,
-    textValue,
-  );
+  const parsed = getNodeConfig<{ filters?: FilterRow[] }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid filter configuration" };
   }
   const filters = parsed.filters || [];
 
-  if (filters.length === 0 || !filters[0].column || !filters[0].value) {
+  if (
+    filters.length === 0 ||
+    !filters.some((filter) => filter.column && (filter.value.trim() || filter.flowOptionResolvedEmpty))
+  ) {
     // No filters configured, return all data unchanged
     console.log(`Filter Node ${nodeId}: No filters configured, passing through all data`);
     return {
@@ -958,9 +1660,60 @@ async function executeFilterNode(
     };
   }
 
-  console.log(
-    `Filter Node ${nodeId}: Applying ${filters.length} filters to ${inputData.tables.length} table(s)`,
-  );
+  console.log(`Filter Node ${nodeId}: Applying ${filters.length} filters to ${inputData.tables.length} table(s)`);
+  const regexCache = new Map<string, RegExp | null>();
+
+  /**
+   * Evaluates every active condition against one row and combines them with the stored operators.
+   *
+   * A condition that cannot be evaluated - no column chosen, no value typed, or a column this table
+   * does not have - is dropped from the join rather than forced to a neutral boolean, because `true`
+   * is the identity for AND but not for OR. A row with nothing left to evaluate matches; the else
+   * handle takes the inverse, so it correspondingly takes nothing.
+   */
+  const matchesRow = (row: AmendedSchemaField[]): boolean => {
+    const filterResults: EvaluatedFilterResult[] = [];
+
+    for (const filter of filters) {
+      if (!filter.column || (!filter.value.trim() && !filter.flowOptionResolvedEmpty)) {
+        continue;
+      }
+
+      // Find the cell with matching column name
+      const cell = row.find((c) => c.name === filter.column);
+      if (!cell) continue; // Column not found, skip filter
+
+      const cellValue = cell.resolvedKeyValue || "";
+      const filterValue = filter.value;
+
+      // All modes support newline-separated any-of lists; regex treats each line as a pattern.
+      let matches = filter.flowOptionResolvedEmpty
+        ? false
+        : matchesFilterValue(String(cellValue), filterValue, regexCache, filter.matchMode);
+
+      // Apply NOT if specified
+      if (filter.not) {
+        matches = !matches;
+      }
+
+      filterResults.push({ result: matches, operator: filter.operator });
+    }
+
+    if (filterResults.length === 0) return true;
+
+    let result = filterResults[0].result;
+    for (let i = 1; i < filterResults.length; i++) {
+      // The operator of the preceding *active* condition, so dropped ones do not shift the join.
+      const operator = filterResults[i - 1].operator;
+      if (operator === "AND") {
+        result = result && filterResults[i].result;
+      } else {
+        result = result || filterResults[i].result;
+      }
+    }
+
+    return result;
+  };
 
   // Create a filtered version of the input data
   const filteredData: DBTablesNodeData = {
@@ -981,52 +1734,7 @@ async function executeFilterNode(
     console.log(`Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
 
     // Filter rows based on the filter configuration
-    const filteredRows = rows.filter((row) => {
-      // Evaluate each filter
-      const filterResults: boolean[] = [];
-
-      for (const filter of filters) {
-        if (!filter.column) {
-          filterResults.push(true);
-          continue;
-        }
-
-        // Find the cell with matching column name
-        const cell = row.find((c) => c.name === filter.column);
-        if (!cell) {
-          filterResults.push(true); // Column not found, skip filter
-          continue;
-        }
-
-        const cellValue = cell.resolvedKeyValue || "";
-        const filterValue = filter.value;
-
-        // Perform the comparison (case-insensitive contains)
-        let matches = String(cellValue).toLowerCase() == filterValue.toLowerCase();
-
-        // Apply NOT if specified
-        if (filter.not) {
-          matches = !matches;
-        }
-
-        filterResults.push(matches);
-      }
-
-      // Combine filter results based on operators
-      if (filterResults.length === 0) return true;
-
-      let result = filterResults[0];
-      for (let i = 1; i < filterResults.length; i++) {
-        const operator = filters[i - 1].operator;
-        if (operator === "AND") {
-          result = result && filterResults[i];
-        } else {
-          result = result || filterResults[i];
-        }
-      }
-
-      return result;
-    });
+    const filteredRows = rows.filter(matchesRow);
 
     console.log(
       `Filter Node ${nodeId}: ${filteredRows.length} rows passed filters out of ${rows.length} in table "${tableData.name}"`,
@@ -1068,53 +1776,7 @@ async function executeFilterNode(
     const rows = getRowsForPackedFile(tableData.table);
 
     // Filter rows that DON'T match (inverse of the match filter)
-    const elseRows = rows.filter((row) => {
-      // Evaluate each filter
-      const filterResults: boolean[] = [];
-
-      for (const filter of filters) {
-        if (!filter.column) {
-          filterResults.push(true);
-          continue;
-        }
-
-        // Find the cell with matching column name
-        const cell = row.find((c) => c.name === filter.column);
-        if (!cell) {
-          filterResults.push(true); // Column not found, skip filter
-          continue;
-        }
-
-        const cellValue = cell.resolvedKeyValue || "";
-        const filterValue = filter.value;
-
-        // Perform the comparison (case-insensitive contains)
-        let matches = String(cellValue).toLowerCase() == filterValue.toLowerCase();
-
-        // Apply NOT if specified
-        if (filter.not) {
-          matches = !matches;
-        }
-
-        filterResults.push(matches);
-      }
-
-      // Combine filter results based on operators
-      if (filterResults.length === 0) return false; // No match = goes to else
-
-      let result = filterResults[0];
-      for (let i = 1; i < filterResults.length; i++) {
-        const operator = filters[i - 1].operator;
-        if (operator === "AND") {
-          result = result && filterResults[i];
-        } else {
-          result = result || filterResults[i];
-        }
-      }
-
-      // Return the INVERSE for else output
-      return !result;
-    });
+    const elseRows = rows.filter((row) => !matchesRow(row));
 
     if (elseRows.length > 0) {
       // Flatten else rows back into schemaFields array
@@ -1166,10 +1828,10 @@ async function executeMultiFilterNode(
   }
 
   // Parse configuration from textValue
-  const parsed = getNodeConfig<{ selectedColumn?: string; splitValues?: Array<{ id: string; value: string; enabled: boolean }> }>(
-    config,
-    textValue,
-  );
+  const parsed = getNodeConfig<{
+    selectedColumn?: string;
+    splitValues?: Array<{ id: string; value: string; enabled: boolean }>;
+  }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid multi-filter configuration" };
   }
@@ -1374,9 +2036,7 @@ async function executeReferenceLookupNode(
     // is_reference is an array where [0] is the referenced table name
     const referenceColumns = tableData.table.tableSchema.fields.filter(
       (field) =>
-        field.is_reference &&
-        field.is_reference.length > 0 &&
-        field.is_reference[0] === selectedReferenceTable,
+        field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === selectedReferenceTable,
     );
 
     console.log(
@@ -1422,14 +2082,20 @@ async function executeReferenceLookupNode(
     ? selectedReferenceTable
     : `db\\${selectedReferenceTable}`;
 
-  for (const sourceFile of sourceFiles) {
+  const sourceFilesToRead = await narrowFilesToPacksWithTables(
+    sourceFiles,
+    [tableNameToSearch],
+    `Reference Lookup Node ${nodeId}`,
+  );
+
+  for (const sourceFile of sourceFilesToRead) {
     if (!sourceFile.loaded) {
       console.warn(`Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
       continue;
     }
 
     try {
-      const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
+      const { sourceFile: referencedSourceFile, matchingTablesByName } = await getTableFilesForPackAndTables(
         sourceFile.path,
         [tableNameToSearch],
         executionContext,
@@ -1444,7 +2110,7 @@ async function executeReferenceLookupNode(
         referencedTables.push({
           name: tableNameToSearch,
           fileName: table.name,
-          sourceFile: pack,
+          sourceFile: referencedSourceFile,
           table,
         });
       }
@@ -1453,8 +2119,10 @@ async function executeReferenceLookupNode(
     }
   }
 
+  const effectiveReferencedTables = resolveEffectiveTableRows(referencedTables, executionContext);
+
   console.log(
-    `Reference Lookup Node ${nodeId}: Found ${referencedTables.length} table(s) matching "${selectedReferenceTable}"`,
+    `Reference Lookup Node ${nodeId}: Found ${effectiveReferencedTables.length} table(s) matching "${selectedReferenceTable}"`,
   );
 
   // Filter the referenced tables to only include rows with matching key values
@@ -1465,7 +2133,7 @@ async function executeReferenceLookupNode(
     tableCount: 0,
   };
 
-  for (const tableData of referencedTables) {
+  for (const tableData of effectiveReferencedTables) {
     if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
       // No schema, include the whole table
       filteredReferencedTables.tables.push(tableData);
@@ -1476,20 +2144,15 @@ async function executeReferenceLookupNode(
 
     // Find the key column (usually the first column or a column with is_key=true)
     const keyField =
-      tableData.table.tableSchema.fields.find((field) => field.is_key) ||
-      tableData.table.tableSchema.fields[0];
+      tableData.table.tableSchema.fields.find((field) => field.is_key) || tableData.table.tableSchema.fields[0];
 
     if (!keyField) {
-      console.warn(
-        `Reference Lookup Node ${nodeId}: No key field found in table "${tableData.name}", skipping`,
-      );
+      console.warn(`Reference Lookup Node ${nodeId}: No key field found in table "${tableData.name}", skipping`);
       continue;
     }
 
     const keyColumnName = keyField.name;
-    console.log(
-      `Reference Lookup Node ${nodeId}: Using key column "${keyColumnName}" in table "${tableData.name}"`,
-    );
+    console.log(`Reference Lookup Node ${nodeId}: Using key column "${keyColumnName}" in table "${tableData.name}"`);
 
     // Filter rows where the key column value is in our reference values set
     const filteredRows = rows.filter((row) => {
@@ -1526,9 +2189,7 @@ async function executeReferenceLookupNode(
 
   filteredReferencedTables.tableCount = filteredReferencedTables.tables.length;
 
-  console.log(
-    `Reference Lookup Node ${nodeId}: Returning ${filteredReferencedTables.tableCount} filtered table(s)`,
-  );
+  console.log(`Reference Lookup Node ${nodeId}: Returning ${filteredReferencedTables.tableCount} filtered table(s)`);
 
   return {
     success: true,
@@ -1553,7 +2214,11 @@ async function executeReverseReferenceLookupNode(
   }
 
   // Parse selected reverse table and includeBaseGame from textValue
-  const parsed = getNodeConfig<{ selectedReverseTable?: string; includeBaseGame?: boolean }>(config, textValue);
+  const parsed = getNodeConfig<{
+    selectedReverseTable?: string;
+    includeBaseGame?: boolean;
+    connectedTableName?: string;
+  }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid node configuration" };
   }
@@ -1577,19 +2242,20 @@ async function executeReverseReferenceLookupNode(
               path: baseGamePackPath,
               loaded: true,
             });
-            console.log(
-              `Reverse Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`,
-            );
+            console.log(`Reverse Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
           }
         }
       }
     }
   }
 
-  // Get the input table name to find reverse references
-  let inputTableName = "";
+  // A lookup/filter node can emit a generated table name while retaining the schema identity of
+  // the table it was derived from. Use that identity for reference matching; generated names are
+  // not present in DB field metadata.
+  let inputTableName = parsed.connectedTableName?.trim() || "";
+  inputTableName = inputTableName.replace(/^db\\/, "").replace(/\\.*$/, "");
   if (inputData.tables.length > 0) {
-    inputTableName = inputData.tables[0].name.replace(/^db\\/, "").replace(/\\.*$/, "");
+    inputTableName ||= inputData.tables[0].name.replace(/^db\\/, "").replace(/\\.*$/, "");
   }
 
   // If no reverse table is selected, try to auto-select if there's only one option
@@ -1601,21 +2267,31 @@ async function executeReverseReferenceLookupNode(
     // Find all tables that have fields referencing the input table
     const reverseTableOptions = new Set<string>();
 
-    for (const sourceFile of sourceFiles) {
+    // This path reads every db table of every pack, so the vanilla packs that hold no db table at
+    // all - almost all of them - are worth dropping before the loop rather than inside it.
+    const sourceFilesWithTables = await narrowFilesToPacksWithTables(
+      sourceFiles,
+      ["db\\"],
+      `Reverse Reference Lookup Node ${nodeId} (auto-select)`,
+    );
+
+    for (const sourceFile of sourceFilesWithTables) {
       if (!sourceFile.loaded) continue;
 
       try {
-        // Read the pack without parsing tables to get the list of table names
-        const pack = await readPackCached(sourceFile.path, { skipParsingTables: true }, executionContext);
+        // Reuse the compact directory; no full Pack or filename array is retained by this flow.
+        const packIndex = executionContext
+          ? await getCompactPackIndexCached(sourceFile.path, executionContext)
+          : buildCompactPackIndex(await readPack(sourceFile.path, { skipParsingTables: true, skipSorting: true }));
 
         // Get all unique db table names (base names without variants)
         const dbTableNames = new Set<string>();
-        for (const packedFile of pack.packedFiles) {
-          if (packedFile.name.startsWith("db\\")) {
-            const baseTableName = packedFile.name.replace(/^db\\/, "").replace(/\\.*$/, "");
+        forEachCompactPackFileName(packIndex, (fileName) => {
+          if (fileName.startsWith("db\\")) {
+            const baseTableName = fileName.replace(/^db\\/, "").replace(/\\.*$/, "");
             dbTableNames.add(baseTableName);
           }
-        }
+        });
 
         console.log(
           `Reverse Reference Lookup Node ${nodeId}: Found ${dbTableNames.size} potential table(s) in ${sourceFile.name}`,
@@ -1638,9 +2314,7 @@ async function executeReverseReferenceLookupNode(
                 // Check if this table has any fields that reference the input table
                 const hasReferenceToInput = packedFile.tableSchema.fields.some(
                   (field) =>
-                    field.is_reference &&
-                    field.is_reference.length > 0 &&
-                    field.is_reference[0] === inputTableName,
+                    field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName,
                 );
 
                 if (hasReferenceToInput) {
@@ -1747,9 +2421,7 @@ async function executeReverseReferenceLookupNode(
   );
 
   if (inputKeyValues.size === 0) {
-    console.log(
-      `Reverse Reference Lookup Node ${nodeId}: No key values found in input, returning empty result`,
-    );
+    console.log(`Reverse Reference Lookup Node ${nodeId}: No key values found in input, returning empty result`);
     return {
       success: true,
       data: {
@@ -1768,14 +2440,20 @@ async function executeReverseReferenceLookupNode(
     ? selectedReverseTable
     : `db\\${selectedReverseTable}`;
 
-  for (const sourceFile of sourceFiles) {
+  const sourceFilesToRead = await narrowFilesToPacksWithTables(
+    sourceFiles,
+    [tableNameToSearch],
+    `Reverse Reference Lookup Node ${nodeId}`,
+  );
+
+  for (const sourceFile of sourceFilesToRead) {
     if (!sourceFile.loaded) {
       console.warn(`Reverse Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
       continue;
     }
 
     try {
-      const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
+      const { sourceFile: reverseSourceFile, matchingTablesByName } = await getTableFilesForPackAndTables(
         sourceFile.path,
         [tableNameToSearch],
         executionContext,
@@ -1788,7 +2466,7 @@ async function executeReverseReferenceLookupNode(
             table: packedFile,
             name: packedFile.name,
             fileName: packedFile.name,
-            sourceFile: pack,
+            sourceFile: reverseSourceFile,
           });
         }
       }
@@ -1797,8 +2475,10 @@ async function executeReverseReferenceLookupNode(
     }
   }
 
+  const effectiveReverseTables = resolveEffectiveTableRows(reverseTables, executionContext);
+
   console.log(
-    `Reverse Reference Lookup Node ${nodeId}: Found ${reverseTables.length} table(s) from pack files`,
+    `Reverse Reference Lookup Node ${nodeId}: Found ${effectiveReverseTables.length} table(s) from pack files`,
   );
 
   const filteredReverseTables: DBTablesNodeData = {
@@ -1809,7 +2489,7 @@ async function executeReverseReferenceLookupNode(
   };
 
   // Filter rows in reverse tables that reference the input tables
-  for (const tableData of reverseTables) {
+  for (const tableData of effectiveReverseTables) {
     if (!tableData.table.schemaFields) {
       console.log(`tableData.table.schemaFields is undefined for table "${tableData.name}", skipping`);
       continue;
@@ -1824,8 +2504,7 @@ async function executeReverseReferenceLookupNode(
 
     // Find columns that reference the input table
     const referenceColumns = tableData.table.tableSchema.fields.filter(
-      (field) =>
-        field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName,
+      (field) => field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName,
     );
 
     if (referenceColumns.length === 0) {
@@ -1887,38 +2566,6 @@ async function executeReverseReferenceLookupNode(
   };
 }
 
-// Formula evaluation function
-function evaluateFormula(formula: string, x: number): number {
-  // console.log(`Evaluating formula: "${formula}" with x=${x}`);
-
-  // Sanitize the formula - only allow safe mathematical operations
-  const sanitized = formula
-    .replace(/\s+/g, "") // Remove whitespace
-    .replace(/\^/g, "**") // Convert ^ to ** for exponentiation
-    .replace(/[^x0-9+\-*/().\s]/g, ""); // Remove any unsafe characters
-
-  // Replace 'x' with the actual value
-  const expression = sanitized.replace(/x/g, x.toString());
-
-  // Validate that the expression only contains safe characters
-  if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
-    throw new Error("Invalid formula: contains unsafe characters");
-  }
-
-  try {
-    // Use Function constructor for safe evaluation (better than eval)
-    const result = new Function("return " + expression)();
-
-    if (typeof result !== "number" || isNaN(result) || !isFinite(result)) {
-      throw new Error("Formula evaluation resulted in invalid number");
-    }
-
-    return result;
-  } catch (error) {
-    throw new Error(`Formula evaluation failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-  }
-}
-
 async function executeColumnSelectionDropdownNode(
   nodeId: string,
   textValue: string,
@@ -1952,11 +2599,7 @@ async function executeColumnSelectionDropdownNode(
   const columnData = [] as DBColumnSelectionTableValues[];
 
   for (const tableData of inputData.tables) {
-    if (
-      tableData.table.tableSchema &&
-      tableData.table.schemaFields &&
-      tableData.table.schemaFields.length != 0
-    ) {
+    if (tableData.table.tableSchema && tableData.table.schemaFields && tableData.table.schemaFields.length != 0) {
       const rows = getRowsForPackedFile(tableData.table, executionContext);
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
@@ -1998,7 +2641,7 @@ async function executeNumericAdjustmentNode(
     | DBNumericAdjustmentNodeData[],
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
-  console.log(`NumericAdjustment Node ${nodeId}: Processing formula "${textValue}" with input:`, inputData);
+  console.log(`NumericAdjustment Node ${nodeId}: Processing formula "${textValue}"`, summarizeFlowInput(inputData));
 
   // Convert single input to array for uniform handling
   const inputs = Array.isArray(inputData) ? inputData : [inputData];
@@ -2036,10 +2679,7 @@ async function executeNumericAdjustmentNode(
 
     // Collect unique tables and merge selectedColumns/data WITHOUT cloning yet
     // We'll clone once at the end when we apply the formula
-    const tableMap = new Map<
-      string,
-      { column: any; selectedColumns: Set<string>; dataMap: Map<string, any> }
-    >();
+    const tableMap = new Map<string, { column: any; selectedColumns: Set<string>; dataMap: Map<string, any> }>();
     const allSourceTables: any[] = [];
     const seenSourceTables = new Set<string>();
 
@@ -2108,15 +2748,7 @@ async function executeNumericAdjustmentNode(
   if (!formula) {
     return {
       success: false,
-      error: "No formula provided. Enter a mathematical expression using x as the input variable.",
-    };
-  }
-
-  // Validate that the formula contains 'x' variable
-  if (!formula.includes("x")) {
-    return {
-      success: false,
-      error: "Formula must contain variable x representing the input value.",
+      error: "No value provided. Enter a number or a mathematical expression using x as the input variable.",
     };
   }
 
@@ -2187,7 +2819,7 @@ async function executeMathMaxNode(
   inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[],
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
-  console.log(`MathMax Node ${nodeId}: Processing with value "${textValue}" and input:`, inputData);
+  console.log(`MathMax Node ${nodeId}: Processing with value "${textValue}"`, summarizeFlowInput(inputData));
 
   // Convert single input to array for uniform handling
   const inputs = Array.isArray(inputData) ? inputData : [inputData];
@@ -2230,37 +2862,7 @@ async function executeMathMaxNode(
         );
 
         if (existingColumn) {
-          // Merge the changes from currentColumn into existingColumn
-          if (
-            currentColumn.sourceTable.schemaFields &&
-            existingColumn.sourceTable.schemaFields &&
-            currentColumn.sourceTable.tableSchema &&
-            existingColumn.sourceTable.tableSchema
-          ) {
-            // Merge schemaFields row by row
-            const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
-            const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
-
-            // Use Set for O(1) lookup
-            const currentSelectedSet = new Set(currentColumn.selectedColumns);
-
-            // Update cells in existingRows with values from currentRows if they were changed
-            for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
-              for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
-                const currentCell = currentRows[rowIdx][cellIdx];
-                const existingCell = existingRows[rowIdx][cellIdx];
-
-                // If this column was selected in the current input, update the existing data
-                if (currentSelectedSet.has(currentCell.name)) {
-                  existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
-                  existingCell.fields[0].val = currentCell.fields[0].val;
-                }
-              }
-            }
-
-            // Flatten back to schemaFields
-            existingColumn.sourceTable.schemaFields = existingRows.flat();
-          }
+          mergeChangedColumnRows(existingColumn, currentColumn, executionContext);
 
           // Merge selectedColumns using Set for efficiency
           const existingColsSet = new Set(existingColumn.selectedColumns);
@@ -2290,9 +2892,7 @@ async function executeMathMaxNode(
       // Merge sourceTables
       for (const sourceTable of currentInput.sourceTables) {
         if (
-          !mergedInputData.sourceTables.some(
-            (t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName,
-          )
+          !mergedInputData.sourceTables.some((t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName)
         ) {
           mergedInputData.sourceTables.push(sourceTable);
         }
@@ -2363,7 +2963,7 @@ async function executeMathCeilNode(
   inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[],
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
-  console.log(`MathCeil Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`MathCeil Node ${nodeId}: Processing`, summarizeFlowInput(inputData));
 
   // Convert single input to array for uniform handling
   const inputs = Array.isArray(inputData) ? inputData : [inputData];
@@ -2406,37 +3006,7 @@ async function executeMathCeilNode(
         );
 
         if (existingColumn) {
-          // Merge the changes from currentColumn into existingColumn
-          if (
-            currentColumn.sourceTable.schemaFields &&
-            existingColumn.sourceTable.schemaFields &&
-            currentColumn.sourceTable.tableSchema &&
-            existingColumn.sourceTable.tableSchema
-          ) {
-            // Merge schemaFields row by row
-            const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
-            const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
-
-            // Use Set for O(1) lookup
-            const currentSelectedSet = new Set(currentColumn.selectedColumns);
-
-            // Update cells in existingRows with values from currentRows if they were changed
-            for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
-              for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
-                const currentCell = currentRows[rowIdx][cellIdx];
-                const existingCell = existingRows[rowIdx][cellIdx];
-
-                // If this column was selected in the current input, update the existing data
-                if (currentSelectedSet.has(currentCell.name)) {
-                  existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
-                  existingCell.fields[0].val = currentCell.fields[0].val;
-                }
-              }
-            }
-
-            // Flatten back to schemaFields
-            existingColumn.sourceTable.schemaFields = existingRows.flat();
-          }
+          mergeChangedColumnRows(existingColumn, currentColumn, executionContext);
 
           // Merge selectedColumns using Set for efficiency
           const existingColsSet = new Set(existingColumn.selectedColumns);
@@ -2466,9 +3036,7 @@ async function executeMathCeilNode(
       // Merge sourceTables
       for (const sourceTable of currentInput.sourceTables) {
         if (
-          !mergedInputData.sourceTables.some(
-            (t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName,
-          )
+          !mergedInputData.sourceTables.some((t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName)
         ) {
           mergedInputData.sourceTables.push(sourceTable);
         }
@@ -2567,38 +3135,7 @@ async function executeMergeChangesNode(
       );
 
       if (existingColumn) {
-        // Merge the changes from currentColumn into existingColumn
-        // Update the schemaFields to reflect the changes from the current input
-        if (
-          currentColumn.sourceTable.schemaFields &&
-          existingColumn.sourceTable.schemaFields &&
-          currentColumn.sourceTable.tableSchema &&
-          existingColumn.sourceTable.tableSchema
-        ) {
-          // Merge schemaFields row by row
-          const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
-          const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
-
-          // Use Set for O(1) lookup
-          const currentSelectedSet = new Set(currentColumn.selectedColumns);
-
-          // Update cells in existingRows with values from currentRows if they were changed
-          for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
-            for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
-              const currentCell = currentRows[rowIdx][cellIdx];
-              const existingCell = existingRows[rowIdx][cellIdx];
-
-              // If this column was selected in the current input, update the existing data
-              if (currentSelectedSet.has(currentCell.name)) {
-                existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
-                existingCell.fields[0].val = currentCell.fields[0].val;
-              }
-            }
-          }
-
-          // Flatten back to schemaFields
-          existingColumn.sourceTable.schemaFields = existingRows.flat();
-        }
+        mergeChangedColumnRows(existingColumn, currentColumn, executionContext);
 
         // Merge selectedColumns using Set for efficiency
         const existingColsSet = new Set(existingColumn.selectedColumns);
@@ -2639,11 +3176,48 @@ async function executeMergeChangesNode(
   };
 }
 
+/**
+ * Shows the pack the save node just wrote.
+ *
+ * Only on a manual run - an executionContext means the flow is running unattended at game start,
+ * where opening a window or an explorer would be an ambush.
+ */
+const openSavedFileForManualRun = async (
+  filePath: string,
+  openInWindows: boolean,
+  executionContext?: FlowExecutionContext,
+  openInViewer = false,
+) => {
+  if (executionContext) return;
+
+  if (openInViewer) {
+    try {
+      openModInViewer(filePath);
+    } catch (error) {
+      console.warn(`Failed to open saved file ${filePath} in the viewer:`, error);
+    }
+  }
+
+  if (!openInWindows) return;
+
+  try {
+    const shellOutput = await shell.openPath(filePath);
+    if (shellOutput) {
+      console.warn(`Failed to open saved file ${filePath}: ${shellOutput}`);
+    }
+  } catch (error) {
+    console.warn(`Failed to open saved file ${filePath}:`, error);
+  }
+};
+
 async function executeSaveTextNode(
   nodeId: string,
   textContent: string,
   packName: string,
   packedFileName: string,
+  openInWindows: boolean,
+  executionContext?: FlowExecutionContext,
+  openInViewer = false,
 ): Promise<NodeExecutionResult> {
   console.log(
     `SaveText Node ${nodeId}: Saving text file with packName="${packName}", packedFileName="${packedFileName}"`,
@@ -2682,6 +3256,7 @@ async function executeSaveTextNode(
 
     // Write the pack file
     await writePack([newFile], newPackPath);
+    await openSavedFileForManualRun(newPackPath, openInWindows, executionContext, openInViewer);
 
     console.log(`SaveText Node ${nodeId}: Successfully saved text file to ${newPackPath}`);
 
@@ -2711,6 +3286,14 @@ async function executeSaveChangesNode(
   config?: unknown,
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
+  if (Array.isArray(inputData)) {
+    const mergeResult = await executeMergeChangesNode(`${nodeId}:inputs`, inputData, executionContext);
+    if (!mergeResult.success) {
+      return mergeResult;
+    }
+    inputData = mergeResult.data;
+  }
+
   console.log(`SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with tables:`, {
     tableCount: inputData?.tables?.length,
     tableNames: inputData?.tables?.map((t: any) => t.name),
@@ -2721,18 +3304,24 @@ async function executeSaveChangesNode(
   let packedFileName = "";
   let additionalConfig = "";
   let flowExecutionId = "";
+  let openInWindows = false;
+  let openInViewer = false;
 
   const parsedConfig = getNodeConfig<{
     packName?: string;
     packedFileName?: string;
     additionalConfig?: string;
     flowExecutionId?: string;
+    openInWindows?: boolean;
+    openInViewer?: boolean;
   }>(config, textValue);
   if (parsedConfig) {
     packName = parsedConfig.packName || "";
     packedFileName = parsedConfig.packedFileName || "";
     additionalConfig = parsedConfig.additionalConfig || "";
     flowExecutionId = parsedConfig.flowExecutionId || "";
+    openInWindows = parsedConfig.openInWindows ?? false;
+    openInViewer = parsedConfig.openInViewer ?? false;
   } else {
     // If not JSON, treat textValue as additionalConfig
     additionalConfig = textValue.trim();
@@ -2743,14 +3332,37 @@ async function executeSaveChangesNode(
 
   // Handle Text input - save as text file
   if (inputData && inputData.type === "Text") {
-    return await executeSaveTextNode(nodeId, inputData.text || "", packName, packedFileName);
+    return await executeSaveTextNode(
+      nodeId,
+      inputData.text || "",
+      packName,
+      packedFileName,
+      openInWindows,
+      executionContext,
+      openInViewer,
+    );
   }
 
   // Handle TableSelection input - save table data
   if (inputData && inputData.type === "TableSelection") {
     const toSave = [] as NewPackedFile[];
+    const replacedPackPaths = new Set<string>();
 
     for (const table of inputData.tables || []) {
+      // A raw payload whose path is meaningful to the game (art keyed by a unit name) is written
+      // verbatim, not under a generated db\ name.
+      if (table.outputFileName && table.table.buffer) {
+        toSave.push({
+          name: table.outputFileName,
+          buffer: table.table.buffer,
+          file_size: table.table.buffer.length,
+        });
+        // Only what actually reaches the output counts as replacing a pack, so a copy the flow
+        // built but never wired here leaves the original in the mod list.
+        if (table.replacesSourcePackPath) replacedPackPaths.add(table.replacesSourcePackPath);
+        continue;
+      }
+
       if (!table.table.schemaFields || !table.table.tableSchema) continue;
 
       toSave.push({
@@ -2759,14 +3371,45 @@ async function executeSaveChangesNode(
         version: table.table.version,
         tableSchema: table.table.tableSchema,
         tableName: table.name, // Store table name for later use
+        outputPathPrefix: table.outputPathPrefix,
+        outputPathSuffix: table.outputPathSuffix,
       } as any);
+    }
+
+    // Empty output is a valid outcome for guarded edits: every matching file may already contain
+    // the requested text. Do not attempt to write (or claim to have written) a nonexistent pack.
+    if (toSave.length === 0) {
+      return {
+        success: true,
+        data: {
+          type: "SaveResult",
+          savedTo: "",
+          format: "pack",
+          message: "No changes to save",
+          replacedPackPaths: [],
+        } as DBSaveChangesNodeData,
+      };
     }
 
     const nodePath = await import("path");
     const fs = await import("fs");
 
+    const replacementPackBaseNames = new Map<string, string>();
+    for (const replacedPackPath of replacedPackPaths) {
+      const fileName = replacedPackPath.replace(/^.*[\\/]/, "");
+      const baseName = fileName.replace(/\.pack$/i, "");
+      if (baseName) replacementPackBaseNames.set(baseName.toLowerCase(), baseName);
+    }
+    const replacementPackBaseName =
+      replacementPackBaseNames.size === 1 ? replacementPackBaseNames.values().next().value : undefined;
+
     let packFileBaseName: string;
-    if (packName) {
+    // A pack replacement must retain the original file name. The launcher removes the original
+    // path and loads this output in its place; honoring a configured Save Changes name here would
+    // turn it into a differently named mod instead of a faithful replacement.
+    if (replacementPackBaseName) {
+      packFileBaseName = replacementPackBaseName;
+    } else if (packName) {
       packFileBaseName = packName;
     } else if (flowExecutionId) {
       packFileBaseName = `node_graph_output_${flowExecutionId}`;
@@ -2776,25 +3419,45 @@ async function executeSaveChangesNode(
     }
 
     // Now set the proper db file paths: db\tablename\packname_randomsuffix
+    // A table carrying outputPathPrefix is not a db table (e.g. a generated loc) and supplies its
+    // own folder and extension instead.
     for (const file of toSave) {
+      // Already named verbatim above.
+      if (file.name) continue;
+
       const randomSuffix = Math.random().toString(36).substring(2, 8);
-      const tableName = (file as any).tableName || "unknown_table";
+      // Producers are inconsistent about whether name carries the "db\" prefix; strip it so we
+      // never build a doubled db\db\... path.
+      const tableName = ((file as any).tableName || "unknown_table").replace(/^db\\/, "");
       const fileName = `${packFileBaseName}_${randomSuffix}`;
-      file.name = `db\\${tableName}\\${fileName}`;
-      delete (file as any).tableName; // Remove temporary property
+      const outputPathPrefix = (file as any).outputPathPrefix as string | undefined;
+      file.name = outputPathPrefix
+        ? `${outputPathPrefix}${fileName}${((file as any).outputPathSuffix as string) ?? ""}`
+        : `db\\${tableName}\\${fileName}`;
+      delete (file as any).tableName; // Remove temporary properties
+      delete (file as any).outputPathPrefix;
+      delete (file as any).outputPathSuffix;
     }
 
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
     // If flowExecutionId is set, we're executing a flow at game start, so save to whmm_flows
     // Otherwise, save to data for manual execution
-    const outputDir = flowExecutionId
-      ? nodePath.join(gamePath, "whmm_flows")
-      : nodePath.join(gamePath, "data");
+    const outputDir = flowExecutionId ? nodePath.join(gamePath, "whmm_flows") : nodePath.join(gamePath, "data");
     const packFilePath = nodePath.join(outputDir, `${packFileBaseName}.pack`);
+    const normalizePathForComparison = (filePath: string) =>
+      nodePath.resolve(filePath).replace(/\//g, "\\").toLowerCase();
+    if (
+      [...replacedPackPaths].some(
+        (sourcePackPath) => normalizePathForComparison(sourcePackPath) === normalizePathForComparison(packFilePath),
+      )
+    ) {
+      return {
+        success: false,
+        error: `Cannot write the replacement to ${packFilePath} because that would overwrite its source pack. Run the flow when starting the game or move the original pack out of data first.`,
+      };
+    }
 
-    console.log(
-      `Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`,
-    );
+    console.log(`Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`);
     console.log(`Save Changes Node ${nodeId}: Output path: ${packFilePath}`);
 
     if (!fs.existsSync(outputDir)) {
@@ -2804,13 +3467,22 @@ async function executeSaveChangesNode(
     try {
       const filesToSave = await mergeOutputPackFiles(packFilePath, toSave, executionContext);
       await writePack(filesToSave, packFilePath);
+      await openSavedFileForManualRun(packFilePath, openInWindows, executionContext, openInViewer);
       return {
         success: true,
         data: {
           type: "SaveResult",
           savedTo: packFilePath,
           format: "pack",
-          message: `Successfully saved ${filesToSave.length} table(s) to ${packFilePath}`,
+          message:
+            `Successfully saved ${filesToSave.length} table(s) to ${packFilePath}` +
+            // At game start the mod list drops these automatically; a manual run has no mod list, so
+            // say it, otherwise the original keeps supplying the files the flow removed.
+            (replacedPackPaths.size > 0
+              ? `. Replaces ${[...replacedPackPaths].map((path) => nodePath.basename(path)).join(", ")}` +
+                (flowExecutionId ? "" : " - disable the original when loading this pack manually")
+              : ""),
+          replacedPackPaths: [...replacedPackPaths],
         },
       };
     } catch (error) {
@@ -2877,16 +3549,7 @@ async function executeSaveChangesNode(
   if (packName) {
     packFileBaseName = packName;
   } else if (flowExecutionId) {
-    // flowExecutionId is in format like "2025-12-14_23-19-58"
-    // Convert to shorter format: "141225_231958"
-    const parts = flowExecutionId.split("_");
-    if (parts.length === 2) {
-      const datePart = parts[0].split("-").reverse().join("").slice(2); // "141225"
-      const timePart = parts[1].replace(/-/g, ""); // "231958"
-      packFileBaseName = `dbflow_${datePart}_${timePart}`;
-    } else {
-      packFileBaseName = `dbflow_${flowExecutionId.replace(/[-:]/g, "")}`;
-    }
+    packFileBaseName = buildFlowOutputPackBaseName(flowExecutionId);
   } else {
     const timestamp = format(new Date(), "ddMMyy_HHmmss");
     packFileBaseName = `dbflow_${timestamp}`;
@@ -2905,6 +3568,7 @@ async function executeSaveChangesNode(
   const filesToSave = await mergeOutputPackFiles(newPackPath, toSave, executionContext);
 
   await writePack(filesToSave, newPackPath);
+  await openSavedFileForManualRun(newPackPath, openInWindows, executionContext, openInViewer);
 
   try {
     // Parse save configuration (could be JSON, simple path, or custom format)
@@ -2912,7 +3576,10 @@ async function executeSaveChangesNode(
     let format = "tsv"; // default format
 
     // Try to parse as JSON for more complex configurations
-    const parsedSaveConfig = getNodeConfig<{ path?: string; filePath?: string; format?: string }>(undefined, saveConfig);
+    const parsedSaveConfig = getNodeConfig<{ path?: string; filePath?: string; format?: string }>(
+      undefined,
+      saveConfig,
+    );
     if (parsedSaveConfig) {
       filePath = parsedSaveConfig.path || parsedSaveConfig.filePath || "output.tsv";
       format = parsedSaveConfig.format || "tsv";
@@ -2945,9 +3612,7 @@ async function executeSaveChangesNode(
     //   })),
     // };
 
-    console.log(
-      `SaveChanges Node ${nodeId}: Successfully saved ${filesToSave.length} file(s) to ${newPackPath}`,
-    );
+    console.log(`SaveChanges Node ${nodeId}: Successfully saved ${filesToSave.length} file(s) to ${newPackPath}`);
 
     return {
       success: true,
@@ -2975,7 +3640,7 @@ async function executeTextSurroundNode(
   inputData: any,
   config?: unknown,
 ): Promise<NodeExecutionResult> {
-  console.log(`TextSurround Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
+  console.log(`TextSurround Node ${nodeId}: Processing with config "${textValue}"`, summarizeFlowInput(inputData));
 
   if (!inputData) {
     return { success: false, error: "Invalid input: No input data provided" };
@@ -3062,7 +3727,7 @@ async function executeAppendTextNode(
   inputData: any,
   config?: unknown,
 ): Promise<NodeExecutionResult> {
-  console.log(`AppendText Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
+  console.log(`AppendText Node ${nodeId}: Processing with config "${textValue}"`, summarizeFlowInput(inputData));
 
   if (!inputData) {
     return { success: false, error: "Invalid input: No input data provided" };
@@ -3167,12 +3832,8 @@ async function executeAppendTextNode(
   }
 }
 
-async function executeTextJoinNode(
-  nodeId: string,
-  textValue: string,
-  inputData: any,
-): Promise<NodeExecutionResult> {
-  console.log(`TextJoin Node ${nodeId}: Processing with separator "${textValue}" and input:`, inputData);
+async function executeTextJoinNode(nodeId: string, textValue: string, inputData: any): Promise<NodeExecutionResult> {
+  console.log(`TextJoin Node ${nodeId}: Processing with separator "${textValue}"`, summarizeFlowInput(inputData));
 
   if (!inputData) {
     return { success: false, error: "Invalid input: No input data provided" };
@@ -3225,8 +3886,8 @@ async function executeGroupedColumnsToTextNode(
   config?: unknown,
 ): Promise<NodeExecutionResult> {
   console.log(
-    `GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}" and input:`,
-    inputData,
+    `GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}"`,
+    summarizeFlowInput(inputData),
   );
 
   if (!inputData) {
@@ -3335,9 +3996,7 @@ async function executeIndexTableNode(
   }
 
   const rows = allRows;
-  console.log(
-    `Index Table Node ${nodeId}: Indexing ${rows.length} rows from ${inputData.tables.length} pack file(s)`,
-  );
+  console.log(`Index Table Node ${nodeId}: Indexing ${rows.length} rows from ${inputData.tables.length} pack file(s)`);
 
   // Build the index map
   const indexMap = new Map<string, any[]>();
@@ -3403,7 +4062,7 @@ async function executeLookupNode(
   // Parse configuration
   const parsed = getNodeConfig<{
     lookupColumn?: string;
-    joinType?: "inner" | "left" | "nested" | "cross";
+    joinType?: "inner" | "left" | "anti" | "nested" | "cross";
     indexColumns?: string[];
     indexJoinColumn?: string;
   }>(config, textValue);
@@ -3434,6 +4093,7 @@ async function executeLookupNode(
 
   // Handle both IndexedTable and TableSelection for the second input
   let indexedData: any;
+  let crossJoinRightSchemaFields: DBField[] | undefined;
 
   if (rightInputData.type === "IndexedTable") {
     // Already indexed, use as-is
@@ -3441,7 +4101,8 @@ async function executeLookupNode(
   } else if (rightInputData.type === "TableSelection") {
     if (joinType === "cross") {
       const allRightRows: AmendedSchemaField[][] = [];
-      let rightTable = rightInputData.tables[0];
+      let rightTable: DBTablesNodeTable | undefined;
+      crossJoinRightSchemaFields = getJoinSchemaFields(rightInputData.tables);
 
       for (const table of rightInputData.tables) {
         if (!table.table.schemaFields || !table.table.tableSchema) {
@@ -3453,7 +4114,11 @@ async function executeLookupNode(
         if (!rightTable) {
           rightTable = table;
         }
-        allRightRows.push(...rows);
+        allRightRows.push(
+          ...(crossJoinRightSchemaFields.length > 0
+            ? normalizeRowsForJoinSchema(rows, table.table.tableSchema.fields, crossJoinRightSchemaFields)
+            : rows),
+        );
       }
 
       if (!rightTable) {
@@ -3479,7 +4144,10 @@ async function executeLookupNode(
           ? indexColumns
           : [lookupColumn];
 
-      hotPathLog(executionContext, `Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`);
+      hotPathLog(
+        executionContext,
+        `Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`,
+      );
 
       const indexMap = new Map<string, AmendedSchemaField[][]>();
       let rightTable = rightInputData.tables[0];
@@ -3556,6 +4224,7 @@ async function executeLookupNode(
   }
 
   const allSourceRows: AmendedSchemaField[][] = [];
+  const crossSourceRowsByTable: Array<{ rows: AmendedSchemaField[][]; schemaFields: DBField[] }> = [];
   const sourceRowsWithLookupIndex: Array<{ row: AmendedSchemaField[]; lookupColumnIndex: number }> = [];
   const sourceTable = sourceData.tables[0]; // Keep first for metadata
 
@@ -3568,6 +4237,7 @@ async function executeLookupNode(
     const rows = getRowsForPackedFile(table.table, executionContext);
     if (joinType === "cross") {
       allSourceRows.push(...rows);
+      crossSourceRowsByTable.push({ rows, schemaFields: table.table.tableSchema.fields });
       continue;
     }
 
@@ -3597,22 +4267,41 @@ async function executeLookupNode(
     // Cross join: Cartesian product of all source rows with all right table rows
     hotPathLog(executionContext, `Lookup Node ${nodeId}: Performing cross join (Cartesian product)`);
 
+    const sourceSchemaFields = getJoinSchemaFields(sourceData.tables);
+    const normalizedSourceRows: AmendedSchemaField[][] = [];
+    for (const { rows, schemaFields: rowSchemaFields } of crossSourceRowsByTable) {
+      normalizedSourceRows.push(
+        ...(sourceSchemaFields.length > 0
+          ? normalizeRowsForJoinSchema(rows, rowSchemaFields, sourceSchemaFields)
+          : rows),
+      );
+    }
+
     // Extract all rows from the indexed data
     const allRightRows: AmendedSchemaField[][] = [];
     for (const rows of indexedData.indexMap.values()) {
       allRightRows.push(...rows);
     }
 
+    const rightSchemaFields =
+      crossJoinRightSchemaFields ?? getJoinSchemaFields([indexedData.sourceTable], allRightRows);
+    const rightRowSchemaFields = indexedData.sourceTable.table.tableSchema?.fields ?? rightSchemaFields;
+    const normalizedRightRows = crossJoinRightSchemaFields
+      ? allRightRows
+      : rightSchemaFields.length > 0
+        ? normalizeRowsForJoinSchema(allRightRows, rightRowSchemaFields, rightSchemaFields)
+        : allRightRows;
+
     hotPathLog(
       executionContext,
-      `Lookup Node ${nodeId}: Cross joining ${sourceRows.length} source rows with ${allRightRows.length} right rows`,
+      `Lookup Node ${nodeId}: Cross joining ${normalizedSourceRows.length} source rows with ${normalizedRightRows.length} right rows`,
     );
 
     const crossJoinedRows: AmendedSchemaField[][] = [];
 
     // Create Cartesian product
-    for (const sourceRow of sourceRows) {
-      for (const rightRow of allRightRows) {
+    for (const sourceRow of normalizedSourceRows) {
+      for (const rightRow of normalizedRightRows) {
         const prefixedSourceRow = sourceRow.map((cell) => ({
           ...cell,
           name: `${sourceTableName}_${cell.name}`,
@@ -3627,24 +4316,20 @@ async function executeLookupNode(
 
     hotPathLog(executionContext, `Lookup Node ${nodeId}: Created ${crossJoinedRows.length} cross-joined rows`);
 
-    // Build schema from the first joined row
-    const schemaFields: DBField[] = [];
-    if (crossJoinedRows.length > 0) {
-      for (const cell of crossJoinedRows[0]) {
-        schemaFields.push({
-          name: cell.name,
-          field_type: cell.type as SCHEMA_FIELD_TYPE,
-          is_key: cell.isKey || false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: `Joined column from cross join`,
-          ca_order: -1,
-          is_bitwise: 0,
-          enum_values: {},
-        });
-      }
-    }
+    const schemaFields: DBField[] = [
+      ...sourceSchemaFields.map((field) => ({
+        ...field,
+        name: `${sourceTableName}_${field.name}`,
+        description: `Source column from cross join`,
+        ca_order: -1,
+      })),
+      ...rightSchemaFields.map((field) => ({
+        ...field,
+        name: `${lookupTableName}_${field.name}`,
+        description: `Indexed column from cross join`,
+        ca_order: -1,
+      })),
+    ];
 
     const schemaVersion = sourceTable.table.tableSchema?.version ?? 1;
     const tableVersion = sourceTable.table.version;
@@ -3710,6 +4395,20 @@ async function executeLookupNode(
 
     // Create a new table with joined rows
     const joinedRows: AmendedSchemaField[][] = [];
+    const sourceSchemaFields: DBField[] = sourceTable.table.tableSchema?.fields || [];
+    const indexedSchemaFields: DBField[] = indexedData.sourceTable.table.tableSchema?.fields || [];
+    const emptyIndexedRowTemplate: AmendedSchemaField[] =
+      joinType === "left"
+        ? await Promise.all(
+            indexedSchemaFields.map(async (field) => ({
+              name: `${lookupTableName}_${field.name}`,
+              type: field.field_type,
+              fields: [{ type: "Buffer" as const, val: await typeToBuffer(field.field_type, "") }],
+              resolvedKeyValue: "",
+              isKey: field.is_key,
+            })),
+          )
+        : [];
 
     for (const { row: sourceRow, lookupColumnIndex } of sourceRowsWithLookupIndex) {
       const lookupCell = sourceRow[lookupColumnIndex];
@@ -3729,10 +4428,16 @@ async function executeLookupNode(
             ...cell,
             name: `${sourceTableName}_${cell.name}`,
           }));
-          joinedRows.push(prefixedSourceRow);
+          const emptyIndexedRow = emptyIndexedRowTemplate.map((cell) => ({
+            ...cell,
+            fields: cell.fields.map((field) => ({ ...field })),
+          }));
+          joinedRows.push([...prefixedSourceRow, ...emptyIndexedRow]);
+        } else if (joinType === "anti") {
+          joinedRows.push(sourceRow.map((cell) => ({ ...cell })));
         }
         // Inner join: skip row
-      } else {
+      } else if (joinType !== "anti") {
         // Match found: create joined rows
         for (const lookupRow of lookupMatches) {
           const prefixedSourceRow = sourceRow.map((cell) => ({
@@ -3750,25 +4455,25 @@ async function executeLookupNode(
 
     hotPathLog(executionContext, `Lookup Node ${nodeId}: Created ${joinedRows.length} joined rows`);
 
-    // We need to create a new packed file with the joined data
-    // Build proper DBField schema from joined row structure
-    const schemaFields: DBField[] = [];
-    if (joinedRows.length > 0) {
-      for (const cell of joinedRows[0]) {
-        schemaFields.push({
-          name: cell.name,
-          field_type: cell.type as SCHEMA_FIELD_TYPE,
-          is_key: cell.isKey || false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: `Joined column from ${joinType} join`,
-          ca_order: -1,
-          is_bitwise: 0,
-          enum_values: {},
-        });
-      }
-    }
+    // Build the joined schema from both input schemas so it does not depend on
+    // whether the first output row matched.
+    const schemaFields: DBField[] =
+      joinType === "anti"
+        ? sourceSchemaFields.map((field) => ({ ...field }))
+        : [
+            ...sourceSchemaFields.map((field) => ({
+              ...field,
+              name: `${sourceTableName}_${field.name}`,
+              description: `Source column from ${joinType} join`,
+              ca_order: -1,
+            })),
+            ...indexedSchemaFields.map((field) => ({
+              ...field,
+              name: `${lookupTableName}_${field.name}`,
+              description: `Indexed column from ${joinType} join`,
+              ca_order: -1,
+            })),
+          ];
 
     const schemaVersion = sourceTable.table.tableSchema?.version ?? 1;
     const tableVersion = sourceTable.table.version;
@@ -3782,13 +4487,17 @@ async function executeLookupNode(
       `Lookup Node ${nodeId}: Creating joined table with schema version=${schemaVersion}, table version=${tableVersion}`,
     );
 
+    const outputTableName =
+      joinType === "anti"
+        ? `${sourceTableName}_unmatched_${lookupTableName}`
+        : `${sourceTableName}_joined_${lookupTableName}`;
     const joinedTable: DBTablesNodeTable = {
-      name: `${sourceTableName}_joined_${lookupTableName}`,
-      fileName: `${sourceTableName}_joined_${lookupTableName}`,
+      name: outputTableName,
+      fileName: outputTableName,
       sourceFile: sourceTable.sourceFile,
       table: {
         ...sourceTable.table,
-        name: `db\\${sourceTableName}_joined_${lookupTableName}`,
+        name: `db\\${outputTableName}`,
         schemaFields: joinedRows.flat(),
         tableSchema: {
           version: schemaVersion,
@@ -3811,11 +4520,8 @@ async function executeLookupNode(
   }
 }
 
-async function executeFlattenNestedNode(
-  nodeId: string,
-  inputData: NestedTableSelection,
-): Promise<NodeExecutionResult> {
-  console.log(`Flatten Nested Node ${nodeId}: Processing with input:`, inputData);
+async function executeFlattenNestedNode(nodeId: string, inputData: NestedTableSelection): Promise<NodeExecutionResult> {
+  console.log(`Flatten Nested Node ${nodeId}: Processing`, summarizeFlowInput(inputData));
 
   if (!inputData || inputData.type !== "NestedTableSelection") {
     return { success: false, error: "Invalid input: Expected NestedTableSelection data" };
@@ -3903,7 +4609,7 @@ async function executeExtractTableNode(
   inputData: DBTablesNodeData,
   config?: unknown,
 ): Promise<NodeExecutionResult> {
-  console.log(`Extract Table Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`Extract Table Node ${nodeId}: Processing`, summarizeFlowInput(inputData));
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -4009,7 +4715,7 @@ async function executeAggregateNestedNode(
   inputData: NestedTableSelection,
   config?: unknown,
 ): Promise<NodeExecutionResult> {
-  console.log(`Aggregate Nested Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`Aggregate Nested Node ${nodeId}: Processing`, summarizeFlowInput(inputData));
 
   if (!inputData || inputData.type !== "NestedTableSelection") {
     return { success: false, error: "Invalid input: Expected NestedTableSelection data" };
@@ -4017,24 +4723,13 @@ async function executeAggregateNestedNode(
 
   // Parse configuration
   let filterColumn: string = "";
-  let filterOperator:
-    | "equals"
-    | "notEquals"
-    | "greaterThan"
-    | "lessThan"
-    | "greaterThanOrEqual"
-    | "lessThanOrEqual" = "equals";
+  let filterOperator: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual" =
+    "equals";
   const parsed = getNodeConfig<{
     aggregateColumn?: string;
     aggregateType?: "min" | "max" | "sum" | "avg" | "count";
     filterColumn?: string;
-    filterOperator?:
-      | "equals"
-      | "notEquals"
-      | "greaterThan"
-      | "lessThan"
-      | "greaterThanOrEqual"
-      | "lessThanOrEqual";
+    filterOperator?: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
     filterValue?: string;
   }>(config, textValue);
   if (!parsed) {
@@ -4109,9 +4804,7 @@ async function executeAggregateNestedNode(
       for (const lookupRow of filteredMatches) {
         const cell = lookupRow.find((c: AmendedSchemaField) => c.name === aggregateColumn);
         if (!cell) {
-          console.warn(
-            `Aggregate Nested Node ${nodeId}: Column "${aggregateColumn}" not found in lookup row`,
-          );
+          console.warn(`Aggregate Nested Node ${nodeId}: Column "${aggregateColumn}" not found in lookup row`);
           continue;
         }
 
@@ -4249,9 +4942,7 @@ async function executeGroupByNode(
   }
 
   console.log(
-    `Group By Node ${nodeId}: Grouping by [${groupByColumns.join(", ")}] with ${
-      aggregations.length
-    } aggregation(s)`,
+    `Group By Node ${nodeId}: Grouping by [${groupByColumns.join(", ")}] with ${aggregations.length} aggregation(s)`,
   );
 
   // Process each table
@@ -4278,9 +4969,7 @@ async function executeGroupByNode(
       for (const colName of groupByColumns) {
         const cell = row.find((c: AmendedSchemaField) => c.name === colName);
         if (!cell) {
-          console.warn(
-            `Group By Node ${nodeId}: Group by column "${colName}" not found in row, skipping row`,
-          );
+          console.warn(`Group By Node ${nodeId}: Group by column "${colName}" not found in row, skipping row`);
           continue;
         }
         keyParts.push(String(cell.resolvedKeyValue || ""));
@@ -4321,9 +5010,7 @@ async function executeGroupByNode(
           const cell = groupRows[0].find((c: AmendedSchemaField) => c.name === agg.sourceColumn);
           aggregateValue = cell ? cell.resolvedKeyValue : "";
         } else if (agg.operation === "last") {
-          const cell = groupRows[groupRows.length - 1].find(
-            (c: AmendedSchemaField) => c.name === agg.sourceColumn,
-          );
+          const cell = groupRows[groupRows.length - 1].find((c: AmendedSchemaField) => c.name === agg.sourceColumn);
           aggregateValue = cell ? cell.resolvedKeyValue : "";
         } else {
           // max, min, sum, avg - need numeric values
@@ -4384,9 +5071,7 @@ async function executeGroupByNode(
       groupedRows.push(outputRow);
     }
 
-    console.log(
-      `Group By Node ${nodeId}: Output ${groupedRows.length} grouped rows from ${rows.length} input rows`,
-    );
+    console.log(`Group By Node ${nodeId}: Output ${groupedRows.length} grouped rows from ${rows.length} input rows`);
 
     // Flatten grouped rows back into schemaFields array
     const groupedSchemaFields: AmendedSchemaField[] = [];
@@ -4400,9 +5085,7 @@ async function executeGroupByNode(
     // Add group by columns to schema
     for (const colName of groupByColumns) {
       // Try to find the field in the original schema
-      const originalField = tableData.table.tableSchema?.fields.find(
-        (field: DBField) => field.name === colName,
-      );
+      const originalField = tableData.table.tableSchema?.fields.find((field: DBField) => field.name === colName);
 
       if (originalField) {
         console.log(`Group By: Found original field for ${colName}, type=${originalField.field_type}`);
@@ -4790,9 +5473,7 @@ async function executeGenerateRowsNode(
   });
 
   // Check if we have a counter_range transformation that can generate rows without input
-  const counterRangeTransformation = config.transformations.find(
-    (t) => t.transformationType === "counter_range",
-  );
+  const counterRangeTransformation = config.transformations.find((t) => t.transformationType === "counter_range");
   const hasCustomSchema = !!config.customSchemaData;
 
   // 2. Extract input rows from ALL input tables
@@ -4827,12 +5508,18 @@ async function executeGenerateRowsNode(
       `Generate Rows Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`,
     );
   } else {
-    hotPathLog(executionContext, `Generate Rows Node ${nodeId}: No input tables, will generate rows from counter_range`);
+    hotPathLog(
+      executionContext,
+      `Generate Rows Node ${nodeId}: No input tables, will generate rows from counter_range`,
+    );
   }
 
   // If no rows but we have counter_range, generate rows from the range
   if (rows.length === 0 && counterRangeTransformation) {
-    hotPathLog(executionContext, `Generate Rows Node ${nodeId}: No input rows but has counter_range - generating from range`);
+    hotPathLog(
+      executionContext,
+      `Generate Rows Node ${nodeId}: No input rows but has counter_range - generating from range`,
+    );
 
     const rangeStart = parseInt(counterRangeTransformation.rangeStart || "1", 10) || 1;
     const rangeEnd = parseInt(counterRangeTransformation.endNumber || "10", 10) || 10;
@@ -5025,8 +5712,7 @@ async function executeGenerateRowsNode(
           case "multiply":
           case "divide":
             // For numeric transformations, use -1 so that "add 1" results in 0
-            outputValue =
-              transformation.transformationType === "add" && transformation.numericValue === 1 ? -1 : 0;
+            outputValue = transformation.transformationType === "add" && transformation.numericValue === 1 ? -1 : 0;
             break;
           case "counter":
             // Counter doesn't need a source value, it generates its own
@@ -5195,9 +5881,7 @@ async function executeGenerateRowsNode(
 
     if (outputConfig.existingTableName === "__custom_schema__") {
       if (!config.customSchemaData || config.customSchemaData.length === 0) {
-        console.error(
-          `Generate Rows Node ${nodeId}: Custom schema selected but no customSchemaData provided`,
-        );
+        console.error(`Generate Rows Node ${nodeId}: Custom schema selected but no customSchemaData provided`);
         console.error(`Generate Rows Node ${nodeId}: config.customSchemaData:`, config.customSchemaData);
         return {
           success: false,
@@ -5246,18 +5930,21 @@ async function executeGenerateRowsNode(
         if (version) schema = version;
       } else {
         const defaultTableVersions = await getDefaultTableVersions();
-        const defaultTableVersionNumber =
-          defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
+        const defaultTableVersionNumber = defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
         if (defaultTableVersionNumber) {
           const version = versions.find((version) => version.version == defaultTableVersionNumber);
           if (version) schema = version;
         }
       }
 
-      hotPathLog(executionContext, `Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`, {
-        fieldCount: schema.fields.length,
-        fields: schema.fields.map((f: any) => f.name),
-      });
+      hotPathLog(
+        executionContext,
+        `Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`,
+        {
+          fieldCount: schema.fields.length,
+          fields: schema.fields.map((f: any) => f.name),
+        },
+      );
     }
 
     // Build rows for this output
@@ -5363,12 +6050,13 @@ async function executeGenerateRowsNode(
       }
     }
 
-    hotPathLog(executionContext, `Generate Rows Node ${nodeId}: Created ${numRows} rows for output "${outputConfig.name}"`);
+    hotPathLog(
+      executionContext,
+      `Generate Rows Node ${nodeId}: Created ${numRows} rows for output "${outputConfig.name}"`,
+    );
 
     // Determine the table name - use a proper name for custom schema
-    const outputTableName = isCustomSchema
-      ? `custom_${outputConfig.handleId}`
-      : outputConfig.existingTableName;
+    const outputTableName = isCustomSchema ? `custom_${outputConfig.handleId}` : outputConfig.existingTableName;
 
     // Create a default table structure when there's no sourceTable (e.g., counter_range with custom schema only)
     const defaultTable: PackedFile = {
@@ -5385,17 +6073,7 @@ async function executeGenerateRowsNode(
     const outputTable: DBTablesNodeTable = {
       name: outputTableName,
       fileName: sourceTable?.fileName || `db\\${outputTableName}\\generated`,
-      sourceFile:
-        sourceTable?.sourceFile ||
-        ({
-          name: "generated.pack",
-          path: "",
-          packedFiles: [],
-          packHeader: { header: Buffer.alloc(0), byteMask: 0, refFileCount: 0, pack_file_index_size: 0, pack_file_count: 0, header_buffer: Buffer.alloc(0) },
-          lastChangedLocal: 0,
-          size: 0,
-          readTables: [],
-        } as Pack),
+      sourceFile: sourceTable?.sourceFile || ({ name: "generated.pack", path: "" } as PackSource),
       table: sourceTable?.table
         ? {
             ...sourceTable.table,
@@ -5461,6 +6139,12 @@ async function executeAddNewColumnNode(
       regexPattern?: string;
       regexReplacement?: string;
       outputColumnName: string;
+      /** Write the result back into sourceColumn instead of appending a column. */
+      overwriteSource?: boolean;
+      /** Apply this transformation only to rows where the condition holds. */
+      conditionColumn?: string;
+      conditionOperator?: "startsWith" | "equals" | "notEquals" | "contains";
+      conditionValue?: string;
     }>;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
   };
@@ -5471,9 +6155,7 @@ async function executeAddNewColumnNode(
       throw new Error("Invalid configuration");
     }
     config = parsedConfig;
-    console.log(
-      `Add New Column Node ${nodeId}: Parsed ${(config.transformations || []).length} transformations`,
-    );
+    console.log(`Add New Column Node ${nodeId}: Parsed ${(config.transformations || []).length} transformations`);
   } catch (error) {
     return {
       success: false,
@@ -5496,38 +6178,6 @@ async function executeAddNewColumnNode(
     };
   }
 
-  // Collect rows from all input tables
-  const rows: AmendedSchemaField[][] = [];
-  const sourceTable = inputData.tables[0]; // Keep first table for metadata
-
-  for (const table of inputData.tables) {
-    if (!table.table.tableSchema) {
-      console.warn(`Add New Column Node ${nodeId}: Skipping table ${table.name} - no schema information`);
-      continue;
-    }
-
-    const tableRows = table.table.schemaFields ? getRowsForPackedFile(table.table) : [];
-
-    rows.push(...tableRows);
-  }
-
-  console.log(
-    `Add New Column Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`,
-  );
-
-  if (rows.length === 0) {
-    // Return empty output
-    return {
-      success: true,
-      data: {
-        type: "TableSelection",
-        tables: [],
-        sourceFiles: inputData.sourceFiles || [],
-        tableCount: 0,
-      },
-    };
-  }
-
   // Helper function to escape regex special characters
   function escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -5538,220 +6188,311 @@ async function executeAddNewColumnNode(
     return trans.transformationType === "filterequal" || trans.transformationType === "filternotequal";
   }
 
-  // 3. Process each row and apply transformations
-  const transformedData = new Map<string, any[]>(); // outputColumnName -> array of values for each row
-  const filteredRowIndices = new Set<number>(); // Track which rows to exclude
-
-  for (const trans of config.transformations) {
-    transformedData.set(trans.outputColumnName, []);
+  /** An overwriting transformation replaces its source column, so it adds no field to the schema. */
+  function isOverwriteTransformation(trans: (typeof config.transformations)[0]): boolean {
+    return trans.overwriteSource === true && !isFilterTransformation(trans);
   }
 
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx];
-    const rowTransformedValues = new Map<string, any>(); // Per-row transformation outputs for chaining
+  /**
+   * Whether a transformation applies to this row.
+   *
+   * This is separate from the filter transformations, which drop the row from the output entirely.
+   * A condition leaves the row alone and only skips this one transformation, which is what lets a
+   * single node hold several rules - append one suffix to the land unit names, another to the main
+   * unit names - each matching on a different column from the one it writes.
+   */
+  function conditionHolds(trans: (typeof config.transformations)[0], row: AmendedSchemaField[]): boolean {
+    if (!trans.conditionColumn || !trans.conditionOperator) return true;
+    const conditionValue = trans.conditionValue ?? "";
+    const cellValue = row.find((cell) => cell.name === trans.conditionColumn)?.resolvedKeyValue ?? "";
 
-    // Process transformations in order (to support chaining)
-    for (const transformation of config.transformations) {
-      let outputValue: any;
-
-      // Get source value - either from original row or previous transformation (chaining)
-      if (rowTransformedValues.has(transformation.sourceColumn)) {
-        outputValue = rowTransformedValues.get(transformation.sourceColumn);
-      } else {
-        const sourceCell = row.find((c) => c.name === transformation.sourceColumn);
-        outputValue = sourceCell?.resolvedKeyValue ?? "";
-      }
-
-      // Apply transformation
-      switch (transformation.transformationType) {
-        case "none":
-          // Pass through
-          break;
-
-        case "prefix":
-          outputValue = `${transformation.prefix || ""}${outputValue}`;
-          break;
-
-        case "suffix":
-          outputValue = `${outputValue}${transformation.suffix || ""}`;
-          break;
-
-        case "add":
-          outputValue = parseFloat(String(outputValue)) + (transformation.numericValue || 0);
-          break;
-
-        case "subtract":
-          outputValue = parseFloat(String(outputValue)) - (transformation.numericValue || 0);
-          break;
-
-        case "multiply":
-          outputValue = parseFloat(String(outputValue)) * (transformation.numericValue || 1);
-          break;
-
-        case "divide": {
-          const divisor = transformation.numericValue || 1;
-          outputValue = divisor !== 0 ? parseFloat(String(outputValue)) / divisor : 0;
-          break;
-        }
-
-        case "rename_whole": {
-          const strValue = String(outputValue);
-          const matchValue = transformation.matchValue || "";
-          if (strValue === matchValue) {
-            outputValue = transformation.replaceValue || "";
-          }
-          // Otherwise keep original value
-          break;
-        }
-
-        case "rename_substring": {
-          const findStr = transformation.findSubstring || "";
-          const replaceStr = transformation.replaceValue || "";
-          if (findStr) {
-            outputValue = String(outputValue).replace(new RegExp(escapeRegex(findStr), "g"), replaceStr);
-          }
-          break;
-        }
-
-        case "replace_substring_whole": {
-          const searchSubstr = transformation.findSubstring || "";
-          const wholeReplacement = transformation.replaceValue || "";
-          if (searchSubstr && String(outputValue).includes(searchSubstr)) {
-            outputValue = wholeReplacement;
-          }
-          // Otherwise keep original value
-          break;
-        }
-
-        case "regex_replace":
-          try {
-            const pattern = transformation.regexPattern || "";
-            const replacement = transformation.regexReplacement || "";
-            if (pattern) {
-              const regex = new RegExp(pattern, "g");
-              outputValue = String(outputValue).replace(regex, replacement);
-            }
-          } catch (error) {
-            console.warn(
-              `Add New Column Node ${nodeId}: Invalid regex pattern "${transformation.regexPattern}":`,
-              error,
-            );
-            // Keep original value on error
-          }
-          break;
-
-        case "filterequal":
-          if (String(outputValue) === (transformation.filterValue || "")) {
-            filteredRowIndices.add(rowIdx);
-          }
-          break;
-
-        case "filternotequal":
-          if (String(outputValue) !== (transformation.filterValue || "")) {
-            filteredRowIndices.add(rowIdx);
-          }
-          break;
-      }
-
-      // Store transformed value for this row (for chaining and output)
-      rowTransformedValues.set(transformation.outputColumnName, outputValue);
-    }
-
-    // Store all transformed values for this row
-    for (const transformation of config.transformations) {
-      const value = rowTransformedValues.get(transformation.outputColumnName);
-      transformedData.get(transformation.outputColumnName)!.push(value);
+    switch (trans.conditionOperator) {
+      case "startsWith":
+        return cellValue.startsWith(conditionValue);
+      case "equals":
+        return cellValue === conditionValue;
+      case "notEquals":
+        return cellValue !== conditionValue;
+      case "contains":
+        return cellValue.includes(conditionValue);
+      default:
+        return true;
     }
   }
 
-  console.log(`Add New Column Node ${nodeId}: Filtered out ${filteredRowIndices.size} rows`);
+  /**
+   * A transformation is scoped to the tables that actually have its source column. Without this a
+   * multi-table input - a deep clone's output, say - would give every unrelated table a column of
+   * empty values. A transformation with no source column is a constant and applies everywhere.
+   */
+  function appliesToTable(trans: (typeof config.transformations)[0], schema: DBVersion): boolean {
+    if (!trans.sourceColumn) return true;
+    return schema.fields.some((field) => field.name === trans.sourceColumn);
+  }
 
-  // 4. Build output table with original columns + new columns
-  const outputRows: AmendedSchemaField[] = [];
-  let outputRowIdx = 0;
+  // 3. Process every input table on its own terms. Merging their rows would interpret one table's
+  // data against another's schema and collapse the whole selection into a single mangled table.
+  const outputTables: DBTablesNodeTable[] = [];
 
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    // Skip filtered rows
-    if (filteredRowIndices.has(rowIdx)) {
+  for (const sourceTable of inputData.tables) {
+    const tableSchemaForRun = sourceTable.table.tableSchema;
+    if (!tableSchemaForRun || !sourceTable.table.schemaFields) {
+      console.warn(`Add New Column Node ${nodeId}: Passing through ${sourceTable.name} - no schema`);
+      outputTables.push(sourceTable);
       continue;
     }
 
-    const row = rows[rowIdx];
-
-    // Copy all original columns
-    for (const cell of row) {
-      outputRows.push(cell);
+    const transformationsForTable = config.transformations.filter((trans) => appliesToTable(trans, tableSchemaForRun));
+    const rows = getRowsForPackedFile(sourceTable.table);
+    if (transformationsForTable.length === 0 || rows.length === 0) {
+      outputTables.push(sourceTable);
+      continue;
     }
 
-    // Append new transformed columns (excluding filter transformations)
-    for (const transformation of config.transformations) {
-      if (isFilterTransformation(transformation)) continue;
+    // Keyed by the transformation's position, not its output column: in overwrite mode several
+    // transformations legitimately target the same column, and sharing one array would interleave
+    // their values and shift every later row.
+    const transformedData = new Map<number, any[]>();
+    const filteredRowIndices = new Set<number>(); // Track which rows to exclude
 
-      const value = transformedData.get(transformation.outputColumnName)?.[rowIdx];
+    transformationsForTable.forEach((_transformation, transformationIndex) => {
+      transformedData.set(transformationIndex, []);
+    });
 
-      // Create schema field for the new column
-      const fieldBuffer = await typeToBuffer("StringU8", String(value ?? ""));
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx];
+      const rowTransformedValues = new Map<string, any>(); // Per-row transformation outputs for chaining
 
-      const schemaField: AmendedSchemaField = {
-        name: transformation.outputColumnName,
-        resolvedKeyValue: String(value ?? ""),
-        type: "StringU8",
-        fields: [{ type: "Buffer", val: fieldBuffer }],
-        isKey: false,
-      };
+      // Process transformations in order (to support chaining)
+      for (const transformation of transformationsForTable) {
+        let outputValue: any;
 
-      outputRows.push(schemaField);
+        // Get source value - either from original row or previous transformation (chaining)
+        if (rowTransformedValues.has(transformation.sourceColumn)) {
+          outputValue = rowTransformedValues.get(transformation.sourceColumn);
+        } else {
+          const sourceCell = row.find((c) => c.name === transformation.sourceColumn);
+          outputValue = sourceCell?.resolvedKeyValue ?? "";
+        }
+
+        // A row the condition excludes keeps its source value: an overwriting transformation leaves
+        // the cell alone, and an appending one copies the source across untransformed. Only the
+        // per-row map is set here; the loop below is what pushes one entry per row into
+        // transformedData, and pushing again here would shift every later row's value.
+        if (!isFilterTransformation(transformation) && !conditionHolds(transformation, row)) {
+          rowTransformedValues.set(transformation.outputColumnName, outputValue);
+          continue;
+        }
+
+        // Apply transformation
+        switch (transformation.transformationType) {
+          case "none":
+            // Pass through
+            break;
+
+          case "prefix":
+            outputValue = `${transformation.prefix || ""}${outputValue}`;
+            break;
+
+          case "suffix":
+            outputValue = `${outputValue}${transformation.suffix || ""}`;
+            break;
+
+          case "add":
+            outputValue = parseFloat(String(outputValue)) + (transformation.numericValue || 0);
+            break;
+
+          case "subtract":
+            outputValue = parseFloat(String(outputValue)) - (transformation.numericValue || 0);
+            break;
+
+          case "multiply":
+            outputValue = parseFloat(String(outputValue)) * (transformation.numericValue || 1);
+            break;
+
+          case "divide": {
+            const divisor = transformation.numericValue || 1;
+            outputValue = divisor !== 0 ? parseFloat(String(outputValue)) / divisor : 0;
+            break;
+          }
+
+          case "rename_whole": {
+            const strValue = String(outputValue);
+            const matchValue = transformation.matchValue || "";
+            if (strValue === matchValue) {
+              outputValue = transformation.replaceValue || "";
+            }
+            // Otherwise keep original value
+            break;
+          }
+
+          case "rename_substring": {
+            const findStr = transformation.findSubstring || "";
+            const replaceStr = transformation.replaceValue || "";
+            if (findStr) {
+              outputValue = String(outputValue).replace(new RegExp(escapeRegex(findStr), "g"), replaceStr);
+            }
+            break;
+          }
+
+          case "replace_substring_whole": {
+            const searchSubstr = transformation.findSubstring || "";
+            const wholeReplacement = transformation.replaceValue || "";
+            if (searchSubstr && String(outputValue).includes(searchSubstr)) {
+              outputValue = wholeReplacement;
+            }
+            // Otherwise keep original value
+            break;
+          }
+
+          case "regex_replace":
+            try {
+              const pattern = transformation.regexPattern || "";
+              const replacement = transformation.regexReplacement || "";
+              if (pattern) {
+                const regex = new RegExp(pattern, "g");
+                outputValue = String(outputValue).replace(regex, replacement);
+              }
+            } catch (error) {
+              console.warn(
+                `Add New Column Node ${nodeId}: Invalid regex pattern "${transformation.regexPattern}":`,
+                error,
+              );
+              // Keep original value on error
+            }
+            break;
+
+          case "filterequal":
+            if (String(outputValue) === (transformation.filterValue || "")) {
+              filteredRowIndices.add(rowIdx);
+            }
+            break;
+
+          case "filternotequal":
+            if (String(outputValue) !== (transformation.filterValue || "")) {
+              filteredRowIndices.add(rowIdx);
+            }
+            break;
+        }
+
+        // Store transformed value for this row (for chaining and output)
+        rowTransformedValues.set(transformation.outputColumnName, outputValue);
+      }
+
+      // Store all transformed values for this row, one entry per transformation per row
+      transformationsForTable.forEach((transformation, transformationIndex) => {
+        transformedData.get(transformationIndex)!.push(rowTransformedValues.get(transformation.outputColumnName));
+      });
     }
 
-    outputRowIdx++;
+    console.log(`Add New Column Node ${nodeId}: Filtered out ${filteredRowIndices.size} rows`);
+
+    // 4. Build output table with original columns + new columns
+    const inputSchemaFields = sourceTable.table.tableSchema?.fields ?? [];
+    const outputRows: AmendedSchemaField[] = [];
+    let outputRowIdx = 0;
+
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      // Skip filtered rows
+      if (filteredRowIndices.has(rowIdx)) {
+        continue;
+      }
+
+      const row = rows[rowIdx];
+
+      // Copy the original columns, applying any overwriting transformation in place. The column keeps
+      // its own field type, so a table whose shape matters - a loc is exactly key/text/tooltip - comes
+      // out with the same columns it went in with.
+      const overwrittenRow = row.map((cell) => ({ ...cell }));
+      for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
+        if (!isOverwriteTransformation(transformation)) continue;
+
+        const cellIndex = overwrittenRow.findIndex((cell) => cell.name === transformation.sourceColumn);
+        if (cellIndex === -1) continue;
+
+        const value = String(transformedData.get(transformationIndex)?.[rowIdx] ?? "");
+        if (value === overwrittenRow[cellIndex].resolvedKeyValue) continue;
+
+        const fieldType = inputSchemaFields[cellIndex]?.field_type ?? "StringU8";
+        overwrittenRow[cellIndex] = {
+          ...overwrittenRow[cellIndex],
+          resolvedKeyValue: value,
+          type: "Buffer",
+          fields: [{ type: "Buffer", val: await typeToBuffer(fieldType, value) }],
+        };
+      }
+      for (const cell of overwrittenRow) {
+        outputRows.push(cell);
+      }
+
+      // Append new transformed columns (excluding filters and in-place overwrites)
+      for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
+        if (isFilterTransformation(transformation) || isOverwriteTransformation(transformation)) continue;
+
+        const value = transformedData.get(transformationIndex)?.[rowIdx];
+
+        // Create schema field for the new column
+        const fieldBuffer = await typeToBuffer("StringU8", String(value ?? ""));
+
+        const schemaField: AmendedSchemaField = {
+          name: transformation.outputColumnName,
+          resolvedKeyValue: String(value ?? ""),
+          type: "StringU8",
+          fields: [{ type: "Buffer", val: fieldBuffer }],
+          isKey: false,
+        };
+
+        outputRows.push(schemaField);
+      }
+
+      outputRowIdx++;
+    }
+
+    console.log(`Add New Column Node ${nodeId}: Created ${outputRowIdx} output rows with added columns`);
+
+    // 5. Create extended schema (original fields + new fields)
+    const inputSchema = tableSchemaForRun;
+    const extendedSchema: DBVersion = {
+      ...inputSchema,
+      fields: [
+        ...inputSchema.fields,
+        ...transformationsForTable
+          .filter((t) => !isFilterTransformation(t) && !isOverwriteTransformation(t))
+          .map((t) => ({
+            name: t.outputColumnName,
+            field_type: "StringU8" as SCHEMA_FIELD_TYPE,
+            is_key: false,
+            default_value: "",
+            is_filename: false,
+            is_reference: [],
+            description: `Generated column from ${t.transformationType}(${t.sourceColumn})`,
+            ca_order: -1,
+            is_bitwise: 0,
+            enum_values: {},
+          })),
+      ],
+    };
+
+    // 6. Emit this table, keeping its own schema and identity
+    outputTables.push({
+      ...sourceTable,
+      table: {
+        ...sourceTable.table,
+        tableSchema: extendedSchema,
+        schemaFields: outputRows,
+        version: extendedSchema.version,
+      },
+    });
   }
 
-  console.log(`Add New Column Node ${nodeId}: Created ${outputRowIdx} output rows with added columns`);
-
-  // 5. Create extended schema (original fields + new fields)
-  const inputSchema = sourceTable.table.tableSchema!;
-  const extendedSchema: DBVersion = {
-    ...inputSchema,
-    fields: [
-      ...inputSchema.fields,
-      ...config.transformations
-        .filter((t) => !isFilterTransformation(t))
-        .map((t) => ({
-          name: t.outputColumnName,
-          field_type: "StringU8" as SCHEMA_FIELD_TYPE,
-          is_key: false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: `Generated column from ${t.transformationType}(${t.sourceColumn})`,
-          ca_order: -1,
-          is_bitwise: 0,
-          enum_values: {},
-        })),
-    ],
-  };
-
-  // 6. Create output table
-  const outputTable: DBTablesNodeTable = {
-    name: sourceTable.name,
-    fileName: sourceTable.fileName,
-    sourceFile: sourceTable.sourceFile,
-    table: {
-      ...sourceTable.table,
-      tableSchema: extendedSchema,
-      schemaFields: outputRows,
-      version: extendedSchema.version,
-    },
-  };
-
-  // 7. Return single TableSelection output
+  // 7. One output entry per input entry, in the same order
   return {
     success: true,
     data: {
       type: "TableSelection",
-      tables: [outputTable],
+      tables: outputTables,
       sourceFiles: inputData.sourceFiles || [],
-      tableCount: 1,
+      tableCount: outputTables.length,
     },
   };
 }
@@ -5791,37 +6532,34 @@ async function executeDumpToTSVNode(
     // Build TSV from ChangedColumnSelection
     const tsvLines: string[] = [];
 
-    // Process each table entry in the columns array
+    // Process each adjusted source table so the dump includes the complete rows,
+    // not just the columns that were selected for modification.
     for (const tableEntry of adjustedInputData.columns) {
       const tableName = tableEntry.tableName || "unknown";
-      const fileName = tableEntry.fileName || "";
-      const columnNames = tableEntry.selectedColumns || [];
-      const data = tableEntry.data || [];
+      const sourceTable = tableEntry.sourceTable;
 
-      console.log(
-        `Dump to TSV Node ${nodeId}: Table "${tableName}" has ${columnNames.length} columns and ${data.length} data entries`,
-      );
-
-      // Header: table name, file name, then column names
-      if (tsvLines.length === 0 && columnNames.length > 0) {
-        const headerCols = ["_table", "_file", ...columnNames];
-        tsvLines.push(headerCols.join("\t"));
+      if (!sourceTable.schemaFields || !sourceTable.tableSchema) {
+        console.warn(`Dump to TSV Node ${nodeId}: Skipping adjusted table "${tableName}" without schema data`);
+        continue;
       }
 
-      // data is an array where each entry is {col: columnName, data: value}
-      // For single column selection, each entry is one row
-      // For multiple columns, entries are interleaved: row1col1, row1col2, row2col1, row2col2, etc.
-      const numCols = columnNames.length || 1;
-      const numRows = Math.floor(data.length / numCols);
+      const rows = getRowsForPackedFile(sourceTable, executionContext);
 
-      for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
-        const rowValues = [tableName, fileName];
-        for (let colIdx = 0; colIdx < numCols; colIdx++) {
-          const dataIdx = rowIdx * numCols + colIdx;
-          const value = data[dataIdx]?.data ?? "";
-          rowValues.push(String(value).replace(/\t/g, " ").replace(/\n/g, " "));
-        }
-        tsvLines.push(rowValues.join("\t"));
+      console.log(
+        `Dump to TSV Node ${nodeId}: Adjusted table "${tableName}" has ${sourceTable.tableSchema.fields.length} columns and ${rows.length} rows`,
+      );
+
+      if (rows.length > 0 && tsvLines.length === 0) {
+        tsvLines.push(rows[0].map((cell) => cell.name).join("\t"));
+      }
+
+      for (const row of rows) {
+        const values = row.map((cell) =>
+          String(cell.resolvedKeyValue ?? "")
+            .replace(/\t/g, " ")
+            .replace(/\n/g, " "),
+        );
+        tsvLines.push(values.join("\t"));
       }
     }
 
@@ -6042,26 +6780,38 @@ async function executeGetCounterColumnNode(
   // Use default column name if not specified
   if (!newColumnName) {
     newColumnName = `counter_${selectedColumn}`;
-    hotPathLog(executionContext, `GetCounterColumn Node ${nodeId}: No column name specified, using default: ${newColumnName}`);
+    hotPathLog(
+      executionContext,
+      `GetCounterColumn Node ${nodeId}: No column name specified, using default: ${newColumnName}`,
+    );
   }
 
-  hotPathLog(executionContext, `GetCounterColumn Node ${nodeId}: Collecting values from ${selectedTable}.${selectedColumn}`);
+  hotPathLog(
+    executionContext,
+    `GetCounterColumn Node ${nodeId}: Collecting values from ${selectedTable}.${selectedColumn}`,
+  );
 
   // Convert table name to db\ format if needed
   const tableName = selectedTable.startsWith("db\\") ? selectedTable : `db\\${selectedTable}`;
 
   const collectedValues: AmendedSchemaField[] = [];
-  const sourcePacks: Pack[] = [];
+  const sourcePacks: PackSource[] = [];
+
+  const packFilesToRead = await narrowFilesToPacksWithTables(
+    inputData.files,
+    [tableName],
+    `GetCounterColumn Node ${nodeId}`,
+  );
 
   // Process each pack file
-  for (const packFile of inputData.files) {
+  for (const packFile of packFilesToRead) {
     if (!packFile.loaded) {
       console.warn(`GetCounterColumn Node ${nodeId}: Skipping unloaded file: ${packFile.name}`);
       continue;
     }
 
     try {
-      const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
+      const { sourceFile, matchingTablesByName } = await getTableFilesForPackAndTables(
         packFile.path,
         [tableName],
         executionContext,
@@ -6093,7 +6843,7 @@ async function executeGetCounterColumnNode(
       }
 
       if (matchingTables.length > 0) {
-        sourcePacks.push(pack);
+        sourcePacks.push(sourceFile);
       }
     } catch (error) {
       console.error(`GetCounterColumn Node ${nodeId}: Error processing ${packFile.name}:`, error);
@@ -6290,7 +7040,7 @@ async function executeReadTSVFromPackNode(
 
   // Search for TSV file in pack files
   let tsvContent: string | null = null;
-  let sourcePack: Pack | null = null;
+  let sourcePack: PackSource | null = null;
 
   for (const packFile of packFilesToSearch) {
     try {
@@ -6302,9 +7052,7 @@ async function executeReadTSVFromPackNode(
       );
 
       // Search for the TSV file in packed files
-      const tsvFile = pack.packedFiles.find((pf) =>
-        pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase()),
-      );
+      const tsvFile = pack.packedFiles.find((pf) => pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase()));
 
       if (tsvFile) {
         hotPathLog(executionContext, `ReadTSVFromPack Node ${nodeId}: Found TSV file in pack: ${packFile}`);
@@ -6312,12 +7060,12 @@ async function executeReadTSVFromPackNode(
         // TSV files should be stored as text
         if (tsvFile.text) {
           tsvContent = tsvFile.text;
-          sourcePack = pack;
+          sourcePack = { name: pack.name, path: pack.path };
           break;
         } else if (tsvFile.buffer) {
           // If stored as buffer, convert to string
           tsvContent = tsvFile.buffer.toString("utf-8");
-          sourcePack = pack;
+          sourcePack = { name: pack.name, path: pack.path };
           break;
         }
       }
@@ -6430,7 +7178,10 @@ async function executeReadTSVFromPackNode(
     },
   ];
 
-  hotPathLog(executionContext, `ReadTSVFromPack Node ${nodeId}: Successfully parsed ${dataLines.length} rows from TSV file`);
+  hotPathLog(
+    executionContext,
+    `ReadTSVFromPack Node ${nodeId}: Successfully parsed ${dataLines.length} rows from TSV file`,
+  );
 
   return {
     success: true,
@@ -6449,7 +7200,7 @@ async function executeCustomRowsInputNode(
   inputData: any,
   config?: unknown,
 ): Promise<NodeExecutionResult> {
-  console.log(`CustomRowsInput Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`CustomRowsInput Node ${nodeId}: Processing`, summarizeFlowInput(inputData));
 
   if (!inputData || inputData.type !== "CustomSchema") {
     return { success: false, error: "Invalid input: Expected CustomSchema data" };
@@ -6561,5 +7312,1345 @@ async function executeCustomRowsInputNode(
       sourceFiles: [],
       tableCount: 1,
     } as DBTablesNodeData,
+  };
+}
+
+interface DeepCloneNodeConfig {
+  cloneTree?: DeepCloneTreeNode;
+  nameTemplate?: string;
+  useModdersPrefix?: boolean;
+  variantAxes?: DeepCloneVariantAxis[];
+  columnOverrides?: DeepCloneOverride[];
+  moddersPrefix?: string;
+  generateLoc?: boolean;
+  autoFollowReferences?: boolean;
+}
+
+/** Strips the "db\" prefix a TableSelection payload carries, leaving the bare table name. */
+const toBareTableName = (name: string) => name.replace(/^db\\/, "").replace(/\\.*$/, "");
+
+/**
+ * Every table the run can touch: the clone tree itself, plus the tables that reference each renamed
+ * key when auto-follow is on. Derived from the schema, so it is known before any row is read.
+ *
+ * Auto-follow does not recurse - copied rows keep their own key, so no new key is registered - which
+ * is why one level of reverse references is the whole set.
+ */
+export const collectPlannedTables = (
+  cloneTree: DeepCloneTreeNode | undefined,
+  reverseReferencesByTable: Record<string, Record<string, string[][]>>,
+  ignoredTables: string[],
+): string[] => {
+  const tables = new Set<string>();
+  const walk = (node: DeepCloneTreeNode) => {
+    const bareName = toBareTableName(node.table);
+    tables.add(bareName);
+
+    if (node.keyColumn) {
+      for (const [referencingTable] of reverseReferencesByTable[bareName]?.[node.keyColumn] ?? []) {
+        if (!ignoredTables.includes(referencingTable)) tables.add(referencingTable);
+      }
+    }
+    for (const child of node.children || []) {
+      if (child.selected) walk(child);
+    }
+  };
+  if (cloneTree) walk(cloneTree);
+
+  return [...tables];
+};
+
+async function executeDeepCloneNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<DeepCloneNodeConfig>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+  if (!parsed.cloneTree || !parsed.cloneTree.table) {
+    return { success: false, error: "No clone plan configured: pick which referenced tables to clone" };
+  }
+  if (inputData.tables.length === 0) {
+    hotPathLog(executionContext, `Deep Clone Node ${nodeId}: No input tables, returning empty result`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  // Search the input packs plus the base game pack, so references into vanilla data resolve.
+  const searchPacks = [...(inputData.sourceFiles || [])];
+  const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+  const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+  if (baseGamePackName && baseGameFolder) {
+    const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+    if (!searchPacks.some((searchPack) => searchPack.path === baseGamePackPath) && fs.existsSync(baseGamePackPath)) {
+      searchPacks.push({ name: baseGamePackName, path: baseGamePackPath, loaded: true });
+    }
+  }
+
+  const rootTableName = toBareTableName(parsed.cloneTree.table);
+  const rootTableFiles: LoadedTableFile[] = inputData.tables
+    .filter((table) => table.table.tableSchema && table.table.schemaFields)
+    .map((table) => ({
+      tableName: rootTableName,
+      packedFile: table.table,
+      packName: table.sourceFile?.name ?? "",
+      packPath: table.sourceFile?.path ?? "",
+    }));
+
+  /**
+   * Tables already read by the prefetch below, and by the on-demand fallback.
+   *
+   * Reading one table at a time re-parses the whole pack index per call, which dominated the node's
+   * runtime, so the planned tables are read in a single pass per pack instead.
+   */
+  const loadedTablesByName = new Map<string, LoadedTableFile[]>();
+
+  const readTablesFromPacks = async (bareNames: string[]): Promise<void> => {
+    if (bareNames.length === 0) return;
+    const searchNames = bareNames.map((bareName) => `db\\${bareName}`);
+    // Recorded even when a table has no rows anywhere, so a miss is not retried on every lookup.
+    for (const bareName of bareNames) {
+      if (!loadedTablesByName.has(bareName)) loadedTablesByName.set(bareName, []);
+    }
+
+    const searchPacksWithTables = await narrowFilesToPacksWithTables(
+      searchPacks,
+      searchNames,
+      `Deep Clone Node ${nodeId}`,
+    );
+
+    for (const searchPack of searchPacksWithTables) {
+      if (!searchPack.loaded) continue;
+      try {
+        const { sourceFile, matchingTablesByName } = await getTableFilesForPackAndTables(
+          searchPack.path,
+          searchNames,
+          executionContext,
+        );
+        for (let index = 0; index < bareNames.length; index++) {
+          for (const packedFile of matchingTablesByName.get(searchNames[index]) || []) {
+            if (!packedFile.tableSchema || !packedFile.schemaFields) continue;
+            // Pack order is preserved, so an input pack still shadows the base game.
+            loadedTablesByName.get(bareNames[index])!.push({
+              tableName: bareNames[index],
+              packedFile,
+              packName: sourceFile.name,
+              packPath: sourceFile.path,
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Error reading ${searchPack.path}:`, error);
+      }
+    }
+  };
+
+  const loadTable = async (tableName: string): Promise<LoadedTableFile[]> => {
+    const bareName = toBareTableName(tableName);
+    const alreadyLoaded = loadedTablesByName.get(bareName);
+    if (alreadyLoaded) return alreadyLoaded;
+
+    // Not in the planned set: the plan is derived from the schema, so this only happens if the graph
+    // reaches somewhere unexpected. Reading it here keeps that a slow path, never a wrong result.
+    hotPathLog(executionContext, `Deep Clone Node ${nodeId}: reading ${bareName} outside the prefetch`);
+    await readTablesFromPacks([bareName]);
+    return loadedTablesByName.get(bareName) ?? [];
+  };
+
+  let lookupLocText: ((locKey: string) => string | undefined) | undefined;
+  if (parsed.generateLoc !== false) {
+    const locLookups: KeyedLookup<string>[] = [];
+    const localePath = baseGameFolder ? path.join(baseGameFolder, "local_en.pack") : undefined;
+    let vanillaLocCacheLoaded = false;
+
+    if (localePath && fs.existsSync(localePath)) {
+      try {
+        const vanillaLocLookups = Object.values(await getVanillaLocLookup([localePath]));
+        if (vanillaLocLookups.length > 0) {
+          locLookups.push(...vanillaLocLookups);
+          vanillaLocCacheLoaded = true;
+        }
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Could not read cached vanilla locs:`, error);
+      }
+    }
+
+    const locPackPaths = [
+      ...(!vanillaLocCacheLoaded && localePath ? [localePath] : []),
+      ...searchPacks
+        .filter((searchPack) => searchPack.loaded)
+        .map((searchPack) => searchPack.path)
+        .filter((locPackPath) => !vanillaLocCacheLoaded || locPackPath !== localePath),
+    ];
+
+    for (const locPackPath of new Set(locPackPaths)) {
+      try {
+        const locPack = await readPackCached(
+          locPackPath,
+          { skipParsingTables: true, readLocs: true },
+          executionContext,
+        );
+        const trie = getLocsTrie(locPack);
+        if (trie) locLookups.push(trie);
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Could not read locs from ${locPackPath}:`, error);
+      }
+    }
+
+    lookupLocText = (locKey: string) => {
+      for (const lookup of locLookups) {
+        const value = lookup.get(locKey);
+        if (value) return value;
+      }
+      return undefined;
+    };
+  }
+
+  // Art addressed by a unit key is not reachable through the schema, so it is found by name. Index
+  // just the relevant folders, across the input packs first (a mod may override a vanilla porthole)
+  // and then every vanilla pack.
+  const plan: DeepClonePlan = {
+    cloneTree: { ...parsed.cloneTree, table: rootTableName },
+    nameTemplate: parsed.nameTemplate || "{original}{variant}",
+    useModdersPrefix: parsed.useModdersPrefix !== false,
+    // The flow's own prefix wins: it is the author's, and this may be running on a user's machine.
+    // Flows authored before the prefix was saved fall back to the local setting.
+    moddersPrefix: parsed.moddersPrefix || appData.moddersPrefix || "",
+    variantAxes: parsed.variantAxes || [],
+    columnOverrides: parsed.columnOverrides || [],
+    generateLoc: parsed.generateLoc !== false,
+    autoFollowReferences: parsed.autoFollowReferences !== false,
+  };
+
+  // Both reference indexes are built lazily per game; make sure they exist before the engine reads them.
+  const referencedColumnsByTable = await getReferencesForGame(appData.currentGame);
+  const reverseReferencesByTable = await getDBFieldsReferencedByForGame(appData.currentGame);
+
+  const plannedTables = collectPlannedTables(
+    plan.cloneTree,
+    plan.autoFollowReferences ? reverseReferencesByTable : {},
+    tablesToIgnore,
+  );
+  const prefetchStartedAt = Date.now();
+  await readTablesFromPacks(plannedTables);
+  console.log(
+    `Deep Clone Node ${nodeId}: prefetched ${plannedTables.length} table(s) from ${searchPacks.length} pack(s) in ${Date.now() - prefetchStartedAt}ms`,
+  );
+
+  // Folders named by filename_relative_path on the tables being cloned. Derived from the schema, so
+  // a table gaining a new file column needs no change here.
+  const schemaFolders = new Set<string>();
+  const gameSchema = await getSchemaForGame(appData.currentGame);
+  for (const tableName of plannedTables) {
+    for (const field of gameSchema[tableName]?.[0]?.fields ?? []) {
+      for (const pattern of parseFilenameRelativePaths(field.filename_relative_path)) {
+        // Everything before the first placeholder or wildcard is the fixed folder to index.
+        const fixedPrefix = pattern.split(/[%*]/)[0];
+        if (fixedPrefix.includes("\\")) {
+          schemaFolders.add(fixedPrefix.slice(0, fixedPrefix.lastIndexOf("\\") + 1));
+        }
+      }
+    }
+  }
+
+  const imageFolders = [...schemaFolders];
+  const packPathByFileName = new Map<string, string>();
+  if (imageFolders.length > 0) {
+    // The flow's own packs are read directly, because they change under us and are few.
+    const inputPackPaths = searchPacks.filter((searchPack) => searchPack.loaded).map((searchPack) => searchPack.path);
+    for (const indexPackPath of new Set(inputPackPaths)) {
+      try {
+        const indexedPack = await readPackCached(indexPackPath, { skipParsingTables: true }, executionContext);
+        for (const packedFile of indexedPack.packedFiles) {
+          if (!imageFolders.some((folder) => packedFile.name.startsWith(folder))) continue;
+          // First pack wins, so an input pack's override beats the vanilla file.
+          if (!packPathByFileName.has(packedFile.name)) {
+            packPathByFileName.set(packedFile.name, indexPackPath);
+          }
+        }
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Could not index ${indexPackPath}:`, error);
+      }
+    }
+
+    // Vanilla art comes from the prebuilt index, which knows every folder rather than the handful a
+    // table could once declare - so a schema path pointing somewhere new resolves without being
+    // taught about it first.
+    const vanillaIndex = baseGameFolder ? await getVanillaPackIndex() : undefined;
+    let vanillaFileCount = 0;
+    if (vanillaIndex) {
+      for (const folder of imageFolders) {
+        for (const [fileName, packName] of collectVanillaFilesUnderPrefix(vanillaIndex, folder)) {
+          if (packPathByFileName.has(fileName)) continue;
+          packPathByFileName.set(fileName, path.join(baseGameFolder as string, packName));
+          vanillaFileCount++;
+        }
+      }
+    }
+
+    // Always logged, not debug-gated: silently copying no art is the failure mode that looks like
+    // the feature is missing entirely.
+    console.log(
+      `Deep Clone Node ${nodeId}: indexed ${packPathByFileName.size} art file(s) under ${imageFolders.join(", ")} from ${inputPackPaths.length} input pack(s) and ${vanillaFileCount} vanilla file(s)`,
+    );
+    if (packPathByFileName.size === 0) {
+      console.warn(
+        `Deep Clone Node ${nodeId}: no art indexed under ${imageFolders.join(", ")}${
+          vanillaIndex ? "" : " and no vanilla pack index was available"
+        }`,
+      );
+    }
+  }
+
+  let result;
+  try {
+    result = await executeDeepClonePlan(rootTableFiles, plan, {
+      loadTable,
+      getRows: (packedFile) => getRowsForPackedFile(packedFile, executionContext),
+      lookupLocText,
+      referencedColumnsByTable,
+      numericIdFieldByTable: gameToTablesWithNumericIds[appData.currentGame] || {},
+      reverseReferencesByTable,
+      tablesToIgnore,
+      hasPackedFile: packPathByFileName.size > 0 ? (name) => packPathByFileName.has(name) : undefined,
+      listPackedFiles:
+        packPathByFileName.size > 0
+          ? (prefix) => [...packPathByFileName.keys()].filter((name) => name.startsWith(prefix))
+          : undefined,
+      log: (...args) => hotPathLog(executionContext, `Deep Clone Node ${nodeId}:`, ...args),
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: `Deep clone failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+
+  // Collisions are reported rather than fatal: flows also run unattended at game launch, where
+  // aborting the whole flow over a pre-existing key would be worse than writing the row.
+  for (const collision of result.collisions) {
+    console.warn(`Deep Clone Node ${nodeId}: Key collision - ${collision}`);
+  }
+  for (const warning of result.warnings) {
+    console.warn(`Deep Clone Node ${nodeId}: ${warning}`);
+  }
+
+  const sourcePack = rootTableFiles[0]?.packedFile;
+  const outputTables: DBTablesNodeTable[] = result.tables.map((table) => ({
+    name: table.tableName,
+    fileName: `db\\${table.tableName}\\deepclone`,
+    sourceFile: inputData.tables[0]?.sourceFile,
+    table: {
+      ...(sourcePack ?? ({} as PackedFile)),
+      name: `db\\${table.tableName}\\deepclone`,
+      file_size: 0,
+      start_pos: 0,
+      tableSchema: table.tableSchema,
+      schemaFields: table.rows.flat(),
+      version: table.version,
+      entryCount: table.rows.length,
+    },
+    outputPathPrefix: table.outputPathPrefix,
+    outputPathSuffix: table.outputPathSuffix,
+  }));
+
+  // Art addressed by a unit key: read the bytes and hand each file to the save node under its new
+  // name. Kept as a separate step because the engine only decides *which* files, never reads them.
+  if (result.fileCopies.length > 0) {
+    outputTables.push(
+      ...(await buildFileCopyOutputs(
+        result.fileCopies,
+        packPathByFileName,
+        async (sourcePackPath, names) => {
+          const sourcePack = await readPackCached(
+            sourcePackPath,
+            {
+              skipParsingTables: true,
+              filesToRead: names,
+            },
+            executionContext,
+          );
+          return new Map(
+            sourcePack.packedFiles
+              .filter((packedFile) => names.includes(packedFile.name))
+              .map((packedFile) => [packedFile.name, packedFile.buffer]),
+          );
+        },
+        inputData.tables[0]?.sourceFile,
+        (message) => console.warn(`Deep Clone Node ${nodeId}: ${message}`),
+      )),
+    );
+  }
+
+  console.log(
+    `Deep Clone Node ${nodeId}: ${result.clonedRowCount} row(s) across ${outputTables.length} output entr(ies), including ${result.fileCopies.length} art file(s)`,
+  );
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: outputTables,
+      sourceFiles: inputData.sourceFiles || [],
+      tableCount: outputTables.length,
+    } as DBTablesNodeData,
+  };
+}
+
+/**
+ * Control-flow gate: passes its input straight through, out of one of two handles depending on a
+ * checkbox flow option. The handle not taken is reported as inactive, so the executor never runs the
+ * nodes behind it — a save or dump on the branch not taken writes nothing at all.
+ */
+function executeConditionalBranchNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+): NodeExecutionResult {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<{
+    selectedFlowOptionId?: string;
+    flowOptionChecked?: boolean;
+    flowOptionKind?: "checkbox" | "radio";
+    flowOptionChoiceId?: string;
+  }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+  if (!parsed.selectedFlowOptionId) {
+    return { success: false, error: "No flow option selected: pick the option that decides the branch" };
+  }
+
+  let activeHandle: string;
+  if (parsed.flowOptionKind === "radio") {
+    if (!parsed.flowOptionChoiceId) {
+      return {
+        success: false,
+        error: `The radio option '${parsed.selectedFlowOptionId}' has no choices, so no branch can run`,
+      };
+    }
+    activeHandle = conditionalBranchChoiceHandle(parsed.flowOptionChoiceId);
+    console.log(
+      `Conditional Branch Node ${nodeId}: '${parsed.selectedFlowOptionId}' is '${parsed.flowOptionChoiceId}', continuing through ${activeHandle}`,
+    );
+  } else {
+    const isChecked = parsed.flowOptionChecked === true;
+    activeHandle = isChecked ? CONDITIONAL_BRANCH_TRUE_HANDLE : CONDITIONAL_BRANCH_FALSE_HANDLE;
+    console.log(
+      `Conditional Branch Node ${nodeId}: '${parsed.selectedFlowOptionId}' is ${isChecked}, continuing through ${activeHandle}`,
+    );
+  }
+
+  return {
+    success: true,
+    data: inputData,
+    activeOutputHandles: [activeHandle],
+  };
+}
+
+/**
+ * Combines schema-backed entries for the same table and schema version, preserving input order.
+ * Non-table payloads and exact-output files stay as separate entries because they have different
+ * save semantics.
+ */
+function executeCombineSameTablesNode(
+  nodeId: string,
+  inputData: DBTablesNodeData,
+  executionContext?: FlowExecutionContext,
+): NodeExecutionResult {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const inputTables = inputData.tables || [];
+  const combinedTables: DBTablesNodeTable[] = [];
+  const rowsByGroupKey = new Map<string, AmendedSchemaField[]>();
+  const versionsByTableName = new Map<string, Set<string>>();
+
+  for (const entry of inputTables) {
+    const packedFile = entry.table;
+    const canCombine = !entry.outputFileName && !!packedFile?.schemaFields && !!packedFile.tableSchema;
+
+    if (!canCombine) {
+      combinedTables.push(entry);
+      continue;
+    }
+
+    const bareTableName = toBareTableName(entry.name).toLowerCase();
+    const version = packedFile.tableSchema!.version ?? packedFile.version ?? "";
+    const versionKey = String(version);
+    const versions = versionsByTableName.get(bareTableName) || new Set<string>();
+    versions.add(versionKey);
+    versionsByTableName.set(bareTableName, versions);
+
+    const groupKey = `${bareTableName}|${versionKey}|${entry.outputPathPrefix ?? ""}|${entry.outputPathSuffix ?? ""}`;
+    // flat() hands back a fresh array, so the group's first entry can own it outright and every
+    // later entry appends into it. Rebuilding the array per entry instead made combining the same
+    // table across a large mod list quadratic in the cells it copied.
+    const rows = getRowsForPackedFile(packedFile, executionContext).flat();
+    const combinedRows = rowsByGroupKey.get(groupKey);
+    if (combinedRows) {
+      // One at a time: push(...rows) passes every cell as an argument, which overflows the stack
+      // on a table of any real size.
+      for (const row of rows) combinedRows.push(row);
+      continue;
+    }
+
+    rowsByGroupKey.set(groupKey, rows);
+    combinedTables.push({
+      ...entry,
+      table: {
+        ...packedFile,
+        schemaFields: rows,
+      },
+    });
+  }
+
+  const warnings = [...versionsByTableName.entries()]
+    .filter(([, versions]) => versions.size > 1)
+    .map(([tableName, versions]) => {
+      const orderedVersions = [...versions].toSorted((left, right) =>
+        left.localeCompare(right, undefined, { numeric: true }),
+      );
+      const formattedVersions =
+        orderedVersions.length === 2
+          ? orderedVersions.join(" and ")
+          : `${orderedVersions.slice(0, -1).join(", ")}, and ${orderedVersions.at(-1)}`;
+      return `${tableName} appears at versions ${formattedVersions}; only entries at the same version were combined`;
+    });
+
+  console.log(`Combine Same Tables Node ${nodeId}: ${inputTables.length} entries in → ${combinedTables.length} out`);
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: combinedTables,
+      sourceFiles: inputData.sourceFiles,
+      tableCount: combinedTables.length,
+    },
+    warnings: warnings.length > 0 ? warnings : undefined,
+  };
+}
+
+/**
+ * Drops the named entries from a table selection and passes the rest through.
+ *
+ * Matching is on the entry's name, with or without the "db\\" prefix and case-insensitively, so a
+ * name typed from the schema list works whichever convention the upstream node used. Non-table
+ * payloads carry their own name too - the generated loc, or an art file's path - so they can be
+ * dropped the same way.
+ */
+function executeRemoveTablesNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+): NodeExecutionResult {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<{ tablesToRemove?: string[] }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  const removalNames = new Set(
+    (parsed.tablesToRemove || [])
+      .map((tableName) => toBareTableName(tableName).toLowerCase())
+      .filter((tableName) => tableName.length > 0),
+  );
+  if (removalNames.size === 0) {
+    return { success: true, data: inputData };
+  }
+
+  const keptTables = (inputData.tables || []).filter((table) => {
+    const bareName = toBareTableName(table.name).toLowerCase();
+    return !removalNames.has(bareName) && !removalNames.has((table.name || "").toLowerCase());
+  });
+
+  const removedCount = (inputData.tables || []).length - keptTables.length;
+  console.log(
+    `Remove Tables Node ${nodeId}: dropped ${removedCount} of ${(inputData.tables || []).length} entr(ies) matching ${[...removalNames].join(", ")}`,
+  );
+
+  return {
+    success: true,
+    data: {
+      ...inputData,
+      tables: keptTables,
+      tableCount: keptTables.length,
+    } as DBTablesNodeData,
+  };
+}
+
+/** A loc table is recognised by its columns rather than its name, so any loc source works. */
+const isLocTable = (table: DBTablesNodeTable): boolean => {
+  const fields = table.table.tableSchema?.fields;
+  if (!fields) return false;
+  return fields.some((field) => field.name === "key") && fields.some((field) => field.name === "text");
+};
+
+/**
+ * Rewrites the text of localisation rows whose key starts with a given prefix.
+ *
+ * Matching is on a prefix because the rest of a generated loc key is only known at run time: it
+ * carries the cloned row's new key, which depends on which rows the run touched, the modders prefix
+ * and the variant suffix. The prefix - "<table>_<localised field>_" - comes from the schema and is
+ * fixed while authoring, so it is the one part a rule can rely on.
+ *
+ * Every rule that matches is applied, in order. Rows and tables that match nothing pass through
+ * untouched, which is normal: whether a table contributes locs at all depends on the run.
+ */
+async function executeEditLocTextNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<{ locRules?: LocTextRule[] }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  const locRules = (parsed.locRules || []).filter((rule) => rule && rule.keyPrefix);
+  if (locRules.length === 0) {
+    return { success: true, data: inputData };
+  }
+
+  let changedRowCount = 0;
+  const outputTables: DBTablesNodeTable[] = [];
+
+  for (const table of inputData.tables || []) {
+    if (!isLocTable(table) || !table.table.schemaFields) {
+      outputTables.push(table);
+      continue;
+    }
+
+    const tableSchema = table.table.tableSchema!;
+    const keyIndex = tableSchema.fields.findIndex((field) => field.name === "key");
+    const textIndex = tableSchema.fields.findIndex((field) => field.name === "text");
+    const textField = tableSchema.fields[textIndex];
+
+    const rows = getRowsForPackedFile(table.table, executionContext);
+    const updatedRows: AmendedSchemaField[][] = [];
+
+    for (const row of rows) {
+      const locKey = (row[keyIndex]?.resolvedKeyValue ?? "").toLowerCase();
+      const originalText = row[textIndex]?.resolvedKeyValue ?? "";
+      let nextText = originalText;
+
+      for (const rule of locRules) {
+        if (!locKey.startsWith(rule.keyPrefix.toLowerCase())) continue;
+        if (rule.find) {
+          nextText = nextText.split(rule.find).join(rule.replaceWith ?? "");
+        }
+        if (rule.prepend) nextText = `${rule.prepend}${nextText}`;
+        if (rule.append) nextText = `${nextText}${rule.append}`;
+      }
+
+      if (nextText === originalText) {
+        updatedRows.push(row);
+        continue;
+      }
+
+      const updatedRow = row.map((cell) => ({ ...cell }));
+      updatedRow[textIndex] = {
+        ...updatedRow[textIndex],
+        resolvedKeyValue: nextText,
+        type: "Buffer",
+        fields: [{ type: "Buffer", val: await typeToBuffer(textField.field_type, nextText) }],
+      };
+      updatedRows.push(updatedRow);
+      changedRowCount++;
+    }
+
+    outputTables.push({
+      ...table,
+      table: { ...table.table, schemaFields: updatedRows.flat() },
+    });
+  }
+
+  console.log(`Edit Loc Text Node ${nodeId}: changed ${changedRowCount} localisation row(s)`);
+
+  return {
+    success: true,
+    data: { ...inputData, tables: outputTables, tableCount: outputTables.length } as DBTablesNodeData,
+  };
+}
+
+const UTF8_BOM = "\uFEFF";
+
+/**
+ * How much of a pack the file operations node will carry into the output.
+ *
+ * Copying a pack means holding its files in memory, and a flow pointed at every enabled mod would
+ * otherwise try to copy the base game's packs.
+ */
+const MAX_PACK_COPY_BYTES = 512 * 1024 * 1024;
+
+/**
+ * Edits text files inside packs - lua scripts, variantmeshdefinitions, twui - and hands the results
+ * to the save node to write.
+ *
+ * A rule that matches nothing is reported on a manual run, where the author is watching, but stays
+ * quiet on the unattended run at game start unless it is marked required: a flow that edits files
+ * across many packs will routinely have rules that do not apply to the current one.
+ */
+async function executeEditTextFileNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData | DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || (inputData.type !== "PackFiles" && inputData.type !== "TableSelection")) {
+    return { success: false, error: "Invalid input: Expected PackFiles or TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<{
+    textFileRules?: TextFileEditRule[];
+    textFileFormatter?: TextFileFormatter;
+    ignoreFlowSourcePack?: boolean;
+    flowSourcePack?: string;
+  }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  const rules = (parsed.textFileRules || []).filter(
+    (rule) => rule && (rule.targetMatch === "input" || rule.target) && rule.selector,
+  );
+  const formatter = parsed.textFileFormatter || "none";
+  if (rules.length === 0) {
+    const tables = inputData.type === "TableSelection" ? inputData.tables || [] : [];
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables,
+        sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+        tableCount: tables.length,
+      } as DBTablesNodeData,
+    };
+  }
+
+  const isUnattendedRun = executionContext !== undefined;
+  const matchCountByRuleId: Record<string, number> = {};
+  /** Rules that found their guard text already in place - a deliberate no-op, not a miss. */
+  const guardSkippedRuleIds = new Set<string>();
+  const outputTables: DBTablesNodeTable[] = [];
+  const warnings: string[] = [];
+  let changedFileCount = 0;
+
+  const recordResult = (result: ReturnType<typeof applyTextFileEdits>) => {
+    for (const [ruleId, count] of Object.entries(result.matchCountByRuleId)) {
+      matchCountByRuleId[ruleId] = (matchCountByRuleId[ruleId] ?? 0) + count;
+    }
+    for (const skippedRuleId of result.skippedRuleIds) guardSkippedRuleIds.add(skippedRuleId);
+    for (const error of result.errors) warnings.push(error);
+  };
+
+  // A chained node edits the buffers produced upstream and carries every file forward. Passing
+  // unmatched and guard-skipped files through is essential: the eventual save must retain the
+  // previous node's edits even when this node has nothing further to do to them.
+  if (inputData.type === "TableSelection") {
+    for (const inputTable of inputData.tables || []) {
+      const name = inputTable.outputFileName || inputTable.name;
+      const buffer = inputTable.table.buffer;
+      if (!buffer) {
+        outputTables.push(inputTable);
+        continue;
+      }
+
+      const raw = buffer.toString("utf8");
+      const hasBom = raw.startsWith(UTF8_BOM);
+      const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, rules, formatter);
+      recordResult(result);
+
+      const editedText = hasBom ? UTF8_BOM + result.text : result.text;
+      if (editedText === raw) {
+        outputTables.push(inputTable);
+        continue;
+      }
+
+      changedFileCount += 1;
+      const editedBuffer = Buffer.from(editedText, "utf8");
+      outputTables.push({
+        ...inputTable,
+        name,
+        fileName: name,
+        table: {
+          ...inputTable.table,
+          name,
+          file_size: editedBuffer.length,
+          buffer: editedBuffer,
+        } as PackedFile,
+        outputFileName: name,
+      });
+    }
+  } else {
+    // "previous output" only applies to a TableSelection supplied by an earlier node.
+    const packRules = rules.filter((rule) => rule.targetMatch !== "input");
+
+    // Two enabled mods can both carry the same file, and only the higher-priority one is what the
+    // game loads - so that is the copy to edit. Editing both would put whichever happened to be read
+    // last into the output, which is not necessarily the one the player is running.
+    const priority = buildFlowPackPriority();
+    const indexedPacks = new Map<string, Pack>();
+    const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
+    /**
+     * Per pack, the file's real name keyed by its lowercased form.
+     *
+     * Which pack wins is decided on the lowercased path, because the vanilla index stores names that
+     * way and a mod overriding a vanilla file has to be recognised as the same file rather than a
+     * second one. The pack's own spelling is what gets read back out of it.
+     */
+    const originalNamesByPack = new Map<string, Map<string, string>>();
+    const recordTargetedNames = (packPath: string, fileNames: string[]) => {
+      const originalNames = new Map<string, string>();
+      for (const fileName of fileNames) originalNames.set(fileName.toLowerCase(), fileName);
+      originalNamesByPack.set(packPath, originalNames);
+      targetedNamesByPack.push({ packPath, fileNames: [...originalNames.keys()] });
+    };
+
+    const sourcePackFiles = (inputData.files || []).filter(
+      (packFile) => !parsed.ignoreFlowSourcePack || !isFlowSourcePack(packFile, parsed.flowSourcePack),
+    );
+
+    // Reading a pack's index to find a handful of files costs the same as reading it to find all of
+    // them, and "Include Base Game" now hands this node ~260 vanilla packs. The prebuilt index
+    // answers for all of them at once; the mod packs, which change under us, are still read directly.
+    const vanillaIndex = sourcePackFiles.some(
+      (packFile) => packFile.loaded && appData.allVanillaPackNames.has(packFile.name),
+    )
+      ? await getVanillaPackIndex()
+      : undefined;
+    const indexedVanillaPackPaths = new Map<string, string>();
+    if (vanillaIndex) {
+      for (const packFile of sourcePackFiles) {
+        if (packFile.loaded && appData.allVanillaPackNames.has(packFile.name)) {
+          indexedVanillaPackPaths.set(packFile.name.toLowerCase(), packFile.path);
+        }
+      }
+    }
+
+    for (const packFile of sourcePackFiles) {
+      if (!packFile.loaded) continue;
+      if (indexedVanillaPackPaths.has(packFile.name.toLowerCase())) continue;
+      try {
+        // The index first, so only the files a rule actually targets are read.
+        const sourcePackPath = resolveFlowSourcePackPath(packFile.path, executionContext);
+        const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true }, executionContext);
+        indexedPacks.set(packFile.path, indexedPack);
+        recordTargetedNames(
+          packFile.path,
+          indexedPack.packedFiles
+            .map((indexedFile) => indexedFile.name)
+            .filter((name) => packRules.some((rule) => matchesTextFileTarget(name, rule))),
+        );
+      } catch (error) {
+        console.error(`Edit Text File Node ${nodeId}: Error reading ${packFile.path}:`, error);
+      }
+    }
+
+    if (vanillaIndex && indexedVanillaPackPaths.size > 0) {
+      const vanillaNamesByPackPath = new Map<string, string[]>();
+      for (const [fileName, packName] of resolveVanillaTargets(vanillaIndex, packRules)) {
+        // A pack the index knows about but this flow was not given is not ours to edit.
+        const packPath = indexedVanillaPackPaths.get(packName.toLowerCase());
+        if (!packPath) continue;
+        const names = vanillaNamesByPackPath.get(packPath);
+        if (names) names.push(fileName);
+        else vanillaNamesByPackPath.set(packPath, [fileName]);
+      }
+      for (const [packPath, fileNames] of vanillaNamesByPackPath) recordTargetedNames(packPath, fileNames);
+    }
+
+    const sourcePackByFileName = resolveFileSourcePacks(targetedNamesByPack, priority);
+    const namesByWinningPack = new Map<string, string[]>();
+    for (const [fileName, packPath] of sourcePackByFileName) {
+      const names = namesByWinningPack.get(packPath);
+      if (names) names.push(fileName);
+      else namesByWinningPack.set(packPath, [fileName]);
+    }
+
+    for (const [packPath, targetedNames] of namesByWinningPack) {
+      if (targetedNames.length === 0) continue;
+      const originalNames = originalNamesByPack.get(packPath);
+      // The pack's own spelling, since that is what it will be asked for by name.
+      const namesToRead = targetedNames.map((name) => originalNames?.get(name) ?? name);
+
+      try {
+        const packWithFiles = await readPackCached(
+          packPath,
+          {
+            skipParsingTables: true,
+            filesToRead: namesToRead,
+          },
+          executionContext,
+        );
+        // A vanilla pack is served from the prebuilt index and never separately indexed, so the pack
+        // just read is what the outputs point back at.
+        const indexedPack = indexedPacks.get(packPath) ?? packWithFiles;
+
+        for (const name of namesToRead) {
+          const buffer = packWithFiles.packedFiles.find((candidate) => candidate.name === name)?.buffer;
+          if (!buffer) continue;
+
+          // A BOM is kept exactly as it was found; the game's parsers care.
+          const raw = buffer.toString("utf8");
+          const hasBom = raw.startsWith(UTF8_BOM);
+          const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, packRules, formatter);
+          recordResult(result);
+
+          const editedText = hasBom ? UTF8_BOM + result.text : result.text;
+          if (editedText === raw) continue;
+
+          changedFileCount += 1;
+          const editedBuffer = Buffer.from(editedText, "utf8");
+          outputTables.push({
+            name,
+            fileName: name,
+            sourceFile: { name: indexedPack.name, path: indexedPack.path },
+            table: { name, file_size: editedBuffer.length, start_pos: 0, buffer: editedBuffer } as PackedFile,
+            outputFileName: name,
+          });
+        }
+      } catch (error) {
+        console.error(`Edit Text File Node ${nodeId}: Error reading ${packPath}:`, error);
+      }
+    }
+  }
+
+  for (const rule of rules) {
+    if ((matchCountByRuleId[rule.id] ?? 0) > 0) continue;
+    // A rule that stood down because its text was already there did what it was asked to do.
+    if (guardSkippedRuleIds.has(rule.id)) continue;
+    if (isUnattendedRun && !rule.required) continue;
+    const target = rule.targetMatch === "input" ? "previous output" : `'${rule.target}'`;
+    warnings.push(`Rule targeting ${target} with selector '${rule.selector}' matched nothing`);
+  }
+
+  for (const warning of warnings) {
+    console.warn(`Edit Text File Node ${nodeId}: ${warning}`);
+  }
+  console.log(`Edit Text File Node ${nodeId}: edited ${changedFileCount} file(s)`);
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: outputTables,
+      sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+      tableCount: outputTables.length,
+    } as DBTablesNodeData,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  };
+}
+
+const normalizeXmlFilePath = (filePath: string): string => filePath.replace(/[\\/]+/g, "\\").toLowerCase();
+
+const fileNameOfPack = (packPath: string): string => packPath.replace(/^.*[\\/]/, "");
+
+/**
+ * Edits one XML payload selected by a structural locator. File lookup intentionally follows the
+ * same exact-path/winning-pack rules as Edit Text File, but the XML operation itself is delegated
+ * to the dedicated offset-preserving helper rather than the CSS-selector editor.
+ */
+async function executeEditXmlFileNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData | DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || (inputData.type !== "PackFiles" && inputData.type !== "TableSelection")) {
+    return { success: false, error: "Invalid input: Expected PackFiles or TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<Partial<EditXmlFileConfig> & { targetMode?: string; filePath?: string }>(
+    config,
+    textValue,
+  );
+  if (!parsed) return { success: false, error: "Invalid XML node configuration" };
+  if (parsed.targetMode !== "path" && parsed.targetMode !== "input") {
+    return { success: false, error: "Invalid XML file target mode" };
+  }
+  if (typeof parsed.filePath !== "string" || typeof parsed.ignoreHierarchy !== "boolean") {
+    return { success: false, error: "Invalid XML node configuration" };
+  }
+  if (!Array.isArray(parsed.locatorSteps) || !Array.isArray(parsed.attributeEdits)) {
+    return { success: false, error: "Invalid XML node configuration" };
+  }
+  if (parsed.action !== "setAttributes" && parsed.action !== "editAttributes" && parsed.action !== "replaceElement") {
+    return { success: false, error: "Invalid XML action" };
+  }
+  if (typeof parsed.replacementXml !== "string") {
+    return { success: false, error: "Invalid XML replacement configuration" };
+  }
+  if (parsed.targetMode === "path" && !parsed.filePath.trim()) {
+    return { success: false, error: "XML file path is required" };
+  }
+  if (parsed.targetMode === "input" && inputData.type !== "TableSelection") {
+    return { success: false, error: "Previous output requires a TableSelection input" };
+  }
+  if (inputData.type === "PackFiles" && parsed.targetMode !== "path") {
+    return { success: false, error: "PackFiles input requires an exact XML file path" };
+  }
+
+  const xmlConfig: EditXmlFileConfig = {
+    ignoreHierarchy: parsed.ignoreHierarchy,
+    locatorSteps: parsed.locatorSteps as EditXmlFileConfig["locatorSteps"],
+    action: parsed.action,
+    attributeEdits: parsed.attributeEdits as EditXmlFileConfig["attributeEdits"],
+    replacementXml: parsed.replacementXml,
+  };
+
+  const editTable = (inputTable: DBTablesNodeTable): NodeExecutionResult => {
+    const fileName = inputTable.outputFileName || inputTable.name;
+    const inputBuffer = inputTable.table?.buffer;
+    if (!inputBuffer) return { success: false, error: `XML file '${fileName}' has no readable content` };
+    const sourceText = Buffer.from(inputBuffer).toString("utf8");
+    const result = applyEditXmlFile(sourceText, xmlConfig);
+    if (!result.success || result.text === undefined) {
+      return { success: false, error: result.error || `Could not edit XML file '${fileName}'` };
+    }
+    if (result.text === sourceText) {
+      return {
+        success: true,
+        data: {
+          type: "TableSelection",
+          tables: [inputTable],
+          sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+          tableCount: 1,
+        } as DBTablesNodeData,
+      };
+    }
+    const editedBuffer = Buffer.from(result.text, "utf8");
+    const editedTable: DBTablesNodeTable = {
+      ...inputTable,
+      table: {
+        ...inputTable.table,
+        file_size: editedBuffer.length,
+        buffer: editedBuffer,
+      } as PackedFile,
+      outputFileName: inputTable.outputFileName || fileName,
+    };
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [editedTable],
+        sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+        tableCount: 1,
+      } as DBTablesNodeData,
+    };
+  };
+
+  if (inputData.type === "TableSelection") {
+    const tables = inputData.tables || [];
+    const requestedPath = normalizeXmlFilePath(parsed.filePath);
+    const selectedTables =
+      parsed.targetMode === "input"
+        ? tables
+        : tables.filter((table) => normalizeXmlFilePath(table.outputFileName || table.name) === requestedPath);
+    if (selectedTables.length !== 1) {
+      return {
+        success: false,
+        error:
+          parsed.targetMode === "input"
+            ? `Previous output must contain exactly one XML file (found ${selectedTables.length})`
+            : `XML path must match exactly one previous-output file (found ${selectedTables.length})`,
+      };
+    }
+    return editTable(selectedTables[0]);
+  }
+
+  const requestedPath = normalizeXmlFilePath(parsed.filePath);
+  const sourcePackFiles = (inputData.files || []).filter((packFile) => packFile.loaded);
+  if (sourcePackFiles.length === 0) {
+    return { success: false, error: "PackFiles input contains no loaded packs" };
+  }
+
+  const priority = buildFlowPackPriority();
+  const vanillaPackFiles = sourcePackFiles.filter((packFile) => appData.allVanillaPackNames.has(packFile.name));
+  let vanillaIndex: VanillaPackIndex | undefined;
+  if (vanillaPackFiles.length > 0) {
+    try {
+      vanillaIndex = await getVanillaPackIndex();
+    } catch (error) {
+      console.warn(`Edit XML File Node ${nodeId}: could not read vanilla file index:`, error);
+    }
+  }
+
+  const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
+  const originalNamesByPack = new Map<string, string>();
+  const addCandidate = (packPath: string, fileName: string) => {
+    if (!originalNamesByPack.has(packPath)) originalNamesByPack.set(packPath, fileName);
+    else if (normalizeXmlFilePath(originalNamesByPack.get(packPath) as string) !== requestedPath) return;
+    targetedNamesByPack.push({ packPath, fileNames: [requestedPath] });
+  };
+
+  const packWithVanillaName = (packName: string) =>
+    vanillaPackFiles.find(
+      (packFile) =>
+        packFile.name.toLowerCase() === packName.toLowerCase() ||
+        fileNameOfPack(packFile.path).toLowerCase() === packName.toLowerCase(),
+    );
+
+  if (vanillaIndex) {
+    const vanillaPackName = findVanillaPackContaining(vanillaIndex, requestedPath);
+    const vanillaPack = vanillaPackName ? packWithVanillaName(vanillaPackName) : undefined;
+    if (vanillaPack) addCandidate(vanillaPack.path, requestedPath);
+  }
+
+  for (const packFile of sourcePackFiles) {
+    if (vanillaIndex && appData.allVanillaPackNames.has(packFile.name)) continue;
+    try {
+      const indexedPack = await readPackCached(packFile.path, { skipParsingTables: true }, executionContext);
+      const matchingName = indexedPack.packedFiles.find(
+        (packedFile) => normalizeXmlFilePath(packedFile.name) === requestedPath,
+      )?.name;
+      if (matchingName) addCandidate(packFile.path, matchingName);
+    } catch (error) {
+      console.warn(`Edit XML File Node ${nodeId}: could not index ${packFile.path}:`, error);
+    }
+  }
+
+  const winningPackPath = resolveFileSourcePacks(targetedNamesByPack, priority).get(requestedPath);
+  if (!winningPackPath) {
+    return { success: false, error: `No loaded pack contains XML file '${parsed.filePath}'` };
+  }
+
+  try {
+    const requestedName = originalNamesByPack.get(winningPackPath) || requestedPath;
+    const sourcePack = await readPackCached(
+      winningPackPath,
+      { skipParsingTables: true, filesToRead: [requestedName] },
+      executionContext,
+    );
+    const packedFile = sourcePack.packedFiles.find(
+      (candidate) => normalizeXmlFilePath(candidate.name) === requestedPath && candidate.buffer,
+    );
+    if (!packedFile?.buffer) {
+      return { success: false, error: `XML file '${parsed.filePath}' could not be read from its winning pack` };
+    }
+    const sourcePackFile = sourcePackFiles.find((packFile) => packFile.path === winningPackPath);
+    const fileName = packedFile.name;
+    const inputTable: DBTablesNodeTable = {
+      name: fileName,
+      fileName,
+      sourceFile: {
+        name: sourcePackFile?.name || sourcePack.name,
+        path: sourcePackFile?.path || winningPackPath,
+      },
+      table: packedFile,
+      outputFileName: fileName,
+    };
+    return editTable(inputTable);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : `Could not read XML file '${parsed.filePath}'`,
+    };
+  }
+}
+
+/**
+ * Moves, copies, renames and deletes files, writing the result into the flow's output pack.
+ *
+ * Given PackFiles it reads from those packs; given a table selection it works on the files already
+ * flowing through the graph and passes the rest along. That second form is what makes delete exact:
+ * the flow writes a new pack rather than editing the input, so deleting can only mean "do not carry
+ * this file into the output".
+ */
+async function executePackFileOperationsNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData | DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  const parsed = getNodeConfig<{ fileOperations?: PackFileOperationRule[] }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+  const rules = (parsed.fileOperations || []).filter((rule) => rule && rule.target);
+
+  const isUnattendedRun = executionContext !== undefined;
+  const warnings: string[] = [];
+  const outputTables: DBTablesNodeTable[] = [];
+
+  const reportRules = (matchCountByRuleId: Record<string, number>) => {
+    for (const rule of rules) {
+      if ((matchCountByRuleId[rule.id] ?? 0) > 0) continue;
+      if (isUnattendedRun && !rule.required) continue;
+      warnings.push(`Rule targeting '${rule.target}' matched nothing`);
+    }
+  };
+
+  // Working on the files already in the graph: rename by renaming the entry, delete by dropping it.
+  if (inputData && (inputData as DBTablesNodeData).type === "TableSelection") {
+    const tables = (inputData as DBTablesNodeData).tables || [];
+    const pathOf = (table: DBTablesNodeTable) => table.outputFileName || table.name;
+    const plan = planPackFileOperations(tables.map(pathOf), rules);
+
+    const sourceByPath = new Map(tables.map((table) => [pathOf(table), table]));
+    for (const table of tables) {
+      if (plan.removedPaths.has(pathOf(table))) continue;
+      outputTables.push(table);
+    }
+    for (const entry of plan.entries) {
+      const source = sourceByPath.get(entry.sourcePath);
+      if (!source) continue;
+      outputTables.push({ ...source, name: entry.targetPath, outputFileName: entry.targetPath });
+    }
+
+    reportRules(plan.matchCountByRuleId);
+    for (const skipped of plan.skippedOverwrites) warnings.push(`Left '${skipped}' as it was`);
+    for (const warning of warnings) console.warn(`Pack File Operations Node ${nodeId}: ${warning}`);
+    console.log(`Pack File Operations Node ${nodeId}: ${outputTables.length} file(s) out`);
+
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: outputTables,
+        sourceFiles: (inputData as DBTablesNodeData).sourceFiles || [],
+        tableCount: outputTables.length,
+      } as DBTablesNodeData,
+    };
+  }
+
+  if (!inputData || (inputData as PackFilesNodeData).type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles or TableSelection data" };
+  }
+
+  const totalMatchCountByRuleId: Record<string, number> = {};
+  // Lowest priority first, so where two packs carry the same file the higher-priority pack is
+  // written last and is the one that survives into the output - the same copy the game would load.
+  const inputPacks = sortPacksByAscendingPriority(
+    (inputData as PackFilesNodeData).files || [],
+    (packFile) => packFile.path,
+    buildFlowPackPriority(),
+  );
+  for (const packFile of inputPacks) {
+    if (!packFile.loaded) continue;
+    // The output stands in for the pack it copied, and a vanilla pack cannot be stood in for - it is
+    // not a mod, so it cannot be taken out of the mod list. Pack nodes hand us the base game pack
+    // alongside the selected mod, so this is the normal case rather than a strange one.
+    if (appData.allVanillaPackNames.has(packFile.name)) continue;
+
+    try {
+      // Overwrites are applied to a copy of the pack before launch, and that copy is what the game
+      // would load, so it is what we have to copy from.
+      const sourcePackPath = resolveFlowSourcePackPath(packFile.path, executionContext);
+      const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true }, executionContext);
+      const plan = planPackFileOperations(
+        indexedPack.packedFiles.map((indexedFile) => indexedFile.name),
+        rules,
+      );
+      for (const [ruleId, count] of Object.entries(plan.matchCountByRuleId)) {
+        totalMatchCountByRuleId[ruleId] = (totalMatchCountByRuleId[ruleId] ?? 0) + count;
+      }
+      for (const skipped of plan.skippedOverwrites) warnings.push(`Left '${skipped}' as it was`);
+      // A pack no rule touched is left alone entirely, so pointing this at every enabled mod does
+      // not copy the ones it has nothing to do with.
+      if (plan.entries.length === 0 && plan.removedPaths.size === 0) continue;
+
+      // The output is a copy of this pack with the operations applied, so every file it keeps has to
+      // be carried across - a delete is only real if the rest of the pack comes with it.
+      const copies = planPackCopy(
+        indexedPack.packedFiles.map((indexedFile) => indexedFile.name),
+        plan,
+      );
+      const namesToRead = new Set(copies.map((copy) => copy.sourcePath));
+
+      const bytesToCopy = indexedPack.packedFiles
+        .filter((indexedFile) => namesToRead.has(indexedFile.name))
+        .reduce((total, indexedFile) => total + (indexedFile.file_size || 0), 0);
+      if (bytesToCopy > MAX_PACK_COPY_BYTES) {
+        return {
+          success: false,
+          error: `Copying ${packFile.name} would carry ${Math.round(bytesToCopy / 1024 / 1024)}MB into the output pack, above the ${Math.round(MAX_PACK_COPY_BYTES / 1024 / 1024)}MB limit. Point this node at the pack you are changing rather than at every enabled mod.`,
+        };
+      }
+
+      const packWithFiles = await readPackCached(
+        packFile.path,
+        {
+          skipParsingTables: true,
+          filesToRead: [...namesToRead],
+        },
+        executionContext,
+      );
+      const bufferByName = new Map(packWithFiles.packedFiles.map((packedFile) => [packedFile.name, packedFile.buffer]));
+
+      for (const copy of copies) {
+        const buffer = bufferByName.get(copy.sourcePath);
+        if (!buffer) {
+          warnings.push(`No content for '${copy.sourcePath}'`);
+          continue;
+        }
+        outputTables.push({
+          name: copy.targetPath,
+          fileName: copy.targetPath,
+          sourceFile: { name: indexedPack.name, path: indexedPack.path },
+          table: {
+            name: copy.targetPath,
+            file_size: buffer.length,
+            start_pos: 0,
+            buffer,
+          } as PackedFile,
+          outputFileName: copy.targetPath,
+          // Marks the output as standing in for this pack, so the game loads it instead of the
+          // original - otherwise a deleted file would still be found in the pack it came from.
+          replacesSourcePackPath: packFile.path,
+        });
+      }
+    } catch (error) {
+      console.error(`Pack File Operations Node ${nodeId}: Error reading ${packFile.path}:`, error);
+    }
+  }
+
+  reportRules(totalMatchCountByRuleId);
+  for (const warning of warnings) console.warn(`Pack File Operations Node ${nodeId}: ${warning}`);
+  console.log(`Pack File Operations Node ${nodeId}: ${outputTables.length} file(s) out`);
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: outputTables,
+      sourceFiles: (inputData as PackFilesNodeData).files || [],
+      tableCount: outputTables.length,
+    } as DBTablesNodeData,
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }

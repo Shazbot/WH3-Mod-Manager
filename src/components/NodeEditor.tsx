@@ -11,13 +11,23 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { addToast } from "../appSlice";
+import { addToast, selectFlowFile, setNodeEditorFavorites } from "../appSlice";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { DBVersion } from "../packFileTypes";
+import { resolveManualFlowSourcePack } from "../flowExecutionSupport";
 import { applyConnection, rehydrateGraph, removeEdge } from "../nodeGraph/connectionRules";
-import { applyNodeDataPatch, deleteSelectedNodesFromGraph, withNodeEditorActions } from "../nodeGraph/editorState";
+import {
+  applyNodeDataPatchFromRef,
+  deleteSelectedNodesFromGraph,
+  getNodesDisabledByUpstream,
+  selectAllNodes,
+  toggleSelectedNodesDisabled,
+  withNodeEditorActions,
+} from "../nodeGraph/editorState";
 import { FlowOptionsModal } from "../nodeGraph/FlowOptionsModal";
+import { buildQuickConnectionCandidates, hasDirectedConnection } from "../nodeGraph/quickConnect";
+import { NodeGraphClipboard, copySelectedNodes, isTextEntryTarget, pasteNodes } from "../nodeGraph/clipboard";
 import {
   deserializeNodeGraph,
   prepareGraphForExecution,
@@ -31,9 +41,17 @@ import {
   nodeTypeSectionDefinitions,
   NodeTypeSection,
 } from "../nodeGraph/nodeRegistry";
-import { DefaultTableVersionsContext, nodeEditorDebugLog, stopWheelPropagation } from "../nodeGraph/nodes/shared";
+import {
+  DefaultTableVersionsContext,
+  FlowOptionsContext,
+  NodeEditorPanelContext,
+  nodeEditorDebugLog,
+  stopWheelPropagation,
+} from "../nodeGraph/nodes/shared";
 import { reactFlowNodeTypes } from "../nodeGraph/nodeTypes";
+import { moveFavoriteNodeType, toggleFavoriteNodeType, withFavoritesSection } from "../nodeGraph/favorites";
 import { FlowNodeDataPatch, FlowOption, SerializedNode, SerializedNodeGraph } from "../nodeGraph/types";
+import FlowPackDialog from "./FlowPackDialog";
 
 interface NodeExecutionResult {
   success: boolean;
@@ -41,6 +59,7 @@ interface NodeExecutionResult {
   elseData?: unknown;
   multiOutputs?: Record<string, unknown>;
   error?: string;
+  warnings?: string[];
 }
 
 // Backend graph execution service
@@ -49,6 +68,7 @@ const executeGraphInBackend = async (
   edges: Edge[],
   currentPackName?: string,
   flowOptions?: FlowOption[],
+  flowSourcePack?: string,
 ): Promise<{
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
@@ -62,6 +82,7 @@ const executeGraphInBackend = async (
       nodes,
       edges,
       currentPackName,
+      flowSourcePack,
       flowOptions,
     });
 
@@ -105,7 +126,6 @@ const executeGraphInBackend = async (
   }
 };
 
-
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
 
@@ -120,8 +140,30 @@ const NodeSidebar: React.FC<{
 }> = ({ onDragStart }) => {
   const localized = useLocalizations();
   const localizationMap = localized as Record<string, string | undefined>;
+  const dispatch = useAppDispatch();
+  const favorites = useAppSelector((state) => state.app.nodeEditorFavorites);
   const [filterText, setFilterText] = useState("");
   const [useCompactView, setUseCompactView] = useState(true);
+  const [contextMenu, setContextMenu] = useState<{ nodeType: FlowNodeType; x: number; y: number } | undefined>(
+    undefined,
+  );
+  /** The favorite currently being dragged within the list, so a drop knows what to move. */
+  const reorderingFavorite = useRef<FlowNodeType | undefined>(undefined);
+
+  const setFavorites = useCallback(
+    (nextFavorites: FlowNodeType[]) => dispatch(setNodeEditorFavorites(nextFavorites)),
+    [dispatch],
+  );
+
+  const toggleFavorite = useCallback(
+    (nodeType: FlowNodeType) => setFavorites(toggleFavoriteNodeType(favorites, nodeType)),
+    [favorites, setFavorites],
+  );
+
+  const moveFavoriteTo = useCallback(
+    (dragged: FlowNodeType, target: FlowNodeType) => setFavorites(moveFavoriteNodeType(favorites, dragged, target)),
+    [favorites, setFavorites],
+  );
 
   const nodeTypeSections: NodeTypeSection[] = useMemo(() => {
     return nodeTypeSectionDefinitions.map((section) => ({
@@ -134,8 +176,13 @@ const NodeSidebar: React.FC<{
     }));
   }, [localizationMap]);
 
+  const sectionsWithFavorites = useMemo(
+    () => withFavoritesSection(nodeTypeSections, favorites, localized.nodeEditorSectionFavorites || "Favorites"),
+    [favorites, nodeTypeSections, localized],
+  );
+
   // Filter nodes based on search text
-  const filteredSections = nodeTypeSections
+  const filteredSections = sectionsWithFavorites
     .map((section) => ({
       ...section,
       nodes: section.nodes.filter(
@@ -179,8 +226,31 @@ const NodeSidebar: React.FC<{
         </label>
       </div>
 
+      {contextMenu && (
+        <>
+          {/* A click anywhere else dismisses the menu. */}
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(undefined)} />
+          <div
+            className="fixed z-50 bg-gray-700 border border-gray-500 rounded shadow-lg text-xs text-white"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button
+              className="block w-full text-left px-3 py-2 hover:bg-gray-600"
+              onClick={() => {
+                toggleFavorite(contextMenu.nodeType);
+                setContextMenu(undefined);
+              }}
+            >
+              {favorites.includes(contextMenu.nodeType)
+                ? localized.nodeEditorRemoveFromFavorites || "Remove from favorites"
+                : localized.nodeEditorAddToFavorites || "Add to favorites"}
+            </button>
+          </div>
+        </>
+      )}
+
       <div className="space-y-4">
-        {filteredSections.map((section) => (
+        {filteredSections.map((section, sectionIndex) => (
           <div key={section.title} className="space-y-2">
             <h4 className="font-semibold text-sm text-gray-300 uppercase tracking-wide border-b border-gray-600 pb-1">
               {section.title}
@@ -190,6 +260,30 @@ const NodeSidebar: React.FC<{
                 <div
                   key={nodeType.type}
                   draggable
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setContextMenu({ nodeType: nodeType.type, x: event.clientX, y: event.clientY });
+                  }}
+                  onDragEnd={() => {
+                    reorderingFavorite.current = undefined;
+                  }}
+                  {...(sectionIndex === 0 && favorites.length > 0
+                    ? {
+                        // Dragging a favorite onto another reorders the list. The drag still carries
+                        // its node type, so dropping on the canvas creates a node as before.
+                        onDragOver: (event: DragEvent) => {
+                          if (reorderingFavorite.current) event.preventDefault();
+                        },
+                        onDrop: (event: DragEvent) => {
+                          const dragged = reorderingFavorite.current;
+                          if (!dragged) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          moveFavoriteTo(dragged, nodeType.type);
+                          reorderingFavorite.current = undefined;
+                        },
+                      }
+                    : {})}
                   onMouseDown={(event) => {
                     const r = event.currentTarget.getBoundingClientRect();
                     sidebarNodeLastClickedTopLeftCorner = {
@@ -197,13 +291,14 @@ const NodeSidebar: React.FC<{
                       top: r.top,
                     };
                   }}
-                  onDragStart={(event) => onDragStart(event, nodeType)}
+                  onDragStart={(event) => {
+                    reorderingFavorite.current = sectionIndex === 0 && favorites.length > 0 ? nodeType.type : undefined;
+                    onDragStart(event, nodeType);
+                  }}
                   className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm transition-colors duration-150"
                 >
                   <div className="font-medium text-sm text-white">{nodeType.label}</div>
-                  {!useCompactView && (
-                    <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>
-                  )}
+                  {!useCompactView && <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>}
                 </div>
               ))}
             </div>
@@ -217,25 +312,40 @@ const NodeSidebar: React.FC<{
 interface NodeEditorProps {
   currentFile?: string;
   currentPack?: string;
+  isActive?: boolean;
 }
 
 const collator = new Intl.Collator("en");
 
-const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: NodeEditorProps) => {
+const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isActive = true }: NodeEditorProps) => {
   const dispatch = useAppDispatch();
   const localized = useLocalizations();
+  const localizedRef = useRef(localized);
+  localizedRef.current = localized;
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
+  const flowFileReloadNonce = useAppSelector((state) => state.app.currentFlowFileReloadNonce);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [quickConnectSourceNodeId, setQuickConnectSourceNodeId] = useState<string | null>(null);
+  /**
+   * Bumped on every full graph load to force the node components to remount.
+   *
+   * Node ids restart at node_0 in every graph, so loading a second graph often reuses an id at the
+   * same type - node_2 being a table dropdown in both. React then keeps the existing component
+   * instance, and with it the local state behind its text fields, so a value from the previous graph
+   * survives into the new one and gets written back into its node data.
+   */
+  const [graphInstanceKey, setGraphInstanceKey] = useState(0);
+  /** Copied nodes live for the session rather than in the system clipboard, which holds text. */
+  const nodeClipboardRef = useRef<NodeGraphClipboard | undefined>(undefined);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const [modalRoot, setModalRoot] = useState<HTMLDivElement | null>(null);
   const nodesRef = useRef(nodes);
-  const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
-    undefined,
-  );
-  const [defaultTableVersions, setDefaultTableVersions] = useState<Record<string, number> | undefined>(
-    undefined,
-  );
+  const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(undefined);
+  const [defaultTableVersions, setDefaultTableVersions] = useState<Record<string, number> | undefined>(undefined);
+  const [isSchemaContextReady, setIsSchemaContextReady] = useState(false);
+  const flowLoadRequestIdRef = useRef(0);
 
   const sortedTableNames = useMemo(() => {
     return Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
@@ -246,24 +356,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   // Flow options state
   const [flowOptions, setFlowOptions] = useState<FlowOption[]>([]);
   const [isFlowOptionsModalOpen, setIsFlowOptionsModalOpen] = useState(false);
+  const [packDialogMode, setPackDialogMode] = useState<"load" | "save" | undefined>();
+  const [isPackMenuOpen, setIsPackMenuOpen] = useState(false);
   const [isGraphEnabled, setIsGraphEnabled] = useState(false);
   const [graphStartsEnabled, setGraphStartsEnabled] = useState(true);
 
   const updateNodeData = useCallback(
     (nodeId: string, detail: FlowNodeDataPatch) => {
-      const nextGraph = applyNodeDataPatch(
-        {
-          nodes: nodesRef.current,
-          edges,
-        },
-        nodeId,
-        detail,
-        {
-          DBNameToDBVersions,
-          defaultTableVersions,
-          sortedTableNames,
-        },
-      );
+      const nextGraph = applyNodeDataPatchFromRef(nodesRef, edges, nodeId, detail, {
+        DBNameToDBVersions,
+        defaultTableVersions,
+        sortedTableNames,
+      });
 
       setNodes(nextGraph.nodes);
       setEdges(nextGraph.edges);
@@ -281,11 +385,71 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     setEdges(nextGraph.edges);
   }, [edges, setEdges, setNodes]);
 
+  const selectedNodes = nodes.filter((node) => node.selected);
+  const hasSelectedNodes = selectedNodes.length > 0;
+  const areAllSelectedNodesDisabled = hasSelectedNodes && selectedNodes.every((node) => node.data.isDisabled === true);
+
+  const toggleSelectedNodes = useCallback(() => {
+    const nextGraph = toggleSelectedNodesDisabled(nodesRef.current);
+    if (nextGraph.selectedNodeIds.length === 0) {
+      return;
+    }
+
+    nodesRef.current = nextGraph.nodes;
+    setNodes(nextGraph.nodes);
+    if (
+      nextGraph.disabled &&
+      quickConnectSourceNodeId &&
+      nextGraph.selectedNodeIds.includes(quickConnectSourceNodeId)
+    ) {
+      setQuickConnectSourceNodeId(null);
+    }
+  }, [quickConnectSourceNodeId, setNodes]);
+
+  const manuallyDisabledNodeIds = useMemo(
+    () => new Set(nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id)),
+    [nodes],
+  );
+  const nodesDisabledByUpstream = useMemo(() => getNodesDisabledByUpstream(nodes, edges), [edges, nodes]);
+
   const nodesWithEditorActions = useMemo(() => {
-    return withNodeEditorActions(nodes, {
+    const actionNodes = withNodeEditorActions(nodes, {
       updateNodeData,
     });
-  }, [nodes, updateNodeData]);
+
+    return actionNodes.map((node) => {
+      const className = [
+        node.className,
+        node.id === quickConnectSourceNodeId ? "quick-connect-source" : undefined,
+        manuallyDisabledNodeIds.has(node.id) ? "node-disabled" : undefined,
+        nodesDisabledByUpstream.has(node.id) ? "node-disabled-by-upstream" : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return className === node.className ? node : { ...node, className };
+    });
+  }, [manuallyDisabledNodeIds, nodes, nodesDisabledByUpstream, quickConnectSourceNodeId, updateNodeData]);
+
+  const edgesWithDisabledState = useMemo(
+    () =>
+      edges.map((edge) => {
+        const disabledClassName = manuallyDisabledNodeIds.has(edge.source)
+          ? "disabled-source"
+          : nodesDisabledByUpstream.has(edge.source) || nodesDisabledByUpstream.has(edge.target)
+            ? "disabled-consequence"
+            : undefined;
+
+        return disabledClassName
+          ? {
+              ...edge,
+              animated: false,
+              className: [edge.className, disabledClassName].filter(Boolean).join(" "),
+            }
+          : edge;
+      }),
+    [edges, manuallyDisabledNodeIds, nodesDisabledByUpstream],
+  );
 
   // Keep the ref updated with current nodes
   React.useEffect(() => {
@@ -293,14 +457,32 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   }, [nodes]);
 
   React.useEffect(() => {
+    if (quickConnectSourceNodeId && !nodes.some((node) => node.id === quickConnectSourceNodeId)) {
+      setQuickConnectSourceNodeId(null);
+    }
+  }, [nodes, quickConnectSourceNodeId]);
+
+  React.useEffect(() => {
+    let cancelled = false;
     nodeEditorDebugLog("getDBNameToDBVersions");
-    window.api?.getDBNameToDBVersions().then((data) => {
-      // console.log("getDBNameToDBVersions:", Object.keys(data));
-      setDBNameToDBVersions(data);
+
+    void Promise.allSettled([
+      window.api?.getDBNameToDBVersions() ?? Promise.resolve(undefined),
+      window.api?.getDefaultTableVersions() ?? Promise.resolve(undefined),
+    ]).then(([schemas, defaults]) => {
+      if (cancelled) return;
+      if (schemas.status === "fulfilled") setDBNameToDBVersions(schemas.value);
+      else console.error("Failed to load node editor schemas:", schemas.reason);
+      if (defaults.status === "fulfilled") setDefaultTableVersions(defaults.value);
+      else console.error("Failed to load default table versions:", defaults.reason);
+      // Flow rehydration derives connected column state from both values. Waiting for both requests
+      // to settle avoids remounting the same packed flow once per request.
+      setIsSchemaContextReady(true);
     });
-    window.api?.getDefaultTableVersions().then((data) => {
-      setDefaultTableVersions(data);
-    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const onConnect = useCallback(
@@ -326,6 +508,75 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       setEdges(nextGraph.edges);
     },
     [DBNameToDBVersions, defaultTableVersions, edges, setEdges, setNodes, sortedTableNames],
+  );
+
+  const onNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      const eventTarget = event.target as HTMLElement;
+      if (eventTarget.closest("input, textarea, select, button, a, .react-flow__handle")) {
+        return;
+      }
+
+      if (!event.shiftKey) {
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+
+      if (!quickConnectSourceNodeId) {
+        const sourceHandles = reactFlowInstance?.getInternalNode(node.id)?.internals.handleBounds?.source ?? [];
+        if (sourceHandles.length > 0) {
+          setQuickConnectSourceNodeId(node.id);
+        }
+        return;
+      }
+
+      if (quickConnectSourceNodeId === node.id) {
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+
+      if (hasDirectedConnection(edges, quickConnectSourceNodeId, node.id)) {
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+
+      const sourceHandles =
+        reactFlowInstance?.getInternalNode(quickConnectSourceNodeId)?.internals.handleBounds?.source ?? [];
+      const targetHandles = reactFlowInstance?.getInternalNode(node.id)?.internals.handleBounds?.target ?? [];
+      const candidates = buildQuickConnectionCandidates({
+        sourceNodeId: quickConnectSourceNodeId,
+        targetNodeId: node.id,
+        sourceHandles,
+        targetHandles,
+        edges,
+      });
+
+      for (const candidate of candidates) {
+        const nextGraph = applyConnection({ nodes: nodesRef.current, edges }, candidate, {
+          DBNameToDBVersions,
+          defaultTableVersions,
+          sortedTableNames,
+        });
+        if (!nextGraph.accepted) {
+          continue;
+        }
+
+        setNodes(nextGraph.nodes);
+        setEdges(nextGraph.edges);
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+    },
+    [
+      DBNameToDBVersions,
+      defaultTableVersions,
+      edges,
+      quickConnectSourceNodeId,
+      reactFlowInstance,
+      setEdges,
+      setNodes,
+      sortedTableNames,
+    ],
   );
 
   const onEdgeClick = useCallback(
@@ -367,9 +618,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
       const nodeData = JSON.parse(type) as Partial<DraggableNodeData> & { type?: string; label?: string };
 
+      // screenToFlowPosition expects viewport/screen coordinates and applies the React Flow
+      // viewport transform itself. Subtract the grab offset in screen pixels first; subtracting
+      // the wrapper bounds or scaling the offset here applies the transform twice.
       const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX - nodeDropOffset.left * reactFlowInstance.getZoom(),
-        y: event.clientY - reactFlowBounds.top,
+        x: event.clientX - nodeDropOffset.left,
+        y: event.clientY - nodeDropOffset.top,
       });
 
       if (typeof nodeData.type !== "string" || typeof nodeData.label !== "string") {
@@ -416,6 +670,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     });
   }, [nodes, edges, flowOptions, isGraphEnabled, graphStartsEnabled]);
 
+  const getSerializedFlowData = useCallback(() => JSON.stringify(serializeNodeGraph(), null, 2), [serializeNodeGraph]);
+
   const saveNodeGraph = useCallback(() => {
     const serializedGraph = serializeNodeGraph();
     const jsonString = JSON.stringify(serializedGraph, null, 2);
@@ -435,8 +691,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const loadNodeGraph = useCallback(
     (jsonContent: string) => {
       try {
-        const { serializedGraph, nodes: deserializedNodes, edges: loadedEdges, nextNodeId } =
-          deserializeNodeGraph(jsonContent);
+        const {
+          serializedGraph,
+          nodes: deserializedNodes,
+          edges: loadedEdges,
+          nextNodeId,
+        } = deserializeNodeGraph(jsonContent);
 
         const loadedNodes: Node[] = deserializedNodes.map((node) => {
           const serializedNode = serializedGraph.nodes.find((candidate) => candidate.id === node.id)!;
@@ -496,6 +756,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
         nodeId = nextNodeId;
 
+        setGraphInstanceKey((previousKey) => previousKey + 1);
         setNodes(hydratedGraph.nodes);
         setEdges(hydratedGraph.edges);
 
@@ -523,6 +784,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     [
       setNodes,
       setEdges,
+      setGraphInstanceKey,
       DBNameToDBVersions,
       setFlowOptions,
       setIsGraphEnabled,
@@ -533,12 +795,57 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       sortedTableNames,
     ],
   );
+  const loadNodeGraphRef = useRef(loadNodeGraph);
+  loadNodeGraphRef.current = loadNodeGraph;
+
+  /** Says which file the new graph landed in, since it is the one Save will overwrite. */
+  const toastGraphReplacedOpenFile = useCallback(
+    (prefix: string) => {
+      if (!currentFile) return;
+      dispatch(
+        addToast({
+          type: "success",
+          messages: [
+            `${prefix} ${currentFile.replace(/^whmmflows[\\/]/i, "")} - ${
+              localized.nodeEditorSaveToOverwriteOpenFlow || "save to overwrite it."
+            }`,
+          ],
+          startTime: Date.now(),
+        }),
+      );
+    },
+    [currentFile, dispatch, localized],
+  );
+
+  const toastLoadedIntoOpenFile = useCallback(
+    () => toastGraphReplacedOpenFile(localized.nodeEditorLoadedFlowIntoOpenFilePrefix || "Loaded flow into"),
+    [localized, toastGraphReplacedOpenFile],
+  );
+
+  const openFlowFromPack = useCallback(
+    (selection: { flowFile: string; packPath: string; content?: string }) => {
+      // With a file open, a loaded flow replaces the graph in place instead of switching files: the
+      // editor keeps pointing at the open file, so Save overwrites it and the pack can be saved after.
+      if (selection.content !== undefined && currentFile && currentPack) {
+        // Discard a file read still in flight, otherwise it would land on top of the loaded graph.
+        flowLoadRequestIdRef.current++;
+        loadNodeGraph(selection.content);
+        toastLoadedIntoOpenFile();
+        return;
+      }
+
+      dispatch(selectFlowFile({ flowFile: selection.flowFile, packPath: selection.packPath }));
+    },
+    [currentFile, currentPack, dispatch, loadNodeGraph, toastLoadedIntoOpenFile],
+  );
 
   const loadNodeGraphFile = useCallback(
     (file: File) => {
       const reader = new FileReader();
       reader.onload = (event) => {
         const jsonContent = event.target?.result as string;
+        // Discard a pack read still in flight, otherwise it would land on top of the loaded graph.
+        flowLoadRequestIdRef.current++;
         loadNodeGraph(jsonContent);
       };
 
@@ -551,25 +858,106 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (file) {
+        // With a file open the loaded graph replaces its contents in place, so the editor keeps
+        // pointing at that file and Save overwrites it. Detaching the selection would close the file.
+        if (currentFile) {
+          toastLoadedIntoOpenFile();
+        } else {
+          // A local JSON file has no owning pack, even though the editor keeps a working pack context.
+          dispatch(
+            currentPack ? selectFlowFile({ flowFile: undefined, packPath: currentPack }) : selectFlowFile(undefined),
+          );
+        }
         loadNodeGraphFile(file);
       }
       // Clear the input so the same file can be loaded again
       event.target.value = "";
     },
-    [loadNodeGraphFile],
+    [currentFile, currentPack, dispatch, loadNodeGraphFile, toastLoadedIntoOpenFile],
   );
 
-  // Handle keyboard events for node deletion
+  const newNodeGraph = useCallback(() => {
+    // Everything a graph can leave behind is reset here. The instance key is the important one:
+    // node ids restart at node_0, so without a remount React reuses the component behind an id and
+    // the local state behind its text fields comes back in the blank graph.
+    setGraphInstanceKey((previousKey) => previousKey + 1);
+    nodeId = 0;
+    nodesRef.current = [];
+    setNodes([]);
+    setEdges([]);
+    setFlowOptions([]);
+    setIsGraphEnabled(false);
+    setGraphStartsEnabled(true);
+    setQuickConnectSourceNodeId(null);
+    // The blank graph stays attached to the open file the way a loaded one does, so Save overwrites
+    // that file rather than closing it. Load From Pack re-reads a flow when the blank graph was a
+    // mistake: re-picking the same file in the tree cannot, since the selection never changes.
+    if (currentFile) {
+      // Drop a read still in flight, otherwise the file it was reading would fill the blank graph.
+      flowLoadRequestIdRef.current++;
+      toastGraphReplacedOpenFile(localized.nodeEditorBlankGraphInOpenFilePrefix || "Started a blank graph in");
+    } else {
+      dispatch(
+        currentPack ? selectFlowFile({ flowFile: undefined, packPath: currentPack }) : selectFlowFile(undefined),
+      );
+    }
+    nodeEditorDebugLog("Started a blank graph");
+  }, [currentFile, currentPack, dispatch, localized, setNodes, setEdges, toastGraphReplacedOpenFile]);
+
+  const selectAll = useCallback(() => {
+    const nextGraph = selectAllNodes(nodesRef.current);
+    if (!nextGraph.changed) return;
+
+    nodesRef.current = nextGraph.nodes;
+    setNodes(nextGraph.nodes);
+  }, [setNodes]);
+
+  const copySelection = useCallback(() => {
+    const copied = copySelectedNodes(nodesRef.current, edges);
+    if (!copied) return;
+    nodeClipboardRef.current = copied;
+    nodeEditorDebugLog(`Copied ${copied.nodes.length} node(s) and ${copied.edges.length} edge(s)`);
+  }, [edges]);
+
+  const pasteSelection = useCallback(() => {
+    const clipboard = nodeClipboardRef.current;
+    if (!clipboard) return;
+
+    const nextGraph = pasteNodes({ nodes: nodesRef.current, edges }, clipboard, getNodeId);
+    setNodes(nextGraph.nodes);
+    setEdges(nextGraph.edges);
+    nodeEditorDebugLog(`Pasted ${clipboard.nodes.length} node(s)`);
+  }, [edges, setNodes, setEdges]);
+
+  // Handle keyboard events for node deletion, copy and paste
   React.useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
-      // Delete or Backspace key
+      // Everything here acts on the graph, so it must not fire while the user is typing in a field.
+      if (isTextEntryTarget(event.target)) return;
+
       if (event.key === "Delete" || event.key === "Backspace") {
-        // Prevent default behavior if we're not in a text input
-        const target = event.target as HTMLElement;
-        if (target.tagName !== "TEXTAREA" && target.tagName !== "INPUT") {
-          event.preventDefault();
-          deleteSelectedNodes();
-        }
+        event.preventDefault();
+        deleteSelectedNodes();
+        return;
+      }
+
+      if (!event.ctrlKey && !event.metaKey) return;
+
+      if (event.key === "a" || event.key === "A") {
+        event.preventDefault();
+        selectAll();
+        return;
+      }
+
+      if (event.key === "c" || event.key === "C") {
+        event.preventDefault();
+        copySelection();
+        return;
+      }
+
+      if (event.key === "v" || event.key === "V") {
+        event.preventDefault();
+        pasteSelection();
       }
     };
 
@@ -577,7 +965,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     return () => {
       document.removeEventListener("keydown", handleKeyPress);
     };
-  }, [deleteSelectedNodes]);
+  }, [deleteSelectedNodes, selectAll, copySelection, pasteSelection]);
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
@@ -596,7 +984,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const result = await window.api?.saveNodeFlow(currentFile, flowData, currentPack);
       if (result?.success) {
         nodeEditorDebugLog("Flow saved successfully to:", result.filePath);
-        // alert(`Flow saved successfully!`);
+        // show success dialog here if this path is revived.
         dispatch(
           addToast({
             type: "success",
@@ -659,9 +1047,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
 
       // Debug: Check generaterows/generaterowsschema node data before execution
-      const generateRowsNodes = nodes.filter(
-        (n) => n.type === "generaterows" || n.type === "generaterowsschema",
-      );
+      const generateRowsNodes = nodes.filter((n) => n.type === "generaterows" || n.type === "generaterowsschema");
       generateRowsNodes.forEach((grNode) => {
         const nodeData = grNode.data as Partial<SerializedNode["data"]>;
         nodeEditorDebugLog(`[PRE-EXECUTION] GenerateRows node ${grNode.id} data:`);
@@ -672,7 +1058,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       });
 
       // Execute the entire graph in the backend
-      const result = await executeGraphInBackend(nodes, edges, currentPack, flowOptions);
+      const result = await executeGraphInBackend(
+        nodes,
+        edges,
+        currentPack,
+        flowOptions,
+        resolveManualFlowSourcePack(currentFile, currentPack),
+      );
 
       nodeEditorDebugLog(
         `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`,
@@ -683,20 +1075,25 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
 
       // Show results in alert (in a real app, you'd show this in a better UI)
+      // A node that succeeded but warns - a rule that matched nothing, a pack it could not read -
+      // is the case that used to look like a clean run while producing no output, so its warnings
+      // go in the summary rather than only into the log.
       const summary = Array.from(result.executionResults.entries())
-        .map(
-          ([nodeId, nodeResult]) =>
-            `${nodeId}: ${
-              nodeResult.success ? "✅" : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "")
-            }`,
-        )
+        .map(([nodeId, nodeResult]) => {
+          const status = nodeResult.success ? "✅" : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "");
+          const warningLines = (nodeResult.warnings || []).map((warning) => `\n    ⚠️ ${warning}`).join("");
+          return `${nodeId}: ${status}${warningLines}`;
+        })
         .join("\n");
+
+      const hasWarnings = Array.from(result.executionResults.values()).some(
+        (nodeResult) => (nodeResult.warnings || []).length > 0,
+      );
 
       const statusMessage = result.success
         ? localized.nodeEditorGraphExecutionSuccessful || "✅ Graph execution successful!"
         : result.failureCount > 0
-          ? localized.nodeEditorGraphExecutionCompletedWithErrors ||
-            "❌ Graph execution completed with errors"
+          ? localized.nodeEditorGraphExecutionCompletedWithErrors || "❌ Graph execution completed with errors"
           : localized.nodeEditorGraphExecutionFailed || "❌ Graph execution failed";
 
       const executionSummaryLabel = localized.nodeEditorExecutionSummaryLabel || "Execution Summary";
@@ -706,7 +1103,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
       dispatch(
         addToast({
-          type: result.successCount === result.totalExecuted ? "success" : "warning",
+          type: result.successCount === result.totalExecuted && !hasWarnings ? "success" : "warning",
           messages: [
             `${statusMessage}\n\n${executionSummaryLabel} (${result.successCount}/${result.totalExecuted} ${nodesSucceededLabel}):\n${summary}\n\n${checkConsoleLabel}`,
           ],
@@ -729,35 +1126,40 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     } finally {
       setIsExecuting(false);
     }
-  }, [nodes, edges, isExecuting, currentPack, flowOptions, dispatch, localized]);
+  }, [nodes, edges, isExecuting, currentFile, currentPack, flowOptions, dispatch, localized]);
+
+  const selectedUnsavedFlowText =
+    currentFile && currentPack
+      ? unsavedPacksData[currentPack]?.find((file) => file.name === currentFile)?.text
+      : undefined;
 
   useEffect(() => {
+    const requestId = ++flowLoadRequestIdRef.current;
     const loadFileContent = async () => {
-      if (!currentFile || !currentPack) return;
+      if (!isSchemaContextReady || !currentFile || !currentPack) return;
 
       // First try to load from unsaved files
-      const unsavedFiles = unsavedPacksData[currentPack];
-      if (unsavedFiles) {
-        const unsavedFile = unsavedFiles.find((file) => file.name == currentFile);
-        if (unsavedFile && unsavedFile.text) {
-          loadNodeGraph(unsavedFile.text);
-          return;
-        }
+      if (selectedUnsavedFlowText) {
+        if (requestId !== flowLoadRequestIdRef.current) return;
+        loadNodeGraphRef.current(selectedUnsavedFlowText);
+        return;
       }
 
       // If not in unsaved files, read from pack
       try {
         const result = await window.api?.readFileFromPack(currentPack, currentFile);
+        if (requestId !== flowLoadRequestIdRef.current) return;
         if (result?.success && result.text) {
-          loadNodeGraph(result.text);
+          loadNodeGraphRef.current(result.text);
         } else {
           console.error("Failed to read file from pack:", result?.error);
+          const currentLocalized = localizedRef.current;
           dispatch(
             addToast({
               type: "warning",
               messages: [
-                `${localized.nodeEditorFailedToLoadFilePrefix || "Failed to load file:"} ${
-                  result?.error || localized.nodeEditorUnknownError || "Unknown error"
+                `${currentLocalized.nodeEditorFailedToLoadFilePrefix || "Failed to load file:"} ${
+                  result?.error || currentLocalized.nodeEditorUnknownError || "Unknown error"
                 }`,
               ],
               startTime: Date.now(),
@@ -765,13 +1167,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           );
         }
       } catch (error) {
+        if (requestId !== flowLoadRequestIdRef.current) return;
         console.error("Error loading file:", error);
+        const currentLocalized = localizedRef.current;
         dispatch(
           addToast({
             type: "warning",
             messages: [
-              `${localized.nodeEditorErrorLoadingFilePrefix || "Error loading file:"} ${
-                error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
+              `${currentLocalized.nodeEditorErrorLoadingFilePrefix || "Error loading file:"} ${
+                error instanceof Error ? error.message : currentLocalized.nodeEditorUnknownError || "Unknown error"
               }`,
             ],
             startTime: Date.now(),
@@ -780,190 +1184,320 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
     };
 
-    loadFileContent();
-  }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph, dispatch, localized]);
+    void loadFileContent();
+    return () => {
+      if (flowLoadRequestIdRef.current === requestId) flowLoadRequestIdRef.current += 1;
+    };
+    // flowFileReloadNonce is here so re-picking the open flow re-reads it, after a load or a New
+    // Graph replaced the graph in place and left the selection untouched.
+  }, [currentFile, currentPack, selectedUnsavedFlowText, dispatch, isSchemaContextReady, flowFileReloadNonce]);
 
   return (
-    <div className="flex explicit-height-without-topbar-and-padding">
-      <NodeSidebar onDragStart={onDragStart} />
-      <div className="flex-1 relative" ref={reactFlowWrapper}>
-        <DefaultTableVersionsContext.Provider value={defaultTableVersions}>
-          <ReactFlowProvider>
-            <ReactFlow
-              nodes={nodesWithEditorActions}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onEdgeClick={onEdgeClick}
-              onInit={setReactFlowInstance}
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              nodeTypes={reactFlowNodeTypes}
-              noWheelClassName="scrollable-node-content"
-              fitView
-            >
-              <Background />
-            </ReactFlow>
-
-            {/* Control buttons positioned in top-right corner */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
-              {/* Hidden file input */}
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleFileInput}
-                className="hidden"
-                id="load-graph-input"
-              />
-
-              {/* Flow Options button */}
-              <button
-                onClick={() => setIsFlowOptionsModalOpen(true)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
-                  />
-                </svg>
-                {localized.nodeEditorFlowOptions || "Flow Options"}
-              </button>
-
-              {/* Save button - only shown when currentFile exists */}
-              {currentFile && (
-                <button
-                  onClick={saveCurrentFile}
-                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+    <NodeEditorPanelContext.Provider value={{ isActive, modalRoot }}>
+      <div className="flex explicit-height-without-topbar-and-padding" ref={setModalRoot}>
+        <NodeSidebar onDragStart={onDragStart} />
+        <div className="flex-1 relative" ref={reactFlowWrapper}>
+          <DefaultTableVersionsContext.Provider value={defaultTableVersions}>
+            <FlowOptionsContext.Provider value={flowOptions}>
+              {/* Keyed on the provider, not the flow: React Flow's node store lives in the provider, so
+              remounting only the inner flow would leave the previous graph's state behind. */}
+              <ReactFlowProvider key={graphInstanceKey}>
+                <ReactFlow
+                  className="node-editor-flow"
+                  nodes={nodesWithEditorActions}
+                  edges={edgesWithDisabledState}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  onNodeClick={onNodeClick}
+                  onPaneClick={() => setQuickConnectSourceNodeId(null)}
+                  onEdgeClick={onEdgeClick}
+                  onInit={setReactFlowInstance}
+                  onDrop={onDrop}
+                  onDragOver={onDragOver}
+                  nodeTypes={reactFlowNodeTypes}
+                  noWheelClassName="scrollable-node-content"
+                  fitView
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                  {localized.save || "Save"}
-                </button>
-              )}
+                  <Background />
+                </ReactFlow>
 
-              {/* Run button */}
-              <button
-                onClick={executeNodeGraph}
-                disabled={nodes.length === 0 || isExecuting}
-                className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                  nodes.length > 0 && !isExecuting
-                    ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
-                    : "bg-gray-400 text-gray-600 cursor-not-allowed"
-                }`}
-              >
-                {isExecuting ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    {localized.nodeEditorRunning || "Running..."}
-                  </>
-                ) : (
-                  <>
+                {quickConnectSourceNodeId && (
+                  <div
+                    className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="font-semibold">
+                      {localized.nodeEditorQuickConnectionStarted || "Quick connection started."}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-300">
+                      {localized.nodeEditorQuickConnectionSelectSecondNode ||
+                        "Shift-click a second node to create the connection."}
+                    </div>
+                  </div>
+                )}
+
+                {/* Control buttons positioned in top-right corner */}
+                <div className="absolute top-4 right-4 z-10 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
+                  {/* Hidden file input */}
+                <input type="file" accept=".json" onChange={handleFileInput} className="hidden" id="load-graph-input" />
+
+                  {/* Pack operations */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsPackMenuOpen((isOpen) => !isOpen)}
+                      aria-haspopup="menu"
+                      aria-expanded={isPackMenuOpen}
+                      className="flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 font-medium text-white shadow-lg transition-colors duration-200 hover:bg-cyan-600"
+                    >
+                      {localized.nodeEditorPackMenu || "Pack"}
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    {isPackMenuOpen && (
+                      <div
+                        role="menu"
+                        className="absolute right-0 mt-2 w-48 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIsPackMenuOpen(false);
+                            setPackDialogMode("load");
+                          }}
+                          className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
+                        >
+                          {localized.nodeEditorLoadFromPack || "Load From Pack…"}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIsPackMenuOpen(false);
+                            setPackDialogMode("save");
+                          }}
+                          className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
+                        >
+                          {localized.nodeEditorSaveToPack || "Save To Pack…"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Flow Options button */}
+                  <button
+                    onClick={() => setIsFlowOptionsModalOpen(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
                       />
                     </svg>
-                    {localized.nodeEditorRun || "Run"}
-                  </>
-                )}
-              </button>
+                    {localized.nodeEditorFlowOptions || "Flow Options"}
+                  </button>
 
-              {/* Delete selected nodes button */}
-              <button
-                onClick={deleteSelectedNodes}
-                disabled={!nodes.some((node) => node.selected)}
-                className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                  nodes.some((node) => node.selected)
-                    ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
-                    : "bg-gray-400 text-gray-600 cursor-not-allowed"
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-                {localized.delete || "Delete"}
-              </button>
+                  {/* Save button - only shown when currentFile exists */}
+                  {currentFile && (
+                    <button
+                      onClick={saveCurrentFile}
+                      className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                        />
+                      </svg>
+                      {localized.save || "Save"}
+                    </button>
+                  )}
 
-              {/* Load button */}
-              <label
-                htmlFor="load-graph-input"
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                  />
-                </svg>
-                {localized.nodeEditorLoadGraph || "Load Graph"}
-              </label>
+                  {/* Run button */}
+                  <button
+                    onClick={executeNodeGraph}
+                    disabled={nodes.length === 0 || isExecuting}
+                    className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                      nodes.length > 0 && !isExecuting
+                        ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
+                        : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                    }`}
+                  >
+                    {isExecuting ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        {localized.nodeEditorRunning || "Running..."}
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        {localized.nodeEditorRun || "Run"}
+                      </>
+                    )}
+                  </button>
 
-              {/* Save button */}
-              <button
-                onClick={saveNodeGraph}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-                {localized.nodeEditorSaveGraph || "Save Graph"}
-              </button>
-            </div>
-          </ReactFlowProvider>
-        </DefaultTableVersionsContext.Provider>
+                  {/* Enable or disable selected nodes */}
+                  <button
+                    onClick={toggleSelectedNodes}
+                    disabled={!hasSelectedNodes}
+                    title={
+                      areAllSelectedNodesDisabled
+                        ? "Enable the selected nodes"
+                        : "Disable the selected nodes and stop their outgoing branches"
+                    }
+                    className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                      hasSelectedNodes
+                        ? areAllSelectedNodesDisabled
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                          : "bg-orange-600 hover:bg-orange-700 text-white cursor-pointer"
+                        : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {areAllSelectedNodesDisabled ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7v14" />
+                      ) : (
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      )}
+                    </svg>
+                    {areAllSelectedNodesDisabled ? "Enable" : "Disable"}
+                  </button>
+
+                  {/* Delete selected nodes button */}
+                  <button
+                    onClick={deleteSelectedNodes}
+                    disabled={!nodes.some((node) => node.selected)}
+                    className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                      nodes.some((node) => node.selected)
+                        ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                        : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                    {localized.delete || "Delete"}
+                  </button>
+
+                  {/* New button */}
+                  <button
+                    onClick={newNodeGraph}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                    title={
+                      localized.nodeEditorNewGraphTooltip ||
+                      "Clears the editor and starts an empty flow. Save the current one first if you want to keep it."
+                    }
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    {localized.nodeEditorNewGraph || "New"}
+                  </button>
+
+                  {/* Load button */}
+                  <label
+                    htmlFor="load-graph-input"
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                      />
+                    </svg>
+                    {localized.nodeEditorLoadGraph || "Load Graph"}
+                  </label>
+
+                  {/* Save button */}
+                  <button
+                    onClick={saveNodeGraph}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
+                    {localized.nodeEditorSaveGraph || "Save Graph"}
+                  </button>
+                </div>
+              </ReactFlowProvider>
+            </FlowOptionsContext.Provider>
+          </DefaultTableVersionsContext.Provider>
+        </div>
+
+        {/* Flow Options Modal */}
+        <FlowOptionsModal
+          isOpen={isFlowOptionsModalOpen}
+          onClose={() => setIsFlowOptionsModalOpen(false)}
+          options={flowOptions}
+          onOptionsChange={setFlowOptions}
+          isGraphEnabled={isGraphEnabled}
+          onGraphEnabledChange={setIsGraphEnabled}
+          graphStartsEnabled={graphStartsEnabled}
+          onGraphStartsEnabledChange={setGraphStartsEnabled}
+        />
+        <FlowPackDialog
+          show={packDialogMode !== undefined}
+          mode={packDialogMode || "load"}
+          currentFile={currentFile}
+          currentPack={currentPack}
+          getFlowData={getSerializedFlowData}
+          onClose={() => setPackDialogMode(undefined)}
+          onOpenFlow={openFlowFromPack}
+        />
       </div>
-
-      {/* Flow Options Modal */}
-      <FlowOptionsModal
-        isOpen={isFlowOptionsModalOpen}
-        onClose={() => setIsFlowOptionsModalOpen(false)}
-        options={flowOptions}
-        onOptionsChange={setFlowOptions}
-        isGraphEnabled={isGraphEnabled}
-        onGraphEnabledChange={setIsGraphEnabled}
-        graphStartsEnabled={graphStartsEnabled}
-        onGraphStartsEnabledChange={setGraphStartsEnabled}
-      />
-    </div>
+    </NodeEditorPanelContext.Provider>
   );
 };
 

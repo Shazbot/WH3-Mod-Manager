@@ -15,11 +15,9 @@ const ModCustomization = memo(() => {
   const modPath = modBeingCustomized && modBeingCustomized.path;
   const isOpen = !!modBeingCustomized;
 
-  console.log("MODPATH is", modPath);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
-  // console.log("allDependencyPacks", allDependencyPacks);
 
   const closePanel = useCallback(() => {
     dispatch(setModBeingCustomized(undefined));
@@ -31,8 +29,6 @@ const ModCustomization = memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
 
-  // console.log("packsData:");
-  // console.log(packData);
 
   const isPackProcessingDone = true; //!!packCollisions.packFileCollisions;
 
@@ -115,7 +111,7 @@ const ModCustomization = memo(() => {
           packPath: modPath,
           dbName: "units_to_groupings_military_permissions_tables",
           dbSubname: "",
-        })
+        }),
       );
 
       window.api?.getPackDataWithLocs(modPath, {
@@ -127,7 +123,7 @@ const ModCustomization = memo(() => {
           packPath: modPath,
           dbName: "building_culture_variants_tables",
           dbSubname: "",
-        })
+        }),
       );
 
       window.api?.getPackDataWithLocs(modPath, {
@@ -139,7 +135,7 @@ const ModCustomization = memo(() => {
           packPath: modPath,
           dbName: "faction_agent_permitted_subtypes_tables",
           dbSubname: "",
-        })
+        }),
       );
 
       window.api?.getPackDataWithLocs(modPath, {
@@ -151,7 +147,7 @@ const ModCustomization = memo(() => {
           packPath: modPath,
           dbName: "campaign_group_unique_agents_tables",
           dbSubname: "",
-        })
+        }),
       );
     }
   });
@@ -184,7 +180,7 @@ const ModCustomization = memo(() => {
   const buildingsData = getPackTableData(
     "db\\building_culture_variants_tables\\",
     packData,
-    (row) => (row[6] as boolean) == false // filter out the disabled buildings
+    (row) => (row[6] as boolean) == false, // filter out the disabled buildings
   );
   const agentsData = getPackTableData("db\\faction_agent_permitted_subtypes_tables\\", packData);
   const uniqueAgentsData = getPackTableData("db\\campaign_group_unique_agents_tables\\", packData);
@@ -301,7 +297,7 @@ const ModCustomization = memo(() => {
                     firstColumnData={(rowData: PlainPackFileDataRow) => rowData[0] as string}
                     secondColumnData={(rowData: PlainPackFileDataRow) =>
                       `${stringOrUnderdash(rowData[1])} ${stringOrUnderdash(rowData[4])} ${stringOrUnderdash(
-                        rowData[5]
+                        rowData[5],
                       )}`
                     }
                     columnIndices={[0, 1, 4, 5]}
@@ -309,9 +305,7 @@ const ModCustomization = memo(() => {
                     firstColumnHeaderLocId="Building"
                     secondColumnHeaderLocId="cultureSubcultureFaction"
                     firstColumnLocBuilder={(rowData: PlainPackFileDataRow) => {
-                      return [rowData[0], rowData[1], rowData[4], rowData[5]]
-                        .filter((text) => text != "")
-                        .join("");
+                      return [rowData[0], rowData[1], rowData[4], rowData[5]].filter((text) => text != "").join("");
                     }}
                     firstColumnTableLoc="building_culture_variants_name"
                   />

@@ -28,4 +28,31 @@ const selectStyle = {
   }),
 };
 
+/** Keep a selected label inside its control when the option name is longer than the sidebar. */
+export const wrappedValueSelectStyle = {
+  ...selectStyle,
+  control: (base: any, state: any) => ({
+    ...selectStyle.control(base, state),
+    minWidth: 0,
+  }),
+  valueContainer: (base: any) => ({
+    ...base,
+    minWidth: 0,
+  }),
+  option: (base: any, state: any) => ({
+    ...selectStyle.option(base, state),
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    whiteSpace: "normal",
+  }),
+  singleValue: (base: any) => ({
+    ...selectStyle.singleValue(base),
+    minWidth: 0,
+    overflow: "visible",
+    overflowWrap: "anywhere",
+    textOverflow: "clip",
+    whiteSpace: "normal",
+  }),
+};
+
 export default selectStyle;

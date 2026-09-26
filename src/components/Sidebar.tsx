@@ -11,11 +11,11 @@ import {
   createOnGameStartPreset,
   setIsHelpOpen,
 } from "../appSlice";
-import { Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
 import OptionsDrawer from "./OptionsDrawer";
-import selectStyle from "../styles/selectStyle";
+import selectStyle, { wrappedValueSelectStyle } from "../styles/selectStyle";
 import SaveGames from "./SaveGames";
+import SidebarTooltip from "./SidebarTooltip";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import CompatScreen from "./CompatScreen";
@@ -23,10 +23,56 @@ import RequiredMods from "./RequiredMods";
 import localizationContext from "../localizationContext";
 import Help from "./Help";
 import { gameToPackWithDBTablesName } from "../supportedGames";
+import { isWorkshopMod } from "../modSources";
+import { toPresetEntries } from "../config/presetEntries";
+import { Modal } from "../flowbite";
+import { getConflictingStartposMods } from "../utility/startposConflicts";
+import { getEnabledMods } from "../modsHelpers";
 
 type OptionType = {
   value: string;
   label: string;
+};
+
+const WORKSHOP_STATE_DOWNLOADING = 16;
+const WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
+
+const formatWorkshopBytes = (rawBytes: string) => {
+  const bytes = Number(rawBytes);
+  if (!Number.isFinite(bytes) || bytes < 0) return `${rawBytes} bytes`;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unitIndex;
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+};
+
+const formatWorkshopDownloadProgress = (downloadedBytes: string, totalBytes?: string) =>
+  totalBytes == null
+    ? formatWorkshopBytes(downloadedBytes)
+    : `${formatWorkshopBytes(downloadedBytes)} / ${formatWorkshopBytes(totalBytes)}`;
+
+const hasMeaningfulWorkshopDownloadProgress = (updateResult: WorkshopUpdateCheckItem) => {
+  try {
+    return BigInt(updateResult.totalBytes ?? "0") > BigInt(0);
+  } catch {
+    return false;
+  }
+};
+
+const formatWorkshopUpdateStatus = (updateResult: WorkshopUpdateCheckItem) => {
+  const hasProgress = hasMeaningfulWorkshopDownloadProgress(updateResult);
+  let status: string = updateResult.status;
+  if (status === "requested") status = "waiting for Steam";
+  if ((status === "downloading" || status === "already-downloading") && !hasProgress) {
+    status =
+      (updateResult.finalState & WORKSHOP_STATE_DOWNLOAD_PENDING) !== 0 ? "queued by Steam" : "preparing download";
+  }
+  return (
+    status +
+    (hasProgress && updateResult.downloadedBytes != null
+      ? ` (${formatWorkshopDownloadProgress(updateResult.downloadedBytes, updateResult.totalBytes)})`
+      : "")
+  );
 };
 
 const Sidebar = memo(() => {
@@ -37,6 +83,11 @@ const Sidebar = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
+  const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
+  const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
+    (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
+  );
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const userFlowOptions = useAppSelector((state) => state.app.userFlowOptions);
   const filter = useAppSelector((state) => state.app.filter);
@@ -63,14 +114,21 @@ const Sidebar = memo(() => {
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
   const [isWaitingForRelaunch, setIsWaitingForRelaunch] = useState<boolean>(false);
   const [isWaitingForContinueRelaunch, setIsWaitingForContinueRelaunch] = useState<boolean>(false);
+  const [isPlayDelayPending, setIsPlayDelayPending] = useState(false);
+  const [isContinueDelayPending, setIsContinueDelayPending] = useState(false);
   const [isTreeMenuOpen, setIsTreeMenuOpen] = useState(false);
+  const [isWorkshopRepairModalOpen, setIsWorkshopRepairModalOpen] = useState(false);
+  const [workshopRepairCandidateIds, setWorkshopRepairCandidateIds] = useState<string[]>([]);
+  const [selectedWorkshopRepairIds, setSelectedWorkshopRepairIds] = useState<string[]>([]);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const allMods = useAppSelector((state) => state.app.allMods);
-  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
-  const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
+  const workshopInstallStatuses = useAppSelector((state) => state.app.workshopInstallStatuses);
+  const workshopUpdateCheckResults = useAppSelector((state) => state.app.workshopUpdateCheckResults);
+  const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const lastSelectedPreset: SavedPreset | null = useAppSelector((state) => state.app.lastSelectedPreset);
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
@@ -102,142 +160,164 @@ const Sidebar = memo(() => {
     };
   }, [isTreeMenuOpen]);
 
-  const playGameClicked = useCallback((forcedDelayTime?: number) => {
-    console.log("playGameClicked: play game clicked");
+  const playGameClicked = useCallback(
+    (forcedDelayTime?: number) => {
+      console.log("playGameClicked: play game clicked");
 
-    if (isWaitingForContinueRelaunch) return;
-    if (isWH3Running) {
-      setIsWaitingForRelaunch(!isWaitingForRelaunch);
-      console.log("playGameClicked: waiting for relaunch");
-      return;
-    }
-    if (
-      forcedDelayTime ||
-      removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)
-    ) {
-      console.log(
-        `playGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
-          forcedDelayTime || "3.5"
-        } seconds before starting.`,
-        Date.now()
-      );
-      if (!playDelayTimeoutId.current) {
-        playDelayTimeoutId.current = setTimeout(() => {
-          console.log("playGameClicked: triggering delayed play game", Date.now());
-          playDelayTimeoutId.current = undefined;
-          dispatch(createOnGameStartPreset());
-          window.api?.startGame(mods, areModsInOrder, {
-            isMakeUnitsGeneralsEnabled,
-            isSkipIntroMoviesEnabled,
-            isScriptLoggingEnabled,
-            isAutoStartCustomBattleEnabled,
-            isClosedOnPlay,
-            packDataOverwrites,
-            userFlowOptions,
-          });
-        }, forcedDelayTime || 3500);
+      if (isWaitingForContinueRelaunch) return;
+      if (isWH3Running) {
+        setIsWaitingForRelaunch(!isWaitingForRelaunch);
+        console.log("playGameClicked: waiting for relaunch");
+        return;
       }
-      return;
-    }
-    dispatch(createOnGameStartPreset());
-    window.api?.startGame(mods, areModsInOrder, {
-      isMakeUnitsGeneralsEnabled,
-      isSkipIntroMoviesEnabled,
-      isScriptLoggingEnabled,
-      isAutoStartCustomBattleEnabled,
-      isClosedOnPlay,
-      packDataOverwrites,
-      userFlowOptions,
-    });
-  }, [
-    areModsInOrder,
-    dispatch,
-    isAutoStartCustomBattleEnabled,
-    isClosedOnPlay,
-    isMakeUnitsGeneralsEnabled,
-    isScriptLoggingEnabled,
-    isSkipIntroMoviesEnabled,
-    isWaitingForContinueRelaunch,
-    isWaitingForRelaunch,
-    isWH3Running,
-    mods,
-    packDataOverwrites,
-    removedModsData,
-    userFlowOptions,
-  ]);
-
-  const onContinueGameClicked = useCallback((forcedDelayTime?: number) => {
-    if (isWaitingForRelaunch) return;
-
-    if (isWH3Running) {
-      setIsWaitingForContinueRelaunch(!isWaitingForContinueRelaunch);
-      console.log("onContinueGameClicked: waiting for relaunch");
-      return;
-    }
-
-    if (
-      forcedDelayTime ||
-      removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)
-    ) {
-      console.log(
-        `onContinueGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
-          forcedDelayTime || "3.5"
-        } seconds before starting.`,
-        Date.now()
-      );
-      if (!continueDelayTimeoutId.current) {
-        continueDelayTimeoutId.current = setTimeout(() => {
-          console.log("onContinueGameClicked: triggering delayed continue game", Date.now());
-          continueDelayTimeoutId.current = undefined;
-          window.api?.startGame(
-            mods,
-            areModsInOrder,
-            {
+      if (forcedDelayTime || removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)) {
+        console.log(
+          `playGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
+            forcedDelayTime || "3.5"
+          } seconds before starting.`,
+          Date.now(),
+        );
+        if (!playDelayTimeoutId.current) {
+          setIsPlayDelayPending(true);
+          playDelayTimeoutId.current = setTimeout(() => {
+            console.log("playGameClicked: triggering delayed play game", Date.now());
+            playDelayTimeoutId.current = undefined;
+            setIsPlayDelayPending(false);
+            dispatch(createOnGameStartPreset());
+            window.api?.startGame(mods, areModsInOrder, {
               isMakeUnitsGeneralsEnabled,
               isSkipIntroMoviesEnabled,
               isScriptLoggingEnabled,
               isAutoStartCustomBattleEnabled,
               isClosedOnPlay,
+              workshopModStagingMode,
+              compressWorkshopModsOnStart,
+              cleanUpWorkshopModStagingAfterGameExit,
               packDataOverwrites,
               userFlowOptions,
-            },
-            saves[0]?.name
-          );
-        }, forcedDelayTime || 3500);
+            });
+          }, forcedDelayTime || 3500);
+        }
+        return;
       }
-      return;
-    }
-
-    window.api?.startGame(
-      mods,
-      areModsInOrder,
-      {
+      dispatch(createOnGameStartPreset());
+      window.api?.startGame(mods, areModsInOrder, {
         isMakeUnitsGeneralsEnabled,
         isSkipIntroMoviesEnabled,
         isScriptLoggingEnabled,
         isAutoStartCustomBattleEnabled,
         isClosedOnPlay,
+        workshopModStagingMode,
+        compressWorkshopModsOnStart,
+        cleanUpWorkshopModStagingAfterGameExit,
         packDataOverwrites,
         userFlowOptions,
-      },
-      saves[0]?.name
-    );
-  }, [
-    areModsInOrder,
-    isAutoStartCustomBattleEnabled,
-    isClosedOnPlay,
-    isMakeUnitsGeneralsEnabled,
-    isScriptLoggingEnabled,
-    isSkipIntroMoviesEnabled,
-    isWaitingForContinueRelaunch,
-    isWaitingForRelaunch,
-    isWH3Running,
-    mods,
-    packDataOverwrites,
-    removedModsData,
-    saves,
-    userFlowOptions,
-  ]);
+      });
+    },
+    [
+      areModsInOrder,
+      dispatch,
+      isAutoStartCustomBattleEnabled,
+      isClosedOnPlay,
+      workshopModStagingMode,
+      compressWorkshopModsOnStart,
+      cleanUpWorkshopModStagingAfterGameExit,
+      isMakeUnitsGeneralsEnabled,
+      isScriptLoggingEnabled,
+      isSkipIntroMoviesEnabled,
+      isWaitingForContinueRelaunch,
+      isWaitingForRelaunch,
+      isWH3Running,
+      mods,
+      packDataOverwrites,
+      removedModsData,
+      userFlowOptions,
+    ],
+  );
+
+  const onContinueGameClicked = useCallback(
+    (forcedDelayTime?: number) => {
+      if (isWaitingForRelaunch) return;
+
+      if (isWH3Running) {
+        setIsWaitingForContinueRelaunch(!isWaitingForContinueRelaunch);
+        console.log("onContinueGameClicked: waiting for relaunch");
+        return;
+      }
+
+      if (forcedDelayTime || removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)) {
+        console.log(
+          `onContinueGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
+            forcedDelayTime || "3.5"
+          } seconds before starting.`,
+          Date.now(),
+        );
+        if (!continueDelayTimeoutId.current) {
+          setIsContinueDelayPending(true);
+          continueDelayTimeoutId.current = setTimeout(() => {
+            console.log("onContinueGameClicked: triggering delayed continue game", Date.now());
+            continueDelayTimeoutId.current = undefined;
+            setIsContinueDelayPending(false);
+            window.api?.startGame(
+              mods,
+              areModsInOrder,
+              {
+                isMakeUnitsGeneralsEnabled,
+                isSkipIntroMoviesEnabled,
+                isScriptLoggingEnabled,
+                isAutoStartCustomBattleEnabled,
+                isClosedOnPlay,
+                workshopModStagingMode,
+                compressWorkshopModsOnStart,
+                cleanUpWorkshopModStagingAfterGameExit,
+                packDataOverwrites,
+                userFlowOptions,
+              },
+              saves[0]?.name,
+            );
+          }, forcedDelayTime || 3500);
+        }
+        return;
+      }
+
+      window.api?.startGame(
+        mods,
+        areModsInOrder,
+        {
+          isMakeUnitsGeneralsEnabled,
+          isSkipIntroMoviesEnabled,
+          isScriptLoggingEnabled,
+          isAutoStartCustomBattleEnabled,
+          isClosedOnPlay,
+          workshopModStagingMode,
+          compressWorkshopModsOnStart,
+          cleanUpWorkshopModStagingAfterGameExit,
+          packDataOverwrites,
+          userFlowOptions,
+        },
+        saves[0]?.name,
+      );
+    },
+    [
+      areModsInOrder,
+      isAutoStartCustomBattleEnabled,
+      isClosedOnPlay,
+      workshopModStagingMode,
+      compressWorkshopModsOnStart,
+      cleanUpWorkshopModStagingAfterGameExit,
+      isMakeUnitsGeneralsEnabled,
+      isScriptLoggingEnabled,
+      isSkipIntroMoviesEnabled,
+      isWaitingForContinueRelaunch,
+      isWaitingForRelaunch,
+      isWH3Running,
+      mods,
+      packDataOverwrites,
+      removedModsData,
+      saves,
+      userFlowOptions,
+    ],
+  );
 
   const presets = useAppSelector((state) => state.app.presets);
   const options: OptionType[] = useMemo(
@@ -249,8 +329,10 @@ const Sidebar = memo(() => {
   );
 
   const newPresetMade = (name: string) => {
-    dispatch(addPreset({ name: name, mods: mods }));
-    console.log(name);
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    dispatch(addPreset({ name: trimmedName, mods: toPresetEntries(mods) }));
+    console.log(trimmedName);
   };
 
   const onChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
@@ -278,8 +360,7 @@ const Sidebar = memo(() => {
   };
 
   const defaultOption =
-    (lastSelectedPreset != null && options.filter((option) => option.value === lastSelectedPreset.name)[0]) ||
-    null;
+    (lastSelectedPreset != null && options.filter((option) => option.value === lastSelectedPreset.name)[0]) || null;
 
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setFilter(e.target.value));
@@ -326,11 +407,6 @@ const Sidebar = memo(() => {
     getUpdateData();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "f") {
-        const filterInput = document.getElementById("filterInput");
-        filterInput?.focus();
-      }
-
       if (e.key === "Shift") isShiftDownRef.current = true;
       if (e.key === "Control") isControlDownRef.current = true;
     };
@@ -340,12 +416,19 @@ const Sidebar = memo(() => {
       if (e.key === "Control") isControlDownRef.current = false;
     };
 
+    const resetModifierKeys = () => {
+      isShiftDownRef.current = false;
+      isControlDownRef.current = false;
+    };
+
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", resetModifierKeys);
 
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", resetModifierKeys);
     };
   }, []);
 
@@ -366,22 +449,12 @@ const Sidebar = memo(() => {
   useEffect(() => {
     if (previousIsWH3RunningRef.current !== isWH3Running) {
       if (isWaitingForRelaunch && !isWH3Running) {
-        console.log(
-          "calling PLAYGAMECLICKED",
-          previousIsWH3RunningRef.current,
-          isWH3Running,
-          isWaitingForRelaunch,
-        );
+        console.log("calling PLAYGAMECLICKED", previousIsWH3RunningRef.current, isWH3Running, isWaitingForRelaunch);
         setIsWaitingForRelaunch(false);
         playGameClicked(1500);
       }
       if (isWaitingForContinueRelaunch && !isWH3Running) {
-        console.log(
-          "calling PLAYGAMECLICKED",
-          previousIsWH3RunningRef.current,
-          isWH3Running,
-          isWaitingForRelaunch,
-        );
+        console.log("calling PLAYGAMECLICKED", previousIsWH3RunningRef.current, isWH3Running, isWaitingForRelaunch);
         setIsWaitingForContinueRelaunch(false);
         onContinueGameClicked(1500);
       }
@@ -390,9 +463,81 @@ const Sidebar = memo(() => {
     previousIsWH3RunningRef.current = isWH3Running;
   }, [isWH3Running, isWaitingForRelaunch, isWaitingForContinueRelaunch, onContinueGameClicked, playGameClicked]);
 
-  const enabledMods = mods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
+  const outdatedPackFilesForEnabledMods = Object.fromEntries(
+    Object.entries(outdatedPackFiles).filter(([packName]) => enabledMods.some((mod) => mod.name === packName)),
   );
+  const conflictingStartposMods = getConflictingStartposMods(enabledMods);
+
+  const possiblyOutdatedWorkshopMods = enabledMods
+    .filter((mod) => isWorkshopMod(mod) && mod.lastChanged != null)
+    .map((mod) => {
+      const installStatus = workshopInstallStatuses[mod.workshopId];
+      const updateResult = workshopUpdateCheckResults[mod.workshopId];
+      const installedTimestamp =
+        updateResult?.installTimestampAfter ??
+        updateResult?.installTimestampBefore ??
+        installStatus?.installedTimestamp;
+      const workshopState = updateResult?.finalState ?? installStatus?.state;
+      return { mod, installedTimestamp, workshopState, updateResult };
+    })
+    .filter(({ mod, installedTimestamp, workshopState, updateResult }) => {
+      if (installedTimestamp == null || mod.lastChanged == null) return false;
+      if (
+        updateResult?.status === "requested" ||
+        updateResult?.status === "already-downloading" ||
+        updateResult?.status === "downloading" ||
+        updateResult?.status === "resubscribing"
+      ) {
+        return false;
+      }
+      if (
+        updateResult?.status === "updated" &&
+        (updateResult.installTimestampAfter == null || mod.lastChanged <= updateResult.installTimestampAfter * 1000)
+      ) {
+        return false;
+      }
+      if (
+        workshopState != null &&
+        (workshopState & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0
+      ) {
+        return false;
+      }
+      return mod.lastChanged > installedTimestamp * 1000;
+    });
+
+  const workshopRepairCandidateMods = enabledMods.filter(
+    (mod) => isWorkshopMod(mod) && workshopRepairCandidateIds.includes(mod.workshopId),
+  );
+  const selectedWorkshopRepairMods = workshopRepairCandidateMods.filter((mod) =>
+    selectedWorkshopRepairIds.includes(mod.workshopId),
+  );
+  const isWorkshopRepairRunning = selectedWorkshopRepairIds.some((workshopId) => {
+    const status = workshopUpdateCheckResults[workshopId]?.status;
+    return (
+      status === "requested" ||
+      status === "already-downloading" ||
+      status === "downloading" ||
+      status === "resubscribing"
+    );
+  });
+
+  const openWorkshopRepairModal = () => {
+    const workshopIds = possiblyOutdatedWorkshopMods.map(({ mod }) => mod.workshopId);
+    setWorkshopRepairCandidateIds(workshopIds);
+    setSelectedWorkshopRepairIds(workshopIds);
+    setIsWorkshopRepairModalOpen(true);
+  };
+
+  const resubscribeSelectedWorkshopMods = () => {
+    if (selectedWorkshopRepairMods.length === 0) return;
+    if (isWorkshopRepairRunning) {
+      window.api?.cancelWorkshopRepairAndResubscribeMods(selectedWorkshopRepairMods);
+    } else {
+      window.api?.forceResubscribeMods(selectedWorkshopRepairMods);
+    }
+    setIsWorkshopRepairModalOpen(false);
+  };
 
   const isDependencyEnabledByPackName = useCallback(
     (reqId: string): boolean => {
@@ -400,7 +545,7 @@ const Sidebar = memo(() => {
       if (!modInAllById) return false;
       return enabledMods.some((enabledMod) => enabledMod.name == modInAllById.name);
     },
-    [allMods, enabledMods]
+    [allMods, enabledMods],
   );
 
   const missingModDependencies = enabledMods
@@ -413,9 +558,9 @@ const Sidebar = memo(() => {
           mod.reqModIdToName.filter(
             ([reqId]) =>
               !isDependencyEnabledByPackName(reqId) &&
-              !enabledMods.some((enabledMod) => enabledMod.workshopId == reqId)
+              !enabledMods.some((enabledMod) => enabledMod.workshopId == reqId),
           ),
-        ] as [Mod, [string, string][]]
+        ] as [Mod, [string, string][]],
     )
     .filter((member) => member[1].length > 0);
 
@@ -441,13 +586,13 @@ const Sidebar = memo(() => {
           enabledMod.lastChanged != mergedModData.lastChanged &&
           enabledMod.lastChangedLocal != mergedModData.lastChanged
         );
-      })
+      }),
     );
 
   const timeCheckedOverwrittenDataPackedFiles: typeof overwrittenDataPackedFiles = {};
   if (dataModLastChangedLocal) {
     for (const [packName, data] of Object.entries(overwrittenDataPackedFiles)) {
-      const mod = enabledMods.find((iterMod) => !iterMod.isInData && iterMod.name == packName);
+      const mod = enabledMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == packName);
       if (mod && mod.lastChanged && mod.lastChanged < dataModLastChangedLocal) {
         timeCheckedOverwrittenDataPackedFiles[packName] = data;
       }
@@ -456,6 +601,76 @@ const Sidebar = memo(() => {
 
   return (
     <div>
+      <Modal
+        show={isWorkshopRepairModalOpen}
+        onClose={() => setIsWorkshopRepairModalOpen(false)}
+        size="lg"
+        position="center"
+      >
+        <Modal.Header>{localized.repairWorkshopMods || "Repair Workshop Mods"}</Modal.Header>
+        <Modal.Body>
+          <p className="mb-4 text-gray-500 dark:text-gray-300">
+            {localized.repairWorkshopModsHelp ||
+              "Select the mods to repair. Only checked mods will be unsubscribed and resubscribed through Steam."}
+          </p>
+          <div className="max-h-72 overflow-y-auto space-y-2">
+            {workshopRepairCandidateMods.map((mod) => {
+              const updateResult = workshopUpdateCheckResults[mod.workshopId];
+              const isSelected = selectedWorkshopRepairIds.includes(mod.workshopId);
+              return (
+                <label
+                  className="flex items-start gap-3 rounded p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  key={mod.workshopId}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={isSelected}
+                    disabled={isWorkshopRepairRunning}
+                    onChange={(event) => {
+                      setSelectedWorkshopRepairIds((currentIds) =>
+                        event.target.checked
+                          ? [...new Set([...currentIds, mod.workshopId])]
+                          : currentIds.filter((workshopId) => workshopId !== mod.workshopId),
+                      );
+                    }}
+                  />
+                  <span>
+                    <span className="block font-semibold text-gray-900 dark:text-white">
+                      {mod.humanName || mod.name}
+                    </span>
+                    {updateResult && (
+                      <span className="block text-sm text-gray-500 dark:text-gray-300">
+                        {(localized.workshopUpdateStatus || "Update status") +
+                          `: ${formatWorkshopUpdateStatus(updateResult)}`}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            type="button"
+            className="px-4 py-2 bg-gray-500 text-white font-medium text-sm rounded hover:bg-gray-600"
+            onClick={() => setIsWorkshopRepairModalOpen(false)}
+          >
+            {localized.close || "Close"}
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 bg-red-600 text-white font-medium text-sm rounded hover:bg-red-700 disabled:opacity-50"
+            disabled={selectedWorkshopRepairMods.length === 0}
+            onClick={resubscribeSelectedWorkshopMods}
+          >
+            {isWorkshopRepairRunning
+              ? localized.cancelAndResubscribe || "Cancel and Resubscribe"
+              : localized.forceResubscribe || "Force Resubscribe"}
+          </button>
+        </Modal.Footer>
+      </Modal>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
       <Help></Help>
 
@@ -464,9 +679,9 @@ const Sidebar = memo(() => {
         setIsOpen={setIsShowingRequiredMods}
         modDependencies={missingModDependencies}
       />
-      <div className="fixed h-[90vh] z-[40]">
+      <div className="fixed h-[90vh] max-h-[90vh] overflow-y-auto z-[40]">
         <div id="presetSection">
-          <Tooltip
+          <SidebarTooltip
             placement="left"
             style="light"
             content={
@@ -479,13 +694,13 @@ const Sidebar = memo(() => {
             }
           >
             <span className="text-slate-100 select-none">{localized.selectOrCreatePreset}</span>
-          </Tooltip>
+          </SidebarTooltip>
           <Creatable
             id="createOrSelectPreset"
             value={defaultOption}
             options={options}
             onChange={onChange}
-            styles={selectStyle}
+            styles={wrappedValueSelectStyle}
             onCreateOption={(name) => newPresetMade(name)}
           ></Creatable>
           <div
@@ -552,7 +767,7 @@ const Sidebar = memo(() => {
               className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
             ></input>
 
-            <span className="absolute right-[0.65rem] top-8 text-gray-400">
+            <span className="absolute right-[0.65rem] top-8 text-gray-400 scale-150">
               <button onClick={() => clearFilter()}>
                 <FontAwesomeIcon icon={faXmark} />
               </button>
@@ -561,30 +776,94 @@ const Sidebar = memo(() => {
         </div>
 
         <div className="absolute w-full bottom-0 z-10">
+          {conflictingStartposMods.length > 0 && (
+            <div className="text-center text-red-700 font-semibold mb-4">
+              <div className="make-tooltip-w-full">
+                <SidebarTooltip
+                  placement="left"
+                  content={
+                    <>
+                      <p className="cursor-default">
+                        {localized.multipleStartposModsTooltip ||
+                          "Multiple enabled packs contain startpos.esf. Only one can take effect; disable all but the one you intend to use."}
+                      </p>
+                      {conflictingStartposMods.map((mod) => (
+                        <div className="mt-1" key={mod.path}>
+                          {mod.humanName || mod.name}
+                        </div>
+                      ))}
+                    </>
+                  }
+                >
+                  <span className="cursor-default">
+                    {localized.multipleStartposMods || "Multiple startpos mods enabled!"}
+                  </span>
+                </SidebarTooltip>
+              </div>
+            </div>
+          )}
+          {possiblyOutdatedWorkshopMods.length > 0 && (
+            <div className="text-center text-amber-500 font-semibold mb-4">
+              <button
+                type="button"
+                className="make-tooltip-w-full w-full cursor-pointer"
+                onClick={openWorkshopRepairModal}
+              >
+                <SidebarTooltip
+                  placement="left"
+                  content={
+                    <>
+                      <p className="cursor-default">
+                        {localized.workshopModsMayBeOutdatedTooltip ||
+                          "The Workshop content is newer than Steam's locally installed version."}
+                      </p>
+                      {possiblyOutdatedWorkshopMods.map(({ mod, installedTimestamp, updateResult }) => (
+                        <div className="mt-2" key={mod.workshopId}>
+                          <div className="font-semibold">{mod.humanName || mod.name}</div>
+                          <div>
+                            {(localized.workshopUpdated || "Workshop updated") +
+                              `: ${new Date(mod.lastChanged as number).toLocaleString()}`}
+                          </div>
+                          <div>
+                            {(localized.installedVersion || "Installed version") +
+                              `: ${new Date((installedTimestamp as number) * 1000).toLocaleString()}`}
+                          </div>
+                          {(updateResult?.status === "request-failed" || updateResult?.status === "timed-out") && (
+                            <div className="text-amber-400">
+                              {(localized.workshopUpdateStatus || "Update status") + `: ${updateResult.status}`}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  }
+                >
+                  <span className="cursor-pointer">
+                    {localized.workshopModsMayBeOutdated || "Workshop mods may be outdated"}
+                  </span>
+                </SidebarTooltip>
+              </button>
+            </div>
+          )}
+
           {missingModDependencies.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
-              <div
-                className="make-tooltip-w-full cursor-pointer"
-                onClick={() => onMissingDependenciesClicked()}
-              >
-                <Tooltip
+              <div className="make-tooltip-w-full cursor-pointer" onClick={() => onMissingDependenciesClicked()}>
+                <SidebarTooltip
                   placement="left"
                   content={missingModDependencies.map(([mod, reqs]) => (
                     <div key={mod.path}>
                       <span className="">{mod.humanName + ` ${localized.missing}`}</span>
-                      {
-                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        reqs.map(([reqId, reqHumanName]) => (
-                          <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
-                            {reqHumanName}
-                          </div>
-                        ))
-                      }
+                      {reqs.map(([reqId, reqHumanName]) => (
+                        <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
+                          {reqHumanName}
+                        </div>
+                      ))}
                     </div>
                   ))}
                 >
                   {localized.missingReqMods}
-                </Tooltip>
+                </SidebarTooltip>
               </div>
             </div>
           )}
@@ -592,41 +871,39 @@ const Sidebar = memo(() => {
           {currentGame == "wh3" && Object.keys(timeCheckedOverwrittenDataPackedFiles).length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div className="make-tooltip-w-full">
-                <Tooltip
+                <SidebarTooltip
                   placement="left"
                   content={
                     <>
                       <p className="cursor-default">{localized.outdatedOverwritingPacksTooltip}</p>
-                      {Object.entries(timeCheckedOverwrittenDataPackedFiles).map(
-                        ([packName, overwrittenFileNames]) => (
-                          <div key={packName}>
-                            <span className="">{packName + ` ${localized.overwrites}`}</span>
-                            {overwrittenFileNames.map((packedFileName) => (
-                              <div key={`${packName}_${packedFileName}`} className="text-red-600">
-                                {packedFileName}
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      )}
+                      {Object.entries(timeCheckedOverwrittenDataPackedFiles).map(([packName, overwrittenFileNames]) => (
+                        <div key={packName}>
+                          <span className="">{packName + ` ${localized.overwrites}`}</span>
+                          {overwrittenFileNames.map((packedFileName) => (
+                            <div key={`${packName}_${packedFileName}`} className="text-red-600">
+                              {packedFileName}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
                     </>
                   }
                 >
                   <span className="cursor-default">{localized.outdatedOverwritingPacks}</span>
-                </Tooltip>
+                </SidebarTooltip>
               </div>
             </div>
           )}
 
-          {currentGame == "wh3" && Object.keys(outdatedPackFiles).length > 0 && (
+          {currentGame == "wh3" && Object.keys(outdatedPackFilesForEnabledMods).length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div className="make-tooltip-w-full">
-                <Tooltip
+                <SidebarTooltip
                   placement="left"
                   content={
                     <>
                       <p>{localized.packsWithOutdatedFiles}</p>
-                      {Object.entries(outdatedPackFiles).map(([packName, overwrittenFileNames]) => (
+                      {Object.entries(outdatedPackFilesForEnabledMods).map(([packName, overwrittenFileNames]) => (
                         <div key={packName}>
                           <span className="">{`${packName}:`}</span>
                           {overwrittenFileNames.map((packedFileName) => (
@@ -640,7 +917,7 @@ const Sidebar = memo(() => {
                   }
                 >
                   {localized.outdatedPacks}
-                </Tooltip>
+                </SidebarTooltip>
               </div>
             </div>
           )}
@@ -648,7 +925,7 @@ const Sidebar = memo(() => {
           {outdatedMergedPacks.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div className="make-tooltip-w-full">
-                <Tooltip
+                <SidebarTooltip
                   placement="left"
                   content={
                     <>
@@ -662,14 +939,14 @@ const Sidebar = memo(() => {
                   }
                 >
                   {localized.outdatedMergedMods}
-                </Tooltip>
+                </SidebarTooltip>
               </div>
             </div>
           )}
           {enabledMods.length > 0 && (
             <div className="text-center text-slate-100 mb-4">
               <div className="make-tooltip-w-full">
-                <Tooltip
+                <SidebarTooltip
                   placement="left"
                   content={enabledMods.map((mod) => (
                     <div key={mod.path}>{mod.name.replace(".pack", "")}</div>
@@ -678,7 +955,7 @@ const Sidebar = memo(() => {
                   <span className="cursor-default">
                     {localized.enabledMods} {enabledMods.length}
                   </span>
-                </Tooltip>
+                </SidebarTooltip>
               </div>
             </div>
           )}
@@ -686,8 +963,7 @@ const Sidebar = memo(() => {
             <button
               id="playGame"
               className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto ${
-                (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") ||
-                ""
+                (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") || ""
               }`}
               onClick={(e) => {
                 if (e.ctrlKey) {
@@ -699,7 +975,7 @@ const Sidebar = memo(() => {
             >
               {(isWH3Running && (
                 <div className="make-tooltip-w-full flex">
-                  <Tooltip
+                  <SidebarTooltip
                     placement="left"
                     content={
                       <div>
@@ -718,10 +994,8 @@ const Sidebar = memo(() => {
                         src={require(`../assets/game_icons/${currentGame}.png`)}
                       />
                     </div>
-                  </Tooltip>
-                  {isWaitingForRelaunch && (
-                    <div className="dots-loader h-3 w-3 self-center mt-2 opacity-90"></div>
-                  )}
+                  </SidebarTooltip>
+                  {isWaitingForRelaunch && <div className="dots-loader h-3 w-3 self-center mt-2 opacity-90"></div>}
                 </div>
               )) || (
                 <div className="flex justify-center items-center gap-[0.4rem]">
@@ -730,7 +1004,7 @@ const Sidebar = memo(() => {
                     className="aspect-square w-10"
                     src={require(`../assets/game_icons/${currentGame}.png`)}
                   />
-                  {((isWaitingForRelaunch || playDelayTimeoutId.current) && (
+                  {((isWaitingForRelaunch || isPlayDelayPending) && (
                     <div className="dots-loader h-3 w-3 self-center mt-2 opacity-90"></div>
                   )) || <span className="playButtonText uppercase">{localized.play}</span>}
                 </div>
@@ -741,22 +1015,17 @@ const Sidebar = memo(() => {
               <button
                 id="continueGame"
                 className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto ${
-                  (isWH3Running &&
-                    "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") ||
-                  ""
+                  (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") || ""
                 }`}
                 onClick={() => onContinueGameClicked()}
                 disabled={saves.length < 1}
               >
                 <div className="make-tooltip-w-full">
-                  <Tooltip
-                    placement="left"
-                    content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}
-                  >
-                    {((isWaitingForContinueRelaunch || continueDelayTimeoutId.current) && (
+                  <SidebarTooltip placement="left" content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}>
+                    {((isWaitingForContinueRelaunch || isContinueDelayPending) && (
                       <div className="dots-loader mb-1 ml-2 h-3 w-3 self-center mt-2 opacity-90"></div>
                     )) || <span className="ml-[-25%]">{localized.continue}</span>}
-                  </Tooltip>
+                  </SidebarTooltip>
                 </div>
               </button>
               <button
@@ -767,7 +1036,7 @@ const Sidebar = memo(() => {
                 disabled={saves.length < 1}
               >
                 <div className="make-tooltip-w-full">
-                  <Tooltip placement="left" content={(saves[0] && `Show all saves`) || "No saves found!"}>
+                  <SidebarTooltip placement="left" content={(saves[0] && `Show all saves`) || "No saves found!"}>
                     <svg
                       aria-hidden="true"
                       className="h-6 w-6"
@@ -777,14 +1046,9 @@ const Sidebar = memo(() => {
                       viewBox="0 0 24 24"
                       xmlns="http://www.w3.org/2000/svg"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      ></path>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"></path>
                     </svg>
-                  </Tooltip>
+                  </SidebarTooltip>
                 </div>
               </button>
             </div>
@@ -803,9 +1067,7 @@ const Sidebar = memo(() => {
         <div className="mt-4">
           <div className="text-center mt-4">
             <button
-              onClick={() =>
-                window.api?.requestOpenModInViewer(gameToPackWithDBTablesName[currentGame] || "db.pack")
-              }
+              onClick={() => window.api?.requestOpenModInViewer(gameToPackWithDBTablesName[currentGame] || "db.pack")}
               className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
             >
@@ -886,9 +1148,7 @@ const Sidebar = memo(() => {
       </div>
 
       {isUpdateAvailable && (
-        <div
-          className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}
-        >
+        <div className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}>
           <UpdateNotification
             downloadURL={downloadURL}
             releaseNotesURL={releaseNotesURL}

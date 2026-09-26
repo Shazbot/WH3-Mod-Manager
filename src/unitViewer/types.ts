@@ -1,0 +1,339 @@
+export type UnitViewerUnitSize = "small" | "medium" | "large" | "ultra";
+
+export type UnitViewerFatigue =
+  | "threshold_fresh"
+  | "threshold_active"
+  | "threshold_winded"
+  | "threshold_tired"
+  | "threshold_very_tired"
+  | "threshold_exhausted";
+
+export interface UnitViewerContext {
+  unitSize: UnitViewerUnitSize;
+  rank: number;
+  fatigue: UnitViewerFatigue;
+}
+
+export interface UnitViewerEntity {
+  key: string;
+  type: string;
+  walkSpeed: number;
+  runSpeed: number;
+  flySpeed: number;
+  chargeSpeed: number;
+  mass: number;
+  hitPoints: number;
+  size: string;
+}
+
+export interface UnitViewerMeleeWeapon {
+  key: string;
+  baseDamage: number;
+  apDamage: number;
+  bonusVsLarge: number;
+  bonusVsInfantry: number;
+  attackInterval: number;
+  splashTargetSize?: string;
+  splashMaxAttacks: number;
+  isMagical: boolean;
+  ignitionAmount: number;
+}
+
+export interface UnitViewerProjectile {
+  key: string;
+  range: number;
+  baseDamage: number;
+  apDamage: number;
+  projectileNumber: number;
+  shotsPerVolley: number;
+  burstSize: number;
+  baseReloadTime: number;
+  bonusVsLarge: number;
+  bonusVsInfantry: number;
+  explosionBaseDamage: number;
+  explosionApDamage: number;
+  explosionRadius: number;
+  isMagical: boolean;
+  ignitionAmount: number;
+}
+
+export interface UnitViewerMissileWeapon {
+  key: string;
+  useSecondaryAmmoPool: boolean;
+  projectile: UnitViewerProjectile;
+}
+
+export interface UnitViewerAbility {
+  key: string;
+  passive: boolean;
+  isSpell: boolean;
+  tooltip: AbilityTooltipData;
+}
+
+export interface UnitViewerAttribute {
+  key: string;
+  name: string;
+  description: string;
+  iconPath: string;
+}
+
+export interface UnitViewerGroundEffect {
+  groundType: string;
+  stat: string;
+  multiplier: number;
+}
+
+export interface UnitViewerPainterVariantContext {
+  /** land_units key used by unit_variants_tables.unit. */
+  unitKey: string;
+  /** Faction on the source unit_variants row; empty means the source row is global. */
+  faction: string;
+  variantName: string;
+  unitVariantName: string;
+  unitCard: string;
+  variantDetails: {
+    techFolder: string;
+    variantFilename: string;
+    lowPolyFilename: string;
+    mountScale: string;
+    scale: string;
+    scaleVariation: string;
+    superLowPolyFilename: string;
+  };
+  /** Useful faction keys for the save UI. Free-form faction keys are still allowed. */
+  availableFactions: string[];
+  /** Default uniform colours from factions_tables for previewable factions in the unit's relevant subculture(s). */
+  factionColours?: Array<{
+    faction: string;
+    subculture: string;
+    primary: string;
+    secondary: string;
+    tertiary: string;
+  }>;
+  /** Unit-specific colour overrides from unit_variants_colours_tables. */
+  unitVariantColours?: Array<{
+    faction: string;
+    subculture: string;
+    soldierType: string;
+    primary: string;
+    secondary: string;
+    tertiary: string;
+  }>;
+}
+
+export interface UnitViewerUnitModel {
+  key: string;
+  landUnitKey: string;
+  name: string;
+  /** Localized name of this unit's custom-battle mount variant, when it has one. */
+  mountName?: string;
+  caste: string;
+  category: string;
+  numMen: number;
+  multiplayerCost: number;
+  recruitmentCost: number;
+  upkeepCost: number;
+  barrierHealth: number;
+  isRenown: boolean;
+  isHighThreat: boolean;
+  canSiege: boolean;
+  canSkirmish: boolean;
+  accuracy: number;
+  armour: number;
+  shieldBlock: number;
+  chargeBonus: number;
+  meleeAttack: number;
+  meleeDefence: number;
+  leadership: number;
+  bonusHitPoints: number;
+  numMounts: number;
+  numEngines: number;
+  reload: number;
+  primaryAmmo: number;
+  secondaryAmmo: number;
+  fireResistance: number;
+  magicResistance: number;
+  physicalResistance: number;
+  missileResistance: number;
+  wardSave: number;
+  groundStatEffectGroup: string;
+  groundStatEffects: UnitViewerGroundEffect[];
+  baseEntity: UnitViewerEntity;
+  mountEntity?: UnitViewerEntity;
+  engineEntity?: UnitViewerEntity;
+  articulatedEntity?: UnitViewerEntity;
+  meleeWeapon: UnitViewerMeleeWeapon;
+  primaryMissileWeapon?: UnitViewerMissileWeapon;
+  secondaryMissileWeapon?: UnitViewerMissileWeapon;
+  unitCardPath?: string;
+  /** Resolved variantmeshdefinition used by the 3D unit preview. */
+  variantMeshPath?: string;
+  /** Source DB rows needed to optionally save a painted VMD as a faction-specific unit variant. */
+  painterVariantContext?: UnitViewerPainterVariantContext;
+  attributes: UnitViewerAttribute[];
+  abilities: UnitViewerAbility[];
+}
+
+export interface UnitViewerExperienceBonus {
+  stat: string;
+  growthRate: number;
+  growthScalar: number;
+}
+
+export interface UnitViewerRankBonus {
+  rank: number;
+  fatigueModifier: number;
+  multiplayerFixedCost: number;
+  multiplayerCostMultiplier: number;
+}
+
+export interface UnitViewerSizeScaling {
+  stat: string;
+  size: UnitViewerUnitSize;
+  singleEntityValue: number;
+  multiEntityValue: number;
+}
+
+export interface UnitViewerConstants {
+  experienceBonuses: UnitViewerExperienceBonus[];
+  rankBonuses: UnitViewerRankBonus[];
+  fatigueEffects: Partial<Record<UnitViewerFatigue, Record<string, number>>>;
+  fatigueMorale: Partial<Record<UnitViewerFatigue, number>>;
+  sizeScaling: UnitViewerSizeScaling[];
+  statIconPaths: Record<string, string>;
+}
+
+export interface UnitViewerMissileStats {
+  ammo: number;
+  range: number;
+  damagePerTenSeconds: number;
+  reloadTime: number;
+  baseDamage: number;
+  apDamage: number;
+  explosionBaseDamage: number;
+  explosionApDamage: number;
+  explosionRadius: number;
+  shotsPerVolley: number;
+  projectileNumber: number;
+  burstSize: number;
+  bonusVsLarge: number;
+  bonusVsInfantry: number;
+}
+
+export interface UnitViewerCalculatedStats {
+  entityCount: number;
+  multiplayerCost: number;
+  recruitmentCost: number;
+  upkeepCost: number;
+  health: number;
+  healthPerEntity: number;
+  barrier: number;
+  armour: number;
+  shieldBlock: number;
+  leadership: number;
+  speed: number;
+  chargeSpeed: number;
+  meleeAttack: number;
+  meleeDefence: number;
+  weaponStrength: number;
+  baseDamage: number;
+  apDamage: number;
+  bonusVsLarge: number;
+  bonusVsInfantry: number;
+  chargeBonus: number;
+  attackInterval: number;
+  mass: number;
+  fatigueModifier: number;
+  primaryMissile?: UnitViewerMissileStats;
+  secondaryMissile?: UnitViewerMissileStats;
+}
+
+export interface UnitViewerCatalogUnit {
+  key: string;
+  name: string;
+  /** Localized name of this unit's custom-battle mount variant, when it has one. */
+  mountName?: string;
+  category: string;
+  caste: string;
+  subcultureKeys: string[];
+  uiGroupKey: string;
+  unitCardPath?: string;
+  /** Resolved variantmeshdefinition used by the 3D unit preview. */
+  variantMeshPath?: string;
+  /** Pack path that introduced or overrides this unit; absent means the vanilla database pack. */
+  originPackPath?: string;
+}
+
+export interface UnitViewerCatalogGroup {
+  key: string;
+  name: string;
+  units: UnitViewerCatalogUnit[];
+}
+
+/** An agent subtype and the campaign unit the game associates with it as a general. */
+export interface UnitViewerLordOption {
+  subtype: string;
+  name: string;
+  associatedUnit: string;
+  subcultureKeys: string[];
+  /** Overrides from agent_subtype_subculture_overrides, keyed by their subculture. */
+  associatedUnitBySubculture?: Record<string, string>;
+}
+
+/** One rank threshold from `character_experience_skill_tiers`. */
+export interface UnitViewerCharacterExperienceTier {
+  agentKey: string;
+  rank: number;
+  experienceThreshold: number;
+  campaignKey?: string;
+  forArmy: boolean;
+  forNavy: boolean;
+}
+
+/** One effective faction/subtype -> agent mapping used by character experience tiers. */
+export interface UnitViewerFactionAgentPermittedSubtype {
+  faction: string;
+  agentKey: string;
+  subtype: string;
+}
+
+/** Data needed to turn an exported character rank into the XP accepted by `cm:add_agent_experience`. */
+export interface UnitViewerCharacterExperienceData {
+  tiers: UnitViewerCharacterExperienceTier[];
+  permittedSubtypes: UnitViewerFactionAgentPermittedSubtype[];
+}
+
+/** A roster bucket from ui_unit_group_parents (Lords, Missile Infantry, Extended Roster, …). */
+export interface UnitViewerUiGroup {
+  key: string;
+  name: string;
+  order: number;
+}
+
+export interface UnitViewerCatalogResponse {
+  success: boolean;
+  sessionId?: string;
+  groups?: UnitViewerCatalogGroup[];
+  lordOptions?: UnitViewerLordOption[];
+  unitGroups?: UnitViewerUiGroup[];
+  constants?: UnitViewerConstants;
+  characterExperience?: UnitViewerCharacterExperienceData;
+  /** Asset protocol URLs, keyed by the icon's path inside the pack. */
+  statIcons?: Record<string, string>;
+  error?: string;
+}
+
+export interface UnitViewerDetailsResponse {
+  success: boolean;
+  unit?: UnitViewerUnitModel;
+  /** Asset protocol URLs, keyed by the icon's path inside the pack. */
+  icons?: Record<string, string>;
+  error?: string;
+}
+
+/** Reply to a prewarm: which requested paths exist, without the bytes. */
+export interface UnitViewerAssetsPrewarmResponse {
+  success: boolean;
+  resolved?: string[];
+  error?: string;
+}

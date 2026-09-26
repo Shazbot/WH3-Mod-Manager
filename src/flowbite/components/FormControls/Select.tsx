@@ -7,8 +7,7 @@ import type { FlowbiteColors, FlowbiteSizes } from "../Flowbite/FlowbiteTheme";
 import { useTheme } from "../Flowbite/ThemeContext";
 import HelperText from "./HelperText";
 
-export interface SelectColors
-  extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
+export interface SelectColors extends Pick<FlowbiteColors, "gray" | "info" | "failure" | "warning" | "success"> {
   [key: string]: string;
 }
 
@@ -46,7 +45,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               theme.field.select.withIcon[Icon ? "on" : "off"],
               theme.field.select.withAddon[addon ? "on" : "off"],
               theme.field.select.withShadow[shadow ? "on" : "off"],
-              theme.field.select.sizes[sizing]
+              theme.field.select.sizes[sizing],
             )}
             {...theirProps}
             ref={ref}
@@ -57,7 +56,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 Select.displayName = "Select";

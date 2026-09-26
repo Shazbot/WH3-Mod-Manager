@@ -1,0 +1,1507 @@
+import type { BuiltBuildingsData, BuildingVariantRow, RegionSlot } from "../buildingsData/types";
+import { expandChainSet, pickCultureVariant } from "../buildingsData/derive";
+import { resolveCharacterExperienceThreshold } from "../unitViewer/data";
+import type { UnitViewerCharacterExperienceData, UnitViewerCatalogUnit } from "../unitViewer/types";
+
+/** The editor's full baseline representation, historically emitted by map_out3.json. */
+export interface ExtendedMapBuildingSlot {
+  building: string;
+  type: string;
+  template: string;
+  resource_key?: string;
+  /** Building level, present when the editor has enough DB metadata to export it. */
+  level?: number;
+}
+
+export interface ExtendedMapRegion {
+  faction: string | null;
+  buildings: ExtendedMapBuildingSlot[] | null;
+  region: string;
+}
+
+export interface ExtendedMapUnit {
+  id: number;
+  xp: number;
+  health: number;
+  unit_key: string;
+}
+
+export interface ExtendedMapCharacter {
+  y: number;
+  x: number;
+  subtype: string;
+  id: number;
+  rank: number;
+  units?: ExtendedMapUnit[];
+}
+
+/**
+ * The diplomacy arrays written by the extended map format.  A missing array is
+ * normalized to an empty array when a document is parsed or enters edit state.
+ */
+export const EXTENDED_MAP_DIPLOMACY_FIELDS = [
+  "mil_ally",
+  "non_aggression",
+  "trade",
+  "war",
+  "vassals",
+  "mil_access",
+  "def_ally",
+] as const;
+
+export type ExtendedMapDiplomacyField = (typeof EXTENDED_MAP_DIPLOMACY_FIELDS)[number];
+
+export type ExtendedMapDiplomacy = Record<ExtendedMapDiplomacyField, string[]>;
+
+export interface ExtendedMapFactionCharacters {
+  chars: ExtendedMapCharacter[];
+  faction: string;
+  diplo: ExtendedMapDiplomacy;
+}
+
+export interface ExtendedMapDocument {
+  regions: ExtendedMapRegion[];
+  faction_to_chars: ExtendedMapFactionCharacters[];
+}
+
+export type ParsedMapFile =
+  | { format: "legacy"; ownership: Record<string, string | null> }
+  | { format: "extended"; document: ExtendedMapDocument }
+  | { format: "extended-export"; document: ExtendedMapExport };
+
+export type ParseMapFileResult = ParsedMapFile | { error: string };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const describePath = (path: string) => (path ? ` at ${path}` : "");
+
+const integer = (value: unknown, path: string, min?: number, max?: number): number | string => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) return `Expected an integer${describePath(path)}.`;
+  if (min !== undefined && value < min) return `Expected a value of at least ${min}${describePath(path)}.`;
+  if (max !== undefined && value > max) return `Expected a value of at most ${max}${describePath(path)}.`;
+  return value;
+};
+
+const finiteNumber = (value: unknown, path: string, min?: number, max?: number): number | string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return `Expected a finite number${describePath(path)}.`;
+  if (min !== undefined && value < min) return `Expected a value of at least ${min}${describePath(path)}.`;
+  if (max !== undefined && value > max) return `Expected a value of at most ${max}${describePath(path)}.`;
+  return value;
+};
+
+const requiredString = (value: unknown, allowEmpty = false): string | undefined => {
+  if (typeof value !== "string" || (!allowEmpty && value.trim() === "")) return undefined;
+  return value;
+};
+
+const parseBuildingSlot = (value: unknown, path: string): ExtendedMapBuildingSlot | string => {
+  if (!isRecord(value)) return `Expected a building slot object${describePath(path)}.`;
+  const building = requiredString(value.building, true);
+  if (building === undefined) return `Expected a string at ${path}.building.`;
+  if (building !== "" && !building.trim()) return `Expected an empty or non-whitespace string at ${path}.building.`;
+  const type = requiredString(value.type);
+  if (type === undefined) return `Expected a non-empty string at ${path}.type.`;
+  const template = requiredString(value.template);
+  if (template === undefined) return `Expected a non-empty string at ${path}.template.`;
+  const slot: ExtendedMapBuildingSlot = { building, type, template };
+  if (value.level !== undefined) {
+    const level = integer(value.level, `${path}.level`, 0, 100);
+    if (typeof level !== "number") return level;
+    slot.level = level;
+  }
+  if (value.resource_key !== undefined) {
+    const resource = requiredString(value.resource_key);
+    if (resource === undefined) return `Expected a non-empty string at ${path}.resource_key.`;
+    slot.resource_key = resource;
+  }
+  return slot;
+};
+
+const parseUnit = (value: unknown, path: string): ExtendedMapUnit | string => {
+  if (!isRecord(value)) return `Expected a unit object${describePath(path)}.`;
+  const id = integer(value.id, `${path}.id`, 0);
+  if (typeof id !== "number") return id;
+  const xp = integer(value.xp, `${path}.xp`, 0, 9);
+  if (typeof xp !== "number") return xp;
+  const health = finiteNumber(value.health, `${path}.health`, 0, 100);
+  if (typeof health !== "number") return health;
+  const unitKey = requiredString(value.unit_key);
+  if (unitKey === undefined) return `Expected a non-empty string at ${path}.unit_key.`;
+  return { id, xp, health, unit_key: unitKey };
+};
+
+const parseCharacter = (value: unknown, path: string): ExtendedMapCharacter | string => {
+  if (!isRecord(value)) return `Expected a character object${describePath(path)}.`;
+  const y = integer(value.y, `${path}.y`, 0);
+  if (typeof y !== "number") return y;
+  const x = integer(value.x, `${path}.x`, 0);
+  if (typeof x !== "number") return x;
+  const subtype = requiredString(value.subtype);
+  if (subtype === undefined) return `Expected a non-empty string at ${path}.subtype.`;
+  const id = integer(value.id, `${path}.id`, 0);
+  if (typeof id !== "number") return id;
+  const rank = integer(value.rank, `${path}.rank`, 1, 50);
+  if (typeof rank !== "number") return rank;
+  const character: ExtendedMapCharacter = { y, x, subtype, id, rank };
+  if (value.units !== undefined) {
+    if (!Array.isArray(value.units)) return `Expected an array of units at ${path}.units.`;
+    const units: ExtendedMapUnit[] = [];
+    for (const [index, unitValue] of value.units.entries()) {
+      const unit = parseUnit(unitValue, `${path}.units[${index}]`);
+      if (typeof unit === "string") return unit;
+      units.push(unit);
+    }
+    if (units.length > 20) return `An army may contain at most 20 units${describePath(`${path}.units`)}.`;
+    character.units = units;
+  }
+  return character;
+};
+
+const parseDiplomacyArray = (value: unknown, path: string): string[] | string => {
+  if (!Array.isArray(value)) return `Expected an array of factions at ${path}.`;
+  const result: string[] = [];
+  const keys = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    const faction = requiredString(entry);
+    if (faction === undefined) return `Expected a non-empty string at ${path}[${index}].`;
+    const key = faction.trim().toLowerCase();
+    if (keys.has(key)) return `Duplicate faction "${faction}" at ${path}[${index}].`;
+    keys.add(key);
+    result.push(faction);
+  }
+  return result;
+};
+
+const parseDiplomacyArrays = (value: unknown, path: string): ExtendedMapDiplomacy | string => {
+  if (value === undefined) value = {};
+  if (!isRecord(value)) return `Expected a diplomacy object at ${path}.`;
+  const result = {} as Record<ExtendedMapDiplomacyField, string[]>;
+  for (const field of EXTENDED_MAP_DIPLOMACY_FIELDS) {
+    const entries = parseDiplomacyArray(value[field] === undefined ? [] : value[field], `${path}.${field}`);
+    if (typeof entries === "string") return entries;
+    result[field] = entries;
+  }
+  return result;
+};
+
+const parseExtendedDocument = (
+  parsed: Record<string, unknown>,
+): { document: ExtendedMapDocument } | { error: string } => {
+  if (!Array.isArray(parsed.regions)) return { error: "Expected an extended map file with a regions array." };
+  if (!Array.isArray(parsed.faction_to_chars))
+    return { error: "Expected an extended map file with a faction_to_chars array." };
+
+  const regions: ExtendedMapRegion[] = [];
+  const regionKeys = new Set<string>();
+  for (const [index, value] of parsed.regions.entries()) {
+    const path = `regions[${index}]`;
+    if (!isRecord(value)) return { error: `Expected a region object at ${path}.` };
+    const region = requiredString(value.region);
+    if (region === undefined) return { error: `Expected a non-empty string at ${path}.region.` };
+    const regionKey = region.toLowerCase();
+    if (regionKeys.has(regionKey)) return { error: `Duplicate region key "${region}" at ${path}.` };
+    regionKeys.add(regionKey);
+    let faction: string | null;
+    if (value.faction === null) faction = null;
+    else {
+      const parsedFaction = requiredString(value.faction);
+      if (parsedFaction === undefined) return { error: `Expected a non-empty string at ${path}.faction.` };
+      faction = parsedFaction;
+    }
+    let buildings: ExtendedMapBuildingSlot[] | null;
+    if (value.buildings === null || value.buildings === undefined) buildings = null;
+    else {
+      if (!Array.isArray(value.buildings)) return { error: `Expected an array or null at ${path}.buildings.` };
+      buildings = [];
+      for (const [slotIndex, slotValue] of value.buildings.entries()) {
+        const slot = parseBuildingSlot(slotValue, `${path}.buildings[${slotIndex}]`);
+        if (typeof slot === "string") return { error: slot };
+        buildings.push(slot);
+      }
+    }
+    regions.push({ faction, buildings, region });
+  }
+
+  const faction_to_chars: ExtendedMapFactionCharacters[] = [];
+  const factionKeys = new Set<string>();
+  const characterIds = new Set<number>();
+  const unitIds = new Set<number>();
+  for (const [index, value] of parsed.faction_to_chars.entries()) {
+    const path = `faction_to_chars[${index}]`;
+    if (!isRecord(value)) return { error: `Expected a faction character group object at ${path}.` };
+    const faction = requiredString(value.faction);
+    if (faction === undefined) return { error: `Expected a non-empty string at ${path}.faction.` };
+    const factionKey = faction.toLowerCase();
+    if (factionKeys.has(factionKey)) return { error: `Duplicate faction character group "${faction}" at ${path}.` };
+    factionKeys.add(factionKey);
+    if (!Array.isArray(value.chars)) return { error: `Expected an array at ${path}.chars.` };
+    const chars: ExtendedMapCharacter[] = [];
+    for (const [charIndex, charValue] of value.chars.entries()) {
+      const character = parseCharacter(charValue, `${path}.chars[${charIndex}]`);
+      if (typeof character === "string") return { error: character };
+      if (characterIds.has(character.id)) return { error: `Duplicate character id ${character.id}.` };
+      characterIds.add(character.id);
+      for (const unit of character.units ?? []) {
+        if (unitIds.has(unit.id)) return { error: `Duplicate unit id ${unit.id}.` };
+        unitIds.add(unit.id);
+      }
+      chars.push(character);
+    }
+    const diplomacy = parseDiplomacyArrays(value.diplo, `${path}.diplo`);
+    if (typeof diplomacy === "string") return { error: diplomacy };
+    faction_to_chars.push({ chars, faction, diplo: diplomacy });
+  }
+  return { document: { regions, faction_to_chars } };
+};
+
+/** Parses either the old flat ownership object or the extended map_out3 document. */
+export const parseMapFile = (text: string): ParseMapFileResult => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  if (!isRecord(parsed)) return { error: "Expected a JSON object." };
+  const hasRegionsField = Object.prototype.hasOwnProperty.call(parsed, "regions");
+  const hasFactionCharactersField = Object.prototype.hasOwnProperty.call(parsed, "faction_to_chars");
+  const hasActionsField = Object.prototype.hasOwnProperty.call(parsed, "actions");
+  // A legacy ownership object is allowed to use any region key, including the literal words
+  // "regions" and "faction_to_chars". Array-shaped markers switch formats immediately; when both
+  // reserved keys are scalar, retain the old flat-object behavior if every value is a valid owner,
+  // while malformed two-key documents still receive the useful extended schema error.
+  const isValidLegacyShape = Object.values(parsed).every((value) => value === null || typeof value === "string");
+  if (Array.isArray(parsed.regions) && Array.isArray(parsed.actions) && !hasFactionCharactersField) {
+    const extendedExport = parseExtendedExportDocument(parsed);
+    return "error" in extendedExport
+      ? extendedExport
+      : { format: "extended-export", document: extendedExport.document };
+  }
+  if (
+    Array.isArray(parsed.regions) ||
+    Array.isArray(parsed.faction_to_chars) ||
+    (hasRegionsField && hasFactionCharactersField && !isValidLegacyShape) ||
+    (hasActionsField && !isValidLegacyShape)
+  ) {
+    const extended = parseExtendedDocument(parsed);
+    return "error" in extended ? extended : { format: "extended", document: extended.document };
+  }
+  const ownership: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const regionKey = key.trim();
+    if (!regionKey) continue;
+    if (value !== null && typeof value !== "string")
+      return { error: `Region "${regionKey}" has a ${typeof value} owner; expected a faction key or null.` };
+    ownership[regionKey] = typeof value === "string" ? value.trim() || null : null;
+  }
+  return { format: "legacy", ownership };
+};
+
+/** Strict extended-only parser for callers that already selected the map_out3 format. */
+export const parseExtendedMapFile = (text: string): { document: ExtendedMapDocument } | { error: string } => {
+  const parsed = parseMapFile(text);
+  if ("error" in parsed) return parsed;
+  return parsed.format === "extended" ? { document: parsed.document } : { error: "Expected an extended map file." };
+};
+
+export const parseExtendedMap = parseExtendedMapFile;
+
+const normalizeDiplomacyForEdit = (group: ExtendedMapFactionCharacters): ExtendedMapDiplomacy => {
+  const result = {} as Record<ExtendedMapDiplomacyField, string[]>;
+  for (const field of EXTENDED_MAP_DIPLOMACY_FIELDS) {
+    const value = group.diplo?.[field];
+    if (value === undefined) {
+      result[field] = [];
+      continue;
+    }
+    if (!Array.isArray(value)) throw new Error(`Diplomacy field ${field} must be an array.`);
+    const entries: string[] = [];
+    const keys = new Set<string>();
+    for (const entry of value) {
+      if (typeof entry !== "string" || !entry.trim())
+        throw new Error(`Diplomacy field ${field} must contain non-empty strings.`);
+      const key = entry.trim().toLowerCase();
+      if (keys.has(key)) throw new Error(`Diplomacy field ${field} contains duplicate factions.`);
+      keys.add(key);
+      entries.push(entry);
+    }
+    result[field] = entries;
+  }
+  return result;
+};
+
+/** A JSON-safe clone used to keep the imported document immutable while edits accumulate. */
+export const cloneExtendedMap = (document: ExtendedMapDocument): ExtendedMapDocument => {
+  const cloned = JSON.parse(JSON.stringify(document)) as ExtendedMapDocument;
+  cloned.faction_to_chars = cloned.faction_to_chars.map((group) => ({
+    ...group,
+    diplo: normalizeDiplomacyForEdit(group),
+    chars: group.chars.map((character) => ({
+      ...character,
+      ...(character.units ? { units: character.units.map((unit) => ({ ...unit })) } : {}),
+    })),
+  }));
+  return cloned;
+};
+
+/**
+ * Adds virtual empty slots up to the settlement's active-slot count. The returned slots are only a
+ * render/edit surface; callers append them to the document through `add_building_slot` when one is
+ * actually changed, so merely opening a settlement never creates a delta.
+ */
+export const fillExtendedBuildingSlots = (
+  buildings: ExtendedMapBuildingSlot[],
+  slotTemplates: RegionSlot[],
+  maxSlotCount?: number,
+): ExtendedMapBuildingSlot[] => {
+  const slots = [...buildings];
+  if (typeof maxSlotCount !== "number" || !Number.isSafeInteger(maxSlotCount) || maxSlotCount <= slots.length)
+    return slots;
+
+  const normalSlotTemplates = slotTemplates.filter(
+    (slot) => !slot.isForeignSlot && slot.slotType.toLowerCase() !== "foreign",
+  );
+  for (let slotIndex = slots.length; slotIndex < maxSlotCount; slotIndex += 1) {
+    const template = normalSlotTemplates[slotIndex];
+    if (!template) break;
+    slots.push({ building: "", type: template.slotType, template: template.slotTemplate });
+  }
+  return slots;
+};
+
+export const formatExtendedMapJson = (document: ExtendedMapDocument): string =>
+  `${JSON.stringify(cloneExtendedMap(document), undefined, 2)}\n`;
+
+export interface ExtendedMapCharacterDraft extends Omit<ExtendedMapCharacter, "id" | "units"> {
+  units?: Array<Partial<ExtendedMapUnit>>;
+}
+
+export interface ExtendedMapPendingConfederation {
+  faction: string;
+  targetFaction: string;
+}
+
+export interface ExtendedMapEditState {
+  baseline: ExtendedMapDocument;
+  document: ExtendedMapDocument;
+  nextUnitId: number;
+  nextCharacterId: number;
+  pendingConfederations: ExtendedMapPendingConfederation[];
+}
+
+export const createExtendedMapEditState = (baseline: ExtendedMapDocument): ExtendedMapEditState => {
+  const document = cloneExtendedMap(baseline);
+  const maxUnitId = document.faction_to_chars.reduce(
+    (max, group) =>
+      group.chars.reduce(
+        (groupMax, character) =>
+          (character.units ?? []).reduce((characterMax, unit) => Math.max(characterMax, unit.id), groupMax),
+        max,
+      ),
+    -1,
+  );
+  const maxCharacterId = document.faction_to_chars.reduce(
+    (max, group) => group.chars.reduce((groupMax, character) => Math.max(groupMax, character.id), max),
+    -1,
+  );
+  if (maxUnitId >= Number.MAX_SAFE_INTEGER) throw new Error("No safe id is available for a new unit.");
+  if (maxCharacterId >= Number.MAX_SAFE_INTEGER) throw new Error("No safe id is available for a new character.");
+  return {
+    baseline: cloneExtendedMap(baseline),
+    document,
+    nextUnitId: maxUnitId + 1,
+    nextCharacterId: maxCharacterId + 1,
+    pendingConfederations: [],
+  };
+};
+
+/** JSON-safe snapshot used by UI undo/import history, including queued semantic commands. */
+export const cloneExtendedMapEditState = (state: ExtendedMapEditState): ExtendedMapEditState => ({
+  baseline: cloneExtendedMap(state.baseline),
+  document: cloneExtendedMap(state.document),
+  nextUnitId: state.nextUnitId,
+  nextCharacterId: state.nextCharacterId,
+  pendingConfederations: state.pendingConfederations.map((entry) => ({ ...entry })),
+});
+
+export type ExtendedMapEditAction =
+  | { type: "set_building"; region: string; slotIndex: number; building: ExtendedMapBuildingSlot }
+  | { type: "add_building_slot"; region: string; slotIndex: number; building: ExtendedMapBuildingSlot }
+  | {
+      type: "update_character";
+      faction: string;
+      characterId: number;
+      changes: Partial<Pick<ExtendedMapCharacter, "x" | "y" | "rank" | "subtype">>;
+    }
+  | { type: "add_character"; faction: string; character: ExtendedMapCharacterDraft; index?: number }
+  | { type: "remove_character"; faction: string; characterId: number }
+  | { type: "add_unit"; faction: string; characterId: number; unit?: Partial<ExtendedMapUnit>; index?: number }
+  | { type: "remove_unit"; faction: string; characterId: number; unitId: number }
+  | {
+      type: "update_unit";
+      faction: string;
+      characterId: number;
+      unitId: number;
+      changes: Partial<Pick<ExtendedMapUnit, "unit_key" | "xp" | "health">>;
+    }
+  | {
+      type: "set_diplomacy";
+      faction: string;
+      targetFaction: string;
+      relationship: ExtendedMapDiplomacyField;
+    }
+  | { type: "make_peace"; faction: string; targetFaction: string }
+  | { type: "confederate"; faction: string; targetFaction: string };
+
+const findGroup = (document: ExtendedMapDocument, faction: string) =>
+  typeof faction === "string"
+    ? document.faction_to_chars.find((group) => group.faction.toLowerCase() === faction.toLowerCase())
+    : undefined;
+
+const findCharacter = (document: ExtendedMapDocument, faction: string, characterId: number) =>
+  findGroup(document, faction)?.chars.find((character) => character.id === characterId);
+
+const normalizeRelationship = (relationship: string): ExtendedMapDiplomacyField => {
+  if (typeof relationship !== "string" || !relationship.trim()) throw new Error("Diplomacy relationship is required.");
+  const normalized = relationship.trim().toLowerCase().replace(/[ -]+/g, "_");
+  if (["war", "wars", "at_war", "at_war_with", "enemy", "enemies"].includes(normalized)) return "war";
+  if (["vassal", "vassals", "subject", "subjects"].includes(normalized)) return "vassals";
+  const aliases: Record<string, ExtendedMapDiplomacyField> = {
+    trade: "trade", trade_partner: "trade", trade_agreement: "trade",
+    non_aggression: "non_aggression", non_aggression_pact: "non_aggression",
+    military_access: "mil_access", mil_access: "mil_access",
+    defensive_alliance: "def_ally", defensive_ally: "def_ally", def_ally: "def_ally",
+    military_alliance: "mil_ally", military_ally: "mil_ally", mil_ally: "mil_ally",
+  };
+  const field = aliases[normalized];
+  if (field) return field;
+  throw new Error(`Unknown diplomacy relationship "${relationship}".`);
+};
+
+const relationKey = (faction: string) => faction.trim().toLowerCase();
+
+const removeDiplomacyTarget = (group: ExtendedMapFactionCharacters, field: ExtendedMapDiplomacyField, target: string) => {
+  const targetKey = relationKey(target);
+  group.diplo[field] = group.diplo[field].filter((entry) => relationKey(entry) !== targetKey);
+};
+
+const addDiplomacyTarget = (group: ExtendedMapFactionCharacters, field: ExtendedMapDiplomacyField, target: string) => {
+  if (!group.diplo[field].some((entry) => relationKey(entry) === relationKey(target))) group.diplo[field].push(target);
+};
+
+const clearDiplomacyPair = (
+  source: ExtendedMapFactionCharacters,
+  target: ExtendedMapFactionCharacters,
+  fields: readonly ExtendedMapDiplomacyField[] = EXTENDED_MAP_DIPLOMACY_FIELDS,
+) => {
+  for (const field of fields) {
+    removeDiplomacyTarget(source, field, target.faction);
+    removeDiplomacyTarget(target, field, source.faction);
+  }
+};
+
+const setDiplomacy = (
+  document: ExtendedMapDocument,
+  faction: string,
+  targetFaction: string,
+  relationship: ExtendedMapDiplomacyField,
+) => {
+  if (typeof faction !== "string" || !faction.trim()) throw new Error("Source faction is required.");
+  if (typeof targetFaction !== "string" || !targetFaction.trim()) throw new Error("Target faction is required.");
+  if (relationKey(faction) === relationKey(targetFaction)) throw new Error("A faction cannot have diplomacy with itself.");
+  const source = findGroup(document, faction);
+  const target = findGroup(document, targetFaction);
+  if (!source || !target) throw new Error("Diplomacy faction was not found.");
+  const normalized = normalizeRelationship(relationship);
+  if (normalized === "war") {
+    clearDiplomacyPair(source, target);
+    addDiplomacyTarget(source, "war", target.faction);
+    addDiplomacyTarget(target, "war", source.faction);
+    return;
+  }
+  removeDiplomacyTarget(source, "war", target.faction);
+  removeDiplomacyTarget(target, "war", source.faction);
+  if (normalized === "vassals") {
+    removeDiplomacyTarget(source, "vassals", target.faction);
+    removeDiplomacyTarget(target, "vassals", source.faction);
+    addDiplomacyTarget(source, "vassals", target.faction);
+    return;
+  }
+  addDiplomacyTarget(source, normalized, target.faction);
+  addDiplomacyTarget(target, normalized, source.faction);
+};
+
+const makePeace = (document: ExtendedMapDocument, faction: string, targetFaction: string) => {
+  if (typeof faction !== "string" || !faction.trim()) throw new Error("Source faction is required.");
+  if (typeof targetFaction !== "string" || !targetFaction.trim()) throw new Error("Target faction is required.");
+  const source = findGroup(document, faction);
+  const target = findGroup(document, targetFaction);
+  if (!source || !target) throw new Error("Diplomacy faction was not found.");
+  removeDiplomacyTarget(source, "war", target.faction);
+  removeDiplomacyTarget(target, "war", source.faction);
+};
+
+const validateCharacterChange = (changes: ExtendedMapEditAction & { type: "update_character" }) => {
+  if (!changes || typeof changes.changes !== "object" || changes.changes === null || Array.isArray(changes.changes))
+    throw new Error("Character changes must be an object.");
+  if (changes.changes.x !== undefined && (!Number.isSafeInteger(changes.changes.x) || changes.changes.x < 0))
+    throw new Error("Character x must be a non-negative integer.");
+  if (changes.changes.y !== undefined && (!Number.isSafeInteger(changes.changes.y) || changes.changes.y < 0))
+    throw new Error("Character y must be a non-negative integer.");
+  if (
+    changes.changes.rank !== undefined &&
+    (!Number.isSafeInteger(changes.changes.rank) || changes.changes.rank < 1 || changes.changes.rank > 50)
+  )
+    throw new Error("Character rank must be an integer from 1 to 50.");
+  if (
+    changes.changes.subtype !== undefined &&
+    (typeof changes.changes.subtype !== "string" || !changes.changes.subtype.trim())
+  )
+    throw new Error("Character subtype cannot be empty.");
+};
+
+const validateCharacterDraft = (character: ExtendedMapCharacterDraft) => {
+  if (!character || typeof character !== "object" || Array.isArray(character))
+    throw new Error("Character must be an object.");
+  if (!Number.isSafeInteger(character.x) || character.x < 0)
+    throw new Error("Character x must be a non-negative integer.");
+  if (!Number.isSafeInteger(character.y) || character.y < 0)
+    throw new Error("Character y must be a non-negative integer.");
+  if (typeof character.subtype !== "string" || !character.subtype.trim())
+    throw new Error("Character subtype cannot be empty.");
+  if (!Number.isSafeInteger(character.rank) || character.rank < 1 || character.rank > 50)
+    throw new Error("Character rank must be an integer from 1 to 50.");
+  if (character.units !== undefined && !Array.isArray(character.units)) throw new Error("Character units must be an array.");
+  if ((character.units?.length ?? 0) > 20) throw new Error("An army may contain at most 20 units.");
+};
+
+const collectUnitIds = (document: ExtendedMapDocument) => {
+  const ids = new Set<number>();
+  for (const group of document.faction_to_chars)
+    for (const character of group.chars) for (const unit of character.units ?? []) ids.add(unit.id);
+  return ids;
+};
+
+const allocateId = (nextId: number, used: Set<number>, kind: "unit" | "character") => {
+  let candidate = nextId;
+  while (used.has(candidate)) {
+    if (candidate >= Number.MAX_SAFE_INTEGER) throw new Error(`No safe id is available for a new ${kind}.`);
+    candidate += 1;
+  }
+  if (!Number.isSafeInteger(candidate) || candidate < 0 || candidate >= Number.MAX_SAFE_INTEGER)
+    throw new Error(`No safe id is available for a new ${kind}.`);
+  used.add(candidate);
+  return candidate;
+};
+
+const validateConfederation = (
+  document: ExtendedMapDocument,
+  faction: string,
+  targetFaction: string,
+) => {
+  if (typeof faction !== "string" || !faction.trim()) throw new Error("Source faction is required.");
+  if (typeof targetFaction !== "string" || !targetFaction.trim()) throw new Error("Target faction is required.");
+  if (relationKey(faction) === relationKey(targetFaction)) throw new Error("A faction cannot confederate itself.");
+  const source = findGroup(document, faction);
+  if (!source) throw new Error("Source faction was not found.");
+  const target = findGroup(document, targetFaction);
+  if (!target) throw new Error("Target faction was not found.");
+  return { faction: source.faction, targetFaction: target.faction };
+};
+
+const validateBuildingSlot = (building: ExtendedMapBuildingSlot) => {
+  if (!building || typeof building !== "object") throw new Error("Building slot must be an object.");
+  if (typeof building.building !== "string") throw new Error("Building key must be a string.");
+  if (building.building !== "" && !building.building.trim()) throw new Error("Building key cannot be whitespace.");
+  if (typeof building.type !== "string" || !building.type.trim())
+    throw new Error("Building slot type cannot be empty.");
+  if (typeof building.template !== "string" || !building.template.trim())
+    throw new Error("Building slot template cannot be empty.");
+  if (
+    building.level !== undefined &&
+    (!Number.isSafeInteger(building.level) || building.level < 0 || building.level > 100)
+  )
+    throw new Error("Building level must be a non-negative integer from 0 to 100.");
+  if (
+    building.resource_key !== undefined &&
+    (typeof building.resource_key !== "string" || !building.resource_key.trim())
+  )
+    throw new Error("Building resource key cannot be empty.");
+};
+
+/** Applies one validated edit. Invalid actions throw a user-facing error rather than corrupting the document. */
+export const applyExtendedMapEdit = (
+  state: ExtendedMapEditState,
+  action: ExtendedMapEditAction,
+): ExtendedMapEditState => {
+  const document = cloneExtendedMap(state.document);
+  if (action.type === "set_building") {
+    validateBuildingSlot(action.building);
+    if (typeof action.region !== "string" || !action.region.trim()) throw new Error("Region key is required.");
+    if (!Number.isSafeInteger(action.slotIndex) || action.slotIndex < 0)
+      throw new Error("Building slot index must be a non-negative integer.");
+    const region = document.regions.find((candidate) => candidate.region.toLowerCase() === action.region.toLowerCase());
+    if (!region || !region.buildings || !region.buildings[action.slotIndex])
+      throw new Error("Building slot was not found.");
+    region.buildings[action.slotIndex] = {
+      building: action.building.building,
+      type: action.building.type,
+      template: action.building.template,
+      ...(action.building.resource_key ? { resource_key: action.building.resource_key } : {}),
+      ...(action.building.level !== undefined ? { level: action.building.level } : {}),
+    };
+  } else if (action.type === "add_building_slot") {
+    validateBuildingSlot(action.building);
+    if (typeof action.region !== "string" || !action.region.trim()) throw new Error("Region key is required.");
+    if (!Number.isSafeInteger(action.slotIndex) || action.slotIndex < 0)
+      throw new Error("Building slot index must be a non-negative integer.");
+    const region = document.regions.find((candidate) => candidate.region.toLowerCase() === action.region.toLowerCase());
+    if (!region || !region.buildings) throw new Error("Building slots were not found.");
+    if (action.slotIndex !== region.buildings.length) throw new Error("New building slots must be appended in order.");
+    region.buildings.push({
+      building: action.building.building,
+      type: action.building.type,
+      template: action.building.template,
+      ...(action.building.resource_key ? { resource_key: action.building.resource_key } : {}),
+      ...(action.building.level !== undefined ? { level: action.building.level } : {}),
+    });
+  } else if (action.type === "update_character") {
+    validateCharacterChange(action);
+    const character = findCharacter(document, action.faction, action.characterId);
+    if (!character) throw new Error("Character was not found.");
+    Object.assign(character, action.changes);
+  } else if (action.type === "add_character") {
+    validateCharacterDraft(action.character);
+    const group = findGroup(document, action.faction);
+    if (!group) throw new Error("Character faction was not found.");
+    if (action.index !== undefined && (!Number.isSafeInteger(action.index) || action.index < 0))
+      throw new Error("Character insertion index must be a non-negative integer.");
+    const characterIds = new Set(document.faction_to_chars.flatMap((candidate) => candidate.chars.map((character) => character.id)));
+    const characterId = allocateId(state.nextCharacterId, characterIds, "character");
+    const unitIds = collectUnitIds(document);
+    let nextUnitId = state.nextUnitId;
+    const units: ExtendedMapUnit[] = [];
+    for (const suppliedUnit of action.character.units ?? []) {
+      if (!suppliedUnit || typeof suppliedUnit !== "object" || Array.isArray(suppliedUnit))
+        throw new Error("Character units must be objects.");
+      let unitId: number;
+      if (suppliedUnit.id === undefined) {
+        unitId = allocateId(nextUnitId, unitIds, "unit");
+        nextUnitId = unitId + 1;
+      } else {
+        if (!Number.isSafeInteger(suppliedUnit.id) || suppliedUnit.id < 0)
+          throw new Error("Unit id must be a non-negative integer.");
+        if (unitIds.has(suppliedUnit.id)) throw new Error(`Unit id ${suppliedUnit.id} is already in use.`);
+        unitId = suppliedUnit.id;
+        unitIds.add(unitId);
+        if (unitId >= nextUnitId) {
+          if (unitId >= Number.MAX_SAFE_INTEGER) nextUnitId = Number.MAX_SAFE_INTEGER;
+          else nextUnitId = unitId + 1;
+        }
+      }
+      const unitKey = suppliedUnit.unit_key;
+      if (typeof unitKey !== "string" || !unitKey.trim()) throw new Error("A unit key is required.");
+      const xp = suppliedUnit.xp ?? 0;
+      const health = suppliedUnit.health ?? 100;
+      if (!Number.isSafeInteger(xp) || xp < 0 || xp > 9) throw new Error("Unit XP must be an integer from 0 to 9.");
+      if (!Number.isFinite(health) || health < 0 || health > 100)
+        throw new Error("Unit health must be a number from 0 to 100.");
+      units.push({ id: unitId, xp, health, unit_key: unitKey.trim() });
+    }
+    const character: ExtendedMapCharacter = {
+      x: action.character.x,
+      y: action.character.y,
+      subtype: action.character.subtype,
+      id: characterId,
+      rank: action.character.rank,
+      ...(action.character.units !== undefined ? { units } : {}),
+    };
+    const index =
+      action.index === undefined ? group.chars.length : Math.max(0, Math.min(group.chars.length, action.index));
+    group.chars.splice(index, 0, character);
+    return { ...state, document, nextCharacterId: characterId + 1, nextUnitId };
+  } else if (action.type === "remove_character") {
+    const group = findGroup(document, action.faction);
+    if (!group) throw new Error("Character was not found.");
+    const characterIndex = group.chars.findIndex((character) => character.id === action.characterId);
+    if (characterIndex < 0) throw new Error("Character was not found.");
+    group.chars.splice(characterIndex, 1);
+  } else if (action.type === "set_diplomacy") {
+    setDiplomacy(document, action.faction, action.targetFaction, action.relationship);
+  } else if (action.type === "make_peace") {
+    makePeace(document, action.faction, action.targetFaction);
+  } else if (action.type === "confederate") {
+    const validated = validateConfederation(document, action.faction, action.targetFaction);
+    const pending = state.pendingConfederations.some(
+      (entry) =>
+        relationKey(entry.faction) === relationKey(action.faction) &&
+        relationKey(entry.targetFaction) === relationKey(action.targetFaction),
+    );
+    if (pending) return { ...state, document };
+    return {
+      ...state,
+      document,
+      pendingConfederations: [
+        ...state.pendingConfederations,
+        validated,
+      ],
+    };
+  } else {
+    const character = findCharacter(document, action.faction, action.characterId);
+    if (!character) throw new Error("Character was not found.");
+    if (!character.units) character.units = [];
+    if (action.type === "add_unit") {
+      if (action.index !== undefined && (!Number.isSafeInteger(action.index) || action.index < 0))
+        throw new Error("Unit insertion index must be a non-negative integer.");
+      if (character.units.length >= 20) throw new Error("An army may contain at most 20 units.");
+      if (!Number.isSafeInteger(state.nextUnitId) || state.nextUnitId < 0)
+        throw new Error("No safe id is available for a new unit.");
+      const unitKey = action.unit?.unit_key;
+      if (typeof unitKey !== "string" || !unitKey.trim()) throw new Error("A unit key is required.");
+      const unit: ExtendedMapUnit = {
+        id: state.nextUnitId,
+        xp: action.unit?.xp ?? 0,
+        health: action.unit?.health ?? 100,
+        unit_key: unitKey.trim(),
+      };
+      if (!Number.isSafeInteger(unit.xp) || unit.xp < 0 || unit.xp > 9)
+        throw new Error("Unit XP must be an integer from 0 to 9.");
+      if (!Number.isFinite(unit.health) || unit.health < 0 || unit.health > 100)
+        throw new Error("Unit health must be a number from 0 to 100.");
+      const index =
+        action.index === undefined
+          ? character.units.length
+          : Math.max(0, Math.min(character.units.length, action.index));
+      character.units.splice(index, 0, unit);
+      return { ...state, document, nextUnitId: state.nextUnitId + 1 };
+    }
+    const unitIndex = character.units.findIndex((unit) => unit.id === action.unitId);
+    if (unitIndex < 0) throw new Error("Unit was not found.");
+    if (action.type === "remove_unit") character.units.splice(unitIndex, 1);
+    else {
+      if (!action.changes || typeof action.changes !== "object" || Array.isArray(action.changes))
+        throw new Error("Unit changes must be an object.");
+      if (
+        action.changes.unit_key !== undefined &&
+        (typeof action.changes.unit_key !== "string" || !action.changes.unit_key.trim())
+      )
+        throw new Error("A unit key is required.");
+      if (
+        action.changes.xp !== undefined &&
+        (!Number.isSafeInteger(action.changes.xp) || action.changes.xp < 0 || action.changes.xp > 9)
+      )
+        throw new Error("Unit XP must be an integer from 0 to 9.");
+      if (
+        action.changes.health !== undefined &&
+        (!Number.isFinite(action.changes.health) || action.changes.health < 0 || action.changes.health > 100)
+      )
+        throw new Error("Unit health must be a number from 0 to 100.");
+      Object.assign(character.units[unitIndex], {
+        ...action.changes,
+        ...(action.changes.unit_key !== undefined ? { unit_key: action.changes.unit_key.trim() } : {}),
+      });
+    }
+  }
+  return { ...state, document };
+};
+
+export interface ExtendedMapDelta {
+  version: 1;
+  actions: ExtendedMapDeltaAction[];
+}
+
+export interface ExtendedMapExportRegion {
+  region: string;
+  faction: string | null;
+}
+
+/** One-file export: complete region ownership plus baseline-relative extended-map actions. */
+export interface ExtendedMapExport extends ExtendedMapDelta {
+  regions: ExtendedMapExportRegion[];
+}
+
+export interface ExtendedMapCharacterExperienceDelta {
+  /** Absolute XP threshold for the baseline rank. */
+  before: number;
+  /** Absolute XP threshold for the exported rank. */
+  after: number;
+  /** `after - before`, suitable for `cm:add_agent_experience`. */
+  delta: number;
+}
+
+export type ExtendedMapDeltaAction =
+  | {
+      type: "set_building";
+      region: string;
+      slotIndex: number;
+      before: ExtendedMapBuildingSlot;
+      after: ExtendedMapBuildingSlot;
+    }
+  | {
+      type: "add_building_slot";
+      region: string;
+      slotIndex: number;
+      building: ExtendedMapBuildingSlot;
+    }
+  | {
+      type: "update_character";
+      faction: string;
+      characterId: number;
+      changes: Partial<Record<"x" | "y" | "rank" | "subtype", { before: number | string; after: number | string }>>;
+      /** Included whenever character experience data was available while exporting. */
+      xp?: ExtendedMapCharacterExperienceDelta;
+    }
+  | {
+      type: "add_character";
+      faction: string;
+      index: number;
+      character: ExtendedMapCharacter;
+    }
+  | { type: "remove_character"; faction: string; characterId: number; index: number; character: ExtendedMapCharacter }
+  | {
+      type: "set_diplomacy";
+      faction: string;
+      targetFaction: string;
+      before: ExtendedMapDiplomacyField[];
+      after: ExtendedMapDiplomacyField[];
+    }
+  | {
+      type: "confederate";
+      faction: string;
+      targetFaction: string;
+    }
+  | { type: "add_unit"; faction: string; characterId: number; index: number; unit: ExtendedMapUnit }
+  | { type: "remove_unit"; faction: string; characterId: number; index: number; unit: ExtendedMapUnit }
+  | {
+      type: "update_unit";
+      faction: string;
+      characterId: number;
+      unitId: number;
+      index: number;
+      changes: Partial<Record<"unit_key" | "xp" | "health", { before: number | string; after: number | string }>>;
+    };
+
+const parseDeltaValue = (value: unknown, path: string): { value: number | string } | { error: string } => {
+  if (typeof value === "number") {
+    const parsed = finiteNumber(value, path);
+    return typeof parsed === "number" ? { value: parsed } : { error: parsed };
+  }
+  const parsed = requiredString(value);
+  return parsed === undefined ? { error: `Expected a number or non-empty string at ${path}.` } : { value: parsed };
+};
+
+const parseDeltaPair = (value: unknown, path: string): { before: number | string; after: number | string } | string => {
+  if (!isRecord(value)) return `Expected a before/after object${describePath(path)}.`;
+  const before = parseDeltaValue(value.before, `${path}.before`);
+  if ("error" in before) return before.error;
+  const after = parseDeltaValue(value.after, `${path}.after`);
+  if ("error" in after) return after.error;
+  return { before: before.value, after: after.value };
+};
+
+const parseDeltaChanges = (
+  value: unknown,
+  path: string,
+  fields: readonly string[],
+): { changes: Record<string, { before: number | string; after: number | string }> } | string => {
+  if (!isRecord(value)) return `Expected a changes object${describePath(path)}.`;
+  const changes: Record<string, { before: number | string; after: number | string }> = {};
+  for (const [field, pairValue] of Object.entries(value)) {
+    if (!fields.includes(field)) return `Unknown change field "${field}"${describePath(path)}.`;
+    const pair = parseDeltaPair(pairValue, `${path}.${field}`);
+    if (typeof pair === "string") return pair;
+    changes[field] = pair;
+  }
+  if (Object.keys(changes).length === 0) return `Expected at least one change${describePath(path)}.`;
+  return { changes };
+};
+
+const parseCharacterExperienceDelta = (value: unknown, path: string): ExtendedMapCharacterExperienceDelta | string => {
+  if (!isRecord(value)) return `Expected a character experience object${describePath(path)}.`;
+  const before = finiteNumber(value.before, `${path}.before`, 0);
+  if (typeof before !== "number") return before;
+  const after = finiteNumber(value.after, `${path}.after`, 0);
+  if (typeof after !== "number") return after;
+  const delta = finiteNumber(value.delta, `${path}.delta`);
+  if (typeof delta !== "number") return delta;
+  if (delta !== after - before) return `Character experience delta does not equal after - before${describePath(path)}.`;
+  return { before, after, delta };
+};
+
+const parseExtendedExportAction = (value: unknown, path: string): ExtendedMapDeltaAction | string => {
+  if (!isRecord(value)) return `Expected an action object${describePath(path)}.`;
+  const type = requiredString(value.type);
+  if (!type) return `Expected a non-empty action type${describePath(path)}.`;
+  const faction = requiredString(value.faction);
+  const characterId = integer(value.characterId, `${path}.characterId`, 0);
+  const region = requiredString(value.region);
+  const slotIndex = integer(value.slotIndex, `${path}.slotIndex`, 0);
+  if (type === "set_building") {
+    if (region === undefined) return `Expected a non-empty string at ${path}.region.`;
+    if (typeof slotIndex !== "number") return slotIndex;
+    const before = parseBuildingSlot(value.before, `${path}.before`);
+    if (typeof before === "string") return before;
+    const after = parseBuildingSlot(value.after, `${path}.after`);
+    if (typeof after === "string") return after;
+    return { type, region, slotIndex, before, after };
+  }
+  if (type === "add_building_slot") {
+    if (region === undefined) return `Expected a non-empty string at ${path}.region.`;
+    if (typeof slotIndex !== "number") return slotIndex;
+    const building = parseBuildingSlot(value.building, `${path}.building`);
+    if (typeof building === "string") return building;
+    return { type, region, slotIndex, building };
+  }
+  if (type === "update_character") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const changes = parseDeltaChanges(value.changes, `${path}.changes`, ["x", "y", "rank", "subtype"]);
+    if (typeof changes === "string") return changes;
+    const parsed: Extract<ExtendedMapDeltaAction, { type: "update_character" }> = {
+      type,
+      faction,
+      characterId,
+      changes: changes.changes as Extract<ExtendedMapDeltaAction, { type: "update_character" }>["changes"],
+    };
+    if (value.xp !== undefined) {
+      const xp = parseCharacterExperienceDelta(value.xp, `${path}.xp`);
+      if (typeof xp === "string") return xp;
+      parsed.xp = xp;
+    }
+    return parsed;
+  }
+  if (type === "add_character") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    const index = integer(value.index, `${path}.index`, 0);
+    if (typeof index !== "number") return index;
+    const character = parseCharacter(value.character, `${path}.character`);
+    if (typeof character === "string") return character;
+    return { type, faction, index, character };
+  }
+  if (type === "remove_character") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const index = integer(value.index, `${path}.index`, 0);
+    if (typeof index !== "number") return index;
+    const character = parseCharacter(value.character, `${path}.character`);
+    if (typeof character === "string") return character;
+    return { type, faction, characterId, index, character };
+  }
+  if (type === "add_unit" || type === "remove_unit") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const index = integer(value.index, `${path}.index`, 0);
+    if (typeof index !== "number") return index;
+    const unit = parseUnit(value.unit, `${path}.unit`);
+    if (typeof unit === "string") return unit;
+    return { type, faction, characterId, index, unit } as ExtendedMapDeltaAction;
+  }
+  if (type === "update_unit") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    if (typeof characterId !== "number") return characterId;
+    const unitId = integer(value.unitId, `${path}.unitId`, 0);
+    if (typeof unitId !== "number") return unitId;
+    const index = integer(value.index, `${path}.index`, 0);
+    if (typeof index !== "number") return index;
+    const changes = parseDeltaChanges(value.changes, `${path}.changes`, ["unit_key", "xp", "health"]);
+    if (typeof changes === "string") return changes;
+    return {
+      type,
+      faction,
+      characterId,
+      unitId,
+      index,
+      changes: changes.changes as Extract<ExtendedMapDeltaAction, { type: "update_unit" }>["changes"],
+    };
+  }
+  if (type === "set_diplomacy") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    const targetFaction = requiredString(value.targetFaction);
+    if (targetFaction === undefined) return `Expected a non-empty string at ${path}.targetFaction.`;
+    const parseRelations = (candidate: unknown, relationPath: string): ExtendedMapDiplomacyField[] | string => {
+      if (!Array.isArray(candidate)) return `Expected a diplomacy relationship array at ${relationPath}.`;
+      const result: ExtendedMapDiplomacyField[] = [];
+      for (const [index, entry] of candidate.entries()) {
+        if (typeof entry !== "string" || !EXTENDED_MAP_DIPLOMACY_FIELDS.includes(entry as ExtendedMapDiplomacyField))
+          return `Unknown diplomacy relationship at ${relationPath}[${index}].`;
+        if (result.includes(entry as ExtendedMapDiplomacyField))
+          return `Duplicate diplomacy relationship at ${relationPath}[${index}].`;
+        result.push(entry as ExtendedMapDiplomacyField);
+      }
+      return result;
+    };
+    const before = parseRelations(value.before, `${path}.before`);
+    if (typeof before === "string") return before;
+    const after = parseRelations(value.after, `${path}.after`);
+    if (typeof after === "string") return after;
+    return { type, faction, targetFaction, before, after };
+  }
+  if (type === "confederate") {
+    if (faction === undefined) return `Expected a non-empty string at ${path}.faction.`;
+    const targetFaction = requiredString(value.targetFaction);
+    if (targetFaction === undefined) return `Expected a non-empty string at ${path}.targetFaction.`;
+    return { type, faction, targetFaction };
+  }
+  return `Unknown action type "${type}"${describePath(path)}.`;
+};
+
+const parseExtendedExportDocument = (
+  parsed: Record<string, unknown>,
+): { document: ExtendedMapExport } | { error: string } => {
+  if (parsed.version !== 1) return { error: "Expected extended map version 1." };
+  if (!Array.isArray(parsed.regions)) return { error: "Expected an extended map export with a regions array." };
+  if (!Array.isArray(parsed.actions)) return { error: "Expected an extended map export with an actions array." };
+  const regions: ExtendedMapExportRegion[] = [];
+  const regionKeys = new Set<string>();
+  for (const [index, value] of parsed.regions.entries()) {
+    const path = `regions[${index}]`;
+    if (!isRecord(value)) return { error: `Expected a region object at ${path}.` };
+    const region = requiredString(value.region);
+    if (region === undefined) return { error: `Expected a non-empty string at ${path}.region.` };
+    const key = region.toLowerCase();
+    if (regionKeys.has(key)) return { error: `Duplicate region key "${region}" at ${path}.` };
+    regionKeys.add(key);
+    let faction: string | null;
+    if (value.faction === null) faction = null;
+    else {
+      const parsedFaction = requiredString(value.faction);
+      if (parsedFaction === undefined) return { error: `Expected a non-empty string at ${path}.faction.` };
+      faction = parsedFaction;
+    }
+    regions.push({ region, faction });
+  }
+  const actions: ExtendedMapDeltaAction[] = [];
+  for (const [index, value] of parsed.actions.entries()) {
+    const action = parseExtendedExportAction(value, `actions[${index}]`);
+    if (typeof action === "string") return { error: action };
+    actions.push(action);
+  }
+  return { document: { version: 1, regions, actions } };
+};
+
+/** Strict parser for the one-file `map_extended_out.json` export consumed by the campaign importer. */
+export const parseExtendedMapExportFile = (text: string): { document: ExtendedMapExport } | { error: string } => {
+  const parsed = parseMapFile(text);
+  if ("error" in parsed) return parsed;
+  return parsed.format === "extended-export"
+    ? { document: parsed.document }
+    : { error: "Expected an extended map export." };
+};
+
+export const parseExtendedMapExport = parseExtendedMapExportFile;
+
+const equal = (first: unknown, second: unknown) => JSON.stringify(first) === JSON.stringify(second);
+
+export interface BuildExtendedMapDeltaOptions {
+  /** Campaign key used to select campaign-specific experience thresholds. */
+  campaign?: string;
+  /** Effective Unit Viewer rows used to resolve rank thresholds. */
+  characterExperience?: UnitViewerCharacterExperienceData;
+  /** Export-only confederation commands queued by the editor. */
+  pendingConfederations?: ExtendedMapPendingConfederation[];
+}
+
+const diplomacyRelationsForPair = (
+  document: ExtendedMapDocument,
+  faction: string,
+  targetFaction: string,
+): ExtendedMapDiplomacyField[] => {
+  const source = findGroup(document, faction);
+  const target = findGroup(document, targetFaction);
+  if (!source || !target) return [];
+  return EXTENDED_MAP_DIPLOMACY_FIELDS.filter((field) =>
+    source.diplo[field].some((entry) => relationKey(entry) === relationKey(target.faction)),
+  );
+};
+
+/** Builds a deterministic delta. Reverted edits naturally disappear because this compares baselines. */
+export const buildExtendedMapDelta = (
+  before: ExtendedMapDocument,
+  after: ExtendedMapDocument,
+  optionsOrPending: BuildExtendedMapDeltaOptions | ExtendedMapPendingConfederation[] = {},
+  pendingArgument: BuildExtendedMapDeltaOptions | ExtendedMapPendingConfederation[] = [],
+): ExtendedMapDelta => {
+  const options: BuildExtendedMapDeltaOptions = {};
+  const pendingConfederations: ExtendedMapPendingConfederation[] = [];
+  for (const value of [optionsOrPending, pendingArgument]) {
+    if (Array.isArray(value)) pendingConfederations.push(...value);
+    else Object.assign(options, value);
+  }
+  if (options.pendingConfederations) pendingConfederations.push(...options.pendingConfederations);
+  const beforeDocument = cloneExtendedMap(before);
+  const afterDocument = cloneExtendedMap(after);
+  const uniquePendingConfederations = pendingConfederations.filter(
+    (entry, index, entries) =>
+      entries.findIndex(
+        (candidate) =>
+          relationKey(candidate.faction) === relationKey(entry.faction) &&
+          relationKey(candidate.targetFaction) === relationKey(entry.targetFaction),
+      ) === index,
+  );
+  const actions: ExtendedMapDeltaAction[] = [];
+  const beforeRegions = new Map(beforeDocument.regions.map((region) => [region.region.toLowerCase(), region]));
+  for (const afterRegion of afterDocument.regions) {
+    const beforeRegion = beforeRegions.get(afterRegion.region.toLowerCase());
+    if (!beforeRegion || !beforeRegion.buildings || !afterRegion.buildings) continue;
+    const count = Math.max(beforeRegion.buildings.length, afterRegion.buildings.length);
+    for (let slotIndex = 0; slotIndex < count; slotIndex += 1) {
+      const oldSlot = beforeRegion.buildings[slotIndex];
+      const newSlot = afterRegion.buildings[slotIndex];
+      if (oldSlot && newSlot && !equal(oldSlot, newSlot))
+        actions.push({ type: "set_building", region: afterRegion.region, slotIndex, before: oldSlot, after: newSlot });
+      else if (!oldSlot && newSlot)
+        actions.push({ type: "add_building_slot", region: afterRegion.region, slotIndex, building: newSlot });
+    }
+  }
+
+  const beforeGroups = new Map(beforeDocument.faction_to_chars.map((group) => [group.faction.toLowerCase(), group]));
+  for (const afterGroup of afterDocument.faction_to_chars) {
+    const beforeGroup = beforeGroups.get(afterGroup.faction.toLowerCase());
+    if (!beforeGroup) continue;
+    const beforeChars = new Map(beforeGroup.chars.map((character, index) => [character.id, { character, index }]));
+    const afterCharacterIds = new Set(afterGroup.chars.map((character) => character.id));
+    for (const [id, beforeEntry] of beforeChars) {
+      if (!afterCharacterIds.has(id))
+        actions.push({
+          type: "remove_character",
+          faction: afterGroup.faction,
+          characterId: id,
+          index: beforeEntry.index,
+          character: beforeEntry.character,
+        });
+    }
+    for (const afterCharacter of afterGroup.chars) {
+      const beforeCharacter = beforeChars.get(afterCharacter.id)?.character;
+      if (!beforeCharacter) {
+        actions.push({
+          type: "add_character",
+          faction: afterGroup.faction,
+          index: afterGroup.chars.findIndex((character) => character.id === afterCharacter.id),
+          character: afterCharacter,
+        });
+        continue;
+      }
+      const characterChanges: NonNullable<Extract<ExtendedMapDeltaAction, { type: "update_character" }>["changes"]> =
+        {};
+      for (const field of ["x", "y", "rank", "subtype"] as const) {
+        if (beforeCharacter[field] !== afterCharacter[field])
+          characterChanges[field] = { before: beforeCharacter[field], after: afterCharacter[field] };
+      }
+      if (Object.keys(characterChanges).length > 0) {
+        let xp: ExtendedMapCharacterExperienceDelta | undefined;
+        if (options.characterExperience) {
+          const beforeThreshold = resolveCharacterExperienceThreshold(options.characterExperience, {
+            faction: afterGroup.faction,
+            subtype: beforeCharacter.subtype,
+            campaign: options.campaign,
+            rank: beforeCharacter.rank,
+            forArmy: beforeCharacter.units !== undefined,
+          });
+          const afterThreshold = resolveCharacterExperienceThreshold(options.characterExperience, {
+            faction: afterGroup.faction,
+            subtype: afterCharacter.subtype,
+            campaign: options.campaign,
+            rank: afterCharacter.rank,
+            forArmy: afterCharacter.units !== undefined,
+          });
+          if (beforeThreshold === undefined || afterThreshold === undefined) {
+            throw new Error(
+              `Could not resolve character experience threshold for ${afterGroup.faction}/${afterCharacter.subtype} rank ${afterCharacter.rank}.`,
+            );
+          }
+          xp = { before: beforeThreshold, after: afterThreshold, delta: afterThreshold - beforeThreshold };
+        }
+        actions.push({
+          type: "update_character",
+          faction: afterGroup.faction,
+          characterId: afterCharacter.id,
+          changes: characterChanges,
+          ...(xp ? { xp } : {}),
+        });
+      }
+
+      const oldUnits = beforeCharacter.units ?? [];
+      const newUnits = afterCharacter.units ?? [];
+      const oldById = new Map(oldUnits.map((unit, index) => [unit.id, { unit, index }]));
+      const newById = new Map(newUnits.map((unit, index) => [unit.id, { unit, index }]));
+      for (const [id, oldEntry] of oldById) {
+        if (!newById.has(id))
+          actions.push({
+            type: "remove_unit",
+            faction: afterGroup.faction,
+            characterId: afterCharacter.id,
+            index: oldEntry.index,
+            unit: oldEntry.unit,
+          });
+      }
+      for (const [id, newEntry] of newById) {
+        const oldEntry = oldById.get(id);
+        if (!oldEntry) {
+          actions.push({
+            type: "add_unit",
+            faction: afterGroup.faction,
+            characterId: afterCharacter.id,
+            index: newEntry.index,
+            unit: newEntry.unit,
+          });
+          continue;
+        }
+        const unitChanges: NonNullable<Extract<ExtendedMapDeltaAction, { type: "update_unit" }>["changes"]> = {};
+        for (const field of ["unit_key", "xp", "health"] as const) {
+          if (oldEntry.unit[field] !== newEntry.unit[field])
+            unitChanges[field] = { before: oldEntry.unit[field], after: newEntry.unit[field] };
+        }
+        if (Object.keys(unitChanges).length > 0)
+          actions.push({
+            type: "update_unit",
+            faction: afterGroup.faction,
+            characterId: afterCharacter.id,
+            unitId: id,
+            index: newEntry.index,
+            changes: unitChanges,
+          });
+      }
+    }
+  }
+  const factionNames = new Map<string, string>();
+  for (const group of [...beforeDocument.faction_to_chars, ...afterDocument.faction_to_chars])
+    factionNames.set(relationKey(group.faction), group.faction);
+  const sortedFactions = [...factionNames.entries()].sort(([first], [second]) => first.localeCompare(second));
+  for (let firstIndex = 0; firstIndex < sortedFactions.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < sortedFactions.length; secondIndex += 1) {
+      const [, firstFaction] = sortedFactions[firstIndex];
+      const [, secondFaction] = sortedFactions[secondIndex];
+      const firstAfter = diplomacyRelationsForPair(afterDocument, firstFaction, secondFaction);
+      const secondAfter = diplomacyRelationsForPair(afterDocument, secondFaction, firstFaction);
+      const firstBefore = diplomacyRelationsForPair(beforeDocument, firstFaction, secondFaction);
+      const secondBefore = diplomacyRelationsForPair(beforeDocument, secondFaction, firstFaction);
+      const reverseVassal = secondAfter.includes("vassals") || (!firstAfter.includes("vassals") && secondBefore.includes("vassals"));
+      const faction = reverseVassal ? secondFaction : firstFaction;
+      const targetFaction = reverseVassal ? firstFaction : secondFaction;
+      const beforeRelations = reverseVassal ? secondBefore : firstBefore;
+      const afterRelations = reverseVassal ? secondAfter : firstAfter;
+      if (equal(beforeRelations, afterRelations)) continue;
+      actions.push({
+        type: "set_diplomacy",
+        faction,
+        targetFaction,
+        before: beforeRelations,
+        after: afterRelations,
+      });
+    }
+  }
+  for (const pending of uniquePendingConfederations)
+    actions.push({ type: "confederate", faction: pending.faction, targetFaction: pending.targetFaction });
+  const typeOrder: Record<ExtendedMapDeltaAction["type"], number> = {
+    set_building: 0,
+    add_building_slot: 1,
+    add_character: 2,
+    update_character: 3,
+    remove_character: 4,
+    set_diplomacy: 5,
+    confederate: 6,
+    add_unit: 7,
+    remove_unit: 8,
+    update_unit: 9,
+  };
+  const actionIndex = (action: ExtendedMapDeltaAction) => {
+    if ("slotIndex" in action && typeof action.slotIndex === "number") return action.slotIndex;
+    if ("unitId" in action && typeof action.unitId === "number") return action.unitId;
+    if ("index" in action && typeof action.index === "number") return action.index;
+    return 0;
+  };
+  actions.sort((first, second) => {
+    const firstKey =
+      "region" in first
+        ? first.region.toLowerCase()
+        : "targetFaction" in first
+          ? `${first.faction.toLowerCase()}|${first.targetFaction.toLowerCase()}`
+          : `${first.faction.toLowerCase()}|${"characterId" in first ? first.characterId : ""}`;
+    const secondKey =
+      "region" in second
+        ? second.region.toLowerCase()
+        : "targetFaction" in second
+          ? `${second.faction.toLowerCase()}|${second.targetFaction.toLowerCase()}`
+          : `${second.faction.toLowerCase()}|${"characterId" in second ? second.characterId : ""}`;
+    return (
+      (first.type === "confederate" ? 1 : 0) - (second.type === "confederate" ? 1 : 0) ||
+      firstKey.localeCompare(secondKey) ||
+      typeOrder[first.type] - typeOrder[second.type] ||
+      actionIndex(first) - actionIndex(second)
+    );
+  });
+  return { version: 1, actions };
+};
+
+export const buildExtendedMapExport = (
+  ownership: Record<string, string | null>,
+  delta: ExtendedMapDelta,
+): ExtendedMapExport => ({
+  regions: Object.entries(ownership).map(([region, faction]) => ({ region, faction })),
+  version: delta.version,
+  actions: delta.actions,
+});
+
+export const formatExtendedMapExportJson = (document: ExtendedMapExport): string =>
+  `${JSON.stringify(document, undefined, 2)}\n`;
+
+export interface ExtendedBuildingOption {
+  building: string;
+  chain: string;
+  level: number;
+  title: string;
+  variant?: BuildingVariantRow;
+}
+
+/**
+ * Resolves the effective building choices for one imported slot. The buildings panel and this
+ * helper use the same variant/availability rules; callers should still keep the slot's type when
+ * presenting the returned chain levels because a template can be shared by more than one slot type.
+ */
+export const resolveExtendedBuildingOptions = (
+  data: BuiltBuildingsData,
+  query: { campaign: string; region: string; faction?: string; slot: Pick<RegionSlot, "slotTemplate" | "slotType"> },
+): ExtendedBuildingOption[] => {
+  const faction = query.faction
+    ? data.factions.find((candidate) => candidate.key.toLowerCase() === query.faction!.toLowerCase())
+    : undefined;
+  const culture = faction?.culture;
+  const subculture = faction?.subculture;
+  const candidateChains = new Set<string>();
+  const removals: string[][] = [];
+  for (const row of data.permittedByTemplate[query.slot.slotTemplate] ?? []) {
+    const chains = row.chain
+      ? [row.chain]
+      : row.superChain
+        ? (data.superChains[row.superChain] ?? [])
+        : row.chainSet
+          ? [...expandChainSet(data, row.chainSet)]
+          : [];
+    if (row.remove) removals.push(chains);
+    else for (const chain of chains) candidateChains.add(chain);
+  }
+  for (const superChain of data.superChainsByTemplate[query.slot.slotTemplate] ?? [])
+    for (const chain of data.superChains[superChain] ?? []) candidateChains.add(chain);
+  for (const chains of removals) for (const chain of chains) candidateChains.delete(chain);
+  const cultureBySubculture = new Map(data.subcultures.map((entry) => [entry.key, entry.culture]));
+  const cultureByFaction = new Map(data.factions.map((entry) => [entry.key, entry.culture]));
+  const options: ExtendedBuildingOption[] = [];
+  for (const chain of candidateChains) {
+    const availabilityIds = data.availabilitySetsByChain[chain] ?? [];
+    if (
+      availabilityIds.length > 0 &&
+      !availabilityIds.some((setId) =>
+        (data.availabilitiesBySetId[setId] ?? []).some(
+          (row) =>
+            (!row.campaign || row.campaign === query.campaign) &&
+            (!row.culture || !culture || row.culture === culture) &&
+            (!row.subCulture ||
+              row.subCulture === subculture ||
+              (!subculture && cultureBySubculture.get(row.subCulture) === culture)) &&
+            (!row.faction ||
+              row.faction === query.faction ||
+              (!query.faction && cultureByFaction.get(row.faction) === culture)),
+        ),
+      )
+    )
+      continue;
+    for (const levelKey of data.levelKeysByChain[chain] ?? []) {
+      const level = data.levelsByKey[levelKey];
+      if (!level || !level.visibleInUi) continue;
+      const variantResult = pickCultureVariant(
+        data,
+        levelKey,
+        { campaign: query.campaign, region: query.region, faction: query.faction, culture, subculture },
+        (key) => cultureBySubculture.get(key),
+        (key) => cultureByFaction.get(key),
+      );
+      if (!variantResult.variant || variantResult.disabledBy) continue;
+      options.push({
+        building: levelKey,
+        chain,
+        level: level.level,
+        title:
+          data.variantLoc[
+            `${levelKey}|${variantResult.variant.culture}|${variantResult.variant.subculture}|${variantResult.variant.faction}`
+          ]?.name ?? levelKey,
+        variant: variantResult.variant,
+      });
+    }
+  }
+  return options.sort(
+    (first, second) =>
+      first.level - second.level ||
+      first.title.localeCompare(second.title) ||
+      first.building.localeCompare(second.building),
+  );
+};
+
+export interface ExtendedUnitOption {
+  key: string;
+  name: string;
+  caste: string;
+  isLord: boolean;
+}
+
+export interface ExtendedUnitOptionGroup {
+  key: string;
+  name: string;
+  options: ExtendedUnitOption[];
+}
+
+const EXTENDED_UNKNOWN_CASTE_KEY = "__unknown";
+
+const getExtendedCasteSortOrder = (caste: string) => {
+  const normalized = caste.toLowerCase();
+  if (normalized === "lord") return 0;
+  if (normalized === "hero") return 1;
+  return 2;
+};
+
+const formatExtendedCasteLabel = (caste: string) =>
+  caste.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unknown caste";
+
+/** Groups unit choices by caste in the same order used by Unit Viewer. */
+export const groupExtendedUnitOptionsByCaste = (options: ExtendedUnitOption[]): ExtendedUnitOptionGroup[] => {
+  const groups = new Map<string, { name: string; options: ExtendedUnitOption[] }>();
+  for (const option of options) {
+    const caste = option.caste.trim();
+    const key = caste ? caste.toLowerCase() : EXTENDED_UNKNOWN_CASTE_KEY;
+    const group = groups.get(key);
+    if (group) group.options.push(option);
+    else groups.set(key, { name: caste ? formatExtendedCasteLabel(caste) : "Unknown caste", options: [option] });
+  }
+
+  const collator = new Intl.Collator("en");
+  return Array.from(groups.entries())
+    .sort(([firstKey, first], [secondKey, second]) => {
+      return (
+        getExtendedCasteSortOrder(firstKey) - getExtendedCasteSortOrder(secondKey) ||
+        collator.compare(first.name, second.name) ||
+        collator.compare(firstKey, secondKey)
+      );
+    })
+    .map(([key, group]) => ({
+      key,
+      name: group.name,
+      options: [...group.options].sort(
+        (first, second) => collator.compare(first.name, second.name) || collator.compare(first.key, second.key),
+      ),
+    }));
+};
+
+/** Filters Unit Viewer units to the owning faction's subculture roster. */
+export const resolveExtendedUnitOptions = (
+  units: UnitViewerCatalogUnit[],
+  subculture?: string,
+  leadersOnly = false,
+): ExtendedUnitOption[] =>
+  units
+    .filter(
+      (unit) =>
+        (!subculture || unit.subcultureKeys.some((key) => key.toLowerCase() === subculture.toLowerCase())) &&
+        (leadersOnly ? unit.caste.toLowerCase() === "lord" : unit.caste.toLowerCase() !== "lord"),
+    )
+    .map((unit) => ({ key: unit.key, name: unit.name, caste: unit.caste, isLord: unit.caste.toLowerCase() === "lord" }))
+    .sort((first, second) => first.name.localeCompare(second.name) || first.key.localeCompare(second.key));

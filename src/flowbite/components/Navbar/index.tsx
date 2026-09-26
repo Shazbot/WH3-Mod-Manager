@@ -33,16 +33,10 @@ const NavbarComponent: FC<NavbarComponentProps> = ({
   return (
     <NavbarContext.Provider value={{ isOpen, setIsOpen }}>
       <nav
-        className={classNames(
-          theme.base,
-          theme.bordered[border ? "on" : "off"],
-          theme.rounded[rounded ? "on" : "off"]
-        )}
+        className={classNames(theme.base, theme.bordered[border ? "on" : "off"], theme.rounded[rounded ? "on" : "off"])}
         {...theirProps}
       >
-        <div className={classNames(theme.inner.base, theme.inner.fluid[fluid ? "on" : "off"])}>
-          {children}
-        </div>
+        <div className={classNames(theme.inner.base, theme.inner.fluid[fluid ? "on" : "off"])}>{children}</div>
       </nav>
     </NavbarContext.Provider>
   );

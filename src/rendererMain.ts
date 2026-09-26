@@ -3,6 +3,8 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-material.css";
 
 import debounce from "just-debounce-it";
+import { getEnabledMods } from "./modsHelpers";
+import { selectConfigSavePayload } from "./config/configSavePayload";
 import hash from "object-hash";
 
 import store from "./store";
@@ -11,8 +13,10 @@ import { setupRendererLogging } from "./rendererCommon";
 import {
   addMod,
   addToast,
+  applySavedPackData,
   createdMergedPack,
   enableModsByName,
+  importModsFromUsedMods,
   importSteamCollection,
   removeMod,
   requestGameFolderPaths,
@@ -23,10 +27,12 @@ import {
   setCurrentLanguage,
   setCurrentlyReadingMod,
   setCustomizableMods,
+  setDeletedPackFilePaths,
   setDataModLastChangedLocal,
   setFromConfig,
   setHasConfigBeenRead,
   setIsAdmin,
+  setCanCreateSymbolicLinks,
   setIsDev,
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
@@ -34,15 +40,18 @@ import {
   setIsWH3Running,
   setLastModThatWasRead,
   setModData,
+  setWorkshopUpdateCheckMessage,
   setMods,
   setOutdatedPackFiles,
   setOverwrittenDataPackedFiles,
   setPackCollisions,
   setPackCollisionsCheckProgress,
   setPackHeaderData,
+  setModLoadOrderRules,
   setPackSearchResults,
   setPacksData,
   setPacksDataRead,
+  setRecentPackPaths,
   setSaves,
   setSkillsData,
   setSkillsViewOptions,
@@ -50,11 +59,12 @@ import {
   setUnsavedPacksData,
   setWarhammer3Folder,
 } from "./appSlice";
+import { isWorkshopMod } from "./modSources";
+import { PackedFile } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 
 setupRendererLogging();
 
-console.log("IN RENDERER (main_window)");
 
 window.api?.subscribedToMods((event, ids: string[]) => {
   console.log("subbed to mods: ", ids);
@@ -74,6 +84,10 @@ window.api?.setIsDev((event, isDev) => {
 
 window.api?.setIsAdmin((event, isAdmin) => {
   store.dispatch(setIsAdmin(isAdmin));
+});
+
+window.api?.setCanCreateSymbolicLinks((event, canCreate) => {
+  store.dispatch(setCanCreateSymbolicLinks(canCreate));
 });
 
 window.api?.setIsWH3Running((event, isWH3Running) => {
@@ -96,12 +110,20 @@ window.api?.setStartArgs((event, startArgs) => {
   store.dispatch(setStartArgs(startArgs));
 });
 
+window.api?.setRecentPackPaths((event, packPaths) => {
+  store.dispatch(setRecentPackPaths(packPaths));
+});
+
 window.api?.packsInSave((event, packNames: string[]) => {
   store.dispatch(enableModsByName(packNames));
 });
 
 window.api?.enableModsByName((event, packNames: string[]) => {
   store.dispatch(enableModsByName(packNames));
+});
+
+window.api?.importModsFromUsedMods((event, packNames: string[]) => {
+  store.dispatch(importModsFromUsedMods(packNames));
 });
 
 window.api?.setSkillsData((event, skillsData: SkillsData) => {
@@ -112,7 +134,7 @@ window.api?.setSkillsData((event, skillsData: SkillsData) => {
 });
 
 const saveConfig = (appState: AppState) => {
-  window.api?.saveConfig(appState);
+  window.api?.saveConfig(selectConfigSavePayload(appState));
   const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
   // don't do it if all are enabled, i.e. when user is resetting the enabled column
   const customizableModsHash = hash(appState.customizableMods);
@@ -131,6 +153,11 @@ const saveConfig = (appState: AppState) => {
 const saveConfigDebounced = debounce((appState: AppState) => {
   saveConfig(appState);
 }, 200);
+
+window.addEventListener("beforeunload", () => {
+  saveConfig(store.getState().app);
+});
+
 let lastReadModsSignature: string | undefined;
 
 let lastSentTreeDisplayModes:
@@ -164,6 +191,7 @@ const syncSkillsViewOptions = (appState: AppState) => {
 
   const nextSkillsViewOptions: SkillsViewOptions = {
     isShowingSkillNodeSetNames: appState.isShowingSkillNodeSetNames,
+    hideRepeatedKeyPrefixes: appState.hideRepeatedKeyPrefixes,
     isShowingHiddenSkills: appState.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
     isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
@@ -171,6 +199,7 @@ const syncSkillsViewOptions = (appState: AppState) => {
 
   if (
     lastSentSkillsViewOptions?.isShowingSkillNodeSetNames === nextSkillsViewOptions.isShowingSkillNodeSetNames &&
+    lastSentSkillsViewOptions?.hideRepeatedKeyPrefixes === nextSkillsViewOptions.hideRepeatedKeyPrefixes &&
     lastSentSkillsViewOptions?.isShowingHiddenSkills === nextSkillsViewOptions.isShowingHiddenSkills &&
     lastSentSkillsViewOptions?.isShowingHiddenModifiersInsideSkills ===
       nextSkillsViewOptions.isShowingHiddenModifiersInsideSkills &&
@@ -195,7 +224,7 @@ const subscribeToStoreChanges = () => {
   });
 };
 
-window.api?.fromAppConfig((event, appState: AppStateToRead) => {
+window.api?.fromAppConfig((event, appState: ConfigForRenderer) => {
   store.dispatch(setFromConfig(appState));
   syncTreeDisplayModes(store.getState().app);
   subscribeToStoreChanges();
@@ -221,12 +250,12 @@ window.api?.failedReadingConfig(() => {
 window.api?.modsPopulated((event, mods: Mod[]) => {
   mods = mods.filter((mod) => mod !== undefined);
   store.dispatch(setMods(mods));
-  window.api?.getAllModData(mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId));
+  window.api?.getAllModData(mods.filter(isWorkshopMod).map((mod) => mod.workshopId));
 });
 
 window.api?.addMod((event, mod: Mod) => {
   store.dispatch(addMod(mod));
-  if (mod.workshopId && mod.workshopId !== "") {
+  if (isWorkshopMod(mod) && mod.workshopId && mod.workshopId !== "") {
     window.api?.getAllModData([mod.workshopId]);
   }
 });
@@ -254,13 +283,22 @@ window.api?.setOutdatedPackFiles((event, outdatedPackFiles) => {
 window.api?.savesPopulated((event, saves: GameSave[]) => {
   store.dispatch(setSaves(saves));
 });
+window.api?.requestSaves();
 
 window.api?.setModData((event, modDatas: ModData[]) => {
   store.dispatch(setModData(modDatas));
 });
 
+window.api?.workshopUpdateCheck((event, message) => {
+  store.dispatch(setWorkshopUpdateCheckMessage(message));
+});
+
 window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData[]) => {
   store.dispatch(setPackHeaderData(packHeaderData));
+});
+
+window.api?.setModLoadOrderRules((event, modLoadOrderRules: Record<string, LoadOrderRule[]>) => {
+  store.dispatch(setModLoadOrderRules(modLoadOrderRules));
 });
 
 window.api?.setCustomizableMods((event, customizableMods: Record<string, string[]>) => {
@@ -272,8 +310,34 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
   store.dispatch(setPacksData(packsData));
 });
 
+const stripUnsavedFileBuffers = (unsavedFileData: PackedFile[]): PackedFile[] =>
+  unsavedFileData.map(({ buffer, ...unsavedFile }) => unsavedFile);
+
+window.api?.applySavedPackData((event, payload: ApplySavedPackDataPayload) => {
+  store.dispatch(
+    applySavedPackData({
+      ...payload,
+      savedFileData: stripUnsavedFileBuffers(payload.savedFileData),
+    }),
+  );
+});
+
 window.api?.setUnsavedPacksData((event, packPath: string, unsavedFileData) => {
-  store.dispatch(setUnsavedPacksData({ packPath, unsavedFileData } as SetUnsavedPacksDataPayload));
+  store.dispatch(
+    setUnsavedPacksData({
+      packPath,
+      unsavedFileData: stripUnsavedFileBuffers(unsavedFileData as PackedFile[]),
+    } as SetUnsavedPacksDataPayload),
+  );
+});
+
+window.api?.setDeletedPackFilePaths((event, packPath: string, deletedFilePaths: string[]) => {
+  store.dispatch(
+    setDeletedPackFilePaths({
+      packPath,
+      deletedFilePaths,
+    }),
+  );
 });
 
 window.api?.setPacksDataRead((event, packPaths: string[]) => {
@@ -281,11 +345,8 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
 
   const appState = store.getState().app;
   const presetMods = appState.currentPreset.mods;
-  const alwaysEnabledMods = appState.alwaysEnabledMods;
   const customizableMods = appState.customizableMods;
-  const enabledMods = presetMods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
-  );
+  const enabledMods = getEnabledMods(presetMods, appState.alwaysEnabledModNames);
   const customizableTables = [
     "units_to_groupings_military_permissions_tables",
     "building_culture_variants_tables",
@@ -317,9 +378,17 @@ window.api?.onSkillsViewOptions((event, skillsViewOptions: SkillsViewOptions) =>
   store.dispatch(setSkillsViewOptions(skillsViewOptions));
 });
 
-window.api?.setCurrentGame((event, game: SupportedGames, currentPreset: Preset, presets: Preset[]) => {
-  store.dispatch(setCurrentGame({ game, currentPreset, presets } as SetCurrentGamePayload));
-});
+window.api?.setCurrentGame(
+  (
+    event,
+    game: SupportedGames,
+    currentPreset: SavedPreset,
+    presets: SavedPreset[],
+    modUserData: Record<string, StoredModUserData>,
+  ) => {
+    store.dispatch(setCurrentGame({ game, currentPreset, presets, modUserData }));
+  },
+);
 
 window.api?.setCurrentlyReadingMod((event, modName: string) => {
   store.dispatch(setCurrentlyReadingMod(modName));

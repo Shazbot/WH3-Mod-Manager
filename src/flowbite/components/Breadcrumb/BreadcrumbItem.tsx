@@ -18,16 +18,8 @@ const BreadcrumbItem: FC<BreadcrumbItemProps> = ({ children, href, icon: Icon, .
 
   return (
     <li className={theme.base} {...theirProps}>
-      <HiOutlineChevronRight
-        aria-hidden
-        className={theme.chevron}
-        data-testid="flowbite-breadcrumb-separator"
-      />
-      <Component
-        className={theme.href[isLink ? "on" : "off"]}
-        data-testid="flowbite-breadcrumb-item"
-        href={href}
-      >
+      <HiOutlineChevronRight aria-hidden className={theme.chevron} data-testid="flowbite-breadcrumb-separator" />
+      <Component className={theme.href[isLink ? "on" : "off"]} data-testid="flowbite-breadcrumb-item" href={href}>
         {Icon && <Icon aria-hidden className={theme.icon} />}
         {children}
       </Component>

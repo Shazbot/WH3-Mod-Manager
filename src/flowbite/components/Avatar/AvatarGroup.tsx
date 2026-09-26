@@ -1,5 +1,5 @@
-import type { PropsWithChildren, ReactNode } from 'react';
-import React from 'react';
+import type { PropsWithChildren, ReactNode } from "react";
+import React from "react";
 
 export type AvatarGroupProps = PropsWithChildren<{
   children: ReactNode;
@@ -13,5 +13,5 @@ const AvatarGroup: React.FC<AvatarGroupProps> = ({ children }) => {
   );
 };
 
-AvatarGroup.displayName = 'Avatar.Group';
+AvatarGroup.displayName = "Avatar.Group";
 export default AvatarGroup;

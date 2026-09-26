@@ -8,3 +8,8 @@ export const dataFromBackend = { DBNameToDBVersions: {}, DBFieldsThatReference: 
   DBFieldsReferencedBy: Record<string, Record<string, string[][]>>;
   referencedColums: Record<string, string[]>; // table name to columns that are referenced from another table, if it's only one consider it that table's key
 };
+
+export const clearPackDataStoreForPack = (packPath: string): void => {
+  delete packDataStore[packPath];
+  delete doneRequests[packPath];
+};

@@ -26,6 +26,24 @@ describe("nodeRegistry", () => {
     });
   });
 
+  it("creates Combine Same Tables with a table-selection pass-through shape", () => {
+    const node = createNodeFromDefinition("combinesametables", {
+      nodeId: "node_combine",
+      position: { x: 0, y: 0 },
+      label: "Combine Same Tables",
+      sortedTableNames: [],
+    });
+
+    expect(node.data).toMatchObject({
+      label: "Combine Same Tables",
+      type: "combinesametables",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      columnNames: [],
+      connectedTableName: "",
+    });
+  });
+
   it("creates the schema variant of generate rows with custom schema defaults", () => {
     const node = createNodeFromDefinition("generaterowsschema", {
       nodeId: "node_2",
@@ -50,6 +68,51 @@ describe("nodeRegistry", () => {
         columnMapping: [],
       },
     ]);
+  });
+
+  it("creates save changes nodes with opening the output disabled", () => {
+    const node = createNodeFromDefinition("savechanges", {
+      nodeId: "node_save",
+      position: { x: 0, y: 0 },
+      label: "Save Changes",
+    });
+
+    expect(node.data).toMatchObject({
+      type: "savechanges",
+      openInWindows: false,
+    });
+  });
+
+  it("creates Edit Text File nodes with formatting disabled by default", () => {
+    const node = createNodeFromDefinition("edittextfile", {
+      nodeId: "node_edit_text",
+      position: { x: 0, y: 0 },
+      label: "Edit Text File",
+    });
+
+    expect(node.data).toMatchObject({
+      type: "edittextfile",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      textFileFormatter: "none",
+      ignoreFlowSourcePack: false,
+    });
+  });
+
+  it("creates Remove Pack Source as a typed PackFiles pass-through", () => {
+    const node = createNodeFromDefinition("removepacksource", {
+      nodeId: "node_remove_pack",
+      position: { x: 0, y: 0 },
+      label: "Remove Pack Source",
+    });
+
+    expect(node.data).toMatchObject({
+      type: "removepacksource",
+      selectedPack: "",
+      inputType: "PackFiles",
+      outputType: "PackFiles",
+      useCurrentPack: false,
+    });
   });
 
   it("keeps the styled fallback node path for unknown types", () => {
