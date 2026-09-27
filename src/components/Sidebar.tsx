@@ -851,16 +851,20 @@ const Sidebar = memo(() => {
               <div className="make-tooltip-w-full cursor-pointer" onClick={() => onMissingDependenciesClicked()}>
                 <SidebarTooltip
                   placement="left"
-                  content={missingModDependencies.map(([mod, reqs]) => (
-                    <div key={mod.path}>
-                      <span className="">{mod.humanName + ` ${localized.missing}`}</span>
-                      {reqs.map(([reqId, reqHumanName]) => (
-                        <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
-                          {reqHumanName}
+                  content={
+                    <div className="max-h-[90vh] space-y-2 overflow-y-auto">
+                      {missingModDependencies.map(([mod, reqs]) => (
+                        <div key={mod.path}>
+                          <span className="">{mod.humanName + ` ${localized.missing}`}</span>
+                          {reqs.map(([reqId, reqHumanName]) => (
+                            <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
+                              {reqHumanName}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
-                  ))}
+                  }
                 >
                   {localized.missingReqMods}
                 </SidebarTooltip>
