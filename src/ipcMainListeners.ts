@@ -7507,27 +7507,26 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           modPathToLabel.set(mod.path, baseName.toLowerCase().endsWith(".pack") ? baseName.slice(0, -5) : baseName);
         }
       }
-      const tablesToRead = Array.from(
-        new Set(
-          [
-            "land_units_tables",
-            "main_units_tables",
-            "ui_unit_groupings_tables",
-            "units_custom_battle_permissions_tables",
-            "unit_variants_tables",
-            "agent_subtypes_tables",
-            "agent_subtype_subculture_overrides_tables",
-            "campaign_character_art_sets_tables",
-            "campaign_character_arts_tables",
-            "agent_uniforms_tables",
-            "factions_tables",
-            "cultures_subcultures_tables",
-            "variants_tables",
-          ]
-            .flatMap((tableName) => resolveTable(tableName))
-            .map((tableName) => `db\\${tableName}\\`),
-        ),
-      );
+      // Visuals/army generation reads only these tables directly. Do not use
+      // resolveTable() here: it recursively expands schema foreign-key references
+      // and turns this small set into ~190 unrelated tables (abilities, projectiles,
+      // audio, buildings, etc.), which adds seconds to the first army-generation
+      // cache fill without contributing any fields consumed below.
+      const tablesToRead = [
+        "land_units_tables",
+        "main_units_tables",
+        "ui_unit_groupings_tables",
+        "units_custom_battle_permissions_tables",
+        "unit_variants_tables",
+        "agent_subtypes_tables",
+        "agent_subtype_subculture_overrides_tables",
+        "campaign_character_art_sets_tables",
+        "campaign_character_arts_tables",
+        "agent_uniforms_tables",
+        "factions_tables",
+        "cultures_subcultures_tables",
+        "variants_tables",
+      ].map((tableName) => `db\\${tableName}\\`);
       const sortedEnabledMods = sortByNameAndLoadOrder(enabledMods);
       const dbPriorityMods = sortedEnabledMods.toReversed();
       const dbPackName = gameToPackWithDBTablesName[appData.currentGame] || "db.pack";
