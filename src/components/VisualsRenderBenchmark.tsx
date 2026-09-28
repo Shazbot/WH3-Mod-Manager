@@ -209,6 +209,70 @@ const getMaterialTextureObjects = (root: THREE.Object3D) => {
   return [...textures];
 };
 
+
+const getArmyTextureSharingKey = (texture: THREE.Texture) => {
+  const rawCacheKey = texture.userData.wh3RawKtx2CacheKey;
+  if (typeof rawCacheKey !== "string" || !rawCacheKey) return undefined;
+  return [
+    rawCacheKey,
+    texture.wrapS,
+    texture.wrapT,
+    texture.magFilter,
+    texture.minFilter,
+    texture.anisotropy,
+    texture.colorSpace,
+    texture.flipY ? 1 : 0,
+    texture.generateMipmaps ? 1 : 0,
+    texture.premultiplyAlpha ? 1 : 0,
+    texture.unpackAlignment,
+    texture.mapping,
+    texture.channel,
+    texture.offset.x,
+    texture.offset.y,
+    texture.repeat.x,
+    texture.repeat.y,
+    texture.center.x,
+    texture.center.y,
+    texture.rotation,
+    texture.matrixAutoUpdate ? 1 : 0,
+  ].join("|");
+};
+
+/**
+ * Army VMDs are exported as separate GLBs, so identical source textures otherwise become separate
+ * Three Texture objects and separate GPU allocations. Share raw preview textures by content hash
+ * plus sampler/transform state before upload so the benchmark models game-like texture residency.
+ */
+const shareArmyTextures = (
+  root: THREE.Object3D,
+  sharedTextures: Map<string, THREE.Texture>,
+) => {
+  const duplicates = new Set<THREE.Texture>();
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+      const writableMaterial = material as unknown as Record<string, unknown>;
+      for (const [property, value] of Object.entries(material)) {
+        if (!(value instanceof THREE.Texture)) continue;
+        const key = getArmyTextureSharingKey(value);
+        if (!key) continue;
+        const existing = sharedTextures.get(key);
+        if (existing && existing !== value) {
+          writableMaterial[property] = existing;
+          duplicates.add(value);
+          material.needsUpdate = true;
+        } else if (!existing) {
+          sharedTextures.set(key, value);
+        }
+      }
+    }
+  });
+  duplicates.forEach((texture) => texture.dispose());
+  return duplicates.size;
+};
+
 const disposeSkinnedInstanceResources = (root: THREE.Object3D) => {
   const skeletons = new Set<THREE.Skeleton>();
   root.traverse((child) => {
@@ -621,6 +685,8 @@ const benchmarkArmySource = async (
   const previewIds: string[] = [];
   const loadedRoots: THREE.Object3D[] = [];
   const materialTextures = new Set<THREE.Texture>();
+  const sharedArmyTextures = new Map<string, THREE.Texture>();
+  let sharedTextureDuplicates = 0;
   let exportMs = 0;
   let loadMs = 0;
   let group: THREE.Group | undefined;
@@ -657,6 +723,7 @@ const benchmarkArmySource = async (
         );
       }
       loadedRoots.push(root);
+      sharedTextureDuplicates += shareArmyTextures(root, sharedArmyTextures);
       getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
       await yieldToUi();
       return { source: root, entities: entry.entities } satisfies LoadedArmyAsset;
@@ -682,9 +749,19 @@ const benchmarkArmySource = async (
 
     const texturePreloadStartedAt = performance.now();
     for (const texture of materialTextures) ktx2Loader.preloadTexture(texture);
-    renderer.getContext().finish();
+    const gl = renderer.getContext();
+    gl.finish();
+    if (gl.isContextLost()) {
+      throw new Error(
+        `Benchmark WebGL context was lost while preloading ${materialTextures.size.toLocaleString()} shared army textures.`,
+      );
+    }
     const texturePreloadMs = performance.now() - texturePreloadStartedAt;
 
+    onProgress(
+      `${fileName(source.path)} · textures ${materialTextures.size.toLocaleString()} resident · ${sharedTextureDuplicates.toLocaleString()} duplicate texture objects shared`,
+    );
+    await yieldToUi();
     onProgress(
       `${fileName(source.path)} · building ${loadedAssets.length}/${entries.length} unique army assets · ${loadedAssets.reduce((sum, asset) => sum + asset.entities, 0).toLocaleString()} entities`,
     );
