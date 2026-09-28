@@ -340,10 +340,18 @@ const runPreparedGroup = async (
         ? await waitForGpuQuery(gpuTimer.gl, gpuTimer.extension, query)
         : undefined;
 
+    const drawCalls = renderer.info.render.calls;
+    const triangles = renderer.info.render.triangles;
+    if (getRenderableMeshCount(group) > 0 && (drawCalls === 0 || triangles === 0)) {
+      throw new Error(
+        `Benchmark produced an invalid empty render result (drawCalls=${drawCalls}, triangles=${triangles}).`,
+      );
+    }
+
     return {
       instances,
-      drawCalls: renderer.info.render.calls,
-      triangles: renderer.info.render.triangles,
+      drawCalls,
+      triangles,
       geometries: renderer.info.memory.geometries,
       rendererTextureObjects: renderer.info.memory.textures,
       cpuMeanMs: cpu.mean,
