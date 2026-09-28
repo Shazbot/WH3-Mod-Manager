@@ -2,7 +2,7 @@ import * as nodePath from "path";
 import * as fs from "fs";
 
 /** Bump whenever the extraction rules or the cached shape change. */
-export const VISUALS_DATA_CACHE_VERSION = 8;
+export const VISUALS_DATA_CACHE_VERSION = 9;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const VISUALS_CACHE_DIR = "visuals";
 const VANILLA_CACHE_FILE = "vanilla.bin";
@@ -49,6 +49,22 @@ export interface VisualsTableContribution {
   factions?: Array<[factionKey: string, subculture: string]>;
   /** Subculture -> culture metadata used to group the Visuals list. */
   culturesSubcultures?: Array<[subculture: string, culture: string]>;
+  /** Agent subtype -> its default associated main unit. */
+  agentSubtypes?: Array<[subtype: string, associatedUnitOverride: string]>;
+  /** Subculture-specific agent subtype -> main-unit overrides. */
+  agentSubtypeSubcultureOverrides?: Array<
+    [subtype: string, subculture: string, associatedUnitOverride: string, agent: string]
+  >;
+  /** Campaign character art-set rows used to resolve lord/hero battle appearances. */
+  campaignCharacterArtSets?: Array<
+    [artSetId: string, agentSubtype: string, culture: string, subculture: string, faction: string]
+  >;
+  /** Campaign art-set -> agent uniform rows. */
+  campaignCharacterArts?: Array<
+    [id: string, artSetId: string, level: number, age: number, season: string, uniform: string]
+  >;
+  /** Agent uniform -> campaign/battle variant keys. */
+  agentUniforms?: Array<[uniformName: string, filename: string, battleFilename: string]>;
 }
 
 export interface VisualsMergedTableData {
@@ -67,6 +83,22 @@ export interface VisualsMergedTableData {
   unitToPermissionFactions: Map<string, Set<string>>;
   factionToSubculture: Map<string, string>;
   subcultureToCulture: Map<string, string>;
+  agentSubtypeToAssociatedUnit: Map<string, string>;
+  agentSubtypeSubcultureOverrides: Array<{
+    subtype: string;
+    subculture: string;
+    associatedUnitOverride: string;
+    agent: string;
+  }>;
+  campaignCharacterArtSetsBySubtype: Map<
+    string,
+    Array<{ artSetId: string; culture: string; subculture: string; faction: string }>
+  >;
+  campaignCharacterArtsByArtSet: Map<
+    string,
+    Array<{ id: string; level: number; age: number; season: string; uniform: string }>
+  >;
+  agentUniformByName: Map<string, { filename: string; battleFilename: string }>;
 }
 
 export interface VisualsPackCacheIdentity {
@@ -376,6 +408,20 @@ export const mergeVisualsTableContributions = (
   const unitToPermissionFactions = new Map<string, Set<string>>();
   const factionToSubculture = new Map<string, string>();
   const subcultureToCulture = new Map<string, string>();
+  const agentSubtypeToAssociatedUnit = new Map<string, string>();
+  const agentSubtypeSubcultureOverrideByKey = new Map<
+    string,
+    { subtype: string; subculture: string; associatedUnitOverride: string; agent: string }
+  >();
+  const campaignCharacterArtSetById = new Map<
+    string,
+    { artSetId: string; agentSubtype: string; culture: string; subculture: string; faction: string }
+  >();
+  const campaignCharacterArtById = new Map<
+    string,
+    { id: string; artSetId: string; level: number; age: number; season: string; uniform: string }
+  >();
+  const agentUniformByName = new Map<string, { filename: string; battleFilename: string }>();
 
   for (const { contribution } of tableOrder) {
     for (const [variantName, variantFilename] of contribution.variants) {
@@ -414,7 +460,63 @@ export const mergeVisualsTableContributions = (
     for (const [subculture, culture] of contribution.culturesSubcultures || []) {
       subcultureToCulture.set(subculture, culture);
     }
+    for (const [subtype, associatedUnitOverride] of contribution.agentSubtypes || []) {
+      agentSubtypeToAssociatedUnit.set(subtype, associatedUnitOverride);
+    }
+    for (const [subtype, subculture, associatedUnitOverride, agent] of contribution.agentSubtypeSubcultureOverrides || []) {
+      agentSubtypeSubcultureOverrideByKey.set(`${subtype}\0${subculture}\0${agent}`, {
+        subtype,
+        subculture,
+        associatedUnitOverride,
+        agent,
+      });
+    }
+    for (const [artSetId, agentSubtype, culture, subculture, faction] of contribution.campaignCharacterArtSets || []) {
+      campaignCharacterArtSetById.set(artSetId, { artSetId, agentSubtype, culture, subculture, faction });
+    }
+    for (const [id, artSetId, level, age, season, uniform] of contribution.campaignCharacterArts || []) {
+      campaignCharacterArtById.set(id, { id, artSetId, level, age, season, uniform });
+    }
+    for (const [uniformName, filename, battleFilename] of contribution.agentUniforms || []) {
+      agentUniformByName.set(uniformName, { filename, battleFilename });
+    }
     for (const unitKey of contribution.landUnits) landUnitKeys.add(unitKey);
+  }
+
+  const campaignCharacterArtSetsBySubtype = new Map<
+    string,
+    Array<{ artSetId: string; culture: string; subculture: string; faction: string }>
+  >();
+  for (const row of campaignCharacterArtSetById.values()) {
+    if (!row.agentSubtype) continue;
+    const rows = campaignCharacterArtSetsBySubtype.get(row.agentSubtype) || [];
+    rows.push({
+      artSetId: row.artSetId,
+      culture: row.culture,
+      subculture: row.subculture,
+      faction: row.faction,
+    });
+    campaignCharacterArtSetsBySubtype.set(row.agentSubtype, rows);
+  }
+
+  const campaignCharacterArtsByArtSet = new Map<
+    string,
+    Array<{ id: string; level: number; age: number; season: string; uniform: string }>
+  >();
+  for (const row of campaignCharacterArtById.values()) {
+    if (!row.artSetId || !row.uniform) continue;
+    const rows = campaignCharacterArtsByArtSet.get(row.artSetId) || [];
+    rows.push({ id: row.id, level: row.level, age: row.age, season: row.season, uniform: row.uniform });
+    campaignCharacterArtsByArtSet.set(row.artSetId, rows);
+  }
+  for (const rows of campaignCharacterArtsByArtSet.values()) {
+    rows.sort(
+      (first, second) =>
+        first.level - second.level
+        || first.age - second.age
+        || (first.season === "none" ? -1 : 0) - (second.season === "none" ? -1 : 0)
+        || first.id.localeCompare(second.id, "en"),
+    );
   }
 
   const unitKeyToUiGroupKey = new Map<string, string>();
@@ -443,6 +545,11 @@ export const mergeVisualsTableContributions = (
     unitToPermissionFactions,
     factionToSubculture,
     subcultureToCulture,
+    agentSubtypeToAssociatedUnit,
+    agentSubtypeSubcultureOverrides: Array.from(agentSubtypeSubcultureOverrideByKey.values()),
+    campaignCharacterArtSetsBySubtype,
+    campaignCharacterArtsByArtSet,
+    agentUniformByName,
   };
 };
 
