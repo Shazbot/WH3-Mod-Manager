@@ -1272,6 +1272,127 @@ const combineSourceMeasurements = (
   };
 };
 
+const buildBenchmarkLogSummary = (result: BenchmarkComparisonResult) => {
+  const rows = result.original.rows.map((originalRow, index) => {
+    const atlasRow = result.atlas.rows[index];
+    return {
+      entitiesOrInstances: originalRow.instances,
+      calls: atlasRow ? {
+        original: originalRow.drawCalls,
+        atlas: atlasRow.drawCalls,
+        deltaPercent: originalRow.drawCalls === 0
+          ? undefined
+          : ((atlasRow.drawCalls / originalRow.drawCalls) - 1) * 100,
+      } : undefined,
+      cpuMedianMs: atlasRow ? {
+        original: originalRow.cpuMedianMs,
+        atlas: atlasRow.cpuMedianMs,
+        deltaPercent: originalRow.cpuMedianMs === 0
+          ? undefined
+          : ((atlasRow.cpuMedianMs / originalRow.cpuMedianMs) - 1) * 100,
+      } : undefined,
+      cpuP95Ms: atlasRow ? {
+        original: originalRow.cpuP95Ms,
+        atlas: atlasRow.cpuP95Ms,
+        deltaPercent: originalRow.cpuP95Ms === 0
+          ? undefined
+          : ((atlasRow.cpuP95Ms / originalRow.cpuP95Ms) - 1) * 100,
+      } : undefined,
+      gpuMeanMs: atlasRow ? {
+        original: originalRow.gpuMeanMs,
+        atlas: atlasRow.gpuMeanMs,
+        deltaPercent:
+          originalRow.gpuMeanMs == null || atlasRow.gpuMeanMs == null || originalRow.gpuMeanMs === 0
+            ? undefined
+            : ((atlasRow.gpuMeanMs / originalRow.gpuMeanMs) - 1) * 100,
+      } : undefined,
+      estimatedRenderVramBytes: atlasRow ? {
+        original: originalRow.estimatedVramBytes,
+        atlas: atlasRow.estimatedVramBytes,
+        deltaPercent: originalRow.estimatedVramBytes === 0
+          ? undefined
+          : ((atlasRow.estimatedVramBytes / originalRow.estimatedVramBytes) - 1) * 100,
+      } : undefined,
+      triangles: atlasRow ? {
+        original: originalRow.triangles,
+        atlas: atlasRow.triangles,
+        delta: atlasRow.triangles - originalRow.triangles,
+      } : undefined,
+    };
+  });
+
+  let geometryAudit: unknown;
+  if (result.mode === "army" && result.original.armyAssets && result.atlas.armyAssets) {
+    const atlasByPath = new Map(
+      result.atlas.armyAssets.map((asset) => [normalizePath(asset.assetPath), asset]),
+    );
+    const changedVmds = result.original.armyAssets.flatMap((originalAsset) => {
+      const atlasAsset = atlasByPath.get(normalizePath(originalAsset.assetPath));
+      if (!atlasAsset) return [];
+      const weightedTriangleDelta = atlasAsset.weightedTriangles - originalAsset.weightedTriangles;
+      if (Math.abs(weightedTriangleDelta) < 0.0001) return [];
+
+      const unmatched = getUnmatchedMeshStats(originalAsset.meshes, atlasAsset.meshes);
+      return [{
+        assetPath: originalAsset.assetPath,
+        names: originalAsset.names,
+        entities: originalAsset.entities,
+        trianglesPerEntity: {
+          original: originalAsset.trianglesPerEntity,
+          atlas: atlasAsset.trianglesPerEntity,
+          delta: atlasAsset.trianglesPerEntity - originalAsset.trianglesPerEntity,
+        },
+        weightedTriangleDelta,
+        unmatchedOriginalMeshes: unmatched.original,
+        unmatchedAtlasMeshes: unmatched.atlas,
+      }];
+    });
+
+    const originalStructuralDraws = result.original.armyAssets.reduce(
+      (sum, asset) => sum + asset.weightedDraws,
+      0,
+    );
+    const atlasStructuralDraws = result.atlas.armyAssets.reduce(
+      (sum, asset) => sum + asset.weightedDraws,
+      0,
+    );
+    const originalStructuralTriangles = result.original.armyAssets.reduce(
+      (sum, asset) => sum + asset.weightedTriangles,
+      0,
+    );
+    const atlasStructuralTriangles = result.atlas.armyAssets.reduce(
+      (sum, asset) => sum + asset.weightedTriangles,
+      0,
+    );
+
+    geometryAudit = {
+      structuralDraws: {
+        original: originalStructuralDraws,
+        atlas: atlasStructuralDraws,
+        delta: atlasStructuralDraws - originalStructuralDraws,
+      },
+      structuralTriangles: {
+        original: originalStructuralTriangles,
+        atlas: atlasStructuralTriangles,
+        delta: atlasStructuralTriangles - originalStructuralTriangles,
+      },
+      changedVmds,
+    };
+  }
+
+  return {
+    mode: result.mode,
+    generatedAt: result.generatedAt,
+    profile: result.profile,
+    passesPerSource: result.passesPerSource,
+    measurementOrder: result.measurementOrder,
+    warmupFramesPerPass: result.warmupFrames,
+    measuredFramesPerPass: result.sampleFrames,
+    rows,
+    geometryAudit,
+  };
+};
+
 const downloadJson = (fileNameValue: string, value: string) => {
   const url = URL.createObjectURL(new Blob([value], { type: "application/json" }));
   const anchor = document.createElement("a");
@@ -1472,7 +1593,7 @@ const VisualsRenderBenchmark = memo(({
         const original = combineSourceMeasurements(originalFirst, originalSecond);
         const atlas = combineSourceMeasurements(atlasFirst, atlasSecond);
 
-        setResult({
+        const comparisonResult: BenchmarkComparisonResult = {
           mode,
           assetPath,
           ...(rosterForRun ? { armyRoster: rosterForRun } : {}),
@@ -1486,7 +1607,11 @@ const VisualsRenderBenchmark = memo(({
           generatedAt: new Date().toISOString(),
           original,
           atlas,
-        });
+        };
+        setResult(comparisonResult);
+        console.log(
+          `[atlas benchmark] ${JSON.stringify(buildBenchmarkLogSummary(comparisonResult))}`,
+        );
         setProgress("Complete");
       } catch (benchmarkError) {
         setError(
