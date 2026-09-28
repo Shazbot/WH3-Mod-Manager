@@ -385,6 +385,7 @@ const buildArmyGroup = async (assets: readonly LoadedArmyAsset[]) => {
   const spacingX = maxWidth * 1.2;
   const spacingZ = maxDepth * 1.2;
   const columns = Math.ceil(Math.sqrt(totalEntities));
+  const rows = Math.ceil(totalEntities / columns);
   const group = new THREE.Group();
   let entityIndex = 0;
 
