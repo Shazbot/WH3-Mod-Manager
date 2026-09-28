@@ -24,6 +24,8 @@ export type CharacterSubtypeOverrideRow = {
 
 export type ResolvedCharacterBattleArt = {
   faction: string;
+  subculture: string;
+  culture: string;
   variantName: string;
   artSetId: string;
   variantMeshPath: string;
@@ -117,6 +119,8 @@ export const resolveCharacterBattleArt = ({
       if (!resolved.has(key)) {
         resolved.set(key, {
           faction: artSet.faction,
+          subculture: artSet.subculture,
+          culture: artSet.culture,
           variantName,
           artSetId: artSet.artSetId,
           variantMeshPath,
