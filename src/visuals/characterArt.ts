@@ -115,7 +115,7 @@ export const resolveCharacterBattleArt = ({
       const variantMeshPath = toVariantMeshDefinitionPath(variantFilename);
       if (!variantMeshPath) continue;
 
-      const key = `${variantMeshPath.toLowerCase()}\0${artSet.faction}`;
+      const key = `${variantMeshPath.toLowerCase()}\0${artSet.faction}\0${artSet.subculture}\0${artSet.culture}`;
       if (!resolved.has(key)) {
         resolved.set(key, {
           faction: artSet.faction,
