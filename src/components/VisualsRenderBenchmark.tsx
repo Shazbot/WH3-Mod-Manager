@@ -712,7 +712,8 @@ const VisualsRenderBenchmark = memo(({
     if (fetchedBenchmarkUnits.length > 0) return fetchedBenchmarkUnits;
     setIsLoadingArmyUnits(true);
     try {
-      const response = await window.api?.getVisualsUnitsData(Array.from(enabledMods) as Mod[]);
+      const activeMods = enabledMods.filter((mod) => mod.isEnabled !== false);
+      const response = await window.api?.getVisualsUnitsData(Array.from(activeMods) as Mod[]);
       if (!response?.success || !response.units) {
         throw new Error(response?.error || "Unable to load the Visuals unit data for army generation.");
       }
