@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { resolveCharacterBattleArt } from "../src/visuals/characterArt";
+import { resolveCharacterBattleArt, type ResolveCharacterBattleArtInput } from "../src/visuals/characterArt";
 
-const baseInput = () => ({
+const baseInput = (): ResolveCharacterBattleArtInput => ({
   caste: "lord",
   mainUnitKeys: ["main_lord"],
   availableFactions: ["test_faction"],
