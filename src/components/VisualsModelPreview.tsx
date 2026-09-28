@@ -2483,7 +2483,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         if (
           comparisonVariants.length === 1 &&
           singleExportResult?.previewId &&
-          singleExportResult.timings
+          singleExportResult.timings &&
+          !devBenchmarkRunningRef.current
         ) {
           const timingPreviewId = singleExportResult.previewId;
           context.afterNextRender = ({ renderMs, completedAt }) => {
@@ -4702,6 +4703,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           disabled={status !== "ready" || comparisonModelCount !== 1}
           onRunningChange={(running) => {
             devBenchmarkRunningRef.current = running;
+            if (running && contextRef.current?.afterNextRender) {
+              // The dev benchmark intentionally pauses the visible preview loop so
+              // its own GPU timings are uncontaminated. Drop an outstanding preview
+              // timing callback rather than counting the whole benchmark duration as
+              // firstFrameWait when a host reset/reload races with benchmark startup.
+              contextRef.current.afterNextRender = null;
+            }
           }}
         />
       )}
