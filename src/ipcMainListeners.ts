@@ -7778,11 +7778,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const caste = unitKeyToCaste.get(unitKey) || "";
         const numMen = unitKeyToNumMen.get(unitKey) || 0;
         const uiGroupKey = unitKeyToUiGroupKey.get(unitKey) || "";
-        const addCultureMetadata = (faction: string) => {
+        const addCultureMetadata = (
+          faction: string,
+          preferredSubculture = "",
+          preferredCulture = "",
+        ) => {
           const variantSubculture = factionToSubculture.get(faction) || "";
-          const subcultures = variantSubculture ? [variantSubculture] : landUnitToSubcultures.get(unitKey) || [];
+          const subcultures = preferredSubculture
+            ? [preferredSubculture]
+            : variantSubculture
+              ? [variantSubculture]
+              : landUnitToSubcultures.get(unitKey) || [];
           const cultures = subcultures.map((subculture) => {
-            const parentCulture = subcultureToCulture.get(subculture) || "";
+            const parentCulture = subcultureToCulture.get(subculture) || preferredCulture || "";
             return {
               key: subculture || parentCulture || "__unassigned",
               name:
@@ -7793,6 +7801,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 "Unassigned",
             };
           });
+          if (cultures.length === 0 && preferredCulture) {
+            cultures.push({
+              key: preferredCulture,
+              name: resolveVisualsLoc(`cultures_name_${preferredCulture}`) || preferredCulture,
+            });
+          }
           if (cultures.length > 0) {
             return { cultureKey: cultures[0].key, cultureName: cultures[0].name, cultures };
           }
@@ -7813,7 +7827,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               availableFactions: Array.from(landUnitToFactions.get(unitKey) || []).sort((a, b) => collator.compare(a, b)),
               originPackPath,
               originLabel,
-              ...addCultureMetadata(characterArt.faction),
+              ...addCultureMetadata(characterArt.faction, characterArt.subculture, characterArt.culture),
               caste,
               numMen,
               uiGroupKey,
