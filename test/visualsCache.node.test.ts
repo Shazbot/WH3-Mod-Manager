@@ -132,6 +132,15 @@ describe("Visuals data cache", () => {
     vanilla.unitPermissions = [["shared_main", "faction"]];
     vanilla.factions = [["faction", "emp_subculture"]];
     vanilla.culturesSubcultures = [["emp_subculture", "human"]];
+    vanilla.agentSubtypes = [["shared_subtype", "shared_main"]];
+    vanilla.agentSubtypeSubcultureOverrides = [
+      ["shared_subtype", "emp_subculture", "shared_main", "general"],
+    ];
+    vanilla.campaignCharacterArtSets = [
+      ["shared_art_set", "shared_subtype", "human", "emp_subculture", "faction"],
+    ];
+    vanilla.campaignCharacterArts = [["1", "shared_art_set", 1, 0, "winter", "vanilla_uniform"]];
+    vanilla.agentUniforms = [["vanilla_uniform", "vanilla_campaign_variant", "vanilla_battle_variant"]];
 
     const mod = emptyContribution();
     mod.variants.push(["shared_variant", "mod.variantmeshdefinition"]);
@@ -144,6 +153,21 @@ describe("Visuals data cache", () => {
     mod.factions = [["faction", "chaos_subculture"]];
     mod.factions.push(["mod_faction", "chaos_subculture"]);
     mod.culturesSubcultures = [["chaos_subculture", "chaos"]];
+    mod.agentSubtypes = [["shared_subtype", "shared_main"]];
+    mod.agentSubtypeSubcultureOverrides = [
+      ["shared_subtype", "chaos_subculture", "shared_main", "general"],
+    ];
+    mod.campaignCharacterArtSets = [
+      ["shared_art_set", "shared_subtype", "chaos", "chaos_subculture", "mod_faction"],
+    ];
+    mod.campaignCharacterArts = [
+      ["1", "shared_art_set", 0, 0, "none", "mod_uniform"],
+      ["2", "shared_art_set", 2, 0, "none", "late_uniform"],
+    ];
+    mod.agentUniforms = [
+      ["mod_uniform", "mod_campaign_variant", "mod_battle_variant"],
+      ["late_uniform", "late_campaign_variant", "late_battle_variant"],
+    ];
 
     const merged = mergeVisualsTableContributions(
       [
@@ -167,6 +191,29 @@ describe("Visuals data cache", () => {
     expect(merged.unitToPermissionFactions.get("shared_main")).toEqual(new Set(["faction", "mod_faction"]));
     expect(merged.factionToSubculture.get("faction")).toBe("chaos_subculture");
     expect(merged.subcultureToCulture.get("chaos_subculture")).toBe("chaos");
+    expect(merged.agentSubtypeToAssociatedUnit.get("shared_subtype")).toBe("shared_main");
+    expect(merged.agentSubtypeSubcultureOverrides).toContainEqual({
+      subtype: "shared_subtype",
+      subculture: "chaos_subculture",
+      associatedUnitOverride: "shared_main",
+      agent: "general",
+    });
+    expect(merged.campaignCharacterArtSetsBySubtype.get("shared_subtype")).toEqual([
+      {
+        artSetId: "shared_art_set",
+        culture: "chaos",
+        subculture: "chaos_subculture",
+        faction: "mod_faction",
+      },
+    ]);
+    expect(merged.campaignCharacterArtsByArtSet.get("shared_art_set")).toEqual([
+      { id: "1", level: 0, age: 0, season: "none", uniform: "mod_uniform" },
+      { id: "2", level: 2, age: 0, season: "none", uniform: "late_uniform" },
+    ]);
+    expect(merged.agentUniformByName.get("mod_uniform")).toEqual({
+      filename: "mod_campaign_variant",
+      battleFilename: "mod_battle_variant",
+    });
 
     expect(
       mergeVisualsLocContributions([
