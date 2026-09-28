@@ -127,6 +127,29 @@ describe("campaign character battle art resolution", () => {
     ]);
   });
 
+
+  it("still resolves campaign art when custom-battle permission context is unavailable", () => {
+    const input = baseInput();
+    input.availableFactions = [];
+    input.availableSubcultures = [];
+    input.agentSubtypeToAssociatedUnit.clear();
+    input.agentSubtypeSubcultureOverrides.push({
+      subtype: "test_subtype",
+      subculture: "test_subculture",
+      associatedUnitOverride: "main_lord",
+      agent: "general",
+    });
+    input.campaignCharacterArtSetsBySubtype.set("test_subtype", [
+      {
+        artSetId: "test_art_set",
+        culture: "test_culture",
+        subculture: "test_subculture",
+        faction: "test_faction",
+      },
+    ]);
+    expect(resolveCharacterBattleArt(input)).toHaveLength(1);
+  });
+
   it("does not apply campaign-character art resolution to ordinary units", () => {
     const input = baseInput();
     input.caste = "melee_infantry";
