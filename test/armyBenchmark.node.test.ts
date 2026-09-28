@@ -3,6 +3,7 @@ import {
   ARMY_BENCHMARK_TEMPLATE,
   generateArmyBenchmarkRoster,
   getArmyBenchmarkCategory,
+  loadArmyBenchmarkAssets,
   parseArmyBenchmarkRoster,
   serializeArmyBenchmarkRoster,
   type ArmyBenchmarkCandidate,
@@ -38,6 +39,27 @@ const candidates: ArmyBenchmarkCandidate[] = [
 ];
 
 describe("army benchmark roster", () => {
+  it("keeps loading valid assets when one asset loader rejects", async () => {
+    const result = await loadArmyBenchmarkAssets(
+      [
+        { assetPath: "valid.variantmeshdefinition", entities: 10, names: ["Valid"] },
+        { assetPath: "broken.variantmeshdefinition", entities: 10, names: ["Broken"] },
+      ],
+      async (entry) => {
+        if (entry.assetPath.startsWith("broken")) throw new Error("malformed XML: unexpected </slot>");
+        return entry.assetPath.toUpperCase();
+      },
+    );
+
+    expect(result.loaded.map(({ value }) => value)).toEqual(["VALID.VARIANTMESHDEFINITION"]);
+    expect(result.failures).toEqual([
+      {
+        entry: { assetPath: "broken.variantmeshdefinition", entities: 10, names: ["Broken"] },
+        error: "malformed XML: unexpected </slot>",
+      },
+    ]);
+  });
+
   it("maps the UI roster groups onto the performance-template categories", () => {
     expect(getArmyBenchmarkCategory({ caste: "lord", uiGroupKey: "heroes_agents" })).toBe("Lord");
     expect(getArmyBenchmarkCategory({ caste: "hero", uiGroupKey: "infantry" })).toBe("Hero");

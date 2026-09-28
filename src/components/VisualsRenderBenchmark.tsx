@@ -11,6 +11,7 @@ import {
 import type { VariantMeshSelection } from "../visuals/variantMesh";
 import {
   generateArmyBenchmarkRoster,
+  loadArmyBenchmarkAssets,
   parseArmyBenchmarkRoster,
   serializeArmyBenchmarkRoster,
   type ArmyBenchmarkCandidate,
@@ -51,6 +52,7 @@ type BenchmarkSourceResult = {
   materialTextureObjects: number;
   ktx2: Wh3Ktx2Timing;
   rows: BenchmarkRow[];
+  warnings?: string[];
 };
 
 type BenchmarkComparisonResult = {
@@ -616,7 +618,6 @@ const benchmarkArmySource = async (
     }
   }
 
-  const loadedAssets: LoadedArmyAsset[] = [];
   const previewIds: string[] = [];
   const loadedRoots: THREE.Object3D[] = [];
   const materialTextures = new Set<THREE.Texture>();
@@ -630,9 +631,11 @@ const benchmarkArmySource = async (
 
   try {
     const entries = [...byAssetPath.values()];
-    for (const [index, entry] of entries.entries()) {
+    let entryIndex = 0;
+    const loadResult = await loadArmyBenchmarkAssets(entries, async (entry) => {
+      entryIndex += 1;
       onProgress(
-        `${fileName(source.path)} · loading army unit ${index + 1}/${entries.length} · ${entry.names[0]}`,
+        `${fileName(source.path)} · loading army unit ${entryIndex}/${entries.length} · ${entry.names[0]}`,
       );
       const exportStartedAt = performance.now();
       const exported = await exportVisualsModel(entry.assetPath, sourceMods, [], []);
@@ -655,8 +658,26 @@ const benchmarkArmySource = async (
       }
       loadedRoots.push(root);
       getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
-      loadedAssets.push({ source: root, entities: entry.entities });
       await yieldToUi();
+      return { source: root, entities: entry.entities } satisfies LoadedArmyAsset;
+    });
+
+    const warnings = loadResult.failures.map(({ entry, error }) => {
+      const warning = `Skipped army unit ${entry.names.join(", ")} (${entry.assetPath}): ${error}`;
+      onProgress(`${fileName(source.path)} · ${warning}`);
+      return warning;
+    });
+    if (loadResult.loaded.length === 0) {
+      throw new Error(
+        `No army units could be loaded from ${fileName(source.path)}.${warnings.length > 0 ? ` ${warnings.join(" ")}` : ""}`,
+      );
+    }
+
+    const loadedAssets = loadResult.loaded.map(({ value }) => value);
+    if (warnings.length > 0) {
+      onProgress(
+        `${fileName(source.path)} · continuing with ${loadedAssets.length}/${entries.length} unique army assets`,
+      );
     }
 
     const texturePreloadStartedAt = performance.now();
@@ -665,7 +686,7 @@ const benchmarkArmySource = async (
     const texturePreloadMs = performance.now() - texturePreloadStartedAt;
 
     onProgress(
-      `${fileName(source.path)} · building ${roster.units.length}-unit army · ${roster.units.reduce((sum, unit) => sum + unit.entities, 0).toLocaleString()} entities`,
+      `${fileName(source.path)} · building ${loadedAssets.length}/${entries.length} unique army assets · ${loadedAssets.reduce((sum, asset) => sum + asset.entities, 0).toLocaleString()} entities`,
     );
     const built = await buildArmyGroup(loadedAssets);
     group = built.group;
@@ -696,6 +717,7 @@ const benchmarkArmySource = async (
       materialTextureObjects: materialTextures.size,
       ktx2,
       rows: [row],
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   } finally {
     if (group) {
@@ -1120,6 +1142,16 @@ const VisualsRenderBenchmark = memo(({
 
           {result && (
             <div className="overflow-x-auto">
+              {(result.original.warnings?.length || result.atlas.warnings?.length) ? (
+                <div className="mb-2 rounded border border-amber-800/70 bg-amber-950/30 px-2 py-1 text-left text-amber-300">
+                  <div>Some army VMDs could not be exported and were skipped:</div>
+                  <ul className="list-disc pl-4">
+                    {[...(result.original.warnings ?? []), ...(result.atlas.warnings ?? [])].map((warning, index) => (
+                      <li key={`${index}:${warning}`}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-gray-500">
                 <span>
                   Original export/load/preload: {formatMs(result.original.exportMs)} / {formatMs(result.original.loadMs)} / {formatMs(result.original.texturePreloadMs)} ms

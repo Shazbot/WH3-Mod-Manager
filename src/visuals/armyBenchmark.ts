@@ -47,6 +47,17 @@ export type ArmyBenchmarkRosterFile = {
   units: ArmyBenchmarkRosterUnit[];
 };
 
+export type ArmyBenchmarkAssetEntry = {
+  assetPath: string;
+  entities: number;
+  names: string[];
+};
+
+export type ArmyBenchmarkAssetLoadFailure = {
+  entry: ArmyBenchmarkAssetEntry;
+  error: string;
+};
+
 const TEMPLATE_CATEGORIES = Object.keys(ARMY_BENCHMARK_TEMPLATE) as ArmyBenchmarkCategory[];
 const normalizePath = (value: string) => value.replace(/\//g, "\\").toLowerCase();
 const normalizeKey = (value?: string) => (value || "").trim().toLowerCase();
@@ -127,6 +138,32 @@ const buildPools = (candidates: readonly ArmyBenchmarkCandidate[]) => {
     if (category) pools.get(category)!.push(candidate);
   }
   return pools;
+};
+
+/**
+ * Loads army assets independently so one broken VMD does not abort the complete benchmark.
+ * The caller decides how to surface failures and how to dispose successfully loaded values.
+ */
+export const loadArmyBenchmarkAssets = async <T>(
+  entries: readonly ArmyBenchmarkAssetEntry[],
+  load: (entry: ArmyBenchmarkAssetEntry) => Promise<T>,
+): Promise<{
+  loaded: Array<{ entry: ArmyBenchmarkAssetEntry; value: T }>;
+  failures: ArmyBenchmarkAssetLoadFailure[];
+}> => {
+  const loaded: Array<{ entry: ArmyBenchmarkAssetEntry; value: T }> = [];
+  const failures: ArmyBenchmarkAssetLoadFailure[] = [];
+  for (const entry of entries) {
+    try {
+      loaded.push({ entry, value: await load(entry) });
+    } catch (error) {
+      failures.push({
+        entry,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { loaded, failures };
 };
 
 const shuffled = <T,>(values: readonly T[], random: () => number) => {
