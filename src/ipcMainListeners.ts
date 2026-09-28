@@ -7784,11 +7784,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           preferredCulture = "",
         ) => {
           const variantSubculture = factionToSubculture.get(faction) || "";
+          const candidateSubcultures = landUnitToSubcultures.get(unitKey) || [];
           const subcultures = preferredSubculture
             ? [preferredSubculture]
             : variantSubculture
               ? [variantSubculture]
-              : landUnitToSubcultures.get(unitKey) || [];
+              : preferredCulture
+                ? candidateSubcultures.filter(
+                    (subculture) => subcultureToCulture.get(subculture) === preferredCulture,
+                  )
+                : candidateSubcultures;
           const cultures = subcultures.map((subculture) => {
             const parentCulture = subcultureToCulture.get(subculture) || preferredCulture || "";
             return {
