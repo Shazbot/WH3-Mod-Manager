@@ -236,7 +236,9 @@ if (!gotTheLock) {
     });
 
     mainWebContents.on("console-message", (details) => {
-      if (details.level !== "warning" && details.level !== "error") return;
+      const isWarningOrError = details.level === "warning" || details.level === "error";
+      const isAtlasBenchmarkLog = details.message.startsWith("[atlas benchmark]");
+      if (!isWarningOrError && !isAtlasBenchmarkLog) return;
       console.log(`[renderer console ${details.level}] ${details.message}`, {
         sourceId: details.sourceId,
         lineNumber: details.lineNumber,
