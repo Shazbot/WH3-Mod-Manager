@@ -294,8 +294,14 @@ const estimateResidentVram = (root: THREE.Object3D) => {
   let textureBytes = 0;
   let skeletonBytes = 0;
 
-  const addAttribute = (attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined) => {
-    if (!attribute) return;
+  const addAttribute = (
+    attribute:
+      | THREE.BufferAttribute
+      | THREE.InterleavedBufferAttribute
+      | THREE.GLBufferAttribute
+      | undefined,
+  ) => {
+    if (!attribute || attribute instanceof THREE.GLBufferAttribute) return;
     if (attribute instanceof THREE.InterleavedBufferAttribute) {
       if (seenGeometryBuffers.has(attribute.data)) return;
       seenGeometryBuffers.add(attribute.data);
@@ -312,9 +318,13 @@ const estimateResidentVram = (root: THREE.Object3D) => {
 
     const geometry = child.geometry;
     addAttribute(geometry.index ?? undefined);
-    for (const attribute of Object.values(geometry.attributes)) addAttribute(attribute);
-    for (const attributes of Object.values(geometry.morphAttributes)) {
-      for (const attribute of attributes) addAttribute(attribute);
+    for (const attribute of Object.values(geometry.attributes) as Array<
+      THREE.BufferAttribute | THREE.InterleavedBufferAttribute | THREE.GLBufferAttribute
+    >) addAttribute(attribute);
+    for (const attributes of Object.values(geometry.morphAttributes) as Array<
+      Array<THREE.BufferAttribute | THREE.InterleavedBufferAttribute> | undefined
+    >) {
+      for (const attribute of attributes ?? []) addAttribute(attribute);
     }
 
     const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -334,7 +344,7 @@ const estimateResidentVram = (root: THREE.Object3D) => {
         skeletonBytes += estimateTextureBytes(boneTexture);
       } else {
         // Fallback for render paths that keep bone matrices as uniforms.
-        skeletonBytes += child.skeleton.boneMatrices.byteLength;
+        skeletonBytes += child.skeleton.boneMatrices?.byteLength ?? 0;
       }
     }
   });
