@@ -57,6 +57,8 @@ describe("campaign character battle art resolution", () => {
     expect(resolved).toEqual([
       {
         faction: "",
+        subculture: "",
+        culture: "",
         variantName: "battle_variant",
         artSetId: "test_art_set",
         variantMeshPath: "variantmeshes\\variantmeshdefinitions\\battle_lord.variantmeshdefinition",
@@ -120,6 +122,8 @@ describe("campaign character battle art resolution", () => {
     expect(resolveCharacterBattleArt(input)).toEqual([
       {
         faction: "test_faction",
+        subculture: "test_subculture",
+        culture: "test_culture",
         variantName: "battle_variant",
         artSetId: "test_art_set",
         variantMeshPath: "variantmeshes\\variantmeshdefinitions\\battle_lord.variantmeshdefinition",
