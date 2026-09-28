@@ -44,6 +44,15 @@ type BenchmarkRow = {
   gpuMeanMs?: number;
 };
 
+type BenchmarkArmyAssetStats = {
+  assetPath: string;
+  names: string[];
+  entities: number;
+  meshDrawsPerEntity: number;
+  trianglesPerEntity: number;
+  weightedTriangles: number;
+};
+
 type BenchmarkSourceResult = {
   packPath: string;
   exportMs: number;
@@ -52,6 +61,7 @@ type BenchmarkSourceResult = {
   materialTextureObjects: number;
   ktx2: Wh3Ktx2Timing;
   rows: BenchmarkRow[];
+  armyAssets?: BenchmarkArmyAssetStats[];
   warnings?: string[];
 };
 
@@ -192,6 +202,49 @@ const getRenderableMeshCount = (root: THREE.Object3D) => {
     if (child instanceof THREE.Mesh && child.geometry) count += 1;
   });
   return count;
+};
+
+
+const getGeometryDrawCount = (geometry: THREE.BufferGeometry, start: number, count: number) => {
+  const available = geometry.index?.count ?? geometry.getAttribute("position")?.count ?? 0;
+  const drawStart = Math.max(0, geometry.drawRange.start ?? 0);
+  const drawCount = Number.isFinite(geometry.drawRange.count)
+    ? Math.max(0, geometry.drawRange.count)
+    : available - drawStart;
+  const groupStart = Math.max(start, drawStart);
+  const groupEnd = Math.min(start + count, drawStart + drawCount, available);
+  return Math.max(0, groupEnd - groupStart);
+};
+
+const getStructuralRenderStats = (root: THREE.Object3D) => {
+  let meshDraws = 0;
+  let triangles = 0;
+
+  root.traverseVisible((child) => {
+    if (!(child instanceof THREE.Mesh) || !child.geometry) return;
+    const geometry = child.geometry;
+    const available = geometry.index?.count ?? geometry.getAttribute("position")?.count ?? 0;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+
+    if (Array.isArray(child.material) && geometry.groups.length > 0) {
+      for (const group of geometry.groups) {
+        if (!materials[group.materialIndex ?? 0]) continue;
+        const count = getGeometryDrawCount(geometry, group.start, group.count);
+        if (count <= 0) continue;
+        meshDraws += 1;
+        triangles += count / 3;
+      }
+      return;
+    }
+
+    if (!materials[0]) return;
+    const count = getGeometryDrawCount(geometry, 0, available);
+    if (count <= 0) return;
+    meshDraws += 1;
+    triangles += count / 3;
+  });
+
+  return { meshDraws, triangles };
 };
 
 const getMaterialTextureObjects = (root: THREE.Object3D) => {
@@ -789,6 +842,7 @@ const benchmarkArmySource = async (
   const loadedRoots: THREE.Object3D[] = [];
   const materialTextures = new Set<THREE.Texture>();
   const sharedArmyTextures = new Map<string, THREE.Texture>();
+  const armyAssets: BenchmarkArmyAssetStats[] = [];
   let sharedTextureDuplicates = 0;
   let exportMs = 0;
   let loadMs = 0;
@@ -826,6 +880,15 @@ const benchmarkArmySource = async (
         );
       }
       loadedRoots.push(root);
+      const structural = getStructuralRenderStats(root);
+      armyAssets.push({
+        assetPath: entry.assetPath,
+        names: [...entry.names],
+        entities: entry.entities,
+        meshDrawsPerEntity: structural.meshDraws,
+        trianglesPerEntity: structural.triangles,
+        weightedTriangles: structural.triangles * entry.entities,
+      });
       sharedTextureDuplicates += shareArmyTextures(root, sharedArmyTextures);
       getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
       await yieldToUi();
@@ -910,6 +973,7 @@ const benchmarkArmySource = async (
       materialTextureObjects: materialTextures.size,
       ktx2,
       rows: [row],
+      armyAssets: armyAssets.sort((left, right) => normalizePath(left.assetPath).localeCompare(normalizePath(right.assetPath))),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   } finally {
@@ -1384,6 +1448,65 @@ const VisualsRenderBenchmark = memo(({
                     This asset/appearance does not exercise the atlas mesh-merge benefit, so timing deltas here are mostly noise.
                   </div>
                 )}
+              {result.mode === "army" && result.original.armyAssets && result.atlas.armyAssets && (() => {
+                const atlasByPath = new Map(
+                  result.atlas.armyAssets.map((asset) => [normalizePath(asset.assetPath), asset]),
+                );
+                const differences = result.original.armyAssets.flatMap((originalAsset) => {
+                  const atlasAsset = atlasByPath.get(normalizePath(originalAsset.assetPath));
+                  if (!atlasAsset) return [];
+                  const triangleDeltaPerEntity = atlasAsset.trianglesPerEntity - originalAsset.trianglesPerEntity;
+                  const weightedTriangleDelta = atlasAsset.weightedTriangles - originalAsset.weightedTriangles;
+                  if (Math.abs(weightedTriangleDelta) < 0.0001) return [];
+                  return [{
+                    originalAsset,
+                    atlasAsset,
+                    triangleDeltaPerEntity,
+                    weightedTriangleDelta,
+                  }];
+                });
+                const originalStructuralTriangles = result.original.armyAssets.reduce(
+                  (sum, asset) => sum + asset.weightedTriangles,
+                  0,
+                );
+                const atlasStructuralTriangles = result.atlas.armyAssets.reduce(
+                  (sum, asset) => sum + asset.weightedTriangles,
+                  0,
+                );
+                const renderedDelta = (result.atlas.rows[0]?.triangles ?? 0) - (result.original.rows[0]?.triangles ?? 0);
+                const structuralDelta = atlasStructuralTriangles - originalStructuralTriangles;
+
+                return (
+                  <div className="mb-2 rounded border border-gray-700 bg-gray-900/60 px-2 py-1 text-left text-gray-300">
+                    <div>
+                      Geometry audit: structural triangles {originalStructuralTriangles.toLocaleString()} →{" "}
+                      {atlasStructuralTriangles.toLocaleString()} ({structuralDelta >= 0 ? "+" : ""}{structuralDelta.toLocaleString()});
+                      rendered Δ {renderedDelta >= 0 ? "+" : ""}{renderedDelta.toLocaleString()}.
+                    </div>
+                    {differences.length === 0 ? (
+                      <div className="text-emerald-300">
+                        No per-VMD triangle differences. Any rendered triangle delta is a renderer/frustum-culling artifact.
+                      </div>
+                    ) : (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-amber-300">
+                          {differences.length} VMD{differences.length === 1 ? "" : "s"} changed triangle count
+                        </summary>
+                        <div className="mt-1 space-y-0.5">
+                          {differences.map(({ originalAsset, atlasAsset, triangleDeltaPerEntity, weightedTriangleDelta }) => (
+                            <div key={normalizePath(originalAsset.assetPath)} title={originalAsset.assetPath}>
+                              {originalAsset.names.join(", ")} · {originalAsset.entities} entities ·{" "}
+                              {originalAsset.trianglesPerEntity.toLocaleString()} → {atlasAsset.trianglesPerEntity.toLocaleString()} tri/entity ·{" "}
+                              Δ/entity {triangleDeltaPerEntity >= 0 ? "+" : ""}{triangleDeltaPerEntity.toLocaleString()} ·{" "}
+                              weighted Δ {weightedTriangleDelta >= 0 ? "+" : ""}{weightedTriangleDelta.toLocaleString()}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                );
+              })()}
               <table className="w-full min-w-[900px] border-collapse text-right tabular-nums">
                 <thead className="text-gray-500">
                   <tr>
