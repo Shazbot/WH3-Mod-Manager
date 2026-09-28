@@ -360,12 +360,23 @@ const runPreparedGroup = async (
     throw new Error("Benchmark WebGL context was already lost before rendering.");
   }
 
+  let contextLost = false;
+  const canvas = renderer.domElement;
+  const onContextLost = (event: Event) => {
+    event.preventDefault();
+    contextLost = true;
+  };
+  canvas.addEventListener("webglcontextlost", onContextLost);
+
   scene.add(group);
   frameBenchmarkGroup(camera, group);
 
   try {
     for (let frame = 0; frame < warmupFrames; frame += 1) {
       renderer.render(scene, camera);
+      if (contextLost) {
+        throw new Error("Benchmark WebGL context was lost during warmup.");
+      }
       if ((frame + 1) % 20 === 0) await yieldToUi();
     }
 
@@ -386,13 +397,18 @@ const runPreparedGroup = async (
       for (let frame = 0; frame < sampleFrames; frame += 1) {
         const startedAt = performance.now();
         renderer.render(scene, camera);
+        if (contextLost) {
+          throw new Error("Benchmark WebGL context was lost during measured frames.");
+        }
         cpuSamples.push(performance.now() - startedAt);
         if ((frame + 1) % 20 === 0) await yieldToUi();
       }
     } finally {
-      if (query && gpuTimer) {
+      if (query && gpuTimer && !contextLost && !gpuTimer.gl.isContextLost()) {
         gpuTimer.gl.endQuery(gpuTimer.extension.TIME_ELAPSED_EXT);
         gpuTimer.gl.flush();
+      } else if (contextLost) {
+        query = undefined;
       }
     }
 
@@ -427,16 +443,19 @@ const runPreparedGroup = async (
       gpuMeanMs: gpuTotalMs == null ? undefined : gpuTotalMs / sampleFrames,
     };
   } finally {
+    canvas.removeEventListener("webglcontextlost", onContextLost);
     scene.remove(group);
     disposeSkinnedInstanceResources(group);
     group.clear();
 
     // Skeleton bone textures are allocated lazily per cloned skinned instance.
-    // Flush a frame after disposing them so renderer.info and the next sample do
-    // not inherit GPU resources from earlier instance-count steps.
+    // Flush a frame after disposing them only while the context is healthy. Rendering
+    // into a lost/restoring context can leave invalid shader programs behind.
     renderer.info.reset();
-    renderer.render(scene, camera);
-    renderer.getContext().finish();
+    if (!contextLost && !gl.isContextLost()) {
+      renderer.render(scene, camera);
+      gl.finish();
+    }
     renderer.info.reset();
   }
 };
