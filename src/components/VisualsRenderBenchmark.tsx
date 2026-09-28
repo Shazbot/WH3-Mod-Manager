@@ -48,6 +48,12 @@ type BenchmarkRow = {
   gpuMeanMs?: number;
 };
 
+type BenchmarkMeasurementRow = BenchmarkRow & {
+  cpuSamplesMs: number[];
+  gpuTotalMs?: number;
+  gpuSampleFrames: number;
+};
+
 type BenchmarkArmyMeshStats = {
   name: string;
   triangles: number;
@@ -59,6 +65,7 @@ type BenchmarkArmyAssetStats = {
   names: string[];
   entities: number;
   meshDrawsPerEntity: number;
+  weightedDraws: number;
   trianglesPerEntity: number;
   weightedTriangles: number;
   meshes: BenchmarkArmyMeshStats[];
@@ -76,6 +83,10 @@ type BenchmarkSourceResult = {
   warnings?: string[];
 };
 
+type BenchmarkSourceMeasurement = Omit<BenchmarkSourceResult, "rows"> & {
+  rows: BenchmarkMeasurementRow[];
+};
+
 type BenchmarkComparisonResult = {
   mode: BenchmarkMode;
   assetPath: string;
@@ -83,6 +94,8 @@ type BenchmarkComparisonResult = {
   profile: BenchmarkProfile;
   warmupFrames: number;
   sampleFrames: number;
+  passesPerSource: number;
+  measurementOrder: ["original", "atlas", "atlas", "original"];
   width: number;
   height: number;
   generatedAt: string;
@@ -679,7 +692,7 @@ const runPreparedGroup = async (
   instances: number,
   warmupFrames: number,
   sampleFrames: number,
-): Promise<BenchmarkRow> => {
+): Promise<BenchmarkMeasurementRow> => {
   const gl = renderer.getContext();
   if (gl.isContextLost()) {
     throw new Error("Benchmark WebGL context was already lost before rendering.");
@@ -771,6 +784,9 @@ const runPreparedGroup = async (
       cpuP95Ms: cpu.p95,
       cpuP99Ms: cpu.p99,
       gpuMeanMs: gpuTotalMs == null ? undefined : gpuTotalMs / sampleFrames,
+      cpuSamplesMs,
+      gpuTotalMs,
+      gpuSampleFrames: gpuTotalMs == null ? 0 : sampleFrames,
     };
   } finally {
     canvas.removeEventListener("webglcontextlost", onContextLost);
@@ -798,7 +814,7 @@ const runInstanceCount = (
   instances: number,
   warmupFrames: number,
   sampleFrames: number,
-): Promise<BenchmarkRow> =>
+): Promise<BenchmarkMeasurementRow> =>
   runPreparedGroup(
     renderer,
     scene,
@@ -937,7 +953,7 @@ const benchmarkSource = async (
   warmupFrames: number,
   sampleFrames: number,
   onProgress: (message: string) => void,
-): Promise<BenchmarkSourceResult> => {
+): Promise<BenchmarkSourceMeasurement> => {
   const sourceMods = buildSourceMods(enabledMods, pair, source);
   const exportStartedAt = performance.now();
   const exported = await exportVisualsModel(assetPath, sourceMods, [], variantSelections);
@@ -969,7 +985,7 @@ const benchmarkSource = async (
     renderer.getContext().finish();
     const texturePreloadMs = performance.now() - texturePreloadStartedAt;
 
-    const rows: BenchmarkRow[] = [];
+    const rows: BenchmarkMeasurementRow[] = [];
     for (const instances of BENCHMARK_COUNTS) {
       onProgress(`${fileName(source.path)} · ${instances} instance${instances === 1 ? "" : "s"}`);
       rows.push(
@@ -1013,7 +1029,7 @@ const benchmarkArmySource = async (
   warmupFrames: number,
   sampleFrames: number,
   onProgress: (message: string) => void,
-): Promise<BenchmarkSourceResult> => {
+): Promise<BenchmarkSourceMeasurement> => {
   const sourceMods = buildSourceMods(enabledMods, pair, source);
   const byAssetPath = new Map<string, { assetPath: string; entities: number; names: string[] }>();
   for (const unit of roster.units) {
@@ -1079,6 +1095,7 @@ const benchmarkArmySource = async (
         names: [...entry.names],
         entities: entry.entities,
         meshDrawsPerEntity: structural.meshDraws,
+        weightedDraws: structural.meshDraws * entry.entities,
         trianglesPerEntity: structural.triangles,
         weightedTriangles: structural.triangles * entry.entities,
         meshes: getStructuralMeshStats(root),
@@ -1178,6 +1195,81 @@ const benchmarkArmySource = async (
     for (const root of loadedRoots) disposeLoadedObject(root);
     await Promise.all(previewIds.map((previewId) => releaseVisualsModelPreview(previewId).catch(() => undefined)));
   }
+};
+
+const average = (first: number, second: number) => (first + second) / 2;
+
+const combineKtx2Timing = (first: Wh3Ktx2Timing, second: Wh3Ktx2Timing): Wh3Ktx2Timing => ({
+  // These describe the source payload rather than runtime cost. Use the larger
+  // observation so a warmed/cached second pass cannot make the source look smaller.
+  rawTextureCount: Math.max(first.rawTextureCount, second.rawTextureCount),
+  compressedBytes: Math.max(first.compressedBytes, second.compressedBytes),
+  decodedBytes: Math.max(first.decodedBytes, second.decodedBytes),
+  rawTextureWallMs: average(first.rawTextureWallMs, second.rawTextureWallMs),
+  zstdDecodeMs: average(first.zstdDecodeMs, second.zstdDecodeMs),
+  textureCreateMs: average(first.textureCreateMs, second.textureCreateMs),
+  textureUploadMs: average(first.textureUploadMs, second.textureUploadMs),
+});
+
+const combineMeasurementRows = (
+  first: BenchmarkMeasurementRow,
+  second: BenchmarkMeasurementRow,
+): BenchmarkRow => {
+  if (first.instances !== second.instances) {
+    throw new Error(
+      `Counterbalanced benchmark row mismatch: ${first.instances} vs ${second.instances} instances.`,
+    );
+  }
+
+  const cpuSamples = [...first.cpuSamplesMs, ...second.cpuSamplesMs];
+  const cpu = summarizeCpuTimes(cpuSamples);
+  const gpuTotalMs =
+    (first.gpuTotalMs ?? 0) + (second.gpuTotalMs ?? 0);
+  const gpuSampleFrames = first.gpuSampleFrames + second.gpuSampleFrames;
+
+  return {
+    instances: first.instances,
+    // Structural/resource values should be stable between passes. Keep the first
+    // observation rather than averaging discrete counts.
+    drawCalls: first.drawCalls,
+    triangles: first.triangles,
+    geometries: first.geometries,
+    rendererTextureObjects: first.rendererTextureObjects,
+    estimatedVramBytes: first.estimatedVramBytes,
+    estimatedGeometryVramBytes: first.estimatedGeometryVramBytes,
+    estimatedTextureVramBytes: first.estimatedTextureVramBytes,
+    estimatedSkeletonVramBytes: first.estimatedSkeletonVramBytes,
+    cpuMeanMs: cpu.mean,
+    cpuMedianMs: cpu.median,
+    cpuP95Ms: cpu.p95,
+    cpuP99Ms: cpu.p99,
+    gpuMeanMs: gpuSampleFrames > 0 ? gpuTotalMs / gpuSampleFrames : undefined,
+  };
+};
+
+const combineSourceMeasurements = (
+  first: BenchmarkSourceMeasurement,
+  second: BenchmarkSourceMeasurement,
+): BenchmarkSourceResult => {
+  if (first.rows.length !== second.rows.length) {
+    throw new Error(
+      `Counterbalanced benchmark row-count mismatch: ${first.rows.length} vs ${second.rows.length}.`,
+    );
+  }
+
+  return {
+    packPath: first.packPath,
+    exportMs: average(first.exportMs, second.exportMs),
+    loadMs: average(first.loadMs, second.loadMs),
+    texturePreloadMs: average(first.texturePreloadMs, second.texturePreloadMs),
+    materialTextureObjects: first.materialTextureObjects,
+    ktx2: combineKtx2Timing(first.ktx2, second.ktx2),
+    rows: first.rows.map((row, index) => combineMeasurementRows(row, second.rows[index])),
+    ...(first.armyAssets ? { armyAssets: first.armyAssets } : {}),
+    ...((first.warnings?.length || second.warnings?.length)
+      ? { warnings: Array.from(new Set([...(first.warnings ?? []), ...(second.warnings ?? [])])) }
+      : {}),
+  };
 };
 
 const downloadJson = (fileNameValue: string, value: string) => {
@@ -1318,72 +1410,67 @@ const VisualsRenderBenchmark = memo(({
           );
         }
 
-        let original: BenchmarkSourceResult;
-        let atlas: BenchmarkSourceResult;
-        try {
-          setProgress(`Exporting ${fileName(selectedPair.original.path)}`);
-          original =
-            mode === "army"
-              ? await benchmarkArmySource(
-                  rosterForRun!,
-                  enabledMods,
-                  selectedPair,
-                  selectedPair.original,
-                  environment.renderer,
-                  environment.scene,
-                  environment.camera,
-                  benchmarkProfile.warmupFrames,
-                  benchmarkProfile.sampleFrames,
-                  setProgress,
-                )
-              : await benchmarkSource(
-                  assetPath,
-                  enabledMods,
-                  selectedPair,
-                  selectedPair.original,
-                  variantSelections,
-                  environment.renderer,
-                  environment.scene,
-                  environment.camera,
-                  benchmarkProfile.warmupFrames,
-                  benchmarkProfile.sampleFrames,
-                  setProgress,
-                );
+        let originalFirst: BenchmarkSourceMeasurement;
+        let atlasFirst: BenchmarkSourceMeasurement;
+        let atlasSecond: BenchmarkSourceMeasurement;
+        let originalSecond: BenchmarkSourceMeasurement;
 
+        const runSource = async (
+          source: BenchmarkMod,
+          passLabel: string,
+        ): Promise<BenchmarkSourceMeasurement> => {
+          const progress = (message: string) => setProgress(`${passLabel} · ${message}`);
+          setProgress(`${passLabel} · exporting ${fileName(source.path)}`);
+          return mode === "army"
+            ? benchmarkArmySource(
+                rosterForRun!,
+                enabledMods,
+                selectedPair,
+                source,
+                environment.renderer,
+                environment.scene,
+                environment.camera,
+                benchmarkProfile.warmupFrames,
+                benchmarkProfile.sampleFrames,
+                progress,
+              )
+            : benchmarkSource(
+                assetPath,
+                enabledMods,
+                selectedPair,
+                source,
+                variantSelections,
+                environment.renderer,
+                environment.scene,
+                environment.camera,
+                benchmarkProfile.warmupFrames,
+                benchmarkProfile.sampleFrames,
+                progress,
+              );
+        };
+
+        try {
+          // Counterbalance source order so GC, driver queues, cache warmth, and
+          // sustained GPU clocks do not systematically favor the second source.
+          originalFirst = await runSource(selectedPair.original, "Pass 1/4 · original");
           resetBenchmarkEnvironment(environment);
           await yieldToUi();
 
-          setProgress(`Exporting ${fileName(selectedPair.atlas.path)}`);
-          atlas =
-            mode === "army"
-              ? await benchmarkArmySource(
-                  rosterForRun!,
-                  enabledMods,
-                  selectedPair,
-                  selectedPair.atlas,
-                  environment.renderer,
-                  environment.scene,
-                  environment.camera,
-                  benchmarkProfile.warmupFrames,
-                  benchmarkProfile.sampleFrames,
-                  setProgress,
-                )
-              : await benchmarkSource(
-                  assetPath,
-                  enabledMods,
-                  selectedPair,
-                  selectedPair.atlas,
-                  variantSelections,
-                  environment.renderer,
-                  environment.scene,
-                  environment.camera,
-                  benchmarkProfile.warmupFrames,
-                  benchmarkProfile.sampleFrames,
-                  setProgress,
-                );
+          atlasFirst = await runSource(selectedPair.atlas, "Pass 2/4 · atlas");
+          resetBenchmarkEnvironment(environment);
+          await yieldToUi();
+
+          atlasSecond = await runSource(selectedPair.atlas, "Pass 3/4 · atlas");
+          resetBenchmarkEnvironment(environment);
+          await yieldToUi();
+
+          originalSecond = await runSource(selectedPair.original, "Pass 4/4 · original");
         } finally {
           disposeBenchmarkEnvironment(environment);
         }
+
+        const original = combineSourceMeasurements(originalFirst, originalSecond);
+        const atlas = combineSourceMeasurements(atlasFirst, atlasSecond);
 
         setResult({
           mode,
@@ -1392,6 +1479,8 @@ const VisualsRenderBenchmark = memo(({
           profile,
           warmupFrames: benchmarkProfile.warmupFrames,
           sampleFrames: benchmarkProfile.sampleFrames,
+          passesPerSource: 2,
+          measurementOrder: ["original", "atlas", "atlas", "original"],
           width: BENCHMARK_WIDTH,
           height: BENCHMARK_HEIGHT,
           generatedAt: new Date().toISOString(),
@@ -1537,7 +1626,7 @@ const VisualsRenderBenchmark = memo(({
                     : "Benchmark the same asset and appearance against the original and _atlas pack."
               }
             >
-              {isRunning ? "Running…" : "Run A/B"}
+              {isRunning ? "Running…" : "Run A/B + B/A"}
             </button>
 
             {result && (
@@ -1566,9 +1655,11 @@ const VisualsRenderBenchmark = memo(({
                 The camera fits the full instance grid. Counts: {BENCHMARK_COUNTS.join(", ")}.
               </>
             )}
-            {" "}GPU timing uses EXT_disjoint_timer_query_webgl2 when available. VRAM is an estimate of resident Three.js
-            geometry buffers, material textures, and skeleton bone textures after warmup; driver/shader/internal allocations
-            are not exposed by WebGL. Export/load timings are diagnostic only and can be dominated by WH3AssetHost/browser cache state.
+            {" "}Each source is measured twice in counterbalanced original → atlas → atlas → original order. CPU samples from
+            both passes are pooled before mean/median/p95/p99 are calculated; GPU timing is combined across both passes.
+            GPU timing uses EXT_disjoint_timer_query_webgl2 when available. Est. render VRAM covers resident Three.js geometry
+            buffers, material textures, and skeleton bone textures after warmup; driver/shader/internal allocations are not
+            exposed by WebGL. Export/load timings are averaged across the two passes and remain diagnostic only.
           </div>
 
           {mode === "army" && armyRoster && (
@@ -1629,7 +1720,7 @@ const VisualsRenderBenchmark = memo(({
                   KTX2 decode wall: {formatMs(result.original.ktx2.rawTextureWallMs)} → {formatMs(result.atlas.ktx2.rawTextureWallMs)} ms
                 </span>
                 <span>
-                  {result.warmupFrames} warmup + {result.sampleFrames} measured frames
+                  {result.passesPerSource} passes/source · {result.warmupFrames} warmup + {result.sampleFrames} measured frames/pass
                   {result.mode === "army" ? " for the whole army" : " per count"}
                 </span>
               </div>
@@ -1668,11 +1759,23 @@ const VisualsRenderBenchmark = memo(({
                   (sum, asset) => sum + asset.weightedTriangles,
                   0,
                 );
+                const originalStructuralDraws = result.original.armyAssets.reduce(
+                  (sum, asset) => sum + asset.weightedDraws,
+                  0,
+                );
+                const atlasStructuralDraws = result.atlas.armyAssets.reduce(
+                  (sum, asset) => sum + asset.weightedDraws,
+                  0,
+                );
                 const renderedDelta = (result.atlas.rows[0]?.triangles ?? 0) - (result.original.rows[0]?.triangles ?? 0);
                 const structuralDelta = atlasStructuralTriangles - originalStructuralTriangles;
 
                 return (
                   <div className="mb-2 rounded border border-gray-700 bg-gray-900/60 px-2 py-1 text-left text-gray-300">
+                    <div>
+                      Structural draws: {originalStructuralDraws.toLocaleString()} → {atlasStructuralDraws.toLocaleString()}{" "}
+                      ({formatDelta(originalStructuralDraws, atlasStructuralDraws)}).
+                    </div>
                     <div>
                       Geometry audit: structural triangles {originalStructuralTriangles.toLocaleString()} →{" "}
                       {atlasStructuralTriangles.toLocaleString()} ({structuralDelta >= 0 ? "+" : ""}{structuralDelta.toLocaleString()});
@@ -1728,7 +1831,7 @@ const VisualsRenderBenchmark = memo(({
                   </div>
                 );
               })()}
-              <table className="w-full min-w-[900px] border-collapse text-right tabular-nums">
+              <table className="w-full min-w-[1250px] border-collapse text-right tabular-nums">
                 <thead className="text-gray-500">
                   <tr>
                     <th className="border-b border-gray-800 px-1 py-1 text-left">
@@ -1737,15 +1840,18 @@ const VisualsRenderBenchmark = memo(({
                     <th className="border-b border-gray-800 px-1 py-1">Calls orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">Calls atlas</th>
                     <th className="border-b border-gray-800 px-1 py-1">Δ calls</th>
+                    <th className="border-b border-gray-800 px-1 py-1">CPU median orig</th>
+                    <th className="border-b border-gray-800 px-1 py-1">CPU median atlas</th>
+                    <th className="border-b border-gray-800 px-1 py-1">Δ median</th>
                     <th className="border-b border-gray-800 px-1 py-1">CPU p95 orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">CPU p95 atlas</th>
-                    <th className="border-b border-gray-800 px-1 py-1">Δ CPU</th>
+                    <th className="border-b border-gray-800 px-1 py-1">Δ p95</th>
                     <th className="border-b border-gray-800 px-1 py-1">GPU avg orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">GPU avg atlas</th>
                     <th className="border-b border-gray-800 px-1 py-1">Δ GPU</th>
-                    <th className="border-b border-gray-800 px-1 py-1">VRAM orig</th>
-                    <th className="border-b border-gray-800 px-1 py-1">VRAM atlas</th>
-                    <th className="border-b border-gray-800 px-1 py-1">Δ VRAM</th>
+                    <th className="border-b border-gray-800 px-1 py-1">Est. render VRAM orig</th>
+                    <th className="border-b border-gray-800 px-1 py-1">Est. render VRAM atlas</th>
+                    <th className="border-b border-gray-800 px-1 py-1">Δ est. VRAM</th>
                     <th className="border-b border-gray-800 px-1 py-1">Triangles orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">Triangles atlas</th>
                   </tr>
@@ -1761,6 +1867,11 @@ const VisualsRenderBenchmark = memo(({
                         <td className="px-1 py-1">{atlasRow.drawCalls.toLocaleString()}</td>
                         <td className="px-1 py-1 text-fuchsia-200">
                           {formatDelta(originalRow.drawCalls, atlasRow.drawCalls)}
+                        </td>
+                        <td className="px-1 py-1">{formatMs(originalRow.cpuMedianMs)} ms</td>
+                        <td className="px-1 py-1">{formatMs(atlasRow.cpuMedianMs)} ms</td>
+                        <td className="px-1 py-1 text-fuchsia-200">
+                          {formatDelta(originalRow.cpuMedianMs, atlasRow.cpuMedianMs)}
                         </td>
                         <td className="px-1 py-1">{formatMs(originalRow.cpuP95Ms)} ms</td>
                         <td className="px-1 py-1">{formatMs(atlasRow.cpuP95Ms)} ms</td>
