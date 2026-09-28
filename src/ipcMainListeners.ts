@@ -685,6 +685,11 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     unitPermissions: [],
     factions: [],
     culturesSubcultures: [],
+    agentSubtypes: [],
+    agentSubtypeSubcultureOverrides: [],
+    campaignCharacterArtSets: [],
+    campaignCharacterArts: [],
+    agentUniforms: [],
   };
 
   const forEachTableRow = (tableName: string, visit: (schemaFieldRow: AmendedSchemaField[]) => void) => {
@@ -775,6 +780,60 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
   forEachTableRow("land_units_tables", (row) => {
     const unitKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
     if (unitKey) contribution.landUnits.push(unitKey);
+  });
+  forEachTableRow("agent_subtypes_tables", (row) => {
+    const subtype = row.find((field) => field.name === "key")?.resolvedKeyValue || "";
+    if (!subtype) return;
+    const associatedUnitOverride =
+      row.find((field) => field.name === "associated_unit_override")?.resolvedKeyValue || "";
+    contribution.agentSubtypes!.push([subtype, associatedUnitOverride]);
+  });
+  forEachTableRow("agent_subtype_subculture_overrides_tables", (row) => {
+    const subtype = row.find((field) => field.name === "subtype")?.resolvedKeyValue || "";
+    const subculture = row.find((field) => field.name === "subculture")?.resolvedKeyValue || "";
+    const associatedUnitOverride =
+      row.find((field) => field.name === "associated_unit_override")?.resolvedKeyValue || "";
+    const agent = row.find((field) => field.name === "agent")?.resolvedKeyValue || "";
+    if (subtype && subculture) {
+      contribution.agentSubtypeSubcultureOverrides!.push([subtype, subculture, associatedUnitOverride, agent]);
+    }
+  });
+  forEachTableRow("campaign_character_art_sets_tables", (row) => {
+    const artSetId = row.find((field) => field.name === "art_set_id")?.resolvedKeyValue || "";
+    const agentSubtype = row.find((field) => field.name === "agent_subtype")?.resolvedKeyValue || "";
+    if (!artSetId || !agentSubtype) return;
+    contribution.campaignCharacterArtSets!.push([
+      artSetId,
+      agentSubtype,
+      row.find((field) => field.name === "culture")?.resolvedKeyValue || "",
+      row.find((field) => field.name === "subculture")?.resolvedKeyValue || "",
+      row.find((field) => field.name === "faction")?.resolvedKeyValue || "",
+    ]);
+  });
+  forEachTableRow("campaign_character_arts_tables", (row) => {
+    const id = row.find((field) => field.name === "id")?.resolvedKeyValue || "";
+    const artSetId = row.find((field) => field.name === "art_set_id")?.resolvedKeyValue || "";
+    const uniform = row.find((field) => field.name === "uniform")?.resolvedKeyValue || "";
+    if (!id || !artSetId || !uniform) return;
+    const level = Number(row.find((field) => field.name === "level")?.resolvedKeyValue || 0);
+    const age = Number(row.find((field) => field.name === "age")?.resolvedKeyValue || 0);
+    contribution.campaignCharacterArts!.push([
+      id,
+      artSetId,
+      Number.isFinite(level) ? level : 0,
+      Number.isFinite(age) ? age : 0,
+      row.find((field) => field.name === "season")?.resolvedKeyValue || "",
+      uniform,
+    ]);
+  });
+  forEachTableRow("agent_uniforms_tables", (row) => {
+    const uniformName = row.find((field) => field.name === "uniform_name")?.resolvedKeyValue || "";
+    if (!uniformName) return;
+    contribution.agentUniforms!.push([
+      uniformName,
+      row.find((field) => field.name === "filename")?.resolvedKeyValue || "",
+      row.find((field) => field.name === "battle_filename")?.resolvedKeyValue || "",
+    ]);
   });
 
   return contribution;
@@ -7452,6 +7511,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             "ui_unit_groupings_tables",
             "units_custom_battle_permissions_tables",
             "unit_variants_tables",
+            "agent_subtypes_tables",
+            "agent_subtype_subculture_overrides_tables",
+            "campaign_character_art_sets_tables",
+            "campaign_character_arts_tables",
+            "agent_uniforms_tables",
             "factions_tables",
             "cultures_subcultures_tables",
             "variants_tables",
@@ -7620,6 +7684,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         unitToPermissionFactions,
         factionToSubculture,
         subcultureToCulture,
+        agentSubtypeToAssociatedUnit,
+        agentSubtypeSubcultureOverrides,
+        campaignCharacterArtSetsBySubtype,
+        campaignCharacterArtsByArtSet,
+        agentUniformByName,
       } = mergeVisualsTableContributions(
         toTableContributions(tablePathsInMergeOrder),
         toTableContributions([...dbPriorityMods.map((mod) => mod.path), dbPackPath]),
@@ -7649,6 +7718,79 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         landUnitToFactions.set(landUnitKey, availableFactions);
         if (subcultures.size > 0) landUnitToSubcultures.set(landUnitKey, Array.from(subcultures));
       }
+      const landUnitToMainUnits = new Map<string, string[]>();
+      for (const [mainUnitKey, landUnitKey] of mainUnitToLandUnit) {
+        const mainUnits = landUnitToMainUnits.get(landUnitKey) || [];
+        mainUnits.push(mainUnitKey);
+        landUnitToMainUnits.set(landUnitKey, mainUnits);
+      }
+      const normalizeOptionalVariantKey = (value: string | undefined) => {
+        const trimmed = value?.trim() || "";
+        return trimmed && trimmed !== "." ? trimmed : undefined;
+      };
+      const resolveCharacterArtRows = (landUnitKey: string) => {
+        const caste = (unitKeyToCaste.get(landUnitKey) || "").trim().toLowerCase();
+        if (caste !== "lord" && caste !== "hero") return [];
+        const mainUnits = new Set(landUnitToMainUnits.get(landUnitKey) || []);
+        if (mainUnits.size === 0 && mainUnitToLandUnit.get(landUnitKey) === landUnitKey) mainUnits.add(landUnitKey);
+        if (mainUnits.size === 0) return [];
+
+        const availableFactions = landUnitToFactions.get(landUnitKey) || new Set<string>();
+        const availableSubcultures = new Set(landUnitToSubcultures.get(landUnitKey) || []);
+        const availableCultures = new Set(
+          Array.from(availableSubcultures)
+            .map((subculture) => subcultureToCulture.get(subculture) || "")
+            .filter(Boolean),
+        );
+        const subtypes = new Set<string>();
+        for (const [subtype, associatedUnit] of agentSubtypeToAssociatedUnit) {
+          if (associatedUnit && mainUnits.has(associatedUnit)) subtypes.add(subtype);
+        }
+        for (const override of agentSubtypeSubcultureOverrides) {
+          if (
+            override.associatedUnitOverride
+            && mainUnits.has(override.associatedUnitOverride)
+            && (!override.subculture || availableSubcultures.has(override.subculture))
+          ) {
+            subtypes.add(override.subtype);
+          }
+        }
+
+        const resolved = new Map<
+          string,
+          { faction: string; variantName: string; artSetId: string; variantMeshPath: string }
+        >();
+        for (const subtype of subtypes) {
+          for (const artSet of campaignCharacterArtSetsBySubtype.get(subtype) || []) {
+            if (artSet.faction && !availableFactions.has(artSet.faction)) continue;
+            if (artSet.subculture && !availableSubcultures.has(artSet.subculture)) continue;
+            if (artSet.culture && !availableCultures.has(artSet.culture)) continue;
+            const art = (campaignCharacterArtsByArtSet.get(artSet.artSetId) || [])[0];
+            if (!art?.uniform) continue;
+            const uniform = agentUniformByName.get(art.uniform);
+            if (!uniform) continue;
+            const variantName =
+              normalizeOptionalVariantKey(uniform.battleFilename)
+              ?? normalizeOptionalVariantKey(uniform.filename);
+            if (!variantName) continue;
+            const variantFilename = variantsByName.get(variantName);
+            if (!variantFilename?.trim()) continue;
+            const variantMeshPath = toVariantMeshDefinitionPath(variantFilename);
+            if (!variantMeshPath) continue;
+            const key = `${variantMeshPath.toLowerCase()}\0${artSet.faction}`;
+            if (!resolved.has(key)) {
+              resolved.set(key, {
+                faction: artSet.faction,
+                variantName,
+                artSetId: artSet.artSetId,
+                variantMeshPath,
+              });
+            }
+          }
+        }
+        return Array.from(resolved.values());
+      };
+
       const visualsUnits = [] as {
         unitKey: string;
         faction: string;
@@ -7708,6 +7850,29 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           const unassigned = { key: "__unassigned", name: "Unassigned" };
           return { cultureKey: unassigned.key, cultureName: unassigned.name, cultures: [unassigned] };
         };
+        const characterArtRows = resolveCharacterArtRows(unitKey);
+        if (characterArtRows.length > 0) {
+          for (const characterArt of characterArtRows) {
+            visualsUnits.push({
+              unitKey,
+              faction: characterArt.faction,
+              localizedName,
+              variantName: characterArt.variantName,
+              variantMeshPath: characterArt.variantMeshPath,
+              unitVariantName: characterArt.artSetId,
+              variantDetails: variantDetailsByName.get(characterArt.variantName),
+              availableFactions: Array.from(landUnitToFactions.get(unitKey) || []).sort((a, b) => collator.compare(a, b)),
+              originPackPath,
+              originLabel,
+              ...addCultureMetadata(characterArt.faction),
+              caste,
+              numMen,
+              uiGroupKey,
+            });
+          }
+          continue;
+        }
+
         if (!rows || rows.length === 0) {
           visualsUnits.push({
             unitKey,
