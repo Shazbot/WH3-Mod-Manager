@@ -154,6 +154,39 @@ describe("campaign character battle art resolution", () => {
     expect(resolveCharacterBattleArt(input)).toHaveLength(1);
   });
 
+  it("keeps separate scoped art sets even when they resolve to the same battle VMD", () => {
+    const input = baseInput();
+    input.availableSubcultures = ["subculture_a", "subculture_b"];
+    input.subcultureToCulture = new Map([
+      ["subculture_a", "culture_a"],
+      ["subculture_b", "culture_b"],
+    ]);
+    input.campaignCharacterArtSetsBySubtype.set("test_subtype", [
+      {
+        artSetId: "test_art_set",
+        culture: "culture_a",
+        subculture: "subculture_a",
+        faction: "",
+      },
+      {
+        artSetId: "test_art_set_2",
+        culture: "culture_b",
+        subculture: "subculture_b",
+        faction: "",
+      },
+    ]);
+    input.campaignCharacterArtsByArtSet.set("test_art_set_2", [
+      {
+        id: "2",
+        level: 0,
+        age: 0,
+        season: "none",
+        uniform: "test_uniform",
+      },
+    ]);
+    expect(resolveCharacterBattleArt(input)).toHaveLength(2);
+  });
+
   it("does not apply campaign-character art resolution to ordinary units", () => {
     const input = baseInput();
     input.caste = "melee_infantry";
