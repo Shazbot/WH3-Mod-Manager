@@ -168,6 +168,7 @@ import {
   type VisualsTableContribution,
   type VisualsVanillaSignatureInputs,
 } from "./visuals/cache";
+import { resolveCharacterBattleArt } from "./visuals/characterArt";
 import { toVariantMeshDefinitionPath } from "./visuals/paths";
 import {
   collectVisualDependencyClosure,
@@ -7724,72 +7725,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         mainUnits.push(mainUnitKey);
         landUnitToMainUnits.set(landUnitKey, mainUnits);
       }
-      const normalizeOptionalVariantKey = (value: string | undefined) => {
-        const trimmed = value?.trim() || "";
-        return trimmed && trimmed !== "." ? trimmed : undefined;
-      };
-      const resolveCharacterArtRows = (landUnitKey: string) => {
-        const caste = (unitKeyToCaste.get(landUnitKey) || "").trim().toLowerCase();
-        if (caste !== "lord" && caste !== "hero") return [];
-        const mainUnits = new Set(landUnitToMainUnits.get(landUnitKey) || []);
-        if (mainUnits.size === 0 && mainUnitToLandUnit.get(landUnitKey) === landUnitKey) mainUnits.add(landUnitKey);
-        if (mainUnits.size === 0) return [];
-
-        const availableFactions = landUnitToFactions.get(landUnitKey) || new Set<string>();
-        const availableSubcultures = new Set(landUnitToSubcultures.get(landUnitKey) || []);
-        const availableCultures = new Set(
-          Array.from(availableSubcultures)
-            .map((subculture) => subcultureToCulture.get(subculture) || "")
-            .filter(Boolean),
-        );
-        const subtypes = new Set<string>();
-        for (const [subtype, associatedUnit] of agentSubtypeToAssociatedUnit) {
-          if (associatedUnit && mainUnits.has(associatedUnit)) subtypes.add(subtype);
-        }
-        for (const override of agentSubtypeSubcultureOverrides) {
-          if (
-            override.associatedUnitOverride
-            && mainUnits.has(override.associatedUnitOverride)
-            && (!override.subculture || availableSubcultures.has(override.subculture))
-          ) {
-            subtypes.add(override.subtype);
-          }
-        }
-
-        const resolved = new Map<
-          string,
-          { faction: string; variantName: string; artSetId: string; variantMeshPath: string }
-        >();
-        for (const subtype of subtypes) {
-          for (const artSet of campaignCharacterArtSetsBySubtype.get(subtype) || []) {
-            if (artSet.faction && !availableFactions.has(artSet.faction)) continue;
-            if (artSet.subculture && !availableSubcultures.has(artSet.subculture)) continue;
-            if (artSet.culture && !availableCultures.has(artSet.culture)) continue;
-            const art = (campaignCharacterArtsByArtSet.get(artSet.artSetId) || [])[0];
-            if (!art?.uniform) continue;
-            const uniform = agentUniformByName.get(art.uniform);
-            if (!uniform) continue;
-            const variantName =
-              normalizeOptionalVariantKey(uniform.battleFilename)
-              ?? normalizeOptionalVariantKey(uniform.filename);
-            if (!variantName) continue;
-            const variantFilename = variantsByName.get(variantName);
-            if (!variantFilename?.trim()) continue;
-            const variantMeshPath = toVariantMeshDefinitionPath(variantFilename);
-            if (!variantMeshPath) continue;
-            const key = `${variantMeshPath.toLowerCase()}\0${artSet.faction}`;
-            if (!resolved.has(key)) {
-              resolved.set(key, {
-                faction: artSet.faction,
-                variantName,
-                artSetId: artSet.artSetId,
-                variantMeshPath,
-              });
-            }
-          }
-        }
-        return Array.from(resolved.values());
-      };
+      const resolveCharacterArtRows = (landUnitKey: string) =>
+        resolveCharacterBattleArt({
+          caste: unitKeyToCaste.get(landUnitKey) || "",
+          mainUnitKeys: landUnitToMainUnits.get(landUnitKey) || [],
+          availableFactions: landUnitToFactions.get(landUnitKey) || [],
+          availableSubcultures: landUnitToSubcultures.get(landUnitKey) || [],
+          subcultureToCulture,
+          agentSubtypeToAssociatedUnit,
+          agentSubtypeSubcultureOverrides,
+          campaignCharacterArtSetsBySubtype,
+          campaignCharacterArtsByArtSet,
+          agentUniformByName,
+          variantsByName,
+        });
 
       const visualsUnits = [] as {
         unitKey: string;
