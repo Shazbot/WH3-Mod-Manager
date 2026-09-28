@@ -184,6 +184,14 @@ const waitForGpuQuery = async (
   return disjoint || !Number.isFinite(nanoseconds) ? undefined : nanoseconds / 1_000_000;
 };
 
+const getRenderableMeshCount = (root: THREE.Object3D) => {
+  let count = 0;
+  root.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.geometry) count += 1;
+  });
+  return count;
+};
+
 const getMaterialTextureObjects = (root: THREE.Object3D) => {
   const textures = new Set<THREE.Texture>();
   root.traverse((child) => {
@@ -281,6 +289,11 @@ const runPreparedGroup = async (
   warmupFrames: number,
   sampleFrames: number,
 ): Promise<BenchmarkRow> => {
+  const gl = renderer.getContext();
+  if (gl.isContextLost()) {
+    throw new Error("Benchmark WebGL context was already lost before rendering.");
+  }
+
   scene.add(group);
   frameBenchmarkGroup(camera, group);
 
@@ -290,7 +303,10 @@ const runPreparedGroup = async (
       if ((frame + 1) % 20 === 0) await yieldToUi();
     }
 
-    renderer.getContext().finish();
+    gl.finish();
+    if (gl.isContextLost()) {
+      throw new Error("Benchmark WebGL context was lost during warmup.");
+    }
 
     const cpuSamples: number[] = [];
     const gpuTimer = getGpuTimer(renderer);
@@ -312,6 +328,10 @@ const runPreparedGroup = async (
         gpuTimer.gl.endQuery(gpuTimer.extension.TIME_ELAPSED_EXT);
         gpuTimer.gl.flush();
       }
+    }
+
+    if (gl.isContextLost()) {
+      throw new Error("Benchmark WebGL context was lost during measured frames.");
     }
 
     const cpu = summarizeCpuTimes(cpuSamples);
@@ -442,9 +462,14 @@ const createBenchmarkEnvironment = () => {
   return { renderer, scene, camera };
 };
 
+const resetBenchmarkEnvironment = (environment: ReturnType<typeof createBenchmarkEnvironment>) => {
+  environment.renderer.renderLists.dispose();
+  environment.renderer.info.reset();
+  environment.renderer.getContext().finish();
+};
+
 const disposeBenchmarkEnvironment = (environment: ReturnType<typeof createBenchmarkEnvironment>) => {
   environment.renderer.dispose();
-  environment.renderer.forceContextLoss();
 };
 
 const buildSourceMods = (
@@ -613,6 +638,13 @@ const benchmarkArmySource = async (
       const gltf = await loader.loadAsync(exported.url);
       loadMs += performance.now() - loadStartedAt;
       const root = gltf.scene;
+      const renderableMeshCount = getRenderableMeshCount(root);
+      if (renderableMeshCount === 0) {
+        throw new Error(
+          `${fileName(source.path)} exported an empty army GLB for ${entry.assetPath}. `
+          + "The selected source pack does not appear to provide a renderable version of this VMD.",
+        );
+      }
       loadedRoots.push(root);
       getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
       loadedAssets.push({ source: root, entities: entry.entities });
@@ -629,6 +661,9 @@ const benchmarkArmySource = async (
     );
     const built = await buildArmyGroup(loadedAssets);
     group = built.group;
+    if (getRenderableMeshCount(group) === 0) {
+      throw new Error(`${fileName(source.path)} produced an empty army render group.`);
+    }
     onProgress(
       `${fileName(source.path)} · measuring whole army · ${built.totalEntities.toLocaleString()} entities`,
     );
@@ -791,18 +826,19 @@ const VisualsRenderBenchmark = memo(({
         if (mode === "army" && !rosterForRun) {
           throw new Error("No army benchmark roster is available.");
         }
-        let originalEnvironment: ReturnType<typeof createBenchmarkEnvironment>;
+        let environment: ReturnType<typeof createBenchmarkEnvironment>;
         try {
-          originalEnvironment = createBenchmarkEnvironment();
+          environment = createBenchmarkEnvironment();
         } catch (rendererError) {
           throw new Error(
             rendererError instanceof Error
               ? rendererError.message
-              : "Unable to create the original benchmark WebGL renderer.",
+              : "Unable to create the benchmark WebGL renderer.",
           );
         }
 
         let original: BenchmarkSourceResult;
+        let atlas: BenchmarkSourceResult;
         try {
           setProgress(`Exporting ${fileName(selectedPair.original.path)}`);
           original =
@@ -812,9 +848,9 @@ const VisualsRenderBenchmark = memo(({
                   enabledMods,
                   selectedPair,
                   selectedPair.original,
-                  originalEnvironment.renderer,
-                  originalEnvironment.scene,
-                  originalEnvironment.camera,
+                  environment.renderer,
+                  environment.scene,
+                  environment.camera,
                   benchmarkProfile.warmupFrames,
                   benchmarkProfile.sampleFrames,
                   setProgress,
@@ -825,32 +861,17 @@ const VisualsRenderBenchmark = memo(({
                   selectedPair,
                   selectedPair.original,
                   variantSelections,
-                  originalEnvironment.renderer,
-                  originalEnvironment.scene,
-                  originalEnvironment.camera,
+                  environment.renderer,
+                  environment.scene,
+                  environment.camera,
                   benchmarkProfile.warmupFrames,
                   benchmarkProfile.sampleFrames,
                   setProgress,
                 );
-        } finally {
-          disposeBenchmarkEnvironment(originalEnvironment);
-        }
 
-        await yieldToUi();
+          resetBenchmarkEnvironment(environment);
+          await yieldToUi();
 
-        let atlasEnvironment: ReturnType<typeof createBenchmarkEnvironment>;
-        try {
-          atlasEnvironment = createBenchmarkEnvironment();
-        } catch (rendererError) {
-          throw new Error(
-            rendererError instanceof Error
-              ? rendererError.message
-              : "Unable to create the atlas benchmark WebGL renderer.",
-          );
-        }
-
-        let atlas: BenchmarkSourceResult;
-        try {
           setProgress(`Exporting ${fileName(selectedPair.atlas.path)}`);
           atlas =
             mode === "army"
@@ -859,9 +880,9 @@ const VisualsRenderBenchmark = memo(({
                   enabledMods,
                   selectedPair,
                   selectedPair.atlas,
-                  atlasEnvironment.renderer,
-                  atlasEnvironment.scene,
-                  atlasEnvironment.camera,
+                  environment.renderer,
+                  environment.scene,
+                  environment.camera,
                   benchmarkProfile.warmupFrames,
                   benchmarkProfile.sampleFrames,
                   setProgress,
@@ -872,15 +893,15 @@ const VisualsRenderBenchmark = memo(({
                   selectedPair,
                   selectedPair.atlas,
                   variantSelections,
-                  atlasEnvironment.renderer,
-                  atlasEnvironment.scene,
-                  atlasEnvironment.camera,
+                  environment.renderer,
+                  environment.scene,
+                  environment.camera,
                   benchmarkProfile.warmupFrames,
                   benchmarkProfile.sampleFrames,
                   setProgress,
                 );
         } finally {
-          disposeBenchmarkEnvironment(atlasEnvironment);
+          disposeBenchmarkEnvironment(environment);
         }
 
         setResult({
