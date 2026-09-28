@@ -129,7 +129,7 @@ describe("Visuals data cache", () => {
     vanilla.mainUnits = [["shared_unit", "melee_infantry", 100, "infantry_group"]];
     vanilla.uiUnitGroupings = [["infantry_group", "infantry"]];
     vanilla.mainUnitLinks = [["shared_main", "shared_unit"]];
-    vanilla.unitPermissions = [["shared_main", "faction"]];
+    vanilla.unitPermissions = [["shared_main", "faction", "vanilla_uniform"]];
     vanilla.factions = [["faction", "emp_subculture"]];
     vanilla.culturesSubcultures = [["emp_subculture", "human"]];
     vanilla.agentSubtypes = [["shared_subtype", "shared_main"]];
@@ -149,7 +149,10 @@ describe("Visuals data cache", () => {
     mod.mainUnits = [["shared_unit", "lord", 1, "lord_group"]];
     mod.uiUnitGroupings = [["lord_group", "commander"]];
     mod.mainUnitLinks = [["shared_main", "shared_unit"]];
-    mod.unitPermissions = [["shared_main", "mod_faction"]];
+    mod.unitPermissions = [
+      ["shared_main", "faction", "mod_uniform"],
+      ["shared_main", "mod_faction", "mod_faction_uniform"],
+    ];
     mod.factions = [["faction", "chaos_subculture"]];
     mod.factions.push(["mod_faction", "chaos_subculture"]);
     mod.culturesSubcultures = [["chaos_subculture", "chaos"]];
@@ -189,6 +192,10 @@ describe("Visuals data cache", () => {
     expect(merged.unitKeyToUiGroupKey.get("shared_unit")).toBe("commander");
     expect(merged.mainUnitToLandUnit.get("shared_main")).toBe("shared_unit");
     expect(merged.unitToPermissionFactions.get("shared_main")).toEqual(new Set(["faction", "mod_faction"]));
+    expect(merged.unitToPermissionRows.get("shared_main")).toEqual([
+      { faction: "faction", generalUniform: "mod_uniform" },
+      { faction: "mod_faction", generalUniform: "mod_faction_uniform" },
+    ]);
     expect(merged.factionToSubculture.get("faction")).toBe("chaos_subculture");
     expect(merged.subcultureToCulture.get("chaos_subculture")).toBe("chaos");
     expect(merged.agentSubtypeToAssociatedUnit.get("shared_subtype")).toBe("shared_main");

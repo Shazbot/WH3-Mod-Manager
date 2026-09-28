@@ -168,7 +168,7 @@ import {
   type VisualsTableContribution,
   type VisualsVanillaSignatureInputs,
 } from "./visuals/cache";
-import { resolveCharacterBattleArt } from "./visuals/characterArt";
+import { resolveAgentSubtypeKeys, resolveCharacterBattleArt } from "./visuals/characterArt";
 import { toVariantMeshDefinitionPath } from "./visuals/paths";
 import {
   collectVisualDependencyClosure,
@@ -653,7 +653,7 @@ const getVisualsVanillaSignature = async (
 ): Promise<{ signature: string; signatureInputs: VisualsVanillaSignatureInputs }> => {
   const identity = await getVisualsPackIdentity(dbPackPath);
   const signatureInputs: VisualsVanillaSignatureInputs = {
-    feature: 1,
+    feature: 2,
     game,
     schema: getVisualsSchemaHash(game),
     identities: [[nodePath.resolve(dbPackPath), identity?.size ?? -1, identity?.mtimeMs ?? -1]],
@@ -764,7 +764,10 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
   forEachTableRow("units_custom_battle_permissions_tables", (row) => {
     const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
     const factionKey = row.find((field) => field.name === "faction")?.resolvedKeyValue;
-    if (unitKey && factionKey) contribution.unitPermissions!.push([unitKey, factionKey]);
+    if (unitKey && factionKey) {
+      const generalUniform = row.find((field) => field.name === "general_uniform")?.resolvedKeyValue || "";
+      contribution.unitPermissions!.push([unitKey, factionKey, generalUniform]);
+    }
   });
   forEachTableRow("factions_tables", (row) => {
     const factionKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
@@ -3340,7 +3343,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 19,
+          feature: 20,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -7683,6 +7686,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         unitKeyToUiGroupKey,
         mainUnitToLandUnit,
         unitToPermissionFactions,
+        unitToPermissionRows,
         factionToSubculture,
         subcultureToCulture,
         agentSubtypeToAssociatedUnit,
@@ -7725,15 +7729,37 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         mainUnits.push(mainUnitKey);
         landUnitToMainUnits.set(landUnitKey, mainUnits);
       }
+      const landUnitToPermissionRows = new Map<string, Array<{ faction: string; generalUniform: string }>>();
+      for (const [mainUnitKey, permissionRows] of unitToPermissionRows) {
+        const landUnitKey = mainUnitToLandUnit.get(mainUnitKey) || (landUnitKeys.has(mainUnitKey) ? mainUnitKey : undefined);
+        if (!landUnitKey) continue;
+        const rows = landUnitToPermissionRows.get(landUnitKey) || [];
+        for (const permission of permissionRows) {
+          const existingIndex = rows.findIndex((row) => row.faction === permission.faction);
+          if (existingIndex >= 0) rows.splice(existingIndex, 1, permission);
+          else rows.push(permission);
+        }
+        landUnitToPermissionRows.set(landUnitKey, rows);
+      }
+      const landUnitToAgentSubtypeKeys = (landUnitKey: string) =>
+        resolveAgentSubtypeKeys({
+          mainUnitKeys: landUnitToMainUnits.get(landUnitKey) || [],
+          availableSubcultures: landUnitToSubcultures.get(landUnitKey) || [],
+          agentSubtypeToAssociatedUnit,
+          agentSubtypeSubcultureOverrides,
+        });
       const resolveCharacterArtRows = (landUnitKey: string) =>
         resolveCharacterBattleArt({
           caste: unitKeyToCaste.get(landUnitKey) || "",
-          mainUnitKeys: landUnitToMainUnits.get(landUnitKey) || [],
+          agentSubtypeKeys: landUnitToAgentSubtypeKeys(landUnitKey),
+          permissionUniforms: (landUnitToPermissionRows.get(landUnitKey) || []).map((row) => ({
+            faction: row.faction,
+            uniform: row.generalUniform,
+          })),
           availableFactions: landUnitToFactions.get(landUnitKey) || [],
           availableSubcultures: landUnitToSubcultures.get(landUnitKey) || [],
+          factionToSubculture,
           subcultureToCulture,
-          agentSubtypeToAssociatedUnit,
-          agentSubtypeSubcultureOverrides,
           campaignCharacterArtSetsBySubtype,
           campaignCharacterArtsByArtSet,
           agentUniformByName,
@@ -7827,7 +7853,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               localizedName,
               variantName: characterArt.variantName,
               variantMeshPath: characterArt.variantMeshPath,
-              unitVariantName: characterArt.artSetId,
+              unitVariantName: characterArt.artSetId || characterArt.variantName,
               variantDetails: variantDetailsByName.get(characterArt.variantName),
               availableFactions: Array.from(landUnitToFactions.get(unitKey) || []).sort((a, b) => collator.compare(a, b)),
               originPackPath,

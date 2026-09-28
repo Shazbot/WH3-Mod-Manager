@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { resolveTextReplacements } from "../skills";
 import { toVariantMeshDefinitionPath } from "../visuals/paths";
+import { resolveAgentSubtypeKeys, resolveCharacterBattleArt } from "../visuals/characterArt";
 
 export type UnitViewerTableRows = Record<string, Array<Record<string, string>>>;
 
@@ -65,6 +66,10 @@ export const UNIT_VIEWER_TABLES = [
   "factions_tables",
   "agent_subtypes_tables",
   "agent_subtype_subculture_overrides_tables",
+  "campaign_character_art_sets_tables",
+  "campaign_character_arts_tables",
+  "agent_uniforms_tables",
+  "cultures_subcultures_tables",
   "character_experience_skill_tiers_tables",
   "faction_agent_permitted_subtypes_tables",
   "unit_variants_tables",
@@ -585,6 +590,9 @@ export const buildUnitViewerData = (
   const engines = indexRows(tables.battlefield_engines_tables, "key");
   const articulated = indexRows(tables.land_unit_articulated_vehicles_tables, "key");
   const variants = indexRows(tables.variants_tables, "variant_name");
+  const variantFilenamesByName = new Map(
+    Array.from(variants.entries()).map(([name, row]) => [name, asString(row.variant_filename)] as const),
+  );
   const armour = indexRows(tables.unit_armour_types_tables, "key");
   const shields = indexRows(tables.unit_shield_types_tables, "key");
   const meleeWeapons = indexRows(tables.melee_weapons_tables, "key");
@@ -592,12 +600,82 @@ export const buildUnitViewerData = (
   const projectiles = indexRows(tables.projectiles_tables, "key");
   const explosions = indexRows(tables.projectiles_explosions_tables, "key");
   const factions = indexRows(tables.factions_tables, "key");
+  const culturesSubcultures = indexRows(tables.cultures_subcultures_tables, "subculture");
   const agentSubtypes = indexRows(tables.agent_subtypes_tables, "key");
   const agentSubtypeOverrides = groupRows(tables.agent_subtype_subculture_overrides_tables, "subtype");
   const unitVariants = groupRows(tables.unit_variants_tables, "unit");
   const unitVariantColours = groupRows(tables.unit_variants_colours_tables, "unit_variant");
   const customBattleMountsByMountedUnit = groupRows(tables.units_custom_battle_mounts_tables, "mounted_unit");
   const permissions = groupRows(tables.units_custom_battle_permissions_tables, "unit");
+  const agentSubtypeToAssociatedUnit = new Map(
+    Array.from(agentSubtypes.entries()).map(([subtype, row]) => [subtype, asString(row.associated_unit_override)] as const),
+  );
+  const agentSubtypeSubcultureOverrides = (tables.agent_subtype_subculture_overrides_tables || []).map((row) => ({
+    subtype: asString(row.subtype),
+    subculture: asString(row.subculture),
+    associatedUnitOverride: asString(row.associated_unit_override),
+    agent: asString(row.agent),
+  }));
+  const campaignCharacterArtSetsBySubtype = new Map<
+    string,
+    Array<{ artSetId: string; culture: string; subculture: string; faction: string }>
+  >();
+  for (const row of tables.campaign_character_art_sets_tables || []) {
+    const subtype = asString(row.agent_subtype);
+    const artSetId = asString(row.art_set_id);
+    if (!subtype || !artSetId) continue;
+    const artSets = campaignCharacterArtSetsBySubtype.get(subtype) || [];
+    artSets.push({
+      artSetId,
+      culture: asString(row.culture),
+      subculture: asString(row.subculture),
+      faction: asString(row.faction),
+    });
+    campaignCharacterArtSetsBySubtype.set(subtype, artSets);
+  }
+  const campaignCharacterArtsByArtSet = new Map<
+    string,
+    Array<{ id: string; level: number; age: number; season: string; uniform: string }>
+  >();
+  for (const row of tables.campaign_character_arts_tables || []) {
+    const id = asString(row.id);
+    const artSetId = asString(row.art_set_id);
+    const uniform = asString(row.uniform);
+    if (!id || !artSetId || !uniform) continue;
+    const arts = campaignCharacterArtsByArtSet.get(artSetId) || [];
+    arts.push({
+      id,
+      level: asNumber(row.level),
+      age: asNumber(row.age),
+      season: asString(row.season),
+      uniform,
+    });
+    campaignCharacterArtsByArtSet.set(artSetId, arts);
+  }
+  for (const arts of campaignCharacterArtsByArtSet.values()) {
+    arts.sort(
+      (first, second) =>
+        first.level - second.level
+        || first.age - second.age
+        || (first.season === "none" ? -1 : 0) - (second.season === "none" ? -1 : 0)
+        || first.id.localeCompare(second.id, "en"),
+    );
+  }
+  const agentUniformByName = new Map<string, { filename: string; battleFilename: string }>();
+  for (const row of tables.agent_uniforms_tables || []) {
+    const uniformName = asString(row.uniform_name);
+    if (!uniformName) continue;
+    agentUniformByName.set(uniformName, {
+      filename: asString(row.filename),
+      battleFilename: asString(row.battle_filename),
+    });
+  }
+  const factionToSubculture = new Map(
+    Array.from(factions.entries()).map(([faction, row]) => [faction, asString(row.subculture)] as const),
+  );
+  const subcultureToCulture = new Map(
+    Array.from(culturesSubcultures.entries()).map(([subculture, row]) => [subculture, asString(row.culture)] as const),
+  );
   const directAbilities = groupRows(tables.land_units_to_unit_abilites_junctions_tables, "land_unit");
   const attributesByGroup = groupRows(tables.unit_attributes_to_groups_junctions_tables, "attribute_group");
   const abilityGroupsByUnit = groupRows(tables.special_ability_groups_to_units_junctions_tables, "unit");
@@ -767,14 +845,50 @@ export const buildUnitViewerData = (
     const variantName = asString(variant?.variant);
     const variantDefinition = variants.get(variantName);
     const unitCardName = asString(variant?.unit_card) || key;
-    const variantMeshPath =
+    const unitVariantMeshPath =
       toVariantMeshDefinitionPath(asString(variantDefinition?.variant_filename)) || undefined;
+    const permissionRows = permissions.get(key) || [];
+    const effectivePermissionRowsByFaction = new Map<string, Record<string, string>>();
+    for (const permission of permissionRows.toReversed()) {
+      const faction = asString(permission.faction);
+      if (!effectivePermissionRowsByFaction.has(faction)) effectivePermissionRowsByFaction.set(faction, permission);
+    }
+    const effectivePermissionRows = Array.from(effectivePermissionRowsByFaction.values());
     const availableVariantFactions = Array.from(
       new Set([
-        ...(permissions.get(key) || []).map((permission) => asString(permission.faction)).filter(Boolean),
+        ...permissionRows.map((permission) => asString(permission.faction)).filter(Boolean),
         ...variantRows.map((row) => asString(row.faction)).filter(Boolean),
       ]),
     ).sort((first, second) => collator.compare(first, second));
+    const availableCharacterSubcultures = Array.from(
+      new Set(
+        effectivePermissionRows
+          .map((permission) => factionToSubculture.get(asString(permission.faction)) || "")
+          .filter(Boolean),
+      ),
+    );
+    const characterAppearances = resolveCharacterBattleArt({
+      caste: asString(main.caste),
+      agentSubtypeKeys: resolveAgentSubtypeKeys({
+        mainUnitKeys: [key],
+        availableSubcultures: availableCharacterSubcultures,
+        agentSubtypeToAssociatedUnit,
+        agentSubtypeSubcultureOverrides,
+      }),
+      permissionUniforms: effectivePermissionRows.map((permission) => ({
+        faction: asString(permission.faction),
+        uniform: asString(permission.general_uniform),
+      })),
+      availableFactions: availableVariantFactions,
+      availableSubcultures: availableCharacterSubcultures,
+      factionToSubculture,
+      subcultureToCulture,
+      campaignCharacterArtSetsBySubtype,
+      campaignCharacterArtsByArtSet,
+      agentUniformByName,
+      variantsByName: variantFilenamesByName,
+    });
+    const variantMeshPath = characterAppearances[0]?.variantMeshPath || unitVariantMeshPath;
     const variantColourRows = unitVariantColours.get(landUnitKey) || [];
     const previewSubcultures = new Set(
       [
@@ -814,7 +928,7 @@ export const buildUnitViewerData = (
       }];
     });
     const painterVariantContext =
-      variant && variantName && variantDefinition
+      characterAppearances.length === 0 && variant && variantName && variantDefinition
         ? {
             unitKey: landUnitKey,
             faction: asString(variant.faction),
@@ -835,7 +949,7 @@ export const buildUnitViewerData = (
             ...(variantColours.length > 0 ? { unitVariantColours: variantColours } : {}),
           }
         : undefined;
-    const generalPortrait = (permissions.get(key) || [])
+    const generalPortrait = permissionRows
       .toReversed()
       .map((permission) => asString(permission.general_portrait))
       .find(Boolean);
@@ -911,7 +1025,8 @@ export const buildUnitViewerData = (
       secondaryMissileWeapon,
       unitCardPath,
       variantMeshPath,
-      painterVariantContext,
+      ...(characterAppearances.length > 0 ? { characterAppearances } : {}),
+      ...(painterVariantContext ? { painterVariantContext } : {}),
       attributes: unitAttributes,
       abilities: unitAbilities,
     };

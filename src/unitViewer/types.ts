@@ -121,6 +121,16 @@ export interface UnitViewerPainterVariantContext {
   }>;
 }
 
+export interface UnitViewerCharacterAppearance {
+  /** Empty faction means the campaign art set is unscoped. */
+  faction: string;
+  subculture: string;
+  culture: string;
+  variantName: string;
+  artSetId: string;
+  variantMeshPath: string;
+}
+
 export interface UnitViewerUnitModel {
   key: string;
   landUnitKey: string;
@@ -168,6 +178,8 @@ export interface UnitViewerUnitModel {
   unitCardPath?: string;
   /** Resolved variantmeshdefinition used by the 3D unit preview. */
   variantMeshPath?: string;
+  /** Character-specific appearances resolved from permissions or agent-subtype art sets. */
+  characterAppearances?: UnitViewerCharacterAppearance[];
   /** Source DB rows needed to optionally save a painted VMD as a faction-specific unit variant. */
   painterVariantContext?: UnitViewerPainterVariantContext;
   attributes: UnitViewerAttribute[];

@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { resolveCharacterBattleArt, type ResolveCharacterBattleArtInput } from "../src/visuals/characterArt";
+import {
+  resolveAgentSubtypeKeys,
+  resolveCharacterBattleArt,
+  type ResolveCharacterBattleArtInput,
+} from "../src/visuals/characterArt";
 
 const baseInput = (): ResolveCharacterBattleArtInput => ({
   caste: "lord",
-  mainUnitKeys: ["main_lord"],
+  agentSubtypeKeys: ["test_subtype"],
   availableFactions: ["test_faction"],
   availableSubcultures: ["test_subculture"],
   subcultureToCulture: new Map([["test_subculture", "test_culture"]]),
-  agentSubtypeToAssociatedUnit: new Map([["test_subtype", "main_lord"]]),
-  agentSubtypeSubcultureOverrides: [],
   campaignCharacterArtSetsBySubtype: new Map([
     [
       "test_subtype",
@@ -81,14 +83,46 @@ describe("campaign character battle art resolution", () => {
 
   it("can resolve the agent subtype from a subculture-specific associated-unit override", () => {
     const input = baseInput();
-    input.agentSubtypeToAssociatedUnit.clear();
-    input.agentSubtypeSubcultureOverrides.push({
-      subtype: "test_subtype",
-      subculture: "test_subculture",
-      associatedUnitOverride: "main_lord",
-      agent: "general",
+    input.agentSubtypeKeys = resolveAgentSubtypeKeys({
+      mainUnitKeys: ["main_lord"],
+      availableSubcultures: input.availableSubcultures,
+      agentSubtypeToAssociatedUnit: new Map(),
+      agentSubtypeSubcultureOverrides: [{
+        subtype: "test_subtype",
+        subculture: "test_subculture",
+        associatedUnitOverride: "main_lord",
+        agent: "general",
+      }],
     });
     expect(resolveCharacterBattleArt(input)).toHaveLength(1);
+  });
+
+  it("uses a custom-battle permission uniform before subtype campaign art", () => {
+    const input = baseInput();
+    input.campaignCharacterArtSetsBySubtype.set("test_subtype", [{
+      artSetId: "test_art_set",
+      culture: "",
+      subculture: "",
+      faction: "test_faction",
+    }]);
+    input.permissionUniforms = [{ faction: "test_faction", uniform: "custom_uniform" }];
+    input.factionToSubculture = new Map([["test_faction", "test_subculture"]]);
+    input.agentUniformByName.set("custom_uniform", {
+      filename: "custom_campaign_variant",
+      battleFilename: "custom_battle_variant",
+    });
+    input.variantsByName.set("custom_battle_variant", "custom_battle_lord");
+
+    expect(resolveCharacterBattleArt(input)).toEqual([
+      {
+        faction: "test_faction",
+        subculture: "test_subculture",
+        culture: "test_culture",
+        variantName: "custom_battle_variant",
+        artSetId: "",
+        variantMeshPath: "variantmeshes\\variantmeshdefinitions\\custom_battle_lord.variantmeshdefinition",
+      },
+    ]);
   });
 
   it("filters art sets that belong to another faction, subculture, or culture", () => {
@@ -136,13 +170,6 @@ describe("campaign character battle art resolution", () => {
     const input = baseInput();
     input.availableFactions = [];
     input.availableSubcultures = [];
-    input.agentSubtypeToAssociatedUnit.clear();
-    input.agentSubtypeSubcultureOverrides.push({
-      subtype: "test_subtype",
-      subculture: "test_subculture",
-      associatedUnitOverride: "main_lord",
-      agent: "general",
-    });
     input.campaignCharacterArtSetsBySubtype.set("test_subtype", [
       {
         artSetId: "test_art_set",
@@ -153,7 +180,6 @@ describe("campaign character battle art resolution", () => {
     ]);
     expect(resolveCharacterBattleArt(input)).toHaveLength(1);
   });
-
   it("keeps separate scoped art sets even when they resolve to the same battle VMD", () => {
     const input = baseInput();
     input.availableSubcultures = ["subculture_a", "subculture_b"];

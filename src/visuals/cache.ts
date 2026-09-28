@@ -2,7 +2,7 @@ import * as nodePath from "path";
 import * as fs from "fs";
 
 /** Bump whenever the extraction rules or the cached shape change. */
-export const VISUALS_DATA_CACHE_VERSION = 9;
+export const VISUALS_DATA_CACHE_VERSION = 10;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const VISUALS_CACHE_DIR = "visuals";
 const VANILLA_CACHE_FILE = "vanilla.bin";
@@ -44,7 +44,7 @@ export interface VisualsTableContribution {
   /** Main-unit -> land-unit links used to join Unit Viewer permissions to Visuals rows. */
   mainUnitLinks?: Array<[unitKey: string, landUnitKey: string]>;
   /** Main-unit -> faction permissions used by Unit Viewer to build culture/subculture groups. */
-  unitPermissions?: Array<[unitKey: string, factionKey: string]>;
+  unitPermissions?: Array<[unitKey: string, factionKey: string, generalUniform?: string]>;
   /** Faction -> subculture metadata used to resolve a variant's culture. */
   factions?: Array<[factionKey: string, subculture: string]>;
   /** Subculture -> culture metadata used to group the Visuals list. */
@@ -81,6 +81,7 @@ export interface VisualsMergedTableData {
   unitKeyToUiGroupKey: Map<string, string>;
   mainUnitToLandUnit: Map<string, string>;
   unitToPermissionFactions: Map<string, Set<string>>;
+  unitToPermissionRows: Map<string, Array<{ faction: string; generalUniform: string }>>;
   factionToSubculture: Map<string, string>;
   subcultureToCulture: Map<string, string>;
   agentSubtypeToAssociatedUnit: Map<string, string>;
@@ -406,6 +407,7 @@ export const mergeVisualsTableContributions = (
   const uiGroupToParent = new Map<string, string>();
   const mainUnitToLandUnit = new Map<string, string>();
   const unitToPermissionFactions = new Map<string, Set<string>>();
+  const unitToPermissionRows = new Map<string, Array<{ faction: string; generalUniform: string }>>();
   const factionToSubculture = new Map<string, string>();
   const subcultureToCulture = new Map<string, string>();
   const agentSubtypeToAssociatedUnit = new Map<string, string>();
@@ -449,10 +451,16 @@ export const mergeVisualsTableContributions = (
     for (const [unitKey, landUnitKey] of contribution.mainUnitLinks || []) {
       mainUnitToLandUnit.set(unitKey, landUnitKey);
     }
-    for (const [unitKey, factionKey] of contribution.unitPermissions || []) {
+    for (const [unitKey, factionKey, generalUniform = ""] of contribution.unitPermissions || []) {
       const factions = unitToPermissionFactions.get(unitKey) || new Set<string>();
       factions.add(factionKey);
       unitToPermissionFactions.set(unitKey, factions);
+      const rows = unitToPermissionRows.get(unitKey) || [];
+      const existingIndex = rows.findIndex((row) => row.faction === factionKey);
+      const nextRow = { faction: factionKey, generalUniform };
+      if (existingIndex >= 0) rows.splice(existingIndex, 1, nextRow);
+      else rows.push(nextRow);
+      unitToPermissionRows.set(unitKey, rows);
     }
     for (const [factionKey, subculture] of contribution.factions || []) {
       factionToSubculture.set(factionKey, subculture);
@@ -543,6 +551,7 @@ export const mergeVisualsTableContributions = (
     unitKeyToUiGroupKey,
     mainUnitToLandUnit,
     unitToPermissionFactions,
+    unitToPermissionRows,
     factionToSubculture,
     subcultureToCulture,
     agentSubtypeToAssociatedUnit,

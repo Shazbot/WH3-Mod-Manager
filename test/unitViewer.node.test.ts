@@ -788,6 +788,61 @@ describe("Unit Viewer catalog", () => {
     });
   });
 
+  it("resolves hero appearances from permission uniforms and exposes faction alternatives", () => {
+    const built = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "hero", land_unit: "hero_land", num_men: "1", caste: "hero" }],
+        land_units_tables: [{ key: "hero_land", man_entity: "entity", primary_melee_weapon: "weapon" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        factions_tables: [
+          { key: "faction_a", subculture: "subculture" },
+          { key: "faction_b", subculture: "subculture" },
+        ],
+        cultures_subcultures_tables: [{ subculture: "subculture", culture: "culture" }],
+        units_custom_battle_permissions_tables: [
+          { unit: "hero", faction: "faction_a" },
+          { unit: "hero", faction: "faction_b", general_uniform: "uniform_b" },
+        ],
+        agent_subtypes_tables: [{ key: "hero_subtype", associated_unit_override: "hero" }],
+        campaign_character_art_sets_tables: [{
+          art_set_id: "art_a",
+          agent_subtype: "hero_subtype",
+          culture: "culture",
+          subculture: "subculture",
+          faction: "faction_a",
+        }],
+        campaign_character_arts_tables: [{
+          id: "art_a_0",
+          art_set_id: "art_a",
+          level: "0",
+          age: "0",
+          season: "none",
+          uniform: "campaign_uniform_a",
+        }],
+        agent_uniforms_tables: [
+          { uniform_name: "campaign_uniform_a", filename: "campaign_a", battle_filename: "." },
+          { uniform_name: "uniform_b", filename: "campaign_b", battle_filename: "battle_b" },
+        ],
+        variants_tables: [
+          { variant_name: "campaign_a", variant_filename: "hero_a" },
+          { variant_name: "battle_b", variant_filename: "hero_b" },
+        ],
+      },
+      () => undefined,
+    );
+    const unit = built.units.get("hero")!;
+
+    expect(unit.variantMeshPath).toBe(
+      "variantmeshes\\variantmeshdefinitions\\hero_b.variantmeshdefinition",
+    );
+    expect(unit.characterAppearances?.map((appearance) => [appearance.faction, appearance.variantName])).toEqual([
+      ["faction_b", "battle_b"],
+      ["faction_a", "campaign_a"],
+    ]);
+    expect(unit.painterVariantContext).toBeUndefined();
+  });
+
   it("resolves character XP with campaign and agent-specific rows taking precedence", () => {
     const built = buildUnitViewerData(
       {
