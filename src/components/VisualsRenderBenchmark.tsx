@@ -37,6 +37,10 @@ type BenchmarkRow = {
   triangles: number;
   geometries: number;
   rendererTextureObjects: number;
+  estimatedVramBytes: number;
+  estimatedGeometryVramBytes: number;
+  estimatedTextureVramBytes: number;
+  estimatedSkeletonVramBytes: number;
   cpuMeanMs: number;
   cpuMedianMs: number;
   cpuP95Ms: number;
@@ -245,6 +249,102 @@ const getStructuralRenderStats = (root: THREE.Object3D) => {
   });
 
   return { meshDraws, triangles };
+};
+
+
+const estimateTextureBytes = (texture: THREE.Texture) => {
+  const compressedMipmaps = (texture as THREE.CompressedTexture).mipmaps;
+  if (Array.isArray(compressedMipmaps) && compressedMipmaps.length > 0) {
+    return compressedMipmaps.reduce((sum, mipmap) => {
+      const data = (mipmap as { data?: ArrayBufferView }).data;
+      return sum + (data?.byteLength ?? 0);
+    }, 0);
+  }
+
+  const image = texture.image as
+    | { data?: ArrayBufferView; width?: number; height?: number; depth?: number }
+    | undefined;
+  if (!image) return 0;
+
+  const baseBytes = image.data?.byteLength
+    ?? ((image.width ?? 0) * (image.height ?? 0) * (image.depth ?? 1) * 4);
+  if (!texture.generateMipmaps || !image.width || !image.height) return baseBytes;
+
+  const basePixels = image.width * image.height * (image.depth ?? 1);
+  if (basePixels <= 0) return baseBytes;
+  let mipPixels = 0;
+  let width = image.width;
+  let height = image.height;
+  let depth = image.depth ?? 1;
+  while (true) {
+    mipPixels += width * height * depth;
+    if (width === 1 && height === 1 && depth === 1) break;
+    width = Math.max(1, Math.floor(width / 2));
+    height = Math.max(1, Math.floor(height / 2));
+    depth = Math.max(1, Math.floor(depth / 2));
+  }
+  return Math.round(baseBytes * (mipPixels / basePixels));
+};
+
+const estimateResidentVram = (root: THREE.Object3D) => {
+  const seenGeometryBuffers = new Set<object>();
+  const seenTextures = new Set<THREE.Texture>();
+  const seenSkeletons = new Set<THREE.Skeleton>();
+  let geometryBytes = 0;
+  let textureBytes = 0;
+  let skeletonBytes = 0;
+
+  const addAttribute = (attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined) => {
+    if (!attribute) return;
+    if (attribute instanceof THREE.InterleavedBufferAttribute) {
+      if (seenGeometryBuffers.has(attribute.data)) return;
+      seenGeometryBuffers.add(attribute.data);
+      geometryBytes += attribute.data.array.byteLength;
+      return;
+    }
+    if (seenGeometryBuffers.has(attribute)) return;
+    seenGeometryBuffers.add(attribute);
+    geometryBytes += attribute.array.byteLength;
+  };
+
+  root.traverseVisible((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+
+    const geometry = child.geometry;
+    addAttribute(geometry.index ?? undefined);
+    for (const attribute of Object.values(geometry.attributes)) addAttribute(attribute);
+    for (const attributes of Object.values(geometry.morphAttributes)) {
+      for (const attribute of attributes) addAttribute(attribute);
+    }
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+      for (const value of Object.values(material)) {
+        if (!(value instanceof THREE.Texture) || seenTextures.has(value)) continue;
+        seenTextures.add(value);
+        textureBytes += estimateTextureBytes(value);
+      }
+    }
+
+    if (child instanceof THREE.SkinnedMesh && !seenSkeletons.has(child.skeleton)) {
+      seenSkeletons.add(child.skeleton);
+      const boneTexture = child.skeleton.boneTexture;
+      if (boneTexture) {
+        skeletonBytes += estimateTextureBytes(boneTexture);
+      } else {
+        // Fallback for render paths that keep bone matrices as uniforms.
+        skeletonBytes += child.skeleton.boneMatrices.byteLength;
+      }
+    }
+  });
+
+  return {
+    geometryBytes,
+    textureBytes,
+    skeletonBytes,
+    totalBytes: geometryBytes + textureBytes + skeletonBytes,
+  };
 };
 
 const getMaterialTextureObjects = (root: THREE.Object3D) => {
@@ -522,6 +622,7 @@ const runPreparedGroup = async (
       throw new Error("Benchmark WebGL context was lost during warmup.");
     }
 
+    const estimatedVram = estimateResidentVram(group);
     const cpuSamples: number[] = [];
     const gpuTimer = getGpuTimer(renderer);
     let query: WebGLQuery | undefined;
@@ -573,6 +674,10 @@ const runPreparedGroup = async (
       triangles,
       geometries: renderer.info.memory.geometries,
       rendererTextureObjects: renderer.info.memory.textures,
+      estimatedVramBytes: estimatedVram.totalBytes,
+      estimatedGeometryVramBytes: estimatedVram.geometryBytes,
+      estimatedTextureVramBytes: estimatedVram.textureBytes,
+      estimatedSkeletonVramBytes: estimatedVram.skeletonBytes,
       cpuMeanMs: cpu.mean,
       cpuMedianMs: cpu.median,
       cpuP95Ms: cpu.p95,
@@ -1372,8 +1477,9 @@ const VisualsRenderBenchmark = memo(({
                 The camera fits the full instance grid. Counts: {BENCHMARK_COUNTS.join(", ")}.
               </>
             )}
-            {" "}GPU timing uses EXT_disjoint_timer_query_webgl2 when available. Export/load timings are diagnostic only
-            and can be dominated by WH3AssetHost/browser cache state.
+            {" "}GPU timing uses EXT_disjoint_timer_query_webgl2 when available. VRAM is an estimate of resident Three.js
+            geometry buffers, material textures, and skeleton bone textures after warmup; driver/shader/internal allocations
+            are not exposed by WebGL. Export/load timings are diagnostic only and can be dominated by WH3AssetHost/browser cache state.
           </div>
 
           {mode === "army" && armyRoster && (
@@ -1522,6 +1628,9 @@ const VisualsRenderBenchmark = memo(({
                     <th className="border-b border-gray-800 px-1 py-1">GPU avg orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">GPU avg atlas</th>
                     <th className="border-b border-gray-800 px-1 py-1">Δ GPU</th>
+                    <th className="border-b border-gray-800 px-1 py-1">VRAM orig</th>
+                    <th className="border-b border-gray-800 px-1 py-1">VRAM atlas</th>
+                    <th className="border-b border-gray-800 px-1 py-1">Δ VRAM</th>
                     <th className="border-b border-gray-800 px-1 py-1">Triangles orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">Triangles atlas</th>
                   </tr>
@@ -1547,6 +1656,21 @@ const VisualsRenderBenchmark = memo(({
                         <td className="px-1 py-1">{formatMs(atlasRow.gpuMeanMs)} ms</td>
                         <td className="px-1 py-1 text-fuchsia-200">
                           {formatDelta(originalRow.gpuMeanMs, atlasRow.gpuMeanMs)}
+                        </td>
+                        <td
+                          className="px-1 py-1"
+                          title={`geometry ${formatMiB(originalRow.estimatedGeometryVramBytes)} · textures ${formatMiB(originalRow.estimatedTextureVramBytes)} · skeletons ${formatMiB(originalRow.estimatedSkeletonVramBytes)}`}
+                        >
+                          {formatMiB(originalRow.estimatedVramBytes)}
+                        </td>
+                        <td
+                          className="px-1 py-1"
+                          title={`geometry ${formatMiB(atlasRow.estimatedGeometryVramBytes)} · textures ${formatMiB(atlasRow.estimatedTextureVramBytes)} · skeletons ${formatMiB(atlasRow.estimatedSkeletonVramBytes)}`}
+                        >
+                          {formatMiB(atlasRow.estimatedVramBytes)}
+                        </td>
+                        <td className="px-1 py-1 text-fuchsia-200">
+                          {formatDelta(originalRow.estimatedVramBytes, atlasRow.estimatedVramBytes)}
                         </td>
                         <td className="px-1 py-1">{originalRow.triangles.toLocaleString()}</td>
                         <td className="px-1 py-1">{atlasRow.triangles.toLocaleString()}</td>
