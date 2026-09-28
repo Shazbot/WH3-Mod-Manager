@@ -273,6 +273,90 @@ const shareArmyTextures = (
   return duplicates.size;
 };
 
+
+const ARMY_BENCHMARK_TEXTURE_PROXY_SIZE = 128;
+
+const createArmyTextureProxy = (source: THREE.Texture) => {
+  const size = ARMY_BENCHMARK_TEXTURE_PROXY_SIZE;
+  const data = new Uint8Array(size * size * 4);
+  for (let offset = 0; offset < data.length; offset += 4) {
+    data[offset] = 128;
+    data[offset + 1] = 128;
+    data[offset + 2] = 128;
+    data[offset + 3] = 255;
+  }
+
+  const proxy = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  proxy.name = source.name ? `${source.name} [army benchmark proxy]` : "army benchmark proxy";
+  proxy.colorSpace = source.colorSpace;
+  proxy.mapping = source.mapping;
+  proxy.channel = source.channel;
+  proxy.wrapS = source.wrapS;
+  proxy.wrapT = source.wrapT;
+  proxy.magFilter = source.magFilter;
+  proxy.minFilter = source.minFilter;
+  proxy.anisotropy = source.anisotropy;
+  proxy.flipY = source.flipY;
+  proxy.premultiplyAlpha = source.premultiplyAlpha;
+  proxy.unpackAlignment = source.unpackAlignment;
+  proxy.offset.copy(source.offset);
+  proxy.repeat.copy(source.repeat);
+  proxy.center.copy(source.center);
+  proxy.rotation = source.rotation;
+  proxy.matrixAutoUpdate = source.matrixAutoUpdate;
+  proxy.matrix.copy(source.matrix);
+  // Mipmapped samplers need a complete mip chain. Generating tiny proxy mips is
+  // cheap and preserves the material's sampler behavior without retaining the
+  // full-resolution raw preview texture on the GPU.
+  proxy.generateMipmaps =
+    source.generateMipmaps
+    || source.minFilter === THREE.NearestMipmapNearestFilter
+    || source.minFilter === THREE.NearestMipmapLinearFilter
+    || source.minFilter === THREE.LinearMipmapNearestFilter
+    || source.minFilter === THREE.LinearMipmapLinearFilter;
+  proxy.userData = {
+    ...source.userData,
+    wh3ArmyBenchmarkProxy: true,
+    wh3ArmyBenchmarkSourceWidth: (source.image as { width?: number } | undefined)?.width,
+    wh3ArmyBenchmarkSourceHeight: (source.image as { height?: number } | undefined)?.height,
+  };
+  proxy.needsUpdate = true;
+  return proxy;
+};
+
+const replaceArmyTexturesWithProxies = (roots: readonly THREE.Object3D[]) => {
+  const proxyBySource = new Map<THREE.Texture, THREE.Texture>();
+  const sourceTextures = new Set<THREE.Texture>();
+
+  for (const root of roots) {
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) {
+        if (!material) continue;
+        const writableMaterial = material as unknown as Record<string, unknown>;
+        for (const [property, value] of Object.entries(material)) {
+          if (!(value instanceof THREE.Texture)) continue;
+          let proxy = proxyBySource.get(value);
+          if (!proxy) {
+            proxy = createArmyTextureProxy(value);
+            proxyBySource.set(value, proxy);
+            sourceTextures.add(value);
+          }
+          writableMaterial[property] = proxy;
+          material.needsUpdate = true;
+        }
+      }
+    });
+  }
+
+  sourceTextures.forEach((texture) => texture.dispose());
+  return {
+    proxies: [...proxyBySource.values()],
+    replacedTextureCount: sourceTextures.size,
+  };
+};
+
 const disposeSkinnedInstanceResources = (root: THREE.Object3D) => {
   const skeletons = new Set<THREE.Skeleton>();
   root.traverse((child) => {
@@ -766,19 +850,32 @@ const benchmarkArmySource = async (
       );
     }
 
+    // The host's raw preview KTX2 flavor becomes uncompressed RGBA DataTextures in
+    // WebGL. Keeping every full-resolution army texture resident can use several
+    // times more VRAM than WH3's BC-compressed textures and can reset Chromium's
+    // whole GPU process. Keep the real source-byte/decode metrics above, but render
+    // the army with one small proxy per unique material texture.
+    const {
+      proxies: armyRenderTextures,
+      replacedTextureCount,
+    } = replaceArmyTexturesWithProxies(loadedRoots);
+    materialTextures.clear();
+    armyRenderTextures.forEach((texture) => materialTextures.add(texture));
+    ktx2Loader.clearRawTextureDataCache();
+
     const texturePreloadStartedAt = performance.now();
     for (const texture of materialTextures) ktx2Loader.preloadTexture(texture);
     const gl = renderer.getContext();
     gl.finish();
     if (gl.isContextLost()) {
       throw new Error(
-        `Benchmark WebGL context was lost while preloading ${materialTextures.size.toLocaleString()} shared army textures.`,
+        `Benchmark WebGL context was lost while preloading ${materialTextures.size.toLocaleString()} army proxy textures.`,
       );
     }
     const texturePreloadMs = performance.now() - texturePreloadStartedAt;
 
     onProgress(
-      `${fileName(source.path)} · textures ${materialTextures.size.toLocaleString()} resident · ${sharedTextureDuplicates.toLocaleString()} duplicate texture objects shared`,
+      `${fileName(source.path)} · ${materialTextures.size.toLocaleString()} resident ${ARMY_BENCHMARK_TEXTURE_PROXY_SIZE}×${ARMY_BENCHMARK_TEXTURE_PROXY_SIZE} proxy textures · ${replacedTextureCount.toLocaleString()} full-resolution textures replaced · ${sharedTextureDuplicates.toLocaleString()} duplicate texture objects shared`,
     );
     await yieldToUi();
     onProgress(
@@ -1201,7 +1298,9 @@ const VisualsRenderBenchmark = memo(({
               <>
                 Whole-army render at 960×540 with the established template: 1 lord, 2 heroes, 9 infantry/missile,
                 4 cavalry/chariots, 3 monsters/beasts, and 2 artillery/war machines. Each selected regiment uses
-                its DB num_men entity count; repeated VMDs share loaded geometry/material/texture resources.
+                its DB num_men entity count; repeated VMDs share loaded geometry/material/texture resources. Army rendering uses
+                128×128 proxy textures to avoid WHMM raw-RGBA preview textures exhausting VRAM; source texture payload/decode
+                metrics still use the real KTX2 data.
               </>
             ) : (
               <>
