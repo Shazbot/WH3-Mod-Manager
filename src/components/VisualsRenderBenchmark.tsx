@@ -699,20 +699,40 @@ const VisualsRenderBenchmark = memo(({
   const [error, setError] = useState("");
   const [result, setResult] = useState<BenchmarkComparisonResult>();
   const [armyRoster, setArmyRoster] = useState<ArmyBenchmarkRosterFile>();
+  const [fetchedBenchmarkUnits, setFetchedBenchmarkUnits] = useState<ArmyBenchmarkCandidate[]>([]);
+  const [isLoadingArmyUnits, setIsLoadingArmyUnits] = useState(false);
   const armyImportRef = useRef<HTMLInputElement>(null);
 
   const selectedPair =
     pairs.find((pair) => pair.id === selectedPairId)
     ?? pairs[0];
 
-  const createRandomArmy = () => {
+  const ensureBenchmarkUnits = async (): Promise<readonly ArmyBenchmarkCandidate[]> => {
+    if (benchmarkUnits.length > 0) return benchmarkUnits;
+    if (fetchedBenchmarkUnits.length > 0) return fetchedBenchmarkUnits;
+    setIsLoadingArmyUnits(true);
+    try {
+      const response = await window.api?.getVisualsUnitsData(Array.from(enabledMods) as Mod[]);
+      if (!response?.success || !response.units) {
+        throw new Error(response?.error || "Unable to load the Visuals unit data for army generation.");
+      }
+      const units = response.units as ArmyBenchmarkCandidate[];
+      setFetchedBenchmarkUnits(units);
+      return units;
+    } finally {
+      setIsLoadingArmyUnits(false);
+    }
+  };
+
+  const createRandomArmy = async () => {
     if (!selectedPair) return undefined;
+    const unitPool = await ensureBenchmarkUnits();
     const originalPath = normalizePath(selectedPair.original.path);
     const atlasPath = normalizePath(selectedPair.atlas.path);
     // Visuals data describes whichever side of the pair is currently enabled. Treat
     // units originating from the atlas pack as belonging to the original pack too,
     // so random generation stays scoped to this mod before falling back globally.
-    const generationUnits = benchmarkUnits.map((unit) => {
+    const generationUnits = unitPool.map((unit) => {
       const origin = normalizePath(unit.originPackPath);
       return origin === originalPath || origin === atlasPath
         ? { ...unit, originPackPath: selectedPair.original.path }
@@ -764,7 +784,7 @@ const VisualsRenderBenchmark = memo(({
       try {
         const rosterForRun =
           mode === "army"
-            ? armyRoster ?? createRandomArmy()
+            ? armyRoster ?? await createRandomArmy()
             : undefined;
         if (mode === "army" && !rosterForRun) {
           throw new Error("No army benchmark roster is available.");
@@ -956,21 +976,19 @@ const VisualsRenderBenchmark = memo(({
                 <button
                   type="button"
                   onClick={() => {
-                    try {
-                      createRandomArmy();
-                    } catch (generationError) {
+                    void createRandomArmy().catch((generationError) => {
                       setError(
                         generationError instanceof Error
                           ? generationError.message
                           : "Failed to generate an army benchmark list.",
                       );
-                    }
+                    });
                   }}
-                  disabled={isRunning || !selectedPair || benchmarkUnits.length === 0}
+                  disabled={isRunning || isLoadingArmyUnits || !selectedPair}
                   className="rounded border border-gray-700 bg-gray-900 px-2 py-1 hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
                   title="Generate another army from DB-backed units using the 1/2/9/4/3/2 template."
                 >
-                  Generate army
+                  {isLoadingArmyUnits ? "Loading units…" : "Generate army"}
                 </button>
                 <button
                   type="button"
