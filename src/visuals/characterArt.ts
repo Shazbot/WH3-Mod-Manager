@@ -83,7 +83,7 @@ export const resolveCharacterBattleArt = ({
     if (
       override.associatedUnitOverride
       && mainUnits.has(override.associatedUnitOverride)
-      && (!override.subculture || subcultureSet.has(override.subculture))
+      && (!override.subculture || subcultureSet.size === 0 || subcultureSet.has(override.subculture))
     ) {
       subtypes.add(override.subtype);
     }
@@ -92,9 +92,9 @@ export const resolveCharacterBattleArt = ({
   const resolved = new Map<string, ResolvedCharacterBattleArt>();
   for (const subtype of subtypes) {
     for (const artSet of campaignCharacterArtSetsBySubtype.get(subtype) || []) {
-      if (artSet.faction && !factionSet.has(artSet.faction)) continue;
-      if (artSet.subculture && !subcultureSet.has(artSet.subculture)) continue;
-      if (artSet.culture && !cultureSet.has(artSet.culture)) continue;
+      if (artSet.faction && factionSet.size > 0 && !factionSet.has(artSet.faction)) continue;
+      if (artSet.subculture && subcultureSet.size > 0 && !subcultureSet.has(artSet.subculture)) continue;
+      if (artSet.culture && cultureSet.size > 0 && !cultureSet.has(artSet.culture)) continue;
 
       // campaign_character_arts is sorted by the cache merger so its first row is the
       // lowest-level/age baseline appearance for this art set.
