@@ -48,6 +48,12 @@ type BenchmarkRow = {
   gpuMeanMs?: number;
 };
 
+type BenchmarkArmyMeshStats = {
+  name: string;
+  triangles: number;
+  draws: number;
+};
+
 type BenchmarkArmyAssetStats = {
   assetPath: string;
   names: string[];
@@ -55,6 +61,7 @@ type BenchmarkArmyAssetStats = {
   meshDrawsPerEntity: number;
   trianglesPerEntity: number;
   weightedTriangles: number;
+  meshes: BenchmarkArmyMeshStats[];
 };
 
 type BenchmarkSourceResult = {
@@ -249,6 +256,77 @@ const getStructuralRenderStats = (root: THREE.Object3D) => {
   });
 
   return { meshDraws, triangles };
+};
+
+
+const getStructuralMeshStats = (root: THREE.Object3D): BenchmarkArmyMeshStats[] => {
+  const result: BenchmarkArmyMeshStats[] = [];
+  let unnamedIndex = 0;
+
+  root.traverseVisible((child) => {
+    if (!(child instanceof THREE.Mesh) || !child.geometry) return;
+    const geometry = child.geometry;
+    const available = geometry.index?.count ?? geometry.getAttribute("position")?.count ?? 0;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    let draws = 0;
+    let triangles = 0;
+
+    if (Array.isArray(child.material) && geometry.groups.length > 0) {
+      for (const group of geometry.groups) {
+        if (!materials[group.materialIndex ?? 0]) continue;
+        const count = getGeometryDrawCount(geometry, group.start, group.count);
+        if (count <= 0) continue;
+        draws += 1;
+        triangles += count / 3;
+      }
+    } else if (materials[0]) {
+      const count = getGeometryDrawCount(geometry, 0, available);
+      if (count > 0) {
+        draws = 1;
+        triangles = count / 3;
+      }
+    }
+
+    if (draws > 0) {
+      result.push({
+        name: child.name || `unnamed_mesh_${unnamedIndex++}`,
+        triangles,
+        draws,
+      });
+    }
+  });
+
+  return result.sort((left, right) =>
+    right.triangles - left.triangles || left.name.localeCompare(right.name),
+  );
+};
+
+const getUnmatchedMeshStats = (
+  originalMeshes: readonly BenchmarkArmyMeshStats[],
+  atlasMeshes: readonly BenchmarkArmyMeshStats[],
+) => {
+  const atlasByTriangles = new Map<number, BenchmarkArmyMeshStats[]>();
+  for (const mesh of atlasMeshes) {
+    const bucket = atlasByTriangles.get(mesh.triangles) ?? [];
+    bucket.push(mesh);
+    atlasByTriangles.set(mesh.triangles, bucket);
+  }
+
+  const unmatchedOriginal: BenchmarkArmyMeshStats[] = [];
+  for (const mesh of originalMeshes) {
+    const bucket = atlasByTriangles.get(mesh.triangles);
+    if (bucket?.length) {
+      bucket.pop();
+      if (bucket.length === 0) atlasByTriangles.delete(mesh.triangles);
+    } else {
+      unmatchedOriginal.push(mesh);
+    }
+  }
+
+  return {
+    original: unmatchedOriginal,
+    atlas: [...atlasByTriangles.values()].flat(),
+  };
 };
 
 
@@ -1003,6 +1081,7 @@ const benchmarkArmySource = async (
         meshDrawsPerEntity: structural.meshDraws,
         trianglesPerEntity: structural.triangles,
         weightedTriangles: structural.triangles * entry.entities,
+        meshes: getStructuralMeshStats(root),
       });
       sharedTextureDuplicates += shareArmyTextures(root, sharedArmyTextures);
       getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
@@ -1609,14 +1688,40 @@ const VisualsRenderBenchmark = memo(({
                           {differences.length} VMD{differences.length === 1 ? "" : "s"} changed triangle count
                         </summary>
                         <div className="mt-1 space-y-0.5">
-                          {differences.map(({ originalAsset, atlasAsset, triangleDeltaPerEntity, weightedTriangleDelta }) => (
-                            <div key={normalizePath(originalAsset.assetPath)} title={originalAsset.assetPath}>
-                              {originalAsset.names.join(", ")} · {originalAsset.entities} entities ·{" "}
-                              {originalAsset.trianglesPerEntity.toLocaleString()} → {atlasAsset.trianglesPerEntity.toLocaleString()} tri/entity ·{" "}
-                              Δ/entity {triangleDeltaPerEntity >= 0 ? "+" : ""}{triangleDeltaPerEntity.toLocaleString()} ·{" "}
-                              weighted Δ {weightedTriangleDelta >= 0 ? "+" : ""}{weightedTriangleDelta.toLocaleString()}
-                            </div>
-                          ))}
+                          {differences.map(({ originalAsset, atlasAsset, triangleDeltaPerEntity, weightedTriangleDelta }) => {
+                            const unmatched = getUnmatchedMeshStats(originalAsset.meshes, atlasAsset.meshes);
+                            const shownOriginal = unmatched.original.slice(0, 8);
+                            const shownAtlas = unmatched.atlas.slice(0, 8);
+                            return (
+                              <div key={normalizePath(originalAsset.assetPath)} title={originalAsset.assetPath}>
+                                <div>
+                                  {originalAsset.names.join(", ")} · {originalAsset.entities} entities ·{" "}
+                                  {originalAsset.trianglesPerEntity.toLocaleString()} → {atlasAsset.trianglesPerEntity.toLocaleString()} tri/entity ·{" "}
+                                  Δ/entity {triangleDeltaPerEntity >= 0 ? "+" : ""}{triangleDeltaPerEntity.toLocaleString()} ·{" "}
+                                  weighted Δ {weightedTriangleDelta >= 0 ? "+" : ""}{weightedTriangleDelta.toLocaleString()}
+                                </div>
+                                {(shownOriginal.length > 0 || shownAtlas.length > 0) && (
+                                  <div className="ml-3 text-[10px] text-gray-400">
+                                    <div>
+                                      Unmatched original meshes: {shownOriginal.length > 0
+                                        ? shownOriginal.map((mesh) => `${mesh.name} [${mesh.triangles.toLocaleString()} tri]`).join(" · ")
+                                        : "none"}
+                                    </div>
+                                    <div>
+                                      Unmatched atlas meshes: {shownAtlas.length > 0
+                                        ? shownAtlas.map((mesh) => `${mesh.name} [${mesh.triangles.toLocaleString()} tri]`).join(" · ")
+                                        : "none"}
+                                    </div>
+                                    {(unmatched.original.length > shownOriginal.length || unmatched.atlas.length > shownAtlas.length) && (
+                                      <div>
+                                        Additional unmatched meshes are available in Copy JSON.
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </details>
                     )}
