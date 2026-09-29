@@ -1,0 +1,326 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wh3-army-visual-contract:v1",
+  "title": "WH3 Army Visual Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "contractVersion",
+    "scenario",
+    "units"
+  ],
+  "properties": {
+    "kind": {
+      "const": "wh3-army-visual-contract"
+    },
+    "contractVersion": {
+      "const": 1
+    },
+    "scenario": {
+      "$ref": "#/$defs/scenario"
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unit"
+      }
+    }
+  },
+  "$defs": {
+    "scenarioCategory": {
+      "enum": [
+        "Lord",
+        "Hero",
+        "InfantryMissile",
+        "CavalryChariot",
+        "MonsterBeast",
+        "ArtilleryWarMachine"
+      ]
+    },
+    "unitCategory": {
+      "enum": [
+        "Unknown",
+        "Lord",
+        "Hero",
+        "InfantryMissile",
+        "CavalryChariot",
+        "MonsterBeast",
+        "ArtilleryWarMachine"
+      ]
+    },
+    "role": {
+      "enum": [
+        "men",
+        "mounts",
+        "engines",
+        "crew",
+        "asset"
+      ]
+    },
+    "state": {
+      "enum": [
+        "live",
+        "destroyed",
+        "destruct"
+      ]
+    },
+    "assetType": {
+      "enum": [
+        "variantmeshdefinition",
+        "wsmodel",
+        "rigid_model_v2",
+        "other"
+      ]
+    },
+    "roundingPolicy": {
+      "enum": [
+        "ceil",
+        "round",
+        "floor"
+      ]
+    },
+    "rosterScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "all",
+            "culture",
+            "faction",
+            "mod",
+            "optimized-assets"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unitSizeScale",
+        "crewScale",
+        "engineRoundingPolicy",
+        "lodDistribution",
+        "destructionProbability",
+        "destructTransitionProbability",
+        "armySlotTemplate",
+        "rosterScope"
+      ],
+      "properties": {
+        "unitSizeScale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "crewScale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "engineRoundingPolicy": {
+          "$ref": "#/$defs/roundingPolicy"
+        },
+        "lodDistribution": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[0-9]+$"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "destructionProbability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "destructTransitionProbability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "armySlotTemplate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Lord",
+            "Hero",
+            "InfantryMissile",
+            "CavalryChariot",
+            "MonsterBeast",
+            "ArtilleryWarMachine"
+          ],
+          "properties": {
+            "Lord": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "Hero": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "InfantryMissile": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "CavalryChariot": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "MonsterBeast": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ArtilleryWarMachine": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "rosterScope": {
+          "$ref": "#/$defs/rosterScope"
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "men",
+        "mounts",
+        "engines",
+        "crew"
+      ],
+      "properties": {
+        "men": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mounts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "engines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "crew": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "assetPath",
+        "assetType",
+        "state",
+        "lod",
+        "probability",
+        "entities"
+      ],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "assetPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assetType": {
+          "$ref": "#/$defs/assetType"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "probability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "entities": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "mainUnitKey",
+        "landUnitKey",
+        "category",
+        "factionKeys",
+        "subcultureKeys",
+        "cultureKeys",
+        "counts",
+        "components"
+      ],
+      "properties": {
+        "identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mainUnitKey": {
+          "type": "string"
+        },
+        "landUnitKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "$ref": "#/$defs/unitCategory"
+        },
+        "factionKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "subcultureKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "cultureKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "counts": {
+          "$ref": "#/$defs/counts"
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "kind": "wh3-army-visual-contract",
+  "contractVersion": 1,
+  "scenario": {
+    "unitSizeScale": 0.75,
+    "crewScale": 0.5,
+    "engineRoundingPolicy": "ceil",
+    "lodDistribution": {
+      "0": 0.75,
+      "1": 0.25
+    },
+    "destructionProbability": 0.2,
+    "destructTransitionProbability": 0.1,
+    "armySlotTemplate": {
+      "Lord": 1,
+      "Hero": 2,
+      "InfantryMissile": 9,
+      "CavalryChariot": 4,
+      "MonsterBeast": 3,
+      "ArtilleryWarMachine": 2
+    },
+    "rosterScope": {
+      "kind": "faction",
+      "key": "test_faction"
+    }
+  },
+  "units": [
+    {
+      "identity": "main:test_artillery",
+      "mainUnitKey": "test_artillery",
+      "landUnitKey": "test_artillery_land",
+      "category": "ArtilleryWarMachine",
+      "factionKeys": [
+        "test_faction"
+      ],
+      "subcultureKeys": [
+        "test_subculture"
+      ],
+      "cultureKeys": [
+        "test_culture"
+      ],
+      "counts": {
+        "men": 0,
+        "mounts": 0,
+        "engines": 3,
+        "crew": 22
+      },
+      "components": [
+        {
+          "role": "crew",
+          "assetPath": "variantmeshes\\variantmeshdefinitions\\test_artillery_crew.variantmeshdefinition",
+          "assetType": "variantmeshdefinition",
+          "state": "live",
+          "lod": 0,
+          "probability": 0.75,
+          "entities": 22
+        },
+        {
+          "role": "engines",
+          "assetPath": "warmachines\\test_artillery\\test_artillery.wsmodel",
+          "assetType": "wsmodel",
+          "state": "live",
+          "lod": 0,
+          "probability": 0.75,
+          "entities": 3
+        },
+        {
+          "role": "engines",
+          "assetPath": "warmachines\\test_artillery\\test_artillery_destroyed.wsmodel",
+          "assetType": "wsmodel",
+          "state": "destroyed",
+          "lod": 0,
+          "probability": 0.2,
+          "entities": 3
+        }
+      ]
+    }
+  ]
+}

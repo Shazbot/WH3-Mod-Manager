@@ -1,3 +1,12 @@
+import type {
+  ArmyVisualContractRole,
+  ArmyVisualContractRosterScope,
+  ArmyVisualContractRosterScopeKind,
+  ArmyVisualContractRoundingPolicy,
+  ArmyVisualContractState,
+  ArmyVisualScenarioContract,
+} from "./armyVisualContract";
+
 export const ARMY_BENCHMARK_FILE_KIND = "whmm-atlas-army-benchmark" as const;
 export const ARMY_BENCHMARK_FILE_VERSION = 2 as const;
 
@@ -11,26 +20,12 @@ export const ARMY_BENCHMARK_TEMPLATE = {
 } as const;
 
 export type ArmyBenchmarkCategory = keyof typeof ARMY_BENCHMARK_TEMPLATE;
-export type ArmyBenchmarkVisualRole = "men" | "mounts" | "engines" | "crew" | "asset";
-export type ArmyBenchmarkVisualState = "live" | "destroyed" | "destruct";
-export type ArmyBenchmarkRoundingPolicy = "ceil" | "round" | "floor";
-export type ArmyBenchmarkRosterScopeKind = "all" | "culture" | "faction" | "mod" | "optimized-assets";
-
-export type ArmyBenchmarkRosterScope = {
-  kind: ArmyBenchmarkRosterScopeKind;
-  key?: string;
-};
-
-export type ArmyVisualScenario = {
-  unitSizeScale: number;
-  crewScale: number;
-  engineRoundingPolicy: ArmyBenchmarkRoundingPolicy;
-  lodDistribution: Record<string, number>;
-  destructionProbability: number;
-  destructTransitionProbability: number;
-  armySlotTemplate: Record<ArmyBenchmarkCategory, number>;
-  rosterScope: ArmyBenchmarkRosterScope;
-};
+export type ArmyBenchmarkVisualRole = ArmyVisualContractRole;
+export type ArmyBenchmarkVisualState = ArmyVisualContractState;
+export type ArmyBenchmarkRoundingPolicy = ArmyVisualContractRoundingPolicy;
+export type ArmyBenchmarkRosterScopeKind = ArmyVisualContractRosterScopeKind;
+export type ArmyBenchmarkRosterScope = ArmyVisualContractRosterScope;
+export type ArmyVisualScenario = ArmyVisualScenarioContract;
 
 export const DEFAULT_ARMY_VISUAL_SCENARIO: ArmyVisualScenario = {
   unitSizeScale: 0.75,
