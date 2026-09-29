@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import initialState from "../src/initialAppState";
 import appReducer from "../src/appSlice";
 import SkillsView, { SkillsViewHandle } from "../src/components/skillsViewer/SkillsView";
+import { skillEntry } from "../src/components/skillsViewer/skillPanelLayout";
 
 vi.mock("@xyflow/react", () => {
   const React = require("react");
@@ -112,9 +113,9 @@ describe("SkillsView edit-mode layout", () => {
     await waitFor(() => expect(viewRef.current?.getSnapshot().isEditMode).toBe(false));
 
     const nodes = viewRef.current!.getSnapshot().nodes;
-    expect(nodes.find((node) => node.id === "node_3")?.position.y).toBe(300);
-    expect(nodes.find((node) => node.id === "node_4")?.position.y).toBe(400);
-    expect(nodes.find((node) => node.id === "node_5")?.position.y).toBe(500);
+    expect(nodes.find((node) => node.id === "node_3")?.position.y).toBe(3 * skillEntry.rowPitch);
+    expect(nodes.find((node) => node.id === "node_4")?.position.y).toBe(4 * skillEntry.rowPitch);
+    expect(nodes.find((node) => node.id === "node_5")?.position.y).toBe(5 * skillEntry.rowPitch);
   });
 
   it("reapplies normal-mode hidden-skill filtering after edit mode", async () => {

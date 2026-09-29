@@ -37,6 +37,7 @@ import groupBy from "object.groupby";
 
 import "@xyflow/react/dist/style.css";
 import Skill, { SkillData } from "./Skill";
+import { skillEntry } from "./skillPanelLayout";
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
@@ -144,7 +145,7 @@ const GROUP_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1
 
 const AddPlaceholderNode = memo(({ data }: { data: { row: number; column: number } }) => {
   return (
-    <div className="flex items-center justify-center w-[260px] h-20 border-2 border-dashed border-transparent rounded-lg cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors group">
+    <div className="flex items-center justify-center w-[185px] h-[65px] border-2 border-dashed border-transparent rounded-lg cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors group">
       <span className="text-3xl text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">+</span>
     </div>
   );
@@ -226,16 +227,25 @@ let tooltipFrame = "";
 let skillLevelLitIcon = "";
 
 skillIconBackground = require("../../assets/skills/skills_tab_ornament.png");
-skillBackground = require("../../assets/skills//tech_skills_tab_active.png");
+skillBackground = require("../../assets/skills/skills_tab_active.png");
 skillIcon = require("../../assets/skills//character_magic.png");
 arrowImg = require("../../assets/skills//parchment_divider_arrow.png");
 skillLevelImg = require("../../assets/skills//skills_tab_level_off.png");
 tooltipFrame = require("../../assets/skills//tooltip_frame.png");
 skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 
-const nodeWidth = 300;
-const nodeHeight = 100;
-const biggerNodeHeight = 120;
+const nodeWidth = skillEntry.columnPitch;
+const nodeHeight = skillEntry.rowPitch;
+const biggerNodeHeight = nodeHeight + 20;
+// Group boxes sit 10 px left and 15 px above their first card.
+const groupBoxHeight = skillEntry.height + 25;
+
+/**
+ * Gets the width of a group box around a row of cards.
+ * @param numSkills How many cards the group holds.
+ * @returns The width in px, padding the cards by 10 px on each side.
+ */
+const groupBoxWidth = (numSkills: number) => (numSkills - 1) * nodeWidth + skillEntry.width + 20;
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
 const sortSameCoordinateSkills = (first: Skill, second: Skill) => {
@@ -626,12 +636,12 @@ const SkillsView = memo(
             border: "2px solid rgb(42,11,13)",
             boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
             zIndex: "0",
-            width: skills.length * nodeWidth - 15,
-            height: nodeHeight - 10,
+            width: groupBoxWidth(skills.length),
+            height: groupBoxHeight,
           },
           className: "reactFlowGroup",
-          width: skills.length * nodeWidth - 15,
-          height: nodeHeight - 10,
+          width: groupBoxWidth(skills.length),
+          height: groupBoxHeight,
         });
       }
     }
@@ -689,12 +699,12 @@ const SkillsView = memo(
             border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
             boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
             zIndex: "0",
-            width: members.length * nodeWidth - 15,
-            height: nodeHeight + 10,
+            width: groupBoxWidth(members.length),
+            height: groupBoxHeight,
           },
           className: "reactFlowGroup",
-          width: members.length * nodeWidth - 15,
-          height: nodeHeight + 10,
+          width: groupBoxWidth(members.length),
+          height: groupBoxHeight,
         });
       }
     }
@@ -4140,7 +4150,7 @@ const SkillsView = memo(
               if (!n.parentId) {
                 // Use data.row directly: nodes are not draggable in normal mode so it's always the
                 // correct logical row. Avoids Math.round(y / nodeHeight) going wrong when stacked
-                // nodes caused biggerNodeHeight (120) to be used instead of nodeHeight (100).
+                // nodes caused biggerNodeHeight to be used instead of nodeHeight.
                 const row = (n.data as any).row as number;
                 return {
                   ...n,
@@ -4161,11 +4171,11 @@ const SkillsView = memo(
               return {
                 ...n,
                 position: { x: n.position.x, y: row * newHeight - 15 },
-                height: nodeHeight + 10,
+                height: groupBoxHeight,
                 style: {
                   ...((n.style as Record<string, unknown>) || {}),
                   border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
-                  height: nodeHeight + 10,
+                  height: groupBoxHeight,
                 },
               };
             }
@@ -4388,12 +4398,12 @@ const SkillsView = memo(
                 border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
                 boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
                 zIndex: "0",
-                width: members.length * nodeWidth - 15,
-                height: nodeHeight + 10,
+                width: groupBoxWidth(members.length),
+                height: groupBoxHeight,
               },
               className: "reactFlowGroup",
-              width: members.length * nodeWidth - 15,
-              height: nodeHeight + 10,
+              width: groupBoxWidth(members.length),
+              height: groupBoxHeight,
             };
 
             // Add container before members (ReactFlow requires parent before children)

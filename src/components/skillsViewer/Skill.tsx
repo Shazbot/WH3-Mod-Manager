@@ -5,6 +5,41 @@ import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
 import AbilityTooltipCard from "./AbilityTooltipCard";
 import { SkillsDataContext } from "./skillsDataContext";
+import {
+  skillCard,
+  skillEntry,
+  skillIconBox,
+  skillLevels,
+  skillName,
+  skillOrnament,
+  skillText,
+} from "./skillPanelLayout";
+
+// Ability icons carry their own round frame, so they sit smaller inside the ornament's circle.
+const abilityIconInset = 12;
+
+/**
+ * Turns a layout rect into absolute-position styles.
+ * @param rect The rect's offset and size from the game's layout.
+ * @returns The left, top, width and height styles.
+ */
+const toBox = (rect: { x: number; y: number; width: number; height: number }) => ({
+  left: rect.x,
+  top: rect.y,
+  width: rect.width,
+  height: rect.height,
+});
+
+/**
+ * Places the skill icon inside the ornament's circle.
+ * @param isAbilityIcon Whether the icon is an ability icon rather than a skill icon.
+ * @returns The icon's absolute-position styles.
+ */
+const iconBox = (isAbilityIcon: boolean) => {
+  const inset = isAbilityIcon ? abilityIconInset : 0;
+  const size = skillIconBox.size - inset * 2;
+  return toBox({ x: skillIconBox.x + inset, y: skillIconBox.y + inset, width: size, height: size });
+};
 
 export type SkillData = {
   skillBackground: string;
@@ -265,42 +300,64 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           if (isCheckingSkillRequirements && data.unlockRank > currentRank) return;
           onRightClick(currentLevel);
         }}
-        className={`h-20 relative w-[260px] ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${
+        className={`relative ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${
           areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank) ? "" : "grayscale"
         } ${data.isEditMode && selected ? "outline-dashed outline-2 outline-offset-2 outline-cyan-400 rounded-sm" : ""}`}
-        style={data.editGroupColor ? { boxShadow: `inset 4px 0 0 ${data.editGroupColor}` } : undefined}
+        style={{
+          width: skillEntry.width,
+          height: skillEntry.height,
+          ...(data.editGroupColor ? { boxShadow: `inset 4px 0 0 ${data.editGroupColor}` } : {}),
+        }}
       >
         <Handle
           type="target"
           position={Position.Left}
           className={`ml-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
         />
-        <img className="absolute h-20 w-full" src={skillBackground} alt={skillBackground} />
-        <div className="absolute h-20 left-[-30px]">
-          <img className="h-full object-cover" src={skillIconBackground} alt={skillIconBackground} />
+        <div className="absolute" style={toBox(skillCard)}>
+          <img className="absolute w-full h-full" src={skillBackground} alt={skillBackground} />
           <img
-            className={`absolute ${
-              data.isAbilityIcon ? "h-[70%] top-[8px] left-[53px]" : "h-[110%] top-[-6px] left-[14.5%]"
-            }`}
+            className="absolute max-w-none"
+            style={toBox(skillOrnament)}
+            src={skillIconBackground}
+            alt={skillIconBackground}
+          />
+          <img
+            className="absolute max-w-none object-contain"
+            style={iconBox(data.isAbilityIcon)}
             src={resolvedSkillIcon}
             alt={skillIcon}
           />
-        </div>
-        <div
-          className="absolute left-[40%] top-[15%] text-center h-[50%] w-[50%] text-gray-200"
-          style={{ fontFamily: '"Libre Baskerville", serif' }}
-        >
-          {label}
-        </div>
-        <div className="absolute right-[2%] h-[70%] justify-center flex flex-col mt-[8px]">
-          {Array.from(Array(Math.min(data.numLevels, 3)).keys()).map((i) => (
-            <div className="relative" key={`${data.label}-skillLevel-${i}`}>
-              <img src={data.skillLevelImg} alt="skillLevelImg"></img>
-              {i < currentLevel && (
-                <img className="absolute top-0" src={data.skillLevelLitIcon} alt="skillLevelLitIcon" />
-              )}
-            </div>
-          ))}
+          <div
+            className="absolute flex items-center justify-center text-center leading-tight"
+            style={{
+              ...toBox(skillName),
+              fontSize: skillName.fontSize,
+              color: skillText.colour,
+              textShadow: skillText.outline,
+              fontFamily: '"Libre Baskerville", serif',
+            }}
+          >
+            {label}
+          </div>
+          <div className="absolute flex flex-col" style={{ left: skillLevels.x, top: skillLevels.y }}>
+            {Array.from(Array(Math.min(data.numLevels, 3)).keys()).map((i) => (
+              <div
+                className="relative"
+                key={`${data.label}-skillLevel-${i}`}
+                style={{
+                  width: skillLevels.pipWidth,
+                  height: skillLevels.pipHeight,
+                  marginTop: i > 0 ? skillLevels.spacing : 0,
+                }}
+              >
+                <img className="absolute w-full h-full" src={data.skillLevelImg} alt="skillLevelImg"></img>
+                {i < currentLevel && (
+                  <img className="absolute w-full h-full" src={data.skillLevelLitIcon} alt="skillLevelLitIcon" />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
         <Handle
           type="source"
