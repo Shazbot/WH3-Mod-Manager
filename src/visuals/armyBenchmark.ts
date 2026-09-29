@@ -27,6 +27,7 @@ export type ArmyVisualScenario = {
   engineRoundingPolicy: ArmyBenchmarkRoundingPolicy;
   lodDistribution: Record<string, number>;
   destructionProbability: number;
+  destructTransitionProbability: number;
   armySlotTemplate: Record<ArmyBenchmarkCategory, number>;
   rosterScope: ArmyBenchmarkRosterScope;
 };
@@ -37,6 +38,7 @@ export const DEFAULT_ARMY_VISUAL_SCENARIO: ArmyVisualScenario = {
   engineRoundingPolicy: "ceil",
   lodDistribution: { "0": 1 },
   destructionProbability: 0,
+  destructTransitionProbability: 0,
   armySlotTemplate: { ...ARMY_BENCHMARK_TEMPLATE },
   rosterScope: { kind: "all" },
 };
@@ -197,6 +199,10 @@ export const normalizeArmyVisualScenario = (
     destructionProbability: clampProbability(
       scenario?.destructionProbability,
       DEFAULT_ARMY_VISUAL_SCENARIO.destructionProbability,
+    ),
+    destructTransitionProbability: clampProbability(
+      scenario?.destructTransitionProbability,
+      DEFAULT_ARMY_VISUAL_SCENARIO.destructTransitionProbability,
     ),
     armySlotTemplate: template,
     rosterScope: {
