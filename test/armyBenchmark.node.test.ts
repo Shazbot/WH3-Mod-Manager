@@ -183,6 +183,33 @@ describe("army benchmark roster", () => {
     expect(roster.cultureKey).toBe("test_subculture");
   });
 
+
+  it("applies explicit faction and culture roster scopes", () => {
+    const factionRoster = generateArmyBenchmarkRoster(
+      candidates,
+      "C:\\mods\\test.pack",
+      () => 0,
+      { rosterScope: { kind: "faction", key: "test_faction" } },
+    );
+    expect(factionRoster.units.every((unit) => unit.faction === "test_faction")).toBe(true);
+    expect(factionRoster.scenario.rosterScope).toEqual({
+      kind: "faction",
+      key: "test_faction",
+    });
+
+    const cultureRoster = generateArmyBenchmarkRoster(
+      candidates,
+      "C:\\mods\\test.pack",
+      () => 0,
+      { rosterScope: { kind: "culture", key: "test_subculture" } },
+    );
+    expect(cultureRoster.units.every((unit) => unit.cultureKey === "test_subculture")).toBe(true);
+    expect(cultureRoster.scenario.rosterScope).toEqual({
+      kind: "culture",
+      key: "test_subculture",
+    });
+  });
+
   it("round-trips the exact generated unit list for repeatable reruns", () => {
     const generated = generateArmyBenchmarkRoster(candidates, "C:\\mods\\test.pack", () => 0.25);
     const parsed = parseArmyBenchmarkRoster(serializeArmyBenchmarkRoster(generated));
