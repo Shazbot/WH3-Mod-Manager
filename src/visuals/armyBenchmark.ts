@@ -191,19 +191,25 @@ export const normalizeArmyVisualScenario = (
     ? requestedScope.kind
     : "all";
 
+  const destructionProbability = clampProbability(
+    scenario?.destructionProbability,
+    DEFAULT_ARMY_VISUAL_SCENARIO.destructionProbability,
+  );
+  const destructTransitionProbability = Math.min(
+    1 - destructionProbability,
+    clampProbability(
+      scenario?.destructTransitionProbability,
+      DEFAULT_ARMY_VISUAL_SCENARIO.destructTransitionProbability,
+    ),
+  );
+
   return {
     unitSizeScale: normalizeScale(scenario?.unitSizeScale, DEFAULT_ARMY_VISUAL_SCENARIO.unitSizeScale),
     crewScale: normalizeScale(scenario?.crewScale, DEFAULT_ARMY_VISUAL_SCENARIO.crewScale),
     engineRoundingPolicy,
     lodDistribution,
-    destructionProbability: clampProbability(
-      scenario?.destructionProbability,
-      DEFAULT_ARMY_VISUAL_SCENARIO.destructionProbability,
-    ),
-    destructTransitionProbability: clampProbability(
-      scenario?.destructTransitionProbability,
-      DEFAULT_ARMY_VISUAL_SCENARIO.destructTransitionProbability,
-    ),
+    destructionProbability,
+    destructTransitionProbability,
     armySlotTemplate: template,
     rosterScope: {
       kind: scopeKind,
