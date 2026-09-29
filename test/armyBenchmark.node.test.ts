@@ -42,18 +42,66 @@ const candidates: ArmyBenchmarkCandidate[] = [
 ];
 
 describe("army benchmark roster", () => {
-  it("expands a single unit into men, mount, and engine render assets", () => {
+  it("expands a single unit into scaled men, mount, and engine render assets", () => {
     expect(getSingleUnitBenchmarkAssets({
       variantMeshPath: "men.variantmeshdefinition",
       numMen: 60,
       mountVariantMeshPath: "mount.variantmeshdefinition",
-      numMounts: 60,
+      numMounts: 2,
       engineVariantMeshPath: "engine.variantmeshdefinition",
       numEngines: 4,
     })).toEqual([
-      { assetPath: "men.variantmeshdefinition", entities: 60, role: "men" },
-      { assetPath: "mount.variantmeshdefinition", entities: 60, role: "mounts" },
-      { assetPath: "engine.variantmeshdefinition", entities: 4, role: "engines" },
+      {
+        assetPath: "men.variantmeshdefinition",
+        entities: 45,
+        role: "men",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+      {
+        assetPath: "mount.variantmeshdefinition",
+        entities: 6,
+        role: "mounts",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+      {
+        assetPath: "engine.variantmeshdefinition",
+        entities: 3,
+        role: "engines",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+    ]);
+  });
+
+  it("uses the main VMD as crew for crewed engines", () => {
+    expect(getSingleUnitBenchmarkAssets({
+      variantMeshPath: "crew.variantmeshdefinition",
+      numMen: 44,
+      engineVariantMeshPath: "engine.variantmeshdefinition",
+      numEngines: 4,
+      engineType: "Generic_3_Crew",
+    })).toEqual([
+      {
+        assetPath: "crew.variantmeshdefinition",
+        entities: 22,
+        role: "crew",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+      {
+        assetPath: "engine.variantmeshdefinition",
+        entities: 3,
+        role: "engines",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
     ]);
   });
 
@@ -64,7 +112,14 @@ describe("army benchmark roster", () => {
       numMounts: 20,
       numEngines: 2,
     })).toEqual([
-      { assetPath: "men.variantmeshdefinition", entities: 20, role: "men" },
+      {
+        assetPath: "men.variantmeshdefinition",
+        entities: 15,
+        role: "men",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
     ]);
   });
 
@@ -73,10 +128,10 @@ describe("army benchmark roster", () => {
       variantMeshPath: "men.variantmeshdefinition",
       numMen: 100,
       mountVariantMeshPath: "mount.variantmeshdefinition",
-      numMounts: 60,
+      numMounts: 2,
       engineVariantMeshPath: "engine.variantmeshdefinition",
       numEngines: 4,
-    })).toBe(164);
+    })).toBe(84);
     expect(getGenericBenchmarkInstanceCounts(1)).toEqual([1, 10, 25, 50, 100, 250]);
     expect(getGenericBenchmarkInstanceCounts(20)).toEqual([1, 10, 12]);
     expect(getGenericBenchmarkInstanceCounts(160)).toEqual([1]);
@@ -113,15 +168,18 @@ describe("army benchmark roster", () => {
     expect(getArmyBenchmarkCategory({ uiGroupKey: "flying_war_machine" })).toBe("ArtilleryWarMachine");
   });
 
-  it("generates the established 1/2/9/4/3/2 army template and preserves num_men", () => {
+  it("generates the established 1/2/9/4/3/2 army template with explicit visual components", () => {
     const roster = generateArmyBenchmarkRoster(candidates, "C:\\mods\\test.pack", () => 0);
     const expectedTotal = Object.values(ARMY_BENCHMARK_TEMPLATE).reduce((sum, count) => sum + count, 0);
     expect(roster.units).toHaveLength(expectedTotal);
     for (const [category, count] of Object.entries(ARMY_BENCHMARK_TEMPLATE)) {
       expect(roster.units.filter((unit) => unit.category === category)).toHaveLength(count);
     }
-    expect(roster.units.find((unit) => unit.category === "InfantryMissile")?.entities).toBeGreaterThanOrEqual(90);
-    expect(roster.units.find((unit) => unit.category === "CavalryChariot")?.entities).toBe(60);
+    expect(roster.units.find((unit) => unit.category === "InfantryMissile")?.entities).toBeGreaterThanOrEqual(68);
+    expect(roster.units.find((unit) => unit.category === "CavalryChariot")?.entities).toBe(45);
+    expect(roster.units.every((unit) => unit.assets.length > 0)).toBe(true);
+    expect(roster.scenario.unitSizeScale).toBe(0.75);
+    expect(roster.scenario.crewScale).toBe(0.5);
     expect(roster.cultureKey).toBe("test_subculture");
   });
 
@@ -131,11 +189,40 @@ describe("army benchmark roster", () => {
     expect(parsed.units).toEqual(generated.units);
     expect(parsed.template).toEqual(generated.template);
     expect(parsed.sourcePackPath).toBe(generated.sourcePackPath);
+    expect(parsed.scenario).toEqual(generated.scenario);
   });
 
   it("rejects imported entries that are not VMD assets", () => {
     const generated = generateArmyBenchmarkRoster(candidates, "C:\\mods\\test.pack", () => 0);
-    generated.units[0].assetPath = "bad.wsmodel";
+    generated.units[0].assets[0].assetPath = "bad.wsmodel";
     expect(() => parseArmyBenchmarkRoster(JSON.stringify(generated))).toThrow(/variantmeshdefinition/);
   });
+  it("migrates version-1 rosters into the component model", () => {
+    const legacy = {
+      kind: "whmm-atlas-army-benchmark",
+      version: 1,
+      generatedAt: "2026-09-29T00:00:00.000Z",
+      template: { ...ARMY_BENCHMARK_TEMPLATE },
+      units: [{
+        slot: 0,
+        category: "Lord",
+        unitKey: "legacy_lord",
+        faction: "test_faction",
+        name: "Legacy Lord",
+        assetPath: "legacy.variantmeshdefinition",
+        entities: 1,
+      }],
+    };
+    const parsed = parseArmyBenchmarkRoster(JSON.stringify(legacy));
+    expect(parsed.version).toBe(2);
+    expect(parsed.units[0].assets).toEqual([{
+      assetPath: "legacy.variantmeshdefinition",
+      entities: 1,
+      role: "men",
+      state: "live",
+      lod: 0,
+      probability: 1,
+    }]);
+  });
+
 });
