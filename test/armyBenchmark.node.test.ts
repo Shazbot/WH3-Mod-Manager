@@ -180,6 +180,8 @@ describe("army benchmark roster", () => {
     expect(roster.units.every((unit) => unit.assets.length > 0)).toBe(true);
     expect(roster.scenario.unitSizeScale).toBe(0.75);
     expect(roster.scenario.crewScale).toBe(0.5);
+    expect(roster.scenario.destructionProbability).toBe(0);
+    expect(roster.scenario.destructTransitionProbability).toBe(0);
     expect(roster.cultureKey).toBe("test_subculture");
   });
 
