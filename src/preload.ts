@@ -638,6 +638,10 @@ const api = {
       cultures?: { key: string; name: string }[];
       caste?: string;
       numMen?: number;
+      numMounts?: number;
+      numEngines?: number;
+      mountVariantMeshPath?: string;
+      engineVariantMeshPath?: string;
       uiGroupKey?: string;
     }[];
     error?: string;

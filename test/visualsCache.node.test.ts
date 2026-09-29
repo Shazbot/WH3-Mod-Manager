@@ -124,9 +124,14 @@ describe("Visuals data cache", () => {
   it("preserves table, origin, and localization override priority", () => {
     const vanilla = emptyContribution();
     vanilla.variants.push(["shared_variant", "vanilla.variantmeshdefinition"]);
+    vanilla.variants.push(["mount_variant", "vanilla_mount.variantmeshdefinition"]);
+    vanilla.variants.push(["engine_variant", "vanilla_engine.variantmeshdefinition"]);
     vanilla.unitVariants.push(["shared_unit", "faction", "shared_variant"]);
     vanilla.landUnits.push("shared_unit", "vanilla_only");
     vanilla.mainUnits = [["shared_unit", "melee_infantry", 100, "infantry_group"]];
+    vanilla.landUnitEntityData = [["shared_unit", 4, 2, "mount_key", "engine_key"]];
+    vanilla.mountVariants = [["mount_key", "mount_variant"]];
+    vanilla.engineVariants = [["engine_key", "engine_variant"]];
     vanilla.uiUnitGroupings = [["infantry_group", "infantry"]];
     vanilla.mainUnitLinks = [["shared_main", "shared_unit"]];
     vanilla.unitPermissions = [["shared_main", "faction", "vanilla_uniform"]];
@@ -189,6 +194,10 @@ describe("Visuals data cache", () => {
     expect(merged.landUnitKeys).toEqual(new Set(["shared_unit", "vanilla_only", "mod_only"]));
     expect(merged.unitKeyToCaste.get("shared_unit")).toBe("lord");
     expect(merged.unitKeyToNumMen.get("shared_unit")).toBe(1);
+    expect(merged.unitKeyToNumMounts.get("shared_unit")).toBe(4);
+    expect(merged.unitKeyToNumEngines.get("shared_unit")).toBe(2);
+    expect(merged.mountKeyToVariantName.get("mount_key")).toBe("mount_variant");
+    expect(merged.engineKeyToVariantName.get("engine_key")).toBe("engine_variant");
     expect(merged.unitKeyToUiGroupKey.get("shared_unit")).toBe("commander");
     expect(merged.mainUnitToLandUnit.get("shared_main")).toBe("shared_unit");
     expect(merged.unitToPermissionFactions.get("shared_main")).toEqual(new Set(["faction", "mod_faction"]));

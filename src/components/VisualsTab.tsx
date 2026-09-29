@@ -23,6 +23,10 @@ type VisualsUnitEntry = {
   cultures?: Array<{ key: string; name: string }>;
   caste?: string;
   numMen?: number;
+  numMounts?: number;
+  numEngines?: number;
+  mountVariantMeshPath?: string;
+  engineVariantMeshPath?: string;
   uiGroupKey?: string;
 };
 

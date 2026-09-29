@@ -22,7 +22,17 @@ export type ArmyBenchmarkCandidate = {
   cultures?: Array<{ key: string; name: string }>;
   caste?: string;
   numMen?: number;
+  numMounts?: number;
+  numEngines?: number;
+  mountVariantMeshPath?: string;
+  engineVariantMeshPath?: string;
   uiGroupKey?: string;
+};
+
+export type SingleUnitBenchmarkAsset = {
+  assetPath: string;
+  entities: number;
+  role: "men" | "mounts" | "engines" | "asset";
 };
 
 export type ArmyBenchmarkRosterUnit = {
@@ -61,6 +71,42 @@ export type ArmyBenchmarkAssetLoadFailure = {
 const TEMPLATE_CATEGORIES = Object.keys(ARMY_BENCHMARK_TEMPLATE) as ArmyBenchmarkCategory[];
 const normalizePath = (value: string) => value.replace(/\//g, "\\").toLowerCase();
 const normalizeKey = (value?: string) => (value || "").trim().toLowerCase();
+
+const positiveEntityCount = (value: unknown) => {
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 ? Math.max(1, Math.round(count)) : 0;
+};
+
+/**
+ * Expands one unit row into the visual entities that make up a complete unit.
+ * Men, mounts, and engines use separate VariantMeshDefinitions in the game data.
+ */
+export const getSingleUnitBenchmarkAssets = (
+  candidate: Pick<
+    ArmyBenchmarkCandidate,
+    "variantMeshPath" | "numMen" | "mountVariantMeshPath" | "numMounts" | "engineVariantMeshPath" | "numEngines"
+  >,
+): SingleUnitBenchmarkAsset[] => {
+  const primaryPath = candidate.variantMeshPath?.trim();
+  if (!primaryPath) return [];
+
+  const assets: SingleUnitBenchmarkAsset[] = [{
+    assetPath: primaryPath,
+    entities: positiveEntityCount(candidate.numMen) || 1,
+    role: "men",
+  }];
+  const mountCount = positiveEntityCount(candidate.numMounts);
+  const mountPath = candidate.mountVariantMeshPath?.trim();
+  if (mountPath && mountCount > 0) {
+    assets.push({ assetPath: mountPath, entities: mountCount, role: "mounts" });
+  }
+  const engineCount = positiveEntityCount(candidate.numEngines);
+  const enginePath = candidate.engineVariantMeshPath?.trim();
+  if (enginePath && engineCount > 0) {
+    assets.push({ assetPath: enginePath, entities: engineCount, role: "engines" });
+  }
+  return assets;
+};
 
 const CATEGORY_BY_UI_GROUP: Record<string, ArmyBenchmarkCategory> = {
   commander: "Lord",

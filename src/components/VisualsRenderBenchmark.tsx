@@ -11,11 +11,13 @@ import {
 import type { VariantMeshSelection } from "../visuals/variantMesh";
 import {
   generateArmyBenchmarkRoster,
+  getSingleUnitBenchmarkAssets,
   loadArmyBenchmarkAssets,
   parseArmyBenchmarkRoster,
   serializeArmyBenchmarkRoster,
   type ArmyBenchmarkCandidate,
   type ArmyBenchmarkRosterFile,
+  type SingleUnitBenchmarkAsset,
 } from "../visuals/armyBenchmark";
 
 type BenchmarkMod = VisualsModelPreviewMod & {
@@ -79,6 +81,7 @@ type BenchmarkSourceResult = {
   materialTextureObjects: number;
   ktx2: Wh3Ktx2Timing;
   rows: BenchmarkRow[];
+  wholeUnit?: boolean;
   armyAssets?: BenchmarkArmyAssetStats[];
   warnings?: string[];
 };
@@ -825,12 +828,12 @@ const runInstanceCount = (
     sampleFrames,
   );
 
-type LoadedArmyAsset = {
+type LoadedBenchmarkAsset = {
   source: THREE.Object3D;
   entities: number;
 };
 
-const buildArmyGroup = async (assets: readonly LoadedArmyAsset[]) => {
+const buildEntityGroup = async (assets: readonly LoadedBenchmarkAsset[]) => {
   let maxWidth = 0.25;
   let maxDepth = 0.25;
   let totalEntities = 0;
@@ -1018,6 +1021,162 @@ const benchmarkSource = async (
   }
 };
 
+const benchmarkSingleUnitSource = async (
+  assetPath: string,
+  benchmarkUnits: readonly ArmyBenchmarkCandidate[],
+  enabledMods: readonly BenchmarkMod[],
+  pair: BenchmarkPackPair,
+  source: BenchmarkMod,
+  variantSelections: readonly VariantMeshSelection[],
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.PerspectiveCamera,
+  warmupFrames: number,
+  sampleFrames: number,
+  onProgress: (message: string) => void,
+): Promise<BenchmarkSourceMeasurement> => {
+  const sourceMods = buildSourceMods(enabledMods, pair, source);
+  const normalizedAssetPath = normalizePath(assetPath);
+  const candidate = benchmarkUnits.find(
+    (unit) => unit.variantMeshPath && normalizePath(unit.variantMeshPath) === normalizedAssetPath,
+  );
+  const requestedAssets: SingleUnitBenchmarkAsset[] = candidate
+    ? getSingleUnitBenchmarkAssets(candidate)
+    : [{ assetPath, entities: 1, role: "asset" }];
+  if (requestedAssets.length === 0) {
+    throw new Error(`No renderable unit asset metadata is available for ${assetPath}.`);
+  }
+
+  // A shared VMD can be used for a unit's men, mounts, or engines. Export/load it
+  // once and render the combined entity count when that happens.
+  const assetsByPath = new Map<string, SingleUnitBenchmarkAsset>();
+  for (const requested of requestedAssets) {
+    const key = normalizePath(requested.assetPath);
+    const existing = assetsByPath.get(key);
+    if (existing) existing.entities += requested.entities;
+    else assetsByPath.set(key, { ...requested });
+  }
+  const entries = [...assetsByPath.values()];
+  const previewIds: string[] = [];
+  const loadedRoots: THREE.Object3D[] = [];
+  const loadedAssets: LoadedBenchmarkAsset[] = [];
+  const materialTextures = new Set<THREE.Texture>();
+  let exportMs = 0;
+  let loadMs = 0;
+  let group: THREE.Group | undefined;
+  const ktx2Loader = new Wh3Ktx2Loader(renderer);
+  ktx2Loader.detectSupport(renderer);
+  const loader = new GLTFLoader();
+  loader.setKTX2Loader(ktx2Loader);
+
+  try {
+    const loaded: Array<{ entry: SingleUnitBenchmarkAsset; value: THREE.Object3D }> = [];
+    const failures: Array<{ entry: SingleUnitBenchmarkAsset; error: string }> = [];
+    for (const [entryIndex, entry] of entries.entries()) {
+      onProgress(
+        `${fileName(source.path)} · loading unit ${entryIndex + 1}/${entries.length} ${entry.role} asset`,
+      );
+      try {
+        const exportStartedAt = performance.now();
+        const exported = await exportVisualsModel(
+          entry.assetPath,
+          sourceMods,
+          [],
+          entry.role === "men" ? variantSelections : [],
+        );
+        exportMs += performance.now() - exportStartedAt;
+        if (!exported.success || !exported.previewId || !exported.url) {
+          throw new Error(exported.error || `Failed to export ${entry.assetPath}.`);
+        }
+        previewIds.push(exported.previewId);
+
+        const loadStartedAt = performance.now();
+        const gltf = await loader.loadAsync(exported.url);
+        loadMs += performance.now() - loadStartedAt;
+        const root = gltf.scene;
+        if (getRenderableMeshCount(root) === 0) {
+          throw new Error(`Exported an empty GLB for ${entry.assetPath}.`);
+        }
+        loadedRoots.push(root);
+        loaded.push({ entry, value: root });
+      } catch (error) {
+        failures.push({
+          entry,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const primaryLoaded = loaded.find(({ entry }) => entry.role === "men" || entry.role === "asset");
+    if (!primaryLoaded) {
+      const details = failures.map(({ entry, error }) => `${entry.assetPath}: ${error}`).join(" ");
+      throw new Error(`Unable to load the single-unit benchmark asset.${details ? ` ${details}` : ""}`);
+    }
+    const warnings = failures.map(
+      ({ entry, error }) => `Skipped unit ${entry.role} asset (${entry.assetPath}): ${error}`,
+    );
+    for (const warning of warnings) onProgress(`${fileName(source.path)} · ${warning}`);
+
+    for (const root of loadedRoots) {
+      getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
+    }
+    const texturePreloadStartedAt = performance.now();
+    for (const texture of materialTextures) ktx2Loader.preloadTexture(texture);
+    const gl = renderer.getContext();
+    gl.finish();
+    if (gl.isContextLost()) {
+      throw new Error(`Benchmark WebGL context was lost while preloading ${materialTextures.size} unit textures.`);
+    }
+    const texturePreloadMs = performance.now() - texturePreloadStartedAt;
+
+    for (const { entry, value } of loaded) {
+      loadedAssets.push({ source: value, entities: entry.entities });
+    }
+    onProgress(
+      `${fileName(source.path)} · building complete unit · ${loadedAssets
+        .reduce((sum, asset) => sum + asset.entities, 0)
+        .toLocaleString()} entities`,
+    );
+    const built = await buildEntityGroup(loadedAssets);
+    group = built.group;
+    if (getRenderableMeshCount(group) === 0) {
+      throw new Error(`${fileName(source.path)} produced an empty unit render group.`);
+    }
+    onProgress(
+      `${fileName(source.path)} · measuring complete unit · ${built.totalEntities.toLocaleString()} entities`,
+    );
+    const row = await runPreparedGroup(
+      renderer,
+      scene,
+      camera,
+      group,
+      built.totalEntities,
+      warmupFrames,
+      sampleFrames,
+    );
+    group = undefined;
+    return {
+      packPath: source.path,
+      exportMs,
+      loadMs,
+      texturePreloadMs,
+      materialTextureObjects: materialTextures.size,
+      ktx2: ktx2Loader.getTiming(),
+      rows: [row],
+      wholeUnit: !!candidate,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  } finally {
+    if (group) {
+      disposeSkinnedInstanceResources(group);
+      group.clear();
+    }
+    for (const root of loadedRoots) disposeLoadedObject(root);
+    await Promise.all(previewIds.map((previewId) => releaseVisualsModelPreview(previewId).catch(() => undefined)));
+    ktx2Loader.clearRawTextureDataCache();
+  }
+};
+
 const benchmarkArmySource = async (
   roster: ArmyBenchmarkRosterFile,
   enabledMods: readonly BenchmarkMod[],
@@ -1103,7 +1262,7 @@ const benchmarkArmySource = async (
       sharedTextureDuplicates += shareArmyTextures(root, sharedArmyTextures);
       getMaterialTextureObjects(root).forEach((texture) => materialTextures.add(texture));
       await yieldToUi();
-      return { source: root, entities: entry.entities } satisfies LoadedArmyAsset;
+      return { source: root, entities: entry.entities } satisfies LoadedBenchmarkAsset;
     });
 
     const warnings = loadResult.failures.map(({ entry, error }) => {
@@ -1155,7 +1314,7 @@ const benchmarkArmySource = async (
     onProgress(
       `${fileName(source.path)} · building ${loadedAssets.length}/${entries.length} unique army assets · ${loadedAssets.reduce((sum, asset) => sum + asset.entities, 0).toLocaleString()} entities`,
     );
-    const built = await buildArmyGroup(loadedAssets);
+    const built = await buildEntityGroup(loadedAssets);
     group = built.group;
     if (getRenderableMeshCount(group) === 0) {
       throw new Error(`${fileName(source.path)} produced an empty army render group.`);
@@ -1265,6 +1424,7 @@ const combineSourceMeasurements = (
     materialTextureObjects: first.materialTextureObjects,
     ktx2: combineKtx2Timing(first.ktx2, second.ktx2),
     rows: first.rows.map((row, index) => combineMeasurementRows(row, second.rows[index])),
+    ...(first.wholeUnit && second.wholeUnit ? { wholeUnit: true } : {}),
     ...(first.armyAssets ? { armyAssets: first.armyAssets } : {}),
     ...((first.warnings?.length || second.warnings?.length)
       ? { warnings: Array.from(new Set([...(first.warnings ?? []), ...(second.warnings ?? [])])) }
@@ -1555,19 +1715,36 @@ const VisualsRenderBenchmark = memo(({
                 benchmarkProfile.sampleFrames,
                 progress,
               )
-            : benchmarkSource(
-                assetPath,
-                enabledMods,
-                selectedPair,
-                source,
-                variantSelections,
-                environment.renderer,
-                environment.scene,
-                environment.camera,
-                benchmarkProfile.warmupFrames,
-                benchmarkProfile.sampleFrames,
-                progress,
-              );
+            : benchmarkUnits.some(
+                (unit) => unit.variantMeshPath && normalizePath(unit.variantMeshPath) === normalizePath(assetPath),
+              )
+              ? benchmarkSingleUnitSource(
+                  assetPath,
+                  benchmarkUnits,
+                  enabledMods,
+                  selectedPair,
+                  source,
+                  variantSelections,
+                  environment.renderer,
+                  environment.scene,
+                  environment.camera,
+                  benchmarkProfile.warmupFrames,
+                  benchmarkProfile.sampleFrames,
+                  progress,
+                )
+              : benchmarkSource(
+                  assetPath,
+                  enabledMods,
+                  selectedPair,
+                  source,
+                  variantSelections,
+                  environment.renderer,
+                  environment.scene,
+                  environment.camera,
+                  benchmarkProfile.warmupFrames,
+                  benchmarkProfile.sampleFrames,
+                  progress,
+                );
         };
 
         try {
@@ -1846,7 +2023,11 @@ const VisualsRenderBenchmark = memo(({
                 </span>
                 <span>
                   {result.passesPerSource} passes/source · {result.warmupFrames} warmup + {result.sampleFrames} measured frames/pass
-                  {result.mode === "army" ? " for the whole army" : " per count"}
+                  {result.mode === "army"
+                    ? " for the whole army"
+                    : result.original.wholeUnit
+                      ? " for the complete unit"
+                      : " per count"}
                 </span>
               </div>
               {result.mode === "asset"
@@ -1855,8 +2036,9 @@ const VisualsRenderBenchmark = memo(({
                 && result.original.rows[0].drawCalls === result.atlas.rows[0].drawCalls
                 && result.original.rows[0].triangles === result.atlas.rows[0].triangles && (
                   <div className="mb-2 rounded border border-amber-800/70 bg-amber-950/30 px-2 py-1 text-amber-300">
-                    No 1-instance structural render difference detected: draw calls and triangles are identical.
-                    This asset/appearance does not exercise the atlas mesh-merge benefit, so timing deltas here are mostly noise.
+                    No {result.original.wholeUnit ? "complete-unit" : "1-instance"} structural render difference detected:
+                    draw calls and triangles are identical. This {result.original.wholeUnit ? "unit" : "asset/appearance"}
+                    does not exercise the atlas mesh-merge benefit, so timing deltas here are mostly noise.
                   </div>
                 )}
               {result.mode === "army" && result.original.armyAssets && result.atlas.armyAssets && (() => {
@@ -1960,7 +2142,7 @@ const VisualsRenderBenchmark = memo(({
                 <thead className="text-gray-500">
                   <tr>
                     <th className="border-b border-gray-800 px-1 py-1 text-left">
-                      {result.mode === "army" ? "Entities" : "Instances"}
+                      {result.mode === "army" || result.original.wholeUnit ? "Entities" : "Instances"}
                     </th>
                     <th className="border-b border-gray-800 px-1 py-1">Calls orig</th>
                     <th className="border-b border-gray-800 px-1 py-1">Calls atlas</th>

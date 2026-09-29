@@ -681,6 +681,9 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     unitVariants: [],
     landUnits: [],
     mainUnits: [],
+    landUnitEntityData: [],
+    mountVariants: [],
+    engineVariants: [],
     uiUnitGroupings: [],
     mainUnitLinks: [],
     unitPermissions: [],
@@ -781,9 +784,35 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     const culture = row.find((field) => field.name === "culture")?.resolvedKeyValue || "";
     contribution.culturesSubcultures!.push([subculture, culture]);
   });
+  forEachTableRow("mounts_tables", (row) => {
+    const mountKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
+    if (!mountKey) return;
+    contribution.mountVariants!.push([
+      mountKey,
+      row.find((field) => field.name === "variant")?.resolvedKeyValue || "",
+    ]);
+  });
+  forEachTableRow("battlefield_engines_tables", (row) => {
+    const engineKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
+    if (!engineKey) return;
+    contribution.engineVariants!.push([
+      engineKey,
+      row.find((field) => field.name === "variant")?.resolvedKeyValue || "",
+    ]);
+  });
   forEachTableRow("land_units_tables", (row) => {
     const unitKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
-    if (unitKey) contribution.landUnits.push(unitKey);
+    if (!unitKey) return;
+    contribution.landUnits.push(unitKey);
+    const numMounts = Number(row.find((field) => field.name === "num_mounts")?.resolvedKeyValue || 0);
+    const numEngines = Number(row.find((field) => field.name === "num_engines")?.resolvedKeyValue || 0);
+    contribution.landUnitEntityData!.push([
+      unitKey,
+      Number.isFinite(numMounts) ? numMounts : 0,
+      Number.isFinite(numEngines) ? numEngines : 0,
+      row.find((field) => field.name === "mount")?.resolvedKeyValue || "",
+      row.find((field) => field.name === "engine")?.resolvedKeyValue || "",
+    ]);
   });
   forEachTableRow("agent_subtypes_tables", (row) => {
     const subtype = row.find((field) => field.name === "key")?.resolvedKeyValue || "";
@@ -7515,6 +7544,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const tablesToRead = [
         "land_units_tables",
         "main_units_tables",
+        "mounts_tables",
+        "battlefield_engines_tables",
         "ui_unit_groupings_tables",
         "units_custom_battle_permissions_tables",
         "unit_variants_tables",
@@ -7682,6 +7713,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         unitKeyToOriginPackPath,
         unitKeyToCaste,
         unitKeyToNumMen,
+        unitKeyToNumMounts,
+        unitKeyToNumEngines,
+        unitKeyToMountKey,
+        unitKeyToEngineKey,
+        mountKeyToVariantName,
+        engineKeyToVariantName,
         unitKeyToUiGroupKey,
         mainUnitToLandUnit,
         unitToPermissionFactions,
@@ -7790,6 +7827,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         cultures: Array<{ key: string; name: string }>;
         caste: string;
         numMen: number;
+        numMounts: number;
+        numEngines: number;
+        mountVariantMeshPath?: string;
+        engineVariantMeshPath?: string;
         uiGroupKey: string;
       }[];
       for (const unitKey of landUnitKeys) {
@@ -7802,6 +7843,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
         const caste = unitKeyToCaste.get(unitKey) || "";
         const numMen = unitKeyToNumMen.get(unitKey) || 0;
+        const numMounts = unitKeyToNumMounts.get(unitKey) || 0;
+        const numEngines = unitKeyToNumEngines.get(unitKey) || 0;
+        const mountVariantName = mountKeyToVariantName.get(unitKeyToMountKey.get(unitKey) || "");
+        const engineVariantName = engineKeyToVariantName.get(unitKeyToEngineKey.get(unitKey) || "");
+        const mountVariantFilename = mountVariantName ? variantsByName.get(mountVariantName) : undefined;
+        const engineVariantFilename = engineVariantName ? variantsByName.get(engineVariantName) : undefined;
+        const mountVariantMeshPath = mountVariantFilename
+          ? toVariantMeshDefinitionPath(mountVariantFilename)
+          : undefined;
+        const engineVariantMeshPath = engineVariantFilename
+          ? toVariantMeshDefinitionPath(engineVariantFilename)
+          : undefined;
         const uiGroupKey = unitKeyToUiGroupKey.get(unitKey) || "";
         const addCultureMetadata = (
           faction: string,
@@ -7860,6 +7913,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               ...addCultureMetadata(characterArt.faction, characterArt.subculture, characterArt.culture),
               caste,
               numMen,
+              numMounts,
+              numEngines,
+              ...(mountVariantMeshPath ? { mountVariantMeshPath } : {}),
+              ...(engineVariantMeshPath ? { engineVariantMeshPath } : {}),
               uiGroupKey,
             });
           }
@@ -7877,6 +7934,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ...addCultureMetadata(""),
             caste,
             numMen,
+            numMounts,
+            numEngines,
+            ...(mountVariantMeshPath ? { mountVariantMeshPath } : {}),
+            ...(engineVariantMeshPath ? { engineVariantMeshPath } : {}),
             uiGroupKey,
           });
           continue;
@@ -7900,6 +7961,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ...addCultureMetadata(row.faction),
             caste,
             numMen,
+            numMounts,
+            numEngines,
+            ...(mountVariantMeshPath ? { mountVariantMeshPath } : {}),
+            ...(engineVariantMeshPath ? { engineVariantMeshPath } : {}),
             uiGroupKey,
           });
         }

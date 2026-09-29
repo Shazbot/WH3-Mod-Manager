@@ -2,7 +2,7 @@ import * as nodePath from "path";
 import * as fs from "fs";
 
 /** Bump whenever the extraction rules or the cached shape change. */
-export const VISUALS_DATA_CACHE_VERSION = 10;
+export const VISUALS_DATA_CACHE_VERSION = 11;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const VISUALS_CACHE_DIR = "visuals";
 const VANILLA_CACHE_FILE = "vanilla.bin";
@@ -39,6 +39,17 @@ export interface VisualsTableContribution {
   mainUnits?: Array<
     [landUnitKey: string, caste: string, numMen?: number, uiUnitGroupLand?: string]
   >;
+  /** Land-unit mount/engine references and counts used by the complete-unit render benchmark. */
+  landUnitEntityData?: Array<[
+    landUnitKey: string,
+    numMounts: number,
+    numEngines: number,
+    mountKey?: string,
+    engineKey?: string,
+  ]>;
+  /** Mount/engine variant references used to resolve their render assets. */
+  mountVariants?: Array<[mountKey: string, variantName: string]>;
+  engineVariants?: Array<[engineKey: string, variantName: string]>;
   /** UI unit group -> parent roster group, used by the army benchmark category template. */
   uiUnitGroupings?: Array<[uiUnitGroupKey: string, parentGroupKey: string]>;
   /** Main-unit -> land-unit links used to join Unit Viewer permissions to Visuals rows. */
@@ -78,6 +89,12 @@ export interface VisualsMergedTableData {
   unitKeyToOriginPackPath: Map<string, string>;
   unitKeyToCaste: Map<string, string>;
   unitKeyToNumMen: Map<string, number>;
+  unitKeyToNumMounts: Map<string, number>;
+  unitKeyToNumEngines: Map<string, number>;
+  unitKeyToMountKey: Map<string, string>;
+  unitKeyToEngineKey: Map<string, string>;
+  mountKeyToVariantName: Map<string, string>;
+  engineKeyToVariantName: Map<string, string>;
   unitKeyToUiGroupKey: Map<string, string>;
   mainUnitToLandUnit: Map<string, string>;
   unitToPermissionFactions: Map<string, Set<string>>;
@@ -403,6 +420,12 @@ export const mergeVisualsTableContributions = (
   const unitKeyToOriginPackPath = new Map<string, string>();
   const unitKeyToCaste = new Map<string, string>();
   const unitKeyToNumMen = new Map<string, number>();
+  const unitKeyToNumMounts = new Map<string, number>();
+  const unitKeyToNumEngines = new Map<string, number>();
+  const unitKeyToMountKey = new Map<string, string>();
+  const unitKeyToEngineKey = new Map<string, string>();
+  const mountKeyToVariantName = new Map<string, string>();
+  const engineKeyToVariantName = new Map<string, string>();
   const unitKeyToUiGroupLand = new Map<string, string>();
   const uiGroupToParent = new Map<string, string>();
   const mainUnitToLandUnit = new Map<string, string>();
@@ -447,6 +470,18 @@ export const mergeVisualsTableContributions = (
       unitKeyToCaste.set(landUnitKey, caste);
       if (numMen != null && Number.isFinite(numMen)) unitKeyToNumMen.set(landUnitKey, numMen);
       if (uiUnitGroupLand) unitKeyToUiGroupLand.set(landUnitKey, uiUnitGroupLand);
+    }
+    for (const [landUnitKey, numMounts, numEngines, mountKey = "", engineKey = ""] of contribution.landUnitEntityData || []) {
+      if (Number.isFinite(numMounts)) unitKeyToNumMounts.set(landUnitKey, numMounts);
+      if (Number.isFinite(numEngines)) unitKeyToNumEngines.set(landUnitKey, numEngines);
+      unitKeyToMountKey.set(landUnitKey, mountKey);
+      unitKeyToEngineKey.set(landUnitKey, engineKey);
+    }
+    for (const [mountKey, variantName] of contribution.mountVariants || []) {
+      mountKeyToVariantName.set(mountKey, variantName);
+    }
+    for (const [engineKey, variantName] of contribution.engineVariants || []) {
+      engineKeyToVariantName.set(engineKey, variantName);
     }
     for (const [unitKey, landUnitKey] of contribution.mainUnitLinks || []) {
       mainUnitToLandUnit.set(unitKey, landUnitKey);
@@ -548,6 +583,12 @@ export const mergeVisualsTableContributions = (
     unitKeyToOriginPackPath,
     unitKeyToCaste,
     unitKeyToNumMen,
+    unitKeyToNumMounts,
+    unitKeyToNumEngines,
+    unitKeyToMountKey,
+    unitKeyToEngineKey,
+    mountKeyToVariantName,
+    engineKeyToVariantName,
     unitKeyToUiGroupKey,
     mainUnitToLandUnit,
     unitToPermissionFactions,

@@ -81,7 +81,7 @@ type VisualsModelPreviewProps = {
   unitVariantContext?: UnitPainterUnitVariantContext;
   /** Enables the experimental direct-on-model base-colour painter. */
   enablePainting?: boolean;
-  /** DB-backed unit pool used only by the dev atlas army benchmark. */
+  /** DB-backed unit pool used by the dev atlas benchmark. */
   benchmarkUnits?: readonly ArmyBenchmarkCandidate[];
 };
 

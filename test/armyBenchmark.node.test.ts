@@ -3,6 +3,7 @@ import {
   ARMY_BENCHMARK_TEMPLATE,
   generateArmyBenchmarkRoster,
   getArmyBenchmarkCategory,
+  getSingleUnitBenchmarkAssets,
   loadArmyBenchmarkAssets,
   parseArmyBenchmarkRoster,
   serializeArmyBenchmarkRoster,
@@ -39,6 +40,32 @@ const candidates: ArmyBenchmarkCandidate[] = [
 ];
 
 describe("army benchmark roster", () => {
+  it("expands a single unit into men, mount, and engine render assets", () => {
+    expect(getSingleUnitBenchmarkAssets({
+      variantMeshPath: "men.variantmeshdefinition",
+      numMen: 60,
+      mountVariantMeshPath: "mount.variantmeshdefinition",
+      numMounts: 60,
+      engineVariantMeshPath: "engine.variantmeshdefinition",
+      numEngines: 4,
+    })).toEqual([
+      { assetPath: "men.variantmeshdefinition", entities: 60, role: "men" },
+      { assetPath: "mount.variantmeshdefinition", entities: 60, role: "mounts" },
+      { assetPath: "engine.variantmeshdefinition", entities: 4, role: "engines" },
+    ]);
+  });
+
+  it("does not add mount or engine assets without a matching visual path", () => {
+    expect(getSingleUnitBenchmarkAssets({
+      variantMeshPath: "men.variantmeshdefinition",
+      numMen: 20,
+      numMounts: 20,
+      numEngines: 2,
+    })).toEqual([
+      { assetPath: "men.variantmeshdefinition", entities: 20, role: "men" },
+    ]);
+  });
+
   it("keeps loading valid assets when one asset loader rejects", async () => {
     const result = await loadArmyBenchmarkAssets(
       [
