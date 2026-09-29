@@ -75,6 +75,8 @@ type VisualsModelPreviewProps = {
   /** Session used to inspect VMD slots and select appearances. */
   variantMeshSessionId?: string;
   variantMeshSessionType?: "unitViewer" | "visuals";
+  /** Reports the concrete VMD selection currently being rendered. */
+  onVariantSelectionsChange?: (selections: readonly VariantMeshSelection[]) => void;
   /** DB row context used to optionally save the painted VMD for one faction instead of overriding the source VMD. */
   unitVariantContext?: UnitPainterUnitVariantContext;
   /** Enables the experimental direct-on-model base-colour painter. */
@@ -839,6 +841,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     unsyncedAnimations = true,
     variantMeshSessionId,
     variantMeshSessionType = "unitViewer",
+    onVariantSelectionsChange,
     unitVariantContext,
     enablePainting = false,
   } = props;
@@ -2163,6 +2166,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   }, [comparisonColumnSlot, comparisonLayerSlot, comparisonRowSlot, variantCatalog, variantSelections]);
   const comparisonModelCount = comparisonVariants.length;
   const comparisonTooLarge = comparisonModelCount > MAX_COMPARISON_MODELS;
+
+  useEffect(() => {
+    if (comparisonModelCount !== 1 || !onVariantSelectionsChange) return;
+    onVariantSelectionsChange(comparisonVariants[0]?.selections ?? []);
+  }, [comparisonModelCount, comparisonVariants, onVariantSelectionsChange]);
 
   useEffect(() => {
     if (isActive || status !== "ready") return;

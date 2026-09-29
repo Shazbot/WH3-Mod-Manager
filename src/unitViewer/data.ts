@@ -842,6 +842,48 @@ export const buildUnitViewerData = (
       .filter((candidate): candidate is UnitViewerMissileWeapon => !!candidate);
     const primaryMissileWeapon = missileCandidates.find((candidate) => !candidate.useSecondaryAmmoPool);
     const secondaryMissileWeapon = missileCandidates.find((candidate) => candidate.useSecondaryAmmoPool);
+    const compositionEntities = [
+      {
+        role: "crew" as const,
+        label: "Crew",
+        entity: baseEntity,
+        count: Math.max(1, asNumber(main.num_men)),
+        visualBindingSupported: false,
+      },
+      ...(mountEntity
+        ? [
+            {
+              role: "mount" as const,
+              label: "Mount",
+              entity: mountEntity,
+              count: Math.max(1, asNumber(land.num_mounts)),
+              visualBindingSupported: false,
+            },
+          ]
+        : []),
+      ...(engineEntity
+        ? [
+            {
+              role: "engine" as const,
+              label: "War machine",
+              entity: engineEntity,
+              count: Math.max(1, asNumber(land.num_engines)),
+              visualBindingSupported: false,
+            },
+          ]
+        : []),
+      ...(articulatedEntity
+        ? [
+            {
+              role: "articulated" as const,
+              label: "Articulated vehicle",
+              entity: articulatedEntity,
+              count: Math.max(1, asNumber(land.num_engines)),
+              visualBindingSupported: false,
+            },
+          ]
+        : []),
+    ];
 
     const model: UnitViewerUnitModel = {
       key,
@@ -900,6 +942,7 @@ export const buildUnitViewerData = (
       secondaryMissileWeapon,
       unitCardPath,
       variantMeshPath,
+      compositionEntities,
       painterVariantContext,
       attributes: unitAttributes,
       abilities: unitAbilities,

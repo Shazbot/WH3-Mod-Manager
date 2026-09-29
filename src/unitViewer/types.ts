@@ -26,6 +26,21 @@ export interface UnitViewerEntity {
   size: string;
 }
 
+export type UnitViewerEntityRole = "crew" | "mount" | "engine" | "articulated";
+
+/**
+ * A database entity participating in the unit composition.  The current model host renders the
+ * resolved VMD as one composition, so these rows are intentionally diagnostic until the host can
+ * return stable visual bindings for each role.
+ */
+export interface UnitViewerCompositionEntity {
+  role: UnitViewerEntityRole;
+  label: string;
+  entity: UnitViewerEntity;
+  count: number;
+  visualBindingSupported: boolean;
+}
+
 export interface UnitViewerMeleeWeapon {
   key: string;
   baseDamage: number;
@@ -168,6 +183,8 @@ export interface UnitViewerUnitModel {
   unitCardPath?: string;
   /** Resolved variantmeshdefinition used by the 3D unit preview. */
   variantMeshPath?: string;
+  /** Database entities shown by the composition inspector. */
+  compositionEntities?: UnitViewerCompositionEntity[];
   /** Source DB rows needed to optionally save a painted VMD as a faction-specific unit variant. */
   painterVariantContext?: UnitViewerPainterVariantContext;
   attributes: UnitViewerAttribute[];

@@ -674,6 +674,29 @@ const api = {
   getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
     ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
 
+  getVisualsVariantMeshComposition: (
+    assetPath: string,
+    enabledMods: Mod[],
+    variantSelections?: readonly { slotPath: string; choiceIndex: number }[],
+  ): Promise<{
+    success: boolean;
+    composition?: {
+      success: boolean;
+      assetPath: string;
+      sharedSkeletonName?: string | null;
+      components: Array<{
+        bindingId: string;
+        sourceModelPath: string;
+        attachmentPoint: string;
+        skeletonName?: string | null;
+        meshCount: number;
+        hasWeights: boolean;
+      }>;
+      diagnostics: string[];
+    };
+    error?: string;
+  }> => ipcRenderer.invoke("getVisualsVariantMeshComposition", assetPath, enabledMods, variantSelections || []),
+
   getVisualsVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
     ipcRenderer.invoke("getVisualsVariantMeshCatalog", sessionId, assetPath),
 

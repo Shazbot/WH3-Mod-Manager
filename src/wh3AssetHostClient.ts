@@ -157,6 +157,23 @@ export interface Wh3AssetHostAnimationCatalog {
   diagnostics: string[];
 }
 
+export interface Wh3AssetHostCompositionComponent {
+  bindingId: string;
+  sourceModelPath: string;
+  attachmentPoint: string;
+  skeletonName?: string | null;
+  meshCount: number;
+  hasWeights: boolean;
+}
+
+export interface Wh3AssetHostCompositionResult {
+  success: boolean;
+  assetPath: string;
+  sharedSkeletonName?: string | null;
+  components: Wh3AssetHostCompositionComponent[];
+  diagnostics: string[];
+}
+
 export interface Wh3AssetHostAnimationReference {
   path: string;
   packIndex?: number | null;
@@ -426,6 +443,16 @@ export class Wh3AssetHostClient {
 
   getAnimationCatalog(assetPath: string): Promise<Wh3AssetHostAnimationCatalog> {
     return this.request<Wh3AssetHostAnimationCatalog>("getAnimationCatalog", { assetPath });
+  }
+
+  getVariantMeshComposition(
+    assetPath: string,
+    variantSelections: readonly VariantMeshSelection[] = [],
+  ): Promise<Wh3AssetHostCompositionResult> {
+    return this.request<Wh3AssetHostCompositionResult>("getVariantMeshComposition", {
+      assetPath,
+      variantSelections: [...variantSelections],
+    });
   }
 
   exportPaintedVariant(request: Wh3AssetHostPaintedVariantRequest): Promise<Wh3AssetHostPaintedVariantResult> {

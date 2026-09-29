@@ -99,6 +99,7 @@ const makeUnit = (overrides: Partial<UnitViewerUnitModel>): UnitViewerUnitModel 
   groundStatEffects: [],
   baseEntity: rider,
   mountEntity: { ...rider, key: "horse", runSpeed: 8.4, chargeSpeed: 10.8, mass: 1000 },
+  compositionEntities: [],
   meleeWeapon: {
     key: "weapon",
     baseDamage: 14,

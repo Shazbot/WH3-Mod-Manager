@@ -283,6 +283,59 @@ describe("WH3AssetHostClient", () => {
     assetHost.dispose();
   });
 
+  it("requests resolved VariantMeshDefinition components with structural bindings", async () => {
+    const child = createMockChild();
+    const { client, server } = createDuplexPair();
+    let seen: any;
+    installServerResponder(server, (request) => {
+      seen = request;
+      return {
+        protocolVersion: 1,
+        requestId: request.requestId,
+        success: true,
+        command: request.command,
+        result: {
+          success: true,
+          assetPath: request.assetPath,
+          sharedSkeletonName: "human",
+          components: [
+            {
+              bindingId: "root/slot[0]/choice[1]",
+              sourceModelPath: "variantmeshes\\crew.rigid_model_v2",
+              attachmentPoint: "be_prop_1",
+              skeletonName: "human",
+              meshCount: 2,
+              hasWeights: true,
+            },
+          ],
+          diagnostics: [],
+        },
+        error: null,
+      };
+    });
+
+    const assetHost = new Wh3AssetHostClient({
+      executablePath: "host.exe",
+      spawnProcess: () => child as never,
+      connectPipe: async () => client,
+    });
+    await assetHost.start();
+    await expect(
+      assetHost.getVariantMeshComposition("variantmeshes\\unit.variantmeshdefinition", [
+        { slotPath: "root/slot[0]", choiceIndex: 1 },
+      ]),
+    ).resolves.toMatchObject({
+      sharedSkeletonName: "human",
+      components: [{ bindingId: "root/slot[0]/choice[1]", meshCount: 2 }],
+    });
+    expect(seen).toMatchObject({
+      command: "getVariantMeshComposition",
+      assetPath: "variantmeshes\\unit.variantmeshdefinition",
+      variantSelections: [{ slotPath: "root/slot[0]", choiceIndex: 1 }],
+    });
+    assetHost.dispose();
+  });
+
   it("sends exportModelBatch with shared options and per-item selections", async () => {
     const child = createMockChild();
     const { client, server } = createDuplexPair();
