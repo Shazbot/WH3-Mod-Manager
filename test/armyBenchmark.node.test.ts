@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   ARMY_BENCHMARK_TEMPLATE,
+  getGenericBenchmarkInstanceCounts,
   generateArmyBenchmarkRoster,
   getArmyBenchmarkCategory,
   getSingleUnitBenchmarkAssets,
+  getSingleUnitBenchmarkEntityCount,
   loadArmyBenchmarkAssets,
   parseArmyBenchmarkRoster,
   serializeArmyBenchmarkRoster,
@@ -64,6 +66,21 @@ describe("army benchmark roster", () => {
     })).toEqual([
       { assetPath: "men.variantmeshdefinition", entities: 20, role: "men" },
     ]);
+  });
+
+  it("scales generic benchmark instance counts to the complete unit size", () => {
+    expect(getSingleUnitBenchmarkEntityCount({
+      variantMeshPath: "men.variantmeshdefinition",
+      numMen: 100,
+      mountVariantMeshPath: "mount.variantmeshdefinition",
+      numMounts: 60,
+      engineVariantMeshPath: "engine.variantmeshdefinition",
+      numEngines: 4,
+    })).toBe(164);
+    expect(getGenericBenchmarkInstanceCounts(1)).toEqual([1, 10, 25, 50, 100, 250]);
+    expect(getGenericBenchmarkInstanceCounts(20)).toEqual([1, 10, 12]);
+    expect(getGenericBenchmarkInstanceCounts(160)).toEqual([1]);
+    expect(getGenericBenchmarkInstanceCounts()).toEqual([1, 10, 25, 50, 100, 250]);
   });
 
   it("keeps loading valid assets when one asset loader rejects", async () => {

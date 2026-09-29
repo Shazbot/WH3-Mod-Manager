@@ -10,8 +10,12 @@ import {
 } from "../visuals/modelPreviewApi";
 import type { VariantMeshSelection } from "../visuals/variantMesh";
 import {
+  GENERIC_BENCHMARK_COUNTS,
+  GENERIC_BENCHMARK_ENTITY_BUDGET,
+  getGenericBenchmarkInstanceCounts,
   generateArmyBenchmarkRoster,
   getSingleUnitBenchmarkAssets,
+  getSingleUnitBenchmarkEntityCount,
   loadArmyBenchmarkAssets,
   parseArmyBenchmarkRoster,
   serializeArmyBenchmarkRoster,
@@ -121,7 +125,6 @@ type GpuTimerExtension = {
   GPU_DISJOINT_EXT: number;
 };
 
-const BENCHMARK_COUNTS = [1, 10, 25, 50, 100, 250] as const;
 const BENCHMARK_WIDTH = 960;
 const BENCHMARK_HEIGHT = 540;
 const BENCHMARK_PROFILES: Record<BenchmarkProfile, { warmupFrames: number; sampleFrames: number }> = {
@@ -131,6 +134,17 @@ const BENCHMARK_PROFILES: Record<BenchmarkProfile, { warmupFrames: number; sampl
 
 const normalizePath = (value: string) => value.replace(/\//g, "\\").toLowerCase();
 const fileName = (value: string) => value.replace(/\\/g, "/").split("/").pop() ?? value;
+const findBenchmarkUnitForAsset = (
+  assetPath: string,
+  benchmarkUnits: readonly ArmyBenchmarkCandidate[],
+) => {
+  const normalizedAssetPath = normalizePath(assetPath);
+  return benchmarkUnits.find((unit) =>
+    getSingleUnitBenchmarkAssets(unit).some(
+      (asset) => normalizePath(asset.assetPath) === normalizedAssetPath,
+    ),
+  );
+};
 const directoryName = (value: string) => {
   const normalized = value.replace(/\\/g, "/");
   const separator = normalized.lastIndexOf("/");
@@ -956,6 +970,7 @@ const benchmarkSource = async (
   warmupFrames: number,
   sampleFrames: number,
   onProgress: (message: string) => void,
+  unitEntityCount?: number,
 ): Promise<BenchmarkSourceMeasurement> => {
   const sourceMods = buildSourceMods(enabledMods, pair, source);
   const exportStartedAt = performance.now();
@@ -989,7 +1004,8 @@ const benchmarkSource = async (
     const texturePreloadMs = performance.now() - texturePreloadStartedAt;
 
     const rows: BenchmarkMeasurementRow[] = [];
-    for (const instances of BENCHMARK_COUNTS) {
+    const benchmarkCounts = getGenericBenchmarkInstanceCounts(unitEntityCount);
+    for (const instances of benchmarkCounts) {
       onProgress(`${fileName(source.path)} · ${instances} instance${instances === 1 ? "" : "s"}`);
       rows.push(
         await runInstanceCount(
@@ -1701,6 +1717,10 @@ const VisualsRenderBenchmark = memo(({
           passLabel: string,
         ): Promise<BenchmarkSourceMeasurement> => {
           const progress = (message: string) => setProgress(`${passLabel} · ${message}`);
+          const primaryUnitCandidate = benchmarkUnits.find(
+            (unit) => unit.variantMeshPath && normalizePath(unit.variantMeshPath) === normalizePath(assetPath),
+          );
+          const assetUnitCandidate = primaryUnitCandidate ?? findBenchmarkUnitForAsset(assetPath, benchmarkUnits);
           setProgress(`${passLabel} · exporting ${fileName(source.path)}`);
           return mode === "army"
             ? benchmarkArmySource(
@@ -1715,9 +1735,7 @@ const VisualsRenderBenchmark = memo(({
                 benchmarkProfile.sampleFrames,
                 progress,
               )
-            : benchmarkUnits.some(
-                (unit) => unit.variantMeshPath && normalizePath(unit.variantMeshPath) === normalizePath(assetPath),
-              )
+            : primaryUnitCandidate
               ? benchmarkSingleUnitSource(
                   assetPath,
                   benchmarkUnits,
@@ -1744,6 +1762,9 @@ const VisualsRenderBenchmark = memo(({
                   benchmarkProfile.warmupFrames,
                   benchmarkProfile.sampleFrames,
                   progress,
+                  assetUnitCandidate
+                    ? getSingleUnitBenchmarkEntityCount(assetUnitCandidate)
+                    : undefined,
                 );
         };
 
@@ -1954,7 +1975,8 @@ const VisualsRenderBenchmark = memo(({
             ) : (
               <>
                 Static model, 960×540, shadows off, shared geometry/material/texture resources between instances.
-                The camera fits the full instance grid. Counts: {BENCHMARK_COUNTS.join(", ")}.
+                Complete units render at their actual entity count. Other assets use instance targets {GENERIC_BENCHMARK_COUNTS.join(", ")};
+                known unit assets cap those targets to keep the rendered entity count near {GENERIC_BENCHMARK_ENTITY_BUDGET}.
               </>
             )}
             {" "}Each source is measured twice in counterbalanced original → atlas → atlas → original order. CPU samples from

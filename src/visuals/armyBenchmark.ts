@@ -35,6 +35,9 @@ export type SingleUnitBenchmarkAsset = {
   role: "men" | "mounts" | "engines" | "asset";
 };
 
+export const GENERIC_BENCHMARK_COUNTS = [1, 10, 25, 50, 100, 250] as const;
+export const GENERIC_BENCHMARK_ENTITY_BUDGET = 250;
+
 export type ArmyBenchmarkRosterUnit = {
   slot: number;
   category: ArmyBenchmarkCategory;
@@ -106,6 +109,26 @@ export const getSingleUnitBenchmarkAssets = (
     assets.push({ assetPath: enginePath, entities: engineCount, role: "engines" });
   }
   return assets;
+};
+
+export const getSingleUnitBenchmarkEntityCount = (
+  candidate: Pick<
+    ArmyBenchmarkCandidate,
+    "variantMeshPath" | "numMen" | "mountVariantMeshPath" | "numMounts" | "engineVariantMeshPath" | "numEngines"
+  >,
+) => getSingleUnitBenchmarkAssets(candidate).reduce((total, asset) => total + asset.entities, 0);
+
+/**
+ * Keeps generic asset benchmarks within a comparable rendered-entity budget when
+ * the asset belongs to a known unit. Unknown assets retain the legacy counts.
+ */
+export const getGenericBenchmarkInstanceCounts = (unitEntityCount?: number): number[] => {
+  const normalizedEntityCount = positiveEntityCount(unitEntityCount);
+  if (normalizedEntityCount === 0) return [...GENERIC_BENCHMARK_COUNTS];
+
+  const maxInstances = Math.max(1, Math.floor(GENERIC_BENCHMARK_ENTITY_BUDGET / normalizedEntityCount));
+  const counts = GENERIC_BENCHMARK_COUNTS.map((count) => Math.min(count, maxInstances));
+  return counts.filter((count, index) => index === 0 || count !== counts[index - 1]);
 };
 
 const CATEGORY_BY_UI_GROUP: Record<string, ArmyBenchmarkCategory> = {
