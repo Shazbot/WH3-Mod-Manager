@@ -92,6 +92,9 @@ const SidebarTooltip = ({
           position: strategy,
           top: y ?? " ",
           left: x ?? " ",
+          // A fixed element shrinks near the viewport edge, so after a window resize it would be measured at the
+          // squeezed width of its old spot and then overlap the trigger once moved.
+          width: "max-content",
         },
         ...props,
       })}
