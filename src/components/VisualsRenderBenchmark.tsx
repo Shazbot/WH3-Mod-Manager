@@ -784,7 +784,7 @@ const runPreparedGroup = async (
       cpuP95Ms: cpu.p95,
       cpuP99Ms: cpu.p99,
       gpuMeanMs: gpuTotalMs == null ? undefined : gpuTotalMs / sampleFrames,
-      cpuSamplesMs,
+      cpuSamplesMs: cpuSamples,
       gpuTotalMs,
       gpuSampleFrames: gpuTotalMs == null ? 0 : sampleFrames,
     };
