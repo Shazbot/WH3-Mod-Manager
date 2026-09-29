@@ -186,6 +186,21 @@ describe("army benchmark roster", () => {
   });
 
 
+
+  it("keeps destroyed and destruct lifecycle probabilities within one visual state", () => {
+    const roster = generateArmyBenchmarkRoster(
+      candidates,
+      "C:\\mods\\test.pack",
+      () => 0,
+      {
+        destructionProbability: 0.8,
+        destructTransitionProbability: 0.8,
+      },
+    );
+    expect(roster.scenario.destructionProbability).toBe(0.8);
+    expect(roster.scenario.destructTransitionProbability).toBeCloseTo(0.2);
+  });
+
   it("applies explicit faction and culture roster scopes", () => {
     const factionRoster = generateArmyBenchmarkRoster(
       candidates,
