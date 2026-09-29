@@ -1058,7 +1058,7 @@ const benchmarkSingleUnitSource = async (
   );
   const requestedAssets: SingleUnitBenchmarkAsset[] = candidate
     ? getSingleUnitBenchmarkAssets(candidate)
-    : [{ assetPath, entities: 1, role: "asset" }];
+    : [{ assetPath, entities: 1, role: "asset", state: "live", lod: 0, probability: 1 }];
   if (requestedAssets.length === 0) {
     throw new Error(`No renderable unit asset metadata is available for ${assetPath}.`);
   }
@@ -1098,7 +1098,7 @@ const benchmarkSingleUnitSource = async (
           entry.assetPath,
           sourceMods,
           [],
-          entry.role === "men" ? variantSelections : [],
+          entry.role === "men" || entry.role === "crew" ? variantSelections : [],
         );
         exportMs += performance.now() - exportStartedAt;
         if (!exported.success || !exported.previewId || !exported.url) {
@@ -1123,7 +1123,9 @@ const benchmarkSingleUnitSource = async (
       }
     }
 
-    const primaryLoaded = loaded.find(({ entry }) => entry.role === "men" || entry.role === "asset");
+    const primaryLoaded = loaded.find(
+      ({ entry }) => entry.role === "men" || entry.role === "crew" || entry.role === "asset",
+    );
     if (!primaryLoaded) {
       const details = failures.map(({ entry, error }) => `${entry.assetPath}: ${error}`).join(" ");
       throw new Error(`Unable to load the single-unit benchmark asset.${details ? ` ${details}` : ""}`);
@@ -1206,19 +1208,34 @@ const benchmarkArmySource = async (
   onProgress: (message: string) => void,
 ): Promise<BenchmarkSourceMeasurement> => {
   const sourceMods = buildSourceMods(enabledMods, pair, source);
-  const byAssetPath = new Map<string, { assetPath: string; entities: number; names: string[] }>();
+  const byAssetPath = new Map<string, {
+    assetPath: string;
+    entities: number;
+    names: string[];
+    roles: Array<"men" | "mounts" | "engines" | "crew" | "asset">;
+  }>();
   for (const unit of roster.units) {
-    const key = normalizePath(unit.assetPath);
-    const existing = byAssetPath.get(key);
-    if (existing) {
-      existing.entities += unit.entities;
-      existing.names.push(unit.name);
-    } else {
-      byAssetPath.set(key, {
-        assetPath: unit.assetPath,
-        entities: unit.entities,
-        names: [unit.name],
-      });
+    for (const asset of unit.assets) {
+      // The benchmark is the live-army scenario. Destroyed/destruct assets stay in
+      // the serialized scenario model but are deliberately not rendered here.
+      if (asset.state !== "live" || asset.probability <= 0) continue;
+      const entities = Math.round(asset.entities * asset.probability);
+      if (entities <= 0) continue;
+      const key = normalizePath(asset.assetPath);
+      const label = `${unit.name} [${asset.role}]`;
+      const existing = byAssetPath.get(key);
+      if (existing) {
+        existing.entities += entities;
+        existing.names.push(label);
+        if (!existing.roles.includes(asset.role)) existing.roles.push(asset.role);
+      } else {
+        byAssetPath.set(key, {
+          assetPath: asset.assetPath,
+          entities,
+          names: [label],
+          roles: [asset.role],
+        });
+      }
     }
   }
 
@@ -1990,15 +2007,23 @@ const VisualsRenderBenchmark = memo(({
             <div className="rounded border border-gray-800 bg-gray-900/60 px-2 py-1 text-gray-400">
               <div>
                 Army list: {armyRoster.units.length} unit slots ·{" "}
-                {armyRoster.units.reduce((sum, unit) => sum + unit.entities, 0).toLocaleString()} entities
+                {armyRoster.units
+                  .flatMap((unit) => unit.assets)
+                  .filter((asset) => asset.state === "live")
+                  .reduce((sum, asset) => sum + Math.round(asset.entities * asset.probability), 0)
+                  .toLocaleString()} visual entities
                 {armyRoster.cultureKey ? ` · ${armyRoster.cultureKey}` : ""}
               </div>
               <details className="mt-1">
                 <summary className="cursor-pointer text-gray-300">Show selected units</summary>
                 <div className="mt-1 grid gap-x-3 gap-y-0.5 md:grid-cols-2 xl:grid-cols-3">
                   {armyRoster.units.map((unit) => (
-                    <div key={`${unit.slot}:${unit.unitKey}:${unit.faction}`} title={unit.assetPath}>
-                      {unit.slot + 1}. {unit.category} · {unit.name} · {unit.entities}
+                    <div key={`${unit.slot}:${unit.unitKey}:${unit.faction}`} title={unit.assets.map((asset) => asset.assetPath).join("\n")}>
+                      {unit.slot + 1}. {unit.category} · {unit.name} ·{" "}
+                      {unit.assets
+                        .filter((asset) => asset.state === "live")
+                        .map((asset) => `${asset.role}=${asset.entities}`)
+                        .join(", ")}
                     </div>
                   ))}
                 </div>
