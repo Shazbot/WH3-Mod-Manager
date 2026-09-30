@@ -67,8 +67,11 @@ export class Wh3Ktx2Loader extends KTX2Loader {
   private rawWallEndMs: number | undefined;
   private readonly rawTextureDataCache = new Map<string, Promise<CachedWh3RawTextureData>>();
 
-  constructor(private readonly renderer: THREE.WebGLRenderer) {
-    super();
+  constructor(
+    private readonly renderer: THREE.WebGLRenderer,
+    manager?: THREE.LoadingManager,
+  ) {
+    super(manager);
   }
 
   resetTiming() {

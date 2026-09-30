@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createArmyBenchmarkExportCache,
   getArmyBenchmarkExportCacheKey,
+  getArmyBenchmarkLoadUrl,
 } from "../src/visuals/armyBenchmarkExportCache";
 
 describe("army benchmark export cache", () => {
@@ -47,5 +48,36 @@ describe("army benchmark export cache", () => {
 
     expect(sameIdentity).toBe(original);
     expect(atlas).not.toBe(original);
+  });
+
+  it("includes explicit variant selections in the export identity", () => {
+    const sourceMods = [{ name: "source", path: "C:/mods/original.pack", loadOrder: 4 }];
+    const first = getArmyBenchmarkExportCacheKey(
+      "variantmeshes/unit.variantmeshdefinition",
+      sourceMods,
+      [{ slotPath: "body/torso", choiceIndex: 0 }],
+    );
+    const sameIdentity = getArmyBenchmarkExportCacheKey(
+      "VARIANTMESHES\\UNIT.VARIANTMESHDEFINITION",
+      sourceMods,
+      [{ slotPath: "BODY\\TORSO", choiceIndex: 0 }],
+    );
+    const differentChoice = getArmyBenchmarkExportCacheKey(
+      "variantmeshes/unit.variantmeshdefinition",
+      sourceMods,
+      [{ slotPath: "body/torso", choiceIndex: 1 }],
+    );
+
+    expect(sameIdentity).toBe(first);
+    expect(differentChoice).not.toBe(first);
+  });
+
+  it("cache-busts model preview URLs per render pass without changing other URLs", () => {
+    expect(getArmyBenchmarkLoadUrl("whmm://model-preview/preview-1/model.glb", "pass-1"))
+      .toBe("whmm://model-preview/preview-1/model.glb?whmmBenchmarkPass=pass-1");
+    expect(getArmyBenchmarkLoadUrl("whmm://model-preview/preview-1/texture.ktx2?existing=1", "pass 2"))
+      .toBe("whmm://model-preview/preview-1/texture.ktx2?existing=1&whmmBenchmarkPass=pass+2");
+    expect(getArmyBenchmarkLoadUrl("https://example.com/texture.ktx2", "pass-3"))
+      .toBe("https://example.com/texture.ktx2");
   });
 });
