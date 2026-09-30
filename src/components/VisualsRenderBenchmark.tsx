@@ -8,6 +8,11 @@ import {
   releaseVisualsModelPreview,
   type VisualsModelPreviewMod,
 } from "../visuals/modelPreviewApi";
+import {
+  createArmyBenchmarkExportCache,
+  getArmyBenchmarkExportCacheKey,
+  type ArmyBenchmarkExportCache,
+} from "../visuals/armyBenchmarkExportCache";
 import type { VariantMeshSelection } from "../visuals/variantMesh";
 import {
   GENERIC_BENCHMARK_COUNTS,
@@ -80,6 +85,7 @@ type BenchmarkArmyAssetStats = {
 type BenchmarkSourceResult = {
   packPath: string;
   exportMs: number;
+  exportCacheHits?: number;
   loadMs: number;
   texturePreloadMs: number;
   materialTextureObjects: number;
@@ -847,6 +853,14 @@ type LoadedBenchmarkAsset = {
   entities: number;
 };
 
+type ArmyBenchmarkExport = {
+  success: boolean;
+  previewId?: string;
+  url?: string;
+  error?: string;
+  exportMs: number;
+};
+
 const buildEntityGroup = async (assets: readonly LoadedBenchmarkAsset[]) => {
   let maxWidth = 0.25;
   let maxDepth = 0.25;
@@ -1206,6 +1220,7 @@ const benchmarkArmySource = async (
   warmupFrames: number,
   sampleFrames: number,
   onProgress: (message: string) => void,
+  exportCache: ArmyBenchmarkExportCache<ArmyBenchmarkExport>,
 ): Promise<BenchmarkSourceMeasurement> => {
   const sourceMods = buildSourceMods(enabledMods, pair, source);
   const byAssetPath = new Map<string, {
@@ -1239,13 +1254,13 @@ const benchmarkArmySource = async (
     }
   }
 
-  const previewIds: string[] = [];
   const loadedRoots: THREE.Object3D[] = [];
   const materialTextures = new Set<THREE.Texture>();
   const sharedArmyTextures = new Map<string, THREE.Texture>();
   const armyAssets: BenchmarkArmyAssetStats[] = [];
   let sharedTextureDuplicates = 0;
   let exportMs = 0;
+  let exportCacheHits = 0;
   let loadMs = 0;
   let group: THREE.Group | undefined;
   const ktx2Loader = new Wh3Ktx2Loader(renderer);
@@ -1261,13 +1276,43 @@ const benchmarkArmySource = async (
       onProgress(
         `${fileName(source.path)} · loading army unit ${entryIndex}/${entries.length} · ${entry.names[0]}`,
       );
-      const exportStartedAt = performance.now();
-      const exported = await exportVisualsModel(entry.assetPath, sourceMods, [], []);
-      exportMs += performance.now() - exportStartedAt;
+      const exportKey = getArmyBenchmarkExportCacheKey(entry.assetPath, sourceMods);
+      const exportLookup = await exportCache.get(exportKey, async () => {
+        const exportStartedAt = performance.now();
+        try {
+          const exported = await exportVisualsModel(entry.assetPath, sourceMods, [], []);
+          const exportDurationMs = performance.now() - exportStartedAt;
+          if (!exported.success || !exported.previewId || !exported.url) {
+            return {
+              success: false,
+              error: exported.error || `Failed to export ${entry.assetPath}.`,
+              exportMs: exportDurationMs,
+            } satisfies ArmyBenchmarkExport;
+          }
+          return {
+            success: true,
+            previewId: exported.previewId,
+            url: exported.url,
+            exportMs: exportDurationMs,
+          } satisfies ArmyBenchmarkExport;
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            exportMs: performance.now() - exportStartedAt,
+          } satisfies ArmyBenchmarkExport;
+        }
+      });
+      if (exportLookup.cacheHit) {
+        exportCacheHits += 1;
+        onProgress(`${fileName(source.path)} · reusing cached army export · ${entry.names[0]}`);
+      } else {
+        exportMs += exportLookup.value.exportMs;
+      }
+      const exported = exportLookup.value;
       if (!exported.success || !exported.previewId || !exported.url) {
         throw new Error(exported.error || `Failed to export ${entry.assetPath}.`);
       }
-      previewIds.push(exported.previewId);
 
       const loadStartedAt = performance.now();
       const gltf = await loader.loadAsync(exported.url);
@@ -1371,6 +1416,7 @@ const benchmarkArmySource = async (
     return {
       packPath: source.path,
       exportMs,
+      exportCacheHits,
       loadMs,
       texturePreloadMs,
       materialTextureObjects: materialTextures.size,
@@ -1385,7 +1431,7 @@ const benchmarkArmySource = async (
       group.clear();
     }
     for (const root of loadedRoots) disposeLoadedObject(root);
-    await Promise.all(previewIds.map((previewId) => releaseVisualsModelPreview(previewId).catch(() => undefined)));
+    ktx2Loader.clearRawTextureDataCache();
   }
 };
 
@@ -1449,9 +1495,14 @@ const combineSourceMeasurements = (
     );
   }
 
+  const armyBenchmark = first.armyAssets || second.armyAssets;
+
   return {
     packPath: first.packPath,
-    exportMs: average(first.exportMs, second.exportMs),
+    exportMs: armyBenchmark ? first.exportMs + second.exportMs : average(first.exportMs, second.exportMs),
+    ...(armyBenchmark
+      ? { exportCacheHits: (first.exportCacheHits ?? 0) + (second.exportCacheHits ?? 0) }
+      : {}),
     loadMs: average(first.loadMs, second.loadMs),
     texturePreloadMs: average(first.texturePreloadMs, second.texturePreloadMs),
     materialTextureObjects: first.materialTextureObjects,
@@ -1724,6 +1775,14 @@ const VisualsRenderBenchmark = memo(({
           );
         }
 
+        const armyExportCache = mode === "army"
+          ? createArmyBenchmarkExportCache<ArmyBenchmarkExport>(async (exported) => {
+              if (exported.previewId) {
+                await releaseVisualsModelPreview(exported.previewId).catch(() => undefined);
+              }
+            })
+          : undefined;
+
         let originalFirst: BenchmarkSourceMeasurement;
         let atlasFirst: BenchmarkSourceMeasurement;
         let atlasSecond: BenchmarkSourceMeasurement;
@@ -1751,6 +1810,7 @@ const VisualsRenderBenchmark = memo(({
                 benchmarkProfile.warmupFrames,
                 benchmarkProfile.sampleFrames,
                 progress,
+                armyExportCache!,
               )
             : primaryUnitCandidate
               ? benchmarkSingleUnitSource(
@@ -1802,7 +1862,11 @@ const VisualsRenderBenchmark = memo(({
 
           originalSecond = await runSource(selectedPair.original, "Pass 4/4 · original");
         } finally {
-          disposeBenchmarkEnvironment(environment);
+          try {
+            await armyExportCache?.dispose();
+          } finally {
+            disposeBenchmarkEnvironment(environment);
+          }
         }
 
         const original = combineSourceMeasurements(originalFirst, originalSecond);
@@ -2000,7 +2064,9 @@ const VisualsRenderBenchmark = memo(({
             both passes are pooled before mean/median/p95/p99 are calculated; GPU timing is combined across both passes.
             GPU timing uses EXT_disjoint_timer_query_webgl2 when available. Est. render VRAM covers resident Three.js geometry
             buffers, material textures, and skeleton bone textures after warmup; driver/shader/internal allocations are not
-            exposed by WebGL. Export/load timings are averaged across the two passes and remain diagnostic only.
+            exposed by WebGL. Asset-mode export/load timings are averaged across the two passes; army export timing is
+            the actual total export work and repeated army exports are cached for the paired pass. These timings remain
+            diagnostic only.
           </div>
 
           {mode === "army" && armyRoster && (
@@ -2048,10 +2114,14 @@ const VisualsRenderBenchmark = memo(({
               ) : null}
               <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-gray-500">
                 <span>
-                  Original export/load/preload: {formatMs(result.original.exportMs)} / {formatMs(result.original.loadMs)} / {formatMs(result.original.texturePreloadMs)} ms
+                  {result.mode === "army"
+                    ? "Original export total/load avg/preload avg"
+                    : "Original export/load/preload"}: {formatMs(result.original.exportMs)} / {formatMs(result.original.loadMs)} / {formatMs(result.original.texturePreloadMs)} ms
+                  {result.mode === "army" && ` · ${result.original.exportCacheHits ?? 0} cached exports`}
                 </span>
                 <span>
-                  Atlas export/load/preload: {formatMs(result.atlas.exportMs)} / {formatMs(result.atlas.loadMs)} / {formatMs(result.atlas.texturePreloadMs)} ms
+                  {result.mode === "army" ? "Atlas export total/load avg/preload avg" : "Atlas export/load/preload"}: {formatMs(result.atlas.exportMs)} / {formatMs(result.atlas.loadMs)} / {formatMs(result.atlas.texturePreloadMs)} ms
+                  {result.mode === "army" && ` · ${result.atlas.exportCacheHits ?? 0} cached exports`}
                 </span>
                 <span>
                   Material texture objects: {result.original.materialTextureObjects} → {result.atlas.materialTextureObjects}
