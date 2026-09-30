@@ -78,6 +78,70 @@ describe("army benchmark roster", () => {
     ]);
   });
 
+  it("uses one mount per scaled rider for ordinary cavalry", () => {
+    expect(getSingleUnitBenchmarkAssets({
+      caste: "melee_cavalry",
+      variantMeshPath: "rider.variantmeshdefinition",
+      numMen: 60,
+      mountVariantMeshPath: "mount.variantmeshdefinition",
+      numMounts: 60,
+    })).toEqual([
+      {
+        assetPath: "rider.variantmeshdefinition",
+        entities: 45,
+        role: "men",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+      {
+        assetPath: "mount.variantmeshdefinition",
+        entities: 45,
+        role: "mounts",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+    ]);
+  });
+
+  it("keeps num_mounts as a per-engine multiplier for chariots", () => {
+    expect(getSingleUnitBenchmarkAssets({
+      caste: "chariot",
+      variantMeshPath: "rider.variantmeshdefinition",
+      numMen: 24,
+      mountVariantMeshPath: "mount.variantmeshdefinition",
+      numMounts: 2,
+      engineVariantMeshPath: "engine.variantmeshdefinition",
+      numEngines: 12,
+    })).toEqual([
+      {
+        assetPath: "rider.variantmeshdefinition",
+        entities: 18,
+        role: "men",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+      {
+        assetPath: "mount.variantmeshdefinition",
+        entities: 18,
+        role: "mounts",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+      {
+        assetPath: "engine.variantmeshdefinition",
+        entities: 9,
+        role: "engines",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+    ]);
+  });
+
   it("uses the main VMD as crew for crewed engines", () => {
     expect(getSingleUnitBenchmarkAssets({
       variantMeshPath: "crew.variantmeshdefinition",

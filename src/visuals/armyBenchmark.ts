@@ -154,6 +154,13 @@ const isCrewedEngine = (engineType?: string) => {
   return normalized.includes("crew") && !normalized.includes("no_crew");
 };
 
+const isPerRiderMountCaste = (caste?: string) => {
+  const normalized = normalizeKey(caste).replace(/[ _-]/g, "");
+  return normalized === "meleecavalry"
+    || normalized === "missilecavalry"
+    || normalized === "warbeast";
+};
+
 export const normalizeArmyVisualScenario = (
   scenario?: Partial<ArmyVisualScenario>,
 ): ArmyVisualScenario => {
@@ -216,11 +223,13 @@ export const normalizeArmyVisualScenario = (
 /**
  * Expands one unit record into explicit visual components. The formulas intentionally
  * match Asset Editor's WH3 unit resolver: large-unit scaling applies to riders/engines,
- * crew uses its own scale, and land_units.num_mounts is mounts per carrier.
+ * crew uses its own scale. For ordinary cavalry and warbeasts, the game uses one mount
+ * per scaled rider; num_mounts is a carrier multiplier for chariots and other engines.
  */
 export const getSingleUnitBenchmarkAssets = (
   candidate: Pick<
     ArmyBenchmarkCandidate,
+    | "caste"
     | "variantMeshPath"
     | "numMen"
     | "mountVariantMeshPath"
@@ -263,9 +272,12 @@ export const getSingleUnitBenchmarkAssets = (
   if (mountPath) {
     const mountsPerCarrier = positiveEntityCount(candidate.numMounts) || 1;
     const carrierCount = engines > 0 ? engines : Math.max(1, riders);
+    const mountEntities = isPerRiderMountCaste(candidate.caste)
+      ? riders
+      : carrierCount * mountsPerCarrier;
     assets.push({
       assetPath: mountPath,
-      entities: carrierCount * mountsPerCarrier,
+      entities: mountEntities,
       role: "mounts",
       state: "live",
       lod: 0,
@@ -289,6 +301,7 @@ export const getSingleUnitBenchmarkAssets = (
 export const getSingleUnitBenchmarkEntityCount = (
   candidate: Pick<
     ArmyBenchmarkCandidate,
+    | "caste"
     | "variantMeshPath"
     | "numMen"
     | "mountVariantMeshPath"
