@@ -6,12 +6,15 @@ import { useLocalizations } from "@/src/localizationContext";
 import AbilityTooltipCard from "./AbilityTooltipCard";
 import { SkillsDataContext } from "./skillsDataContext";
 import {
+  skillArt,
   skillCard,
   skillEntry,
   skillIconBox,
   skillLevels,
   skillName,
   skillOrnament,
+  skillPadlock,
+  skillRankLock,
   skillText,
 } from "./skillPanelLayout";
 
@@ -188,6 +191,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   }
 
   if (!isCheckingSkillRequirements) areRequirementsValid = true;
+  const isRankLocked = isCheckingSkillRequirements && data.unlockRank > currentRank;
+  const isLocked = !areRequirementsValid || isRankLocked;
 
   const shownLevel = Math.min(currentLevel + 1, data.numLevels);
   const effectsAtShownLevel = data.effects.filter((effect) => effect.level == shownLevel);
@@ -291,18 +296,17 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         onMouseLeave={() => onMouseLeave()}
         onClick={() => {
           if (data.isEditMode) return;
-          if (isCheckingSkillRequirements && data.unlockRank > currentRank) return;
-          if (!isCheckingSkillRequirements || areRequirementsValid) onClick(currentLevel, data.numLevels);
+          if (!isLocked) onClick(currentLevel, data.numLevels);
         }}
         onContextMenu={(e) => {
           e.preventDefault();
           if (data.isEditMode) return;
-          if (isCheckingSkillRequirements && data.unlockRank > currentRank) return;
+          if (isRankLocked) return;
           onRightClick(currentLevel);
         }}
         className={`relative ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${
-          areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank) ? "" : "grayscale"
-        } ${data.isEditMode && selected ? "outline-dashed outline-2 outline-offset-2 outline-cyan-400 rounded-sm" : ""}`}
+          data.isEditMode && selected ? "outline-dashed outline-2 outline-offset-2 outline-cyan-400 rounded-sm" : ""
+        }`}
         style={{
           width: skillEntry.width,
           height: skillEntry.height,
@@ -314,16 +318,28 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           position={Position.Left}
           className={`ml-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
         />
-        <div className="absolute" style={toBox(skillCard)}>
+        <div className="absolute group" style={toBox(skillCard)}>
           <img className="absolute w-full h-full" src={skillBackground} alt={skillBackground} />
+          {isLocked ? (
+            <img className="absolute w-full h-full" src={skillArt.inactive} alt="inactive" />
+          ) : (
+            <>
+              {currentLevel > 0 && <img className="absolute w-full h-full" src={skillArt.selected} alt="selected" />}
+              <img
+                className="absolute w-full h-full opacity-0 group-hover:opacity-100"
+                src={currentLevel > 0 ? skillArt.selectedHover : skillArt.hover}
+                alt="hover"
+              />
+            </>
+          )}
           <img
-            className="absolute max-w-none"
+            className={`absolute max-w-none ${isLocked ? "grayscale" : ""}`}
             style={toBox(skillOrnament)}
             src={skillIconBackground}
             alt={skillIconBackground}
           />
           <img
-            className="absolute max-w-none object-contain"
+            className={`absolute max-w-none object-contain ${isLocked ? "grayscale" : ""}`}
             style={iconBox(data.isAbilityIcon)}
             src={resolvedSkillIcon}
             alt={skillIcon}
@@ -333,7 +349,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             style={{
               ...toBox(skillName),
               fontSize: skillName.fontSize,
-              color: skillText.colour,
+              color: isLocked ? skillText.lockedColour : skillText.colour,
               textShadow: skillText.outline,
               fontFamily: '"Libre Baskerville", serif',
             }}
@@ -358,6 +374,18 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               </div>
             ))}
           </div>
+          {isRankLocked ? (
+            <img
+              className="absolute max-w-none"
+              style={toBox(skillRankLock)}
+              src={skillArt.lockedRank}
+              alt="lockedRank"
+            />
+          ) : (
+            isLocked && (
+              <img className="absolute max-w-none" style={toBox(skillPadlock)} src={skillArt.padlock} alt="padlock" />
+            )
+          )}
         </div>
         <Handle
           type="source"

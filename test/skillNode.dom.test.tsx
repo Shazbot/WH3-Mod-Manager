@@ -56,6 +56,21 @@ const skillData = {
   unlockRank: 0,
 } as SkillData;
 
+const renderSkill = (data: SkillData, app: Partial<AppState> = {}) => {
+  const store = configureStore({
+    reducer: { app: appReducer },
+    preloadedState: { app: { ...initialState, ...app } },
+  });
+  const nodeRequirements = { node_child: { single: ["node_parent"], multiple: [], numMultiple: 0 } };
+  return render(
+    <Provider store={store}>
+      <SkillsDataContext.Provider value={treeSkillsData("tab", nodeRequirements)}>
+        <Skill data={data} />
+      </SkillsDataContext.Provider>
+    </Provider>,
+  );
+};
+
 describe("Skill", () => {
   it("checks requirements against its own tab's data, not the latest response in Redux", () => {
     // Redux holds another tree, as it does after switching back to an older tab.
@@ -77,5 +92,32 @@ describe("Skill", () => {
 
     // The parent is not levelled, so the tab's requirement greys the node out.
     expect(container.querySelector(".grayscale")).not.toBeNull();
+  });
+
+  it("draws a padlock when the parent skill is not levelled", () => {
+    const { container } = renderSkill(skillData);
+
+    expect(container.querySelector('img[alt="inactive"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="padlock"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="lockedRank"]')).toBeNull();
+  });
+
+  it("draws the rank chains instead of the padlock when the rank is too low", () => {
+    const { container } = renderSkill({ ...skillData, unlockRank: 5 }, { skillNodesToLevel: { node_parent: 1 } });
+
+    expect(container.querySelector('img[alt="lockedRank"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="padlock"]')).toBeNull();
+  });
+
+  it("draws a levelled skill on the selected tab with its pips lit", () => {
+    const { container } = renderSkill(
+      { ...skillData, numLevels: 3 },
+      { skillNodesToLevel: { node_parent: 1, node_child: 2 } },
+    );
+
+    expect(container.querySelector('img[alt="selected"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="inactive"]')).toBeNull();
+    expect(container.querySelector(".grayscale")).toBeNull();
+    expect(container.querySelectorAll('img[alt="skillLevelLitIcon"]')).toHaveLength(2);
   });
 });
