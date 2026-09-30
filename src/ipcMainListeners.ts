@@ -684,6 +684,7 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     landUnitEntityData: [],
     mountVariants: [],
     engineVariants: [],
+    engineModels: [],
     engineTypes: [],
     uiUnitGroupings: [],
     mainUnitLinks: [],
@@ -799,6 +800,10 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     contribution.engineVariants!.push([
       engineKey,
       row.find((field) => field.name === "variant")?.resolvedKeyValue || "",
+    ]);
+    contribution.engineModels!.push([
+      engineKey,
+      row.find((field) => field.name === "model")?.resolvedKeyValue || "",
     ]);
     contribution.engineTypes!.push([
       engineKey,
@@ -7724,6 +7729,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         unitKeyToEngineKey,
         mountKeyToVariantName,
         engineKeyToVariantName,
+        engineKeyToModelPath,
         engineKeyToType,
         unitKeyToUiGroupKey,
         mainUnitToLandUnit,
@@ -7837,6 +7843,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         numEngines: number;
         mountVariantMeshPath?: string;
         engineVariantMeshPath?: string;
+        engineModelPath?: string;
         engineType?: string;
         uiGroupKey: string;
       }[];
@@ -7864,6 +7871,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const engineVariantMeshPath = engineVariantFilename
           ? toVariantMeshDefinitionPath(engineVariantFilename)
           : undefined;
+        const engineModelPath = engineKeyToModelPath.get(engineKey) || undefined;
         const uiGroupKey = unitKeyToUiGroupKey.get(unitKey) || "";
         const addCultureMetadata = (
           faction: string,
@@ -7926,6 +7934,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               numEngines,
               ...(mountVariantMeshPath ? { mountVariantMeshPath } : {}),
               ...(engineVariantMeshPath ? { engineVariantMeshPath } : {}),
+              ...(engineModelPath ? { engineModelPath } : {}),
               ...(engineType ? { engineType } : {}),
               uiGroupKey,
             });
@@ -7948,6 +7957,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             numEngines,
             ...(mountVariantMeshPath ? { mountVariantMeshPath } : {}),
             ...(engineVariantMeshPath ? { engineVariantMeshPath } : {}),
+            ...(engineModelPath ? { engineModelPath } : {}),
             ...(engineType ? { engineType } : {}),
             uiGroupKey,
           });
@@ -7976,6 +7986,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             numEngines,
             ...(mountVariantMeshPath ? { mountVariantMeshPath } : {}),
             ...(engineVariantMeshPath ? { engineVariantMeshPath } : {}),
+            ...(engineModelPath ? { engineModelPath } : {}),
             ...(engineType ? { engineType } : {}),
             uiGroupKey,
           });

@@ -52,6 +52,8 @@ export type ArmyBenchmarkCandidate = {
   numEngines?: number;
   mountVariantMeshPath?: string;
   engineVariantMeshPath?: string;
+  /** Direct battlefield_engines.model path, usually a .wsmodel engine asset. */
+  engineModelPath?: string;
   engineType?: string;
   uiGroupKey?: string;
 };
@@ -235,6 +237,7 @@ export const getSingleUnitBenchmarkAssets = (
     | "mountVariantMeshPath"
     | "numMounts"
     | "engineVariantMeshPath"
+    | "engineModelPath"
     | "numEngines"
     | "engineType"
   >,
@@ -245,8 +248,11 @@ export const getSingleUnitBenchmarkAssets = (
 
   const scenario = normalizeArmyVisualScenario(scenarioValue);
   const rawMen = positiveEntityCount(candidate.numMen) || 1;
-  const enginePath = candidate.engineVariantMeshPath?.trim();
-  const hasEngine = !!enginePath;
+  const enginePaths = [...new Set([
+    candidate.engineVariantMeshPath?.trim(),
+    candidate.engineModelPath?.trim(),
+  ].filter((path): path is string => !!path))];
+  const hasEngine = enginePaths.length > 0;
   const rawEngines = hasEngine ? (positiveEntityCount(candidate.numEngines) || 1) : 0;
   const engines = hasEngine
     ? scaleEntityCount(rawEngines, scenario.unitSizeScale, scenario.engineRoundingPolicy)
@@ -285,15 +291,17 @@ export const getSingleUnitBenchmarkAssets = (
     });
   }
 
-  if (enginePath && engines > 0) {
-    assets.push({
-      assetPath: enginePath,
-      entities: engines,
-      role: "engines",
-      state: "live",
-      lod: 0,
-      probability: 1,
-    });
+  if (engines > 0) {
+    for (const enginePath of enginePaths) {
+      assets.push({
+        assetPath: enginePath,
+        entities: engines,
+        role: "engines",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      });
+    }
   }
   return assets.filter((asset) => asset.entities > 0);
 };
@@ -307,6 +315,7 @@ export const getSingleUnitBenchmarkEntityCount = (
     | "mountVariantMeshPath"
     | "numMounts"
     | "engineVariantMeshPath"
+    | "engineModelPath"
     | "numEngines"
     | "engineType"
   >,
@@ -574,6 +583,9 @@ const isCategory = (value: unknown): value is ArmyBenchmarkCategory =>
 const isRole = (value: unknown): value is ArmyBenchmarkVisualRole =>
   value === "men" || value === "mounts" || value === "engines" || value === "crew" || value === "asset";
 
+const isSupportedBenchmarkAssetPath = (value: string) =>
+  /\.(?:variantmeshdefinition|wsmodel|rigid_model_v2)$/i.test(value);
+
 const isState = (value: unknown): value is ArmyBenchmarkVisualState =>
   value === "live" || value === "destroyed" || value === "destruct";
 
@@ -592,8 +604,11 @@ const parseVisualAsset = (
   }
   const asset = value as Record<string, unknown>;
   const assetPath = requireString(asset.assetPath, `unit ${unitIndex + 1} asset ${assetIndex + 1} assetPath`);
-  if (!assetPath.toLowerCase().endsWith(".variantmeshdefinition")) {
-    throw new Error(`Army benchmark unit ${unitIndex + 1} asset ${assetIndex + 1} must reference a .variantmeshdefinition.`);
+  if (!isSupportedBenchmarkAssetPath(assetPath)) {
+    throw new Error(
+      `Army benchmark unit ${unitIndex + 1} asset ${assetIndex + 1} must reference a supported model asset `
+      + "(.variantmeshdefinition, .wsmodel, or .rigid_model_v2).",
+    );
   }
   const entities = Number(asset.entities);
   if (!Number.isSafeInteger(entities) || entities < 1) {

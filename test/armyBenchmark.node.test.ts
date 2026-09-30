@@ -169,6 +169,33 @@ describe("army benchmark roster", () => {
     ]);
   });
 
+  it("uses a direct battlefield engine model alongside scaled crew", () => {
+    expect(getSingleUnitBenchmarkAssets({
+      variantMeshPath: "crew.variantmeshdefinition",
+      numMen: 16,
+      engineModelPath: "warmachines\\engines\\galloper.wsmodel",
+      numEngines: 3,
+      engineType: "Generic_3_Crew",
+    })).toEqual([
+      {
+        assetPath: "crew.variantmeshdefinition",
+        entities: 8,
+        role: "crew",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+      {
+        assetPath: "warmachines\\engines\\galloper.wsmodel",
+        entities: 3,
+        role: "engines",
+        state: "live",
+        lod: 0,
+        probability: 1,
+      },
+    ]);
+  });
+
   it("does not add mount or engine assets without a matching visual path", () => {
     expect(getSingleUnitBenchmarkAssets({
       variantMeshPath: "men.variantmeshdefinition",
@@ -300,10 +327,13 @@ describe("army benchmark roster", () => {
     expect(parsed.scenario).toEqual(generated.scenario);
   });
 
-  it("rejects imported entries that are not VMD assets", () => {
+  it("accepts direct engine model assets and rejects unsupported files", () => {
     const generated = generateArmyBenchmarkRoster(candidates, "C:\\mods\\test.pack", () => 0);
-    generated.units[0].assets[0].assetPath = "bad.wsmodel";
-    expect(() => parseArmyBenchmarkRoster(JSON.stringify(generated))).toThrow(/variantmeshdefinition/);
+    generated.units[0].assets[0].assetPath = "engine.wsmodel";
+    expect(parseArmyBenchmarkRoster(JSON.stringify(generated)).units[0].assets[0].assetPath)
+      .toBe("engine.wsmodel");
+    generated.units[0].assets[0].assetPath = "bad.txt";
+    expect(() => parseArmyBenchmarkRoster(JSON.stringify(generated))).toThrow(/supported model asset/);
   });
   it("migrates version-1 rosters into the component model", () => {
     const legacy = {

@@ -2,7 +2,7 @@ import * as nodePath from "path";
 import * as fs from "fs";
 
 /** Bump whenever the extraction rules or the cached shape change. */
-export const VISUALS_DATA_CACHE_VERSION = 12;
+export const VISUALS_DATA_CACHE_VERSION = 13;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const VISUALS_CACHE_DIR = "visuals";
 const VANILLA_CACHE_FILE = "vanilla.bin";
@@ -50,6 +50,8 @@ export interface VisualsTableContribution {
   /** Mount/engine variant references used to resolve their render assets. */
   mountVariants?: Array<[mountKey: string, variantName: string]>;
   engineVariants?: Array<[engineKey: string, variantName: string]>;
+  /** Direct live engine model paths from battlefield_engines.model. */
+  engineModels?: Array<[engineKey: string, modelPath: string]>;
   /** Engine rendering mode used to distinguish rider VMDs from crew VMDs. */
   engineTypes?: Array<[engineKey: string, engineType: string]>;
   /** UI unit group -> parent roster group, used by the army benchmark category template. */
@@ -97,6 +99,7 @@ export interface VisualsMergedTableData {
   unitKeyToEngineKey: Map<string, string>;
   mountKeyToVariantName: Map<string, string>;
   engineKeyToVariantName: Map<string, string>;
+  engineKeyToModelPath: Map<string, string>;
   engineKeyToType: Map<string, string>;
   unitKeyToUiGroupKey: Map<string, string>;
   mainUnitToLandUnit: Map<string, string>;
@@ -429,6 +432,7 @@ export const mergeVisualsTableContributions = (
   const unitKeyToEngineKey = new Map<string, string>();
   const mountKeyToVariantName = new Map<string, string>();
   const engineKeyToVariantName = new Map<string, string>();
+  const engineKeyToModelPath = new Map<string, string>();
   const engineKeyToType = new Map<string, string>();
   const unitKeyToUiGroupLand = new Map<string, string>();
   const uiGroupToParent = new Map<string, string>();
@@ -486,6 +490,9 @@ export const mergeVisualsTableContributions = (
     }
     for (const [engineKey, variantName] of contribution.engineVariants || []) {
       engineKeyToVariantName.set(engineKey, variantName);
+    }
+    for (const [engineKey, modelPath] of contribution.engineModels || []) {
+      engineKeyToModelPath.set(engineKey, modelPath);
     }
     for (const [engineKey, engineType] of contribution.engineTypes || []) {
       engineKeyToType.set(engineKey, engineType);
@@ -596,6 +603,7 @@ export const mergeVisualsTableContributions = (
     unitKeyToEngineKey,
     mountKeyToVariantName,
     engineKeyToVariantName,
+    engineKeyToModelPath,
     engineKeyToType,
     unitKeyToUiGroupKey,
     mainUnitToLandUnit,

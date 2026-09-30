@@ -27,6 +27,7 @@ type VisualsUnitEntry = {
   numEngines?: number;
   mountVariantMeshPath?: string;
   engineVariantMeshPath?: string;
+  engineModelPath?: string;
   uiGroupKey?: string;
 };
 

@@ -642,6 +642,7 @@ const api = {
       numEngines?: number;
       mountVariantMeshPath?: string;
       engineVariantMeshPath?: string;
+      engineModelPath?: string;
       uiGroupKey?: string;
     }[];
     error?: string;

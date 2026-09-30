@@ -132,6 +132,7 @@ describe("Visuals data cache", () => {
     vanilla.landUnitEntityData = [["shared_unit", 4, 2, "mount_key", "engine_key"]];
     vanilla.mountVariants = [["mount_key", "mount_variant"]];
     vanilla.engineVariants = [["engine_key", "engine_variant"]];
+    vanilla.engineModels = [["engine_key", "warmachines\\engines\\engine.wsmodel"]];
     vanilla.uiUnitGroupings = [["infantry_group", "infantry"]];
     vanilla.mainUnitLinks = [["shared_main", "shared_unit"]];
     vanilla.unitPermissions = [["shared_main", "faction", "vanilla_uniform"]];
@@ -198,6 +199,8 @@ describe("Visuals data cache", () => {
     expect(merged.unitKeyToNumEngines.get("shared_unit")).toBe(2);
     expect(merged.mountKeyToVariantName.get("mount_key")).toBe("mount_variant");
     expect(merged.engineKeyToVariantName.get("engine_key")).toBe("engine_variant");
+    expect(merged.engineKeyToModelPath.get("engine_key"))
+      .toBe("warmachines\\engines\\engine.wsmodel");
     expect(merged.unitKeyToUiGroupKey.get("shared_unit")).toBe("commander");
     expect(merged.mainUnitToLandUnit.get("shared_main")).toBe("shared_unit");
     expect(merged.unitToPermissionFactions.get("shared_main")).toEqual(new Set(["faction", "mod_faction"]));
