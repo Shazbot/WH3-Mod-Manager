@@ -711,7 +711,7 @@ const OptionsDrawer = memo(() => {
         <Drawer isOpen={areOptionsOpen} setIsOpen={setAreOptionsOpen}>
           <div
             id="drawer-example"
-            className="overflow-y-scroll fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-[-16px] top-0 transform-none scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+            className="overflow-y-scroll fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-0 top-0 transform-none scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
             tabIndex={-1}
             aria-labelledby="drawer-label"
             aria-modal="true"
