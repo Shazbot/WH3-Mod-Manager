@@ -34,6 +34,7 @@ const Help = memo(() => {
     <>
       {isHelpOpen && (
         <Modal
+          dismissible
           show={isHelpOpen}
           // show={true}
           onClose={() => dispatch(setIsHelpOpen(false))}

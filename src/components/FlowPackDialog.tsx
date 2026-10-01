@@ -331,7 +331,13 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
         </Modal.Body>
       </Modal>
 
-      <Modal onClose={() => setPendingOverwrite(false)} show={show && pendingOverwrite} size="md" position="center">
+      <Modal
+        dismissible
+        onClose={() => setPendingOverwrite(false)}
+        show={show && pendingOverwrite}
+        size="md"
+        position="center"
+      >
         <Modal.Header>{localized.nodeEditorOverwriteFlow || "Overwrite Flow?"}</Modal.Header>
         <Modal.Body>
           <div className="space-y-4 text-gray-100">

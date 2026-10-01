@@ -5094,7 +5094,7 @@ const SkillsView = memo(
             </button>
           </Modal.Footer>
         </Modal>
-        <Modal show={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} size="md">
+        <Modal dismissible show={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} size="md">
           <Modal.Header>Reset Skill Tree</Modal.Header>
           <Modal.Body>
             <p className="text-gray-300">Reset skill tree to original values? All changes will be lost.</p>

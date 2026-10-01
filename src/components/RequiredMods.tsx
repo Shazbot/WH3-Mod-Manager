@@ -142,6 +142,7 @@ const RequiredMods = memo((props: RequiredModsProps) => {
     <>
       {props.isOpen && (
         <Modal
+          dismissible
           show={props.isOpen}
           onClose={onClose}
           size="2xl"

@@ -608,6 +608,7 @@ const Sidebar = memo(() => {
   return (
     <div>
       <Modal
+        dismissible
         show={isWorkshopRepairModalOpen}
         onClose={() => setIsWorkshopRepairModalOpen(false)}
         size="lg"

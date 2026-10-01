@@ -631,7 +631,13 @@ const OptionsDrawer = memo(() => {
       <CreateSteamCollection />
       <ImportSteamCollection />
       <PackSearcher />
-      <Modal show={isForceResubscribeConfirmOpen} onClose={closeForceResubscribeConfirm} size="lg" position="center">
+      <Modal
+        dismissible
+        show={isForceResubscribeConfirmOpen}
+        onClose={closeForceResubscribeConfirm}
+        size="lg"
+        position="center"
+      >
         <Modal.Header>{localized.forceResubscribe}</Modal.Header>
         <Modal.Body>
           <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
@@ -660,6 +666,7 @@ const OptionsDrawer = memo(() => {
         </Modal.Footer>
       </Modal>
       <Modal
+        dismissible
         show={!!pendingCustomFolderCopy}
         onClose={() => setPendingCustomFolderCopy(null)}
         size="lg"

@@ -567,6 +567,7 @@ const AddTechNodeModal = ({
         </div>
       </div>
       <Modal
+        dismissible
         show={isIconPickerOpen}
         onClose={() => setIsIconPickerOpen(false)}
         size="5xl"
