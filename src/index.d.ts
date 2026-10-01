@@ -227,6 +227,8 @@ declare global {
     filter: string;
     alwaysEnabledModNames: string[];
     hiddenModNames: string[];
+    /** Pack names of mods whose missing required mods the user chose to stop being warned about. */
+    ignoredMissingReqModNames: string[];
     saves: GameSave[];
     isOnboardingToRun: boolean;
     hasConfigBeenRead: boolean;
@@ -242,6 +244,8 @@ declare global {
     isUsingEnglishLocalizations: boolean;
     isCompatCheckingVanillaPacks: boolean;
     isAuthorEnabled: boolean;
+    /** Show the optional Last Subscribed column in the wide mod list. */
+    isSubbedTimeEnabled: boolean;
     /** Split the All Mods tab into a disabled-mods list on the left and an enabled-mods list on the right. */
     isDualModListLayoutEnabled: boolean;
     /** How much room a row gets in the dual layout, where two lists share the width one used to have. */
@@ -410,6 +414,7 @@ declare global {
     AppState,
     | "wasOnboardingEverRun"
     | "isAuthorEnabled"
+    | "isSubbedTimeEnabled"
     | "areThumbnailsEnabled"
     | "isDualModListLayoutEnabled"
     | "modListDensity"
@@ -485,6 +490,7 @@ declare global {
     games: Record<SupportedGames, GameConfig>;
     alwaysEnabledModNames: string[];
     hiddenModNames: string[];
+    ignoredMissingReqModNames: string[];
   };
 
   /** The flattened single-game view of the config that main sends to the renderer. */
@@ -493,6 +499,7 @@ declare global {
       configVersion: number;
       alwaysEnabledModNames: string[];
       hiddenModNames: string[];
+      ignoredMissingReqModNames: string[];
       appFolderPaths: GameFolderPaths;
     };
 

@@ -1,6 +1,6 @@
 import classNames from "classnames";
 import type { ComponentProps, FC, PropsWithChildren } from "react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { excludeClassName } from "../../helpers/exclude";
 import windowExists from "../../helpers/window-exists";
@@ -10,6 +10,15 @@ import { ModalBody } from "./ModalBody";
 import { ModalContext } from "./ModalContext";
 import { ModalFooter } from "./ModalFooter";
 import { ModalHeader } from "./ModalHeader";
+
+/** Every modal that is showing, oldest first, so Escape only ever reaches the one on top. */
+const openModalStack: symbol[] = [];
+
+/**
+ * Whether any modal is showing.
+ * @returns True while at least one modal is open.
+ */
+export const isAnyModalOpen = () => openModalStack.length > 0;
 
 export interface ModalPositions extends FlowbitePositions {
   [key: string]: string;
@@ -27,6 +36,8 @@ export interface ModalProps extends PropsWithChildren<Omit<ComponentProps<"div">
   show?: boolean;
   size?: keyof ModalSizes;
   explicitClasses?: string[];
+  /** Close on a click outside the modal or on Escape. Needs `onClose` to do anything. */
+  dismissible?: boolean;
 }
 
 const ModalComponent: FC<ModalProps> = ({
@@ -38,11 +49,43 @@ const ModalComponent: FC<ModalProps> = ({
   position = "center",
   explicitClasses = [],
   onClose,
+  dismissible = false,
+  onClick,
+  onMouseDown,
   ...props
 }) => {
   const [container] = useState<HTMLDivElement | undefined>(windowExists() ? document.createElement("div") : undefined);
   const theme = useTheme().theme.modal;
   const theirProps = excludeClassName(props);
+  const canDismiss = dismissible && !!onClose;
+
+  // Read by the Escape listener so it does not have to be re-registered on every render.
+  const closeOnEscapeRef = useRef<(() => void) | undefined>();
+  closeOnEscapeRef.current = canDismiss ? onClose : undefined;
+
+  // A drag that starts inside the modal and ends on the backdrop still fires a click on the backdrop.
+  const isMouseDownOnBackdropRef = useRef(false);
+
+  useEffect(() => {
+    if (!show) return;
+
+    const modalId = Symbol();
+    openModalStack.push(modalId);
+
+    // Bubble phase on window, so an input or menu inside the modal that handles Escape itself goes first.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (openModalStack[openModalStack.length - 1] !== modalId || !closeOnEscapeRef.current) return;
+      event.preventDefault();
+      closeOnEscapeRef.current();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      openModalStack.splice(openModalStack.indexOf(modalId), 1);
+    };
+  }, [show]);
 
   useEffect(() => {
     if (!container || !root || !show) {
@@ -65,6 +108,14 @@ const ModalComponent: FC<ModalProps> = ({
             data-testid="modal"
             role="dialog"
             {...theirProps}
+            onMouseDown={(event) => {
+              isMouseDownOnBackdropRef.current = event.target === event.currentTarget;
+              onMouseDown?.(event);
+            }}
+            onClick={(event) => {
+              if (canDismiss && isMouseDownOnBackdropRef.current && event.target === event.currentTarget) onClose?.();
+              onClick?.(event);
+            }}
           >
             <div className={classNames(theme.content.base, ...explicitClasses, theme.sizes[size])}>
               <div className={classNames(theme.content.inner, "!h-full")}>{children}</div>

@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { isAnyModalOpen } from "../flowbite/components/Modal/index";
 
 type DrawerProps = {
   children: React.ReactNode;
@@ -11,7 +12,8 @@ export default function Drawer({ children, isOpen, setIsOpen }: DrawerProps) {
     if (!isOpen) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // A modal opened from the drawer takes Escape for itself.
+      if (event.key !== "Escape" || isAnyModalOpen()) return;
       event.preventDefault();
       setIsOpen(false);
     };
@@ -36,7 +38,7 @@ export default function Drawer({ children, isOpen, setIsOpen }: DrawerProps) {
           (isOpen ? " translate-x-0 " : " translate-x-full ")
         }
       >
-        <article className="relative w-screen max-w-lg pb-10 flex flex-col space-y-6 overflow-y-scroll h-full">
+        <article className="relative w-screen max-w-lg pb-10 flex flex-col space-y-6 overflow-y-auto h-full">
           {children}
         </article>
       </section>

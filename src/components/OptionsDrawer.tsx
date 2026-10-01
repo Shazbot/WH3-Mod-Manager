@@ -2,6 +2,7 @@ import Select, { ActionMeta, SingleValue, SingleValueProps, components } from "r
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
+  toggleIgnoredMissingReqMods,
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
@@ -9,6 +10,7 @@ import {
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
+  toggleIsSubbedTimeEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
   setModListDensity,
@@ -103,6 +105,17 @@ const gameToImageSrc = supportedGames.reduce(
   {} as Record<string, string>,
 );
 
+/**
+ * Builds select options for stored mod names, labelled with the installed mod's human name when we still have it.
+ * @param names Pack names to list.
+ * @param mods Mods to look up human names from.
+ * @returns One option per name.
+ */
+const toModNameOptions = (names: string[], mods: Mod[]): OptionType[] => {
+  const humanNamesByName = new Map(mods.map((mod) => [mod.name, mod.humanName]));
+  return names.map((name) => ({ value: name, label: humanNamesByName.get(name) || name }));
+};
+
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
   const [isShowingSetFolderPaths, setIsShowingSetFolderPaths] = useState<boolean>(false);
@@ -132,6 +145,7 @@ const OptionsDrawer = memo(() => {
 
   const dispatch = useAppDispatch();
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
+  const ignoredMissingReqModNames = useAppSelector((state) => state.app.ignoredMissingReqModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
@@ -143,6 +157,7 @@ const OptionsDrawer = memo(() => {
   const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+  const isSubbedTimeEnabled = useAppSelector((state) => state.app.isSubbedTimeEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
   const modListDensity = useAppSelector((state) => state.app.modListDensity);
@@ -417,12 +432,13 @@ const OptionsDrawer = memo(() => {
   const hiddenModsToOptionViewDataSelector = createSelector(
     (state: { app: AppState }) => state.app.hiddenModNames,
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (names, mods) => {
-      const humanNamesByName = new Map(mods.map((mod) => [mod.name, mod.humanName]));
-      return names.map((name) => ({ value: name, label: humanNamesByName.get(name) || name }));
-    },
+    toModNameOptions,
   );
   const options: OptionType[] = useSelector(hiddenModsToOptionViewDataSelector);
+  const ignoredMissingReqModOptions = useMemo(
+    () => toModNameOptions(ignoredMissingReqModNames, currentMods),
+    [currentMods, ignoredMissingReqModNames],
+  );
 
   const availableLanguagesToOptionsSelector = createSelector(
     (state: { app: AppState }) => state.app.availableLanguages,
@@ -523,6 +539,13 @@ const OptionsDrawer = memo(() => {
     [hiddenModNames, dispatch],
   );
 
+  const onUnignoreMissingReqModChange = useCallback(
+    (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+      if (newValue && actionMeta.action === "select-option") dispatch(toggleIgnoredMissingReqMods([newValue.value]));
+    },
+    [dispatch],
+  );
+
   const onGameChange = useCallback(
     (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
       if (!newValue) return;
@@ -608,7 +631,13 @@ const OptionsDrawer = memo(() => {
       <CreateSteamCollection />
       <ImportSteamCollection />
       <PackSearcher />
-      <Modal show={isForceResubscribeConfirmOpen} onClose={closeForceResubscribeConfirm} size="lg" position="center">
+      <Modal
+        dismissible
+        show={isForceResubscribeConfirmOpen}
+        onClose={closeForceResubscribeConfirm}
+        size="lg"
+        position="center"
+      >
         <Modal.Header>{localized.forceResubscribe}</Modal.Header>
         <Modal.Body>
           <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
@@ -637,6 +666,7 @@ const OptionsDrawer = memo(() => {
         </Modal.Footer>
       </Modal>
       <Modal
+        dismissible
         show={!!pendingCustomFolderCopy}
         onClose={() => setPendingCustomFolderCopy(null)}
         size="lg"
@@ -688,7 +718,7 @@ const OptionsDrawer = memo(() => {
         <Drawer isOpen={areOptionsOpen} setIsOpen={setAreOptionsOpen}>
           <div
             id="drawer-example"
-            className="overflow-y-scroll fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-[-16px] top-0 transform-none scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+            className="overflow-y-scroll fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-0 top-0 transform-none scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
             tabIndex={-1}
             aria-labelledby="drawer-label"
             aria-modal="true"
@@ -918,6 +948,19 @@ const OptionsDrawer = memo(() => {
               ></input>
               <label className="ml-2 mt-1" htmlFor="enable-mod-author">
                 {localized.modAuthorColumn}
+              </label>
+            </div>
+
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="enable-subbed-time"
+                checked={!!isSubbedTimeEnabled}
+                onChange={() => dispatch(toggleIsSubbedTimeEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="enable-subbed-time">
+                {localized.lastSubscribedColumn}
               </label>
             </div>
 
@@ -1323,6 +1366,20 @@ const OptionsDrawer = memo(() => {
 
             <div>
               <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+            </div>
+
+            <h6 className="mt-10">{localized.ignoredMissingRequiredModsOption || "Ignored Required Mods"}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.unignoreMissingRequiredMods || "Select a mod to warn about its missing required mods again:"}
+            </p>
+
+            <div>
+              <Select
+                options={ignoredMissingReqModOptions}
+                styles={selectStyle}
+                onChange={onUnignoreMissingReqModChange}
+                value={null}
+              ></Select>
             </div>
 
             <h6 className="mt-10">{localized.shareMods}</h6>

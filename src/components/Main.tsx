@@ -151,7 +151,7 @@ const Main = (props: MainProps) => {
         ((currentTab == "presets" && <PresetsTab />) ||
           (isLoadOrderRulesTab && <LoadOrderRulesTab />) ||
           (currentTab == "categories" && <Categories></Categories>) || (
-          <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">
+          <div className="grid grid-cols-12 text-white">
             <div className="col-span-10">
               <ModRows scrollElement={props.scrollElement} />
             </div>

@@ -628,6 +628,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
       </Modal>
 
       <Modal
+        dismissible
         show={isIconPickerOpen}
         onClose={() => setIsIconPickerOpen(false)}
         size="5xl"

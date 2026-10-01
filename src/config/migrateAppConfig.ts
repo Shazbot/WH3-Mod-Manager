@@ -158,6 +158,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     games,
     alwaysEnabledModNames: config.alwaysEnabledModNames ?? [],
     hiddenModNames: config.hiddenModNames ?? [],
+    ignoredMissingReqModNames: config.ignoredMissingReqModNames ?? [],
     categories: config.categories ?? [],
     categoryColors: config.categoryColors ?? {},
     packDataOverwrites: config.packDataOverwrites ?? {},
