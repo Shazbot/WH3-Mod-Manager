@@ -1,5 +1,5 @@
 import { Modal } from "../flowbite/components/Modal/index";
-import React, { memo, useContext, useEffect, useMemo, useState } from "react";
+import React, { memo, useContext, useEffect, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { toggleIgnoredMissingReqMods, toggleMod } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -30,8 +30,7 @@ const MissingModGroups = ({ modDependencies, onModClick }: MissingModGroupsProps
   const allMods = useAppSelector((state) => state.app.allMods);
   const installedWorkshopIds = useMemo(() => new Set(allMods.map((mod) => mod.workshopId)), [allMods]);
   const ignoredMissingReqModNames = useAppSelector((state) => state.app.ignoredMissingReqModNames);
-  const [ignoredNamesAtOpen] = useState(() => ignoredMissingReqModNames);
-  const { active, ignored } = splitIgnoredMissingModDependencies(modDependencies, ignoredNamesAtOpen);
+  const { active, ignored } = splitIgnoredMissingModDependencies(modDependencies, ignoredMissingReqModNames);
 
   const renderGroup = ([mod, reqs]: MissingModDependency) => (
     <div key={mod.path} className="rounded-md border border-gray-200 dark:border-gray-600 dark:bg-gray-800">
