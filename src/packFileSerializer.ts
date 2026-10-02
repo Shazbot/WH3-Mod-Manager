@@ -2908,7 +2908,7 @@ const readDBPackedFiles = async (
     // console.log(`reading ${pack_file.name}`);
     let version: number | undefined;
     for (;;) {
-      const marker = await packBuffer.subarray(currentPos, currentPos + 4);
+      const marker = packBuffer.subarray(currentPos, currentPos + 4);
       currentPos += 4;
       if (marker.toString("hex") === "fdfefcff") {
         const readUTF = readUTFStringFromBuffer(packBuffer, currentPos);
@@ -2970,7 +2970,7 @@ const readDBPackedFiles = async (
           // const fields = await parseType(file, field_type);
           const lastPos = currentPos;
           try {
-            const fieldsRet = await parseTypeBuffer(packBuffer, currentPos, field_type);
+            const fieldsRet = parseTypeBuffer(packBuffer, currentPos, field_type);
             const fields = fieldsRet[0];
             currentPos = fieldsRet[1];
             if (!fields[1] && !fields[0]) {
@@ -3052,7 +3052,7 @@ export const readDBPackedFilesFromIndex = async (
   }
   return packedFiles;
 };
-const readLoc = async (
+const readLoc = (
   packReadingOptions: PackReadingOptions,
   locPackFile: PackedFile,
   buffer: Buffer,
@@ -3060,13 +3060,13 @@ const readLoc = async (
 ) => {
   let currentPos = 0;
   // console.log("READING LOC file", locPackFile.name);
-  const marker = await buffer.subarray(currentPos, currentPos + 2);
+  const marker = buffer.subarray(currentPos, currentPos + 2);
   currentPos += 2;
   if (marker.toString("hex") != "fffe") {
     console.log("FF FE marker is wrong!");
     return;
   }
-  const locMarker = await buffer.subarray(currentPos, currentPos + 3);
+  const locMarker = buffer.subarray(currentPos, currentPos + 3);
   currentPos += 3;
   if (locMarker.toString("hex") != "4c4f43") {
     console.log("LOC marker is wrong!");
@@ -3083,7 +3083,7 @@ const readLoc = async (
         // console.log("reading", name, field_type, currentPos);
         const lastPos = currentPos;
         try {
-          const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+          const fieldsRet = parseTypeBuffer(buffer, currentPos, field_type);
           const fields = fieldsRet[0];
           currentPos = fieldsRet[1];
           // console.log("after read:", fieldsRet);
@@ -3198,24 +3198,24 @@ export const readPack = async (
       const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
       fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
       let packedFileHeaderPosition = 0;
-      const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
+      const header = packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
       packedFileHeaderPosition += 4;
       if (header === null) throw new Error("header missing");
       if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
         throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
       }
-      const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const byteMask = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const refFileCount = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const refFileCount = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const pack_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const pack_file_index_size = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const pack_file_count = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const pack_file_count = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const packed_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const packed_file_index_size = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
       const header_buffer_len = 4;
-      const header_buffer = await packedFileHeader.subarray(
+      const header_buffer = packedFileHeader.subarray(
         packedFileHeaderPosition,
         packedFileHeaderPosition + header_buffer_len,
       );
@@ -3356,7 +3356,7 @@ export const readPack = async (
           // console.log("buffer:", buffer);
           // fs.writeFileSync("locbuffer" + locPackFile.name.replaceAll("\\", "_"), buffer);
         }
-        await readLoc(packReadingOptions, locPackFile, buffer, modPath);
+        readLoc(packReadingOptions, locPackFile, buffer, modPath);
       }
     }
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
