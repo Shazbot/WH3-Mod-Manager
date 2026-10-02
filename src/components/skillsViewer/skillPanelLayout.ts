@@ -27,6 +27,10 @@ export const skillName = { x: 61, y: 10, width: 112, height: 44, fontSize: 12 };
 // level_parent: a vertical list of 16x20 pips with -4 px spacing.
 export const skillLevels = { x: 169, y: 4, pipWidth: 16, pipHeight: 20, spacing: -4 };
 
+// arrow: parchment_divider_arrow (68x13), drawn at (-12, 10) inside the arrow component at (185, 16) of the entry. It
+// runs from 12 px inside the left card to the next card's left edge.
+export const skillArrow = { y: 16 + 10, width: 68 };
+
 // The padlock in card's locked state, and skill_locked_rank in its locked_rank state.
 export const skillPadlock = { x: -2, y: 30, width: 32, height: 40 };
 export const skillRankLock = { x: 54, y: -3, width: 135, height: 72 };

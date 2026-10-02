@@ -37,7 +37,7 @@ import groupBy from "object.groupby";
 
 import "@xyflow/react/dist/style.css";
 import Skill, { SkillData } from "./Skill";
-import { skillEntry } from "./skillPanelLayout";
+import { skillArrow, skillEntry } from "./skillPanelLayout";
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
@@ -555,7 +555,6 @@ const SkillsView = memo(
       return skill;
     });
 
-    let nodeSizeDelta = 0;
     let usingBiggerNodeHeight = false;
     // if we need to overlay nodes make the y gap between them bigger (normal mode only —
     // in edit mode effectiveNodeHeight must stay at editModeNodeHeight so snap grid,
@@ -572,7 +571,6 @@ const SkillsView = memo(
       )
     ) {
       effectiveNodeHeight = biggerNodeHeight;
-      nodeSizeDelta = 20;
       usingBiggerNodeHeight = true;
     }
     // console.log("with group:", skills.filter((skill) => skill.group).length);
@@ -968,9 +966,10 @@ const SkillsView = memo(
         const targetNode =
           nodes.find((n) => n.id === edge.target) || nodes.find((n) => (n.data as any)?.id === edge.target);
         if (!sourceNode || !targetNode) return;
-        let x = Math.max(sourceNode.position.x, targetNode.position.x) - 70;
-        if ((targetNode.data as any)?.isGrouping) x -= 20;
-        const y = sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? 40 + nodeSizeDelta / 2 : 27.5);
+        // The arrow ends at the target card's left edge. Group boxes sit 10 px left and 15 px above their cards.
+        const targetLeft = targetNode.position.x + ((targetNode.data as any)?.isGrouping ? 10 : 0);
+        const x = Math.max(sourceNode.position.x, targetLeft) - skillArrow.width;
+        const y = sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? 15 : 0) + skillArrow.y;
         return { x, y };
       })
       .filter((arrow): arrow is { x: number; y: number } => arrow != undefined);
@@ -4924,7 +4923,7 @@ const SkillsView = memo(
                     style={{
                       transform: `translate(${arrow.x}px, ${arrow.y}px)`,
                       position: "absolute",
-                      width: "90px",
+                      width: skillArrow.width,
                     }}
                   ></img>
                 ))}
