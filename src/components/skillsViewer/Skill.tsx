@@ -16,10 +16,15 @@ import {
   skillPadlock,
   skillRankLock,
   skillText,
+  skillTooltip,
 } from "./skillPanelLayout";
 
 // Ability icons carry their own round frame, so they sit smaller inside the ornament's circle.
 const abilityIconInset = 12;
+
+// Where the effect icons start inside the tooltip frame's border.
+const effectIconLeft =
+  (skillTooltip.width - skillTooltip.effectRowWidth) / 2 + skillTooltip.effectIconX - skillTooltip.frameSliceX;
 
 /**
  * Turns a layout rect into absolute-position styles.
@@ -217,8 +222,16 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         position={Position.Right}
       >
         <div
-          style={{ backgroundImage: `url('${data.tooltipFrame}')` }}
-          className={`w-[470px] max-h-[92vh] overflow-y-auto skillTooltip`}
+          style={{
+            width: skillTooltip.width,
+            padding: "2px 0",
+            borderStyle: "solid",
+            borderWidth: `${skillTooltip.frameSliceY}px ${skillTooltip.frameSliceX}px`,
+            borderImage: `url('${data.tooltipFrame}') ${skillTooltip.frameSliceY} ${skillTooltip.frameSliceX} fill`,
+            color: skillText.colour,
+            fontSize: skillTooltip.bodySize,
+          }}
+          className="max-h-[92vh] overflow-y-auto skillTooltip"
         >
           {unlockedAbilityTooltips.length > 0 && (
             <div className="space-y-2">
@@ -240,7 +253,9 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           )}
 
           <div className={unlockedAbilityTooltips.length > 0 ? "mt-3 border-t border-red-900/70 pt-2" : ""}>
-            <div className="font-bold text-center">{data.label}</div>
+            <div className="font-bold text-center" style={{ fontSize: skillTooltip.titleSize }}>
+              {data.label}
+            </div>
             {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
             {data.faction && <div className="font-bold text-center">{data.faction}</div>}
             {data.numLevels > 3 && (
@@ -248,18 +263,20 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 {currentLevel}/{data.numLevels}
               </div>
             )}
-            <div className="text-sm italic">{data.description}</div>
+            <div className="mt-1 italic" style={{ fontFamily: "Georgia, serif", color: skillText.descriptionColour }}>
+              {data.description}
+            </div>
             {data.unlockRank > 0 && data.unlockRank > currentRank && (
-              <div className="text-sm text-red-600">
+              <div className="text-red-600">
                 {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
               </div>
             )}
-            {!areRequirementsValid && reqsMessage != "" && <div className="text-sm text-red-600">{reqsMessage}</div>}
+            {!areRequirementsValid && reqsMessage != "" && <div className="text-red-600">{reqsMessage}</div>}
             {skillsBeingDisabled.length > 0 && (
               <>
-                <div className="text-sm text-yellow-200">{localized.skillUnlockWillLock}</div>
+                <div className="text-yellow-200">{localized.skillUnlockWillLock}</div>
                 {skillsBeingDisabled.map((skillBeingDisabled) => (
-                  <div className="text-sm text-yellow-200">{skillBeingDisabled}</div>
+                  <div className="text-yellow-200">{skillBeingDisabled}</div>
                 ))}
               </>
             )}
@@ -278,11 +295,25 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               })}
           </div> */}
           <div className="mt-2">
-            <div className="flex gap-2 flex-col">
+            <div className="flex gap-1 flex-col">
               {effectsAtShownLevel.map((effect, i) => {
                 return (
-                  <div key={effect.key + i} id={effect.key + i} className="flex gap-2 text-sm">
-                    <img className="h-6" src={effect.iconData} alt={effect.icon} />
+                  <div
+                    key={effect.key + i}
+                    id={effect.key + i}
+                    className="flex items-center"
+                    style={{
+                      minHeight: skillTooltip.effectRowHeight,
+                      paddingLeft: effectIconLeft,
+                      gap: skillTooltip.effectTextX - skillTooltip.effectIconX - skillTooltip.effectIconSize,
+                    }}
+                  >
+                    <img
+                      className="shrink-0 object-contain"
+                      style={{ width: skillTooltip.effectIconSize, height: skillTooltip.effectIconSize }}
+                      src={effect.iconData}
+                      alt={effect.icon}
+                    />
                     {effect.localizedKey}
                   </div>
                 );

@@ -35,10 +35,27 @@ export const skillArrow = { y: 16 + 10, width: 68 };
 export const skillPadlock = { x: -2, y: 30, width: 32, height: 40 };
 export const skillRankLock = { x: 54, y: -3, width: 135, height: 72 };
 
+// ui/common ui/character_background_skill_tooltip.twui.xml: tooltip_body draws tooltip_frame as a 9-slice with 16/20
+// margins. Effect rows (template_entry) are 314x26, centered, with the icon at x 14 and the text 44 px in.
+export const skillTooltip = {
+  width: 340,
+  frameSliceX: 16,
+  frameSliceY: 20,
+  titleSize: 14,
+  bodySize: 12,
+  effectRowWidth: 314,
+  effectRowHeight: 26,
+  effectIconX: 14,
+  effectIconSize: 24,
+  effectTextX: 44,
+};
+
 // dy_skill's font colour and its text_outline_t0 shader. Locked names use the ui_font_inactive_grey_light preset,
 // which lives in a db table, so its colour is a close estimate.
 export const skillText = {
   colour: "#FFF8D7",
   lockedColour: "#A9A598",
+  // The description's ui_font_faded_grey_beige preset, also estimated.
+  descriptionColour: "#C4B99E",
   outline: "0 0 1px #000, 0 0 1px #000, 1px 1px 1px #000",
 };
