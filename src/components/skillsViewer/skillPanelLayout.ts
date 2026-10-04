@@ -19,7 +19,9 @@ export const skillCard = { x: -2, y: -1, width: 185, height: 67 };
 
 // skills_tab_ornament (220x67) and the skill icon (72x72) inside card.
 export const skillOrnament = { x: -35, y: 0, width: 220, height: 67 };
-export const skillIconBox = { x: -3, y: -5, size: 72 };
+export const skillIconBox = { x: -3, y: -5, width: 72, height: 72 };
+// Ability icons carry their own round frame, so they sit 12 px inside the icon box.
+export const skillAbilityIconBox = { x: 9, y: 7, width: 48, height: 48 };
 
 // dy_skill: the skill name.
 export const skillName = { x: 61, y: 10, width: 112, height: 44, fontSize: 12 };
@@ -30,6 +32,9 @@ export const skillLevels = { x: 169, y: 4, pipWidth: 16, pipHeight: 20, spacing:
 // arrow: parchment_divider_arrow (68x13), drawn at (-12, 10) inside the arrow component at (185, 16) of the entry. It
 // runs from 12 px inside the left card to the next card's left edge.
 export const skillArrow = { y: 16 + 10, width: 68 };
+
+// Not from the game: the box drawn around grouped skills, padding its cards on the left/right, top and bottom.
+export const skillGroupPad = { x: 10, top: 15, bottom: 10 };
 
 // The padlock in card's locked state, and skill_locked_rank in its locked_rank state.
 export const skillPadlock = { x: -2, y: 30, width: 32, height: 40 };

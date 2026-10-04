@@ -6,6 +6,7 @@ import { useLocalizations } from "@/src/localizationContext";
 import AbilityTooltipCard from "./AbilityTooltipCard";
 import { SkillsDataContext } from "./skillsDataContext";
 import {
+  skillAbilityIconBox,
   skillArt,
   skillCard,
   skillEntry,
@@ -18,9 +19,6 @@ import {
   skillText,
   skillTooltip,
 } from "./skillPanelLayout";
-
-// Ability icons carry their own round frame, so they sit smaller inside the ornament's circle.
-const abilityIconInset = 12;
 
 // Where the effect icons start inside the tooltip frame's border.
 const effectIconLeft =
@@ -38,16 +36,19 @@ const toBox = (rect: { x: number; y: number; width: number; height: number }) =>
   height: rect.height,
 });
 
-/**
- * Places the skill icon inside the ornament's circle.
- * @param isAbilityIcon Whether the icon is an ability icon rather than a skill icon.
- * @returns The icon's absolute-position styles.
- */
-const iconBox = (isAbilityIcon: boolean) => {
-  const inset = isAbilityIcon ? abilityIconInset : 0;
-  const size = skillIconBox.size - inset * 2;
-  return toBox({ x: skillIconBox.x + inset, y: skillIconBox.y + inset, width: size, height: size });
+// Card part styles, built once since the layout never changes.
+const cardStyle = toBox(skillCard);
+const ornamentStyle = toBox(skillOrnament);
+const iconStyle = toBox(skillIconBox);
+const abilityIconStyle = toBox(skillAbilityIconBox);
+const nameStyle = {
+  ...toBox(skillName),
+  fontSize: skillName.fontSize,
+  textShadow: skillText.outline,
+  fontFamily: '"Libre Baskerville", serif',
 };
+const padlockStyle = toBox(skillPadlock);
+const rankLockStyle = toBox(skillRankLock);
 
 export type SkillData = {
   skillBackground: string;
@@ -224,14 +225,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         <div
           style={{
             width: skillTooltip.width,
-            padding: "2px 0",
             borderStyle: "solid",
             borderWidth: `${skillTooltip.frameSliceY}px ${skillTooltip.frameSliceX}px`,
             borderImage: `url('${data.tooltipFrame}') ${skillTooltip.frameSliceY} ${skillTooltip.frameSliceX} fill`,
             color: skillText.colour,
             fontSize: skillTooltip.bodySize,
           }}
-          className="max-h-[92vh] overflow-y-auto skillTooltip"
+          className="max-h-[92vh] overflow-y-auto"
         >
           {unlockedAbilityTooltips.length > 0 && (
             <div className="space-y-2">
@@ -349,41 +349,37 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           position={Position.Left}
           className={`ml-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
         />
-        <div className="absolute group" style={toBox(skillCard)}>
+        <div className="absolute" style={cardStyle}>
           <img className="absolute w-full h-full" src={skillBackground} alt={skillBackground} />
           {isLocked ? (
             <img className="absolute w-full h-full" src={skillArt.inactive} alt="inactive" />
           ) : (
             <>
               {currentLevel > 0 && <img className="absolute w-full h-full" src={skillArt.selected} alt="selected" />}
-              <img
-                className="absolute w-full h-full opacity-0 group-hover:opacity-100"
-                src={currentLevel > 0 ? skillArt.selectedHover : skillArt.hover}
-                alt="hover"
-              />
+              {isTooltipOpen && (
+                <img
+                  className="absolute w-full h-full"
+                  src={currentLevel > 0 ? skillArt.selectedHover : skillArt.hover}
+                  alt="hover"
+                />
+              )}
             </>
           )}
           <img
             className={`absolute max-w-none ${isLocked ? "grayscale" : ""}`}
-            style={toBox(skillOrnament)}
+            style={ornamentStyle}
             src={skillIconBackground}
             alt={skillIconBackground}
           />
           <img
             className={`absolute max-w-none object-contain ${isLocked ? "grayscale" : ""}`}
-            style={iconBox(data.isAbilityIcon)}
+            style={data.isAbilityIcon ? abilityIconStyle : iconStyle}
             src={resolvedSkillIcon}
             alt={skillIcon}
           />
           <div
             className="absolute flex items-center justify-center text-center leading-tight"
-            style={{
-              ...toBox(skillName),
-              fontSize: skillName.fontSize,
-              color: isLocked ? skillText.lockedColour : skillText.colour,
-              textShadow: skillText.outline,
-              fontFamily: '"Libre Baskerville", serif',
-            }}
+            style={{ ...nameStyle, color: isLocked ? skillText.lockedColour : skillText.colour }}
           >
             {label}
           </div>
@@ -405,17 +401,11 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               </div>
             ))}
           </div>
-          {isRankLocked ? (
-            <img
-              className="absolute max-w-none"
-              style={toBox(skillRankLock)}
-              src={skillArt.lockedRank}
-              alt="lockedRank"
-            />
-          ) : (
-            isLocked && (
-              <img className="absolute max-w-none" style={toBox(skillPadlock)} src={skillArt.padlock} alt="padlock" />
-            )
+          {isRankLocked && (
+            <img className="absolute max-w-none" style={rankLockStyle} src={skillArt.lockedRank} alt="lockedRank" />
+          )}
+          {isLocked && !isRankLocked && (
+            <img className="absolute max-w-none" style={padlockStyle} src={skillArt.padlock} alt="padlock" />
           )}
         </div>
         <Handle

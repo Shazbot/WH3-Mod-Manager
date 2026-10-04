@@ -37,7 +37,7 @@ import groupBy from "object.groupby";
 
 import "@xyflow/react/dist/style.css";
 import Skill, { SkillData } from "./Skill";
-import { skillArrow, skillEntry } from "./skillPanelLayout";
+import { skillArrow, skillEntry, skillGroupPad } from "./skillPanelLayout";
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
@@ -145,7 +145,10 @@ const GROUP_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1
 
 const AddPlaceholderNode = memo(({ data }: { data: { row: number; column: number } }) => {
   return (
-    <div className="flex items-center justify-center w-[185px] h-[65px] border-2 border-dashed border-transparent rounded-lg cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors group">
+    <div
+      className="flex items-center justify-center border-2 border-dashed border-transparent rounded-lg cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors group"
+      style={{ width: skillEntry.width, height: skillEntry.height }}
+    >
       <span className="text-3xl text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">+</span>
     </div>
   );
@@ -237,15 +240,14 @@ skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 const nodeWidth = skillEntry.columnPitch;
 const nodeHeight = skillEntry.rowPitch;
 const biggerNodeHeight = nodeHeight + 20;
-// Group boxes sit 10 px left and 15 px above their first card.
-const groupBoxHeight = skillEntry.height + 25;
+const groupBoxHeight = skillGroupPad.top + skillEntry.height + skillGroupPad.bottom;
 
 /**
  * Gets the width of a group box around a row of cards.
  * @param numSkills How many cards the group holds.
- * @returns The width in px, padding the cards by 10 px on each side.
+ * @returns The width in px.
  */
-const groupBoxWidth = (numSkills: number) => (numSkills - 1) * nodeWidth + skillEntry.width + 20;
+const groupBoxWidth = (numSkills: number) => (numSkills - 1) * nodeWidth + skillEntry.width + skillGroupPad.x * 2;
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
 const sortSameCoordinateSkills = (first: Skill, second: Skill) => {
@@ -966,10 +968,10 @@ const SkillsView = memo(
         const targetNode =
           nodes.find((n) => n.id === edge.target) || nodes.find((n) => (n.data as any)?.id === edge.target);
         if (!sourceNode || !targetNode) return;
-        // The arrow ends at the target card's left edge. Group boxes sit 10 px left and 15 px above their cards.
-        const targetLeft = targetNode.position.x + ((targetNode.data as any)?.isGrouping ? 10 : 0);
+        // The arrow ends at the target card's left edge.
+        const targetLeft = targetNode.position.x + ((targetNode.data as any)?.isGrouping ? skillGroupPad.x : 0);
         const x = Math.max(sourceNode.position.x, targetLeft) - skillArrow.width;
-        const y = sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? 15 : 0) + skillArrow.y;
+        const y = sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? skillGroupPad.top : 0) + skillArrow.y;
         return { x, y };
       })
       .filter((arrow): arrow is { x: number; y: number } => arrow != undefined);
