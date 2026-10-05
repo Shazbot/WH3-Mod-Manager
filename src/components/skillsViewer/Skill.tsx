@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useContext, useEffect, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Handle, NodeToolbar, Position } from "@xyflow/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
@@ -19,6 +19,16 @@ import {
   skillText,
   skillTooltip,
 } from "./skillPanelLayout";
+
+// The game's default tooltip Appear, Stick and Hide delays. A tooltip sticks once it has been up for the stick delay,
+// so the mouse can move into it, and the hide delay gives the mouse time to cross the gap.
+const tooltipAppearDelayMs = 250;
+const tooltipStickDelayMs = 350;
+const tooltipHideDelayMs = 150;
+// A locked tooltip waits longer after the mouse leaves its card, so a slow or crooked move into it does not close it.
+const tooltipLockedHideDelayMs = 300;
+// Closes the open tooltip, so another card's tooltip appearing closes it.
+let closeOpenTooltip: (() => void) | undefined;
 
 // Where the effect icons start inside the tooltip frame's border.
 const effectIconLeft =
@@ -86,7 +96,11 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const skillsData = useContext(SkillsDataContext);
   const currentRank = useAppSelector((state) => state.app.currentRank);
 
+  const [isCardHovered, setIsCardHovered] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const [isTooltipLocked, setIsTooltipLocked] = useState(false);
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const tooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
   const resolvedSkillIcon = skillIcon; //require(`../../../dumps/img/${skillIcon}`);
   const reduxLevel = Math.min(skillNodesToLevel[data.nodeId] || 0, data.numLevels);
   const [currentLevel, setCurrentLevel] = useState(reduxLevel);
@@ -102,12 +116,43 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
 
   const isCheckingSkillRequirements = data.isCheckingSkillRequirements;
 
-  const onMouseEnter = useCallback(() => {
-    setIsTooltipOpen(true);
-  }, [setIsTooltipOpen]);
-  const onMouseLeave = useCallback(() => {
+  const closeTooltip = useCallback(() => {
+    clearTimeout(tooltipTimer.current);
+    clearTimeout(tooltipHideTimer.current);
+    setIsTooltipLocked(false);
     setIsTooltipOpen(false);
-  }, [setIsTooltipOpen]);
+    if (closeOpenTooltip == closeTooltip) closeOpenTooltip = undefined;
+  }, []);
+  const startStickDelay = useCallback(() => {
+    tooltipTimer.current = setTimeout(() => setIsTooltipLocked(true), tooltipStickDelayMs);
+  }, []);
+  const onMouseEnter = useCallback(() => {
+    setIsCardHovered(true);
+    clearTimeout(tooltipHideTimer.current);
+    if (isTooltipLocked) return;
+    clearTimeout(tooltipTimer.current);
+    if (isTooltipOpen) return startStickDelay();
+    tooltipTimer.current = setTimeout(() => {
+      if (closeOpenTooltip != closeTooltip) closeOpenTooltip?.();
+      closeOpenTooltip = closeTooltip;
+      setIsTooltipOpen(true);
+      startStickDelay();
+    }, tooltipAppearDelayMs);
+  }, [closeTooltip, isTooltipLocked, isTooltipOpen, startStickDelay]);
+  const hideTooltip = useCallback(
+    (lockedDelayMs: number) => {
+      if (!isTooltipLocked) clearTimeout(tooltipTimer.current);
+      if (!isTooltipOpen) return closeTooltip();
+      clearTimeout(tooltipHideTimer.current);
+      tooltipHideTimer.current = setTimeout(closeTooltip, isTooltipLocked ? lockedDelayMs : tooltipHideDelayMs);
+    },
+    [closeTooltip, isTooltipLocked, isTooltipOpen],
+  );
+  const onMouseLeave = useCallback(() => {
+    setIsCardHovered(false);
+    hideTooltip(tooltipLockedHideDelayMs);
+  }, [hideTooltip]);
+  useEffect(() => closeTooltip, [closeTooltip]);
 
   const onClick = useCallback(
     (currentLevel: number, maxLevel: number) => {
@@ -231,57 +276,59 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             color: skillText.colour,
             fontSize: skillTooltip.bodySize,
           }}
-          className="max-h-[92vh] overflow-y-auto"
+          onMouseEnter={() => isTooltipLocked && clearTimeout(tooltipHideTimer.current)}
+          onMouseLeave={() => hideTooltip(tooltipHideDelayMs)}
         >
-          {unlockedAbilityTooltips.length > 0 && (
-            <div className="space-y-2">
-              {unlockedAbilityTooltips.map((ability, i) => {
-                const compareAbility = unlockedAbilityTooltips.find(
-                  (iterAbility) => iterAbility.overpowerOption === ability.key,
-                );
-                return (
-                  <AbilityTooltipCard
-                    key={ability.key + i}
-                    ability={ability}
-                    compareAbility={compareAbility}
-                    icons={skillsData.icons}
-                    fallbackIconData={resolvedSkillIcon}
-                  />
-                );
-              })}
-            </div>
-          )}
+          <div className="nowheel max-h-[92vh] overflow-y-auto">
+            {unlockedAbilityTooltips.length > 0 && (
+              <div className="space-y-2">
+                {unlockedAbilityTooltips.map((ability, i) => {
+                  const compareAbility = unlockedAbilityTooltips.find(
+                    (iterAbility) => iterAbility.overpowerOption === ability.key,
+                  );
+                  return (
+                    <AbilityTooltipCard
+                      key={ability.key + i}
+                      ability={ability}
+                      compareAbility={compareAbility}
+                      icons={skillsData.icons}
+                      fallbackIconData={resolvedSkillIcon}
+                    />
+                  );
+                })}
+              </div>
+            )}
 
-          <div className={unlockedAbilityTooltips.length > 0 ? "mt-3 border-t border-red-900/70 pt-2" : ""}>
-            <div className="font-bold text-center" style={{ fontSize: skillTooltip.titleSize }}>
-              {data.label}
-            </div>
-            {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
-            {data.faction && <div className="font-bold text-center">{data.faction}</div>}
-            {data.numLevels > 3 && (
-              <div className="font-bold text-center">
-                {currentLevel}/{data.numLevels}
+            <div className={unlockedAbilityTooltips.length > 0 ? "mt-3 border-t border-red-900/70 pt-2" : ""}>
+              <div className="font-bold text-center" style={{ fontSize: skillTooltip.titleSize }}>
+                {data.label}
               </div>
-            )}
-            <div className="mt-1 italic" style={{ fontFamily: "Georgia, serif", color: skillText.descriptionColour }}>
-              {data.description}
-            </div>
-            {data.unlockRank > 0 && data.unlockRank > currentRank && (
-              <div className="text-red-600">
-                {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
+              {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
+              {data.faction && <div className="font-bold text-center">{data.faction}</div>}
+              {data.numLevels > 3 && (
+                <div className="font-bold text-center">
+                  {currentLevel}/{data.numLevels}
+                </div>
+              )}
+              <div className="mt-1 italic" style={{ fontFamily: "Georgia, serif", color: skillText.descriptionColour }}>
+                {data.description}
               </div>
-            )}
-            {!areRequirementsValid && reqsMessage != "" && <div className="text-red-600">{reqsMessage}</div>}
-            {skillsBeingDisabled.length > 0 && (
-              <>
-                <div className="text-yellow-200">{localized.skillUnlockWillLock}</div>
-                {skillsBeingDisabled.map((skillBeingDisabled) => (
-                  <div className="text-yellow-200">{skillBeingDisabled}</div>
-                ))}
-              </>
-            )}
-          </div>
-          {/* <div className="mt-2">
+              {data.unlockRank > 0 && data.unlockRank > currentRank && (
+                <div className="text-red-600">
+                  {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
+                </div>
+              )}
+              {!areRequirementsValid && reqsMessage != "" && <div className="text-red-600">{reqsMessage}</div>}
+              {skillsBeingDisabled.length > 0 && (
+                <>
+                  <div className="text-yellow-200">{localized.skillUnlockWillLock}</div>
+                  {skillsBeingDisabled.map((skillBeingDisabled) => (
+                    <div className="text-yellow-200">{skillBeingDisabled}</div>
+                  ))}
+                </>
+              )}
+            </div>
+            {/* <div className="mt-2">
             {data.effects
               .filter((effect) => effect.level == Math.min(currentLevel + 1, data.numLevels))
               .map((effect) => {
@@ -294,30 +341,31 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 );
               })}
           </div> */}
-          <div className="mt-2">
-            <div className="flex gap-1 flex-col">
-              {effectsAtShownLevel.map((effect, i) => {
-                return (
-                  <div
-                    key={effect.key + i}
-                    id={effect.key + i}
-                    className="flex items-center"
-                    style={{
-                      minHeight: skillTooltip.effectRowHeight,
-                      paddingLeft: effectIconLeft,
-                      gap: skillTooltip.effectTextX - skillTooltip.effectIconX - skillTooltip.effectIconSize,
-                    }}
-                  >
-                    <img
-                      className="shrink-0 object-contain"
-                      style={{ width: skillTooltip.effectIconSize, height: skillTooltip.effectIconSize }}
-                      src={effect.iconData}
-                      alt={effect.icon}
-                    />
-                    {effect.localizedKey}
-                  </div>
-                );
-              })}
+            <div className="mt-2">
+              <div className="flex gap-1 flex-col">
+                {effectsAtShownLevel.map((effect, i) => {
+                  return (
+                    <div
+                      key={effect.key + i}
+                      id={effect.key + i}
+                      className="flex items-center"
+                      style={{
+                        minHeight: skillTooltip.effectRowHeight,
+                        paddingLeft: effectIconLeft,
+                        gap: skillTooltip.effectTextX - skillTooltip.effectIconX - skillTooltip.effectIconSize,
+                      }}
+                    >
+                      <img
+                        className="shrink-0 object-contain"
+                        style={{ width: skillTooltip.effectIconSize, height: skillTooltip.effectIconSize }}
+                        src={effect.iconData}
+                        alt={effect.icon}
+                      />
+                      {effect.localizedKey}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -356,7 +404,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           ) : (
             <>
               {currentLevel > 0 && <img className="absolute w-full h-full" src={skillArt.selected} alt="selected" />}
-              {isTooltipOpen && (
+              {isCardHovered && (
                 <img
                   className="absolute w-full h-full"
                   src={currentLevel > 0 ? skillArt.selectedHover : skillArt.hover}
