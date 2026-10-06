@@ -138,4 +138,12 @@ describe("skill data mod overlays", () => {
       expect.objectContaining({ key: "skill_key", iconPath: "icon.png" }),
     ]);
   });
+
+  it("stores tagged images under the path their icons are kept at", () => {
+    const core = applyRows({
+      ui_tagged_images_tables: [row({ key: "icon_magic", image_path: "UI/Campaign UI/Effect_bundles/magic.png" })],
+    });
+
+    expect(core.uiTaggedImages).toEqual({ icon_magic: "ui\\campaign ui\\effect_bundles\\magic.png" });
+  });
 });

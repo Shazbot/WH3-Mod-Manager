@@ -33,6 +33,7 @@ const treeSkillsData = (subtype: string, nodeRequirements: SkillsData["nodeRequi
     nodeToSkillLocks: {},
     abilityTooltipsByKey: {},
     effectToUnitAbilityEnables: {},
+    taggedImages: {},
   }) as SkillsData;
 
 const skillData = {

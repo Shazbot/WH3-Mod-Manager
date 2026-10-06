@@ -23,6 +23,8 @@ interface AppData {
     nodeToSkill: Record<string, NodeSkill>;
     skillsToEffects: Record<string, Effect[]>;
     skills: SkillAndIcons;
+    /** Image paths keyed by the tag `[[img:tag]]` draws, from `ui_tagged_images_tables`. */
+    uiTaggedImages: Record<string, string>;
     locs: Record<string, KeyedLookup<string>>;
     /** The icon files themselves. The renderer gets asset protocol URLs pointing at these. */
     icons: Record<string, AssetBytes>;

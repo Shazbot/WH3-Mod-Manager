@@ -910,6 +910,8 @@ declare global {
     nodeToSkillLocks: NodeToSkillLocks;
     abilityTooltipsByKey: Record<string, AbilityTooltipData>;
     effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
+    /** Icon paths keyed by the `[[img:tag]]` tags this tree's texts use. The icons are in `icons`. */
+    taggedImages: Record<string, string>;
   }
   /**
    * What the skill tree editor's pickers need, which is everything rather than one subtype's worth.

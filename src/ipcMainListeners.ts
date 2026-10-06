@@ -295,6 +295,8 @@ import {
   NodeLinks,
   NodeSkill,
   normalizeSkillIconPath,
+  normalizeTaggedImagePath,
+  pickTaggedImagesForSkills,
   pickTreeNodeData,
   resolveTextReplacements,
   SkillAndIcons,
@@ -1824,6 +1826,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const skillLocksTable of skillLocksTablesToRead) {
       if (!tablesToRead.includes(skillLocksTable)) tablesToRead.push(skillLocksTable);
     }
+    const skillTooltipTablesToRead = ["ui_tagged_images_tables"]
+      .flatMap((tableName) => resolveTable(tableName))
+      .map((table) => `db\\${table}\\`);
+    for (const table of skillTooltipTablesToRead) {
+      if (!tablesToRead.includes(table)) tablesToRead.push(table);
+    }
     const effectBonusValueIdsUnitSetsTablesToRead = resolveTable("effect_bonus_value_ids_unit_sets_tables").map(
       (table) => `db\\${table}\\`,
     );
@@ -2159,6 +2167,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           skills.splice(existingIndex, 1, newSkill);
         } else skills.push(newSkill);
       }
+    });
+    const uiTaggedImages: Record<string, string> = {};
+    getTableRowData(packsTableData, "ui_tagged_images_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const imagePath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
+      if (key && imagePath) uiTaggedImages[key] = normalizeTaggedImagePath(imagePath);
     });
     const nodeToSkillLocks = {} as NodeToSkillLocks;
     getTableRowData(packsTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
@@ -2611,6 +2625,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       skillsToEffects,
       nodeToSkillLocks,
       skills,
+      uiTaggedImages,
       locs,
       icons,
       iconGeneration: registerIconAssets(icons),
@@ -2716,9 +2731,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey,
       getLoc,
     });
+    const kfTaggedImages = pickTaggedImagesForSkills(kfSkills, uiTaggedImages);
+    const kfTooltipIconPaths = kfAbilityIconPaths.concat(Object.values(kfTaggedImages));
     // Same as on the subtype switch below: the tooltip icons are not part of the sweep the vanilla
     // icon packs were chosen for, so whichever are still missing get their own packs looked up.
-    const missingAbilityIconPaths = kfAbilityIconPaths.filter((iconPath) => !icons[iconPath]);
+    const missingAbilityIconPaths = kfTooltipIconPaths.filter((iconPath) => !icons[iconPath]);
     const abilityIconPacks =
       missingAbilityIconPaths.length > 0
         ? await getIconPacks((await findVanillaPacksHoldingIcons(missingAbilityIconPaths)) ?? [])
@@ -2728,7 +2745,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       vanillaIconPacks
         .concat(abilityIconPacks.filter((pack) => !vanillaIconPacks.includes(pack)))
         .concat(enabledModPacks),
-      kfAbilityIconPaths,
+      kfTooltipIconPaths,
     );
     if (addedIconGeneration) appData.skillsData.iconGeneration = addedIconGeneration;
     const subtypes = Object.keys(subtypesToSet);
@@ -2749,10 +2766,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       subtypeAndSets,
       currentSkills: kfSkills,
       ...treeNodeData,
-      icons: pickIconsForSkills(icons, appData.skillsData.iconGeneration, kfSkills, kfAbilityIconPaths),
+      icons: pickIconsForSkills(icons, appData.skillsData.iconGeneration, kfSkills, kfTooltipIconPaths),
       subtypes,
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
+      taggedImages: kfTaggedImages,
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
     appData.lastSkillsDataSignature = skillsDataSignature;
@@ -2818,7 +2836,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const {
       abilityTooltipsByKey,
       reducedEffectToUnitAbilityEnables,
-      iconPathsToLoad: tooltipIconPaths,
+      iconPathsToLoad: abilityIconPaths,
     } = buildAbilityTooltipDataForEffects({
       effectKeys: effectKeysForCurrentSkills,
       effectToUnitAbilityEnables: cachedSkillsData.effectToUnitAbilityEnables,
@@ -2841,6 +2859,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
       getLoc,
     });
+    const taggedImages = pickTaggedImagesForSkills(kfSkills, cachedSkillsData.uiTaggedImages);
+    const tooltipIconPaths = abilityIconPaths.concat(Object.values(taggedImages));
     // The tree's own icons were resolved when the data was built, so the build only had to index the
     // vanilla packs holding those. A tooltip's icons are not known until a subtype is opened and can
     // sit in a pack that set never included, so the ones still missing are looked up here rather than
@@ -2879,6 +2899,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       icons: pickIconsForSkills(icons, cachedSkillsData.iconGeneration, kfSkills, tooltipIconPaths),
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
+      taggedImages,
       subtypes,
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };

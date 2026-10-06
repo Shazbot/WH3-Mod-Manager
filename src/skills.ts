@@ -361,6 +361,33 @@ export function stripLocImgTags(localizedText: string | undefined) {
   return localizedText.replaceAll(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "");
 }
 
+/**
+ * Gets a `ui_tagged_images_tables` image path in the form icon paths are kept in.
+ * @param imagePath The path as the table has it, such as `UI/Campaign UI/Effect_bundles/magic.png`.
+ * @returns The lower case path with backslashes.
+ */
+export const normalizeTaggedImagePath = (imagePath: string) => imagePath.replaceAll("/", "\\").toLowerCase();
+
+/**
+ * Gets the tagged images that skill texts draw inline with `[[img:tag]]`.
+ * @param skills The skills whose descriptions and effects are searched.
+ * @param uiTaggedImages Image paths keyed by tag.
+ * @returns The image paths of the tags the texts use, keyed by tag.
+ */
+export function pickTaggedImagesForSkills(skills: Skill[], uiTaggedImages: Record<string, string>) {
+  const picked: Record<string, string> = {};
+  const texts = skills.flatMap((skill) => [
+    skill.localizedDescription,
+    ...skill.effects.map((effect) => effect.localizedKey),
+  ]);
+  for (const text of texts) {
+    for (const [, tag] of (text || "").matchAll(/\[\[img:(.*?)\]\]/gi)) {
+      if (uiTaggedImages[tag]) picked[tag] = uiTaggedImages[tag];
+    }
+  }
+  return picked;
+}
+
 export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: string) => string | undefined) {
   for (const skill of skills) {
     const titleLocId = `character_skills_localised_name_${skill.id}`;

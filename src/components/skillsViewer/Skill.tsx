@@ -371,7 +371,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 </div>
               )}
               <div className="mt-1 italic" style={{ fontFamily: "Georgia, serif", color: skillText.descriptionColour }}>
-                <GameText text={data.description} />
+                <GameText text={data.description} taggedImages={skillsData.taggedImages} icons={skillsData.icons} />
               </div>
               {data.unlockRank > 0 && data.unlockRank > currentRank && (
                 <div className="text-red-600">
@@ -421,7 +421,11 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                         src={effect.iconData}
                         alt={effect.icon}
                       />
-                      <GameText text={effect.localizedKey} />
+                      <GameText
+                        text={effect.localizedKey}
+                        taggedImages={skillsData.taggedImages}
+                        icons={skillsData.icons}
+                      />
                     </div>
                   );
                 })}

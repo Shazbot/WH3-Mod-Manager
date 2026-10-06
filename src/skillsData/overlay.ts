@@ -1,6 +1,6 @@
 import { AmendedSchemaField } from "../packFileTypes";
 import { SkillsDataCacheCore } from "./cache";
-import { normalizeSkillIconPath } from "../skills";
+import { normalizeSkillIconPath, normalizeTaggedImagePath } from "../skills";
 
 export type GetTableRowDataFn = (
   packsTableData: PackViewData[],
@@ -162,6 +162,12 @@ export const applyModOverlayToSkillsDataCore = (
     } else {
       core.skills.push(updated);
     }
+  });
+
+  getTableRowDataFn(modPacksTableData, "ui_tagged_images_tables", (schemaFieldRow) => {
+    const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+    const imagePath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
+    if (key && imagePath) core.uiTaggedImages[key] = normalizeTaggedImagePath(imagePath);
   });
 
   getTableRowDataFn(modPacksTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
