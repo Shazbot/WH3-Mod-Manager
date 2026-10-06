@@ -456,6 +456,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           type="target"
           position={Position.Left}
           className={`ml-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
+          style={data.isEditMode ? undefined : { pointerEvents: "none" }}
         />
         <div className="absolute" style={cardStyle}>
           <img className="absolute w-full h-full" src={skillBackground} alt={skillBackground} />
@@ -473,8 +474,9 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               )}
             </>
           )}
+          {/* The ornament hangs 35 px past the card's left edge, so it must not catch the previous card's hover. */}
           <img
-            className={`absolute max-w-none ${isLocked ? "grayscale" : ""}`}
+            className={`absolute max-w-none pointer-events-none ${isLocked ? "grayscale" : ""}`}
             style={ornamentStyle}
             src={skillIconBackground}
             alt={skillIconBackground}
@@ -520,6 +522,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           type="source"
           position={Position.Right}
           className={`mr-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
+          style={data.isEditMode ? undefined : { pointerEvents: "none" }}
         />
       </div>
     </>
