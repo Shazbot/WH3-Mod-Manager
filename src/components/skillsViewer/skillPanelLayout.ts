@@ -49,6 +49,12 @@ export const skillTooltip = {
   frameSliceX: 16,
   frameSliceY: 20,
   titleSize: 14,
+  // dy_title's text starts 18 px down (10 offset, 8 text offset) and the description's 35 px (30 offset, 5 text offset).
+  titleTextY: 18,
+  titleLineHeight: 18,
+  descriptionTextY: 35,
+  // The game's description is 12 px, but Georgia italic reads smaller than the game's font at that size.
+  descriptionSize: 13,
   bodySize: 12,
   effectRowWidth: 314,
   effectRowHeight: 26,
@@ -80,7 +86,7 @@ export const skillTooltipLockBar = {
 export const skillText = {
   colour: "#FFF8D7",
   lockedColour: "#A9A598",
-  // The description's ui_font_faded_grey_beige preset, also estimated.
-  descriptionColour: "#C4B99E",
+  // The description's ui_font_faded_grey_beige preset, sampled from the game.
+  descriptionColour: "#A99F89",
   outline: "0 0 1px #000, 0 0 1px #000, 1px 1px 1px #000",
 };

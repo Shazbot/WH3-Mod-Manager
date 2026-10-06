@@ -83,6 +83,17 @@ const lockGlowStyle = {
   maskSize: "100% 100%",
 };
 const lockLineStyle = { top: skillTooltipLockBar.lineY, height: 1 };
+const titleStyle = {
+  fontSize: skillTooltip.titleSize,
+  lineHeight: `${skillTooltip.titleLineHeight}px`,
+  marginTop: skillTooltip.titleTextY - skillTooltip.frameSliceY,
+};
+const descriptionStyle = {
+  fontFamily: "Georgia, serif",
+  fontSize: skillTooltip.descriptionSize,
+  color: skillText.descriptionColour,
+  marginTop: skillTooltip.descriptionTextY - skillTooltip.titleTextY - skillTooltip.titleLineHeight,
+};
 
 /** Props for TooltipLockBar. */
 type TooltipLockBarProps = {
@@ -360,8 +371,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             )}
 
             <div className={unlockedAbilityTooltips.length > 0 ? "mt-3 border-t border-red-900/70 pt-2" : ""}>
-              <div className="font-bold text-center" style={{ fontSize: skillTooltip.titleSize }}>
-                {data.label}
+              <div className="font-bold text-center" style={titleStyle}>
+                {label}
               </div>
               {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
               {data.faction && <div className="font-bold text-center">{data.faction}</div>}
@@ -370,7 +381,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                   {currentLevel}/{data.numLevels}
                 </div>
               )}
-              <div className="mt-1 italic" style={{ fontFamily: "Georgia, serif", color: skillText.descriptionColour }}>
+              <div className="italic" style={descriptionStyle}>
                 <GameText text={data.description} taggedImages={skillsData.taggedImages} icons={skillsData.icons} />
               </div>
               {data.unlockRank > 0 && data.unlockRank > currentRank && (
