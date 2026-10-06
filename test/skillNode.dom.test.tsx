@@ -133,6 +133,8 @@ describe("Skill", () => {
       const { container } = renderSkill({ ...skillData, effects: [effect] }, { skillNodesToLevel: { node_parent: 1 } });
       const card = container.firstElementChild!;
       const tooltip = () => screen.queryByText("Level 1 effect")?.closest(".nowheel");
+      const isBarFilling = () =>
+        container.querySelector('img[alt="lockBar"]')!.parentElement!.classList.contains("skillTooltipLockFill");
 
       // Passing over the card before the appear delay shows nothing.
       fireEvent.mouseEnter(card);
@@ -143,7 +145,10 @@ describe("Skill", () => {
       expect(tooltip()).toBeFalsy();
 
       fireEvent.mouseEnter(card);
-      act(() => void vi.advanceTimersByTime(600));
+      act(() => void vi.advanceTimersByTime(250));
+      expect(isBarFilling()).toBe(true);
+      act(() => void vi.advanceTimersByTime(350));
+      expect(isBarFilling()).toBe(false);
       // A stuck tooltip waits longer after leaving the card, so a slow move into it keeps it.
       fireEvent.mouseLeave(card);
       act(() => void vi.advanceTimersByTime(250));

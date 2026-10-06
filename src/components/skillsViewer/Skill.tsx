@@ -18,6 +18,7 @@ import {
   skillRankLock,
   skillText,
   skillTooltip,
+  skillTooltipLockBar,
 } from "./skillPanelLayout";
 
 // The game's default tooltip Appear, Stick and Hide delays. A tooltip sticks once it has been up for the stick delay,
@@ -59,6 +60,61 @@ const nameStyle = {
 };
 const padlockStyle = toBox(skillPadlock);
 const rankLockStyle = toBox(skillRankLock);
+// The lock bar's holder sits in the tooltip frame's padding box, so the bar is moved out into the frame's border.
+const lockBarStyle = {
+  ...toBox(skillTooltipLockBar),
+  left: skillTooltipLockBar.x - skillTooltip.frameSliceX,
+  top:
+    skillTooltipLockBar.holderHeight +
+    skillTooltip.frameSliceY -
+    skillTooltipLockBar.frameEdgeInset -
+    skillTooltipLockBar.height,
+};
+const lockBarFillingStyle = {
+  opacity: skillTooltipLockBar.fillingOpacity,
+  filter: `brightness(${skillTooltipLockBar.fillingBrightness})`,
+  animationDuration: `${tooltipStickDelayMs}ms`,
+};
+const lockGlowStyle = {
+  top: skillTooltipLockBar.glowY,
+  height: skillTooltipLockBar.glowHeight,
+  maskImage: `url('${skillArt.stickyFlameMask}')`,
+  maskSize: "100% 100%",
+};
+const lockLineStyle = { top: skillTooltipLockBar.lineY, height: 1 };
+
+/** Props for TooltipLockBar. */
+type TooltipLockBarProps = {
+  /** Whether the tooltip has stuck, which shows the full bar. */
+  isLocked: boolean;
+  /** Bumped each time the stick delay starts, so the fill starts over. */
+  run: number;
+  /** The tooltip's width, which the bar spans less the game's insets. */
+  tooltipWidth: number;
+};
+
+/**
+ * Draws the game's stick_progress_bar on a tooltip's bottom edge, filling while the tooltip sticks.
+ * @param props.isLocked Whether the tooltip has stuck.
+ * @param props.run Bumped each time the stick delay starts.
+ * @param props.tooltipWidth The tooltip's width.
+ * @returns The bar.
+ */
+const TooltipLockBar = ({ isLocked, run, tooltipWidth }: TooltipLockBarProps) => {
+  const barStyle = { ...lockBarStyle, width: tooltipWidth - (skillTooltip.width - skillTooltipLockBar.width) };
+  return (
+    <div className="relative" style={{ height: skillTooltipLockBar.holderHeight }}>
+      <div
+        key={isLocked ? "locked" : run}
+        className={`absolute pointer-events-none ${isLocked ? "" : "skillTooltipLockFill"}`}
+        style={isLocked ? barStyle : { ...barStyle, ...lockBarFillingStyle }}
+      >
+        <div className="absolute w-full skillTooltipLockGlow" style={lockGlowStyle} />
+        <img className="absolute w-full" style={lockLineStyle} src={skillArt.stickyBarFill} alt="lockBar" />
+      </div>
+    </div>
+  );
+};
 
 export type SkillData = {
   skillBackground: string;
@@ -99,6 +155,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const [isCardHovered, setIsCardHovered] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const [isTooltipLocked, setIsTooltipLocked] = useState(false);
+  // Bumped each time the stick delay starts, so the lock bar's fill starts over.
+  const [lockBarRun, setLockBarRun] = useState(0);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
   const tooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
   const resolvedSkillIcon = skillIcon; //require(`../../../dumps/img/${skillIcon}`);
@@ -124,6 +182,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     if (closeOpenTooltip == closeTooltip) closeOpenTooltip = undefined;
   }, []);
   const startStickDelay = useCallback(() => {
+    setLockBarRun((run) => run + 1);
     tooltipTimer.current = setTimeout(() => setIsTooltipLocked(true), tooltipStickDelayMs);
   }, []);
   const onMouseEnter = useCallback(() => {
@@ -279,7 +338,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           onMouseEnter={() => isTooltipLocked && clearTimeout(tooltipHideTimer.current)}
           onMouseLeave={() => hideTooltip(tooltipHideDelayMs)}
         >
-          <div className="nowheel max-h-[92vh] overflow-y-auto">
+          <div className="nowheel max-h-[calc(92vh-50px)] overflow-y-auto">
             {unlockedAbilityTooltips.length > 0 && (
               <div className="space-y-2">
                 {unlockedAbilityTooltips.map((ability, i) => {
@@ -368,6 +427,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               </div>
             </div>
           </div>
+          <TooltipLockBar isLocked={isTooltipLocked} run={lockBarRun} tooltipWidth={skillTooltip.width} />
         </div>
       </NodeToolbar>
       <div

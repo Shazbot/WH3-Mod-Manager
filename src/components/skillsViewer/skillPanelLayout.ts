@@ -9,6 +9,8 @@ export const skillArt = {
   selectedHover: require("../../assets/skills/skills_tab_selected_hover.png") as string,
   padlock: require("../../assets/skills/padlock.png") as string,
   lockedRank: require("../../assets/skills/skill_locked_rank.png") as string,
+  stickyBarFill: require("../../assets/skills/sticky_bar_fill.png") as string,
+  stickyFlameMask: require("../../assets/skills/sticky_tooltip_flame_mask.png") as string,
 };
 
 // template_skill_entry, with chain0's 56 px spacing between entries and 90 px row height.
@@ -53,6 +55,24 @@ export const skillTooltip = {
   effectIconX: 14,
   effectIconSize: 24,
   effectTextX: 44,
+};
+
+// stick_progress_bar, the last item in tooltip_body: a 329x3 bar at (6, 2) of a 10 px holder that grows from its center
+// while the tooltip sticks. Its fill is a 1 px line at y 2 under a 52 px magic_flame glow at y -49. While filling it is
+// drawn as in_progress_comp, tinted #B0B0B064. The bar sits on the tooltip frame's bottom edge, whose art ends 8 px
+// above the frame.
+export const skillTooltipLockBar = {
+  x: 6,
+  y: 2,
+  width: 329,
+  height: 3,
+  holderHeight: 10,
+  lineY: 2,
+  glowY: -49,
+  glowHeight: 52,
+  fillingBrightness: 0xb0 / 0xff,
+  fillingOpacity: 0x64 / 0xff,
+  frameEdgeInset: 8,
 };
 
 // dy_skill's font colour and its text_outline_t0 shader. Locked names use the ui_font_inactive_grey_light preset,
