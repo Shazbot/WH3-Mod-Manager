@@ -1,5 +1,6 @@
 import React from "react";
 import { useLocalizations } from "../../localizationContext";
+import GameText from "./GameText";
 
 const getIconData = (
   iconPath: string | undefined,
@@ -319,7 +320,7 @@ const AbilityTooltipCard = ({
             const presentation = getAdditionalEffectStatePresentation(additionalEffect.effectState);
             return (
               <div key={additionalEffect.key} className={presentation.className}>
-                {presentation.arrow} {additionalEffect.text}
+                {presentation.arrow} <GameText text={additionalEffect.text} />
               </div>
             );
           })}
@@ -327,7 +328,9 @@ const AbilityTooltipCard = ({
       )}
 
       {ability.description && (
-        <div className="mt-2.5 text-[13px] italic leading-5 text-gray-200">{ability.description}</div>
+        <div className="mt-2.5 text-[13px] italic leading-5 text-gray-200">
+          <GameText text={ability.description} />
+        </div>
       )}
     </div>
   );

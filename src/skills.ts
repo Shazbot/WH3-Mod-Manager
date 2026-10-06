@@ -373,7 +373,8 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
 
     // console.log("translate:", titleLocId, skill.localizedTitle);
     for (const effect of skill.effects) {
-      effect.localizedKey = formatEffectLocalization(effect.effectKey, effect.value, getLoc);
+      // The skill tooltip draws inline icons, so their tags are kept.
+      effect.localizedKey = formatEffectLocalization(effect.effectKey, effect.value, getLoc, true);
       // const effectData = effectsToEffectData[effect.effectKey];
       // if (effectData && effectData.icon) {
       //   effect.icon = effectData.icon;
@@ -382,12 +383,16 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
   }
 }
 
-export function getRawEffectLocalization(effectKey: string, getLoc: (locId: string) => string | undefined): string {
+export function getRawEffectLocalization(
+  effectKey: string,
+  getLoc: (locId: string) => string | undefined,
+  keepImgTags = false,
+): string {
   const locId = `effects_description_${effectKey}`;
   let localized = getLoc(locId);
   if (!localized) return effectKey;
   localized = resolveTextReplacements(localized, getLoc) || localized;
-  localized = stripLocImgTags(localized) || localized;
+  if (!keepImgTags) localized = stripLocImgTags(localized) || localized;
   return localized;
 }
 
@@ -395,8 +400,9 @@ export function formatEffectLocalization(
   effectKey: string,
   effectValue: string | number | undefined,
   getLoc: (locId: string) => string | undefined,
+  keepImgTags = false,
 ): string {
-  let localized = getRawEffectLocalization(effectKey, getLoc);
+  let localized = getRawEffectLocalization(effectKey, getLoc, keepImgTags);
   if (effectValue == null || `${effectValue}`.trim() === "") return localized;
 
   const value = Number(effectValue);

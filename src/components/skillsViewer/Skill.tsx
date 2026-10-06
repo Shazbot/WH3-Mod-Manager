@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
 import AbilityTooltipCard from "./AbilityTooltipCard";
+import GameText from "./GameText";
 import { SkillsDataContext } from "./skillsDataContext";
 import {
   skillAbilityIconBox,
@@ -370,7 +371,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 </div>
               )}
               <div className="mt-1 italic" style={{ fontFamily: "Georgia, serif", color: skillText.descriptionColour }}>
-                {data.description}
+                <GameText text={data.description} />
               </div>
               {data.unlockRank > 0 && data.unlockRank > currentRank && (
                 <div className="text-red-600">
@@ -420,7 +421,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                         src={effect.iconData}
                         alt={effect.icon}
                       />
-                      {effect.localizedKey}
+                      <GameText text={effect.localizedKey} />
                     </div>
                   );
                 })}
