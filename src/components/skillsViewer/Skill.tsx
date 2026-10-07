@@ -95,6 +95,17 @@ const descriptionStyle = {
   marginTop: skillTooltip.descriptionTextY - skillTooltip.titleTextY - skillTooltip.titleLineHeight,
 };
 
+/**
+ * Gets the game's red lock text, or the app's own text in the same style when the game has none.
+ * @param gameText The game's text, which holds a placeholder for the value.
+ * @param placeholder The game text's placeholder, such as `%d`.
+ * @param value What the placeholder stands for.
+ * @param fallback The app's text, with its value already filled in.
+ * @returns The text to add after the skill's description.
+ */
+const getLockText = (gameText: string | undefined, placeholder: string, value: string | number, fallback?: string) =>
+  gameText ? gameText.replace(placeholder, String(value)) : fallback ? `\n\n[[col:red]]${fallback}[[/col]]` : "";
+
 /** Props for TooltipLockBar. */
 type TooltipLockBarProps = {
   /** Whether the tooltip has stuck, which shows the full bar. */
@@ -285,12 +296,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
       if (!areRequirementsValid) {
         const reqParentNodeSkill = skillsData.currentSkills.find((skill) => skill.nodeId == nodeRequirements.single[0]);
         if (reqParentNodeSkill) {
-          reqsMessage =
-            localized.skillUnlockRequirementParent &&
-            localized.skillUnlockRequirementParent.replace(
-              "REQUIRED_SKILL",
-              reqParentNodeSkill.localizedTitle || reqParentNodeSkill.id,
-            );
+          const parentTitle = reqParentNodeSkill.localizedTitle || reqParentNodeSkill.id;
+          reqsMessage = getLockText(
+            skillsData.skillLockTexts.singleParent,
+            "%S",
+            parentTitle,
+            localized.skillUnlockRequirementParent?.replace("REQUIRED_SKILL", parentTitle),
+          );
         }
       }
     }
@@ -302,12 +314,15 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
       areRequirementsValid = areRequirementsValid && countForMultiple >= nodeRequirements.numMultiple;
 
       if (!areRequirementsValid) {
-        reqsMessage =
-          localized.skillUnlockRequirementMultipleParents &&
-          localized.skillUnlockRequirementMultipleParents.replace(
+        reqsMessage = getLockText(
+          skillsData.skillLockTexts.multipleParents,
+          "%d",
+          nodeRequirements.numMultiple,
+          localized.skillUnlockRequirementMultipleParents?.replace(
             "NUM_SKILL_POINTS",
             nodeRequirements.numMultiple.toString(),
-          );
+          ),
+        );
       }
     }
   }
@@ -315,6 +330,17 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   if (!isCheckingSkillRequirements) areRequirementsValid = true;
   const isRankLocked = isCheckingSkillRequirements && data.unlockRank > currentRank;
   const isLocked = !areRequirementsValid || isRankLocked;
+  // The game adds why a skill is locked to its description, in red after a blank line.
+  let lockText = "";
+  if (data.unlockRank > 0 && data.unlockRank > currentRank) {
+    lockText = getLockText(
+      skillsData.skillLockTexts.rank,
+      "%d",
+      data.unlockRank,
+      localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString()),
+    );
+  }
+  if (!areRequirementsValid) lockText += reqsMessage;
 
   const shownLevel = Math.min(currentLevel + 1, data.numLevels);
   const effectsAtShownLevel = data.effects.filter((effect) => effect.level == shownLevel);
@@ -390,14 +416,12 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 </div>
               )}
               <div className="italic" style={descriptionStyle}>
-                <GameText text={data.description} taggedImages={skillsData.taggedImages} icons={skillsData.icons} />
+                <GameText
+                  text={data.description + lockText}
+                  taggedImages={skillsData.taggedImages}
+                  icons={skillsData.icons}
+                />
               </div>
-              {data.unlockRank > 0 && data.unlockRank > currentRank && (
-                <div className="text-red-600">
-                  {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
-                </div>
-              )}
-              {!areRequirementsValid && reqsMessage != "" && <div className="text-red-600">{reqsMessage}</div>}
               {skillsBeingDisabled.length > 0 && (
                 <>
                   <div className="text-yellow-200">{localized.skillUnlockWillLock}</div>

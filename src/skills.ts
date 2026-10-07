@@ -388,6 +388,17 @@ export function pickTaggedImagesForSkills(skills: Skill[], uiTaggedImages: Recor
   return picked;
 }
 
+/**
+ * Gets the game's texts for why a skill is locked.
+ * @param getLoc Looks up a localised string.
+ * @returns The rank and parent skill texts.
+ */
+export const getSkillLockTexts = (getLoc: (locId: string) => string | undefined): SkillLockTexts => ({
+  rank: getLoc("random_localisation_strings_string_skill_locked_rank"),
+  singleParent: getLoc("random_localisation_strings_string_skill_locked_single_parent"),
+  multipleParents: getLoc("random_localisation_strings_string_skill_locked_multi_parent"),
+});
+
 export function appendLocalizationsToSkills(
   skills: Skill[],
   getLoc: (locId: string) => string | undefined,

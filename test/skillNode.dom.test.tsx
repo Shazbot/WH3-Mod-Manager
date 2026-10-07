@@ -34,6 +34,7 @@ const treeSkillsData = (subtype: string, nodeRequirements: SkillsData["nodeRequi
     abilityTooltipsByKey: {},
     effectToUnitAbilityEnables: {},
     taggedImages: {},
+    skillLockTexts: {},
   }) as SkillsData;
 
 const skillData = {
@@ -60,7 +61,7 @@ const skillData = {
   unlockRank: 0,
 } as SkillData;
 
-const renderSkill = (data: SkillData, app: Partial<AppState> = {}) => {
+const renderSkill = (data: SkillData, app: Partial<AppState> = {}, tree: Partial<SkillsData> = {}) => {
   const store = configureStore({
     reducer: { app: appReducer },
     preloadedState: { app: { ...initialState, ...app } },
@@ -69,7 +70,7 @@ const renderSkill = (data: SkillData, app: Partial<AppState> = {}) => {
   return render(
     <localizationContext.Provider value={enTranslation}>
       <Provider store={store}>
-        <SkillsDataContext.Provider value={treeSkillsData("tab", nodeRequirements)}>
+        <SkillsDataContext.Provider value={{ ...treeSkillsData("tab", nodeRequirements), ...tree }}>
           <Skill data={data} />
         </SkillsDataContext.Provider>
       </Provider>
@@ -240,6 +241,23 @@ describe("Skill", () => {
       expect(rows[1].compareDocumentPosition(rows[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(rows[0].closest("span[style]")!.getAttribute("style")).toContain("rgb(160, 255, 55)");
       expect(rows[1].closest("span[style]")!.getAttribute("style")).toContain("rgb(255, 45, 45)");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("adds the game's rank lock text to the description", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = renderSkill(
+        { ...skillData, description: "Lead.", unlockRank: 5 },
+        { skillNodesToLevel: { node_parent: 1 } },
+        { skillLockTexts: { rank: "\n\n[[col:red]]Available at rank %d.[[/col]]" } },
+      );
+
+      fireEvent.mouseEnter(container.firstElementChild!);
+      act(() => void vi.advanceTimersByTime(250));
+      expect(screen.getByText("Available at rank 5.")).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }

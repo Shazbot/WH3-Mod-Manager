@@ -290,6 +290,7 @@ import {
   formatEffectLocalization,
   getNodesToParents,
   getRawEffectLocalization,
+  getSkillLockTexts,
   getSkills,
   getSubtypesToLocalizedNames,
   NodeLinks,
@@ -2772,6 +2773,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
       taggedImages: kfTaggedImages,
+      skillLockTexts: getSkillLockTexts(getLoc),
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
     appData.lastSkillsDataSignature = skillsDataSignature;
@@ -2901,6 +2903,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
       taggedImages,
+      skillLockTexts: getSkillLockTexts(getLoc),
       subtypes,
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };

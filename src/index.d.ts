@@ -913,6 +913,17 @@ declare global {
     effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
     /** Icon paths keyed by the `[[img:tag]]` tags this tree's texts use. The icons are in `icons`. */
     taggedImages: Record<string, string>;
+    /** The game's texts for why a skill is locked. */
+    skillLockTexts: SkillLockTexts;
+  }
+  /** The game's lock texts for the skill tooltip. Each still holds its `%d` or `%S` placeholder. */
+  interface SkillLockTexts {
+    /** Shown when the character's rank is too low. */
+    rank?: string;
+    /** Shown when one parent skill must be unlocked first. */
+    singleParent?: string;
+    /** Shown when points must be spent in the previous group. */
+    multipleParents?: string;
   }
   /**
    * What the skill tree editor's pickers need, which is everything rather than one subtype's worth.
