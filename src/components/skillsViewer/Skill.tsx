@@ -331,6 +331,14 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     .map((abilityKey) => skillsData.abilityTooltipsByKey[abilityKey])
     .filter((ability): ability is AbilityTooltipData => !!ability);
 
+  // The game hides effects with priority 0 and lists the rest by priority, keeping the table's order on ties. A closed
+  // tooltip lists nothing, so the many closed cards skip the per-row work.
+  const shownEffects = !isTooltipOpen
+    ? []
+    : effectsAtShownLevel
+        .filter((effect) => effect.priority != "0")
+        .sort((first, second) => Number(first.priority) - Number(second.priority));
+
   return (
     <>
       <NodeToolbar
@@ -414,7 +422,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           </div> */}
             <div className="mt-2">
               <div className="flex gap-1 flex-col">
-                {effectsAtShownLevel.map((effect, i) => {
+                {shownEffects.map((effect, i) => {
                   return (
                     <div
                       key={effect.key + i}

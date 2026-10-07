@@ -25,8 +25,8 @@ export const applyModOverlayToSkillsDataCore = (
     const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
     const isPositive = schemaFieldRow.find((sF) => sF.name == "is_positive_value_good")?.resolvedKeyValue;
     const priority = schemaFieldRow.find((sF) => sF.name == "priority")?.resolvedKeyValue;
-    if (!key || !icon || !isPositive || !priority) return;
-    core.effectsToEffectData[key] = { key, icon, isPositive, priority };
+    if (!key || !isPositive || !priority) return;
+    core.effectsToEffectData[key] = { key, icon: icon ?? "", isPositive, priority };
   });
 
   getTableRowDataFn(modPacksTableData, "character_skill_node_sets_tables", (schemaFieldRow) => {

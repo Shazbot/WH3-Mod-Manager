@@ -139,6 +139,19 @@ describe("skill data mod overlays", () => {
     ]);
   });
 
+  it("keeps a hidden effect that has no icon, so its priority is known", () => {
+    const core = applyRows({
+      effects_tables: [row({ effect: "effect_hidden", is_positive_value_good: "true", priority: "0" })],
+    });
+
+    expect(core.effectsToEffectData.effect_hidden).toEqual({
+      key: "effect_hidden",
+      icon: "",
+      isPositive: "true",
+      priority: "0",
+    });
+  });
+
   it("stores tagged images under the path their icons are kept at", () => {
     const core = applyRows({
       ui_tagged_images_tables: [row({ key: "icon_magic", image_path: "UI/Campaign UI/Effect_bundles/magic.png" })],

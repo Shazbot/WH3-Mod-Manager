@@ -1980,10 +1980,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
       const isPositive = schemaFieldRow.find((sF) => sF.name == "is_positive_value_good")?.resolvedKeyValue;
       const priority = schemaFieldRow.find((sF) => sF.name == "priority")?.resolvedKeyValue;
-      if (key != undefined && icon != undefined && isPositive != undefined && priority != undefined) {
+      // Hidden effects often have no icon, but their priority still marks them as hidden.
+      if (key != undefined && isPositive != undefined && priority != undefined) {
         const newEffect = {
           key,
-          icon,
+          icon: icon ?? "",
           isPositive,
           priority,
         };

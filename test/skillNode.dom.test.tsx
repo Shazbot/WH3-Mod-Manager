@@ -203,4 +203,23 @@ describe("Skill", () => {
       vi.useRealTimers();
     }
   });
+
+  it("leaves effects the game hides out of the tooltip", () => {
+    vi.useFakeTimers();
+    try {
+      const effect = (name: string, priority: string) =>
+        ({ key: name, effectKey: name, localizedKey: name, level: 1, priority }) as Effect;
+      const { container } = renderSkill({
+        ...skillData,
+        effects: [effect("Shown effect", "51"), effect("Hidden effect", "0")],
+      });
+
+      fireEvent.mouseEnter(container.firstElementChild!);
+      act(() => void vi.advanceTimersByTime(250));
+      expect(screen.getByText("Shown effect")).not.toBeNull();
+      expect(screen.queryByText("Hidden effect")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
