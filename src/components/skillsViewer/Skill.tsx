@@ -278,17 +278,18 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     }
   }
 
-  let areRequirementsValid = true;
+  let isLockedByOtherSkill = false;
   let reqsMessage = "";
   const skillAndLevels = nodeToSkillLocks[data.nodeId];
   if (skillAndLevels) {
     for (const [lockingSkill, lockingLevel] of skillAndLevels) {
       for (const skillNodeToCheck of skillsData.currentSkills.filter((skill) => skill.id == lockingSkill)) {
         const level = skillNodesToLevel[skillNodeToCheck.nodeId];
-        if (level && level >= lockingLevel) areRequirementsValid = false;
+        if (level && level >= lockingLevel) isLockedByOtherSkill = true;
       }
     }
   }
+  let areRequirementsValid = !isLockedByOtherSkill;
 
   const nodeRequirements = skillsData.nodeRequirements[data.nodeId];
   if (nodeRequirements) {
@@ -330,7 +331,10 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     }
   }
 
-  if (!isCheckingSkillRequirements) areRequirementsValid = true;
+  if (!isCheckingSkillRequirements) {
+    areRequirementsValid = true;
+    isLockedByOtherSkill = false;
+  }
   const isRankLocked = isCheckingSkillRequirements && data.unlockRank > currentRank;
   const isLocked = !areRequirementsValid || isRankLocked;
   const isAutoUnlockPending =
@@ -575,7 +579,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               </div>
             ))}
           </div>
-          {isRankLocked ? (
+          {isLockedByOtherSkill ? (
             <img className="absolute max-w-none" style={rankLockStyle} src={skillArt.lockedRank} alt="lockedRank" />
           ) : isAutoUnlockPending ? (
             <img

@@ -39,7 +39,7 @@ export const skillArrow = { y: 16 + 10, width: 68 };
 // Not from the game: the box drawn around grouped skills, padding its cards on the left/right, top and bottom.
 export const skillGroupPad = { x: 10, top: 15, bottom: 10 };
 
-// The padlock in card's locked state, and skill_locked_rank in its locked_rank state.
+// The padlock in card's locked state, and the skill_locked_rank chains, drawn on skills another skill locks out.
 export const skillPadlock = { x: -2, y: 30, width: 32, height: 40 };
 export const skillRankLock = { x: 54, y: -3, width: 135, height: 72 };
 // skill_auto_unlock_rank in card's locked_auto_unlock state.

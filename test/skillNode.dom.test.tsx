@@ -109,8 +109,22 @@ describe("Skill", () => {
     expect(container.querySelector('img[alt="lockedRank"]')).toBeNull();
   });
 
-  it("draws the rank chains instead of the padlock when the rank is too low", () => {
+  it("draws a padlock, not chains, when the rank is too low", () => {
     const { container } = renderSkill({ ...skillData, unlockRank: 5 }, { skillNodesToLevel: { node_parent: 1 } });
+
+    expect(container.querySelector('img[alt="padlock"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="lockedRank"]')).toBeNull();
+  });
+
+  it("draws chains instead of the padlock when another skill locks it out", () => {
+    const { container } = renderSkill(
+      skillData,
+      { skillNodesToLevel: { node_parent: 1, node_other: 1 } },
+      {
+        currentSkills: [{ id: "skill_other", nodeId: "node_other" } as Skill],
+        nodeToSkillLocks: { node_child: [["skill_other", 1]] },
+      },
+    );
 
     expect(container.querySelector('img[alt="lockedRank"]')).not.toBeNull();
     expect(container.querySelector('img[alt="padlock"]')).toBeNull();
