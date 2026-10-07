@@ -757,6 +757,7 @@ declare global {
     icon?: string;
     iconData: string;
     priority: string;
+    isGood?: boolean;
   }
   interface Skill {
     title: string;

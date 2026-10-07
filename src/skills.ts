@@ -388,7 +388,11 @@ export function pickTaggedImagesForSkills(skills: Skill[], uiTaggedImages: Recor
   return picked;
 }
 
-export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: string) => string | undefined) {
+export function appendLocalizationsToSkills(
+  skills: Skill[],
+  getLoc: (locId: string) => string | undefined,
+  effectsToEffectData: Record<string, EffectData> = {},
+) {
   for (const skill of skills) {
     const titleLocId = `character_skills_localised_name_${skill.id}`;
     const descriptionLocId = `character_skills_localised_description_${skill.id}`;
@@ -402,6 +406,14 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
     for (const effect of skill.effects) {
       // The skill tooltip draws inline icons, so their tags are kept.
       effect.localizedKey = formatEffectLocalization(effect.effectKey, effect.value, getLoc, true);
+      // The game adds what the effect applies to, such as "(all armies)", after the effect text.
+      const scopeText = getLoc(`campaign_effect_scopes_localised_text_${effect.effectScope}`);
+      if (scopeText) effect.localizedKey += resolveTextReplacements(scopeText, getLoc) || scopeText;
+      const isPositiveGood = effectsToEffectData[effect.effectKey]?.isPositive;
+      if (isPositiveGood != undefined) {
+        const value = Number(effect.value) || 0;
+        effect.isGood = value == 0 || value > 0 == (isPositiveGood == "true" || isPositiveGood == "1");
+      }
       // const effectData = effectsToEffectData[effect.effectKey];
       // if (effectData && effectData.icon) {
       //   effect.icon = effectData.icon;

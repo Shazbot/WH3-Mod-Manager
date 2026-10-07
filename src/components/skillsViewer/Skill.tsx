@@ -4,7 +4,7 @@ import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
 import AbilityTooltipCard from "./AbilityTooltipCard";
-import GameText from "./GameText";
+import GameText, { textTagColours } from "./GameText";
 import { SkillsDataContext } from "./skillsDataContext";
 import {
   skillAbilityIconBox,
@@ -423,6 +423,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             <div className="mt-2">
               <div className="flex gap-1 flex-col">
                 {shownEffects.map((effect, i) => {
+                  const colour =
+                    effect.isGood == undefined ? undefined : textTagColours[effect.isGood ? "green" : "red"];
                   return (
                     <div
                       key={effect.key + i}
@@ -440,11 +442,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                         src={effect.iconData}
                         alt={effect.icon}
                       />
-                      <GameText
-                        text={effect.localizedKey}
-                        taggedImages={skillsData.taggedImages}
-                        icons={skillsData.icons}
-                      />
+                      <span style={{ color: colour }}>
+                        <GameText
+                          text={effect.localizedKey}
+                          taggedImages={skillsData.taggedImages}
+                          icons={skillsData.icons}
+                        />
+                      </span>
                     </div>
                   );
                 })}

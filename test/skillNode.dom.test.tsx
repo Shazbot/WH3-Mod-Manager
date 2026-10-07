@@ -222,4 +222,26 @@ describe("Skill", () => {
       vi.useRealTimers();
     }
   });
+
+  it("lists effects by priority and colours them by whether they help", () => {
+    vi.useFakeTimers();
+    try {
+      const effect = (name: string, priority: string, isGood: boolean) =>
+        ({ key: name, effectKey: name, localizedKey: name, level: 1, priority, isGood }) as Effect;
+      const { container } = renderSkill({
+        ...skillData,
+        effects: [effect("Third", "541", true), effect("First", "2", true), effect("Second", "401", false)],
+      });
+
+      fireEvent.mouseEnter(container.firstElementChild!);
+      act(() => void vi.advanceTimersByTime(250));
+      const rows = ["First", "Second", "Third"].map((name) => screen.getByText(name));
+      expect(rows[0].compareDocumentPosition(rows[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(rows[1].compareDocumentPosition(rows[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(rows[0].closest("span[style]")!.getAttribute("style")).toContain("rgb(160, 255, 55)");
+      expect(rows[1].closest("span[style]")!.getAttribute("style")).toContain("rgb(255, 45, 45)");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -2702,7 +2702,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (localized) return localized;
       }
     };
-    appendLocalizationsToSkills(kfSkills, getLoc);
+    appendLocalizationsToSkills(kfSkills, getLoc, effectsToEffectData);
     const effectKeysForCurrentSkills = Array.from(
       new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
     );
@@ -2830,7 +2830,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (localized) return localized;
       }
     };
-    appendLocalizationsToSkills(kfSkills, getLoc);
+    appendLocalizationsToSkills(kfSkills, getLoc, cachedSkillsData.effectsToEffectData);
     const effectKeysForCurrentSkills = Array.from(
       new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
     );
