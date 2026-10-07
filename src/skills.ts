@@ -182,6 +182,7 @@ export function getSkills(
   nodesToParents: NodesToParents,
   skillsToEffects: SkillsToEffects,
   skillAndIcons: SkillAndIcons,
+  skillsToAutoUnlockRank: Record<string, number>,
 ) {
   const skills = nodes.map((node) => {
     const skill = nodeToSkill[node];
@@ -236,6 +237,7 @@ export function getSkills(
       faction: skill.factionKey,
       subculture: skill.subculture,
       unlockRank: skillAndIcon?.unlockRank ?? 0,
+      autoUnlockRank: skillsToAutoUnlockRank[skill.skill],
     } as Skill;
   });
 
@@ -391,10 +393,11 @@ export function pickTaggedImagesForSkills(skills: Skill[], uiTaggedImages: Recor
 /**
  * Gets the game's texts for why a skill is locked.
  * @param getLoc Looks up a localised string.
- * @returns The rank and parent skill texts.
+ * @returns The rank, auto unlock and parent skill texts.
  */
 export const getSkillLockTexts = (getLoc: (locId: string) => string | undefined): SkillLockTexts => ({
   rank: getLoc("random_localisation_strings_string_skill_locked_rank"),
+  autoUnlock: getLoc("random_localisation_strings_string_skill_locked_auto_unlock"),
   singleParent: getLoc("random_localisation_strings_string_skill_locked_single_parent"),
   multipleParents: getLoc("random_localisation_strings_string_skill_locked_multi_parent"),
 });

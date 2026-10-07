@@ -23,6 +23,7 @@ interface AppData {
     nodeToSkill: Record<string, NodeSkill>;
     skillsToEffects: Record<string, Effect[]>;
     skills: SkillAndIcons;
+    skillsToAutoUnlockRank: Record<string, number>;
     /** Image paths keyed by the tag `[[img:tag]]` draws, from `ui_tagged_images_tables`. */
     uiTaggedImages: Record<string, string>;
     locs: Record<string, KeyedLookup<string>>;

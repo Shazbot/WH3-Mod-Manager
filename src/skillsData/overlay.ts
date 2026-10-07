@@ -164,6 +164,13 @@ export const applyModOverlayToSkillsDataCore = (
     }
   });
 
+  getTableRowDataFn(modPacksTableData, "character_skills_to_level_reached_criterias_tables", (schemaFieldRow) => {
+    const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
+    const level = schemaFieldRow.find((sF) => sF.name == "character_level")?.resolvedKeyValue;
+    if (!skill || level == undefined) return;
+    core.skillsToAutoUnlockRank[skill] = Math.min(core.skillsToAutoUnlockRank[skill] ?? Infinity, Number(level));
+  });
+
   getTableRowDataFn(modPacksTableData, "ui_tagged_images_tables", (schemaFieldRow) => {
     const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
     const imagePath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;

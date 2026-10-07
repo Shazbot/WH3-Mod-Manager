@@ -262,4 +262,11 @@ describe("Skill", () => {
       vi.useRealTimers();
     }
   });
+
+  it("draws the auto-grant badge until the rank that grants the skill", () => {
+    const autoSkill = { ...skillData, autoUnlockRank: 4 };
+
+    expect(renderSkill(autoSkill).container.querySelector('img[alt="autoUnlockRank"]')).not.toBeNull();
+    expect(renderSkill(autoSkill, { currentRank: 4 }).container.querySelector('img[alt="autoUnlockRank"]')).toBeNull();
+  });
 });

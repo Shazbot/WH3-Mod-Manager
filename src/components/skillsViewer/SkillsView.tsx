@@ -792,6 +792,7 @@ const SkillsView = memo(
           requiredNumParents: skillsData.nodeRequirements?.[skill.nodeId]?.numMultiple || 0,
           isCheckingSkillRequirements,
           unlockRank: skill.unlockRank + 1,
+          autoUnlockRank: skill.autoUnlockRank != undefined ? skill.autoUnlockRank + 1 : undefined,
           isEditMode,
           editGroupColor: isEditMode ? groupIdToColor[editGroups[skill.nodeId]] : undefined,
           existingSkillKey: skill.id,

@@ -1827,7 +1827,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const skillLocksTable of skillLocksTablesToRead) {
       if (!tablesToRead.includes(skillLocksTable)) tablesToRead.push(skillLocksTable);
     }
-    const skillTooltipTablesToRead = ["ui_tagged_images_tables"]
+    const skillTooltipTablesToRead = [
+      "character_skills_to_level_reached_criterias_tables",
+      "ui_tagged_images_tables",
+    ]
       .flatMap((tableName) => resolveTable(tableName))
       .map((table) => `db\\${table}\\`);
     for (const table of skillTooltipTablesToRead) {
@@ -2168,6 +2171,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (existingIndex > -1) {
           skills.splice(existingIndex, 1, newSkill);
         } else skills.push(newSkill);
+      }
+    });
+    const skillsToAutoUnlockRank: Record<string, number> = {};
+    getTableRowData(packsTableData, "character_skills_to_level_reached_criterias_tables", (schemaFieldRow) => {
+      const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
+      const level = schemaFieldRow.find((sF) => sF.name == "character_level")?.resolvedKeyValue;
+      if (skill != undefined && level != undefined) {
+        skillsToAutoUnlockRank[skill] = Math.min(skillsToAutoUnlockRank[skill] ?? Infinity, Number(level));
       }
     });
     const uiTaggedImages: Record<string, string> = {};
@@ -2627,6 +2638,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       skillsToEffects,
       nodeToSkillLocks,
       skills,
+      skillsToAutoUnlockRank,
       uiTaggedImages,
       locs,
       icons,
@@ -2690,7 +2702,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     // fs.writeFileSync("dumps/nodesKF.json", JSON.stringify(nodesKF));
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
     // fs.writeFileSync("dumps/nodesToParents.json", JSON.stringify(nodesToParents));
-    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+    const kfSkills = getSkills(
+      nodesKF,
+      nodeLinks,
+      nodeToSkill,
+      nodesToParents,
+      skillsToEffects,
+      skills,
+      skillsToAutoUnlockRank,
+    );
     // const nodeToSkillsKF = nodesKF.reduce((acc, current) => {
     //   acc[current] = nodeToSkill[current];
     //   return acc;
@@ -2822,10 +2842,27 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     console.log("sets for subtype:", setKF);
     if (!setKF?.[subtypeIndex]) return;
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
-    const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet, nodeToSkillLocks } =
-      cachedSkillsData;
+    const {
+      nodeLinks,
+      nodeToSkill,
+      skillsToEffects,
+      skills,
+      skillsToAutoUnlockRank,
+      locs,
+      icons,
+      subtypesToSet,
+      nodeToSkillLocks,
+    } = cachedSkillsData;
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
-    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+    const kfSkills = getSkills(
+      nodesKF,
+      nodeLinks,
+      nodeToSkill,
+      nodesToParents,
+      skillsToEffects,
+      skills,
+      skillsToAutoUnlockRank,
+    );
     const getLoc = (locId: string) => {
       for (const locsInPack of Object.values(locs)) {
         const localized = locsInPack.get(locId);

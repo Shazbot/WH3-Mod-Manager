@@ -9,6 +9,7 @@ export const skillArt = {
   selectedHover: require("../../assets/skills/skills_tab_selected_hover.png") as string,
   padlock: require("../../assets/skills/padlock.png") as string,
   lockedRank: require("../../assets/skills/skill_locked_rank.png") as string,
+  autoUnlockRank: require("../../assets/skills/skill_auto_unlock_rank.png") as string,
   stickyBarFill: require("../../assets/skills/sticky_bar_fill.png") as string,
   stickyFlameMask: require("../../assets/skills/sticky_tooltip_flame_mask.png") as string,
 };
@@ -41,6 +42,8 @@ export const skillGroupPad = { x: 10, top: 15, bottom: 10 };
 // The padlock in card's locked state, and skill_locked_rank in its locked_rank state.
 export const skillPadlock = { x: -2, y: 30, width: 32, height: 40 };
 export const skillRankLock = { x: 54, y: -3, width: 135, height: 72 };
+// skill_auto_unlock_rank in card's locked_auto_unlock state.
+export const skillAutoUnlockBadge = { x: 0, y: 37, width: 30, height: 30 };
 
 // ui/common ui/character_background_skill_tooltip.twui.xml: tooltip_body draws tooltip_frame as a 9-slice with 16/20
 // margins. Effect rows (template_entry) are 314x26, centered, with the icon at x 14 and the text 44 px in.

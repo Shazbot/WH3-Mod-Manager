@@ -152,6 +152,17 @@ describe("skill data mod overlays", () => {
     });
   });
 
+  it("keeps the lowest rank a skill is automatically granted at", () => {
+    const core = applyRows({
+      character_skills_to_level_reached_criterias_tables: [
+        row({ character_skill: "skill_mount", character_level: "7", upgrade_to_skill_level: "2" }),
+        row({ character_skill: "skill_mount", character_level: "4", upgrade_to_skill_level: "1" }),
+      ],
+    });
+
+    expect(core.skillsToAutoUnlockRank).toEqual({ skill_mount: 4 });
+  });
+
   it("stores tagged images under the path their icons are kept at", () => {
     const core = applyRows({
       ui_tagged_images_tables: [row({ key: "icon_magic", image_path: "UI/Campaign UI/Effect_bundles/magic.png" })],

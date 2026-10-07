@@ -24,7 +24,7 @@ interface VanillaSkillsDataCoreCachePayload {
   core: SkillsDataCacheCore;
 }
 
-const VANILLA_SKILLS_DATA_CORE_CACHE_VERSION = 3;
+const VANILLA_SKILLS_DATA_CORE_CACHE_VERSION = 4;
 const VANILLA_SKILLS_DATA_CORE_CACHE_FILE = "vanilla-skills-data-core-cache.bin";
 
 let vanillaSkillsDataCoreCachePayload: VanillaSkillsDataCoreCachePayload | null = null;
@@ -218,6 +218,7 @@ export const createEmptySkillsDataCore = (): SkillsDataCacheCore => ({
   nodeToSkill: {},
   skillsToEffects: {},
   skills: [],
+  skillsToAutoUnlockRank: {},
   uiTaggedImages: {},
   effectsToEffectData: {},
   nodeToSkillLocks: {},

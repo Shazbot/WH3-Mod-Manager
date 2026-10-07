@@ -779,6 +779,7 @@ declare global {
     faction?: string;
     subculture?: string;
     unlockRank: number;
+    autoUnlockRank?: number;
   }
 
   interface AbilityEnableMapping {
@@ -920,6 +921,8 @@ declare global {
   interface SkillLockTexts {
     /** Shown when the character's rank is too low. */
     rank?: string;
+    /** Shown when the skill is granted automatically at a rank. */
+    autoUnlock?: string;
     /** Shown when one parent skill must be unlocked first. */
     singleParent?: string;
     /** Shown when points must be spent in the previous group. */

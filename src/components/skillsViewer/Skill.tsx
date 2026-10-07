@@ -9,6 +9,7 @@ import { SkillsDataContext } from "./skillsDataContext";
 import {
   skillAbilityIconBox,
   skillArt,
+  skillAutoUnlockBadge,
   skillCard,
   skillEntry,
   skillIconBox,
@@ -61,6 +62,7 @@ const nameStyle = {
 };
 const padlockStyle = toBox(skillPadlock);
 const rankLockStyle = toBox(skillRankLock);
+const autoUnlockBadgeStyle = toBox(skillAutoUnlockBadge);
 // The lock bar's holder sits in the tooltip frame's padding box, so the bar is moved out into the frame's border.
 const lockBarStyle = {
   ...toBox(skillTooltipLockBar),
@@ -163,6 +165,7 @@ export type SkillData = {
   subculture?: string;
   isCheckingSkillRequirements: boolean;
   unlockRank: number;
+  autoUnlockRank?: number;
   isEditMode?: boolean;
   editGroupColor?: string;
   existingSkillKey?: string;
@@ -330,9 +333,18 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   if (!isCheckingSkillRequirements) areRequirementsValid = true;
   const isRankLocked = isCheckingSkillRequirements && data.unlockRank > currentRank;
   const isLocked = !areRequirementsValid || isRankLocked;
+  const isAutoUnlockPending =
+    data.autoUnlockRank != undefined && data.autoUnlockRank > currentRank && currentLevel == 0;
   // The game adds why a skill is locked to its description, in red after a blank line.
   let lockText = "";
-  if (data.unlockRank > 0 && data.unlockRank > currentRank) {
+  if (isAutoUnlockPending) {
+    lockText = getLockText(
+      skillsData.skillLockTexts.autoUnlock,
+      "%d",
+      data.autoUnlockRank!,
+      localized.skillAutoUnlockRank?.replace("UNLOCK_RANK", data.autoUnlockRank!.toString()),
+    );
+  } else if (data.unlockRank > 0 && data.unlockRank > currentRank) {
     lockText = getLockText(
       skillsData.skillLockTexts.rank,
       "%d",
@@ -563,11 +575,19 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               </div>
             ))}
           </div>
-          {isRankLocked && (
+          {isRankLocked ? (
             <img className="absolute max-w-none" style={rankLockStyle} src={skillArt.lockedRank} alt="lockedRank" />
-          )}
-          {isLocked && !isRankLocked && (
-            <img className="absolute max-w-none" style={padlockStyle} src={skillArt.padlock} alt="padlock" />
+          ) : isAutoUnlockPending ? (
+            <img
+              className="absolute max-w-none"
+              style={autoUnlockBadgeStyle}
+              src={skillArt.autoUnlockRank}
+              alt="autoUnlockRank"
+            />
+          ) : (
+            isLocked && (
+              <img className="absolute max-w-none" style={padlockStyle} src={skillArt.padlock} alt="padlock" />
+            )
           )}
         </div>
         <Handle
