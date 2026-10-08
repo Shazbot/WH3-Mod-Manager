@@ -10,6 +10,7 @@ export const skillArt = {
   padlock: require("../../assets/skills/padlock.png") as string,
   lockedRank: require("../../assets/skills/skill_locked_rank.png") as string,
   autoUnlockRank: require("../../assets/skills/skill_auto_unlock_rank.png") as string,
+  levelHover: require("../../assets/skills/skills_tab_level_over.png") as string,
   stickyBarFill: require("../../assets/skills/sticky_bar_fill.png") as string,
   stickyFlameMask: require("../../assets/skills/sticky_tooltip_flame_mask.png") as string,
 };

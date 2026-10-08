@@ -230,6 +230,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const [lockBarRun, setLockBarRun] = useState(0);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
   const tooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [hoveredLevel, setHoveredLevel] = useState<number>();
   const resolvedSkillIcon = skillIcon; //require(`../../../dumps/img/${skillIcon}`);
   const reduxLevel = Math.min(skillNodesToLevel[data.nodeId] || 0, data.numLevels);
   const [currentLevel, setCurrentLevel] = useState(reduxLevel);
@@ -411,7 +412,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   }
   if (!areRequirementsValid) lockText += reqsMessage;
 
-  const shownLevel = Math.min(currentLevel + 1, data.numLevels);
+  // A hovered pip shows its own level, otherwise the tooltip shows the next level to unlock.
+  const shownLevel = hoveredLevel ?? Math.min(currentLevel + 1, data.numLevels);
   const effectsAtShownLevel = data.effects.filter((effect) => effect.level == shownLevel);
   const unlockedAbilityKeys = [] as string[];
   for (const effect of effectsAtShownLevel) {
@@ -627,10 +629,15 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                   height: skillLevels.pipHeight,
                   marginTop: i > 0 ? skillLevels.spacing : 0,
                 }}
+                onMouseEnter={() => setHoveredLevel(i + 1)}
+                onMouseLeave={() => setHoveredLevel(undefined)}
               >
                 <img className="absolute w-full h-full" src={data.skillLevelImg} alt="skillLevelImg"></img>
                 {i < currentLevel && (
                   <img className="absolute w-full h-full" src={data.skillLevelLitIcon} alt="skillLevelLitIcon" />
+                )}
+                {!isLocked && hoveredLevel == i + 1 && (
+                  <img className="absolute w-full h-full" src={skillArt.levelHover} alt="levelHover" />
                 )}
               </div>
             ))}

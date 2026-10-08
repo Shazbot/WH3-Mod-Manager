@@ -159,6 +159,36 @@ describe("Skill", () => {
     expect(container.querySelectorAll('img[alt="skillLevelLitIcon"]')).toHaveLength(2);
   });
 
+  it("shows a hovered level pip's effects in the tooltip", () => {
+    vi.useFakeTimers();
+    try {
+      const levelEffect = (level: number) =>
+        ({
+          key: `effect_${level}`,
+          effectKey: `effect_${level}`,
+          localizedKey: `Level ${level} effect`,
+          level,
+        }) as Effect;
+      const { container } = renderSkill(
+        { ...skillData, numLevels: 3, effects: [levelEffect(1), levelEffect(2), levelEffect(3)] },
+        { skillNodesToLevel: { node_parent: 1 } },
+      );
+
+      const pips = container.querySelectorAll('img[alt="skillLevelImg"]');
+      fireEvent.mouseEnter(pips[2].parentElement!);
+      act(() => void vi.advanceTimersByTime(250));
+      expect(screen.getByText("Level 3 effect")).not.toBeNull();
+      expect(screen.queryByText("Level 1 effect")).toBeNull();
+      expect(container.querySelector('img[alt="levelHover"]')).not.toBeNull();
+
+      // Off the pip but still on the card.
+      fireEvent.mouseLeave(pips[2].parentElement!, { relatedTarget: pips[2].parentElement!.parentElement });
+      expect(screen.getByText("Level 1 effect")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows the tooltip after the appear delay and sticks it after the stick delay", () => {
     vi.useFakeTimers();
     try {
