@@ -63,6 +63,15 @@ const toBox = (rect: { x: number; y: number; width: number; height: number }) =>
   height: rect.height,
 });
 
+/**
+ * Tells whether an icon is sized like a framed ability icon (59 px) rather than a 72 px skill icon. Tiny icons such as
+ * 24 px traits are not, and keep their own size.
+ * @param naturalWidth The image's own width.
+ * @returns True for an ability-sized icon.
+ */
+const isAbilityIconSize = (naturalWidth: number) =>
+  naturalWidth > skillIconBox.width / 2 && naturalWidth < skillIconBox.width;
+
 // Card part styles, built once since the layout never changes.
 const cardStyle = toBox(skillCard);
 const ornamentStyle = toBox(skillOrnament);
@@ -231,6 +240,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
   const tooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
   const [hoveredLevel, setHoveredLevel] = useState<number>();
+  const [iconNaturalWidth, setIconNaturalWidth] = useState(0);
+  const isTinyIcon = iconNaturalWidth > 0 && iconNaturalWidth <= skillIconBox.width / 2;
   const resolvedSkillIcon = skillIcon; //require(`../../../dumps/img/${skillIcon}`);
   const reduxLevel = Math.min(skillNodesToLevel[data.nodeId] || 0, data.numLevels);
   const [currentLevel, setCurrentLevel] = useState(reduxLevel);
@@ -605,10 +616,11 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             alt={skillIconBackground}
           />
           <img
-            className={`absolute max-w-none object-contain ${isLocked ? "grayscale" : ""}`}
-            style={data.isAbilityIcon ? abilityIconStyle : iconStyle}
+            className={`absolute max-w-none ${isTinyIcon ? "object-none" : "object-contain"} ${isLocked ? "grayscale" : ""}`}
+            style={data.isAbilityIcon || isAbilityIconSize(iconNaturalWidth) ? abilityIconStyle : iconStyle}
             src={resolvedSkillIcon}
             alt={skillIcon}
+            onLoad={(e) => setIconNaturalWidth(e.currentTarget.naturalWidth)}
           />
           <div
             className="absolute flex items-center justify-center text-center leading-tight"

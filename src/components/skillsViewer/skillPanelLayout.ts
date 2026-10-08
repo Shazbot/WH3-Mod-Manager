@@ -24,7 +24,8 @@ export const skillCard = { x: -2, y: -1, width: 185, height: 67 };
 // skills_tab_ornament (220x67) and the skill icon (72x72) inside card.
 export const skillOrnament = { x: -35, y: 0, width: 220, height: 67 };
 export const skillIconBox = { x: -3, y: -5, width: 72, height: 72 };
-// Ability icons carry their own round frame, so they sit 12 px inside the icon box.
+// Ability icons (59x59, with their own round frame) sit 12 px inside the icon box. Some are also shipped in the skills
+// icon folder, so the viewer goes by the image's size, not its folder.
 export const skillAbilityIconBox = { x: 9, y: 7, width: 48, height: 48 };
 
 // dy_skill: the skill name.

@@ -330,4 +330,24 @@ describe("Skill", () => {
     expect(renderSkill(autoSkill).container.querySelector('img[alt="autoUnlockRank"]')).not.toBeNull();
     expect(renderSkill(autoSkill, { currentRank: 4 }).container.querySelector('img[alt="autoUnlockRank"]')).toBeNull();
   });
+
+  it("draws a 59 px ability icon from the skills folder in the smaller ability icon box", () => {
+    const { container } = renderSkill({ ...skillData, skillIcon: "ability.png" });
+    const icon = container.querySelector('img[alt="ability.png"]') as HTMLImageElement;
+    expect(icon.style.width).toBe("72px");
+
+    Object.defineProperty(icon, "naturalWidth", { value: 59 });
+    fireEvent.load(icon);
+    expect(icon.style.width).toBe("48px");
+  });
+
+  it("draws a tiny trait icon at its own size in the full icon box", () => {
+    const { container } = renderSkill({ ...skillData, skillIcon: "trait.png" });
+    const icon = container.querySelector('img[alt="trait.png"]') as HTMLImageElement;
+
+    Object.defineProperty(icon, "naturalWidth", { value: 24 });
+    fireEvent.load(icon);
+    expect(icon.style.width).toBe("72px");
+    expect(icon.classList).toContain("object-none");
+  });
 });
