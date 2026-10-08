@@ -29,8 +29,8 @@ export const skillAbilityIconBox = { x: 9, y: 7, width: 48, height: 48 };
 // dy_skill: the skill name.
 export const skillName = { x: 61, y: 10, width: 112, height: 44, fontSize: 12 };
 
-// level_parent: a vertical list of 16x20 pips with -4 px spacing.
-export const skillLevels = { x: 169, y: 4, pipWidth: 16, pipHeight: 20, spacing: -4 };
+// level_parent: a vertical list of 16x20 pips with -4 px spacing, centered on the card and moved 3 px up.
+export const skillLevels = { x: 169, centerY: skillCard.height / 2 - 3, pipWidth: 16, pipHeight: 20, spacing: -4 };
 
 // arrow: parchment_divider_arrow (68x13), drawn at (-12, 10) inside the arrow component at (185, 16) of the entry. It
 // runs from 12 px inside the left card to the next card's left edge.

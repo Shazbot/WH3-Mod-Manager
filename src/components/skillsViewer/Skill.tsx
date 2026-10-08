@@ -614,7 +614,10 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           >
             {label}
           </div>
-          <div className="absolute flex flex-col" style={{ left: skillLevels.x, top: skillLevels.y }}>
+          <div
+            className="absolute flex flex-col -translate-y-1/2"
+            style={{ left: skillLevels.x, top: skillLevels.centerY }}
+          >
             {Array.from(Array(Math.min(data.numLevels, 3)).keys()).map((i) => (
               <div
                 className="relative"
