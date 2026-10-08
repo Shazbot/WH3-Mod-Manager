@@ -1,4 +1,13 @@
-import React, { memo, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Handle, NodeToolbar, Position } from "@xyflow/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
@@ -32,6 +41,11 @@ const tooltipHideDelayMs = 150;
 const tooltipLockedHideDelayMs = 300;
 // Closes the open tooltip, so another card's tooltip appearing closes it.
 let closeOpenTooltip: (() => void) | undefined;
+// The nodes the hovered skill would lock out, which preview the lock chains. Cards subscribe to it, so only the cards
+// whose preview changes re-render.
+const noLockPreview = new Set<string>();
+let lockPreviewNodeIds = noLockPreview;
+const lockPreviewListeners = new Set<() => void>();
 
 // Where the effect icons start inside the tooltip frame's border.
 const effectIconLeft =
@@ -107,6 +121,37 @@ const descriptionStyle = {
  */
 const getLockText = (gameText: string | undefined, placeholder: string, value: string | number, fallback?: string) =>
   gameText ? gameText.replace(placeholder, String(value)) : fallback ? `\n\n[[col:red]]${fallback}[[/col]]` : "";
+
+/**
+ * Registers a card to hear when the lock preview changes.
+ * @param listener Called after each change.
+ * @returns A function that unregisters the card.
+ */
+const subscribeLockPreview = (listener: () => void) => {
+  lockPreviewListeners.add(listener);
+  return () => void lockPreviewListeners.delete(listener);
+};
+
+/**
+ * Sets which nodes preview the lock chains and tells the cards.
+ * @param nodeIds The nodes to preview as locked.
+ */
+const setLockPreview = (nodeIds: Set<string>) => {
+  lockPreviewNodeIds = nodeIds;
+  for (const listener of lockPreviewListeners) listener();
+};
+
+/**
+ * Finds the skills that unlocking a skill's next level locks out.
+ * @param skillsData The tree's data.
+ * @param skillId The skill being unlocked.
+ * @param nextLevel The level being unlocked.
+ * @returns The skills it locks out.
+ */
+const getSkillsLockedBy = (skillsData: SkillsData, skillId: string, nextLevel: number) =>
+  Object.entries(skillsData.nodeToSkillLocks)
+    .filter(([, skillAndLevels]) => skillAndLevels.some(([skill, level]) => skill == skillId && level == nextLevel))
+    .flatMap(([nodeId]) => skillsData.currentSkills.filter((skill) => skill.nodeId == nodeId));
 
 /** Props for TooltipLockBar. */
 type TooltipLockBarProps = {
@@ -239,6 +284,23 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   }, [hideTooltip]);
   useEffect(() => closeTooltip, [closeTooltip]);
 
+  const lockedSkills = useMemo(
+    () => (skillsData ? getSkillsLockedBy(skillsData, data.id, currentLevel + 1) : []),
+    [skillsData, data.id, currentLevel],
+  );
+  const isLockPreviewed = useSyncExternalStore(subscribeLockPreview, () => lockPreviewNodeIds.has(data.nodeId));
+  // While this card is hovered or its tooltip is up, the skills it would lock out show their chains.
+  const isPreviewingLocks = isCardHovered || isTooltipOpen;
+  useEffect(() => {
+    if (!isPreviewingLocks || lockedSkills.length == 0) return;
+    const lockedNodeIds = new Set(lockedSkills.map((skill) => skill.nodeId));
+    setLockPreview(lockedNodeIds);
+    // Another card may have taken over the preview already.
+    return () => {
+      if (lockPreviewNodeIds == lockedNodeIds) setLockPreview(noLockPreview);
+    };
+  }, [isPreviewingLocks, lockedSkills]);
+
   const onClick = useCallback(
     (currentLevel: number, maxLevel: number) => {
       if (currentLevel < maxLevel) {
@@ -266,17 +328,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
 
   if (!skillsData) return <></>;
 
-  const skillsBeingDisabled = [] as string[];
+  const skillsBeingDisabled = lockedSkills.map((skill) => skill.localizedTitle || skill.id);
   const nodeToSkillLocks = skillsData.nodeToSkillLocks;
-  for (const [nodeId, skillAndLevels] of Object.entries(nodeToSkillLocks)) {
-    for (const [iterSkill, iterLevel] of skillAndLevels) {
-      if (iterSkill == data.id && iterLevel == currentLevel + 1) {
-        for (const skillBeingDisabled of skillsData.currentSkills.filter((skill) => skill.nodeId == nodeId)) {
-          skillsBeingDisabled.push(skillBeingDisabled.localizedTitle || skillBeingDisabled.id);
-        }
-      }
-    }
-  }
 
   let isLockedByOtherSkill = false;
   let reqsMessage = "";
@@ -579,7 +632,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               </div>
             ))}
           </div>
-          {isLockedByOtherSkill ? (
+          {isLockedByOtherSkill || isLockPreviewed ? (
             <img className="absolute max-w-none" style={rankLockStyle} src={skillArt.lockedRank} alt="lockedRank" />
           ) : isAutoUnlockPending ? (
             <img

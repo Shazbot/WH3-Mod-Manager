@@ -130,6 +130,23 @@ describe("Skill", () => {
     expect(container.querySelector('img[alt="padlock"]')).toBeNull();
   });
 
+  it("previews chains on the skills that the hovered skill would lock out", () => {
+    const tree = {
+      currentSkills: [{ id: "skill_child", nodeId: "node_child" } as Skill],
+      nodeToSkillLocks: { node_child: [["skill_locker", 1]] as [string, number][] },
+    };
+    const locker = renderSkill({ ...skillData, id: "skill_locker", nodeId: "node_locker" }, {}, tree).container
+      .firstElementChild!;
+    const { container } = renderSkill(skillData, { skillNodesToLevel: { node_parent: 1 } }, tree);
+    expect(container.querySelector('img[alt="lockedRank"]')).toBeNull();
+
+    fireEvent.mouseEnter(locker);
+    expect(container.querySelector('img[alt="lockedRank"]')).not.toBeNull();
+
+    fireEvent.mouseLeave(locker);
+    expect(container.querySelector('img[alt="lockedRank"]')).toBeNull();
+  });
+
   it("draws a levelled skill on the selected tab with its pips lit", () => {
     const { container } = renderSkill(
       { ...skillData, numLevels: 3 },
