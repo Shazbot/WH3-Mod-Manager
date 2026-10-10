@@ -82,6 +82,9 @@ const nameStyle = {
   fontSize: skillName.fontSize,
   textShadow: skillText.outline,
   fontFamily: '"Libre Baskerville", serif',
+  // A skill with no name shows its key, one long word that would otherwise spill onto the cards beside it.
+  overflowWrap: "anywhere" as const,
+  overflow: "hidden",
 };
 const padlockStyle = toBox(skillPadlock);
 const rankLockStyle = toBox(skillRankLock);
