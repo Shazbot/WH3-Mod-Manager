@@ -13,6 +13,8 @@ export const skillArt = {
   levelHover: require("../../assets/skills/skills_tab_level_over.png") as string,
   stickyBarFill: require("../../assets/skills/sticky_bar_fill.png") as string,
   stickyFlameMask: require("../../assets/skills/sticky_tooltip_flame_mask.png") as string,
+  spellTitle: require("../../assets/skills/tooltip_title_rare.png") as string,
+  spellCost: require("../../assets/skills/spell_cost_frame.png") as string,
 };
 
 // template_skill_entry, with chain0's 56 px spacing between entries and 90 px row height.
@@ -66,6 +68,26 @@ export const skillTooltip = {
   effectIconX: 14,
   effectIconSize: 24,
   effectTextX: 44,
+};
+
+// ui/common ui/special_ability_tooltip.twui.xml: main_tooltip_body is 411 wide, in the same frame as the skill tooltip.
+// header, at (16, 8), draws the 365x35 tooltip_title art from x -10 with the name 32 px in, and the 30x30
+// spell_cost_frame on its right. top_parent, at (20, 47), holds the 59x59 icon, and 70 px in, the type lines on a
+// 24 px pitch.
+export const spellTooltip = {
+  width: 411,
+  headerY: 8,
+  headerHeight: 35,
+  titleArtX: -10,
+  titleArtWidth: 365,
+  nameX: 32,
+  costSize: 30,
+  costFontSize: 16,
+  topX: 4,
+  topY: 4,
+  iconSize: 59,
+  linesX: 70,
+  linePitch: 24,
 };
 
 // stick_progress_bar, the last item in tooltip_body: a 329x3 bar at (6, 2) of a 10 px holder that grows from its center

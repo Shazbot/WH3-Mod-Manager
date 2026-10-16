@@ -1,6 +1,7 @@
 import React from "react";
 import { useLocalizations } from "../../localizationContext";
 import GameText from "./GameText";
+import { spellTooltip } from "./skillPanelLayout";
 
 const getIconData = (
   iconPath: string | undefined,
@@ -83,11 +84,14 @@ const AbilityTooltipCard = ({
   compareAbility,
   icons,
   fallbackIconData,
+  isFramed,
 }: {
   ability: AbilityTooltipData;
   compareAbility?: AbilityTooltipData;
   icons: Record<string, string>;
   fallbackIconData?: string;
+  /** Drawn inside the game's spell tooltip frame, whose header carries the name. */
+  isFramed?: boolean;
 }) => {
   const localized = useLocalizations();
   const abilityIcon = getIconData(ability.iconPath, icons, fallbackIconData);
@@ -106,23 +110,59 @@ const AbilityTooltipCard = ({
   }
 
   return (
-    <div className="border border-red-900/70 bg-black/60 px-4 py-3 text-[13px] leading-5 text-gray-100">
-      <div className="flex items-center gap-2.5">
-        {abilityIcon && <img className="h-7 w-7 object-contain" src={abilityIcon} alt="" />}
-        <div className="font-semibold text-[18px] leading-tight">{ability.name}</div>
-      </div>
+    <div
+      className={`text-[13px] leading-5 text-gray-100 ${
+        isFramed ? "" : "border border-red-900/70 bg-black/60 px-4 py-3"
+      }`}
+    >
+      {isFramed ? (
+        // top_parent: the icon, then the source, lore and type lines beside it.
+        <div className="relative" style={{ height: spellTooltip.iconSize + spellTooltip.topY * 2 }}>
+          {abilityIcon && (
+            <img
+              className="absolute object-contain"
+              style={{ left: spellTooltip.topX, top: spellTooltip.topY, width: spellTooltip.iconSize }}
+              src={abilityIcon}
+              alt=""
+            />
+          )}
+          {[
+            { icon: loreIcon, text: ability.sourceTypeName },
+            { text: ability.loreGroupName },
+            { icon: typeIcon, text: ability.abilityTypeName },
+          ]
+            .filter((line) => line.text)
+            .map((line, i) => (
+              <div
+                key={i}
+                className="absolute flex items-center gap-1.5"
+                style={{ left: spellTooltip.linesX, top: i * spellTooltip.linePitch, height: spellTooltip.linePitch }}
+              >
+                {line.icon && <img className="h-4 w-4 object-contain" src={line.icon} alt="" />}
+                <span>{line.text}</span>
+              </div>
+            ))}
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2.5">
+            {abilityIcon && <img className="h-7 w-7 object-contain" src={abilityIcon} alt="" />}
+            <div className="font-semibold text-[18px] leading-tight">{ability.name}</div>
+          </div>
 
-      <div className="mt-1.5 space-y-0.5 text-[13px] text-gray-300">
-        <div className="flex items-center gap-1.5">
-          {loreIcon && <img className="h-4 w-4 object-contain" src={loreIcon} alt="" />}
-          <span>{ability.sourceTypeName}</span>
-          {ability.loreGroupName && <span>{ability.loreGroupName}</span>}
-        </div>
-        <div className="flex items-center gap-1.5">
-          {typeIcon && <img className="h-4 w-4 object-contain" src={typeIcon} alt="" />}
-          <span>{ability.abilityTypeName}</span>
-        </div>
-      </div>
+          <div className="mt-1.5 space-y-0.5 text-[13px] text-gray-300">
+            <div className="flex items-center gap-1.5">
+              {loreIcon && <img className="h-4 w-4 object-contain" src={loreIcon} alt="" />}
+              <span>{ability.sourceTypeName}</span>
+              {ability.loreGroupName && <span>{ability.loreGroupName}</span>}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {typeIcon && <img className="h-4 w-4 object-contain" src={typeIcon} alt="" />}
+              <span>{ability.abilityTypeName}</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {ability.projectile && (
         <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
@@ -328,7 +368,7 @@ const AbilityTooltipCard = ({
       )}
 
       {ability.description && (
-        <div className="mt-2.5 text-[13px] italic leading-5 text-gray-200">
+        <div className={`mt-2.5 text-[13px] italic leading-5 text-gray-200 ${isFramed ? "text-center" : ""}`}>
           <GameText text={ability.description} />
         </div>
       )}

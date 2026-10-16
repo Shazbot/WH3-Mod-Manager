@@ -12,8 +12,8 @@ import { Handle, NodeToolbar, Position } from "@xyflow/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
-import AbilityTooltipCard from "./AbilityTooltipCard";
 import GameText, { textTagColours } from "./GameText";
+import SkillSpellTooltip from "./SkillSpellTooltip";
 import { SkillsDataContext } from "./skillsDataContext";
 import {
   skillAbilityIconBox,
@@ -30,6 +30,7 @@ import {
   skillText,
   skillTooltip,
   skillTooltipLockBar,
+  spellTooltip,
 } from "./skillPanelLayout";
 
 // The game's default tooltip Appear, Stick and Hide delays. A tooltip sticks once it has been up for the stick delay,
@@ -238,6 +239,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const [isCardHovered, setIsCardHovered] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const [isTooltipLocked, setIsTooltipLocked] = useState(false);
+  // The effect row being hovered, whose spell or attributes show beside or under this tooltip.
+  const [hoveredEffect, setHoveredEffect] = useState<Effect>();
   // Bumped each time the stick delay starts, so the lock bar's fill starts over.
   const [lockBarRun, setLockBarRun] = useState(0);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -265,6 +268,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     clearTimeout(tooltipHideTimer.current);
     setIsTooltipLocked(false);
     setIsTooltipOpen(false);
+    setHoveredEffect(undefined);
     if (closeOpenTooltip == closeTooltip) closeOpenTooltip = undefined;
   }, []);
   const startStickDelay = useCallback(() => {
@@ -429,19 +433,22 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   // A hovered pip shows its own level, otherwise the tooltip shows the next level to unlock.
   const shownLevel = hoveredLevel ?? Math.min(currentLevel + 1, data.numLevels);
   const effectsAtShownLevel = data.effects.filter((effect) => effect.level == shownLevel);
-  const unlockedAbilityKeys = [] as string[];
-  for (const effect of effectsAtShownLevel) {
-    const mappings = skillsData.effectToUnitAbilityEnables[effect.effectKey] || [];
-    for (const mapping of mappings) {
-      const abilityKey = mapping.unitAbilityKey;
-      if (!skillsData.abilityTooltipsByKey[abilityKey]) continue;
-      if (!unlockedAbilityKeys.includes(abilityKey)) unlockedAbilityKeys.push(abilityKey);
-    }
-  }
-  const unlockedAbilityTooltips = unlockedAbilityKeys
-    .map((abilityKey) => skillsData.abilityTooltipsByKey[abilityKey])
-    .filter((ability): ability is AbilityTooltipData => !!ability);
-
+  const getEffectAbilities = (effect: Effect) =>
+    (skillsData.effectToUnitAbilityEnables[effect.effectKey] || [])
+      .map((mapping) => skillsData.abilityTooltipsByKey[mapping.unitAbilityKey])
+      .filter((ability): ability is AbilityTooltipData => !!ability);
+  // Hidden effects can grant the spell that a shown effect only names.
+  const hiddenEffectAbilities = effectsAtShownLevel
+    .filter((effect) => effect.priority == "0")
+    .flatMap(getEffectAbilities);
+  // An effect row links to the spell its text names, the longest name winning so an upgraded spell beats its base.
+  const getRowAbility = (effect: Effect) => {
+    const abilities = getEffectAbilities(effect);
+    const named = (abilities.length > 0 ? abilities : hiddenEffectAbilities)
+      .filter((ability) => effect.localizedKey?.includes(ability.name))
+      .sort((first, second) => second.name.length - first.name.length);
+    return named[0] || abilities[0];
+  };
   // The game hides effects with priority 0 and lists the rest by priority, keeping the table's order on ties. A closed
   // tooltip lists nothing, so the many closed cards skip the per-row work.
   const shownEffects = !isTooltipOpen
@@ -449,6 +456,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     : effectsAtShownLevel
         .filter((effect) => effect.priority != "0")
         .sort((first, second) => Number(first.priority) - Number(second.priority));
+  const hoveredAbility = hoveredEffect && getRowAbility(hoveredEffect);
 
   return (
     <>
@@ -458,6 +466,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         position={Position.Right}
       >
         <div
+          className="relative"
           style={{
             width: skillTooltip.width,
             borderStyle: "solid",
@@ -469,27 +478,23 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           onMouseEnter={() => isTooltipLocked && clearTimeout(tooltipHideTimer.current)}
           onMouseLeave={() => hideTooltip(tooltipHideDelayMs)}
         >
+          {hoveredAbility && (
+            <div
+              className="absolute ml-1"
+              style={{ left: `calc(100% + ${skillTooltip.frameSliceX}px)`, top: -skillTooltip.frameSliceY }}
+            >
+              <SkillSpellTooltip
+                ability={hoveredAbility}
+                compareAbility={Object.values(skillsData.abilityTooltipsByKey).find(
+                  (ability) => ability.overpowerOption === hoveredAbility.key,
+                )}
+                icons={skillsData.icons}
+                tooltipFrame={data.tooltipFrame}
+              />
+            </div>
+          )}
           <div className="nowheel max-h-[calc(92vh-50px)] overflow-y-auto">
-            {unlockedAbilityTooltips.length > 0 && (
-              <div className="space-y-2">
-                {unlockedAbilityTooltips.map((ability, i) => {
-                  const compareAbility = unlockedAbilityTooltips.find(
-                    (iterAbility) => iterAbility.overpowerOption === ability.key,
-                  );
-                  return (
-                    <AbilityTooltipCard
-                      key={ability.key + i}
-                      ability={ability}
-                      compareAbility={compareAbility}
-                      icons={skillsData.icons}
-                      fallbackIconData={resolvedSkillIcon}
-                    />
-                  );
-                })}
-              </div>
-            )}
-
-            <div className={unlockedAbilityTooltips.length > 0 ? "mt-3 border-t border-red-900/70 pt-2" : ""}>
+            <div>
               <div className="font-bold text-center" style={titleStyle}>
                 {label}
               </div>
@@ -534,6 +539,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 {shownEffects.map((effect, i) => {
                   const colour =
                     effect.isGood == undefined ? undefined : textTagColours[effect.isGood ? "green" : "red"];
+                  const isSpell = !!getRowAbility(effect);
                   return (
                     <div
                       key={effect.key + i}
@@ -544,6 +550,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                         paddingLeft: effectIconLeft,
                         gap: skillTooltip.effectTextX - skillTooltip.effectIconX - skillTooltip.effectIconSize,
                       }}
+                      onMouseEnter={isSpell ? () => setHoveredEffect(effect) : undefined}
+                      onMouseLeave={isSpell ? () => setHoveredEffect(undefined) : undefined}
                     >
                       <img
                         className="shrink-0 object-contain"

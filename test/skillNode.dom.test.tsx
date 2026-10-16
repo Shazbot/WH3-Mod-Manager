@@ -285,6 +285,68 @@ describe("Skill", () => {
     }
   });
 
+  it("shows the spell an effect row names beside the tooltip while the row is hovered", () => {
+    vi.useFakeTimers();
+    try {
+      const spell = (key: string, name: string, overpowerOption?: string) =>
+        ({
+          key,
+          name,
+          description: "",
+          sourceTypeName: "",
+          loreGroupName: "",
+          abilityTypeName: "",
+          overpowerOption,
+          stats: {},
+          bonuses: [],
+          additionalUiEffects: [],
+        }) as AbilityTooltipData;
+      const overcast = {
+        key: "overcast",
+        effectKey: "overcast",
+        localizedKey: 'Overcast spell: "Leech Upgraded"',
+        level: 1,
+        priority: "51",
+      } as Effect;
+      const cooldown = {
+        ...overcast,
+        key: "cooldown",
+        effectKey: "cooldown",
+        localizedKey: 'Cooldown: -30% to "Leech"',
+      };
+      const { container } = renderSkill(
+        { ...skillData, effects: [overcast, cooldown] },
+        {},
+        {
+          abilityTooltipsByKey: {
+            leech: spell("leech", "Leech", "leech_upgraded"),
+            leech_upgraded: spell("leech_upgraded", "Leech Upgraded"),
+          },
+          effectToUnitAbilityEnables: {
+            overcast: [
+              { unitAbilityKey: "leech", bonusValueId: "enable" },
+              { unitAbilityKey: "leech_upgraded", bonusValueId: "enable_overcharge" },
+            ],
+            cooldown: [{ unitAbilityKey: "leech", bonusValueId: "enable" }],
+          },
+        },
+      );
+
+      // The skill's tooltip sticks first, so the mouse can reach its rows.
+      fireEvent.mouseEnter(container.firstElementChild!);
+      act(() => void vi.advanceTimersByTime(600));
+      expect(screen.queryByText("Leech Upgraded")).toBeNull();
+
+      const row = container.querySelector('[id="overcast0"]')!;
+      fireEvent.mouseEnter(row);
+      expect(screen.getByText("Leech Upgraded")).not.toBeNull();
+      fireEvent.mouseLeave(row);
+      expect(screen.queryByText("Leech Upgraded")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("lists effects by priority and colours them by whether they help", () => {
     vi.useFakeTimers();
     try {
