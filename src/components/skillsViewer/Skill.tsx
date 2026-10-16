@@ -123,6 +123,7 @@ const descriptionStyle = {
   color: skillText.descriptionColour,
   marginTop: skillTooltip.descriptionTextY - skillTooltip.titleTextY - skillTooltip.titleLineHeight,
 };
+const eyeStyle = { width: skillTooltip.eyeIconSize, height: skillTooltip.eyeIconSize, verticalAlign: "-3px" };
 
 /**
  * Gets the game's red lock text, or the app's own text in the same style when the game has none.
@@ -540,6 +541,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                   const colour =
                     effect.isGood == undefined ? undefined : textTagColours[effect.isGood ? "green" : "red"];
                   const isSpell = !!getRowAbility(effect);
+                  const hasTooltip = isSpell;
                   return (
                     <div
                       key={effect.key + i}
@@ -550,8 +552,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                         paddingLeft: effectIconLeft,
                         gap: skillTooltip.effectTextX - skillTooltip.effectIconX - skillTooltip.effectIconSize,
                       }}
-                      onMouseEnter={isSpell ? () => setHoveredEffect(effect) : undefined}
-                      onMouseLeave={isSpell ? () => setHoveredEffect(undefined) : undefined}
+                      onMouseEnter={hasTooltip ? () => setHoveredEffect(effect) : undefined}
+                      onMouseLeave={hasTooltip ? () => setHoveredEffect(undefined) : undefined}
                     >
                       <img
                         className="shrink-0 object-contain"
@@ -565,6 +567,14 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                           taggedImages={skillsData.taggedImages}
                           icons={skillsData.icons}
                         />
+                        {hasTooltip && (
+                          <img
+                            className="ml-1 inline-block"
+                            style={eyeStyle}
+                            src={skillArt.tooltipAvailable}
+                            alt="tooltipAvailable"
+                          />
+                        )}
                       </span>
                     </div>
                   );

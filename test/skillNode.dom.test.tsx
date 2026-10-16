@@ -337,7 +337,7 @@ describe("Skill", () => {
       act(() => void vi.advanceTimersByTime(600));
       expect(screen.queryByText("Leech Upgraded")).toBeNull();
 
-      const row = container.querySelector('[id="overcast0"]')!;
+      const row = container.querySelector('img[alt="tooltipAvailable"]')!.closest("[id]")!;
       fireEvent.mouseEnter(row);
       expect(screen.getByText("Leech Upgraded")).not.toBeNull();
       fireEvent.mouseLeave(row);

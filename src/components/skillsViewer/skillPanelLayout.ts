@@ -15,6 +15,7 @@ export const skillArt = {
   stickyFlameMask: require("../../assets/skills/sticky_tooltip_flame_mask.png") as string,
   spellTitle: require("../../assets/skills/tooltip_title_rare.png") as string,
   spellCost: require("../../assets/skills/spell_cost_frame.png") as string,
+  tooltipAvailable: require("../../assets/skills/icon_tooltip_available.png") as string,
 };
 
 // template_skill_entry, with chain0's 56 px spacing between entries and 90 px row height.
@@ -68,6 +69,8 @@ export const skillTooltip = {
   effectIconX: 14,
   effectIconSize: 24,
   effectTextX: 44,
+  // icon_tooltip_available, the eye after an effect that has a tooltip of its own.
+  eyeIconSize: 16,
 };
 
 // ui/common ui/special_ability_tooltip.twui.xml: main_tooltip_body is 411 wide, in the same frame as the skill tooltip.
