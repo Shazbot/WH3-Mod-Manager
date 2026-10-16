@@ -117,6 +117,7 @@ type AbilityTooltipBuildParams = {
     {
       key: string;
       iconPath: string;
+      isComposite?: boolean;
     }
   >;
   abilityToAutoDeactivateFlags: Record<string, string[]>;
@@ -171,8 +172,11 @@ const localize = (
   return text;
 };
 
-const selectLoreGroupKey = (groupKeys: string[]) =>
-  groupKeys.find((groupKey) => groupKey.toLowerCase().includes("lore")) || groupKeys[0];
+// A spell's lore is its one group that is not a composite, such as a character's spell pool.
+const selectLoreGroupKey = (groupKeys: string[], groupsByKey: AbilityTooltipBuildParams["specialAbilityGroupsByKey"]) =>
+  groupKeys.find((groupKey) => groupsByKey[groupKey] && !groupsByKey[groupKey].isComposite) ||
+  groupKeys.find((groupKey) => groupKey.toLowerCase().includes("lore")) ||
+  groupKeys[0];
 
 const resolveAbilityFromEnableMapping = (
   mapping: AbilityEnableMapping,
@@ -350,6 +354,12 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
     return projectileData;
   };
 
+  // An upgraded spell sits only in composite groups, so it also looks at the groups of the spell it upgrades.
+  const upgradeToBaseAbilityKey: Record<string, string> = {};
+  for (const ability of Object.values(params.unitAbilitiesByKey)) {
+    if (ability.overpowerOption) upgradeToBaseAbilityKey[ability.overpowerOption] ??= ability.key;
+  }
+
   for (const abilityKey of relevantAbilityKeys) {
     const unitAbility = params.unitAbilitiesByKey[abilityKey];
     const unitSpecialAbility = params.unitSpecialAbilitiesByKey[abilityKey];
@@ -359,8 +369,11 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
     const typeIconPath = extractIconPathFromLoc(typeLocRaw);
     const abilityIconPath = normalizeUiPath(`ui\\battle ui\\ability_icons\\${unitAbility.iconName}`);
 
-    const groupKeys = params.abilityToGroupKeys[abilityKey] || [];
-    const loreGroupKey = selectLoreGroupKey(groupKeys);
+    const baseAbilityKey = upgradeToBaseAbilityKey[abilityKey];
+    const groupKeys = (params.abilityToGroupKeys[abilityKey] || []).concat(
+      (baseAbilityKey && params.abilityToGroupKeys[baseAbilityKey]) || [],
+    );
+    const loreGroupKey = selectLoreGroupKey(groupKeys, params.specialAbilityGroupsByKey);
     const loreGroupIconPath = normalizeUiPath(params.specialAbilityGroupsByKey[loreGroupKey]?.iconPath);
 
     if (abilityIconPath) iconPathsToLoad.add(abilityIconPath);

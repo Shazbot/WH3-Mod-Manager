@@ -450,6 +450,7 @@ export const applyModOverlayToSkillsDataCore = (
     const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;
     const iconPath = schemaFieldRow.find((sF) => sF.name == "icon_path")?.resolvedKeyValue;
     if (!key || !iconPath) return;
-    core.specialAbilityGroupsByKey[key] = { key, iconPath };
+    const isComposite = parseBool(schemaFieldRow.find((sF) => sF.name == "is_composite_group")?.resolvedKeyValue);
+    core.specialAbilityGroupsByKey[key] = { key, iconPath, isComposite };
   });
 };

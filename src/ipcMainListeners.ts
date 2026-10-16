@@ -2544,7 +2544,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       abilityToGroupKeys[ability] = abilityToGroupKeys[ability] || [];
       if (!abilityToGroupKeys[ability].includes(group)) abilityToGroupKeys[ability].push(group);
     });
-    const specialAbilityGroupsByKey = {} as Record<string, { key: string; iconPath: string }>;
+    const specialAbilityGroupsByKey = {} as Record<string, { key: string; iconPath: string; isComposite?: boolean }>;
     getTableRowData(packsTableData, "special_ability_groups_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;
       const iconPath = schemaFieldRow.find((sF) => sF.name == "icon_path")?.resolvedKeyValue;
@@ -2552,6 +2552,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey[key] = {
         key,
         iconPath,
+        isComposite: parseBool(schemaFieldRow.find((sF) => sF.name == "is_composite_group")?.resolvedKeyValue),
       };
     });
     // const set = subtypeToSet["wh_main_emp_karl_franz"];

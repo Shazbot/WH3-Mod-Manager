@@ -149,6 +149,8 @@ interface AppData {
       {
         key: string;
         iconPath: string;
+        /** Whether the group pools spells from several lores, such as a character's spell list, rather than being one lore. */
+        isComposite?: boolean;
       }
     >;
     abilityToAutoDeactivateFlags: Record<string, string[]>;
