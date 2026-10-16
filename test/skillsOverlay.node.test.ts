@@ -163,6 +163,18 @@ describe("skill data mod overlays", () => {
     expect(core.skillsToAutoUnlockRank).toEqual({ skill_mount: 4 });
   });
 
+  it("keeps ability links that change a spell, not only ones that grant it", () => {
+    const core = applyRows({
+      effect_bonus_value_unit_ability_junctions_tables: [
+        row({ effect: "effect_cooldown", bonus_value_id: "recharge_mod", unit_ability: "spell" }),
+      ],
+    });
+
+    expect(core.effectToUnitAbilityEnables.effect_cooldown).toEqual([
+      { unitAbilityKey: "spell", bonusValueId: "recharge_mod" },
+    ]);
+  });
+
   it("stores tagged images under the path their icons are kept at", () => {
     const core = applyRows({
       ui_tagged_images_tables: [row({ key: "icon_magic", image_path: "UI/Campaign UI/Effect_bundles/magic.png" })],

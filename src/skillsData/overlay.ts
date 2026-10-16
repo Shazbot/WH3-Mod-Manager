@@ -234,7 +234,6 @@ export const applyModOverlayToSkillsDataCore = (
     const bonusValueId = schemaFieldRow.find((sF) => sF.name == "bonus_value_id")?.resolvedKeyValue;
     const unitAbilityKey = schemaFieldRow.find((sF) => sF.name == "unit_ability")?.resolvedKeyValue;
     if (!effect || !bonusValueId || !unitAbilityKey) return;
-    if (!bonusValueId.startsWith("enable")) return;
     core.effectToUnitAbilityEnables[effect] = core.effectToUnitAbilityEnables[effect] || [];
     if (
       !core.effectToUnitAbilityEnables[effect].some(

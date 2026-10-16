@@ -2267,7 +2267,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const bonusValueId = schemaFieldRow.find((sF) => sF.name == "bonus_value_id")?.resolvedKeyValue;
       const unitAbilityKey = schemaFieldRow.find((sF) => sF.name == "unit_ability")?.resolvedKeyValue;
       if (!effect || !bonusValueId || !unitAbilityKey) return;
-      if (!bonusValueId.startsWith("enable")) return;
       effectToUnitAbilityEnables[effect] = effectToUnitAbilityEnables[effect] || [];
       if (
         !effectToUnitAbilityEnables[effect].some(
@@ -4714,10 +4713,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
       return undefined;
     };
+    // An ancillary shows the abilities its effects grant, not the ones they only modify.
+    const effectToUnitAbilityEnables = Object.fromEntries(
+      effectKeys.map((effectKey) => [
+        effectKey,
+        (skillsData.effectToUnitAbilityEnables[effectKey] || []).filter((mapping) =>
+          mapping.bonusValueId.startsWith("enable"),
+        ),
+      ]),
+    );
     const { abilityTooltipsByKey, reducedEffectToUnitAbilityEnables, iconPathsToLoad } =
       buildAbilityTooltipDataForEffects({
         effectKeys: [...new Set(effectKeys)],
-        effectToUnitAbilityEnables: skillsData.effectToUnitAbilityEnables,
+        effectToUnitAbilityEnables,
         unitAbilitiesByKey: skillsData.unitAbilitiesByKey,
         unitSpecialAbilitiesByKey: skillsData.unitSpecialAbilitiesByKey,
         bombardmentsByKey: skillsData.bombardmentsByKey,
