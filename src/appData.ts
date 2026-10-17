@@ -26,6 +26,8 @@ interface AppData {
     skillsToAutoUnlockRank: Record<string, number>;
     /** Image paths keyed by the tag `[[img:tag]]` draws, from `ui_tagged_images_tables`. */
     uiTaggedImages: Record<string, string>;
+    /** The unit attribute keys each effect grants, from `effect_bonus_value_unit_attribute_junctions_tables`. */
+    effectToUnitAttributes: Record<string, string[]>;
     locs: Record<string, KeyedLookup<string>>;
     /** The icon files themselves. The renderer gets asset protocol URLs pointing at these. */
     icons: Record<string, AssetBytes>;

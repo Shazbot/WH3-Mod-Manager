@@ -34,6 +34,7 @@ const treeSkillsData = (subtype: string, nodeRequirements: SkillsData["nodeRequi
     abilityTooltipsByKey: {},
     effectToUnitAbilityEnables: {},
     taggedImages: {},
+    effectAttributes: {},
     skillLockTexts: {},
   }) as SkillsData;
 
@@ -386,11 +387,34 @@ describe("Skill", () => {
     }
   });
 
-  it("draws the auto-grant badge until the rank that grants the skill", () => {
-    const autoSkill = { ...skillData, autoUnlockRank: 4 };
+  it("shows an effect's unit attributes under the tooltip while its row is hovered", () => {
+    vi.useFakeTimers();
+    try {
+      const unbreakable = {
+        key: "unbreakable",
+        effectKey: "unbreakable",
+        localizedKey: "Unbreakable",
+        level: 1,
+        priority: "320",
+      } as Effect;
+      const { container } = renderSkill(
+        { ...skillData, effects: [unbreakable] },
+        {},
+        { effectAttributes: { unbreakable: [{ name: "Unbreakable", description: "Never routs." }] } },
+      );
 
-    expect(renderSkill(autoSkill).container.querySelector('img[alt="autoUnlockRank"]')).not.toBeNull();
-    expect(renderSkill(autoSkill, { currentRank: 4 }).container.querySelector('img[alt="autoUnlockRank"]')).toBeNull();
+      fireEvent.mouseEnter(container.firstElementChild!);
+      act(() => void vi.advanceTimersByTime(250));
+      expect(screen.queryByText("Never routs.")).toBeNull();
+
+      const row = container.querySelector('img[alt="tooltipAvailable"]')!.closest("[id]")!;
+      fireEvent.mouseEnter(row);
+      expect(screen.getByText("Never routs.")).not.toBeNull();
+      fireEvent.mouseLeave(row);
+      expect(screen.queryByText("Never routs.")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("draws a 59 px ability icon from the skills folder in the smaller ability icon box", () => {
@@ -411,5 +435,12 @@ describe("Skill", () => {
     fireEvent.load(icon);
     expect(icon.style.width).toBe("72px");
     expect(icon.classList).toContain("object-none");
+  });
+
+  it("draws the auto-grant badge until the rank that grants the skill", () => {
+    const autoSkill = { ...skillData, autoUnlockRank: 4 };
+
+    expect(renderSkill(autoSkill).container.querySelector('img[alt="autoUnlockRank"]')).not.toBeNull();
+    expect(renderSkill(autoSkill, { currentRank: 4 }).container.querySelector('img[alt="autoUnlockRank"]')).toBeNull();
   });
 });

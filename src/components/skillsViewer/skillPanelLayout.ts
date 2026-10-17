@@ -73,6 +73,10 @@ export const skillTooltip = {
   eyeIconSize: 16,
 };
 
+// attribute_additional_info, docked under tooltip_body in the same frame: a 341 wide box with an attribute_info row at
+// y 8, its 24 px icon at x 14 and its text 44 px in.
+export const skillAttributeInfo = { width: 341, rowY: 8, iconX: 14, iconSize: 24, textX: 44 };
+
 // ui/common ui/special_ability_tooltip.twui.xml: main_tooltip_body is 411 wide, in the same frame as the skill tooltip.
 // header, at (16, 8), draws the 365x35 tooltip_title art from x -10 with the name 32 px in, and the 30x30
 // spell_cost_frame on its right. top_parent, at (20, 47), holds the 59x59 icon, and 70 px in, the type lines on a

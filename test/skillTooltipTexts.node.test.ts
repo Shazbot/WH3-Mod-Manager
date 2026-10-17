@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appendLocalizationsToSkills } from "../src/skills";
+import { appendLocalizationsToSkills, pickEffectAttributesForSkills, pickTaggedImagesForSkills } from "../src/skills";
 
 const skillWithEffects = (effects: Partial<Effect>[]) =>
   ({ id: "skill", effects: effects.map((effect) => ({ level: 1, priority: "1", ...effect })) }) as Skill;
@@ -26,5 +26,25 @@ describe("skill tooltip texts", () => {
     expect(skill.effects[0].isGood).toBe(true);
     expect(skill.effects[1].localizedKey).not.toContain("(");
     expect(skill.effects[1].isGood).toBe(false);
+  });
+
+  it("picks the attributes a tree's effects grant, with their tagged images", () => {
+    const locs: Record<string, string> = {
+      unit_attributes_bullet_text_unbreakable: "Unbreakable||Never loses [[img:icon_morale]][[/img]]leadership.",
+    };
+    const skill = skillWithEffects([{ effectKey: "effect_unbreakable" }, { effectKey: "effect_other" }]);
+
+    const attributes = pickEffectAttributesForSkills(
+      [skill],
+      { effect_unbreakable: ["unbreakable"], effect_unused: ["fatigue_immune"] },
+      (locId) => locs[locId],
+    );
+
+    expect(attributes).toEqual({
+      effect_unbreakable: [{ name: "Unbreakable", description: "Never loses [[img:icon_morale]][[/img]]leadership." }],
+    });
+    expect(pickTaggedImagesForSkills([skill], { icon_morale: "ui\\morale.png" }, attributes)).toEqual({
+      icon_morale: "ui\\morale.png",
+    });
   });
 });

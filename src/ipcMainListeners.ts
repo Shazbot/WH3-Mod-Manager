@@ -297,6 +297,7 @@ import {
   NodeSkill,
   normalizeSkillIconPath,
   normalizeTaggedImagePath,
+  pickEffectAttributesForSkills,
   pickTaggedImagesForSkills,
   pickTreeNodeData,
   resolveTextReplacements,
@@ -1830,6 +1831,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const skillTooltipTablesToRead = [
       "character_skills_to_level_reached_criterias_tables",
       "ui_tagged_images_tables",
+      "effect_bonus_value_unit_attribute_junctions_tables",
     ]
       .flatMap((tableName) => resolveTable(tableName))
       .map((table) => `db\\${table}\\`);
@@ -2186,6 +2188,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const imagePath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
       if (key && imagePath) uiTaggedImages[key] = normalizeTaggedImagePath(imagePath);
+    });
+    const effectToUnitAttributes: Record<string, string[]> = {};
+    getTableRowData(packsTableData, "effect_bonus_value_unit_attribute_junctions_tables", (schemaFieldRow) => {
+      const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+      const attribute = schemaFieldRow.find((sF) => sF.name == "unit_attribute")?.resolvedKeyValue;
+      if (!effect || !attribute) return;
+      effectToUnitAttributes[effect] = effectToUnitAttributes[effect] || [];
+      if (!effectToUnitAttributes[effect].includes(attribute)) effectToUnitAttributes[effect].push(attribute);
     });
     const nodeToSkillLocks = {} as NodeToSkillLocks;
     getTableRowData(packsTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
@@ -2640,6 +2650,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       skills,
       skillsToAutoUnlockRank,
       uiTaggedImages,
+      effectToUnitAttributes,
       locs,
       icons,
       iconGeneration: registerIconAssets(icons),
@@ -2753,7 +2764,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey,
       getLoc,
     });
-    const kfTaggedImages = pickTaggedImagesForSkills(kfSkills, uiTaggedImages);
+    const kfEffectAttributes = pickEffectAttributesForSkills(kfSkills, effectToUnitAttributes, getLoc);
+    const kfTaggedImages = pickTaggedImagesForSkills(kfSkills, uiTaggedImages, kfEffectAttributes);
     const kfTooltipIconPaths = kfAbilityIconPaths.concat(Object.values(kfTaggedImages));
     // Same as on the subtype switch below: the tooltip icons are not part of the sweep the vanilla
     // icon packs were chosen for, so whichever are still missing get their own packs looked up.
@@ -2793,6 +2805,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
       taggedImages: kfTaggedImages,
+      effectAttributes: kfEffectAttributes,
       skillLockTexts: getSkillLockTexts(getLoc),
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
@@ -2899,7 +2912,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
       getLoc,
     });
-    const taggedImages = pickTaggedImagesForSkills(kfSkills, cachedSkillsData.uiTaggedImages);
+    const effectAttributes = pickEffectAttributesForSkills(kfSkills, cachedSkillsData.effectToUnitAttributes, getLoc);
+    const taggedImages = pickTaggedImagesForSkills(kfSkills, cachedSkillsData.uiTaggedImages, effectAttributes);
     const tooltipIconPaths = abilityIconPaths.concat(Object.values(taggedImages));
     // The tree's own icons were resolved when the data was built, so the build only had to index the
     // vanilla packs holding those. A tooltip's icons are not known until a subtype is opened and can
@@ -2940,6 +2954,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
       taggedImages,
+      effectAttributes,
       skillLockTexts: getSkillLockTexts(getLoc),
       subtypes,
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),

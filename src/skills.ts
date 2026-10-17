@@ -374,18 +374,49 @@ export const normalizeTaggedImagePath = (imagePath: string) => imagePath.replace
  * Gets the tagged images that skill texts draw inline with `[[img:tag]]`.
  * @param skills The skills whose descriptions and effects are searched.
  * @param uiTaggedImages Image paths keyed by tag.
+ * @param effectAttributes The attributes the skills' effects grant, whose descriptions are searched too.
  * @returns The image paths of the tags the texts use, keyed by tag.
  */
-export function pickTaggedImagesForSkills(skills: Skill[], uiTaggedImages: Record<string, string>) {
+export function pickTaggedImagesForSkills(
+  skills: Skill[],
+  uiTaggedImages: Record<string, string>,
+  effectAttributes: Record<string, UnitAttributeText[]> = {},
+) {
   const picked: Record<string, string> = {};
-  const texts = skills.flatMap((skill) => [
-    skill.localizedDescription,
-    ...skill.effects.map((effect) => effect.localizedKey),
-  ]);
+  const texts = skills
+    .flatMap((skill) => [skill.localizedDescription, ...skill.effects.map((effect) => effect.localizedKey)])
+    .concat(
+      Object.values(effectAttributes).flatMap((attributes) => attributes.map((attribute) => attribute.description)),
+    );
   for (const text of texts) {
     for (const [, tag] of (text || "").matchAll(/\[\[img:(.*?)\]\]/gi)) {
       if (uiTaggedImages[tag]) picked[tag] = uiTaggedImages[tag];
     }
+  }
+  return picked;
+}
+
+/**
+ * Gets the unit attributes that a tree's effects grant, which the skill tooltip lists under its effects.
+ * @param skills The tree's skills.
+ * @param effectToUnitAttributes The attribute keys each effect grants.
+ * @param getLoc Looks up a localised string.
+ * @returns The attributes' names and descriptions, keyed by effect key.
+ */
+export function pickEffectAttributesForSkills(
+  skills: Skill[],
+  effectToUnitAttributes: Record<string, string[]>,
+  getLoc: (locId: string) => string | undefined,
+) {
+  const picked: Record<string, UnitAttributeText[]> = {};
+  for (const effectKey of new Set(skills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey)))) {
+    const attributes = (effectToUnitAttributes[effectKey] || []).flatMap((attribute) => {
+      const bulletText = getLoc(`unit_attributes_bullet_text_${attribute}`);
+      if (!bulletText) return [];
+      const [name, description = ""] = (resolveTextReplacements(bulletText, getLoc) || bulletText).split("||");
+      return [{ name: name.trim(), description: description.trim() }];
+    });
+    if (attributes.length > 0) picked[effectKey] = attributes;
   }
   return picked;
 }

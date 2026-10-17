@@ -914,8 +914,17 @@ declare global {
     effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
     /** Icon paths keyed by the `[[img:tag]]` tags this tree's texts use. The icons are in `icons`. */
     taggedImages: Record<string, string>;
+    /** The unit attributes each of this tree's effects grants, keyed by effect key. */
+    effectAttributes: Record<string, UnitAttributeText[]>;
     /** The game's texts for why a skill is locked. */
     skillLockTexts: SkillLockTexts;
+  }
+  /** A unit attribute's name and description, as the skill tooltip shows them. */
+  interface UnitAttributeText {
+    /** The attribute's shown name, such as "Unbreakable". */
+    name: string;
+    /** What the attribute does. */
+    description: string;
   }
   /** The game's lock texts for the skill tooltip. Each still holds its `%d` or `%S` placeholder. */
   interface SkillLockTexts {

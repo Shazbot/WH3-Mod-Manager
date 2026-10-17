@@ -18,6 +18,7 @@ import { SkillsDataContext } from "./skillsDataContext";
 import {
   skillAbilityIconBox,
   skillArt,
+  skillAttributeInfo,
   skillAutoUnlockBadge,
   skillCard,
   skillEntry,
@@ -124,6 +125,19 @@ const descriptionStyle = {
   marginTop: skillTooltip.descriptionTextY - skillTooltip.titleTextY - skillTooltip.titleLineHeight,
 };
 const eyeStyle = { width: skillTooltip.eyeIconSize, height: skillTooltip.eyeIconSize, verticalAlign: "-3px" };
+// The attribute box hangs under the tooltip frame, in a frame of its own.
+const attributeInfoStyle = {
+  left: -skillTooltip.frameSliceX,
+  top: `calc(100% + ${skillTooltip.frameSliceY}px)`,
+  width: skillAttributeInfo.width,
+  borderStyle: "solid",
+  borderWidth: `${skillTooltip.frameSliceY}px ${skillTooltip.frameSliceX}px`,
+};
+const attributeRowStyle = {
+  marginTop: skillAttributeInfo.rowY - skillTooltip.frameSliceY,
+  marginLeft: skillAttributeInfo.iconX - skillTooltip.frameSliceX,
+  gap: skillAttributeInfo.textX - skillAttributeInfo.iconX - skillAttributeInfo.iconSize,
+};
 
 /**
  * Gets the game's red lock text, or the app's own text in the same style when the game has none.
@@ -458,6 +472,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         .filter((effect) => effect.priority != "0")
         .sort((first, second) => Number(first.priority) - Number(second.priority));
   const hoveredAbility = hoveredEffect && getRowAbility(hoveredEffect);
+  const hoveredAttributes = hoveredEffect && skillsData.effectAttributes[hoveredEffect.effectKey];
 
   return (
     <>
@@ -479,6 +494,33 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           onMouseEnter={() => isTooltipLocked && clearTimeout(tooltipHideTimer.current)}
           onMouseLeave={() => hideTooltip(tooltipHideDelayMs)}
         >
+          {hoveredAttributes && (
+            <div
+              className="absolute"
+              style={{
+                ...attributeInfoStyle,
+                borderImage: `url('${data.tooltipFrame}') ${skillTooltip.frameSliceY} ${skillTooltip.frameSliceX} fill`,
+              }}
+            >
+              {hoveredAttributes.map((attribute) => (
+                <div key={attribute.name} className="flex" style={attributeRowStyle}>
+                  <img
+                    className="shrink-0 object-contain"
+                    style={{ width: skillAttributeInfo.iconSize, height: skillAttributeInfo.iconSize }}
+                    src={hoveredEffect.iconData}
+                    alt={hoveredEffect.icon}
+                  />
+                  <span>
+                    <GameText
+                      text={`[[b]]${attribute.name}[[/b]]\n${attribute.description}`}
+                      taggedImages={skillsData.taggedImages}
+                      icons={skillsData.icons}
+                    />
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           {hoveredAbility && (
             <div
               className="absolute ml-1"
@@ -538,10 +580,10 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             <div className="mt-2">
               <div className="flex gap-1 flex-col">
                 {shownEffects.map((effect, i) => {
+                  const isSpell = !!getRowAbility(effect);
+                  const hasTooltip = isSpell || !!skillsData.effectAttributes[effect.effectKey];
                   const colour =
                     effect.isGood == undefined ? undefined : textTagColours[effect.isGood ? "green" : "red"];
-                  const isSpell = !!getRowAbility(effect);
-                  const hasTooltip = isSpell;
                   return (
                     <div
                       key={effect.key + i}

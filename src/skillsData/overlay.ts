@@ -177,6 +177,14 @@ export const applyModOverlayToSkillsDataCore = (
     if (key && imagePath) core.uiTaggedImages[key] = normalizeTaggedImagePath(imagePath);
   });
 
+  getTableRowDataFn(modPacksTableData, "effect_bonus_value_unit_attribute_junctions_tables", (schemaFieldRow) => {
+    const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+    const attribute = schemaFieldRow.find((sF) => sF.name == "unit_attribute")?.resolvedKeyValue;
+    if (!effect || !attribute) return;
+    core.effectToUnitAttributes[effect] = core.effectToUnitAttributes[effect] || [];
+    if (!core.effectToUnitAttributes[effect].includes(attribute)) core.effectToUnitAttributes[effect].push(attribute);
+  });
+
   getTableRowDataFn(modPacksTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
     const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
     const skillNode = schemaFieldRow.find((sF) => sF.name == "character_skill_node")?.resolvedKeyValue;
