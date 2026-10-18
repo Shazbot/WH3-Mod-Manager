@@ -376,7 +376,14 @@ import {
   parseLoadOrderRulesFile,
 } from "./utility/loadOrderRulesFile";
 import { collator } from "./utility/packFileSorting";
-import { launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
+import { buildGameLaunchArguments, launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
+import { buildNativePatchLaunchPlan, type NativePatchPack } from "./nativePatches/planner";
+import {
+  cleanupNativePatchLaunchFiles,
+  launchNativePatchHelper,
+  resolveNativePatchLaunchInvocation,
+  writeNativePatchLaunchFiles,
+} from "./nativePatches/launch";
 import {
   cleanupWorkshopModStaging,
   getWorkshopModStagingFolderInfo,
@@ -13181,8 +13188,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       };
       let workshopStagingResult: WorkshopStagingResult | undefined;
       let stagedGamePath: string | undefined;
+      let isPreparingNativePatches = false;
+      let nativeHelperMayBeRunning = false;
       const cleanStagingAfterFailedLaunch = async () => {
-        if (!workshopStagingResult || !stagedGamePath) return;
+        if (nativeHelperMayBeRunning || !workshopStagingResult || !stagedGamePath) return;
         try {
           await cleanupWorkshopModStaging(stagedGamePath);
           appData.workshopStagingCleanupPending = false;
@@ -13346,6 +13355,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           vanillaPacks.push(dataMod);
         }
         let extraEnabledMods = "";
+        let startGameTempPackPath: string | undefined;
         if (
           startGameOptions.isMakeUnitsGeneralsEnabled ||
           startGameOptions.isScriptLoggingEnabled ||
@@ -13391,6 +13401,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
           if (!failedWriting) {
             log("done writing temp pack");
+            startGameTempPackPath = tempPackPath;
             extraEnabledMods =
               `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` +
               `\nmod "${tempPackName}";`;
@@ -13413,12 +13424,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
         const overwriteModEntries: Array<{ sourcePath: string; name: string }> = [];
+        let overwritesDirPath: string | undefined;
         /** Original pack path -> the overwrite copy a flow should read in its place. */
         const packPathSubstitutes = new Map<string, string>();
         /** Packs a flow wrote a whole replacement for; the original must not be loaded alongside it. */
         const replacedPackPaths = new Set<string>();
         if (enabledModsWithOverwrites.length > 0) {
-          const overwritesDirPath = nodePath.join(
+          overwritesDirPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "/whmm_overwrites/",
           );
@@ -13689,11 +13701,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           modListFileName: fileNameWithModList,
           saveName,
         });
-        if (launchPlan.kind === "error") {
-          reportGameLaunchError(launchPlan.message);
-          await cleanStagingAfterFailedLaunch();
-          return;
-        }
+        const launchNormally = async () =>
+          launchPlan.kind === "error"
+            ? { started: false as const, message: launchPlan.message }
+            : launchGame(launchPlan.candidates, gamePath);
         // Create steam_appid.txt for Attila
         if (appData.currentGame === "attila" || appData.currentGame === "rome2" || appData.currentGame == "shogun2") {
           const steamAppIdPath = nodePath.join(
@@ -13708,18 +13719,160 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
         mainWindow?.webContents.send("handleLog", "starting game:");
-        for (const candidate of launchPlan.candidates) {
+        for (const candidate of launchPlan.kind === "launch" ? launchPlan.candidates : []) {
           const description = [candidate.command, ...candidate.args].map((arg) => JSON.stringify(arg)).join(" ");
           console.log("Game launch candidate:", description);
           mainWindow?.webContents.send("handleLog", description);
         }
 
-        const launchResult = await launchGame(launchPlan.candidates, gamePath);
-        if (!launchResult.started) {
-          reportGameLaunchError(launchResult.message);
+        let launchFailureMessage: string | undefined;
+        let launched = false;
+        if (appData.currentGame === "wh3") {
+          isPreparingNativePatches = true;
+          const modPackPaths = enabledModsWithoutMergedInMods.map((mod) => {
+            if (stagedWorkshopModNames.has(mod.name.toLowerCase()) && workshopStagingResult) {
+              return nodePath.join(workshopStagingResult.destinationPath, mod.name);
+            }
+            if (
+              isWorkshopMod(mod) &&
+              [...realDataPackNames].some((name) => name.toLowerCase() === mod.name.toLowerCase())
+            ) {
+              return nodePath.join(dataFolder, mod.name);
+            }
+            return mod.isInModding ? nodePath.join(dataFolder, mod.name) : mod.path;
+          });
+          const overwritePackPaths = overwriteModEntries
+            .filter((entry) => !replacedPackPaths.has(entry.sourcePath))
+            .map((entry) => (overwritesDirPath ? nodePath.join(overwritesDirPath, entry.name) : undefined))
+            .filter((path): path is string => Boolean(path));
+          const enabledPackPaths = [
+            ...modPackPaths,
+            ...(startGameTempPackPath ? [startGameTempPackPath] : []),
+            ...overwritePackPaths,
+            ...createdFlowPacks,
+          ].filter((packPath) => nodePath.extname(packPath).toLowerCase() === ".pack");
+          const pathIdentity = (packPath: string) => {
+            const resolved = nodePath.resolve(packPath);
+            return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+          };
+          const indexedPacks = new Map<string, NativePatchPack>();
+          const indexNativePatchPack = async (packPath: string, priority: number): Promise<NativePatchPack> => {
+            const key = pathIdentity(packPath);
+            const existing = indexedPacks.get(key);
+            if (existing) {
+              existing.priority = Math.max(existing.priority, priority);
+              return existing;
+            }
+            if (!fs.existsSync(packPath) || !fs.statSync(packPath).isFile()) {
+              throw new Error(`Final WH3 pack is missing: ${packPath}`);
+            }
+            const packIndex = await readPack(packPath, { skipParsingTables: true, skipSorting: true });
+            const stats = fs.statSync(packPath);
+            if (!packIndex.packHeader || packIndex.packHeader.pack_file_count !== packIndex.packedFiles.length) {
+              throw new Error(`Could not read the complete pack index for ${packPath}`);
+            }
+            for (const entry of packIndex.packedFiles) {
+              if (
+                !Number.isSafeInteger(entry.file_size) ||
+                entry.file_size < 0 ||
+                !Number.isSafeInteger(entry.start_pos) ||
+                entry.start_pos < 0 ||
+                entry.start_pos + entry.file_size > stats.size
+              ) {
+                throw new Error(`Invalid packed-file index range for ${entry.name} in ${packPath}`);
+              }
+            }
+            const indexed = { path: packPath, pack: packIndex, priority };
+            indexedPacks.set(key, indexed);
+            return indexed;
+          };
+          const enabledPacks: NativePatchPack[] = [];
+          for (const [priority, packPath] of enabledPackPaths.entries()) {
+            const indexed = await indexNativePatchPack(packPath, priority);
+            if (!enabledPacks.includes(indexed)) enabledPacks.push(indexed);
+          }
+          const nativePlan = await buildNativePatchLaunchPlan({
+            runId: randomUUID(),
+            targetPath: gameExecutablePath,
+            enabledPacks,
+            effectiveContentPacks: async () => {
+              const vanillaPaths = getVanillaPackPathsInLoadOrder().filter(
+                (packPath) => nodePath.extname(packPath).toLowerCase() === ".pack",
+              );
+              const contentPacks: NativePatchPack[] = [];
+              for (const [priority, packPath] of vanillaPaths.entries()) {
+                contentPacks.push(await indexNativePatchPack(packPath, priority - vanillaPaths.length));
+              }
+              for (const [priority, packPath] of enabledPackPaths.entries()) {
+                contentPacks.push(await indexNativePatchPack(packPath, vanillaPaths.length + priority));
+              }
+              return contentPacks;
+            },
+          });
+          if (!nativePlan) {
+            isPreparingNativePatches = false;
+            const launchResult = await launchNormally();
+            launched = launchResult.started;
+            if (!launchResult.started) launchFailureMessage = launchResult.message;
+          } else {
+            for (const prepared of nativePlan.packages) {
+              const message = `Native patch ${prepared.manifest.package.id}@${prepared.manifest.package.version}: ${prepared.sourcePackPath} (${prepared.manifestPath})`;
+              log(message);
+              mainWindow?.webContents.send("handleLog", message);
+            }
+            let nativeLaunchFiles: ReturnType<typeof writeNativePatchLaunchFiles> | undefined;
+            let cancellationAcknowledged = false;
+            let helperStarted = false;
+            try {
+              nativeLaunchFiles = writeNativePatchLaunchFiles({
+                plan: nativePlan,
+                appDataPath,
+                platform: process.platform,
+                gameArguments: buildGameLaunchArguments(fileNameWithModList, saveName),
+                gameWorkingDirectory: gamePath,
+              });
+              const invocation = resolveNativePatchLaunchInvocation({
+                appDataPath,
+                planFiles: nativeLaunchFiles,
+                platform: process.platform,
+                steamId: gameToSteamId.wh3,
+              });
+              const description = [invocation.command, ...invocation.args].map((arg) => JSON.stringify(arg)).join(" ");
+              console.log("Native patch helper launch:", description);
+              mainWindow?.webContents.send("handleLog", "Preparing native patch startup activation.");
+              helperStarted = true;
+              nativeHelperMayBeRunning = true;
+              const nativeLaunchResult = await launchNativePatchHelper({
+                invocation,
+                planFiles: nativeLaunchFiles,
+                runId: nativePlan.runId,
+                cwd: gamePath,
+              });
+              launched = nativeLaunchResult.started;
+              cancellationAcknowledged = nativeLaunchResult.started || nativeLaunchResult.cancellationAcknowledged;
+              if (!nativeLaunchResult.started) {
+                nativeHelperMayBeRunning = !nativeLaunchResult.cancellationAcknowledged;
+                launchFailureMessage = nativeLaunchResult.cancellationAcknowledged
+                  ? nativeLaunchResult.message
+                  : `${nativeLaunchResult.message} Startup state is unknown; launch files and staged mods were retained. Check the game process before trying again.`;
+              }
+            } finally {
+              if (nativeLaunchFiles && (!helperStarted || cancellationAcknowledged)) {
+                cleanupNativePatchLaunchFiles(nativeLaunchFiles);
+              }
+            }
+          }
+        } else {
+          const launchResult = await launchNormally();
+          launched = launchResult.started;
+          if (!launchResult.started) launchFailureMessage = launchResult.message;
+        }
+        if (!launched) {
+          reportGameLaunchError(launchFailureMessage || "Game launch failed.");
           await cleanStagingAfterFailedLaunch();
           return;
         }
+        isPreparingNativePatches = false;
         if (cleanUpWorkshopModStagingAfterGameExit && workshopStagingResult) {
           appData.workshopStagingCleanupPending = true;
           appData.workshopStagingCleanupGamePath = gamePath;
@@ -13769,7 +13922,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           reportGameLaunchError(message, e);
         } else {
           stagingFailureMessage = e instanceof Error ? e.message : String(e);
-          console.log(e);
+          if (isPreparingNativePatches) reportGameLaunchError(stagingFailureMessage, e);
+          else console.log(e);
         }
       } finally {
         if (workshopStagingRun && !stagingCompleted) {

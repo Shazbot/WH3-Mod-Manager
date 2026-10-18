@@ -1,0 +1,754 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WHMM native patch format v1",
+  "description": "Structural schema. Loader semantic validation additionally checks SemVer, identifiers/references, paths, hashes, lengths, numeric ranges, uniqueness, composition and address safety.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "wh3-native-patch"
+    },
+    "format_version": {
+      "const": 1
+    },
+    "package": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "version", "name"],
+      "additionalProperties": false
+    },
+    "requires_loader": {
+      "type": "object",
+      "properties": {
+        "min_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": ["min_version", "capabilities"],
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "const": "game"
+        },
+        "filename": {
+          "const": "Warhammer3.exe"
+        },
+        "machine": {
+          "const": "amd64"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        }
+      },
+      "required": ["id", "filename", "machine", "sha256"],
+      "additionalProperties": false
+    },
+    "lifecycle": {
+      "type": "object",
+      "properties": {
+        "apply": {
+          "const": "startup"
+        },
+        "before": {
+          "const": "game_initialization"
+        },
+        "change": {
+          "const": "restart"
+        },
+        "lifetime": {
+          "const": "process"
+        }
+      },
+      "required": ["apply", "before", "change", "lifetime"],
+      "additionalProperties": false
+    },
+    "allocation_policy": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "module_window"
+        },
+        "module": {
+          "const": "game"
+        },
+        "min_rva": {
+          "const": "after_image"
+        },
+        "max_rva_exclusive": {
+          "type": "string",
+          "pattern": "^0x0*80000000$"
+        }
+      },
+      "required": ["type", "module", "min_rva", "max_rva_exclusive"],
+      "additionalProperties": false
+    },
+    "requires": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["id", "version"],
+        "additionalProperties": false
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "uniqueItems": true
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["domain", "key"],
+        "additionalProperties": false
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/blockDefinition"
+      }
+    },
+    "symbols": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/module"
+          },
+          {
+            "$ref": "#/$defs/block"
+          }
+        ]
+      }
+    },
+    "guards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/guard"
+      }
+    },
+    "writes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/writeDefinition"
+      }
+    },
+    "fixups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fixup"
+      }
+    },
+    "runtime_functions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runtimeFunction"
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/parameter"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "offline_behavior": {
+          "type": "string"
+        },
+        "in_game_behavior": {
+          "type": "string"
+        },
+        "runtime_delivery": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "format",
+    "format_version",
+    "package",
+    "requires_loader",
+    "target",
+    "lifecycle",
+    "allocation_policy",
+    "requires",
+    "conflicts",
+    "claims",
+    "blocks",
+    "symbols",
+    "guards",
+    "writes",
+    "fixups",
+    "runtime_functions"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "module": {
+      "type": "object",
+      "properties": {
+        "module": {
+          "const": "game"
+        },
+        "rva": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]+$"
+        }
+      },
+      "required": ["module", "rva"],
+      "additionalProperties": false
+    },
+    "block": {
+      "type": "object",
+      "properties": {
+        "block": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["block", "offset"],
+      "additionalProperties": false
+    },
+    "write": {
+      "type": "object",
+      "properties": {
+        "write": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["write", "offset"],
+      "additionalProperties": false
+    },
+    "symbol": {
+      "type": "object",
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        }
+      },
+      "required": ["symbol"],
+      "additionalProperties": false
+    },
+    "source": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-fA-F0-9]{64}$"
+            }
+          },
+          "required": ["file", "sha256"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "base64": {
+              "type": "string",
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-fA-F0-9]{64}$"
+            }
+          },
+          "required": ["base64", "sha256"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "hex": {
+              "type": "string",
+              "pattern": "^(?:[a-fA-F0-9]{2})*$"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-fA-F0-9]{64}$"
+            }
+          },
+          "required": ["hex"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "zero": {
+              "const": true
+            }
+          },
+          "required": ["zero"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "blockDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "alignment": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "protection": {
+          "enum": ["rx", "r", "rw"]
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "required": ["id", "size", "alignment", "protection", "source"],
+      "additionalProperties": false
+    },
+    "guard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "at": {
+          "$ref": "#/$defs/imageAddress"
+        },
+        "expected": {
+          "type": "string",
+          "pattern": "^(?:[a-fA-F0-9]{2})+$"
+        }
+      },
+      "required": ["id", "at", "expected"],
+      "additionalProperties": false
+    },
+    "writeDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "at": {
+          "$ref": "#/$defs/imageAddress"
+        },
+        "expected": {
+          "type": "string",
+          "pattern": "^(?:[a-fA-F0-9]{2})+$"
+        },
+        "bytes": {
+          "type": "string",
+          "pattern": "^(?:[a-fA-F0-9]{2})+$"
+        }
+      },
+      "required": ["id", "at", "expected", "bytes"],
+      "additionalProperties": false
+    },
+    "fixup": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": ["rel8", "rel32"]
+            },
+            "at": {
+              "$ref": "#/$defs/field"
+            },
+            "target": {
+              "$ref": "#/$defs/address"
+            },
+            "addend": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "relative_to": {
+              "$ref": "#/$defs/anchor"
+            }
+          },
+          "required": ["kind", "at", "target", "addend", "relative_to"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "abs64"
+            },
+            "at": {
+              "$ref": "#/$defs/field"
+            },
+            "target": {
+              "$ref": "#/$defs/address"
+            },
+            "addend": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": ["kind", "at", "target", "addend"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "rva32"
+            },
+            "at": {
+              "$ref": "#/$defs/field"
+            },
+            "target": {
+              "$ref": "#/$defs/address"
+            },
+            "addend": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "base": {
+              "$ref": "#/$defs/address"
+            }
+          },
+          "required": ["kind", "at", "target", "addend", "base"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "field": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/block"
+        },
+        {
+          "$ref": "#/$defs/write"
+        }
+      ]
+    },
+    "anchor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/address"
+        },
+        {
+          "$ref": "#/$defs/write"
+        }
+      ]
+    },
+    "runtimeFunction": {
+      "type": "object",
+      "properties": {
+        "begin": {
+          "$ref": "#/$defs/address"
+        },
+        "end": {
+          "$ref": "#/$defs/address"
+        },
+        "unwind": {
+          "$ref": "#/$defs/address"
+        }
+      },
+      "required": ["begin", "end", "unwind"],
+      "additionalProperties": false
+    },
+    "parameter": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "type": {
+              "const": "bool"
+            },
+            "default": {
+              "type": "boolean"
+            },
+            "at": {
+              "$ref": "#/$defs/block"
+            }
+          },
+          "required": ["id", "type", "default", "at"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "type": {
+              "const": "u32"
+            },
+            "default": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "at": {
+              "$ref": "#/$defs/block"
+            }
+          },
+          "required": ["id", "type", "default", "min", "max", "at"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "type": {
+              "const": "i32"
+            },
+            "default": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "min": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "max": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "at": {
+              "$ref": "#/$defs/block"
+            }
+          },
+          "required": ["id", "type", "default", "min", "max", "at"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "type": {
+              "const": "f32"
+            },
+            "default": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "at": {
+              "$ref": "#/$defs/block"
+            }
+          },
+          "required": ["id", "type", "default", "min", "max", "at"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "type": {
+              "const": "ascii_key_list"
+            },
+            "default": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_]+$"
+              }
+            },
+            "capacity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "max_key_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "count_at": {
+              "$ref": "#/$defs/block"
+            },
+            "entries_at": {
+              "$ref": "#/$defs/block"
+            }
+          },
+          "required": ["id", "type", "default", "capacity", "max_key_bytes", "count_at", "entries_at"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "virtual_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "type": {
+          "const": "pack_entry"
+        },
+        "required": {
+          "const": true
+        }
+      },
+      "required": ["id", "virtual_path", "sha256", "type", "required"],
+      "additionalProperties": false
+    },
+    "address": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/module"
+        },
+        {
+          "$ref": "#/$defs/block"
+        },
+        {
+          "$ref": "#/$defs/symbol"
+        }
+      ]
+    },
+    "imageAddress": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/module"
+        },
+        {
+          "$ref": "#/$defs/symbol"
+        }
+      ]
+    }
+  }
+}
