@@ -151,6 +151,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       selectedPack: "",
       outputType: "PackFiles",
       useCurrentPack: false,
+      includeBaseGame: false,
     }),
   }),
   removepacksource: createNodeDefinition<RemovePackSourceNodeData>({

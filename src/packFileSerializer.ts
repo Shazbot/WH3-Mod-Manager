@@ -1195,7 +1195,10 @@ const schemaAwareFlowNodeTypes = new Set([
 export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
   switch (node.type) {
     case "packfilesdropdown":
-      return { selectedPack: node.data.selectedPack || "" };
+      return {
+        selectedPack: node.data.selectedPack || "",
+        includeBaseGame: node.data.includeBaseGame ?? false,
+      };
     case "removepacksource":
       return { selectedPack: node.data.selectedPack || "" };
     case "tableselectiondropdown":

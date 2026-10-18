@@ -93,6 +93,7 @@ export interface GroupedColumnsToTextNodeData extends NodeData {
 
 export interface PackFilesDropdownNodeData extends NodeData {
   selectedPack: string;
+  includeBaseGame?: boolean;
   outputType: "PackFiles";
   useCurrentPack?: boolean;
 }

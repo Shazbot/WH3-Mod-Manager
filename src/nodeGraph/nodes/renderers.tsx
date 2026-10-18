@@ -131,6 +131,11 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
 
   const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
   const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
+  const [includeBaseGame, setIncludeBaseGame] = useState(data.includeBaseGame ?? false);
+
+  useEffect(() => {
+    setIncludeBaseGame(data.includeBaseGame ?? false);
+  }, [data.includeBaseGame]);
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -177,6 +182,24 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
           <input type="checkbox" checked={useCurrentPack} onChange={handleCheckboxChange} className="w-4 h-4" />
           <span className="text-xs text-gray-300">
             {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeBaseGame}
+            onChange={(event) => {
+              const newValue = event.target.checked;
+              setIncludeBaseGame(newValue);
+              dispatchNodeDataUpdate(data, { nodeId: id, includeBaseGame: newValue });
+            }}
+            className="w-4 h-4"
+          />
+          <span className="text-xs text-gray-300">
+            {localized.nodeEditorIncludeBaseGameData || "Include base game data"}
           </span>
         </label>
       </div>

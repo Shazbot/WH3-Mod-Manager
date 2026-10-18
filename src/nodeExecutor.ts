@@ -1096,7 +1096,7 @@ async function executePackFilesDropdownNode(
   config?: unknown,
 ): Promise<NodeExecutionResult> {
   // Parse configuration (or use textValue directly for backwards compatibility)
-  const parsedConfig = getNodeConfig<{ selectedPack?: string }>(config, textValue);
+  const parsedConfig = getNodeConfig<{ selectedPack?: string; includeBaseGame?: boolean }>(config, textValue);
   const selectedPack = parsedConfig?.selectedPack ?? textValue;
 
   console.log(`PackFiles Dropdown Node ${nodeId}: Processing selected pack "${selectedPack}"`);
@@ -1156,8 +1156,8 @@ async function executePackFilesDropdownNode(
         };
       }
 
-      // Always include the base game pack when a mod is selected
-      if (baseGamePackName) {
+      // Include base game data only when explicitly requested.
+      if (parsedConfig?.includeBaseGame && baseGamePackName) {
         const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
         if (baseGameFolder) {
           const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);

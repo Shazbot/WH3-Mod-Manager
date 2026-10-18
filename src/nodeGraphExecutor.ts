@@ -49,7 +49,10 @@ const formatMemoryMb = (bytes: number): string => `${(bytes / 1048576).toFixed(1
 /** Exported for tests: every save-node option has to survive this hop on a manual run. */
 export const serializeNodeConfigForExecution = (node: SerializedNode): string => {
   if (node.type === "packfilesdropdown") {
-    return node.data.selectedPack || "";
+    return JSON.stringify({
+      selectedPack: node.data.selectedPack || "",
+      includeBaseGame: node.data.includeBaseGame ?? false,
+    });
   }
   if (node.type === "removepacksource") {
     return JSON.stringify({ selectedPack: node.data.selectedPack || "" });
