@@ -69,6 +69,8 @@ type ModListPaneProps = {
   ghostClass: string;
   areThumbnailsEnabled: boolean;
   isAuthorEnabled: boolean;
+  /** Whether the wide layout shows the Last Subscribed column. */
+  isSubbedTimeEnabled: boolean;
   sortingType: SortingType;
   /** The second argument is the shift-click that sorts both panes of the dual layout by one column. */
   setSortingType: (sortingType: SortingType, isSortingBothPanes?: boolean) => void;
@@ -115,6 +117,7 @@ const ModListPane = memo(
     ghostClass,
     areThumbnailsEnabled,
     isAuthorEnabled,
+    isSubbedTimeEnabled,
     sortingType,
     setSortingType,
     onOrderRightClick,
@@ -131,6 +134,8 @@ const ModListPane = memo(
     uniqueModIds,
   }: ModListPaneProps) => {
     const isCompact = layout === "compact";
+    // The compact layout has no room for the column and keeps the subscription time in its time column instead.
+    const hasSubbedTimeColumn = isSubbedTimeEnabled && !isCompact;
     const listWrapperRef = useRef<HTMLDivElement | null>(null);
 
     const cache = useMemo(
@@ -154,6 +159,7 @@ const ModListPane = memo(
       density,
       isAuthorEnabled,
       isCompact,
+      hasSubbedTimeColumn,
       isLoadOrderPlacementMode,
       listRef,
       rowData,
@@ -264,6 +270,7 @@ const ModListPane = memo(
                 isEnabledInMergedMod: row.isEnabledInMergedMod,
                 areThumbnailsEnabled,
                 isAuthorEnabled,
+                hasSubbedTimeColumn,
                 ghostClass,
                 thumbnailSrc: row.thumbnailSrc,
                 decodedHumanName: row.decodedHumanName,
@@ -301,6 +308,7 @@ const ModListPane = memo(
               hasDataMods,
               areThumbnailsEnabled,
               isAuthorEnabled,
+              hasSubbedTimeColumn,
               sortingType,
               setSortingType,
               onOrderRightClick,

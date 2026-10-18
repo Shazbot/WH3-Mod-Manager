@@ -49,6 +49,7 @@ const PackComparisonModal = memo(
 
     return (
       <Modal
+        dismissible
         show={isOpen}
         onClose={onClose}
         size="2xl"
@@ -254,6 +255,7 @@ const SaveGame = memo((props: SaveGameProps) => {
     <>
       {props.isOpen && (
         <Modal
+          dismissible
           show={props.isOpen}
           onClose={onClose}
           size="2xl"

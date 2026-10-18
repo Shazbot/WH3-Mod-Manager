@@ -38,6 +38,7 @@ const PackSearcher = memo(() => {
     <>
       {isOpen && (
         <Modal
+          dismissible
           show={isOpen}
           onClose={() => {
             setIsSearching(false);

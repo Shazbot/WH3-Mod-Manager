@@ -680,6 +680,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     <>
       {isHelpOpen && (
         <Modal
+          dismissible
           show={isHelpOpen}
           // show={true}
           onClose={() => setIsHelpOpen(false)}
@@ -761,6 +762,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
       )}
       {isErrorOpen && (
         <Modal
+          dismissible
           show={isErrorOpen}
           onClose={() => setIsErrorOpen(false)}
           size="lg"
@@ -777,6 +779,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
       )}
       {isSuccessOpen && (
         <Modal
+          dismissible
           show={isSuccessOpen}
           onClose={() => setIsSuccessOpen(false)}
           size="lg"

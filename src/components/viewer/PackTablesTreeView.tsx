@@ -2343,7 +2343,7 @@ const PackTablesTreeView = React.memo(
           </div>
         )}
 
-        <Modal onClose={() => setDeleteConfirm(null)} show={!!deleteConfirm} size="md" position="center">
+        <Modal dismissible onClose={() => setDeleteConfirm(null)} show={!!deleteConfirm} size="md" position="center">
           <Modal.Header>{localized.viewerDeletePackedFiles || "Delete packed files"}</Modal.Header>
           <Modal.Body>
             <div className="text-sm text-gray-200">

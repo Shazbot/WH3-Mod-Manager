@@ -267,7 +267,13 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
           />
         )}
 
-        <Modal onClose={() => setIsDeleteConfirmOpen(false)} show={isDeleteConfirmOpen} size="md" position="center">
+        <Modal
+          dismissible
+          onClose={() => setIsDeleteConfirmOpen(false)}
+          show={isDeleteConfirmOpen}
+          size="md"
+          position="center"
+        >
           <Modal.Header>{localized.deleteMod || "Delete Mod"}</Modal.Header>
           <Modal.Body>
             <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">

@@ -371,7 +371,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
       )}
 
       {deepClone.error && (
-        <Modal onClose={deepClone.dismissError} show size="md" position="center">
+        <Modal dismissible onClose={deepClone.dismissError} show size="md" position="center">
           <Modal.Header>{localized.ancillariesDeepClone || "Deep clone"}</Modal.Header>
           <Modal.Body>
             <p className="text-sm text-gray-300">{deepClone.error}</p>

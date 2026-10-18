@@ -1207,6 +1207,7 @@ const appSlice = createSlice({
       state.isCompatCheckingVanillaPacks =
         !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
+      state.isSubbedTimeEnabled = !!fromConfigAppState.isSubbedTimeEnabled;
       state.isDualModListLayoutEnabled = !!fromConfigAppState.isDualModListLayoutEnabled;
       state.modListDensity = fromConfigAppState.modListDensity ?? state.modListDensity;
       state.isShowingDisabledModsLoadOrder =
@@ -1217,6 +1218,7 @@ const appSlice = createSlice({
       state.isCategoryAuthorEnabled = !!fromConfigAppState.isCategoryAuthorEnabled;
       state.areCategoryThumbnailsEnabled = !!fromConfigAppState.areCategoryThumbnailsEnabled;
       state.hiddenModNames = fromConfigAppState.hiddenModNames;
+      state.ignoredMissingReqModNames = fromConfigAppState.ignoredMissingReqModNames;
       state.alwaysEnabledModNames = fromConfigAppState.alwaysEnabledModNames;
       state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
@@ -1508,6 +1510,9 @@ const appSlice = createSlice({
         .filter((mod) => hiddenNames.has(mod.name) && !alwaysEnabledNames.has(mod.name))
         .forEach((mod) => (mod.isEnabled = false));
     },
+    toggleIgnoredMissingReqMods: (state: AppState, action: PayloadAction<string[]>) => {
+      state.ignoredMissingReqModNames = toggleModNames(state.ignoredMissingReqModNames, action.payload);
+    },
     setSaves: (state: AppState, action: PayloadAction<GameSave[]>) => {
       const saves = action.payload;
       state.saves = saves;
@@ -1623,6 +1628,9 @@ const appSlice = createSlice({
     },
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
+    },
+    toggleIsSubbedTimeEnabled: (state: AppState) => {
+      state.isSubbedTimeEnabled = !state.isSubbedTimeEnabled;
     },
     toggleIsDualModListLayoutEnabled: (state: AppState) => {
       state.isDualModListLayoutEnabled = !state.isDualModListLayoutEnabled;
@@ -2057,10 +2065,12 @@ export const {
   resetModLoadOrderAll,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
+  toggleIgnoredMissingReqMods,
   setSaves,
   setIsOnboardingToRun,
   setWasOnboardingEverRun,
   toggleIsAuthorEnabled,
+  toggleIsSubbedTimeEnabled,
   toggleAreThumbnailsEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,

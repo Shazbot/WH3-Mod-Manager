@@ -16,6 +16,8 @@ type ModListHeaderProps = {
   hasDataMods: boolean;
   areThumbnailsEnabled: boolean;
   isAuthorEnabled: boolean;
+  /** Whether the row shows the Last Subscribed column, which then no longer takes over the Last Updated column. */
+  hasSubbedTimeColumn: boolean;
   sortingType: SortingType;
   /** The second argument is the shift-click that sorts both panes of the dual layout by one column. */
   setSortingType: (sortingType: SortingType, isSortingBothPanes?: boolean) => void;
@@ -35,6 +37,7 @@ const ModListHeader = memo(
     hasDataMods,
     areThumbnailsEnabled,
     isAuthorEnabled,
+    hasSubbedTimeColumn,
     sortingType,
     setSortingType,
     onOrderRightClick,
@@ -125,9 +128,12 @@ const ModListHeader = memo(
       [SortingType.LastUpdated]: localized.lastUpdated,
       [SortingType.SubbedTime]: localized.subscriptionTime,
     };
-    const timeSortingField = modRowSorting.getTimeSortingField(sortingType);
+    const timeSortingField =
+      hasSubbedTimeColumn && modRowSorting.isSubbedTimeSort(sortingType)
+        ? undefined
+        : modRowSorting.getTimeSortingField(sortingType);
     const timeColumnName =
-      (modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) || localized.lastUpdated;
+      (timeSortingField === SortingType.SubbedTime && localized.subscriptionTime) || localized.lastUpdated;
     const timeCycleLines = sortCycleLines(
       modRowSorting.getTimeSortingCycle().map((sortingTypeInCycle) => timeSortingLabels[sortingTypeInCycle]),
     );
@@ -139,9 +145,10 @@ const ModListHeader = memo(
         onClick={(event) => setSortingType(timeSortingField ?? SortingType.LastUpdated, event.shiftKey)}
         onContextMenu={(event) => {
           event.preventDefault();
+          if (hasSubbedTimeColumn) return;
           setSortingType(modRowSorting.getNextTimeSortingType(sortingType), event.shiftKey);
         }}
-        title={columnTitle(timeColumnName, ...timeCycleLines)}
+        title={hasSubbedTimeColumn ? undefined : columnTitle(timeColumnName, ...timeCycleLines)}
       >
         {timeSortingField !== undefined && modRowSorting.getSortingArrow(sortingType)}
         {columnLabel(timeColumnName, GoClock, timeSortingField !== undefined)}
@@ -290,6 +297,17 @@ const ModListHeader = memo(
           </span>
         </div>
         {lastUpdatedHeader}
+        <div
+          className={
+            `flex grid-area-autohide place-items-center pl-1 ${headerClass} ` + (hasSubbedTimeColumn ? "" : "hidden")
+          }
+          onClick={(event) => setSortingType(SortingType.SubbedTime, event.shiftKey)}
+        >
+          {modRowSorting.isSubbedTimeSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+          <span className={`cursor-pointer ${modRowSorting.isSubbedTimeSort(sortingType) && "font-semibold"}`}>
+            {localized.lastSubscribed}
+          </span>
+        </div>
         {configHeader}
       </>
     );

@@ -17,6 +17,7 @@ const AboutScreen = memo(({ isOpen, setIsOpen }: AboutScreenProps) => {
     <>
       {isOpen && (
         <Modal
+          dismissible
           onClose={() => {
             setIsOpen(false);
           }}

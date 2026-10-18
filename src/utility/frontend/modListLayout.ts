@@ -29,16 +29,18 @@ export type ModRowDatum = {
 type GridClassOptions = {
   isAuthorEnabled: boolean;
   areThumbnailsEnabled: boolean;
+  /** Whether the wide layout shows the Last Subscribed column. The compact layout ignores it. */
+  isSubbedTimeEnabled: boolean;
   showConfigColumn: boolean;
 };
 
 /**
  * The CSS grid template the header container and every row share. Column counts differ between the
- * variants, which is why the class has to be picked rather than composed.
+ * variants, so each optional column adds a suffix that picks a matching template in index.css.
  */
 export const getModListGridClass = (
   layout: ModListLayout,
-  { isAuthorEnabled, areThumbnailsEnabled, showConfigColumn }: GridClassOptions,
+  { isAuthorEnabled, areThumbnailsEnabled, isSubbedTimeEnabled, showConfigColumn }: GridClassOptions,
 ) => {
   if (layout === "compact") {
     if (areThumbnailsEnabled && showConfigColumn) return "grid-mods-compact-thumbs-config";
@@ -47,26 +49,26 @@ export const getModListGridClass = (
     return "grid-mods-compact";
   }
 
-  if (isAuthorEnabled && areThumbnailsEnabled) return "grid-mods-thumbs-author";
-  if (isAuthorEnabled) return "grid-mods-author";
-  if (areThumbnailsEnabled) return "grid-mods-thumbs";
-  return "grid-mods";
+  return (
+    "grid-mods" +
+    (areThumbnailsEnabled ? "-thumbs" : "") +
+    (isAuthorEnabled ? "-author" : "") +
+    (isSubbedTimeEnabled ? "-subbed" : "")
+  );
 };
 
 /** How far a load-order drop placeholder has to stretch to span the whole row. */
 export const getModListGhostClass = (
   layout: ModListLayout,
-  { isAuthorEnabled, areThumbnailsEnabled, showConfigColumn }: GridClassOptions,
+  { isAuthorEnabled, areThumbnailsEnabled, isSubbedTimeEnabled, showConfigColumn }: GridClassOptions,
 ) => {
   if (layout === "compact") {
     const columnCount = 3 + (areThumbnailsEnabled ? 1 : 0) + (showConfigColumn ? 1 : 0);
     return `grid-column-compact-${columnCount}`;
   }
 
-  if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-8";
-  if (isAuthorEnabled) return "grid-column-7";
-  if (areThumbnailsEnabled) return "grid-column-7";
-  return "grid-column-6";
+  const columnCount = 6 + (areThumbnailsEnabled ? 1 : 0) + (isAuthorEnabled ? 1 : 0) + (isSubbedTimeEnabled ? 1 : 0);
+  return `grid-column-${columnCount}`;
 };
 
 /** Re-exported for callers that already consume the category grouping helpers. */

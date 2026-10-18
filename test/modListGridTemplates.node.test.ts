@@ -1,15 +1,19 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
+import { getModListGhostClass, getModListGridClass } from "../src/utility/frontend/modListLayout";
 
 // Comments are stripped first: otherwise the text of a comment preceding a rule is captured as part of
 // that rule's selector and the exact-match lookup below never finds it.
 const css = readFileSync(join(__dirname, "..", "src", "index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
-/** Rules keyed by their exact selector, so `.a` never matches `.a.b`. */
+/**
+ * Rules keyed by their exact selector, so `.a` never matches `.a.b`. A grouped rule is keyed once per selector, and
+ * a later rule for the same selector (such as the one in the wide-screen media query) replaces an earlier one.
+ */
 const rulesBySelector = new Map<string, string>();
-for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-  rulesBySelector.set(selector.trim(), body);
+for (const [, selectors, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  for (const selector of selectors.split(",")) rulesBySelector.set(selector.trim(), body);
 }
 
 const getBody = (selector: string) => {
@@ -89,5 +93,28 @@ describe("compact mod list grid templates", () => {
       expect(comfortable, `${name} comfortable > compact`).toBeGreaterThan(compact);
       expect(roomy, `${name} roomy > comfortable`).toBeGreaterThan(comfortable);
     }
+  });
+});
+
+describe("wide mod list grid templates", () => {
+  const combinations = [false, true].flatMap((areThumbnailsEnabled) =>
+    [false, true].flatMap((isAuthorEnabled) =>
+      [false, true].map((isSubbedTimeEnabled) => ({
+        areThumbnailsEnabled,
+        isAuthorEnabled,
+        isSubbedTimeEnabled,
+        showConfigColumn: true,
+      })),
+    ),
+  );
+
+  it.each(combinations)("has a template and a matching ghost span for %o", (options) => {
+    const gridClass = getModListGridClass("wide", options);
+    const ghostClass = getModListGhostClass("wide", options);
+    const expectedTracks =
+      6 + Number(options.areThumbnailsEnabled) + Number(options.isAuthorEnabled) + Number(options.isSubbedTimeEnabled);
+
+    expect(getGridTemplate(`.${gridClass}`).split(/\s+/)).toHaveLength(expectedTracks);
+    expect(getBody(`.${ghostClass}`)).toContain(`span ${expectedTracks} / span ${expectedTracks}`);
   });
 });

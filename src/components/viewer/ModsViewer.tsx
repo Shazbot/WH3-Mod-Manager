@@ -2084,6 +2084,7 @@ const ModsViewer = memo(() => {
 
       {/* Destination-file overwrite confirmation */}
       <Modal
+        dismissible
         onClose={() => {
           if (!isCopyProcessing) setCopyOverwriteRequest(null);
         }}
@@ -2204,7 +2205,13 @@ const ModsViewer = memo(() => {
       </Modal>
 
       {/* Overwrite confirmation, shown over the Save As modal so Cancel goes back to it */}
-      <Modal onClose={() => setOverwriteConfirmPath(null)} show={!!overwriteConfirmPath} size="md" position="center">
+      <Modal
+        dismissible
+        onClose={() => setOverwriteConfirmPath(null)}
+        show={!!overwriteConfirmPath}
+        size="md"
+        position="center"
+      >
         <Modal.Header>{localized.viewerPackAlreadyExists || "Pack Already Exists"}</Modal.Header>
         <Modal.Body>
           <div className="text-sm text-gray-200">
@@ -2270,7 +2277,13 @@ const ModsViewer = memo(() => {
       </Modal>
 
       {/* Discard confirmation for a dirty pack tab */}
-      <Modal onClose={() => setPackCloseConfirmPath(null)} show={!!packCloseConfirmPath} size="md" position="center">
+      <Modal
+        dismissible
+        onClose={() => setPackCloseConfirmPath(null)}
+        show={!!packCloseConfirmPath}
+        size="md"
+        position="center"
+      >
         <Modal.Header>{localized.viewerClosePack || "Close Pack"}</Modal.Header>
         <Modal.Body>
           <div className="text-sm text-gray-200">
@@ -2319,7 +2332,7 @@ const ModsViewer = memo(() => {
         </div>
       )}
 
-      <Modal onClose={() => setMessageDialog(null)} show={!!messageDialog} size="md" position="center">
+      <Modal dismissible onClose={() => setMessageDialog(null)} show={!!messageDialog} size="md" position="center">
         <Modal.Header>{messageDialog?.title ?? localized.viewerMessage ?? "Message"}</Modal.Header>
         <Modal.Body>
           <div className="whitespace-pre-wrap text-sm text-gray-200">{messageDialog?.message}</div>
