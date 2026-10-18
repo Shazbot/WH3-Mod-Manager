@@ -499,7 +499,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {/* {props.mod?.isInData &&
+            {props.mod?.isInData &&
               !allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) && (
                 <li>
                   <a
@@ -518,7 +518,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     </Tooltip>
                   </a>
                 </li>
-              )} */}
+              )}
             {canUpdateEverySelection && (
               <>
                 <li>
