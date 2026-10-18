@@ -147,6 +147,11 @@ const ModListPane = memo(
         }),
       [],
     );
+    const onResize = useCallback(() => {
+      // Rows are measured at a fixed width, so invalidate only after AutoSizer reports the new width.
+      cache.clearAll();
+      listRef.current?.recomputeRowHeights();
+    }, [cache, listRef]);
 
     // Anything that changes how tall a row is has to invalidate the measurements, including entering
     // load order placement mode, which adds a drop placeholder to every row.
@@ -320,7 +325,7 @@ const ModListPane = memo(
         {scrollElement && (
           <WindowScroller scrollElement={scrollElement}>
             {({ height, isScrolling, onChildScroll, scrollTop, registerChild }) => (
-              <AutoSizer disableHeight>
+              <AutoSizer disableHeight onResize={onResize}>
                 {({ width }) => (
                   <div
                     style={{ width }}

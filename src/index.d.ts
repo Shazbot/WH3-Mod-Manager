@@ -250,6 +250,8 @@ declare global {
     isDualModListLayoutEnabled: boolean;
     /** How much room a row gets in the dual layout, where two lists share the width one used to have. */
     modListDensity: ModListDensity;
+    /** Width of the ordinary All Mods workspace, including its utility sidebar. */
+    modListWidth: ModListWidth;
     /**
      * Number the rows of the dual layout's disabled list. The index is the mod's rank among every mod
      * rather than a prediction of where it lands once enabled, so it can be turned off for a quieter
@@ -396,6 +398,8 @@ declare global {
 
   type ModListDensity = "compact" | "comfortable" | "roomy";
 
+  type ModListWidth = "default" | "wide" | "full";
+
   type UnitViewerMode = "visualize" | "compare";
 
   type WorkshopModStagingMode = import("./utility/workshopModStaging").WorkshopModStagingMode;
@@ -418,6 +422,7 @@ declare global {
     | "areThumbnailsEnabled"
     | "isDualModListLayoutEnabled"
     | "modListDensity"
+    | "modListWidth"
     | "isShowingDisabledModsLoadOrder"
     | "isModListCategoryViewEnabled"
     | "isPresetAuthorEnabled"

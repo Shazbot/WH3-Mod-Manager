@@ -32,6 +32,7 @@ const initialState = {
   // an existing config is applied afterward and keeps its saved value (including legacy false).
   isDualModListLayoutEnabled: true,
   modListDensity: "comfortable",
+  modListWidth: "default",
   isShowingDisabledModsLoadOrder: true,
   isModListCategoryViewEnabled: false,
   isPresetAuthorEnabled: false,

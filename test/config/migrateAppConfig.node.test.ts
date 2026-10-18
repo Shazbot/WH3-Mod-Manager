@@ -147,6 +147,7 @@ describe("migrateAppConfig", () => {
     expect(config.unitViewerUnsyncedAnimations).toBe(true);
     expect(config.unitViewerShowUnitCard).toBe(true);
     expect(config.hideRepeatedKeyPrefixes).toBe(true);
+    expect(config.modListWidth).toBe("default");
     expect(config.recentPackPaths).toEqual([]);
     expect(config.games.rome2).toEqual({
       currentPreset: { name: "", mods: [], version: 2 },
@@ -159,6 +160,13 @@ describe("migrateAppConfig", () => {
     });
     expect(config.gameFolderPaths.rome2.modSourceOrder).toEqual(["data", "workshop"]);
     expect(config.alwaysEnabledModNames).toEqual([]);
+  });
+
+  it("restores a valid mod list width and defaults invalid values", () => {
+    expect(migrateAppConfig({ modListWidth: "wide" }).modListWidth).toBe("wide");
+    expect(migrateAppConfig({ configVersion: CONFIG_VERSION, modListWidth: "unexpected" }).modListWidth).toBe(
+      "default",
+    );
   });
 
   it("filters vanilla and duplicate recent viewer packs while migrating", () => {

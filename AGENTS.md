@@ -44,3 +44,6 @@ For non-UI work, do not read `docs/DESIGN.md` unless relevant.
 * Preserve existing behavior unless the task requires changing it.
 * Run targeted tests or checks appropriate to the change.
 * Prefer targeted validation over expensive full-project checks when sufficient.
+
+Use native Windows Git for this repository, ideally from PowerShell or Windows Terminal.
+(located in /mnt/c/Program Files/Git/cmd/git.exe)

@@ -14,6 +14,7 @@ import {
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
   setModListDensity,
+  setModListWidth,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
@@ -161,6 +162,7 @@ const OptionsDrawer = memo(() => {
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
   const modListDensity = useAppSelector((state) => state.app.modListDensity);
+  const modListWidth = useAppSelector((state) => state.app.modListWidth);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
@@ -461,6 +463,11 @@ const OptionsDrawer = memo(() => {
     { value: "compact", label: localized.modListDensityCompact || "Compact" },
     { value: "comfortable", label: localized.modListDensityComfortable || "Comfortable" },
     { value: "roomy", label: localized.modListDensityRoomy || "Roomy" },
+  ];
+  const modListWidthOptions: { value: ModListWidth; label: string }[] = [
+    { value: "default", label: localized.modListWidthDefault || "Default (1600px)" },
+    { value: "wide", label: localized.modListWidthWide || "Wide (1920px)" },
+    { value: "full", label: localized.modListWidthFull || "Full width" },
   ];
 
   const treeDisplayModeOptions: { value: TreeDisplayMode; label: string }[] = [
@@ -923,6 +930,23 @@ const OptionsDrawer = memo(() => {
                 </p>
               </>
             )}
+
+            <div className="ml-6 mt-3">
+              <label className="block mb-1" htmlFor="modListWidth">
+                {localized.modListWidth || "Mod List Width"}
+              </label>
+              <FormSelect
+                id="modListWidth"
+                value={modListWidth}
+                onChange={(event) => dispatch(setModListWidth(event.target.value as ModListWidth))}
+              >
+                {modListWidthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </FormSelect>
+            </div>
 
             <h6 className="mt-6">{localized.extraColumns}</h6>
             <div className="flex items-center ml-1">

@@ -175,6 +175,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
     compressModsOnUpload: config.compressModsOnUpload ?? true,
     workshopModStagingMode,
+    modListWidth: ["default", "wide", "full"].includes(config.modListWidth) ? config.modListWidth : "default",
     compressWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.compressWorkshopModsOnStart,
     cleanUpWorkshopModStagingAfterGameExit:
       workshopModStagingMode !== "disabled" && !!config.cleanUpWorkshopModStagingAfterGameExit,

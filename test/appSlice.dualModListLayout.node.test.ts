@@ -4,6 +4,7 @@ import appReducer, {
   setEnabledModsPaneSortingType,
   setFromConfig,
   setModListDensity,
+  setModListWidth,
   toggleIsDualModListLayoutEnabled,
   toggleIsModListCategoryViewEnabled,
   toggleIsShowingDisabledModsLoadOrder,
@@ -96,6 +97,34 @@ describe("mod list density option", () => {
   it("is written to the config, so it survives a restart", () => {
     resetConfigSavePayloadCache();
     expect(selectConfigSavePayload({ ...initialState, modListDensity: "roomy" }).config.modListDensity).toBe("roomy");
+  });
+});
+
+describe("mod list width option", () => {
+  it("defaults to the pre-existing 1600px workspace", () => {
+    expect(initialState.modListWidth).toBe("default");
+  });
+
+  it("sets and restores each width", () => {
+    expect(appReducer(initialState, setModListWidth("wide")).modListWidth).toBe("wide");
+    expect(appReducer(initialState, setModListWidth("full")).modListWidth).toBe("full");
+    expect(appReducer(initialState, setFromConfig({ ...initialState, modListWidth: "wide" })).modListWidth).toBe(
+      "wide",
+    );
+  });
+
+  it("uses Default for legacy or invalid config values", () => {
+    const legacyConfig = { ...initialState } as Partial<AppState>;
+    delete legacyConfig.modListWidth;
+    expect(appReducer(initialState, setFromConfig(legacyConfig as AppState)).modListWidth).toBe("default");
+    expect(
+      appReducer(initialState, setFromConfig({ ...initialState, modListWidth: "invalid" } as AppState)).modListWidth,
+    ).toBe("default");
+  });
+
+  it("is written to the config", () => {
+    resetConfigSavePayloadCache();
+    expect(selectConfigSavePayload({ ...initialState, modListWidth: "full" }).config.modListWidth).toBe("full");
   });
 });
 

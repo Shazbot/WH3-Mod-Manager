@@ -1210,6 +1210,9 @@ const appSlice = createSlice({
       state.isSubbedTimeEnabled = !!fromConfigAppState.isSubbedTimeEnabled;
       state.isDualModListLayoutEnabled = !!fromConfigAppState.isDualModListLayoutEnabled;
       state.modListDensity = fromConfigAppState.modListDensity ?? state.modListDensity;
+      state.modListWidth = ["default", "wide", "full"].includes(fromConfigAppState.modListWidth)
+        ? fromConfigAppState.modListWidth
+        : "default";
       state.isShowingDisabledModsLoadOrder =
         fromConfigAppState.isShowingDisabledModsLoadOrder ?? state.isShowingDisabledModsLoadOrder;
       state.isModListCategoryViewEnabled = !!fromConfigAppState.isModListCategoryViewEnabled;
@@ -1637,6 +1640,9 @@ const appSlice = createSlice({
     },
     setModListDensity: (state: AppState, action: PayloadAction<ModListDensity>) => {
       state.modListDensity = action.payload;
+    },
+    setModListWidth: (state: AppState, action: PayloadAction<ModListWidth>) => {
+      state.modListWidth = action.payload;
     },
     toggleIsShowingDisabledModsLoadOrder: (state: AppState) => {
       state.isShowingDisabledModsLoadOrder = !state.isShowingDisabledModsLoadOrder;
@@ -2082,6 +2088,7 @@ export const {
   setUnitViewerUnsyncedAnimations,
   setUnitViewerShowUnitCard,
   setModListDensity,
+  setModListWidth,
   toggleIsPresetAuthorEnabled,
   toggleArePresetThumbnailsEnabled,
   toggleIsCategoryAuthorEnabled,
