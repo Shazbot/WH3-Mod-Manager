@@ -19,6 +19,7 @@ import { buildRpfmTsvContent, getRpfmTsvExportPath } from "./utility/rpfmTsv";
 import { buildImportedPackedFile } from "./utility/packImportStaging";
 import { applyTextPackedFileEdit } from "./utility/textPackStaging";
 import { compareFilesByteForByte } from "./utility/fileComparison";
+import { createSharedAsyncLoader, forEachWithConcurrency } from "./utility/packHeaderStartup";
 import { invalidateCustomizableModPath } from "./utility/customizableModsState";
 import { encodeDdsAsPng } from "./esfMap/dds";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
@@ -5650,30 +5651,28 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       await afterModsPopulated?.();
       const packHeadersToSend: PackHeaderData[] = [];
       const modLoadOrderRules: Record<string, LoadOrderRule[]> = {};
-      await Promise.all(
-        mods.map(async (mod) => {
-          try {
-            if (mod == null || mod.path == null) {
-              console.error("MOD OR MOD PATH IS NULL");
-              return;
-            }
-            const packHeaderData = await readPackHeaderCached(mod.path);
-            if (packHeaderData.isMovie || packHeaderData.hasStartpos || packHeaderData.dependencyPacks.length > 0)
-              packHeadersToSend.push(packHeaderData);
-
-            // The header scan already told us whether this pack has rules, so only the few that do
-            // get opened again.
-            if (packHeaderData.hasLoadOrderRules) {
-              const rules = await readModLoadOrderRulesCached(mod.path, mod.name, packHeaderData);
-              if (rules.length > 0) modLoadOrderRules[mod.name] = rules;
-            }
-          } catch (e) {
-            if (e instanceof Error) {
-              log(e.message);
-            }
+      await forEachWithConcurrency(mods, 4, async (mod) => {
+        try {
+          if (mod == null || mod.path == null) {
+            console.error("MOD OR MOD PATH IS NULL");
+            return;
           }
-        }),
-      );
+          const packHeaderData = await readPackHeaderCached(mod.path);
+          if (packHeaderData.isMovie || packHeaderData.hasStartpos || packHeaderData.dependencyPacks.length > 0)
+            packHeadersToSend.push(packHeaderData);
+
+          // The header scan already told us whether this pack has rules, so only the few that do
+          // get opened again.
+          if (packHeaderData.hasLoadOrderRules) {
+            const rules = await readModLoadOrderRulesCached(mod.path, mod.name, packHeaderData);
+            if (rules.length > 0) modLoadOrderRules[mod.name] = rules;
+          }
+        } catch (e) {
+          if (e instanceof Error) {
+            log(e.message);
+          }
+        }
+      });
       mainWindow?.webContents.send("setPackHeaderData", packHeadersToSend);
       appData.modLoadOrderRules = modLoadOrderRules;
       refreshMainLoadOrderRules();
@@ -6105,19 +6104,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   type PackHeaderCache = Record<string, PackHeaderCacheEntry>;
   const PACK_HEADER_CACHE_FILE = "pack-headers-cache.bin";
   let packHeaderCache: PackHeaderCache | null = null;
-  const loadPackHeaderCache = async (): Promise<PackHeaderCache> => {
-    if (packHeaderCache !== null) return packHeaderCache;
-    try {
+  const loadPackHeaderCache = createSharedAsyncLoader<PackHeaderCache>(
+    async () => {
       const cacheFilePath = nodePath.join(app.getPath("userData"), PACK_HEADER_CACHE_FILE);
       const compressed = await fs.promises.readFile(cacheFilePath);
       const json = await zstdDecompress(compressed);
-      packHeaderCache = JSON.parse(json.toString("utf8")) as PackHeaderCache;
-      return packHeaderCache!;
-    } catch {
-      packHeaderCache = {};
-      return packHeaderCache;
-    }
-  };
+      const loadedCache = JSON.parse(json.toString("utf8")) as PackHeaderCache;
+      packHeaderCache = loadedCache;
+      return loadedCache;
+    },
+    () => {
+      const emptyCache: PackHeaderCache = {};
+      packHeaderCache = emptyCache;
+      return emptyCache;
+    },
+  );
   const savePackHeaderCache = async (): Promise<void> => {
     if (!packHeaderCache) return;
     try {
