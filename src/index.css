@@ -329,6 +329,7 @@ body {
   height: calc(100vh - 28px - 2.75rem - 1.75rem - 1rem);
   overflow-x: hidden;
   scrollbar-gutter: stable;
+  padding-right: 0.25rem;
 }
 
 .grid-column-compact-3 {
