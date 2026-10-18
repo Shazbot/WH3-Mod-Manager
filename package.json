@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "2.28.0",
+  "version": "2.29.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "sideEffects": [
@@ -88,7 +88,10 @@
               "description": "Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2.",
               "productDescription": "Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2.",
               "icon": "./src/assets/modmanager.ico",
-              "categories": ["Game", "Utility"],
+              "categories": [
+                "Game",
+                "Utility"
+              ],
               "homepage": "github.com/Shazbot/WH3-Mod-Manager"
             }
           }
