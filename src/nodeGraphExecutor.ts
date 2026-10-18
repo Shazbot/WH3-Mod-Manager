@@ -105,6 +105,7 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
       flowExecutionId: (node.data as any).flowExecutionId || "",
       openInWindows: (node.data as any).openInWindows ?? false,
       openInViewer: (node.data as any).openInViewer ?? false,
+      saveAsMoviePack: (node.data as any).saveAsMoviePack ?? false,
     });
   }
   if (node.type === "textsurround") {

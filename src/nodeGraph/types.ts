@@ -190,6 +190,7 @@ export interface SerializedNode {
     indexedTableColumns?: string[] | null;
     openInWindows?: boolean;
     openInViewer?: boolean;
+    saveAsMoviePack?: boolean;
     customSchemaColumns?: string[];
     customSchemaData?: unknown;
     cloneTree?: DeepCloneTreeNode;

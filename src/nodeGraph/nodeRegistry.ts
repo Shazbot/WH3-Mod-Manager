@@ -410,6 +410,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       packedFileName: "",
       openInWindows: false,
       openInViewer: false,
+      saveAsMoviePack: false,
       inputType: "ChangedColumnSelection",
     }),
   }),

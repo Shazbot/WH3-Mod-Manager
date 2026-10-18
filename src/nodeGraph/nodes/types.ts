@@ -57,6 +57,8 @@ export interface SaveChangesNodeData extends NodeData {
   openInWindows: boolean;
   /** Open the written pack in the viewer window after a manual run. */
   openInViewer?: boolean;
+  /** Write a movie pack, which the game loads automatically when stored in its data folder. */
+  saveAsMoviePack?: boolean;
   inputType: "ChangedColumnSelection" | "Text" | "TableSelection";
 }
 

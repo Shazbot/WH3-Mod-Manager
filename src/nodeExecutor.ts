@@ -3218,6 +3218,7 @@ async function executeSaveTextNode(
   openInWindows: boolean,
   executionContext?: FlowExecutionContext,
   openInViewer = false,
+  saveAsMoviePack = false,
 ): Promise<NodeExecutionResult> {
   console.log(
     `SaveText Node ${nodeId}: Saving text file with packName="${packName}", packedFileName="${packedFileName}"`,
@@ -3255,7 +3256,7 @@ async function executeSaveTextNode(
     const newPackPath = nodePath.join(whmmFlowsFolder, `${packFileBaseName}.pack`);
 
     // Write the pack file
-    await writePack([newFile], newPackPath);
+    await writePack([newFile], newPackPath, undefined, undefined, [], [], saveAsMoviePack ? "movie" : undefined);
     await openSavedFileForManualRun(newPackPath, openInWindows, executionContext, openInViewer);
 
     console.log(`SaveText Node ${nodeId}: Successfully saved text file to ${newPackPath}`);
@@ -3306,6 +3307,7 @@ async function executeSaveChangesNode(
   let flowExecutionId = "";
   let openInWindows = false;
   let openInViewer = false;
+  let saveAsMoviePack = false;
 
   const parsedConfig = getNodeConfig<{
     packName?: string;
@@ -3314,6 +3316,7 @@ async function executeSaveChangesNode(
     flowExecutionId?: string;
     openInWindows?: boolean;
     openInViewer?: boolean;
+    saveAsMoviePack?: boolean;
   }>(config, textValue);
   if (parsedConfig) {
     packName = parsedConfig.packName || "";
@@ -3322,6 +3325,7 @@ async function executeSaveChangesNode(
     flowExecutionId = parsedConfig.flowExecutionId || "";
     openInWindows = parsedConfig.openInWindows ?? false;
     openInViewer = parsedConfig.openInViewer ?? false;
+    saveAsMoviePack = parsedConfig.saveAsMoviePack ?? false;
   } else {
     // If not JSON, treat textValue as additionalConfig
     additionalConfig = textValue.trim();
@@ -3340,6 +3344,7 @@ async function executeSaveChangesNode(
       openInWindows,
       executionContext,
       openInViewer,
+      saveAsMoviePack,
     );
   }
 
@@ -3466,7 +3471,7 @@ async function executeSaveChangesNode(
 
     try {
       const filesToSave = await mergeOutputPackFiles(packFilePath, toSave, executionContext);
-      await writePack(filesToSave, packFilePath);
+      await writePack(filesToSave, packFilePath, undefined, undefined, [], [], saveAsMoviePack ? "movie" : undefined);
       await openSavedFileForManualRun(packFilePath, openInWindows, executionContext, openInViewer);
       return {
         success: true,
@@ -3567,7 +3572,7 @@ async function executeSaveChangesNode(
 
   const filesToSave = await mergeOutputPackFiles(newPackPath, toSave, executionContext);
 
-  await writePack(filesToSave, newPackPath);
+  await writePack(filesToSave, newPackPath, undefined, undefined, [], [], saveAsMoviePack ? "movie" : undefined);
   await openSavedFileForManualRun(newPackPath, openInWindows, executionContext, openInViewer);
 
   try {

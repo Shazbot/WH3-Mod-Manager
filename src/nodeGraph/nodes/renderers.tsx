@@ -1534,6 +1534,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
   const [packedFileName, setPackedFileName] = useState(data.packedFileName || "");
   const [openInWindows, setOpenInWindows] = useState(!!data.openInWindows);
   const [openInViewer, setOpenInViewer] = useState(!!data.openInViewer);
+  const [saveAsMoviePack, setSaveAsMoviePack] = useState(data.saveAsMoviePack ?? false);
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
@@ -1654,6 +1655,26 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             <span className="text-xs text-gray-300">
               {localized.nodeEditorOpenFileInViewer || "Open pack in the viewer"}
             </span>
+          </label>
+
+          <label
+            className="flex items-center gap-2 cursor-pointer"
+            title={
+              localized.nodeEditorSaveAsMoviePackTooltip ||
+              "When stored in the game's data folder, movie packs load automatically and do not need to be enabled in the mod list."
+            }
+          >
+            <input
+              type="checkbox"
+              checked={saveAsMoviePack}
+              onChange={(event) => {
+                const newValue = event.target.checked;
+                setSaveAsMoviePack(newValue);
+                dispatchNodeDataUpdate(data, { nodeId: id, saveAsMoviePack: newValue });
+              }}
+              className="w-4 h-4"
+            />
+            <span className="text-xs text-gray-300">{localized.nodeEditorSaveAsMoviePack || "Save as movie pack"}</span>
           </label>
         </div>
       </div>

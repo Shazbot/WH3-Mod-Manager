@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import appData from "../../src/appData";
 import { executeNodeAction } from "../../src/nodeExecutor";
+import { readPackHeader } from "../../src/packFileHandler";
 import { createFlowExecutionContext } from "../../src/flowExecutionSupport";
 import { readPack } from "../../src/packFileSerializer";
 import type { DBVersion, Pack, PackedFile } from "../../src/packFileTypes";
@@ -56,6 +57,80 @@ const executeTextSave = async (executionContext?: ReturnType<typeof createFlowEx
   });
 };
 
+const moviePackOutputInputs = [
+  {
+    name: "text",
+    inputData: { type: "Text", text: "saved text" },
+  },
+  {
+    name: "table selection",
+    inputData: {
+      type: "TableSelection",
+      tables: [
+        {
+          name: "script\\movie.lua",
+          fileName: "script\\movie.lua",
+          sourceFile: {} as Pack,
+          table: {
+            name: "script\\movie.lua",
+            file_size: 4,
+            start_pos: 0,
+            buffer: Buffer.from("data"),
+          } as PackedFile,
+          outputFileName: "script\\movie.lua",
+        },
+      ],
+      sourceFiles: [],
+      tableCount: 1,
+    },
+  },
+  {
+    name: "changed column selection",
+    inputData: {
+      type: "ChangedColumnSelection",
+      adjustedInputData: {
+        columns: [
+          {
+            fileName: "db\\main_units_tables\\source",
+            sourcePack: { name: "source.pack", path: "source.pack" },
+            sourceTable: {
+              version: 1,
+              tableSchema: {
+                version: 1,
+                fields: [
+                  {
+                    name: "key",
+                    field_type: "StringU8",
+                    is_key: true,
+                    default_value: "",
+                    is_filename: false,
+                    is_reference: [],
+                    description: "",
+                    ca_order: 0,
+                    is_bitwise: 0,
+                    enum_values: {},
+                  },
+                ],
+              },
+              schemaFields: [
+                {
+                  name: "key",
+                  type: "StringU8",
+                  fields: [{ type: "String", val: "movie_key" }],
+                  resolvedKeyValue: "movie_key",
+                  isKey: true,
+                },
+              ],
+            },
+          },
+        ],
+      },
+      originalData: { columns: [] },
+      appliedFormula: "test",
+    },
+  },
+] as const;
+
 describe("save changes node", () => {
   it("treats an empty TableSelection as a successful no-op", async () => {
     outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
@@ -100,6 +175,32 @@ describe("save changes node", () => {
 
     expect(result.success).toBe(true);
     expect(shell.openPath).not.toHaveBeenCalled();
+  });
+
+  it.each(moviePackOutputInputs)("writes $name output as a movie pack when enabled", async ({ name, inputData }) => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const result = await executeNodeAction({
+      nodeId: `save_changes_movie_${name.replaceAll(" ", "_")}`,
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: `movie-${name.replaceAll(" ", "-")}`, openInWindows: false, saveAsMoviePack: true },
+      inputData,
+    });
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    await expect(readPackHeader(saveData.savedTo)).resolves.toMatchObject({ isMovie: true });
+  });
+
+  it("keeps text output as a regular mod pack by default", async () => {
+    const result = await executeTextSave();
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    await expect(readPackHeader(saveData.savedTo)).resolves.toMatchObject({ isMovie: false });
   });
 
   it("routes a table carrying an output path prefix outside db\\, leaving other tables untouched", async () => {

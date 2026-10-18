@@ -1537,6 +1537,8 @@
   "nodeEditorEditXmlFileKeepEditing": "Keep editing",
   "nodeEditorEditXmlFileDiscard": "Discard changes",
   "nodeEditorOpenFileInViewer": "Open pack in the viewer",
+  "nodeEditorSaveAsMoviePack": "Save as movie pack",
+  "nodeEditorSaveAsMoviePackTooltip": "When stored in the game's data folder, movie packs load automatically and do not need to be enabled in the mod list.",
   "nodeEditorPackMenu": "Pack",
   "nodeEditorLoadFromPack": "Load From Pack…",
   "nodeEditorSaveToPack": "Save To Pack…",

@@ -1242,6 +1242,7 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
         flowExecutionId: (node.data as any).flowExecutionId || "",
         openInWindows: (node.data as any).openInWindows ?? false,
         openInViewer: (node.data as any).openInViewer ?? false,
+        saveAsMoviePack: (node.data as any).saveAsMoviePack ?? false,
       };
     case "textsurround":
       return {
@@ -1850,6 +1851,10 @@ export const writePackStream = async (
     }
   }
 };
+export type PackType = "mod" | "movie";
+
+const getPackTypeByteMask = (packType: PackType) => (packType === "movie" ? 4 : 3);
+
 // Fast append-only implementation for existing packs - much faster than sorted insertion
 export const writePackAppendFast = async (
   packFiles: NewPackedFile[],
@@ -1858,6 +1863,7 @@ export const writePackAppendFast = async (
   replaceDuplicates?: boolean,
   dependencyPacks: string[] = [],
   removedFileNames: string[] = [],
+  packType?: PackType,
 ) => {
   let outFile: BinaryFile | undefined;
   let sourceFile: BinaryFile | undefined;
@@ -1909,7 +1915,7 @@ export const writePackAppendFast = async (
       // Write updated header with new counts
       const headerAccumulator = new BufferAccumulator(outFile);
       headerAccumulator.addString(gameToPackHeader[appData.currentGame]);
-      headerAccumulator.addInt32(existingPackToAppend.packHeader.byteMask);
+      headerAccumulator.addInt32(packType ? getPackTypeByteMask(packType) : existingPackToAppend.packHeader.byteMask);
       headerAccumulator.addInt32(existingPackToAppend.packHeader.refFileCount);
       headerAccumulator.addInt32(pack_file_index_size);
       headerAccumulator.addInt32(newFileCount); // Updated file count
@@ -2039,7 +2045,7 @@ export const writePackAppendFast = async (
     } else {
       // SLOW PATH: No existing pack, use regular sorted approach
       console.log("No existing pack, using regular sorted approach");
-      return await writePackSorted(packFiles, path, dependencyPacks);
+      return await writePackSorted(packFiles, path, dependencyPacks, packType ?? "mod");
     }
     // Move temp file to final location
     if (existingPackToAppend) {
@@ -2059,11 +2065,16 @@ export const writePackAppendFast = async (
   }
 };
 // Original sorted implementation for when no existing pack is provided
-const writePackSorted = async (packFiles: NewPackedFile[], path: string, dependencyPacks: string[] = []) => {
+const writePackSorted = async (
+  packFiles: NewPackedFile[],
+  path: string,
+  dependencyPacks: string[] = [],
+  packType: PackType = "mod",
+) => {
   let outFile: BinaryFile | undefined;
   try {
     const header = gameToPackHeader[appData.currentGame];
-    const byteMask = 3;
+    const byteMask = getPackTypeByteMask(packType);
     const refFileCount = 0;
     if (packFiles.length < 1) return;
     ensurePackFilesReadyForWrite(packFiles);
@@ -2147,6 +2158,7 @@ export const writePack = async (
   replaceDuplicates?: boolean,
   dependencyPacks: string[] = [],
   removedFileNames: string[] = [],
+  packType?: PackType,
 ) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
@@ -2157,10 +2169,11 @@ export const writePack = async (
       replaceDuplicates,
       dependencyPacks,
       removedFileNames,
+      packType,
     );
   }
   // Fallback to sorted implementation for new packs
-  return await writePackSorted(packFiles, path, dependencyPacks);
+  return await writePackSorted(packFiles, path, dependencyPacks, packType ?? "mod");
 };
 // Legacy implementation (kept for reference, but replaced by the optimized versions above)
 export const writePackLegacy = async (
