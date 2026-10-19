@@ -31,7 +31,7 @@ import { groupPackedFilesIntoReadRuns } from "./utility/packedFileReadRuns";
 import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
 import { hasPackedFileNameHash, readPackedFileIndexEntry } from "./utility/packFileIndex";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
-import { resolveRadioChoiceId } from "./nodeGraph/types";
+import { resolveRadioChoiceId, splitMultilineOptionValue } from "./nodeGraph/types";
 import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
 import {
   substituteDeepCloneOptionValues,
@@ -1318,6 +1318,14 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
       return { schemaColumns: (node.data as any).schemaColumns || [] };
     case "readtsvfrompack":
       return { tsvFileName: (node.data as any).tsvFileName || "" };
+    case "nativepatch":
+      return {
+        selectedPackName: (node.data as any).selectedPackName || "",
+        templatePath: (node.data as any).templatePath || "",
+        scalarValues: (node.data as any).scalarValues || {},
+        scalarOptionBindings: (node.data as any).scalarOptionBindings || {},
+        tableBindings: (node.data as any).tableBindings || [],
+      };
     case "customrowsinput":
       return {
         customRows: (node.data as any).customRows || [],
@@ -1480,6 +1488,19 @@ export const prepareFlow = (
     if (node.type === "savechanges") {
       (node.data as any).flowExecutionId = flowExecutionId;
     }
+    if (node.type === "nativepatch") {
+      const scalarValues = { ...(((node.data as any).scalarValues || {}) as Record<string, unknown>) };
+      for (const [inputId, optionId] of Object.entries((node.data as any).scalarOptionBindings || {}) as Array<
+        [string, string]
+      >) {
+        const option = flowData.options?.find((item) => item.id === optionId);
+        if (!option) continue;
+        const userValue = flowOptions?.optionValues?.[optionId];
+        const value = userValue !== undefined ? userValue : option.value;
+        scalarValues[inputId] = option.type === "multiline" ? splitMultilineOptionValue(String(value)) : value;
+      }
+      (node.data as any).scalarValues = scalarValues;
+    }
     if (node.type === "edittextfile") {
       // Runtime-only: lets the node omit the pack which owns this flow from PackFiles resolution.
       (node.data as any).flowSourcePack = packName;
@@ -1509,15 +1530,23 @@ export const executeFlowsForPack = async (
   /** Packs whose data overwrites were written to a copy, so flows read that copy instead. */
   packPathSubstitutes?: Map<string, string>,
   deletedFlowFileNames: Iterable<string> = [],
-): Promise<{ createdPackPaths: string[]; replacedPackPaths: string[]; hadErrors: boolean }> => {
+): Promise<{
+  createdPackPaths: string[];
+  replacedPackPaths: string[];
+  hadErrors: boolean;
+  nativePatchFlowError?: string;
+}> => {
   void pathTarget;
   const createdPackPaths = new Set<string>();
   /** Packs a flow wrote a full replacement for, which must not also be loaded. */
   const replacedPackPaths = new Set<string>();
   let hadErrors = false;
+  let nativePatchFlowError: string | undefined;
   const packStartTime = performance.now();
   const isDebug = isFlowExecutionDebugEnabled();
   const executionContext = createFlowExecutionContext(isDebug);
+  executionContext.flowSourcePackPath = pathSource;
+  executionContext.flowSourcePackName = packName;
   if (packPathSubstitutes) {
     for (const [originalPath, substitutePath] of packPathSubstitutes) {
       executionContext.packPathSubstitutes.set(originalPath, substitutePath);
@@ -1574,6 +1603,7 @@ export const executeFlowsForPack = async (
       `Prepared ${preparedFlows.length}/${flowFiles.length} flow(s) in ${(performance.now() - prepareStartTime).toFixed(2)}ms`,
     );
     for (const preparedFlow of preparedFlows) {
+      executionContext.flowFileName = preparedFlow.flowFileName;
       const flowStartTime = performance.now();
       try {
         const result = await executeNodeGraph({
@@ -1604,10 +1634,31 @@ export const executeFlowsForPack = async (
         } else {
           console.error(`Flow ${preparedFlow.flowFileName} execution failed:`, result.error);
           hadErrors = true;
+          const activeNativePatchNode = preparedFlow.nodes.find(
+            (node) =>
+              node.type === "nativepatch" && node.data.isDisabled !== true && !result.skippedNodeIds?.includes(node.id),
+          );
+          if (activeNativePatchNode) {
+            const failedNode = [...result.executionResults.entries()].find(([, nodeResult]) => !nodeResult.success);
+            const reason =
+              result.executionResults.get(activeNativePatchNode.id)?.error ||
+              failedNode?.[1].error ||
+              result.error ||
+              "flow graph execution failed";
+            nativePatchFlowError = `${packName} :: ${preparedFlow.flowFileName} :: node ${activeNativePatchNode.id}: ${reason}`;
+            break;
+          }
         }
       } catch (error) {
         console.error(`Error executing flow ${preparedFlow.flowFileName}:`, error);
         hadErrors = true;
+        const activeNativePatchNode = preparedFlow.nodes.find(
+          (node) => node.type === "nativepatch" && node.data.isDisabled !== true,
+        );
+        if (activeNativePatchNode) {
+          nativePatchFlowError = `${packName} :: ${preparedFlow.flowFileName} :: node ${activeNativePatchNode.id}: ${error instanceof Error ? error.message : String(error)}`;
+          break;
+        }
       }
     }
     console.log(
@@ -1622,6 +1673,7 @@ export const executeFlowsForPack = async (
     createdPackPaths: Array.from(createdPackPaths),
     replacedPackPaths: Array.from(replacedPackPaths),
     hadErrors,
+    nativePatchFlowError,
   };
 };
 export const writeCopyPack = async (

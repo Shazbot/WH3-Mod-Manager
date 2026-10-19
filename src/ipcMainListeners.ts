@@ -377,7 +377,9 @@ import {
 } from "./utility/loadOrderRulesFile";
 import { collator } from "./utility/packFileSorting";
 import { buildGameLaunchArguments, launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
-import { buildNativePatchLaunchPlan, type NativePatchPack } from "./nativePatches/planner";
+import { buildNativePatchLaunchPlan, readNativePatchPackEntry, type NativePatchPack } from "./nativePatches/planner";
+import { parseNativePatchFlowTemplate } from "./nativePatches/flowTemplate";
+import { createFlowExecutionContext } from "./flowExecutionSupport";
 import { launchNativePatchPlan } from "./nativePatches/launch";
 import type { NativePatchSkippedPackage } from "./nativePatches/manifest";
 import { NativePatchPackageError } from "./nativePatches/failurePolicy";
@@ -6228,10 +6230,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
+  // 8: native patch template selection and contribution generation now affect saved flow outputs.
   // 7: automatic flow execution uses saved pack content only; also invalidate v6 entries that included staged data.
   // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
   // Changes node's configured name instead.
-  const FLOW_EXECUTION_CACHE_VERSION = 7;
+  const FLOW_EXECUTION_CACHE_VERSION = 8;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
@@ -7047,6 +7050,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       graphExecutionRequest: {
         nodes: SerializedNode[];
         connections: SerializedConnection[];
+        flowExecution?: {
+          flowFileName?: string;
+          flowSourcePackPath?: string;
+          flowSourcePackName?: string;
+        };
       },
     ): Promise<{
       success: boolean;
@@ -7054,6 +7062,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       totalExecuted: number;
       successCount: number;
       failureCount: number;
+      skippedNodeIds?: string[];
       error?: string;
     }> => {
       try {
@@ -7078,7 +7087,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
         // Import graph execution function
         const { executeNodeGraph } = await import("./nodeGraphExecutor");
-        const result = await executeNodeGraph(graphExecutionRequest);
+        const executionContext = createFlowExecutionContext();
+        executionContext.flowFileName = graphExecutionRequest.flowExecution?.flowFileName;
+        executionContext.flowSourcePackPath = graphExecutionRequest.flowExecution?.flowSourcePackPath;
+        executionContext.flowSourcePackName = graphExecutionRequest.flowExecution?.flowSourcePackName;
+        const result = await executeNodeGraph({
+          ...graphExecutionRequest,
+          executionContext,
+        });
         // Convert Map to Array for serialization
         const serializedExecutionResults = Array.from(result.executionResults.entries());
         return {
@@ -8065,6 +8081,78 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  ipcMain.handle("listNativePatchFlowTemplates", async (_event, packPath: string) => {
+    try {
+      const pack = await readPack(packPath, {
+        skipParsingTables: true,
+        skipSorting: true,
+      });
+      const nativePack: NativePatchPack = {
+        path: packPath,
+        pack: { path: pack.path, packedFiles: pack.packedFiles },
+        priority: 0,
+        displayName: pack.name,
+      };
+      const templates: Array<Record<string, unknown>> = [];
+      const errors: Array<{ path: string; error: string }> = [];
+      const entries = pack.packedFiles.filter((entry) => {
+        const name = entry.name.replace(/\\/g, "/").replace(/^\/+/, "");
+        return /^whmm_patch_templates\/.+\.wh3patchtemplate\.json$/i.test(name);
+      });
+      for (const entry of entries) {
+        try {
+          const template = parseNativePatchFlowTemplate(
+            await readNativePatchPackEntry(nativePack, entry, 8 * 1024 * 1024),
+          );
+          const parameterById = new Map(
+            (template.native_patch.parameters as Array<Record<string, any>>).map((parameter) => [
+              parameter.id,
+              parameter,
+            ]),
+          );
+          templates.push({
+            path: entry.name.replace(/\\/g, "/"),
+            id: template.template.id,
+            version: template.template.version,
+            name: template.template.name,
+            fingerprint: template.fingerprint,
+            scalars: template.inputs.scalars.map((input) => {
+              const parameter = parameterById.get(input.parameter)!;
+              return {
+                id: input.id,
+                parameter: input.parameter,
+                type: parameter.type,
+                default: parameter.default,
+                min: parameter.min,
+                max: parameter.max,
+                capacity: parameter.capacity,
+                max_key_bytes: parameter.max_key_bytes,
+              };
+            }),
+            tables: template.inputs.tables.map((input) => ({
+              ...input,
+              columns: parameterById.get(input.parameter)?.columns ?? [],
+            })),
+          });
+        } catch (error) {
+          errors.push({
+            path: entry.name,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      templates.sort((first, second) =>
+        String(first.path) < String(second.path) ? -1 : String(first.path) > String(second.path) ? 1 : 0,
+      );
+      return { success: true, templates, errors };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to read native patch templates",
+      };
+    }
+  });
+
   ipcMain.handle("readFileFromPack", async (event, packPath: string, fileName: string) => {
     try {
       console.log("readFileFromPack:", packPath, fileName);
@@ -13579,6 +13667,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 createdPackPaths,
                 replacedPackPaths: flowReplacedPackPaths,
                 hadErrors,
+                nativePatchFlowError,
               } = await executeFlowsForPack(
                 packPathToUse,
                 "", // No target path needed
@@ -13590,6 +13679,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               createdFlowPacks.push(...createdPackPaths);
               for (const replacedPath of flowReplacedPackPaths) replacedPackPaths.add(replacedPath);
               flowExecutionHadErrors = flowExecutionHadErrors || hadErrors;
+              if (nativePatchFlowError) {
+                isPreparingNativePatches = true;
+                throw new Error(`Native Patch flow failed: ${nativePatchFlowError}`);
+              }
             }
             console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
           }
@@ -13607,7 +13700,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               flowCache.byGame[appData.currentGame] = {
                 signatureHash: flowExecutionSignatureHash,
                 createdAt: Date.now(),
-                modsWithFlows: enabledModsWithFlows.map((mod) => ({ path: mod.path, name: mod.name })),
+                modsWithFlows: enabledModsWithFlows.map((mod) => ({
+                  path: mod.path,
+                  name: mod.name,
+                })),
                 createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))],
                 replacedPackPaths: [...replacedPackPaths],
               };
@@ -13778,7 +13874,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             if (!fs.existsSync(packPath) || !fs.statSync(packPath).isFile()) {
               throw new Error(`Final WH3 pack is missing: ${packPath}`);
             }
-            const packIndex = await readPack(packPath, { skipParsingTables: true, skipSorting: true });
+            const packIndex = await readPack(packPath, {
+              skipParsingTables: true,
+              skipSorting: true,
+            });
             const stats = fs.statSync(packPath);
             if (!packIndex.packHeader || packIndex.packHeader.pack_file_count !== packIndex.packedFiles.length) {
               throw new Error(`Could not read the complete pack index for ${packPath}`);
@@ -13796,7 +13895,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
             const displayName =
               modNamesByPath.get(key) ?? modNamesByFileName.get(nodePath.basename(packPath).toLowerCase());
-            const indexed = { path: packPath, pack: packIndex, priority, displayName };
+              const indexed = { path: packPath, pack: packIndex, priority, displayName };
             indexedPacks.set(key, indexed);
             return indexed;
           };
@@ -13935,7 +14034,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             reportGameLaunchError(
               stagingFailureMessage,
               e,
-              nativePatchUserMessage(e instanceof NativePatchPackageError ? e.packages : [], "stopped"),
+              e instanceof Error && e.message.startsWith("Native Patch flow failed:")
+                ? e.message
+                : nativePatchUserMessage(e instanceof NativePatchPackageError ? e.packages : [], "stopped"),
             );
           } else console.log(e);
         }

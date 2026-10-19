@@ -185,6 +185,11 @@ export interface SerializedNode {
     newColumnName?: string;
     filename?: string;
     tsvFileName?: string;
+    selectedPackName?: string;
+    templatePath?: string;
+    scalarValues?: Record<string, unknown>;
+    scalarOptionBindings?: Record<string, string>;
+    tableBindings?: string[];
     tableName?: string;
     sourceInputColumns?: string[] | null;
     indexedTableColumns?: string[] | null;

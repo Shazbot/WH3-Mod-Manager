@@ -15,6 +15,7 @@ interface NodeGraphExecutionResult {
   totalExecuted: number;
   successCount: number;
   failureCount: number;
+  skippedNodeIds?: string[];
   error?: string;
 }
 interface NodeExecutionResult {
@@ -48,6 +49,15 @@ const memorySnapshot = () => {
 const formatMemoryMb = (bytes: number): string => `${(bytes / 1048576).toFixed(1)}MB`;
 /** Exported for tests: every save-node option has to survive this hop on a manual run. */
 export const serializeNodeConfigForExecution = (node: SerializedNode): string => {
+  if (node.type === "nativepatch") {
+    return JSON.stringify({
+      selectedPackName: node.data.selectedPackName || "",
+      templatePath: node.data.templatePath || "",
+      scalarValues: node.data.scalarValues || {},
+      scalarOptionBindings: node.data.scalarOptionBindings || {},
+      tableBindings: node.data.tableBindings || [],
+    });
+  }
   if (node.type === "packfilesdropdown") {
     return JSON.stringify({
       selectedPack: node.data.selectedPack || "",
@@ -213,7 +223,9 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
     });
   }
   if (node.type === "packfileoperations") {
-    return JSON.stringify({ fileOperations: (node.data as any).fileOperations || [] });
+    return JSON.stringify({
+      fileOperations: (node.data as any).fileOperations || [],
+    });
   }
   if (node.type === "edittextfile") {
     return JSON.stringify({
@@ -238,7 +250,9 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
     return JSON.stringify({ locRules: (node.data as any).locRules || [] });
   }
   if (node.type === "removetables") {
-    return JSON.stringify({ tablesToRemove: (node.data as any).tablesToRemove || [] });
+    return JSON.stringify({
+      tablesToRemove: (node.data as any).tablesToRemove || [],
+    });
   }
   if (node.type === "conditionalbranch") {
     return JSON.stringify({
@@ -392,6 +406,19 @@ const buildInputDataForTarget = (
       packsConnection ? extractConnectionData(packsConnection, executionResults, nodeMap) : null,
     ];
   }
+  if (targetNode.type === "nativepatch") {
+    const tables: Record<string, any> = {};
+    const seenHandles = new Set<string>();
+    for (const connection of targetIncomingConnections) {
+      const handle = connection.targetHandle ?? "";
+      if (!handle.startsWith("input-table:")) continue;
+      if (seenHandles.has(handle))
+        throw new Error(`Native Patch input socket '${handle}' has more than one incoming connection`);
+      seenHandles.add(handle);
+      tables[handle.slice("input-table:".length)] = extractConnectionData(connection, executionResults, nodeMap);
+    }
+    return { type: "NativePatchFlowInputs", tables };
+  }
   if (
     (targetNode.type === "generaterows" ||
       targetNode.type === "generaterowsschema" ||
@@ -493,7 +520,10 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       deadConnectionKeys.has(getConnectionKey(incomingConnection)) ||
       (executed.has(incomingConnection.sourceId) &&
         executionResults.get(incomingConnection.sourceId)?.success === true);
-    const executionQueue = startingNodes.map((node) => ({ node, inputData: null as any }));
+    const executionQueue = startingNodes.map((node) => ({
+      node,
+      inputData: null as any,
+    }));
     let queueIndex = 0;
     while (queueIndex < executionQueue.length) {
       const { node, inputData } = executionQueue[queueIndex++];
@@ -502,6 +532,7 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       }
       if (node.data.isDisabled === true) {
         flowExecutionDebugLog(executionContext, `Skipping disabled node ${node.id} (${node.type})`);
+        skippedNodes.add(node.id);
         executed.add(node.id);
         continue;
       }
@@ -615,6 +646,7 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       totalExecuted: executionResults.size,
       successCount,
       failureCount,
+      skippedNodeIds: [...skippedNodes],
     };
   } catch (error) {
     const elapsedTime = performance.now() - startTime;

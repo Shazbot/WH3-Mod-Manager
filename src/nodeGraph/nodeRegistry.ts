@@ -34,6 +34,7 @@ import type {
   MathMaxNodeData,
   MergeChangesNodeData,
   MultiFilterNodeData,
+  NativePatchFlowNodeData,
   NumericAdjustmentNodeData,
   PackFilesDropdownNodeData,
   PackFilesNodeData,
@@ -737,6 +738,23 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       outputType: "TableSelection",
     }),
   }),
+  nativepatch: createNodeDefinition<NativePatchFlowNodeData>({
+    type: "nativepatch",
+    labelKey: "nodeEditorNodeNativePatchLabel",
+    labelFallback: "Native Patch",
+    descriptionKey: "nodeEditorNodeNativePatchDescription",
+    descriptionFallback: "Builds a validated declarative native patch contribution from a template and table inputs",
+    createData: ({ label }) => ({
+      label,
+      type: "nativepatch",
+      selectedPackName: "",
+      templatePath: "",
+      scalarValues: {},
+      scalarOptionBindings: {},
+      tableBindings: [],
+      outputType: "TableSelection",
+    }),
+  }),
   deepclone: createNodeDefinition<DeepCloneNodeData>({
     type: "deepclone",
     labelKey: "nodeEditorNodeDeepCloneLabel",
@@ -933,7 +951,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionCustomTables",
     titleFallback: "Custom Tables",
-    nodes: ["customrowsinput", "customschema", "generaterowsschema", "readtsvfrompack"],
+    nodes: ["customrowsinput", "customschema", "generaterowsschema", "readtsvfrompack", "nativepatch"],
   },
 ];
 

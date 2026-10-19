@@ -16,8 +16,17 @@ import {
   NativePatchSkippedPackage,
   parseAndValidateNativePatchManifest,
 } from "./manifest";
+import type { NativePatchIdentity } from "./manifest";
 import { parseJsonWithoutDuplicateKeys } from "./json";
-import { NativePatchPackageError, skipFailedNativePatches } from "./failurePolicy";
+import { NativePatchPackageError, nativePatchIdentity, skipFailedNativePatches } from "./failurePolicy";
+import {
+  MAX_NATIVE_PATCH_FLOW_CONTRIBUTION_BYTES,
+  MAX_NATIVE_PATCH_FLOW_INPUT_BYTES,
+  MAX_NATIVE_PATCH_FLOW_INPUT_ROWS,
+  NativePatchFlowContribution,
+  nativePatchFlowCanonicalValue,
+  parseNativePatchFlowContribution,
+} from "./flowTemplate";
 
 export type NativePatchPack = {
   path: string;
@@ -30,9 +39,16 @@ export type NativePatchPreparedPackage = {
   manifestPath: string;
   sourcePackPath: string;
   sourceModName?: string;
+  sourcePackPaths?: string[];
   contentHash: string;
   manifest: NativePatchManifest;
-  blocks: Array<{ id: string; size: number; alignment: number; protection: "rx" | "r" | "rw"; bytesBase64: string }>;
+  blocks: Array<{
+    id: string;
+    size: number;
+    alignment: number;
+    protection: "rx" | "r" | "rw";
+    bytesBase64: string;
+  }>;
 };
 
 export type NativePatchLaunchPlan = {
@@ -50,6 +66,12 @@ type Candidate = {
   manifest: NativePatchManifest;
   rawManifest: Buffer;
   validationError?: string;
+  flowTemplateFingerprint?: string;
+  flowTemplateVersion?: string;
+  flowProviderNames?: string[];
+  flowSourcePackPaths?: string[];
+  flowResolvedParameterValues?: Record<string, unknown>;
+  flowPayloadsByPath?: Map<string, Buffer>;
 };
 
 const sha256 = (bytes: Buffer) => crypto.createHash("sha256").update(bytes).digest("hex");
@@ -387,6 +409,13 @@ const resolveBlockBytes = async (
   let result: Buffer;
   if ("file" in source) {
     const virtualPath = resolvePayloadPath(candidate.manifestPath, String(source.file));
+    const embedded = candidate.flowPayloadsByPath?.get(String(source.file).replace(/\\/g, "/").toLowerCase());
+    if (embedded) {
+      if (embedded.length !== block.size || sha256(embedded) !== String(source.sha256).toLowerCase()) {
+        throw new Error(`${candidate.manifest.package.id}: embedded contribution payload mismatch for ${virtualPath}`);
+      }
+      return Buffer.from(embedded);
+    }
     const entries = exactEntries(pack, virtualPath);
     if (entries.length !== 1) {
       throw new Error(
@@ -476,6 +505,13 @@ const validateReferenceSymbols = (manifest: NativePatchManifest) => {
     if (parameter.type === "ascii_key_list") {
       checkDestination(parameter.count_at, 4, "count_at");
       checkDestination(parameter.entries_at, parameter.capacity * (parameter.max_key_bytes + 1), "entries_at");
+    } else if (parameter.type === "table") {
+      const rowBytes = parameter.columns.reduce(
+        (total: number, column: Record<string, any>) => total + (column.type === "ascii" ? column.max_bytes + 1 : 4),
+        0,
+      );
+      checkDestination(parameter.count_at, 4, "count_at");
+      checkDestination(parameter.entries_at, parameter.capacity * rowBytes, "entries_at");
     } else {
       const length = parameter.type === "bool" ? 1 : 4;
       checkDestination(parameter.at, length, "at");
@@ -529,6 +565,13 @@ const validateFixupAndParameterFields = (manifest: NativePatchManifest) => {
     if (parameter.type === "ascii_key_list") {
       fields.push([parameter.count_at, 4, "count_at"]);
       fields.push([parameter.entries_at, parameter.capacity * (parameter.max_key_bytes + 1), "entries_at"]);
+    } else if (parameter.type === "table") {
+      const rowBytes = parameter.columns.reduce(
+        (total: number, column: Record<string, any>) => total + (column.type === "ascii" ? column.max_bytes + 1 : 4),
+        0,
+      );
+      fields.push([parameter.count_at, 4, "count_at"]);
+      fields.push([parameter.entries_at, parameter.capacity * rowBytes, "entries_at"]);
     } else fields.push([parameter.at, parameter.type === "bool" ? 1 : 4, "at"]);
     for (const [field, size, fieldName] of fields) {
       const block = blockById.get(field.block);
@@ -539,25 +582,67 @@ const validateFixupAndParameterFields = (manifest: NativePatchManifest) => {
   }
 };
 
-const materializeParameters = (manifest: NativePatchManifest, blockBytes: Map<string, Buffer>) => {
+const materializeParameters = (
+  manifest: NativePatchManifest,
+  blockBytes: Map<string, Buffer>,
+  overrides: Record<string, unknown> = {},
+) => {
   for (const parameter of manifest.parameters) {
+    const value = Object.prototype.hasOwnProperty.call(overrides, parameter.id)
+      ? overrides[parameter.id]
+      : parameter.default;
     if (parameter.type === "bool") {
-      blockBytes.get(parameter.at.block)!.writeUInt8(parameter.default ? 1 : 0, parameter.at.offset);
+      blockBytes.get(parameter.at.block)!.writeUInt8(value ? 1 : 0, parameter.at.offset);
     } else if (parameter.type === "u32") {
-      blockBytes.get(parameter.at.block)!.writeUInt32LE(parameter.default, parameter.at.offset);
+      blockBytes.get(parameter.at.block)!.writeUInt32LE(value as number, parameter.at.offset);
     } else if (parameter.type === "i32") {
-      blockBytes.get(parameter.at.block)!.writeInt32LE(parameter.default, parameter.at.offset);
+      blockBytes.get(parameter.at.block)!.writeInt32LE(value as number, parameter.at.offset);
     } else if (parameter.type === "f32") {
-      blockBytes.get(parameter.at.block)!.writeFloatLE(parameter.default, parameter.at.offset);
-    } else {
+      blockBytes.get(parameter.at.block)!.writeFloatLE(value as number, parameter.at.offset);
+    } else if (parameter.type === "ascii_key_list") {
       const countBlock = blockBytes.get(parameter.count_at.block)!;
       const entriesBlock = blockBytes.get(parameter.entries_at.block)!;
-      const keys = [...new Set(parameter.default as string[])];
+      const keys = [...new Set(value as string[])];
       countBlock.writeUInt32LE(keys.length, parameter.count_at.offset);
       const slotSize = parameter.max_key_bytes + 1;
       entriesBlock.fill(0, parameter.entries_at.offset, parameter.entries_at.offset + parameter.capacity * slotSize);
       keys.forEach((key, index) => {
         Buffer.from(key, "ascii").copy(entriesBlock, parameter.entries_at.offset + index * slotSize);
+      });
+    } else if (parameter.type === "table") {
+      const rows = (value ?? []) as Array<Record<string, unknown>>;
+      if (rows.length > parameter.capacity) throw new Error(`parameter '${parameter.id}' exceeds table capacity`);
+      const countBlock = blockBytes.get(parameter.count_at.block)!;
+      const entriesBlock = blockBytes.get(parameter.entries_at.block)!;
+      const rowBytes = parameter.columns.reduce(
+        (total: number, column: Record<string, any>) => total + (column.type === "ascii" ? column.max_bytes + 1 : 4),
+        0,
+      );
+      const entriesBytes = parameter.capacity * rowBytes;
+      entriesBlock.fill(0, parameter.entries_at.offset, parameter.entries_at.offset + entriesBytes);
+      countBlock.writeUInt32LE(rows.length, parameter.count_at.offset);
+      rows.forEach((row, rowIndex) => {
+        let offset = parameter.entries_at.offset + rowIndex * rowBytes;
+        for (const column of parameter.columns) {
+          const cell = row[column.name];
+          if (column.type === "ascii") {
+            Buffer.from(cell as string, "ascii").copy(entriesBlock, offset);
+            offset += column.max_bytes + 1;
+          } else if (column.type === "bool") {
+            // Table cells use a 4-byte stride; the three bytes after bool are zero padding.
+            entriesBlock.writeUInt8(cell ? 1 : 0, offset);
+            offset += 4;
+          } else if (column.type === "u32") {
+            entriesBlock.writeUInt32LE(cell as number, offset);
+            offset += 4;
+          } else if (column.type === "i32") {
+            entriesBlock.writeInt32LE(cell as number, offset);
+            offset += 4;
+          } else {
+            entriesBlock.writeFloatLE(cell as number, offset);
+            offset += 4;
+          }
+        }
       });
     }
   }
@@ -576,7 +661,7 @@ const loadCandidatePayloads = async (candidate: Candidate): Promise<NativePatchP
     const bytes = await resolveBlockBytes(candidate, block, candidate.pack);
     decodedBlockBytes.set(block.id, bytes);
   }
-  materializeParameters(candidate.manifest, decodedBlockBytes);
+  materializeParameters(candidate.manifest, decodedBlockBytes, candidate.flowResolvedParameterValues);
   for (const block of candidate.manifest.blocks) {
     const bytes = decodedBlockBytes.get(block.id)!;
     blocks.push({
@@ -590,6 +675,7 @@ const loadCandidatePayloads = async (candidate: Candidate): Promise<NativePatchP
   return {
     manifestPath: candidate.manifestPath,
     sourcePackPath: candidate.pack.path,
+    sourcePackPaths: candidate.flowSourcePackPaths,
     sourceModName: candidate.pack.displayName,
     contentHash: sha256(candidate.rawManifest),
     manifest: candidate.manifest,
@@ -675,11 +761,315 @@ const resolvePackageCandidates = async (
           continue;
         }
       }
-      candidates.push({ pack, manifestPath, manifestEntry: entry, manifest, rawManifest, validationError });
+      candidates.push({
+        pack,
+        manifestPath,
+        manifestEntry: entry,
+        manifest,
+        rawManifest,
+        validationError,
+      });
       if (candidates.length > 4096) throw new Error("too many native patch manifest candidates (maximum 4096)");
     }
   }
   return candidates;
+};
+
+type FlowContributionCandidate = {
+  candidate: Candidate;
+  contribution: NativePatchFlowContribution;
+};
+const contributionProviderName = (contribution: NativePatchFlowContribution, containingPack: string) =>
+  `${containingPack} [${contribution.provenance.sourcePack} :: ${contribution.provenance.flowFile} :: node ${contribution.provenance.nodeId}]`;
+const flowContributionIdentity = ({ candidate, contribution }: FlowContributionCandidate): NativePatchIdentity => ({
+  packageId: contribution.template.id,
+  packageName: candidate.manifest.package.name,
+  sourcePackPath: candidate.pack.path,
+  sourceModName: contribution.provenance.sourcePack,
+});
+const nativePatchFlowError = (
+  message: string,
+  providers: FlowContributionCandidate[] = [],
+  fallbackPacks: NativePatchPack[] = [],
+  fallbackSourceModName?: string,
+) => {
+  const identities = providers.map(flowContributionIdentity);
+  for (const pack of fallbackPacks) {
+    const sourceModName = fallbackSourceModName ?? pack.displayName;
+    if (
+      identities.some((identity) => identity.sourcePackPath === pack.path && identity.sourceModName === sourceModName)
+    ) {
+      continue;
+    }
+    identities.push({
+      packageId: "native-patch-flow-contribution",
+      packageName: "Native Patch flow contribution",
+      sourcePackPath: pack.path,
+      sourceModName,
+    });
+  }
+  const packageIds = [...new Set(identities.map((identity) => identity.packageId))];
+  return new NativePatchPackageError(message, packageIds, identities);
+};
+
+/** Contributions are validated and merged before package failure policies or version selection run. */
+const resolveFlowContributionCandidates = async (
+  packs: NativePatchPack[],
+  standaloneCandidates: Candidate[],
+): Promise<Candidate[]> => {
+  const grouped = new Map<string, FlowContributionCandidate[]>();
+  const identityById = new Map<
+    string,
+    {
+      version: string;
+      fingerprint: string;
+      provider: FlowContributionCandidate;
+    }
+  >();
+  const parsedProviders: FlowContributionCandidate[] = [];
+  let aggregateBytes = 0;
+  let aggregateInputRows = 0;
+  let aggregateInputBytes = 0;
+  let contributionCount = 0;
+  for (const pack of packs) {
+    const entries = pack.pack.packedFiles.filter((entry) => {
+      const name = canonicalPackName(entry.name);
+      return /^whmm_patch_contributions\/v1\//i.test(name) && name.toLowerCase().endsWith(".wh3patchcontrib.json");
+    });
+    const normalizedNames = new Set<string>();
+    for (const entry of entries) {
+      const key = normalizedVirtualPath(entry.name);
+      if (normalizedNames.has(key)) {
+        throw nativePatchFlowError(
+          `duplicate normalized native patch contribution filename '${entry.name}' in ${pack.path}`,
+          parsedProviders,
+          [pack],
+        );
+      }
+      normalizedNames.add(key);
+      if (entry.file_size > MAX_NATIVE_PATCH_FLOW_CONTRIBUTION_BYTES + 1024 * 1024) {
+        throw nativePatchFlowError(
+          `native patch contribution ${entry.name} in ${pack.path} exceeds the stored-size limit`,
+          parsedProviders,
+          [pack],
+        );
+      }
+      if (aggregateBytes + entry.file_size > MAX_TOTAL_PAYLOAD_BYTES) {
+        throw nativePatchFlowError(
+          "native patch flow contributions exceed the aggregate 512 MiB input limit",
+          parsedProviders,
+          [pack],
+        );
+      }
+      let parsed: ReturnType<typeof parseNativePatchFlowContribution>;
+      let rawContribution: Buffer | undefined;
+      try {
+        rawContribution = await readNativePatchPackEntry(pack, entry, MAX_NATIVE_PATCH_FLOW_CONTRIBUTION_BYTES);
+        aggregateBytes += rawContribution.length;
+        if (aggregateBytes > MAX_TOTAL_PAYLOAD_BYTES) {
+          throw new Error("native patch flow contributions exceed the aggregate 512 MiB input limit");
+        }
+        parsed = parseNativePatchFlowContribution(rawContribution);
+      } catch (error) {
+        let sourceModName: string | undefined;
+        try {
+          const rawRoot = rawContribution
+            ? (parseJsonWithoutDuplicateKeys(rawContribution.toString("utf8")) as Record<string, any>)
+            : undefined;
+          sourceModName =
+            typeof rawRoot?.provenance?.sourcePack === "string" ? rawRoot.provenance.sourcePack : undefined;
+        } catch {
+          // The pack display name remains the fallback when contribution JSON is malformed.
+        }
+        throw nativePatchFlowError(
+          `native patch flow contribution ${entry.name} in ${pack.path} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+          parsedProviders,
+          [pack],
+          sourceModName,
+        );
+      }
+      const provider = contributionProviderName(parsed.contribution, pack.path);
+      const providerCandidate: FlowContributionCandidate = {
+        contribution: parsed.contribution,
+        candidate: {
+          pack,
+          manifestPath: `whmm_patch_templates/${parsed.template.template.id}.embedded.json`,
+          manifestEntry: entry,
+          manifest: parsed.template.native_patch,
+          rawManifest: parsed.template.rawBytes,
+          flowTemplateFingerprint: parsed.template.fingerprint,
+          flowTemplateVersion: parsed.template.template.version,
+          flowProviderNames: [provider],
+          flowSourcePackPaths: [pack.path],
+          flowResolvedParameterValues: {},
+          flowPayloadsByPath: parsed.payloadByPath,
+        },
+      };
+      const previousIdentity = identityById.get(parsed.template.template.id);
+      if (
+        previousIdentity &&
+        (previousIdentity.version !== parsed.template.template.version ||
+          previousIdentity.fingerprint !== parsed.template.fingerprint)
+      ) {
+        throw nativePatchFlowError(
+          `incompatible native patch templates for ${parsed.template.template.id}: ${contributionProviderName(previousIdentity.provider.contribution, previousIdentity.provider.candidate.pack.path)} (${previousIdentity.version}) and ${provider} (${parsed.template.template.version})`,
+          [previousIdentity.provider, providerCandidate],
+        );
+      }
+      contributionCount++;
+      if (contributionCount > 4096) {
+        throw nativePatchFlowError("too many native patch flow contributions (maximum 4096)", [
+          ...parsedProviders,
+          providerCandidate,
+        ]);
+      }
+      identityById.set(parsed.template.template.id, {
+        version: parsed.template.template.version,
+        fingerprint: parsed.template.fingerprint,
+        provider: providerCandidate,
+      });
+      parsedProviders.push(providerCandidate);
+      const providerRows = Object.values(parsed.contribution.inputs.tables).reduce((sum, rows) => sum + rows.length, 0);
+      aggregateInputRows += providerRows;
+      aggregateInputBytes += Buffer.byteLength(JSON.stringify(parsed.contribution.inputs), "utf8");
+      if (aggregateInputRows > MAX_NATIVE_PATCH_FLOW_INPUT_ROWS) {
+        throw nativePatchFlowError("aggregate native patch flow inputs exceed the 100000-row limit", parsedProviders);
+      }
+      if (aggregateInputBytes > MAX_NATIVE_PATCH_FLOW_INPUT_BYTES) {
+        throw nativePatchFlowError("aggregate native patch flow inputs exceed the 64 MiB limit", parsedProviders);
+      }
+      const groupKey = `${parsed.template.template.id}\0${parsed.template.template.version}\0${parsed.template.fingerprint}`;
+      const values = grouped.get(groupKey) ?? [];
+      values.push(providerCandidate);
+      grouped.set(groupKey, values);
+    }
+  }
+
+  const standaloneById = new Map(standaloneCandidates.map((candidate) => [candidate.manifest.package.id, candidate]));
+  const result: Candidate[] = [];
+  for (const providers of grouped.values()) {
+    const first = providers[0];
+    const providerNames = providers.map(({ contribution, candidate }) =>
+      contributionProviderName(contribution, candidate.pack.path),
+    );
+    const manifest = first.candidate.manifest;
+    const id = manifest.package.id;
+    const collision = standaloneById.get(id);
+    if (collision) {
+      const identities = [...providers.map(flowContributionIdentity), nativePatchIdentity(collision)];
+      throw new NativePatchPackageError(
+        `native patch contribution package '${id}' collides with standalone package ${collision.manifestPath} in ${collision.pack.path}`,
+        [...new Set(identities.map((identity) => identity.packageId))],
+        identities,
+      );
+    }
+    const parameterValues: Record<string, unknown> = {};
+    const templateParameters = new Map(
+      (manifest.parameters as Array<Record<string, any>>).map((parameter) => [parameter.id, parameter]),
+    );
+    const templateRoot = parseJsonWithoutDuplicateKeys(first.candidate.rawManifest.toString("utf8")) as Record<
+      string,
+      any
+    >;
+    const templateInputs = templateRoot.inputs as {
+      scalars: Array<{ id: string; parameter: string }>;
+      tables: Array<any>;
+    };
+    for (const input of templateInputs.scalars) {
+      let firstValue: unknown;
+      let firstProvider: FlowContributionCandidate | undefined;
+      for (const provider of providers) {
+        const value = provider.contribution.inputs.scalars[input.id];
+        if (!firstProvider) {
+          firstValue = value;
+          firstProvider = provider;
+        } else if (nativePatchFlowCanonicalValue(value) !== nativePatchFlowCanonicalValue(firstValue)) {
+          throw nativePatchFlowError(
+            `conflicting scalar input '${input.id}' for package '${id}': ${contributionProviderName(firstProvider.contribution, firstProvider.candidate.pack.path)} and ${contributionProviderName(provider.contribution, provider.candidate.pack.path)}`,
+            [firstProvider, provider],
+          );
+        }
+      }
+      if (!templateParameters.has(input.parameter)) {
+        throw nativePatchFlowError(
+          `template scalar parameter '${input.parameter}' disappeared during validation`,
+          providers,
+        );
+      }
+      parameterValues[input.parameter] = firstValue;
+    }
+
+    let totalMergedRows = 0;
+    for (const input of templateInputs.tables) {
+      const rowsByGroup = new Map<
+        string,
+        {
+          values: string[];
+          rowByValue: Map<string, Record<string, unknown>>;
+          provider: FlowContributionCandidate;
+        }
+      >();
+      for (const provider of providers) {
+        const rows = provider.contribution.inputs.tables[input.id] ?? [];
+        const groups = new Map<string, Map<string, Record<string, unknown>>>();
+        for (const row of rows) {
+          const groupKey = String(row[input.group_by]);
+          const value = String(row[input.value_column]);
+          const values = groups.get(groupKey) ?? new Map<string, Record<string, unknown>>();
+          values.set(value, row);
+          groups.set(groupKey, values);
+        }
+        for (const [groupKey, rowByValue] of groups) {
+          const values = [...rowByValue.keys()].sort(ordinalCompare);
+          const existing = rowsByGroup.get(groupKey);
+          if (existing) {
+            if (nativePatchFlowCanonicalValue(existing.values) !== nativePatchFlowCanonicalValue(values)) {
+              throw nativePatchFlowError(
+                `conflicting table group '${groupKey}' for package '${id}' input '${input.id}': ${contributionProviderName(existing.provider.contribution, existing.provider.candidate.pack.path)} and ${contributionProviderName(provider.contribution, provider.candidate.pack.path)}`,
+                [existing.provider, provider],
+              );
+            }
+          } else rowsByGroup.set(groupKey, { values, rowByValue, provider });
+        }
+      }
+      const mergedRows = [...rowsByGroup.entries()]
+        .sort(([firstKey], [secondKey]) => ordinalCompare(firstKey, secondKey))
+        .flatMap(([, group]) => [...group.values].map((value) => group.rowByValue.get(value)!));
+      totalMergedRows += mergedRows.length;
+      if (totalMergedRows > MAX_NATIVE_PATCH_FLOW_INPUT_ROWS) {
+        throw nativePatchFlowError(`merged table inputs for package '${id}' exceed the aggregate row limit`, providers);
+      }
+      if (mergedRows.length > input.max_rows) {
+        throw nativePatchFlowError(
+          `merged table input '${input.id}' for package '${id}' exceeds max_rows ${input.max_rows}`,
+          providers,
+        );
+      }
+      parameterValues[input.parameter] = mergedRows;
+    }
+    if (templateInputs.tables.length > 0 && totalMergedRows === 0) continue;
+
+    const candidate = { ...first.candidate };
+    candidate.flowProviderNames = providerNames;
+    candidate.flowSourcePackPaths = [...new Set(providers.map(({ candidate: provider }) => provider.pack.path))];
+    candidate.flowResolvedParameterValues = parameterValues;
+    const sourceModNames = [...new Set(providers.map(({ contribution }) => contribution.provenance.sourcePack))];
+    candidate.pack = {
+      ...first.candidate.pack,
+      priority: Math.max(...providers.map(({ candidate: provider }) => provider.pack.priority)),
+      displayName: sourceModNames.join(", "),
+    };
+    // Contributions are author-authored generated inputs. Validate their destinations before
+    // package failure policies are considered so warn/silent can never discard malformed data.
+    try {
+      validateReferenceSymbols(candidate.manifest);
+      validateFixupAndParameterFields(candidate.manifest);
+    } catch (error) {
+      throw nativePatchFlowError(error instanceof Error ? error.message : String(error), providers);
+    }
+    result.push(candidate);
+  }
+  return result;
 };
 
 const chooseHighestPriorityVersion = (candidates: Candidate[]): Candidate[] => {
@@ -791,7 +1181,9 @@ export const buildNativePatchLaunchPlan = async (input: {
   effectiveContentPacks: NativePatchPack[] | (() => Promise<NativePatchPack[]>);
   onSkippedPackage?: (notice: NativePatchSkippedPackage) => void;
 }): Promise<NativePatchLaunchPlan | undefined> => {
-  const candidates = await resolvePackageCandidates(input.enabledPacks, input.onSkippedPackage);
+  const standaloneCandidates = await resolvePackageCandidates(input.enabledPacks, input.onSkippedPackage);
+  const flowCandidates = await resolveFlowContributionCandidates(input.enabledPacks, standaloneCandidates);
+  const candidates = [...standaloneCandidates, ...flowCandidates];
   let selected = chooseHighestPriorityVersion(candidates);
   const preparedByCandidate = new Map<Candidate, NativePatchPreparedPackage>();
   let effectivePacks: NativePatchPack[] | undefined;

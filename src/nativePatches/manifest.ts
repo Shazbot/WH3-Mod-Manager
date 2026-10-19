@@ -2,7 +2,7 @@ import * as semver from "semver";
 import { parseJsonWithoutDuplicateKeys } from "./json";
 import { validateNativePatchStructure } from "./schemaValidation";
 
-export const NATIVE_PATCH_LOADER_VERSION = "2.1.0";
+export const NATIVE_PATCH_LOADER_VERSION = "2.2.0";
 export type NativePatchFailurePolicy = "abort" | "warn" | "silent";
 export type NativePatchIdentity = {
   packageId: string;
@@ -10,13 +10,17 @@ export type NativePatchIdentity = {
   sourcePackPath?: string;
   sourceModName?: string;
 };
-export type NativePatchSkippedPackage = NativePatchIdentity & { policy: "warn" | "silent"; message: string };
+export type NativePatchSkippedPackage = NativePatchIdentity & {
+  policy: "warn" | "silent";
+  message: string;
+};
 export const NATIVE_PATCH_CAPABILITIES = [
   "blocks.v1",
   "fixups.v1",
   "win64-unwind.v1",
   "startup-activation.v1",
   "signatures.v2",
+  "table-parameters.v1",
 ] as const;
 export const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
 export const MAX_TOTAL_MANIFEST_BYTES = 64 * 1024 * 1024;
@@ -50,7 +54,7 @@ export type NativePatchBlock = {
 };
 export type NativePatchManifest = {
   format: "wh3-native-patch";
-  format_version: 1 | 2;
+  format_version: 1 | 2 | 3;
   on_failure?: NativePatchFailurePolicy;
   package: { id: string; version: string; name: string; description?: string };
   requires_loader: { min_version: string; capabilities: string[] };
@@ -151,7 +155,7 @@ const safeStringArray = (value: unknown, where: string, identifiers = false): st
   return result;
 };
 
-const validateAddressReference = (value: unknown, where: string, version: 1 | 2): NativePatchAddressReference => {
+const validateAddressReference = (value: unknown, where: string, version: 1 | 2 | 3): NativePatchAddressReference => {
   const ref = object(value, where);
   if ("module" in ref) {
     exactKeys(ref, ["module", "rva"], [], where);
@@ -243,7 +247,7 @@ const validateBlocks = (value: unknown) => {
   return blocks;
 };
 
-const validateSignatures = (value: unknown, version: 1 | 2) => {
+const validateSignatures = (value: unknown, version: 1 | 2 | 3) => {
   if (version === 1) {
     if (value !== undefined) throw new Error("signatures are not supported in format version 1");
     return undefined;
@@ -273,7 +277,7 @@ const validateSignatures = (value: unknown, version: 1 | 2) => {
   return signatures;
 };
 
-const validateSymbols = (value: unknown, version: 1 | 2): Record<string, NativePatchAddressReference> => {
+const validateSymbols = (value: unknown, version: 1 | 2 | 3): Record<string, NativePatchAddressReference> => {
   const symbols = object(value, "symbols");
   const result: Record<string, NativePatchAddressReference> = Object.create(null);
   for (const [name, reference] of Object.entries(symbols)) {
@@ -286,7 +290,7 @@ const validateSymbols = (value: unknown, version: 1 | 2): Record<string, NativeP
   return result;
 };
 
-const validateGuardsAndWrites = (root: Record<string, any>, version: 1 | 2) => {
+const validateGuardsAndWrites = (root: Record<string, any>, version: 1 | 2 | 3) => {
   const guards = array(root.guards, "guards").map((raw, index) => {
     const where = `guards[${index}]`;
     const guard = object(raw, where);
@@ -332,7 +336,7 @@ const isModuleReference = (
   return isModuleReference(reference.relative.from, symbols, active);
 };
 
-const validateFixups = (value: unknown, version: 1 | 2) => {
+const validateFixups = (value: unknown, version: 1 | 2 | 3) => {
   const fixups = array(value, "fixups").map((raw, index) => {
     const where = `fixups[${index}]`;
     const fixup = object(raw, where);
@@ -367,7 +371,7 @@ const validateFixups = (value: unknown, version: 1 | 2) => {
   return fixups;
 };
 
-const validateRuntimeFunctions = (value: unknown, version: 1 | 2) =>
+const validateRuntimeFunctions = (value: unknown, version: 1 | 2 | 3) =>
   array(value, "runtime_functions").map((raw, index) => {
     const where = `runtime_functions[${index}]`;
     const item = object(raw, where);
@@ -449,6 +453,40 @@ const validateParameters = (value: unknown) =>
         id(at.block, `${where}.${key}.block`);
         integer(at.offset, `${where}.${key}.offset`);
       }
+    } else if (parameter.type === "table") {
+      exactKeys(parameter, ["id", "type", "capacity", "columns", "count_at", "entries_at"], [], where);
+      integer(parameter.capacity, `${where}.capacity`, 1, 100_000);
+      const columns = array(parameter.columns, `${where}.columns`).map((rawColumn, columnIndex) => {
+        const columnWhere = `${where}.columns[${columnIndex}]`;
+        const column = object(rawColumn, columnWhere);
+        if (column.type === "ascii") {
+          exactKeys(column, ["name", "type", "max_bytes"], [], columnWhere);
+          id(column.name, `${columnWhere}.name`);
+          integer(column.max_bytes, `${columnWhere}.max_bytes`, 1, 4096);
+        } else if (["bool", "u32", "i32", "f32"].includes(column.type)) {
+          exactKeys(column, ["name", "type"], [], columnWhere);
+          id(column.name, `${columnWhere}.name`);
+        } else {
+          throw new Error(`${columnWhere}.type: unsupported table column type`);
+        }
+        return column;
+      });
+      if (columns.length === 0 || columns.length > 16)
+        throw new Error(`${where}.columns: expected 1 to 16 typed columns`);
+      if (new Set(columns.map((column) => column.name)).size !== columns.length)
+        throw new Error(`${where}.columns: duplicate column names are not allowed`);
+      const rowBytes = columns.reduce(
+        (total, column) => total + (column.type === "ascii" ? column.max_bytes + 1 : 4),
+        0,
+      );
+      if (rowBytes * parameter.capacity > 64 * 1024 * 1024)
+        throw new Error(`${where}: encoded table exceeds the 64 MiB bound`);
+      for (const key of ["count_at", "entries_at"]) {
+        const at = object(parameter[key], `${where}.${key}`);
+        exactKeys(at, ["block", "offset"], [], `${where}.${key}`);
+        id(at.block, `${where}.${key}.block`);
+        integer(at.offset, `${where}.${key}.offset`);
+      }
     } else throw new Error(`${where}.type: unsupported parameter type`);
     return parameter;
   });
@@ -500,9 +538,9 @@ export const parseAndValidateNativePatchManifest = (bytes: Buffer): NativePatchM
     "manifest",
   );
   if (root.format !== "wh3-native-patch") throw new Error("format must be 'wh3-native-patch'");
-  if (root.format_version !== 1 && root.format_version !== 2)
-    throw new Error("unsupported format_version; supported versions are 1 and 2");
-  const version = root.format_version as 1 | 2;
+  if (root.format_version !== 1 && root.format_version !== 2 && root.format_version !== 3)
+    throw new Error("unsupported format_version; supported versions are 1, 2, and 3");
+  const version = root.format_version as 1 | 2 | 3;
   validateNativePatchStructure(root, version);
   if (root.on_failure !== undefined && !["abort", "warn", "silent"].includes(root.on_failure)) {
     throw new Error("on_failure must be 'abort', 'warn', or 'silent'");
@@ -592,6 +630,15 @@ export const parseAndValidateNativePatchManifest = (bytes: Buffer): NativePatchM
   root.fixups = validateFixups(root.fixups, version);
   root.runtime_functions = validateRuntimeFunctions(root.runtime_functions, version);
   root.parameters = validateParameters(root.parameters ?? []);
+  if (version < 3 && root.parameters.some((parameter: any) => parameter.type === "table")) {
+    throw new Error("table parameters require format version 3");
+  }
+  if (
+    root.parameters.some((parameter: any) => parameter.type === "table") &&
+    !capabilities.includes("table-parameters.v1")
+  ) {
+    throw new Error("requires_loader.capabilities must include 'table-parameters.v1' when using table parameters");
+  }
   root.assets = validateAssets(root.assets ?? []);
   const usesV2Address = (reference: any, activeSymbols = new Set<string>()): boolean => {
     if ("signature" in reference || "relative" in reference) return true;

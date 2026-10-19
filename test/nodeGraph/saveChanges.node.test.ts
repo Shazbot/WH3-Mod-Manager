@@ -177,6 +177,37 @@ describe("save changes node", () => {
     expect(shell.openPath).not.toHaveBeenCalled();
   });
 
+  it("preserves prior raw native patch contributions when appending to an existing output pack", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const rawContribution = (name: string, contents: string) => ({
+      name,
+      fileName: name,
+      sourceFile: { name: "template.pack", path: "template.pack" } as Pack,
+      outputFileName: name,
+      table: { name, file_size: contents.length, start_pos: 0, buffer: Buffer.from(contents) },
+    });
+    const saveContribution = (nodeId: string, file: ReturnType<typeof rawContribution>) =>
+      executeNodeAction({
+        nodeId,
+        nodeType: "savechanges",
+        textValue: "",
+        config: { packName: "native-contributions", openInWindows: false },
+        inputData: { type: "TableSelection", tables: [file], sourceFiles: [], tableCount: 1 },
+      });
+
+    const firstName = "whmm_patch_contributions/v1/first.wh3patchcontrib.json";
+    const secondName = "whmm_patch_contributions/v1/second.wh3patchcontrib.json";
+    expect((await saveContribution("save_first", rawContribution(firstName, '{"provider":1}'))).success).toBe(true);
+    expect((await saveContribution("save_second", rawContribution(secondName, '{"provider":2}'))).success).toBe(true);
+
+    const outputPackPath = path.join(outputDirectory, "data", "native-contributions.pack");
+    const savedPack = await readPack(outputPackPath, { skipParsingTables: true });
+    expect(savedPack.packedFiles.map((file) => file.name)).toEqual(expect.arrayContaining([firstName, secondName]));
+  });
+
   it.each(moviePackOutputInputs)("writes $name output as a movie pack when enabled", async ({ name, inputData }) => {
     outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
     appData.currentGame = "wh3";

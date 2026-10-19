@@ -1,6 +1,13 @@
 import { Edge, Node } from "@xyflow/react";
 
-import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph, resolveRadioChoiceId } from "./types";
+import {
+  FlowOption,
+  SerializedConnection,
+  SerializedNode,
+  SerializedNodeGraph,
+  resolveRadioChoiceId,
+  splitMultilineOptionValue,
+} from "./types";
 import {
   substituteDeepCloneOptionValues,
   substituteEditXmlOptionValues,
@@ -115,6 +122,11 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         newColumnName: maybeString(data.newColumnName),
         filename: maybeString(data.filename),
         tsvFileName: maybeString(data.tsvFileName),
+        selectedPackName: maybeString(data.selectedPackName),
+        templatePath: maybeString(data.templatePath),
+        scalarValues: (data.scalarValues || {}) as Record<string, unknown>,
+        scalarOptionBindings: (data.scalarOptionBindings || {}) as Record<string, string>,
+        tableBindings: data.tableBindings || [],
         tableName: maybeString(data.tableName),
         sourceInputColumns: data.sourceInputColumns || null,
         indexedTableColumns: data.indexedTableColumns || null,
@@ -225,6 +237,21 @@ export const prepareGraphForExecution = ({
       modified = true;
     }
 
+    if (node.type === "nativepatch") {
+      const scalarValues = {
+        ...((currentData.scalarValues || {}) as Record<string, unknown>),
+      };
+      for (const [inputId, optionId] of Object.entries(
+        (currentData.scalarOptionBindings || {}) as Record<string, string>,
+      )) {
+        const option = flowOptions.find((item) => item.id === optionId);
+        if (!option) continue;
+        scalarValues[inputId] = option.type === "multiline" ? splitMultilineOptionValue(option.value) : option.value;
+      }
+      nodeData.scalarValues = scalarValues;
+      modified = true;
+    }
+
     // Resolved outside the flowOptions guard on purpose: a gate whose option was deleted must fall
     // back to false rather than keep whatever boolean was last saved with the flow.
     if (node.type === "conditionalbranch") {
@@ -317,7 +344,9 @@ export const prepareGraphForExecution = ({
           }
 
           let transformationModified = false;
-          const nextTransformation = { ...(transformation as Record<string, unknown>) };
+          const nextTransformation = {
+            ...(transformation as Record<string, unknown>),
+          };
 
           for (const fieldName of transformationOptionFields) {
             const fieldValue = nextTransformation[fieldName];

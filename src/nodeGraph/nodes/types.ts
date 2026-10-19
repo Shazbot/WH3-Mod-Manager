@@ -394,6 +394,16 @@ export interface ReadTSVFromPackNodeData extends NodeData {
   outputType: "TableSelection";
 }
 
+export interface NativePatchFlowNodeData extends NodeData {
+  /** Empty means use the pack that owns the flow; explicit selections persist a portable mod name. */
+  selectedPackName: string;
+  templatePath: string;
+  scalarValues: Record<string, unknown>;
+  scalarOptionBindings: Record<string, string>;
+  tableBindings: string[];
+  outputType: "TableSelection";
+}
+
 export interface CustomRowsInputNodeData extends NodeData {
   customRows: Array<Record<string, string>>;
   schemaColumns: Array<{ name: string; type: SCHEMA_FIELD_TYPE }>;

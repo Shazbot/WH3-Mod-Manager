@@ -438,6 +438,13 @@ export const resolveTargetInputType = (
     if (params.targetHandle === "input-packs") {
       return "PackFiles" as NodeEdgeTypes;
     }
+  } else if (targetNode.type === "nativepatch" && targetNode.data) {
+    if (
+      params.targetHandle?.startsWith("input-table:") &&
+      ((targetNode.data as any).tableBindings || []).includes(params.targetHandle.slice("input-table:".length))
+    ) {
+      return "TableSelection" as NodeEdgeTypes;
+    }
   } else if (targetNode.data) {
     return getNodeData<GraphRuleNodeData>(targetNode).inputType as NodeEdgeTypes | undefined;
   }

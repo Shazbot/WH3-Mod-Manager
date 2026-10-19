@@ -560,12 +560,18 @@ const api = {
       sourceType?: string;
       targetType?: string;
     }>;
+    flowExecution?: {
+      flowFileName?: string;
+      flowSourcePackPath?: string;
+      flowSourcePackName?: string;
+    };
   }): Promise<{
     success: boolean;
     executionResults: Array<[string, { success: boolean; data?: any; error?: string; warnings?: string[] }]>;
     totalExecuted: number;
     successCount: number;
     failureCount: number;
+    skippedNodeIds?: string[];
     error?: string;
   }> => ipcRenderer.invoke("executeNodeGraph", graphExecutionRequest),
 
@@ -724,6 +730,41 @@ const api = {
     mimeType?: string;
     error?: string;
   }> => ipcRenderer.invoke("readFileFromPack", packPath, fileName),
+
+  listNativePatchFlowTemplates: (
+    packPath: string,
+  ): Promise<{
+    success: boolean;
+    templates?: Array<{
+      path: string;
+      id: string;
+      version: string;
+      name: string;
+      fingerprint: string;
+      scalars: Array<{
+        id: string;
+        parameter: string;
+        type: "bool" | "u32" | "i32" | "f32" | "ascii_key_list";
+        default?: unknown;
+        min?: number;
+        max?: number;
+        capacity?: number;
+        max_key_bytes?: number;
+      }>;
+      tables: Array<{
+        id: string;
+        table_name: string;
+        parameter: string;
+        max_rows: number;
+        group_by: string;
+        value_column: string;
+        provider_merge: "identical_by_group";
+        columns: Array<{ name: string; type: "ascii" | "bool" | "u32" | "i32" | "f32"; max_bytes?: number }>;
+      }>;
+    }>;
+    errors?: Array<{ path: string; error: string }>;
+    error?: string;
+  }> => ipcRenderer.invoke("listNativePatchFlowTemplates", packPath),
 
   getFlowFilesFromPack: (
     packPath: string,

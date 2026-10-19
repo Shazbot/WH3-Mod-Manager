@@ -5,6 +5,12 @@ enabled `.pack` files, including manifests directly inside `whmm_patches/`.
 It reads the physical packs used for launch after staging, merging, overwrites,
 and flow replacements.
 
+Flow-driven native patches use declarative templates in
+`whmm_patch_templates/**/*.wh3patchtemplate.json`. A flow selects a validated
+template, binds its declared inputs, and sends an inspectable contribution through
+the normal Save Changes node. Templates contain no build scripts or executable
+replacement logic.
+
 Patches change the new game process's memory. They do not rewrite `Warhammer3.exe`.
 Enabling, disabling, or updating a patch requires a new game process.
 
@@ -66,14 +72,82 @@ termination or an already committed release also prevents automatic retry;
 the manager reports the uncertain startup state instead of starting another game.
 An existing helper session also remains an error, preventing duplicate launches.
 
+## Flow-driven native patches
+
+The Native Patch flow node lists valid templates from the flow's owning pack or a
+selected enabled pack. Pack selection is stored by pack name, so a copied flow
+does not retain an author's absolute workshop path. A template can declare scalar
+inputs (`bool`, `u32`, `i32`, `f32`, or `ascii_key_list`) and bounded table
+inputs. Scalar controls use manifest defaults and can bind to compatible flow
+options. Table input IDs create named `TableSelection` sockets; rows must provide
+the declared column names and types. `table_name` is a display label, while
+column names define the accepted table shape.
+
+Table declarations choose a `group_by` column and a `value_column`. Duplicate
+group/value rows are removed. When several flows or mods provide the same
+template, they can add different groups. Providers of the same group must declare
+the same sorted set of values; otherwise launch fails and names both providers.
+For a target that treats repeated flags as OR-ed sets, author each flag/unit-set
+pair explicitly in normal flow nodes. Empty table inputs produce no contribution
+package and do not activate template defaults.
+
+Template format `wh3-native-patch-template` version 1 and contribution format
+`wh3-native-patch-contribution` version 1 are strict JSON contracts. A template
+binds each declared input to one unique scalar or table parameter in its native
+patch manifest. Scalar-only templates may use native manifest versions 1 or 2;
+table inputs require manifest version 3 and `table-parameters.v1`. A v1 table
+binding must use the manifest table's two columns as one
+`group_by`/`value_column` pair; source tables need those named columns, while
+other source columns and the physical source table name do not affect binding.
+Keys are case-sensitive. Repeated rows for one group form that group's value
+set, and duplicate pairs are removed. Across providers, a group is accepted only
+when every provider supplies the same sorted value set.
+
+Each template is limited to 8 MiB. Table declarations are bounded by the native
+parameter capacity and `max_rows`; all table inputs together are limited to
+100,000 rows and resolved scalar/table inputs to 64 MiB per contribution. The
+serialized contribution is limited to 160 MiB. Table destinations are validated
+against block bounds and overlap rules before launch. Numeric and boolean table
+cells each occupy a four-byte stride; a boolean stores 0 or 1 in its first byte
+and leaves the following three bytes zero.
+
+The node emits a raw file under `whmm_patch_contributions/v1/`, carrying the
+validated template, hashed payload bytes, resolved input values, and flow/node
+provenance. Save Changes writes that file into its output pack. At launch WHMM
+reads contributions from the final enabled packs after flow generation, verifies
+them again, and combines matching template versions into one package before
+checking conflicts with standalone patches. Malformed templates, incompatible
+versions, conflicting group definitions, standalone package ID collisions, and
+input capacity errors fail launch before standalone `on_failure` retry handling.
+Failures during native block and runtime preparation can still follow the
+manifest's `on_failure` policy. An enabled startup flow containing a Native
+Patch node also aborts launch if that graph fails upstream of the node, at the
+node, or downstream while saving its contribution. Disabled or pruned nodes are
+skipped.
+
+Templates and their payloads must be pack entries under
+`whmm_patch_templates/`; file payloads are relative to the template's folder.
+Template discovery validates declarations but never activates them. The flow
+node reads only the selected template and its declared payloads; it does not run
+scripts or replace the game's executable.
+
+The [data-only example](examples/native-patch-flow/) shows a flow that authors
+mapping rows with Custom Schema and Custom Rows nodes and passes them through a
+template. It has no hook or write site and produces no gameplay change. It
+documents the input plumbing only. The requested `target_unit_sets` expansion is
+blocked pending the complete native object lifecycle audit described in the
+[target-unit flag audit](native-patch-target-unit-flag-audit.md); no runnable
+template is included for it.
+
 ## Format versions
 
-The loader version is `2.1.0`. The original format-v1 contract is supported with
+The loader version is `2.2.0`. The original format-v1 contract is supported with
 its mandatory exact `target.sha256` and module-relative addresses. Structural
 schemas are available at:
 
 - [Format v1](../src/nativePatches/schema-v1.json)
 - [Format v2](../src/nativePatches/schema-v2.json)
+- [Format v3](../src/nativePatches/schema-v3.json)
 
 The schemas describe structure. The loader additionally validates SemVer,
 capabilities, paths, references, source hashes, lengths, instruction displacement
@@ -127,6 +201,15 @@ Example v2 address declarations (illustrative patterns, not a verified WH3 patch
 This fragment belongs inside a complete v2 manifest. Write sites can use the
 resolved `hook` symbol, while fixups can target `original_callee`.
 
+Format v3 retains v2 and adds bounded `table` parameters. `ascii_key_list` is
+also supported in formats v1 and v2, so scalar-only templates need not use v3.
+The loader requires `table-parameters.v1` for table storage. Each table declares
+named typed columns plus `count_at` and `entries_at` destinations in a validated
+block. ASCII cells occupy `max_bytes + 1` bytes including a zero terminator;
+numeric and boolean cells use four-byte slots, with boolean values stored in the
+first byte and three zero padding bytes. All destinations participate in block
+bounds, overlap, and capacity validation before launch.
+
 ## Compatibility across game updates
 
 An RVA is relative to the loaded executable base, so it already handles ASLR.
@@ -152,16 +235,17 @@ and waits for WHMM's release acknowledgement. Startup failure or cancellation
 aborts the newly created process. It does not attach patches to an already running
 game.
 
-The usual launch path is used when no native patches are discovered. Parameter
-defaults are materialized before activation; this initial implementation has no
-parameter editor or live patch controls.
+The usual launch path is used when no native patches are discovered. Scalar and
+table parameter values are validated and materialized before activation; native
+patch parameters do not expose live in-game controls.
 
 ## Limits and validation
 
-Limits are 8 MiB per manifest, 64 MiB across discovered manifests, 64 MiB per
-block, 512 MiB across selected block storage, and 256 selected packages. Zero
-blocks count toward storage limits. Compressed pack entries are decoded with
-output limits.
+Limits are 8 MiB per manifest/template, 64 MiB across discovered manifests,
+64 MiB per block, 512 MiB across selected block storage and contributions, 160
+MiB per encoded contribution, 64 MiB of resolved table/scalar inputs per
+contribution, and 256 selected packages. Zero blocks count toward storage limits.
+Compressed pack entries are decoded with output limits.
 
 Loader tests, native startup harnesses, and in-game feature tests verify different
 things. A successful loader or harness run does not establish gameplay behavior

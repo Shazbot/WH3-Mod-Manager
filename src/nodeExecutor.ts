@@ -49,6 +49,17 @@ import {
   normalizeVanillaPackPath,
 } from "./vanillaPackIndex/format";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
+import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
+import { readNativePatchPackEntry, type NativePatchPack } from "./nativePatches/planner";
+import {
+  createNativePatchFlowContribution,
+  normalizeNativePatchFlowInputs,
+  nativePatchFlowSha256,
+  parseNativePatchFlowTemplate,
+  MAX_NATIVE_PATCH_FLOW_CONTRIBUTION_BYTES,
+  MAX_NATIVE_PATCH_FLOW_INPUT_BYTES,
+  MAX_NATIVE_PATCH_FLOW_INPUT_ROWS,
+} from "./nativePatches/flowTemplate";
 import {
   getSchemaForGame,
   getReferencesForGame,
@@ -837,7 +848,7 @@ const loadExistingOutputPackFiles = async (
     cacheTableFilesForPack(existingPack, uniqueTableNames, executionContext);
   }
 
-  const outputFiles = existingPack.packedFiles
+  const outputFiles: NewPackedFile[] = existingPack.packedFiles
     .filter((packedFile) => packedFile.schemaFields && packedFile.tableSchema)
     .map((packedFile) => ({
       name: packedFile.name,
@@ -846,6 +857,25 @@ const loadExistingOutputPackFiles = async (
       version: packedFile.version,
       tableSchema: packedFile.tableSchema,
     }));
+
+  // Flow contributions are raw pack entries. Keep them when another Save Changes node or a later
+  // manual run appends to this output pack, even though they do not have parsed DB table schemas.
+  const contributionEntries = existingPack.packedFiles.filter((packedFile) =>
+    /^whmm_patch_contributions\/v1\/.+\.wh3patchcontrib\.json$/i.test(
+      normalizePackFilePathKey(packedFile.name).replace(/\\/g, "/"),
+    ),
+  );
+  if (contributionEntries.length > 0) {
+    const nativePatchPack: NativePatchPack = {
+      path: packPath,
+      priority: 0,
+      pack: { path: packPath, packedFiles: existingPack.packedFiles },
+    };
+    for (const entry of contributionEntries) {
+      const buffer = await readNativePatchPackEntry(nativePatchPack, entry, MAX_NATIVE_PATCH_FLOW_CONTRIBUTION_BYTES);
+      outputFiles.push({ name: entry.name, buffer, file_size: buffer.length });
+    }
+  }
 
   if (executionContext) {
     executionContext.outputPackByPath.set(packPath, outputFiles.map(cloneNewPackedFile));
@@ -880,6 +910,257 @@ const mergeOutputPackFiles = async (
     executionContext.outputPackByPath.set(packPath, mergedFiles.map(cloneNewPackedFile));
   }
   return mergedFiles;
+};
+
+type NativePatchFlowConfig = {
+  selectedPackName?: string;
+  templatePath?: string;
+  scalarValues?: Record<string, unknown>;
+  scalarOptionBindings?: Record<string, string>;
+  tableBindings?: string[];
+};
+
+const normalizedPackName = (value: string) => value.replace(/\\/g, "/").split("/").pop()?.toLowerCase() ?? "";
+
+const resolveNativePatchTemplatePackPath = (
+  config: NativePatchFlowConfig,
+  executionContext?: FlowExecutionContext,
+): string => {
+  const selectedName = config.selectedPackName?.trim();
+  const owningPath = executionContext?.flowSourcePackPath;
+  if (!selectedName) {
+    if (!owningPath) throw new Error("Native Patch needs a flow-owning pack or an explicitly selected template pack");
+    return resolveFlowSourcePackPath(owningPath, executionContext);
+  }
+  if (
+    owningPath &&
+    executionContext?.flowSourcePackName &&
+    executionContext.flowSourcePackName.toLowerCase() === selectedName.toLowerCase()
+  ) {
+    return resolveFlowSourcePackPath(owningPath, executionContext);
+  }
+  const nameKey = selectedName.toLowerCase();
+  const fileKey = normalizedPackName(selectedName);
+  const candidatePacks = [
+    ...appData.packsData.map((pack) => ({ name: pack.name, path: pack.path })),
+    ...appData.allMods.filter((mod) => !mod.isDeleted && !!mod.path).map((mod) => ({ name: mod.name, path: mod.path })),
+  ];
+  const matchesByPath = new Map<string, string>();
+  for (const pack of candidatePacks) {
+    if (pack.name.toLowerCase() !== nameKey && normalizedPackName(pack.path) !== fileKey) continue;
+    const resolvedPath = resolveFlowSourcePackPath(pack.path, executionContext);
+    const resolvedKey =
+      process.platform === "win32"
+        ? path.resolve(resolvedPath).replace(/\\/g, "/").toLowerCase()
+        : path.resolve(resolvedPath);
+    matchesByPath.set(resolvedKey, resolvedPath);
+  }
+  const matches = [...matchesByPath.values()];
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length === 0
+        ? `Selected template pack '${selectedName}' is not available in the current enabled packs`
+        : `Selected template pack name '${selectedName}' is ambiguous`,
+    );
+  }
+  return matches[0];
+};
+
+const getNativePatchTableCellValue = (value: unknown, type: string, where: string): unknown => {
+  if (type === "ascii") {
+    if (typeof value !== "string") throw new Error(`${where}: expected text`);
+    return value;
+  }
+  if (type === "bool") {
+    if (typeof value === "boolean") return value;
+    if (value === 1 || value === "1" || value === "true") return true;
+    if (value === 0 || value === "0" || value === "false") return false;
+    throw new Error(`${where}: expected true/false or 1/0`);
+  }
+  if (typeof value === "number") return value;
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${where}: expected a number`);
+  const text = value.trim();
+  const pattern = type === "u32" ? /^\d+$/ : type === "i32" ? /^-?\d+$/ : /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+  if (!pattern.test(text)) throw new Error(`${where}: expected a ${type} value`);
+  const number = Number(text);
+  if (!Number.isFinite(number)) throw new Error(`${where}: expected a finite ${type} value`);
+  return number;
+};
+
+const executeNativePatchFlowNode = async (
+  nodeId: string,
+  inputData: any,
+  rawConfig: unknown,
+  textValue: string,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> => {
+  const config = getNodeConfig<NativePatchFlowConfig>(rawConfig, textValue) ?? {};
+  if (!config.templatePath?.trim()) throw new Error("Select a native patch template before running this node");
+  const templatePackPath = resolveNativePatchTemplatePackPath(config, executionContext);
+  const sourcePack = await readPackCached(
+    templatePackPath,
+    { skipParsingTables: true, skipSorting: true },
+    executionContext,
+  );
+  const nativePack: NativePatchPack = {
+    path: templatePackPath,
+    pack: { path: sourcePack.path, packedFiles: sourcePack.packedFiles },
+    priority: 0,
+    displayName: sourcePack.name,
+  };
+  const normalizedTemplatePath = config.templatePath.replace(/\\/g, "/");
+  const templateKey = normalizePackFilePathKey(normalizedTemplatePath);
+  if (!/^whmm_patch_templates\/.+\.wh3patchtemplate\.json$/i.test(normalizedTemplatePath)) {
+    throw new Error("Native Patch templates must be under whmm_patch_templates/ and end in .wh3patchtemplate.json");
+  }
+  const templateEntries = sourcePack.packedFiles.filter(
+    (entry) => normalizePackFilePathKey(entry.name) === templateKey,
+  );
+  if (templateEntries.length !== 1) {
+    throw new Error(
+      `Expected exactly one template entry '${config.templatePath}' in ${sourcePack.name}, found ${templateEntries.length}`,
+    );
+  }
+  const templateBytes = await readNativePatchPackEntry(nativePack, templateEntries[0], 8 * 1024 * 1024);
+  const template = parseNativePatchFlowTemplate(templateBytes);
+  const parameterById = new Map(
+    (template.native_patch.parameters as Array<Record<string, any>>).map((parameter) => [parameter.id, parameter]),
+  );
+  const declaredTableInputIds = new Set(template.inputs.tables.map((input) => input.id));
+  for (const inputId of Object.keys(inputData?.tables ?? {})) {
+    if (!declaredTableInputIds.has(inputId)) throw new Error(`Native Patch template has no table input '${inputId}'`);
+  }
+
+  const tableInputs: Record<string, Array<Record<string, unknown>>> = {};
+  let aggregateRows = 0;
+  let aggregateInputBytes = 0;
+  for (const declaration of template.inputs.tables) {
+    const selection = inputData?.tables?.[declaration.id];
+    const parameter = parameterById.get(declaration.parameter)!;
+    const columns = parameter.columns as Array<{ name: string; type: string }>;
+    const tables = selection == null ? [] : selection.type === "TableSelection" ? (selection.tables ?? []) : null;
+    if (tables === null) throw new Error(`Native Patch input '${declaration.id}' requires a TableSelection connection`);
+    const rows: Array<Record<string, unknown>> = [];
+    for (const selected of tables) {
+      const packedFile = selected?.table;
+      if (!packedFile?.tableSchema?.fields)
+        throw new Error(`Native Patch input '${declaration.id}' contains a table without a schema`);
+      const columnIndexes = new Map<string, number>();
+      for (const column of columns) {
+        const columnIndex = packedFile.tableSchema.fields.findIndex(
+          (field: { name: string }) => field.name === column.name,
+        );
+        if (columnIndex < 0)
+          throw new Error(`Native Patch input '${declaration.id}' is missing required column '${column.name}'`);
+        columnIndexes.set(column.name, columnIndex);
+      }
+      const packedRows = getRowsForPackedFile(packedFile, executionContext);
+      aggregateRows += packedRows.length;
+      if (rows.length + packedRows.length > declaration.max_rows || aggregateRows > MAX_NATIVE_PATCH_FLOW_INPUT_ROWS) {
+        throw new Error(`Native Patch input '${declaration.id}' exceeds its bounded row count`);
+      }
+      for (const [rowIndex, packedRow] of packedRows.entries()) {
+        const row: Record<string, unknown> = {};
+        for (const column of columns) {
+          const cell = packedRow[columnIndexes.get(column.name)!];
+          const raw = cell?.resolvedKeyValue ?? cell?.fields?.[0]?.val;
+          const value = getNativePatchTableCellValue(
+            raw,
+            column.type,
+            `input '${declaration.id}' row ${rowIndex} column '${column.name}'`,
+          );
+          row[column.name] = value;
+          aggregateInputBytes += typeof value === "string" ? Buffer.byteLength(value, "utf8") : 8;
+          if (aggregateInputBytes > MAX_NATIVE_PATCH_FLOW_INPUT_BYTES) {
+            throw new Error("Native Patch table inputs exceed the 64 MiB aggregate input bound");
+          }
+        }
+        rows.push(row);
+      }
+    }
+    tableInputs[declaration.id] = rows;
+  }
+
+  const normalizedInputs = normalizeNativePatchFlowInputs(template, config.scalarValues ?? {}, tableInputs);
+  if (template.inputs.tables.length > 0 && Object.values(normalizedInputs.tables).every((rows) => rows.length === 0)) {
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        tableCount: 0,
+        sourceFiles: [],
+      },
+    };
+  }
+
+  const templateDirectory = path.posix.dirname(config.templatePath.replace(/\\/g, "/"));
+  const payloadsByPath = new Map<string, { path: string; sha256: string; bytes: Buffer }>();
+  let totalPayloadBytes = 0;
+  for (const block of template.native_patch.blocks as Array<Record<string, any>>) {
+    if (typeof block.source.file !== "string") continue;
+    const relativePayloadPath = block.source.file.replace(/\\/g, "/");
+    const packEntryPath = path.posix.normalize(path.posix.join(templateDirectory, relativePayloadPath));
+    const packEntryKey = normalizePackFilePathKey(packEntryPath);
+    const matches = sourcePack.packedFiles.filter((entry) => normalizePackFilePathKey(entry.name) === packEntryKey);
+    if (matches.length !== 1)
+      throw new Error(`Expected exactly one payload '${packEntryPath}' in ${sourcePack.name}, found ${matches.length}`);
+    const previous = payloadsByPath.get(relativePayloadPath.toLowerCase());
+    if (previous) {
+      if (previous.sha256 !== String(block.source.sha256).toLowerCase())
+        throw new Error(`Template reuses payload '${relativePayloadPath}' with conflicting hashes`);
+      continue;
+    }
+    const bytes = await readNativePatchPackEntry(nativePack, matches[0], block.size, block.size);
+    totalPayloadBytes += bytes.length;
+    if (totalPayloadBytes > MAX_NATIVE_PATCH_FLOW_INPUT_BYTES)
+      throw new Error("Native Patch template payloads exceed the 64 MiB aggregate payload bound");
+    payloadsByPath.set(relativePayloadPath.toLowerCase(), {
+      path: relativePayloadPath,
+      sha256: String(block.source.sha256).toLowerCase(),
+      bytes,
+    });
+  }
+
+  const provenance = {
+    sourcePack:
+      executionContext?.flowSourcePackName ||
+      normalizedPackName(executionContext?.flowSourcePackPath || templatePackPath),
+    flowFile: executionContext?.flowFileName || "manual-flow",
+    nodeId,
+  };
+  const contribution = createNativePatchFlowContribution({
+    template,
+    inputs: normalizedInputs,
+    provenance,
+    payloads: [...payloadsByPath.values()],
+  });
+  const content = Buffer.from(JSON.stringify(contribution), "utf8");
+  const outputIdentity = nativePatchFlowSha256(
+    Buffer.from(`${provenance.sourcePack}\0${provenance.flowFile}\0${nodeId}`, "utf8"),
+  );
+  const outputFileName = `whmm_patch_contributions/v1/${outputIdentity}.wh3patchcontrib.json`;
+  const outputTable = {
+    name: outputFileName,
+    fileName: outputFileName,
+    sourceFile: { name: sourcePack.name, path: templatePackPath },
+    outputFileName,
+    table: {
+      name: outputFileName,
+      file_size: content.length,
+      start_pos: 0,
+      buffer: content,
+    },
+  };
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: [outputTable],
+      tableCount: 1,
+      sourceFiles: [{ name: sourcePack.name, path: templatePackPath, loaded: true }],
+    },
+  };
 };
 
 export const executeNodeAction = async (request: NodeExecutionRequest): Promise<NodeExecutionResult> => {
@@ -998,6 +1279,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "customrowsinput":
         return await executeCustomRowsInputNode(nodeId, textValue, inputData, config);
+
+      case "nativepatch":
+        return await executeNativePatchFlowNode(nodeId, inputData, config, textValue, executionContext);
 
       case "deepclone":
         return await executeDeepCloneNode(nodeId, textValue, inputData, config, executionContext);

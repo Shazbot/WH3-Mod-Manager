@@ -1547,6 +1547,7 @@ declare global {
     | "getcountercolumn"
     | "customschema"
     | "readtsvfrompack"
+    | "nativepatch"
     | "customrowsinput"
     | "multifilter"
     | "addnewcolumn"
