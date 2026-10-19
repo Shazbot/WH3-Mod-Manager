@@ -343,6 +343,38 @@ describe("Skill", () => {
       expect(screen.getByText("Leech Upgraded")).not.toBeNull();
       fireEvent.mouseLeave(row);
       expect(screen.queryByText("Leech Upgraded")).toBeNull();
+
+      // After the stick delay the spell's tooltip stays up while the mouse moves into it.
+      fireEvent.mouseEnter(row);
+      const spellTooltip = () => screen.getByText("Leech Upgraded").closest(".ml-1")!;
+      const isSpellLockFilling = () =>
+        spellTooltip().querySelector('img[alt="lockBar"]')!.parentElement!.classList.contains("skillTooltipLockFill");
+      expect(isSpellLockFilling()).toBe(true);
+      act(() => void vi.advanceTimersByTime(350));
+      expect(isSpellLockFilling()).toBe(false);
+      // Crossing another spell's row on the way does not swap it out.
+      const cooldownRow = container.querySelectorAll('img[alt="tooltipAvailable"]')[1].closest("[id]")!;
+      fireEvent.mouseLeave(row);
+      fireEvent.mouseEnter(cooldownRow);
+      act(() => void vi.advanceTimersByTime(100));
+      fireEvent.mouseLeave(cooldownRow);
+      fireEvent.mouseEnter(spellTooltip());
+      act(() => void vi.advanceTimersByTime(1000));
+      expect(screen.getByText("Leech Upgraded")).not.toBeNull();
+      // Back into the skill's tooltip, which stays up.
+      fireEvent.mouseLeave(spellTooltip(), { relatedTarget: cooldownRow.parentElement });
+      act(() => void vi.advanceTimersByTime(150));
+      expect(screen.queryByText("Leech Upgraded")).toBeNull();
+      expect(cooldownRow.isConnected).toBe(true);
+
+      // Resting on another row does.
+      fireEvent.mouseEnter(row);
+      act(() => void vi.advanceTimersByTime(350));
+      fireEvent.mouseLeave(row);
+      fireEvent.mouseEnter(cooldownRow);
+      act(() => void vi.advanceTimersByTime(250));
+      expect(screen.queryByText("Leech Upgraded")).toBeNull();
+      expect(screen.getByText("Leech")).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }

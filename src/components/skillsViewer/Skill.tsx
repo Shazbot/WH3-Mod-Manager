@@ -260,6 +260,11 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const [lockBarRun, setLockBarRun] = useState(0);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
   const tooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
+  // A hovered spell's tooltip sticks the same way, so the mouse can move into it.
+  const [isSpellTooltipLocked, setIsSpellTooltipLocked] = useState(false);
+  const [spellLockBarRun, setSpellLockBarRun] = useState(0);
+  const spellTooltipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const spellTooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
   const [hoveredLevel, setHoveredLevel] = useState<number>();
   const [iconNaturalWidth, setIconNaturalWidth] = useState(0);
   const isTinyIcon = iconNaturalWidth > 0 && iconNaturalWidth <= skillIconBox.width / 2;
@@ -278,14 +283,40 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
 
   const isCheckingSkillRequirements = data.isCheckingSkillRequirements;
 
+  const closeEffectTooltip = useCallback(() => {
+    clearTimeout(spellTooltipTimer.current);
+    clearTimeout(spellTooltipHideTimer.current);
+    setIsSpellTooltipLocked(false);
+    setHoveredEffect(undefined);
+  }, []);
   const closeTooltip = useCallback(() => {
     clearTimeout(tooltipTimer.current);
     clearTimeout(tooltipHideTimer.current);
     setIsTooltipLocked(false);
     setIsTooltipOpen(false);
-    setHoveredEffect(undefined);
+    closeEffectTooltip();
     if (closeOpenTooltip == closeTooltip) closeOpenTooltip = undefined;
-  }, []);
+  }, [closeEffectTooltip]);
+  const openEffectTooltip = (effect: Effect, isSpell: boolean) => {
+    closeEffectTooltip();
+    setHoveredEffect(effect);
+    if (!isSpell) return;
+    setSpellLockBarRun((run) => run + 1);
+    spellTooltipTimer.current = setTimeout(() => setIsSpellTooltipLocked(true), tooltipStickDelayMs);
+  };
+  const showEffectTooltip = (effect: Effect, isSpell: boolean) => {
+    if (!isSpellTooltipLocked) return openEffectTooltip(effect, isSpell);
+    clearTimeout(spellTooltipHideTimer.current);
+    if (effect == hoveredEffect) return;
+    // A stuck spell tooltip only gives way to a row the mouse rests on, so a crooked move into it does not swap it out.
+    spellTooltipTimer.current = setTimeout(() => openEffectTooltip(effect, isSpell), tooltipAppearDelayMs);
+  };
+  const hideEffectTooltip = (lockedDelayMs: number) => {
+    if (!isSpellTooltipLocked) return closeEffectTooltip();
+    clearTimeout(spellTooltipTimer.current);
+    clearTimeout(spellTooltipHideTimer.current);
+    spellTooltipHideTimer.current = setTimeout(closeEffectTooltip, lockedDelayMs);
+  };
   const startStickDelay = useCallback(() => {
     setLockBarRun((run) => run + 1);
     tooltipTimer.current = setTimeout(() => setIsTooltipLocked(true), tooltipStickDelayMs);
@@ -525,6 +556,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             <div
               className="absolute ml-1"
               style={{ left: `calc(100% + ${skillTooltip.frameSliceX}px)`, top: -skillTooltip.frameSliceY }}
+              onMouseEnter={() => clearTimeout(spellTooltipHideTimer.current)}
+              onMouseLeave={() => hideEffectTooltip(tooltipHideDelayMs)}
             >
               <SkillSpellTooltip
                 ability={hoveredAbility}
@@ -533,6 +566,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 )}
                 icons={skillsData.icons}
                 tooltipFrame={data.tooltipFrame}
+                lockBar={
+                  <TooltipLockBar
+                    isLocked={isSpellTooltipLocked}
+                    run={spellLockBarRun}
+                    tooltipWidth={spellTooltip.width}
+                  />
+                }
               />
             </div>
           )}
@@ -589,13 +629,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                       key={effect.key + i}
                       id={effect.key + i}
                       className="flex items-center"
+                      onMouseEnter={hasTooltip ? () => showEffectTooltip(effect, isSpell) : undefined}
+                      onMouseLeave={hasTooltip ? () => hideEffectTooltip(tooltipLockedHideDelayMs) : undefined}
                       style={{
                         minHeight: skillTooltip.effectRowHeight,
                         paddingLeft: effectIconLeft,
                         gap: skillTooltip.effectTextX - skillTooltip.effectIconX - skillTooltip.effectIconSize,
                       }}
-                      onMouseEnter={hasTooltip ? () => setHoveredEffect(effect) : undefined}
-                      onMouseLeave={hasTooltip ? () => setHoveredEffect(undefined) : undefined}
                     >
                       <img
                         className="shrink-0 object-contain"

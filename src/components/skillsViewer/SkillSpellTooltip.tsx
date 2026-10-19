@@ -8,6 +8,7 @@ type SkillSpellTooltipProps = {
   compareAbility?: AbilityTooltipData;
   icons: Record<string, string>;
   tooltipFrame: string;
+  lockBar?: React.ReactNode;
 };
 
 /**
@@ -16,9 +17,10 @@ type SkillSpellTooltipProps = {
  * @param props.compareAbility The spell it upgrades, whose stats the changes are shown against.
  * @param props.icons Icon URLs keyed by path.
  * @param props.tooltipFrame The tooltip_frame art.
+ * @param props.lockBar The stick bar drawn on the tooltip's bottom edge.
  * @returns The tooltip.
  */
-const SkillSpellTooltip = ({ ability, compareAbility, icons, tooltipFrame }: SkillSpellTooltipProps) => (
+const SkillSpellTooltip = ({ ability, compareAbility, icons, tooltipFrame, lockBar }: SkillSpellTooltipProps) => (
   <div
     style={{
       width: spellTooltip.width,
@@ -61,6 +63,7 @@ const SkillSpellTooltip = ({ ability, compareAbility, icons, tooltipFrame }: Ski
       )}
     </div>
     <AbilityTooltipCard ability={ability} compareAbility={compareAbility} icons={icons} isFramed />
+    {lockBar}
   </div>
 );
 
