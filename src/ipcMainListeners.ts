@@ -6034,6 +6034,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.gamesToGameFolderPaths = appState.gameFolderPaths;
       for (const game of supportedGames) {
         const folderPaths = appData.gamesToGameFolderPaths[game];
+        // Older Shogun 2 configs used the game directory as a placeholder for Workshop content.
+        if (game === "shogun2" && folderPaths.gamePath && folderPaths.contentFolder === folderPaths.gamePath) {
+          folderPaths.contentFolder = nodePath.resolve(
+            folderPaths.gamePath,
+            "..",
+            "..",
+            "workshop",
+            "content",
+            gameToSteamId[game],
+          );
+        }
         folderPaths.customModFolders = folderPaths.customModFolders || [];
         folderPaths.modSourceOrder = normalizeModSourceOrder(
           folderPaths,
@@ -9037,11 +9048,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (fs.existsSync(calculatedContentPath)) {
           appData.gamesToGameFolderPaths[game].contentFolder = calculatedContentPath;
           mainWindow?.webContents.send("setContentFolder", calculatedContentPath);
-        }
-        // shogun 2 doesn't use the content folder, puts subscribed to mods directly into data
-        if (requestedGame == "shogun2") {
-          appData.gamesToGameFolderPaths[game].contentFolder = wh3FolderPath;
-          mainWindow?.webContents.send("setContentFolder", wh3FolderPath);
         }
         refreshModsIfFoldersValid(requestedGame);
       }
