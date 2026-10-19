@@ -10,6 +10,11 @@ import {
   setFilter,
   createOnGameStartPreset,
   setIsHelpOpen,
+  toggleIsAutoStartCustomBattleEnabled,
+  toggleIsChangingGameProcessPriority,
+  toggleIsScriptLoggingEnabled,
+  toggleIsSkipIntroMoviesEnabled,
+  toggleMakeUnitsGenerals,
 } from "../appSlice";
 import { UpdateNotification } from "./UpdateNotification";
 import OptionsDrawer from "./OptionsDrawer";
@@ -22,7 +27,7 @@ import CompatScreen from "./CompatScreen";
 import RequiredMods from "./RequiredMods";
 import localizationContext from "../localizationContext";
 import Help from "./Help";
-import { gameToPackWithDBTablesName } from "../supportedGames";
+import { gameToPackWithDBTablesName, gameToSupportedGameOptions } from "../supportedGames";
 import { isWorkshopMod } from "../modSources";
 import { toPresetEntries } from "../config/presetEntries";
 import { Modal } from "../flowbite";
@@ -83,6 +88,7 @@ const Sidebar = memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
@@ -119,6 +125,7 @@ const Sidebar = memo(() => {
   const [isPlayDelayPending, setIsPlayDelayPending] = useState(false);
   const [isContinueDelayPending, setIsContinueDelayPending] = useState(false);
   const [isTreeMenuOpen, setIsTreeMenuOpen] = useState(false);
+  const [gameStartMenuPosition, setGameStartMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [isWorkshopRepairModalOpen, setIsWorkshopRepairModalOpen] = useState(false);
   const [workshopRepairCandidateIds, setWorkshopRepairCandidateIds] = useState<string[]>([]);
   const [selectedWorkshopRepairIds, setSelectedWorkshopRepairIds] = useState<string[]>([]);
@@ -137,6 +144,7 @@ const Sidebar = memo(() => {
   const continueDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
   const updateNotificationTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
   const treeMenuRef = useRef<HTMLDivElement | null>(null);
+  const gameStartMenuRef = useRef<HTMLDivElement | null>(null);
   const previousIsWH3RunningRef = useRef(isWH3Running);
   const isShiftDownRef = useRef(false);
   const isControlDownRef = useRef(false);
@@ -147,6 +155,7 @@ const Sidebar = memo(() => {
 
   const canOpenSkillsWindow = currentGame === "wh3" && skillTreesDisplayMode === "window";
   const canOpenTechTreesWindow = currentGame === "wh3" && technologyTreesDisplayMode === "window";
+  const gameStartOptions = gameToSupportedGameOptions[currentGame];
 
   useEffect(() => {
     if (!isTreeMenuOpen) return;
@@ -161,6 +170,59 @@ const Sidebar = memo(() => {
       document.removeEventListener("mousedown", onPointerDown);
     };
   }, [isTreeMenuOpen]);
+
+  useEffect(() => {
+    if (!gameStartMenuPosition) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (gameStartMenuRef.current?.contains(event.target as Node)) return;
+      setGameStartMenuPosition(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setGameStartMenuPosition(null);
+        document.getElementById("playGame")?.focus();
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [gameStartMenuPosition]);
+
+  useEffect(() => {
+    if (!gameStartMenuPosition) return;
+    gameStartMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [gameStartMenuPosition]);
+
+  const openGameStartMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    if (gameStartOptions.length === 0) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const left = event.clientX || bounds.left;
+    const top = event.clientY || bounds.bottom;
+    setGameStartMenuPosition({
+      left: Math.max(8, Math.min(left, window.innerWidth - 296)),
+      top: Math.max(8, Math.min(top, window.innerHeight - 280)),
+    });
+  };
+
+  const renderGameStartMenuOption = (key: string, label: string, checked: boolean, onToggle: () => void) => (
+    <button
+      key={key}
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-white hover:bg-gray-700 focus:bg-gray-700 focus:outline-none"
+      onClick={onToggle}
+    >
+      <input type="checkbox" readOnly checked={checked} className="pointer-events-none mt-0.5 accent-blue-500" />
+      <span>{label}</span>
+    </button>
+  );
 
   const playGameClicked = useCallback(
     (forcedDelayTime?: number) => {
@@ -984,10 +1046,14 @@ const Sidebar = memo(() => {
           <div className="flex flex-col items-center">
             <button
               id="playGame"
+              aria-haspopup={gameStartOptions.length > 0 ? "menu" : undefined}
+              aria-expanded={gameStartMenuPosition !== null}
               className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto ${
                 (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") || ""
               }`}
+              onContextMenu={openGameStartMenu}
               onClick={(e) => {
+                setGameStartMenuPosition(null);
                 if (e.ctrlKey) {
                   terminateGameClicked();
                   return;
@@ -1032,6 +1098,55 @@ const Sidebar = memo(() => {
                 </div>
               )}
             </button>
+
+            {gameStartMenuPosition && (
+              <div
+                ref={gameStartMenuRef}
+                role="menu"
+                aria-label={localized.gameStartParameters || "Game Start Parameters"}
+                className="fixed z-[250] max-h-[calc(100vh-1rem)] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg"
+                style={{ left: gameStartMenuPosition.left, top: gameStartMenuPosition.top }}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                <div className="border-b border-gray-700 px-3 py-2 text-xs font-semibold uppercase text-gray-400">
+                  {localized.gameStartParameters || "Game Start Parameters"}
+                </div>
+                {gameStartOptions.includes("MakeUnitsGenerals") &&
+                  renderGameStartMenuOption(
+                    "make-units-generals",
+                    localized.makeCustomBattleGenerals || "Make units generals",
+                    !!isMakeUnitsGeneralsEnabled,
+                    () => dispatch(toggleMakeUnitsGenerals()),
+                  )}
+                {gameStartOptions.includes("SkipIntroMovies") &&
+                  renderGameStartMenuOption(
+                    "skip-intro-movies",
+                    localized.skipIntroMovies || "Skip intro movies",
+                    !!isSkipIntroMoviesEnabled,
+                    () => dispatch(toggleIsSkipIntroMoviesEnabled()),
+                  )}
+                {gameStartOptions.includes("ScriptLogging") &&
+                  renderGameStartMenuOption(
+                    "script-logging",
+                    localized.enableScriptLogging || "Enable script logging",
+                    !!isScriptLoggingEnabled,
+                    () => dispatch(toggleIsScriptLoggingEnabled()),
+                  )}
+                {gameStartOptions.includes("AutoStartCustomBattle") &&
+                  renderGameStartMenuOption(
+                    "auto-start-custom-battle",
+                    localized.autoStartCustomBattles || "Auto-start custom battles",
+                    !!isAutoStartCustomBattleEnabled,
+                    () => dispatch(toggleIsAutoStartCustomBattleEnabled()),
+                  )}
+                {renderGameStartMenuOption(
+                  "game-process-priority",
+                  localized.changeGameProcessPriority || "Change game process priority",
+                  !!isChangingGameProcessPriority,
+                  () => dispatch(toggleIsChangingGameProcessPriority()),
+                )}
+              </div>
+            )}
 
             <div className="mt-2 w-36 h-7 relative">
               <button
