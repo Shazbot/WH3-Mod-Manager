@@ -1,7 +1,7 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { ReactFlowProvider } from "@xyflow/react";
+import { Position, ReactFlow, ReactFlowProvider, useStoreApi } from "@xyflow/react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +11,7 @@ import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
 import { FlowOptionsContext, FlowSourcePackContext } from "../../src/nodeGraph/nodes/shared";
 import { NativePatchFlowNode } from "../../src/nodeGraph/nodes/renderers";
 import { patchNodeData, withNodeEditorActions } from "../../src/nodeGraph/editorState";
+import { reactFlowNodeTypes } from "../../src/nodeGraph/nodeTypes";
 
 const descriptor = {
   path: "whmm_patch_templates/example.wh3patchtemplate.json",
@@ -59,9 +60,95 @@ const previousApi = window.api;
 
 afterEach(() => {
   Object.defineProperty(window, "api", { configurable: true, value: previousApi });
+  vi.unstubAllGlobals();
 });
 
 describe("Native Patch flow controls", () => {
+  it("starts drags from the chosen output and keeps legacy connections on the patch output", async () => {
+    vi.stubGlobal(
+      "DOMMatrixReadOnly",
+      class {
+        m22 = 1;
+      },
+    );
+    Object.defineProperty(window, "api", {
+      configurable: true,
+      value: {
+        listNativePatchFlowTemplates: vi.fn().mockResolvedValue({ success: true, templates: [descriptor], errors: [] }),
+      },
+    });
+    let flowStore!: ReturnType<typeof useStoreApi>;
+    const StoreProbe = () => {
+      flowStore = useStoreApi();
+      return null;
+    };
+    const store = configureStore({ reducer: { app: appReducer }, preloadedState: { app: initialState as any } });
+    const { container } = render(
+      <Provider store={store}>
+        <FlowSourcePackContext.Provider value={{ path: "owner.pack", name: "owner.pack" }}>
+          <ReactFlowProvider>
+            <StoreProbe />
+            <div style={{ width: 800, height: 600 }}>
+              <ReactFlow
+                nodeTypes={reactFlowNodeTypes}
+                nodes={[
+                  {
+                    id: "patch",
+                    type: "nativepatch",
+                    position: { x: 0, y: 0 },
+                    data: {
+                      label: "Native Patch",
+                      type: "nativepatch",
+                      selectedPackName: "",
+                      templatePath: descriptor.path,
+                      scalarValues: {},
+                      scalarOptionBindings: {},
+                      tableBindings: [],
+                      outputType: "TableSelection",
+                      onUpdateNodeData: vi.fn(),
+                    },
+                  },
+                ]}
+                edges={[]}
+                connectionDragThreshold={0}
+                autoPanOnConnect={false}
+              />
+            </div>
+          </ReactFlowProvider>
+        </FlowSourcePackContext.Provider>
+      </Provider>,
+    );
+    await waitFor(() =>
+      expect(container.querySelector('[data-handleid="output-schema:initial_mapping"]')).not.toBeNull(),
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const handles = [...container.querySelectorAll<HTMLElement>(".react-flow__handle.source")];
+    expect(handles.map((handle) => handle.dataset.handleid)).toEqual(["output", "output-schema:initial_mapping"]);
+
+    // jsdom has no layout or ResizeObserver measurements. Supply the bounds React Flow normally measures.
+    const node = flowStore.getState().nodeLookup.get("patch")!;
+    node.internals.handleBounds = {
+      source: handles.map((handle, index) => ({
+        id: handle.dataset.handleid!,
+        nodeId: "patch",
+        type: "source" as const,
+        position: Position.Right,
+        x: 300,
+        y: 100 + index * 80,
+        width: 12,
+        height: 12,
+      })),
+      target: [],
+    };
+    // React Flow uses the first measured handle for older edges whose sourceHandle is null.
+    expect(node.internals.handleBounds.source![0].id).toBe("output");
+    for (const handle of handles) {
+      fireEvent.mouseDown(handle, { button: 0, clientX: 300, clientY: 100 });
+      expect(flowStore.getState().connection.fromHandle?.id).toBe(handle.dataset.handleid);
+      fireEvent.mouseUp(document, { button: 0, clientX: 300, clientY: 100 });
+    }
+  });
+
   it("persists normalized key-list edits while retaining a trailing newline draft before blur", async () => {
     const listTemplates = vi
       .fn()

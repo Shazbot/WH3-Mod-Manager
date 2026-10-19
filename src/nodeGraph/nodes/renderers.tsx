@@ -5589,7 +5589,7 @@ export const NativePatchFlowNode: React.FC<{
   const declaredTableBindings = selectedTemplate?.tables.map((table) => table.id) ?? tableBindings;
   useEffect(() => {
     updateNodeInternals(id);
-  }, [id, updateNodeInternals, declaredTableBindings.join("\0")]);
+  }, [id, updateNodeInternals, declaredTableBindings.join("\0"), selectedTemplate]);
 
   const updateNode = (patch: Partial<NativePatchFlowNodeData>) =>
     dispatchNodeDataUpdate(data, { nodeId: id, ...patch } as any);
@@ -5669,6 +5669,15 @@ export const NativePatchFlowNode: React.FC<{
 
   return (
     <div className="bg-gray-700 border-2 border-violet-600 rounded-lg p-4 min-w-[300px] max-w-[440px]">
+      {/* Keep first so legacy connections without a source handle ID still use the patch output. */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="output"
+        className="w-3 h-3 bg-teal-500"
+        data-output-type="TableSelection"
+        title="Configured patch for Save Changes"
+      />
       {declaredTableBindings.map((binding, index) => (
         <React.Fragment key={binding}>
           {!selectedTemplate && (
@@ -5878,12 +5887,6 @@ export const NativePatchFlowNode: React.FC<{
           ?
         </span>
       </div>
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-teal-500"
-        data-output-type="TableSelection"
-      />
     </div>
   );
 };
