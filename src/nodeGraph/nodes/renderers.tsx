@@ -5862,7 +5862,21 @@ export const NativePatchFlowNode: React.FC<{
         </>
       )}
       <div className="mt-3 text-xs text-gray-400">
-        Leave contribution output unconnected to apply at startup, or connect Save Changes to export it.
+        Connect Save Changes to save the configured patch into a pack. Leave patch output unconnected to apply at game
+        startup.
+        <span
+          tabIndex={0}
+          aria-label="How saving and startup application work"
+          className="ml-1 px-1 text-[10px] leading-none text-gray-300 border border-gray-500 rounded-full cursor-help select-none align-middle focus:outline-none focus:ring-1 focus:ring-blue-500"
+          title={
+            "Run manually with Save Changes: the current resolved scalar values and table rows, including flow option values, are saved with the patch template and payload in the output pack. WHMM applies those saved values when the pack is enabled for launch. Changing the source inputs does not update that pack until the flow is run and saved again.\n\n" +
+            "Run manually without Save Changes: the node validates its inputs and builds a preview only. It does not apply a patch or retain it for the next launch.\n\n" +
+            "At game startup: an unconnected patch output sends the inputs resolved for that launch directly to the startup loader, without saving a patch pack. With Save Changes connected, WHMM generates the output pack or reuses valid cached output, then loads its saved patch settings.\n\n" +
+            "Schema output connections do not prevent direct startup application."
+          }
+        >
+          ?
+        </span>
       </div>
       <Handle
         type="source"
