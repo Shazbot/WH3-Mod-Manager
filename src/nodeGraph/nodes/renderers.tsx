@@ -5839,7 +5839,9 @@ export const NativePatchFlowNode: React.FC<{
           </div>
         </>
       )}
-      <div className="mt-3 text-xs text-gray-400">Output: TableSelection contribution for Save Changes</div>
+      <div className="mt-3 text-xs text-gray-400">
+        Leave output unconnected to apply at game startup, or connect Save Changes to export a contribution.
+      </div>
       <Handle
         type="source"
         position={Position.Right}

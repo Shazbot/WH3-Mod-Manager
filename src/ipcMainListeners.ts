@@ -378,6 +378,7 @@ import {
 import { collator } from "./utility/packFileSorting";
 import { buildGameLaunchArguments, launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
 import { buildNativePatchLaunchPlan, readNativePatchPackEntry, type NativePatchPack } from "./nativePatches/planner";
+import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
 import { parseNativePatchFlowTemplate } from "./nativePatches/flowTemplate";
 import { createFlowExecutionContext } from "./flowExecutionSupport";
 import { launchNativePatchPlan } from "./nativePatches/launch";
@@ -6276,17 +6277,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     createdFlowPackFileNames: string[];
     /** Packs a flow wrote a full replacement for, which are left out of the mod list. */
     replacedPackPaths?: string[];
+    /** Terminal native contributions live in memory and must be rebuilt on each launch. */
+    hasRuntimeNativePatchContributions?: boolean;
   }
   interface FlowExecutionCache {
     version: number;
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
+  // 9: terminal native patch nodes register contributions in memory rather than saved pack files.
   // 8: native patch template selection and contribution generation now affect saved flow outputs.
   // 7: automatic flow execution uses saved pack content only; also invalidate v6 entries that included staged data.
   // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
   // Changes node's configured name instead.
-  const FLOW_EXECUTION_CACHE_VERSION = 8;
+  const FLOW_EXECUTION_CACHE_VERSION = 9;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
@@ -13623,10 +13627,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         let enabledModsWithFlows: Mod[] = [];
         let createdFlowPacks: string[] = [];
         let flowExecutionHadErrors = false;
+        const runtimeNativePatchContributions: NativePatchFlowRuntimeContribution[] = [];
         if (flowExecutionSignatureHash) {
           const flowCache = await loadFlowExecutionCache();
           const cachedEntry = flowCache.byGame[appData.currentGame];
-          if (cachedEntry && cachedEntry.signatureHash === flowExecutionSignatureHash) {
+          if (
+            cachedEntry &&
+            cachedEntry.signatureHash === flowExecutionSignatureHash &&
+            !cachedEntry.hasRuntimeNativePatchContributions
+          ) {
             if (cachedEntry.modsWithFlows.length === 0) {
               shouldExecuteFlows = false;
               console.log("Flow execution cache hit: no flow mods found in previous launch.");
@@ -13663,7 +13672,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               }
             }
           } else {
-            console.log("Flow execution cache miss: signature changed or no prior cache entry.");
+            console.log(
+              "Flow execution cache miss: signature changed, runtime contributions need rebuilding, or no prior entry.",
+            );
           }
         } else {
           console.log("Flow execution cache unavailable: failed to build signature, executing flows normally.");
@@ -13740,6 +13751,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 replacedPackPaths: flowReplacedPackPaths,
                 hadErrors,
                 nativePatchFlowError,
+                nativePatchContributions,
               } = await executeFlowsForPack(
                 packPathToUse,
                 "", // No target path needed
@@ -13749,6 +13761,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 packPathSubstitutes,
               );
               createdFlowPacks.push(...createdPackPaths);
+              runtimeNativePatchContributions.push(...nativePatchContributions);
               for (const replacedPath of flowReplacedPackPaths) replacedPackPaths.add(replacedPath);
               flowExecutionHadErrors = flowExecutionHadErrors || hadErrors;
               if (nativePatchFlowError) {
@@ -13778,6 +13791,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 })),
                 createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))],
                 replacedPackPaths: [...replacedPackPaths],
+                hasRuntimeNativePatchContributions: runtimeNativePatchContributions.length > 0,
               };
               await saveFlowExecutionCache();
             } else {
@@ -13980,6 +13994,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             runId: randomUUID(),
             targetPath: gameExecutablePath,
             enabledPacks,
+            runtimeContributions: runtimeNativePatchContributions,
             onSkippedPackage: reportNativePatchSkip,
             effectiveContentPacks: async () => {
               const vanillaPaths = getVanillaPackPathsInLoadOrder().filter(

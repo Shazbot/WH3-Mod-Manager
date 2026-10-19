@@ -1,8 +1,26 @@
 # Native target-unit flag audit
 
-Status: expanded flag storage is blocked. The `target_unit_sets` flow template is
-not runnable and must not be presented as a working template until the unresolved
-native consumers and object lifetime are traced.
+Status: experimental WHMM integration is available in the
+[target-unit-sets example](examples/target-unit-sets/). The updated upstream
+`expanded/` implementation provides sidecar storage and lifecycle hooks. The
+exporter now derives the template identity from `native_patch.package`, fixing
+WHMM's identity rejection. This supersedes the earlier implementation blocker
+below; it does not close the remaining validation work.
+
+The current template has 39 writes, 210 fixups, and 103 runtime-function records.
+WHMM integration checks cover parsing, editable mapping rows, contribution
+serialization, and Save Changes. Full native integration, actual generated-wrapper
+Windows unwind behavior, targeting, teardown, and persistence validation remain
+outstanding and were explicitly deferred for this integration.
+
+The runtime template does not require a whole-executable hash. Expected-byte
+checks remain enabled at every hook; an offline v9c image already changing those
+sites will fail those checks. Addresses and object layouts remain build-specific.
+
+## Historical v9a audit
+
+The observations below describe the earlier prototype, not the updated expanded
+implementation.
 
 The supplied prototype targets the preserved original executable with SHA-256
 `9bd58c63bd7fc5c9909b3d3d9b6b7a6ae4eac784369bf91a9e53c3e9f42be496`. Its v9a

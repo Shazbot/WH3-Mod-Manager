@@ -7,6 +7,7 @@ they do not install patches or modify game files.
 ```sh
 python3 -B tools/nativePatchPackages/export.py
 python3 -B tools/nativePatchPackages/export_logging.py
+python3 -B tools/nativePatchPackages/export_target_unit_sets.py
 ```
 
 The first command exports the independent projectile-casting and officer-death
@@ -14,12 +15,19 @@ packages. The second exports the v7d native logging package, using the existing
 `data/wh3_native_logging.pack` as its companion. Enable that pack with the native
 logging manifest. The Lua asset requirement checks its decoded bootstrap bytes.
 
+The third command exports the experimental target-unit template and its editable
+flag/unit-set flow into `native-patches/target-unit-sets/`. Pack its
+`whmm_patch_templates/` and `whmmflows/` directories together. See the
+[flow example](../../docs/examples/target-unit-sets/) for input and executable
+requirements. This template uses expected hook-byte checks without a runtime
+whole-executable hash requirement.
+
 Defaults point to this workspace's supplied WH3 project/game files. See `--help`
 for alternate source, original, companion, dependency and output paths. The logging
 export also reads the hash-verified v7d reference executable to compare the emitted
 backend with its previously validated code; it does not execute that image.
 
-Both exporters use Python Capstone and Keystone. Logging also uses GCC and GNU
+The exporters use Python Capstone and Keystone. Logging and target unit sets also use GCC and GNU
 binutils with the upstream compiler settings. The analysis libraries are needed
 only while exporting. `--analysis-deps` selects their import directory. Logging
 checks the original temporary analysis directory, then the workspace cache.

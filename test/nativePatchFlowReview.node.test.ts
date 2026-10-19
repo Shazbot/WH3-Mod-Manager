@@ -10,6 +10,7 @@ import {
   parseNativePatchFlowTemplate,
 } from "../src/nativePatches/flowTemplate";
 import { buildNativePatchLaunchPlan, type NativePatchPack } from "../src/nativePatches/planner";
+import type { NativePatchFlowRuntimeContribution } from "../src/nativePatches/flowTemplate";
 
 const directories: string[] = [];
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
@@ -105,12 +106,13 @@ const pack = (entries: Record<string, Buffer>, label: string): NativePatchPack =
   fs.writeFileSync(packPath, Buffer.concat(Object.values(entries)));
   return { path: packPath, priority: 0, displayName: label, pack: { path: packPath, packedFiles } };
 };
-const prepare = (packs: NativePatchPack[]) =>
+const prepare = (packs: NativePatchPack[], runtimeContributions: NativePatchFlowRuntimeContribution[] = []) =>
   buildNativePatchLaunchPlan({
     runId: "flow-review",
     targetPath: "unused-for-unhashed-fixture.exe",
     enabledPacks: packs,
     effectiveContentPacks: packs,
+    runtimeContributions,
   });
 const entry = "whmm_patch_contributions/v1/review.wh3patchcontrib.json";
 const row = (flag: string, unit_set: string) => ({ flag, unit_set });
@@ -120,6 +122,41 @@ afterEach(() => {
 });
 
 describe("native patch flow reviewer regressions", () => {
+  const runtime = (rows: Array<Record<string, unknown>>): NativePatchFlowRuntimeContribution => ({
+    sourcePackPath: "terminal-source.pack",
+    sourceModName: "Terminal source",
+    fileName: entry,
+    bytes: contribution(fixture(), rows, "terminal"),
+  });
+
+  it("merges terminal and saved providers through the same composition rules", async () => {
+    const saved = pack({ [entry]: contribution(fixture(), [row("saved_flag", "saved_set")], "saved") }, "saved");
+    const plan = await prepare([saved], [runtime([row("terminal_flag", "terminal_set")])]);
+    expect(plan?.packages).toHaveLength(1);
+    const bytes = Buffer.from(plan!.packages[0].blocks[0].bytesBase64, "base64");
+    expect(bytes.readUInt32LE(0)).toBe(2);
+    expect(bytes.subarray(4, 14).toString("ascii")).toBe("saved_flag");
+    expect(bytes.subarray(36, 49).toString("ascii")).toBe("terminal_flag");
+  });
+
+  it("rejects conflicting saved and terminal definitions and names both providers", async () => {
+    const saved = pack({ [entry]: contribution(fixture(), [row("same_flag", "saved_set")], "saved") }, "saved");
+    await expect(prepare([saved], [runtime([row("same_flag", "terminal_set")])])).rejects.toThrow(
+      /saved.*terminal|terminal.*saved/,
+    );
+  });
+
+  it("validates terminal contribution bytes rather than trusting flow output", async () => {
+    const invalid = runtime([row("flag", "set")]);
+    invalid.bytes = Buffer.from('{"invalid":true}');
+    await expect(prepare([], [invalid])).rejects.toThrow(/invalid.*missing required field/);
+  });
+
+  it("does not retain terminal contributions between launch plans", async () => {
+    expect((await prepare([], [runtime([row("flag", "set")])]))?.packages).toHaveLength(1);
+    expect(await prepare([])).toBeUndefined();
+  });
+
   it("uses the validated manifest defaults when optional arrays are omitted", () => {
     const root = fixture();
     root.inputs.tables = [];

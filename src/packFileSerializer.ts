@@ -52,6 +52,7 @@ import bs from "binary-search";
 import { decompress } from "@mongodb-js/zstd";
 import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
+import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
 import {
   PreparedFlow,
   buildAutomaticFlowExecutionId,
@@ -1535,6 +1536,7 @@ export const executeFlowsForPack = async (
   replacedPackPaths: string[];
   hadErrors: boolean;
   nativePatchFlowError?: string;
+  nativePatchContributions: NativePatchFlowRuntimeContribution[];
 }> => {
   void pathTarget;
   const createdPackPaths = new Set<string>();
@@ -1542,6 +1544,7 @@ export const executeFlowsForPack = async (
   const replacedPackPaths = new Set<string>();
   let hadErrors = false;
   let nativePatchFlowError: string | undefined;
+  const nativePatchContributions: NativePatchFlowRuntimeContribution[] = [];
   const packStartTime = performance.now();
   const isDebug = isFlowExecutionDebugEnabled();
   const executionContext = createFlowExecutionContext(isDebug);
@@ -1571,6 +1574,7 @@ export const executeFlowsForPack = async (
         createdPackPaths: Array.from(createdPackPaths),
         replacedPackPaths: Array.from(replacedPackPaths),
         hadErrors,
+        nativePatchContributions,
       };
     }
     console.log(`Found ${flowFiles.length} flow files in pack`);
@@ -1620,6 +1624,20 @@ export const executeFlowsForPack = async (
             )}ms`,
           );
           console.log(`Executed ${result.successCount}/${result.totalExecuted} nodes`);
+          for (const node of preparedFlow.nodes) {
+            if (node.type !== "nativepatch" || preparedFlow.connections.some((edge) => edge.sourceId === node.id))
+              continue;
+            const output = result.executionResults.get(node.id);
+            if (!output?.success) continue;
+            for (const file of output.data?.tables ?? []) {
+              nativePatchContributions.push({
+                sourcePackPath: pathSource,
+                sourceModName: packName,
+                fileName: file.outputFileName,
+                bytes: file.table.buffer,
+              });
+            }
+          }
           for (const [, nodeResult] of result.executionResults.entries()) {
             if (nodeResult.success && nodeResult.data?.type === "SaveResult") {
               const savedPath = nodeResult.data.savedTo;
@@ -1674,6 +1692,7 @@ export const executeFlowsForPack = async (
     replacedPackPaths: Array.from(replacedPackPaths),
     hadErrors,
     nativePatchFlowError,
+    nativePatchContributions,
   };
 };
 export const writeCopyPack = async (

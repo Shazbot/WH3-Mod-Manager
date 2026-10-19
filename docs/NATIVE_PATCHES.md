@@ -8,7 +8,8 @@ and flow replacements.
 Flow-driven native patches use declarative templates in
 `whmm_patch_templates/**/*.wh3patchtemplate.json`. A flow selects a validated
 template, binds its declared inputs, and sends an inspectable contribution through
-the normal Save Changes node. Templates contain no build scripts or executable
+the normal Save Changes node, or registers it directly for startup when its output
+is unconnected. Templates contain no build scripts or executable
 replacement logic.
 
 Patches change the new game process's memory. They do not rewrite `Warhammer3.exe`.
@@ -113,9 +114,17 @@ and leaves the following three bytes zero.
 
 The node emits a raw file under `whmm_patch_contributions/v1/`, carrying the
 validated template, hashed payload bytes, resolved input values, and flow/node
-provenance. Save Changes writes that file into its output pack. At launch WHMM
-reads contributions from the final enabled packs after flow generation, verifies
-them again, and combines matching template versions into one package before
+provenance. Save Changes writes that file into its output pack. If the Native
+Patch node has no outgoing connections, a successful startup flow instead passes
+its contribution directly to the launch planner without creating a pack. These
+terminal flows run again on each launch; their contributions are not persisted in
+the flow output cache. Manual editor execution previews the contribution; startup
+application requires the flow in an enabled pack. Disabled, pruned, empty, or
+failed flows register no terminal contribution.
+
+At launch WHMM reads saved contributions from the final enabled packs after flow
+generation and validates terminal contributions through the same parser and merge
+rules. It combines matching template versions into one package before
 checking conflicts with standalone patches. Malformed templates, incompatible
 versions, conflicting group definitions, standalone package ID collisions, and
 input capacity errors fail launch before standalone `on_failure` retry handling.
@@ -134,10 +143,13 @@ scripts or replace the game's executable.
 The [data-only example](examples/native-patch-flow/) shows a flow that authors
 mapping rows with Custom Schema and Custom Rows nodes and passes them through a
 template. It has no hook or write site and produces no gameplay change. It
-documents the input plumbing only. The requested `target_unit_sets` expansion is
-blocked pending the complete native object lifecycle audit described in the
-[target-unit flag audit](native-patch-target-unit-flag-audit.md); no runnable
-template is included for it.
+documents the input plumbing only. The separate experimental
+[target-unit-sets example](examples/target-unit-sets/) includes the expanded native
+payload and an editable flag/unit-set mapping flow. Its template identity matches
+the native package (`wh3.target-unit-sets`, version `0.1.0`). It checks expected hook
+bytes without requiring a whole-executable hash; addresses and object layouts
+remain build-specific. Runtime and gameplay validation remain outstanding
+as recorded in the [target-unit flag audit](native-patch-target-unit-flag-audit.md).
 
 ## Format versions
 

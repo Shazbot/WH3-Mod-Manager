@@ -24,6 +24,7 @@ import {
   MAX_NATIVE_PATCH_FLOW_INPUT_BYTES,
   MAX_NATIVE_PATCH_FLOW_INPUT_ROWS,
   NativePatchFlowContribution,
+  type NativePatchFlowRuntimeContribution,
   nativePatchFlowCanonicalValue,
   parseNativePatchFlowContribution,
 } from "./flowTemplate";
@@ -816,6 +817,7 @@ const nativePatchFlowError = (
 const resolveFlowContributionCandidates = async (
   packs: NativePatchPack[],
   standaloneCandidates: Candidate[],
+  runtimeContributions: NativePatchFlowRuntimeContribution[],
 ): Promise<Candidate[]> => {
   const grouped = new Map<string, FlowContributionCandidate[]>();
   const identityById = new Map<
@@ -831,13 +833,39 @@ const resolveFlowContributionCandidates = async (
   let aggregateInputRows = 0;
   let aggregateInputBytes = 0;
   let contributionCount = 0;
-  for (const pack of packs) {
-    const entries = pack.pack.packedFiles.filter((entry) => {
-      const name = canonicalPackName(entry.name);
-      return /^whmm_patch_contributions\/v1\//i.test(name) && name.toLowerCase().endsWith(".wh3patchcontrib.json");
+  const sources: Array<{ pack: NativePatchPack; entries: Array<{ entry: PackedFile; bytes?: Buffer }> }> = packs.map(
+    (pack) => ({
+      pack,
+      entries: pack.pack.packedFiles
+        .filter((entry) => {
+          const name = canonicalPackName(entry.name);
+          return /^whmm_patch_contributions\/v1\//i.test(name) && name.toLowerCase().endsWith(".wh3patchcontrib.json");
+        })
+        .map((entry) => ({ entry })),
+    }),
+  );
+  const runtimeSources = new Map<string, (typeof sources)[number]>();
+  for (const contribution of runtimeContributions) {
+    let source = runtimeSources.get(contribution.sourcePackPath);
+    if (!source) {
+      const pack: NativePatchPack = {
+        path: contribution.sourcePackPath,
+        displayName: contribution.sourceModName,
+        priority: packs.find((pack) => pack.path === contribution.sourcePackPath)?.priority ?? packs.length,
+        pack: { path: contribution.sourcePackPath, packedFiles: [] },
+      };
+      source = { pack, entries: [] };
+      runtimeSources.set(contribution.sourcePackPath, source);
+      sources.push(source);
+    }
+    source.entries.push({
+      entry: { name: contribution.fileName, start_pos: 0, file_size: contribution.bytes.length },
+      bytes: contribution.bytes,
     });
+  }
+  for (const { pack, entries } of sources) {
     const normalizedNames = new Set<string>();
-    for (const entry of entries) {
+    for (const { entry, bytes } of entries) {
       const key = normalizedVirtualPath(entry.name);
       if (normalizedNames.has(key)) {
         throw nativePatchFlowError(
@@ -864,7 +892,8 @@ const resolveFlowContributionCandidates = async (
       let parsed: ReturnType<typeof parseNativePatchFlowContribution>;
       let rawContribution: Buffer | undefined;
       try {
-        rawContribution = await readNativePatchPackEntry(pack, entry, MAX_NATIVE_PATCH_FLOW_CONTRIBUTION_BYTES);
+        rawContribution =
+          bytes ?? (await readNativePatchPackEntry(pack, entry, MAX_NATIVE_PATCH_FLOW_CONTRIBUTION_BYTES));
         aggregateBytes += rawContribution.length;
         if (aggregateBytes > MAX_TOTAL_PAYLOAD_BYTES) {
           throw new Error("native patch flow contributions exceed the aggregate 512 MiB input limit");
@@ -1178,11 +1207,16 @@ export const buildNativePatchLaunchPlan = async (input: {
   runId: string;
   targetPath: string;
   enabledPacks: NativePatchPack[];
+  runtimeContributions?: NativePatchFlowRuntimeContribution[];
   effectiveContentPacks: NativePatchPack[] | (() => Promise<NativePatchPack[]>);
   onSkippedPackage?: (notice: NativePatchSkippedPackage) => void;
 }): Promise<NativePatchLaunchPlan | undefined> => {
   const standaloneCandidates = await resolvePackageCandidates(input.enabledPacks, input.onSkippedPackage);
-  const flowCandidates = await resolveFlowContributionCandidates(input.enabledPacks, standaloneCandidates);
+  const flowCandidates = await resolveFlowContributionCandidates(
+    input.enabledPacks,
+    standaloneCandidates,
+    input.runtimeContributions ?? [],
+  );
   const candidates = [...standaloneCandidates, ...flowCandidates];
   let selected = chooseHighestPriorityVersion(candidates);
   const preparedByCandidate = new Map<Candidate, NativePatchPreparedPackage>();

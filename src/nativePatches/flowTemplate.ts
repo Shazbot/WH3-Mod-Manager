@@ -48,6 +48,13 @@ export type NativePatchFlowContribution = {
   inputs: { scalars: Record<string, unknown>; tables: Record<string, Array<Record<string, unknown>>> };
   provenance: NativePatchFlowProvenance;
 };
+/** A terminal flow's contribution, retained only for the current launch. */
+export type NativePatchFlowRuntimeContribution = {
+  sourcePackPath: string;
+  sourceModName: string;
+  fileName: string;
+  bytes: Buffer;
+};
 
 const isObject = (value: unknown): value is Record<string, any> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

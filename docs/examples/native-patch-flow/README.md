@@ -12,7 +12,7 @@ to the template's `mappings` socket, and saves the resulting contribution. The
 strings `example_flag` and `example_unit_set` are placeholders, not WH3 database
 keys.
 
-The `target_unit_sets` template is intentionally absent. Its requested expanded
-flag storage remains blocked until the game object's construction, copying,
-insertion, naming, evaluation, and destruction paths are audited and every safe
-hook is established. See the [audit](../../native-patch-target-unit-flag-audit.md).
+The separate [target-unit-sets example](../target-unit-sets/) includes the
+experimental expanded native payload and an editable mapping flow. See its
+README for executable requirements and the
+[audit](../../native-patch-target-unit-flag-audit.md) for remaining validation.

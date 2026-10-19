@@ -191,14 +191,24 @@ describe("Native Patch flow node", () => {
     expect(graph.nodes.find((node) => node.type === "nativepatch")?.data.tableBindings).toEqual(["mappings"]);
   });
 
-  it("executes the checked-in example through Save Changes and writes its contribution", async () => {
-    const exampleDirectory = path.join(process.cwd(), "docs", "examples", "native-patch-flow");
-    const templateBytes = fs.readFileSync(path.join(exampleDirectory, "data-only.wh3patchtemplate.json"));
-    const flowText = fs.readFileSync(path.join(exampleDirectory, "flow.json"), "utf8");
+  it.each([
+    ["native-patch-flow", "data-only.wh3patchtemplate.json", false],
+    ["target-unit-sets", "target_unit_sets.experimental.wh3patchtemplate.json", false],
+    ["native-patch-flow", "data-only.wh3patchtemplate.json", true],
+    ["target-unit-sets", "target_unit_sets.experimental.wh3patchtemplate.json", true],
+  ] as const)("executes the %s example %s (terminal: %s)", async (directory, templateFile, terminal) => {
+    const exampleDirectory = path.join(process.cwd(), "docs", "examples", directory);
+    const templateBytes = fs.readFileSync(path.join(exampleDirectory, templateFile));
+    const flow = JSON.parse(fs.readFileSync(path.join(exampleDirectory, "flow.json"), "utf8"));
+    if (terminal) {
+      flow.nodes = flow.nodes.filter((node: any) => node.type !== "savechanges");
+      flow.connections = flow.connections.filter((connection: any) => connection.sourceId !== "node_2");
+    }
+    const flowText = JSON.stringify(flow);
     fs.writeFileSync(templatePackPath, templateBytes);
     templatePack.packedFiles = [
       {
-        name: "whmm_patch_templates/data-only.wh3patchtemplate.json",
+        name: `whmm_patch_templates/${templateFile}`,
         start_pos: 0,
         file_size: templateBytes.length,
       },
@@ -221,18 +231,36 @@ describe("Native Patch flow node", () => {
       const result = await executeFlowsForPack(templatePackPath, "", {}, "owner.pack", templatePack);
       expect(result.hadErrors).toBe(false);
       expect(result.nativePatchFlowError).toBeUndefined();
-      expect(result.createdPackPaths).toHaveLength(1);
+      expect(result.createdPackPaths).toHaveLength(terminal ? 0 : 1);
+      expect(result.nativePatchContributions).toHaveLength(terminal ? 1 : 0);
 
-      const actualSerializer =
-        await vi.importActual<typeof import("../../src/packFileSerializer")>("../../src/packFileSerializer");
-      const outputPack = await actualSerializer.readPack(result.createdPackPaths[0], { skipParsingTables: true });
-      const contributionEntry = outputPack.packedFiles.find((entry) => entry.name.endsWith(".wh3patchcontrib.json"));
-      expect(contributionEntry).toBeDefined();
-      const contributionBytes = await readNativePatchPackEntry(
-        { path: outputPack.path, pack: outputPack, priority: 0 },
-        contributionEntry!,
-      );
+      let contributionBytes: Buffer;
+      if (terminal) {
+        contributionBytes = result.nativePatchContributions[0].bytes;
+        const plan = await buildNativePatchLaunchPlan({
+          runId: "terminal-flow-example",
+          targetPath: "unused-unhashed-target.exe",
+          enabledPacks: [],
+          effectiveContentPacks: [],
+          runtimeContributions: result.nativePatchContributions,
+        });
+        expect(plan?.packages).toHaveLength(1);
+        expect(plan?.packages[0].manifest.package.id).toBe(parseNativePatchFlowTemplate(templateBytes).template.id);
+      } else {
+        const actualSerializer =
+          await vi.importActual<typeof import("../../src/packFileSerializer")>("../../src/packFileSerializer");
+        const outputPack = await actualSerializer.readPack(result.createdPackPaths[0], { skipParsingTables: true });
+        const contributionEntry = outputPack.packedFiles.find((entry) => entry.name.endsWith(".wh3patchcontrib.json"));
+        expect(contributionEntry).toBeDefined();
+        contributionBytes = await readNativePatchPackEntry(
+          { path: outputPack.path, pack: outputPack, priority: 0 },
+          contributionEntry!,
+        );
+      }
       const contribution = parseNativePatchFlowContribution(contributionBytes).contribution;
+      const template = parseNativePatchFlowTemplate(templateBytes);
+      expect(contribution.template.id).toBe(template.native_patch.package.id);
+      expect(contribution.template.version).toBe(template.native_patch.package.version);
       expect(contribution.provenance).toEqual({
         sourcePack: "owner.pack",
         flowFile: "whmmflows\\example_native_mapping.json",
@@ -247,6 +275,42 @@ describe("Native Patch flow node", () => {
       appData.gamesToGameFolderPaths.wh3.gamePath = previousGamePath;
     }
   });
+
+  it.each(["disabled", "pruned", "empty", "failed"])(
+    "does not register a %s terminal contribution at startup",
+    async (mode) => {
+      const graph = makeGraph("whmm_patch_templates/mapping.wh3patchtemplate.json", false, mode === "pruned");
+      if (mode === "disabled") graph.nodes.find((node) => node.id === "patch")!.data.isDisabled = true;
+      if (mode === "empty") graph.nodeConfigs.rows = { customRows: [], tableName: "mapping_input" };
+      if (mode === "failed") graph.connections = graph.connections.filter((edge) => edge.sourceId !== "schema");
+      const flow = {
+        version: "1.0.0",
+        timestamp: 0,
+        nodes: graph.nodes.map((node) => ({
+          ...node,
+          data: { ...node.data, ...(graph.nodeConfigs[node.id] as object) },
+        })),
+        connections: graph.connections,
+        options: [],
+        isGraphEnabled: true,
+        graphStartsEnabled: true,
+      };
+      templatePack.packedFiles.push({
+        name: "whmmflows\\terminal.json",
+        text: JSON.stringify(flow),
+        file_size: 0,
+        start_pos: 0,
+      });
+      const stats = fs.statSync(templatePackPath);
+      templatePack.lastChangedLocal = stats.mtimeMs;
+      templatePack.size = stats.size;
+      const result = await executeFlowsForPack(templatePackPath, "", {}, "owner.pack", templatePack);
+      expect(result.nativePatchContributions).toEqual([]);
+      expect(result.createdPackPaths).toEqual([]);
+      expect(result.hadErrors).toBe(mode === "failed");
+      if (mode === "failed") expect(result.nativePatchFlowError).toBeDefined();
+    },
+  );
 
   it("routes declared table rows into an inspectable contribution with source provenance", async () => {
     const graph = makeGraph("whmm_patch_templates/mapping.wh3patchtemplate.json");
