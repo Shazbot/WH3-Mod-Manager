@@ -4,6 +4,8 @@ import * as fs from "fs";
 import { execFileSync } from "child_process";
 import * as nodePath from "path";
 import type { NativePatchLaunchPlan } from "./planner";
+import type { NativePatchSkippedPackage } from "./manifest";
+import { skipFailedNativePatches } from "./failurePolicy";
 import { findExecutableOnPath, type GameLaunchCommand } from "../utility/gameLaunch";
 
 const STATUS_POLL_MS = 200;
@@ -33,11 +35,20 @@ export type NativePatchHelperStatus = {
   message?: string;
   pid?: number;
   processCreationTime?: string;
+  failedPackageIds?: string[];
+  terminationConfirmed?: boolean;
+  retryable?: boolean;
 };
 
 export type NativePatchLaunchResult =
   | { started: true; status: NativePatchHelperStatus }
-  | { started: false; message: string; cancellationAcknowledged: boolean };
+  | {
+      started: false;
+      message: string;
+      cancellationAcknowledged: boolean;
+      failedPackageIds?: string[];
+      retryable?: boolean;
+    };
 
 export const nativePatchHelperResourcePath = () => {
   const packaged = nodePath.join(process.resourcesPath, "WH3NativePatchHelper.exe");
@@ -88,6 +99,7 @@ export const writeNativePatchLaunchFiles = (input: {
   const packages = input.plan.packages.map((prepared, packageIndex) => ({
     id: prepared.manifest.package.id,
     version: prepared.manifest.package.version,
+    targetSha256: prepared.manifest.target.sha256,
     allocation_policy: prepared.manifest.allocation_policy,
     signatures: prepared.manifest.signatures ?? [],
     symbols: prepared.manifest.symbols,
@@ -361,11 +373,90 @@ export const launchNativePatchHelper = async (input: {
       started: false,
       message: current?.state === "failed" && current.message ? current.message : message,
       cancellationAcknowledged:
-        current?.state === "failed" || (childExit !== undefined && input.invocation.launcher === "windows"),
+        current?.state === "failed"
+          ? current.terminationConfirmed !== false
+          : childExit !== undefined && input.invocation.launcher === "windows",
+      failedPackageIds: current?.state === "failed" ? current.failedPackageIds : undefined,
+      retryable: current?.state === "failed" ? current.retryable : undefined,
     };
   }
 };
 
 export const cleanupNativePatchLaunchFiles = (files: NativePatchLaunchFiles) => {
   fs.rmSync(files.runDirectory, { recursive: true, force: true });
+};
+
+/** Each failed startup is terminated before retrying with a smaller package set. */
+export const launchNativePatchPlan = async (input: {
+  plan: NativePatchLaunchPlan;
+  appDataPath: string;
+  platform: NodeJS.Platform;
+  steamId: string;
+  gameArguments: string[];
+  gameWorkingDirectory: string;
+  onSkippedPackage?: (notice: NativePatchSkippedPackage) => void;
+  onAttempt?: (invocation: NativePatchLaunchInvocation) => void;
+}): Promise<
+  { kind: "started" } | { kind: "unpatched" } | { kind: "failed"; message: string; cancellationAcknowledged: boolean }
+> => {
+  let packages = input.plan.packages;
+  while (packages.length) {
+    const plan = {
+      ...input.plan,
+      runId: crypto.randomUUID(),
+      packages,
+      targetSha256: packages.find((item) => item.manifest.target.sha256)?.manifest.target.sha256,
+    };
+    let files: NativePatchLaunchFiles | undefined;
+    let safeToCleanup = true;
+    let failure: Extract<NativePatchLaunchResult, { started: false }>;
+    try {
+      files = writeNativePatchLaunchFiles({ ...input, plan });
+      const invocation = resolveNativePatchLaunchInvocation({ ...input, planFiles: files });
+      input.onAttempt?.(invocation);
+      safeToCleanup = false;
+      const result = await launchNativePatchHelper({
+        invocation,
+        planFiles: files,
+        runId: plan.runId,
+        cwd: input.gameWorkingDirectory,
+      });
+      safeToCleanup = result.started || result.cancellationAcknowledged;
+      if (result.started) return { kind: "started" };
+      failure = result;
+    } catch (error) {
+      failure = {
+        started: false,
+        message: error instanceof Error ? error.message : String(error),
+        cancellationAcknowledged: safeToCleanup,
+      };
+    } finally {
+      if (files && safeToCleanup) {
+        try {
+          cleanupNativePatchLaunchFiles(files);
+        } catch (error) {
+          console.error("Failed to clean native patch launch files", error);
+        }
+      }
+    }
+    if (!failure.cancellationAcknowledged)
+      return { kind: "failed", message: failure.message, cancellationAcknowledged: false };
+    if (failure.retryable === false)
+      return { kind: "failed", message: failure.message, cancellationAcknowledged: true };
+    try {
+      packages = skipFailedNativePatches(
+        packages,
+        failure.failedPackageIds ?? [],
+        failure.message,
+        input.onSkippedPackage,
+      );
+    } catch (error) {
+      return {
+        kind: "failed",
+        message: error instanceof Error ? error.message : String(error),
+        cancellationAcknowledged: true,
+      };
+    }
+  }
+  return { kind: "unpatched" };
 };

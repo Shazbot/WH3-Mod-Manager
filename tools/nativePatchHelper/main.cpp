@@ -459,11 +459,22 @@ struct SessionStatus {
   std::string runId;
   DWORD pid = 0;
   std::string processCreationTime;
+  std::vector<std::string> failedPackageIds;
+  bool terminationConfirmed = true;
+  bool retryable = true;
 };
 void writeStatus(const Arguments& args, const SessionStatus& session, const std::string& state, const std::string& message = "") {
+  std::string ids = "[";
+  for (const auto& id : session.failedPackageIds) {
+    if (ids.size() > 1) ids += ",";
+    ids += "\"" + escapeJson(id) + "\"";
+  }
+  ids += "]";
   const std::string json = "{\"protocol\":1,\"runId\":\"" + escapeJson(session.runId) + "\",\"state\":\"" +
       escapeJson(state) + "\",\"message\":\"" + escapeJson(message) + "\",\"pid\":" + std::to_string(session.pid) +
-      ",\"processCreationTime\":\"" + escapeJson(session.processCreationTime) + "\"}";
+      ",\"processCreationTime\":\"" + escapeJson(session.processCreationTime) + "\",\"failedPackageIds\":" + ids +
+      ",\"terminationConfirmed\":" + (session.terminationConfirmed ? "true" : "false") +
+      ",\"retryable\":" + (session.retryable ? "true" : "false") + "}";
   const std::wstring tempPath = args.status + L".tmp." + std::to_wstring(GetCurrentProcessId());
   HANDLE file = CreateFileW(tempPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) fail("could not create atomic helper status file");
@@ -540,6 +551,7 @@ struct RemoteSession {
   PeInfo pe;
   std::vector<uint8_t> imageFile;
   std::vector<PackageWork> packages;
+  std::vector<std::string> failurePackageIds;
   std::map<std::string, std::vector<WriteWork*>> writesByPackage;
   std::vector<std::unique_ptr<WriteWork>> writes;
   std::vector<GuardWork> guards;
@@ -756,7 +768,7 @@ std::vector<uint8_t> loadPayload(const Json& block, size_t declaredSize) {
   return bytes;
 }
 
-std::vector<PackageWork> loadPackages(const Json& plan) {
+std::vector<PackageWork> loadPackages(const Json& plan, RemoteSession& session) {
   const Json& packagesValue = required(plan, "packages", "plan");
   const auto& packageNodes = arrayOf(packagesValue, "plan.packages");
   if (packageNodes.empty() || packageNodes.size() > kMaxPackages) fail("selected package count is outside the supported range");
@@ -769,6 +781,7 @@ std::vector<PackageWork> loadPackages(const Json& plan) {
     PackageWork package;
     package.node = &packageNode;
     package.id = stringOf(required(packageNode, "id", "package"), "package.id");
+    session.failurePackageIds = {package.id};
     if (package.id.empty() || !packageIds.insert(package.id).second) fail("duplicate or empty native package ID");
     for (const Json& blockNode : arrayOf(required(packageNode, "blocks", package.id), package.id + ".blocks")) {
       const std::string blockId = stringOf(required(blockNode, "id", "block"), "block.id");
@@ -793,6 +806,7 @@ std::vector<PackageWork> loadPackages(const Json& plan) {
     for (const auto& [name, reference] : symbols) package.symbols.emplace(name, &reference);
     packages.push_back(std::move(package));
   }
+  session.failurePackageIds.clear();
   return packages;
 }
 
@@ -893,6 +907,7 @@ void scanMappedSection(HANDLE process, uint64_t sectionStart, uint64_t sectionEn
 
 void scanSignatures(HANDLE process, RemoteSession& session) {
   for (PackageWork& package : session.packages) {
+    session.failurePackageIds = {package.id};
     const auto& signatures = arrayOf(required(*package.node, "signatures", package.id), package.id + ".signatures");
     for (const Json& signature : signatures) {
       const std::string id = stringOf(required(signature, "id", "signature"), "signature.id");
@@ -914,6 +929,7 @@ void scanSignatures(HANDLE process, RemoteSession& session) {
       if (!package.signatures.emplace(id, matchAddress).second) fail(package.id + ": duplicate signature ID");
     }
   }
+  session.failurePackageIds.clear();
 }
 
 struct ResolvedAddress { uint64_t value; bool module; };
@@ -990,6 +1006,7 @@ ResolvedAddress resolveReference(RemoteSession& session, PackageWork& package, c
 
 void prepareGuardAndWrites(RemoteSession& session) {
   for (PackageWork& package : session.packages) {
+    session.failurePackageIds = {package.id};
     for (const Json& guard : arrayOf(required(*package.node, "guards", package.id), package.id + ".guards")) {
       const ResolvedAddress address = resolveReference(session, package, required(guard, "at", "guard"));
       std::vector<uint8_t> expected = parseHexBytes(stringOf(required(guard, "expected", "guard"), "guard.expected"), "guard.expected");
@@ -1015,22 +1032,27 @@ void prepareGuardAndWrites(RemoteSession& session) {
       session.writes.push_back(std::move(work));
     }
   }
+  session.failurePackageIds.clear();
   std::sort(session.writes.begin(), session.writes.end(), [](const auto& first, const auto& second) { return first->address < second->address; });
   for (size_t index = 1; index < session.writes.size(); index++) {
     const WriteWork& previous = *session.writes[index - 1];
     const WriteWork& current = *session.writes[index];
     if (current.address < previous.address + previous.expected.size()) {
+      session.failurePackageIds = {previous.package->id, current.package->id};
       fail("resolved module writes overlap: " + previous.package->id + "." + previous.id + " and " + current.package->id + "." + current.id);
     }
   }
   for (const GuardWork& guard : session.guards) {
+    session.failurePackageIds = {guard.package->id};
     const std::vector<uint8_t> actual = readRemoteBytes(session.process, guard.address, guard.expected.size(), "guard");
     if (actual != guard.expected) fail(guard.package->id + ": guard bytes do not match the unpatched game image");
   }
   for (const auto& write : session.writes) {
+    session.failurePackageIds = {write->package->id};
     const std::vector<uint8_t> actual = readRemoteBytes(session.process, write->address, write->expected.size(), "write expectation");
     if (actual != write->expected) fail(write->package->id + ": expected bytes do not match the unpatched game image at write " + write->id);
   }
+  session.failurePackageIds.clear();
 }
 
 WriteWork* findPackageWrite(RemoteSession& session, PackageWork& package, const std::string& id) {
@@ -1054,6 +1076,7 @@ void putLittleEndian(std::vector<uint8_t>& bytes, size_t offset, uint64_t value,
 
 void applyFixups(RemoteSession& session) {
   for (PackageWork& package : session.packages) {
+    session.failurePackageIds = {package.id};
     for (const Json& fixup : arrayOf(required(*package.node, "fixups", package.id), package.id + ".fixups")) {
       const std::string kind = stringOf(required(fixup, "kind", "fixup"), "fixup.kind");
       const Json& at = required(fixup, "at", "fixup");
@@ -1098,6 +1121,7 @@ void applyFixups(RemoteSession& session) {
       putLittleEndian(*targetBytes, fieldOffset, encoded, width, where);
     }
   }
+  session.failurePackageIds.clear();
 }
 
 uint64_t alignUp(uint64_t value, uint64_t alignment) {
@@ -1130,14 +1154,17 @@ uint64_t allocateBlock(RemoteSession& session, size_t blockSize, size_t alignmen
 
 void allocateBlocks(RemoteSession& session) {
   for (PackageWork& package : session.packages) {
+    session.failurePackageIds = {package.id};
     for (auto& [id, block] : package.blocks) {
       block.address = allocateBlock(session, block.size, block.alignment);
     }
   }
+  session.failurePackageIds.clear();
 }
 
 void writePreparedBlocks(RemoteSession& session) {
   for (PackageWork& package : session.packages) {
+    session.failurePackageIds = {package.id};
     for (auto& [id, block] : package.blocks) {
       if (!writeRemote(session.process, block.address, block.bytes.data(), block.bytes.size())) fail(package.id + ": could not write block " + id);
       if (readRemoteBytes(session.process, block.address, block.bytes.size(), "prepared block readback") != block.bytes) {
@@ -1156,13 +1183,15 @@ void writePreparedBlocks(RemoteSession& session) {
       }
     }
   }
+  session.failurePackageIds.clear();
 }
 
-struct RuntimeEntry { uint32_t begin; uint32_t end; uint32_t unwind; };
+struct RuntimeEntry { uint32_t begin; uint32_t end; uint32_t unwind; std::string packageId; };
 
 std::vector<RuntimeEntry> buildRuntimeEntries(RemoteSession& session) {
   std::vector<RuntimeEntry> entries;
   for (PackageWork& package : session.packages) {
+    session.failurePackageIds = {package.id};
     for (const Json& function : arrayOf(required(*package.node, "runtime_functions", package.id), package.id + ".runtime_functions")) {
       const ResolvedAddress begin = resolveReference(session, package, required(function, "begin", "runtime function"));
       const ResolvedAddress end = resolveReference(session, package, required(function, "end", "runtime function"));
@@ -1184,13 +1213,18 @@ std::vector<RuntimeEntry> buildRuntimeEntries(RemoteSession& session) {
           beginRva > UINT32_MAX || endRva > UINT32_MAX || unwindRva > UINT32_MAX || endRva <= beginRva) {
         fail(package.id + ": runtime function RVA exceeds the Windows x64 table range");
       }
-      entries.push_back({static_cast<uint32_t>(beginRva), static_cast<uint32_t>(endRva), static_cast<uint32_t>(unwindRva)});
+      entries.push_back({static_cast<uint32_t>(beginRva), static_cast<uint32_t>(endRva), static_cast<uint32_t>(unwindRva), package.id});
     }
   }
+  session.failurePackageIds.clear();
   std::sort(entries.begin(), entries.end(), [](const RuntimeEntry& first, const RuntimeEntry& second) { return first.begin < second.begin; });
   for (size_t index = 1; index < entries.size(); index++) {
-    if (entries[index].begin < entries[index - 1].end) fail("runtime function ranges overlap");
+    if (entries[index].begin < entries[index - 1].end) {
+      session.failurePackageIds = {entries[index - 1].packageId, entries[index].packageId};
+      fail("runtime function ranges overlap");
+    }
   }
+  session.failurePackageIds.clear();
   return entries;
 }
 
@@ -1423,11 +1457,13 @@ uint64_t registerRuntimeFunctions(RemoteSession& session) {
 
 void activateWrites(RemoteSession& session) {
   for (const GuardWork& guard : session.guards) {
+    session.failurePackageIds = {guard.package->id};
     if (readRemoteBytes(session.process, guard.address, guard.expected.size(), "activation guard") != guard.expected) {
       fail(guard.package->id + ": guard changed before activation");
     }
   }
   for (const auto& write : session.writes) {
+    session.failurePackageIds = {write->package->id};
     if (readRemoteBytes(session.process, write->address, write->expected.size(), "activation write check") != write->expected) {
       fail(write->package->id + ": expected game bytes changed before activation");
     }
@@ -1437,6 +1473,7 @@ void activateWrites(RemoteSession& session) {
   const uint64_t pageSize = systemInfo.dwPageSize;
   std::map<uint64_t, DWORD> originalProtections;
   for (const auto& write : session.writes) {
+    session.failurePackageIds = {write->package->id};
     const uint64_t firstPage = write->address & ~(pageSize - 1);
     const uint64_t lastPage = (write->address + write->replacement.size() - 1) & ~(pageSize - 1);
     for (uint64_t page = firstPage; page <= lastPage; page += pageSize) {
@@ -1449,6 +1486,7 @@ void activateWrites(RemoteSession& session) {
     }
   }
   for (const auto& write : session.writes) {
+    session.failurePackageIds = {write->package->id};
     if (!writeRemote(session.process, write->address, write->replacement.data(), write->replacement.size())) {
       fail(write->package->id + ": activation write failed; terminating the newly created game");
     }
@@ -1457,6 +1495,7 @@ void activateWrites(RemoteSession& session) {
     }
   }
   for (const auto& write : session.writes) {
+    session.failurePackageIds = {write->package->id};
     if (readRemoteBytes(session.process, write->address, write->replacement.size(), "activation readback") != write->replacement) {
       fail(write->package->id + ": activation readback failed; terminating the newly created game");
     }
@@ -1464,9 +1503,16 @@ void activateWrites(RemoteSession& session) {
   for (const auto& [page, protection] : originalProtections) {
     DWORD discarded = 0;
     if (!VirtualProtectEx(session.process, reinterpret_cast<LPVOID>(page), pageSize, protection, &discarded)) {
+      session.failurePackageIds.clear();
+      for (const auto& write : session.writes) {
+        if (write->address < page + pageSize && page < write->address + write->replacement.size()) {
+          session.failurePackageIds.push_back(write->package->id);
+        }
+      }
       fail("could not restore original game page protections");
     }
   }
+  session.failurePackageIds.clear();
 }
 
 std::string sha256File(const std::wstring& path) {
@@ -1564,9 +1610,10 @@ HelperPlan parseHelperPlan(const Json& plan) {
   return result;
 }
 
-void validateAllocationPolicies(const Json& plan) {
+void validateAllocationPolicies(const Json& plan, RemoteSession& session) {
   for (const Json& package : arrayOf(required(plan, "packages", "plan"), "plan.packages")) {
     const std::string packageId = stringOf(required(package, "id", "package"), "package.id");
+    session.failurePackageIds = {packageId};
     const Json& policy = required(package, "allocation_policy", packageId);
     if (stringOf(required(policy, "type", packageId + ".allocation_policy"), "allocation_policy.type") != "module_window" ||
         stringOf(required(policy, "module", packageId + ".allocation_policy"), "allocation_policy.module") != "game" ||
@@ -1575,6 +1622,7 @@ void validateAllocationPolicies(const Json& plan) {
       fail(packageId + ": unsupported native allocation policy");
     }
   }
+  session.failurePackageIds.clear();
 }
 
 std::wstring activeMutexName(const std::wstring& targetPath) {
@@ -1721,14 +1769,23 @@ int runHelper(const Arguments& args) {
     const HelperPlan plan = parseHelperPlan(planJson);
     status.runId = plan.runId;
     writeStatus(args, status, "starting");
-    validateAllocationPolicies(planJson);
+    validateAllocationPolicies(planJson, session);
     const std::wstring targetPath = normalizedPath(plan.targetPath);
     const DWORD targetAttributes = GetFileAttributesW(targetPath.c_str());
     if (targetAttributes == INVALID_FILE_ATTRIBUTES || (targetAttributes & FILE_ATTRIBUTE_DIRECTORY)) fail("planned game executable does not exist");
-    if (!plan.targetSha256.empty() && sha256File(targetPath) != plan.targetSha256) fail("game executable SHA-256 does not match the selected patch target");
+    if (!plan.targetSha256.empty() && sha256File(targetPath) != plan.targetSha256) {
+      for (const Json& package : arrayOf(required(planJson, "packages", "plan"), "plan.packages")) {
+        if (const Json* hash = package.get("targetSha256")) {
+          if (stringOf(*hash, "package.targetSha256") == plan.targetSha256) {
+            session.failurePackageIds.push_back(stringOf(required(package, "id", "package"), "package.id"));
+          }
+        }
+      }
+      fail("game executable SHA-256 does not match the selected patch target");
+    }
     const std::vector<uint8_t> peHeaders = readFilePrefix(targetPath, 1024 * 1024);
     session.pe = parsePe(peHeaders);
-    session.packages = loadPackages(planJson);
+    session.packages = loadPackages(planJson, session);
     session.targetDirectory = std::filesystem::path(targetPath).parent_path().wstring();
     wchar_t windowsPath[32768]{};
     const UINT windowsLength = GetWindowsDirectoryW(windowsPath, static_cast<UINT>(std::size(windowsPath)));
@@ -1737,7 +1794,10 @@ int runHelper(const Arguments& args) {
     const std::wstring mutexName = activeMutexName(targetPath);
     mutex = CreateMutexW(nullptr, FALSE, mutexName.c_str());
     if (!mutex) fail("could not create the active native patch session ledger");
-    if (GetLastError() == ERROR_ALREADY_EXISTS) fail("a native patch helper already owns this game launch session");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+      status.retryable = false;
+      fail("a native patch helper already owns this game launch session");
+    }
 
     std::wstring commandLine = quoteWindowsArgument(targetPath);
     for (const std::wstring& argument : plan.arguments) { commandLine.push_back(L' '); commandLine += quoteWindowsArgument(argument); }
@@ -1807,6 +1867,8 @@ int runHelper(const Arguments& args) {
     return 0;
   } catch (const std::exception& error) {
     terminateCreatedGame(session);
+    status.failedPackageIds = session.failurePackageIds;
+    status.terminationConfirmed = !session.process || WaitForSingleObject(session.process, 0) == WAIT_OBJECT_0;
     try { writeStatus(args, status, "failed", error.what()); } catch (...) {}
     if (session.thread) CloseHandle(session.thread);
     if (session.process) CloseHandle(session.process);

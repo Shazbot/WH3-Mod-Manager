@@ -94,9 +94,9 @@ def fixup(destination, offset, target, anchor):
 
 def package(package_id, version, name, description, code, code_id, upstream):
     return {
-        "format": "wh3-native-patch", "format_version": 2,
+        "format": "wh3-native-patch", "format_version": 2, "on_failure": "warn",
         "package": {"id": package_id, "version": version, "name": name, "description": description},
-        "requires_loader": {"min_version": "2.0.0", "capabilities": [
+        "requires_loader": {"min_version": "2.1.0", "capabilities": [
             "blocks.v1", "fixups.v1", "win64-unwind.v1", "startup-activation.v1", "signatures.v2"
         ]},
         "target": {"id": "game", "filename": "Warhammer3.exe", "machine": "amd64"},
@@ -119,7 +119,7 @@ def package(package_id, version, name, description, code, code_id, upstream):
         "validation": {
             "offline_behavior": f"Port of {upstream}; source code and unique signatures checked at export.",
             "in_game_behavior": "Upstream offline EXE behavior was user-confirmed for the documented Wizard Regiment scenario; this runtime package has not been tried in-game.",
-            "runtime_delivery": "Requires WHMM native patch loader 2.0.0; no executable file edits.",
+            "runtime_delivery": "Requires WHMM native patch loader 2.1.0; no executable file edits.",
             "limitations": "Signature and exact hook-byte checks do not establish object-layout or gameplay compatibility with future builds.",
         },
     }
@@ -140,7 +140,7 @@ def export_projectile(image, project, assembler):
     if len(original) != 337 or original[-5] != 0xE9 or 337 + struct.unpack_from("<i", original, 333)[0] != 0x100000:
         raise ValueError("Upstream caster code no longer matches the v5a relocation audit")
     code = original[:-4] + bytes(4)
-    result = package("wh3.officer-projectile-casting", "5.1.0", "Officer-first projectile spell casting",
+    result = package("wh3.officer-projectile-casting", "5.1.1", "Officer-first projectile spell casting",
                      "v5a behavior: choose a living officer, otherwise the first living entity, for is_spell projectile actions; retain bursts and ordinary volleys.",
                      code, "caster_code", "PROJECTILE_CASTING.md / v5a")
     call = add_signature(result, image, "casting_init", (
@@ -178,7 +178,7 @@ def export_officer(image, officer_source, example, assembler):
     code = bytes(assembler.asm(emitter(), addr=0)[0])
     if len(code) != 243 or code != (example / "officer_code.bin").read_bytes():
         raise ValueError("Upstream officer helper differs from the v7b verification example")
-    result = package("wh3.officer-dead", "7.2.0", "Officer death ability restriction",
+    result = package("wh3.officer-dead", "7.2.1", "Officer death ability restriction",
                      "v7b behavior: inspect active and removed officers; recognize kinds 1/2, ownership and alive state; preserve legacy fallback.",
                      code, "officer_code", "OFFICER_DEAD.md / v7b")
     case = add_signature(result, image, "officer_case", (

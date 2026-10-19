@@ -237,6 +237,12 @@
     },
     "extensions": {
       "type": "object"
+    },
+    "on_failure": {
+      "type": "string",
+      "enum": ["abort", "warn", "silent"],
+      "default": "abort",
+      "description": "Skip the whole failed package and optionally warn, or abort launch. Added in loader 2.1.0."
     }
   },
   "required": [

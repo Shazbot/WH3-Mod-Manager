@@ -378,12 +378,8 @@ import {
 import { collator } from "./utility/packFileSorting";
 import { buildGameLaunchArguments, launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
 import { buildNativePatchLaunchPlan, type NativePatchPack } from "./nativePatches/planner";
-import {
-  cleanupNativePatchLaunchFiles,
-  launchNativePatchHelper,
-  resolveNativePatchLaunchInvocation,
-  writeNativePatchLaunchFiles,
-} from "./nativePatches/launch";
+import { launchNativePatchPlan } from "./nativePatches/launch";
+import type { NativePatchSkippedPackage } from "./nativePatches/manifest";
 import {
   cleanupWorkshopModStaging,
   getWorkshopModStagingFolderInfo,
@@ -13186,6 +13182,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           startTime: Date.now(),
         } as Toast);
       };
+      const reportNativePatchSkip = (notice: NativePatchSkippedPackage) => {
+        const message = `Native patch '${notice.packageId}' was skipped: ${notice.message}`;
+        if (notice.policy === "warn") reportGameLaunchError(message);
+        else console.log(message);
+      };
       let workshopStagingResult: WorkshopStagingResult | undefined;
       let stagedGamePath: string | undefined;
       let isPreparingNativePatches = false;
@@ -13795,6 +13796,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             runId: randomUUID(),
             targetPath: gameExecutablePath,
             enabledPacks,
+            onSkippedPackage: reportNativePatchSkip,
             effectiveContentPacks: async () => {
               const vanillaPaths = getVanillaPackPathsInLoadOrder().filter(
                 (packPath) => nodePath.extname(packPath).toLowerCase() === ".pack",
@@ -13820,46 +13822,36 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               log(message);
               mainWindow?.webContents.send("handleLog", message);
             }
-            let nativeLaunchFiles: ReturnType<typeof writeNativePatchLaunchFiles> | undefined;
-            let cancellationAcknowledged = false;
-            let helperStarted = false;
-            try {
-              nativeLaunchFiles = writeNativePatchLaunchFiles({
-                plan: nativePlan,
-                appDataPath,
-                platform: process.platform,
-                gameArguments: buildGameLaunchArguments(fileNameWithModList, saveName),
-                gameWorkingDirectory: gamePath,
-              });
-              const invocation = resolveNativePatchLaunchInvocation({
-                appDataPath,
-                planFiles: nativeLaunchFiles,
-                platform: process.platform,
-                steamId: gameToSteamId.wh3,
-              });
-              const description = [invocation.command, ...invocation.args].map((arg) => JSON.stringify(arg)).join(" ");
-              console.log("Native patch helper launch:", description);
-              mainWindow?.webContents.send("handleLog", "Preparing native patch startup activation.");
-              helperStarted = true;
-              nativeHelperMayBeRunning = true;
-              const nativeLaunchResult = await launchNativePatchHelper({
-                invocation,
-                planFiles: nativeLaunchFiles,
-                runId: nativePlan.runId,
-                cwd: gamePath,
-              });
-              launched = nativeLaunchResult.started;
-              cancellationAcknowledged = nativeLaunchResult.started || nativeLaunchResult.cancellationAcknowledged;
-              if (!nativeLaunchResult.started) {
-                nativeHelperMayBeRunning = !nativeLaunchResult.cancellationAcknowledged;
-                launchFailureMessage = nativeLaunchResult.cancellationAcknowledged
-                  ? nativeLaunchResult.message
-                  : `${nativeLaunchResult.message} Startup state is unknown; launch files and staged mods were retained. Check the game process before trying again.`;
-              }
-            } finally {
-              if (nativeLaunchFiles && (!helperStarted || cancellationAcknowledged)) {
-                cleanupNativePatchLaunchFiles(nativeLaunchFiles);
-              }
+            nativeHelperMayBeRunning = true;
+            const nativeLaunchResult = await launchNativePatchPlan({
+              plan: nativePlan,
+              appDataPath,
+              platform: process.platform,
+              steamId: gameToSteamId.wh3,
+              gameArguments: buildGameLaunchArguments(fileNameWithModList, saveName),
+              gameWorkingDirectory: gamePath,
+              onSkippedPackage: reportNativePatchSkip,
+              onAttempt: (invocation) => {
+                const description = [invocation.command, ...invocation.args]
+                  .map((arg) => JSON.stringify(arg))
+                  .join(" ");
+                console.log("Native patch helper launch:", description);
+                mainWindow?.webContents.send("handleLog", "Preparing native patch startup activation.");
+              },
+            });
+            if (nativeLaunchResult.kind === "unpatched") {
+              nativeHelperMayBeRunning = false;
+              isPreparingNativePatches = false;
+              const launchResult = await launchNormally();
+              launched = launchResult.started;
+              if (!launchResult.started) launchFailureMessage = launchResult.message;
+            } else if (nativeLaunchResult.kind === "started") {
+              launched = true;
+            } else {
+              nativeHelperMayBeRunning = !nativeLaunchResult.cancellationAcknowledged;
+              launchFailureMessage = nativeLaunchResult.cancellationAcknowledged
+                ? nativeLaunchResult.message
+                : `${nativeLaunchResult.message} Startup state is unknown; launch files and staged mods were retained. Check the game process before trying again.`;
             }
           }
         } else {

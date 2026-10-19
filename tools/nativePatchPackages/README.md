@@ -28,3 +28,5 @@ Only the generated `.wh3patch.json` files belong under `whmm_patches/` in a mod
 pack. Payloads are embedded. Companion Lua content continues through normal pack
 loading. Runtime packages use format v2 signatures/relative references and retain
 exact expected-byte checks; future game versions can still require an update.
+
+Exporter defaults use `on_failure: "warn"` for casting and officer death, and `on_failure: "silent"` for native logging. These packages require loader 2.1.0.

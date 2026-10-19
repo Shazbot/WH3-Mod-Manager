@@ -295,9 +295,10 @@ def export(args, upstream, image, temporary):
     prefix = bytes.fromhex("48895c2408e900000000") + b"\x90" * 6
     source_code = prefix * 2 + blob
     code = bytearray(source_code)
-    manifest = shared.package("wh3.native-logging", "1.0.0", "Buffered native Lua logging",
+    manifest = shared.package("wh3.native-logging", "1.0.1", "Buffered native Lua logging",
                               "Standalone v7d native logger; uses the existing wh3_native_logging.pack Lua companion.",
                               code, "logging_code", "native_logging/HANDOFF.md / v7d")
+    manifest["on_failure"] = "silent"
     manifest["blocks"] = []
     manifest["runtime_functions"] = []
     manifest["validation"]["in_game_behavior"] = "The upstream v7d backend passed native Windows fixtures; neither upstream Lua activation nor this runtime package has been confirmed in-game."

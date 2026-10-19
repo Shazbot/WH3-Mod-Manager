@@ -31,11 +31,44 @@ Another pack cannot replace `officer_code.bin` for this manifest. Companion
 load order. Asset declarations do not create or modify pack entries.
 
 Payload hashes, exact sizes, and expected original bytes remain mandatory as
-specified by the format. Invalid selected packages prevent the game from starting.
+specified by the format. Selected packages abort launch on failure unless they
+declare a different failure policy.
+
+## Failure policy
+
+Loader 2.1.0 adds an optional root field in both format versions:
+
+```json
+{ "on_failure": "abort" }
+```
+
+| Value    | When the patch fails                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------------------- |
+| `abort`  | Abort launch. This is the default when the field is omitted.                                              |
+| `warn`   | Skip the whole package, warn the user, and continue launching.                                            |
+| `silent` | Skip the whole package and continue without a user warning. Diagnostic logs may still record the failure. |
+
+Use `requires_loader.min_version: "2.1.0"` when relying on this field. It applies
+to package validation, payloads, required assets, target hashes, address lookup,
+guards, relocations and activation. The highest selected version is skipped as
+a package; the loader does not downgrade to a lower version. Dependencies on a
+skipped package are failures governed by each dependent package's own policy.
+
+If native startup fails, the helper first terminates that startup process. WHMM
+then starts a fresh process with the failed optional package removed. If no
+packages remain, WHMM uses the normal launch path. Shared helper failures can
+remove all optional packages before retrying required packages. It never releases
+a process with a partially applied package.
+
+Unreadable manifests, invalid JSON/duplicate keys and unrecognized policy values
+cannot provide a trustworthy continue policy and still abort. Unconfirmed
+termination or an already committed release also prevents automatic retry;
+the manager reports the uncertain startup state instead of starting another game.
+An existing helper session also remains an error, preventing duplicate launches.
 
 ## Format versions
 
-The loader version is `2.0.0`. The original format-v1 contract is supported with
+The loader version is `2.1.0`. The original format-v1 contract is supported with
 its mandatory exact `target.sha256` and module-relative addresses. Structural
 schemas are available at:
 

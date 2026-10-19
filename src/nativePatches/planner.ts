@@ -13,8 +13,11 @@ import {
   MAX_NATIVE_PATCH_PACKAGES,
   MAX_TOTAL_PAYLOAD_BYTES,
   NativePatchManifest,
+  NativePatchSkippedPackage,
   parseAndValidateNativePatchManifest,
 } from "./manifest";
+import { parseJsonWithoutDuplicateKeys } from "./json";
+import { NativePatchPackageError, skipFailedNativePatches } from "./failurePolicy";
 
 export type NativePatchPack = { path: string; pack: Pick<Pack, "path" | "packedFiles">; priority: number };
 
@@ -40,6 +43,7 @@ type Candidate = {
   manifestEntry: PackedFile;
   manifest: NativePatchManifest;
   rawManifest: Buffer;
+  validationError?: string;
 };
 
 const sha256 = (bytes: Buffer) => crypto.createHash("sha256").update(bytes).digest("hex");
@@ -586,7 +590,10 @@ const loadCandidatePayloads = async (candidate: Candidate): Promise<NativePatchP
   };
 };
 
-const resolvePackageCandidates = async (packs: NativePatchPack[]): Promise<Candidate[]> => {
+const resolvePackageCandidates = async (
+  packs: NativePatchPack[],
+  onSkippedPackage?: (notice: NativePatchSkippedPackage) => void,
+): Promise<Candidate[]> => {
   const candidates: Candidate[] = [];
   let totalManifestBytes = 0;
   for (const pack of packs) {
@@ -625,8 +632,30 @@ const resolvePackageCandidates = async (packs: NativePatchPack[]): Promise<Candi
       if (totalManifestBytes > MAX_TOTAL_MANIFEST_BYTES) {
         throw new Error(`native patch manifests exceed the ${MAX_TOTAL_MANIFEST_BYTES}-byte aggregate limit`);
       }
-      const manifest = parseAndValidateNativePatchManifest(rawManifest);
-      candidates.push({ pack, manifestPath, manifestEntry: entry, manifest, rawManifest });
+      let manifest: NativePatchManifest;
+      let validationError: string | undefined;
+      try {
+        manifest = parseAndValidateNativePatchManifest(rawManifest);
+      } catch (error) {
+        // Invalid JSON/duplicate keys or an invalid policy cannot opt out of abort.
+        const raw = parseJsonWithoutDuplicateKeys(rawManifest.toString("utf8")) as Partial<NativePatchManifest> | null;
+        if (!raw || (raw.on_failure !== "warn" && raw.on_failure !== "silent")) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          typeof raw.package?.id === "string" &&
+          typeof raw.package.version === "string" &&
+          semver.valid(raw.package.version)
+        ) {
+          // Keep version selection authoritative: a broken higher version is
+          // skipped as a package, rather than falling back to a lower version.
+          manifest = raw as NativePatchManifest;
+          validationError = message;
+        } else {
+          onSkippedPackage?.({ packageId: `${pack.path}:${manifestPath}`, policy: raw.on_failure, message });
+          continue;
+        }
+      }
+      candidates.push({ pack, manifestPath, manifestEntry: entry, manifest, rawManifest, validationError });
       if (candidates.length > 4096) throw new Error("too many native patch manifest candidates (maximum 4096)");
     }
   }
@@ -660,31 +689,45 @@ const chooseHighestPriorityVersion = (candidates: Candidate[]): Candidate[] => {
 };
 
 const validateSelectedComposition = (packages: Candidate[]) => {
+  for (const candidate of packages) {
+    if (candidate.validationError)
+      throw new NativePatchPackageError(candidate.validationError, [candidate.manifest.package.id]);
+  }
   if (packages.length > MAX_NATIVE_PATCH_PACKAGES)
-    throw new Error(`more than ${MAX_NATIVE_PATCH_PACKAGES} native patch packages are selected`);
+    throw new NativePatchPackageError(`more than ${MAX_NATIVE_PATCH_PACKAGES} native patch packages are selected`, []);
   const selectedById = new Map(packages.map((candidate) => [candidate.manifest.package.id, candidate]));
   const targetHashes = new Set(packages.map((candidate) => candidate.manifest.target.sha256).filter(Boolean));
-  if (targetHashes.size > 1) throw new Error("selected native patches target different Warhammer3.exe builds");
+  if (targetHashes.size > 1)
+    throw new NativePatchPackageError(
+      "selected native patches target different Warhammer3.exe builds",
+      packages.filter((item) => item.manifest.target.sha256).map((item) => item.manifest.package.id),
+    );
   const claims = new Map<string, string>();
-  const writeRanges: Array<{ start: bigint; end: bigint; owner: string }> = [];
+  const writeRanges: Array<{ start: bigint; end: bigint; owner: string; packageId: string }> = [];
   for (const candidate of packages) {
     const manifest = candidate.manifest;
     for (const dependency of manifest.requires) {
       const installed = selectedById.get(dependency.id);
       if (!installed || installed.manifest.package.version !== dependency.version) {
-        throw new Error(`${manifest.package.id} requires ${dependency.id}@${dependency.version}`);
+        throw new NativePatchPackageError(`${manifest.package.id} requires ${dependency.id}@${dependency.version}`, [
+          manifest.package.id,
+        ]);
       }
     }
     for (const conflict of manifest.conflicts) {
       if (selectedById.has(conflict))
-        throw new Error(`${manifest.package.id} conflicts with selected package ${conflict}`);
+        throw new NativePatchPackageError(`${manifest.package.id} conflicts with selected package ${conflict}`, [
+          manifest.package.id,
+          conflict,
+        ]);
     }
     for (const claim of manifest.claims) {
       const key = `${claim.domain}\0${claim.key}`;
       const owner = claims.get(key);
       if (owner)
-        throw new Error(
+        throw new NativePatchPackageError(
           `native patch claim ${claim.domain}:${claim.key} is shared by ${owner} and ${manifest.package.id}`,
+          [owner, manifest.package.id],
         );
       claims.set(key, manifest.package.id);
     }
@@ -696,9 +739,12 @@ const validateSelectedComposition = (packages: Candidate[]) => {
       const owner = `${manifest.package.id}:${write.id}`;
       if (writeRanges.some((range) => start < range.end && range.start < end)) {
         const collision = writeRanges.find((range) => start < range.end && range.start < end);
-        throw new Error(`native module writes overlap: ${collision?.owner} and ${owner}`);
+        throw new NativePatchPackageError(`native module writes overlap: ${collision?.owner} and ${owner}`, [
+          collision!.packageId,
+          manifest.package.id,
+        ]);
       }
-      writeRanges.push({ start, end, owner });
+      writeRanges.push({ start, end, owner, packageId: manifest.package.id });
     }
   }
 };
@@ -723,51 +769,67 @@ export const buildNativePatchLaunchPlan = async (input: {
   targetPath: string;
   enabledPacks: NativePatchPack[];
   effectiveContentPacks: NativePatchPack[] | (() => Promise<NativePatchPack[]>);
+  onSkippedPackage?: (notice: NativePatchSkippedPackage) => void;
 }): Promise<NativePatchLaunchPlan | undefined> => {
-  const candidates = await resolvePackageCandidates(input.enabledPacks);
-  if (candidates.length === 0) return undefined;
-  const selected = chooseHighestPriorityVersion(candidates);
-  validateSelectedComposition(selected);
-
-  const selectedPayloadSize = selected.reduce(
-    (sum, candidate) => sum + candidate.manifest.blocks.reduce((blockSum, block) => blockSum + block.size, 0),
-    0,
-  );
-  if (selectedPayloadSize > MAX_TOTAL_PAYLOAD_BYTES) {
-    throw new Error(`selected native patch payloads exceed the ${MAX_TOTAL_PAYLOAD_BYTES}-byte total limit`);
-  }
-
-  const selectedPackages: NativePatchPreparedPackage[] = [];
-  let totalPayloadBytes = 0;
-  for (const candidate of selected) {
-    const prepared = await loadCandidatePayloads(candidate);
-    totalPayloadBytes += prepared.blocks.reduce((sum, block) => sum + block.size, 0);
-    if (totalPayloadBytes > MAX_TOTAL_PAYLOAD_BYTES)
-      throw new Error(`selected native patch payloads exceed the ${MAX_TOTAL_PAYLOAD_BYTES}-byte total limit`);
-    selectedPackages.push(prepared);
-  }
-  if (selectedPackages.some((prepared) => prepared.manifest.assets.length > 0)) {
-    const effectiveContentPacks =
-      typeof input.effectiveContentPacks === "function"
-        ? await input.effectiveContentPacks()
-        : input.effectiveContentPacks;
-    for (const prepared of selectedPackages) {
-      for (const asset of prepared.manifest.assets) await effectiveAssetBytes(asset, effectiveContentPacks);
+  const candidates = await resolvePackageCandidates(input.enabledPacks, input.onSkippedPackage);
+  let selected = chooseHighestPriorityVersion(candidates);
+  const preparedByCandidate = new Map<Candidate, NativePatchPreparedPackage>();
+  let effectivePacks: NativePatchPack[] | undefined;
+  let actualTargetHash: string | undefined;
+  while (selected.length) {
+    let activePackageIds: string[] = [];
+    try {
+      validateSelectedComposition(selected);
+      const payloadSize = selected.reduce(
+        (sum, candidate) => sum + candidate.manifest.blocks.reduce((total, block) => total + block.size, 0),
+        0,
+      );
+      if (payloadSize > MAX_TOTAL_PAYLOAD_BYTES) {
+        throw new NativePatchPackageError(
+          `selected native patch payloads exceed the ${MAX_TOTAL_PAYLOAD_BYTES}-byte total limit`,
+          [],
+        );
+      }
+      const selectedPackages: NativePatchPreparedPackage[] = [];
+      for (const candidate of selected) {
+        activePackageIds = [candidate.manifest.package.id];
+        let prepared = preparedByCandidate.get(candidate);
+        if (!prepared) {
+          prepared = await loadCandidatePayloads(candidate);
+          preparedByCandidate.set(candidate, prepared);
+        }
+        for (const asset of prepared.manifest.assets) {
+          effectivePacks ??=
+            typeof input.effectiveContentPacks === "function"
+              ? await input.effectiveContentPacks()
+              : input.effectiveContentPacks;
+          await effectiveAssetBytes(asset, effectivePacks);
+        }
+        if (prepared.manifest.target.sha256) {
+          actualTargetHash ??= sha256(fs.readFileSync(input.targetPath));
+          if (actualTargetHash !== prepared.manifest.target.sha256) {
+            throw new Error(
+              `Warhammer3.exe SHA-256 mismatch: expected ${prepared.manifest.target.sha256}, found ${actualTargetHash}`,
+            );
+          }
+        }
+        selectedPackages.push(prepared);
+      }
+      return {
+        protocol: 1,
+        runId: input.runId,
+        targetPath: input.targetPath,
+        targetSha256: selectedPackages.find((item) => item.manifest.target.sha256)?.manifest.target.sha256,
+        packages: selectedPackages,
+      };
+    } catch (error) {
+      selected = skipFailedNativePatches(
+        selected,
+        error instanceof NativePatchPackageError ? error.packageIds : activePackageIds,
+        error instanceof Error ? error.message : String(error),
+        input.onSkippedPackage,
+      );
     }
   }
-  const targetHashes = new Set(selectedPackages.map((prepared) => prepared.manifest.target.sha256).filter(Boolean));
-  const targetHash = targetHashes.values().next().value;
-  if (targetHash) {
-    const actualTargetHash = sha256(fs.readFileSync(input.targetPath));
-    if (actualTargetHash !== targetHash) {
-      throw new Error(`Warhammer3.exe SHA-256 mismatch: expected ${targetHash}, found ${actualTargetHash}`);
-    }
-  }
-  return {
-    protocol: 1,
-    runId: input.runId,
-    targetPath: input.targetPath,
-    targetSha256: targetHash,
-    packages: selectedPackages,
-  };
+  return undefined;
 };

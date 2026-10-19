@@ -2,7 +2,9 @@ import * as semver from "semver";
 import { parseJsonWithoutDuplicateKeys } from "./json";
 import { validateNativePatchStructure } from "./schemaValidation";
 
-export const NATIVE_PATCH_LOADER_VERSION = "2.0.0";
+export const NATIVE_PATCH_LOADER_VERSION = "2.1.0";
+export type NativePatchFailurePolicy = "abort" | "warn" | "silent";
+export type NativePatchSkippedPackage = { packageId: string; policy: "warn" | "silent"; message: string };
 export const NATIVE_PATCH_CAPABILITIES = [
   "blocks.v1",
   "fixups.v1",
@@ -43,6 +45,7 @@ export type NativePatchBlock = {
 export type NativePatchManifest = {
   format: "wh3-native-patch";
   format_version: 1 | 2;
+  on_failure?: NativePatchFailurePolicy;
   package: { id: string; version: string; name: string; description?: string };
   requires_loader: { min_version: string; capabilities: string[] };
   target: { id: "game"; filename: "Warhammer3.exe"; sha256?: string; machine: "amd64" };
@@ -487,7 +490,7 @@ export const parseAndValidateNativePatchManifest = (bytes: Buffer): NativePatchM
       "fixups",
       "runtime_functions",
     ],
-    ["parameters", "assets", "validation", "extensions", "signatures"],
+    ["parameters", "assets", "validation", "extensions", "signatures", "on_failure"],
     "manifest",
   );
   if (root.format !== "wh3-native-patch") throw new Error("format must be 'wh3-native-patch'");
@@ -495,6 +498,9 @@ export const parseAndValidateNativePatchManifest = (bytes: Buffer): NativePatchM
     throw new Error("unsupported format_version; supported versions are 1 and 2");
   const version = root.format_version as 1 | 2;
   validateNativePatchStructure(root, version);
+  if (root.on_failure !== undefined && !["abort", "warn", "silent"].includes(root.on_failure)) {
+    throw new Error("on_failure must be 'abort', 'warn', or 'silent'");
+  }
 
   const packageData = object(root.package, "package");
   exactKeys(packageData, ["id", "version", "name"], ["description"], "package");
