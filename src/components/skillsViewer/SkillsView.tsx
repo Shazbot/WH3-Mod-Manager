@@ -37,7 +37,7 @@ import groupBy from "object.groupby";
 
 import "@xyflow/react/dist/style.css";
 import Skill, { SkillData } from "./Skill";
-import { skillArrow, skillEntry, skillGroupPad } from "./skillPanelLayout";
+import { skillArrow, skillArt, skillEntry, skillGroup, skillGroupPad, skillGroupWidth } from "./skillPanelLayout";
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
@@ -241,6 +241,13 @@ const nodeWidth = skillEntry.columnPitch;
 const nodeHeight = skillEntry.rowPitch;
 const biggerNodeHeight = nodeHeight + 20;
 const groupBoxHeight = skillGroupPad.top + skillEntry.height + skillGroupPad.bottom;
+const groupArtStyle = {
+  border: "solid",
+  borderWidth: "30px 15px 30px 30px",
+  borderImage: `url('${skillArt.group}') ${skillGroup.slice} fill`,
+  borderRadius: 0,
+  boxSizing: "border-box" as const,
+};
 
 /**
  * Gets the width of a group box around a row of cards.
@@ -249,6 +256,38 @@ const groupBoxHeight = skillGroupPad.top + skillEntry.height + skillGroupPad.bot
  */
 const groupBoxWidth = (numSkills: number) => (numSkills - 1) * nodeWidth + skillEntry.width + skillGroupPad.x * 2;
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
+
+/**
+ * Lays out each row like the game's chains. Entries are 56 px apart and a group is one item as wide as its cards, so the
+ * columns after a group move right by however much wider it is.
+ * @param skills The skills shown.
+ * @param groupedSkills The skills of each group, sorted by column.
+ * @returns The x of each column, by row and then column.
+ */
+const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, Skill[]>) => {
+  const groupsByStart: Record<string, Skill[]> = {};
+  for (const members of Object.values(groupedSkills)) groupsByStart[`${members[0].x}|${members[0].y}`] = members;
+  const rowsToMaxColumn: Record<number, number> = {};
+  for (const skill of skills) rowsToMaxColumn[skill.x] = Math.max(rowsToMaxColumn[skill.x] ?? 0, skill.y);
+
+  const columnXs: Record<number, Record<number, number>> = {};
+  for (const [row, maxColumn] of Object.entries(rowsToMaxColumn)) {
+    const xs: Record<number, number> = {};
+    let x = 0;
+    for (let column = 0; column <= maxColumn; column++) {
+      xs[column] = x;
+      const group = groupsByStart[`${row}|${column}`];
+      if (!group) {
+        x += nodeWidth;
+        continue;
+      }
+      x += skillGroupWidth(group.length) + nodeWidth - skillEntry.width;
+      column = group[group.length - 1].y;
+    }
+    columnXs[Number(row)] = xs;
+  }
+  return columnXs;
+};
 
 const sortSameCoordinateSkills = (first: Skill, second: Skill) => {
   if (first.faction == second.faction && first.subculture == second.subculture) return 0;
@@ -587,6 +626,7 @@ const SkillsView = memo(
     for (const skillsInGroup of Object.values(groupedSkills)) {
       skillsInGroup.sort((firstSkill, secondSkill) => firstSkill.y - secondSkill.y);
     }
+    const columnXs = getChainColumnXs(skills, groupedSkills);
 
     const skillNodes: Nodes[] = [];
 
@@ -624,24 +664,23 @@ const SkillsView = memo(
             unlockRank: 0,
           },
           position: {
-            y: lowest.x * effectiveNodeHeight - 15,
-            x: lowest.y * nodeWidth - 10,
+            y: lowest.x * effectiveNodeHeight + skillGroup.artY,
+            x: columnXs[lowest.x][lowest.y],
           },
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
           parentId: undefined,
           type: "default",
           style: {
+            ...groupArtStyle,
             backgroundColor: "transparent",
-            border: "2px solid rgb(42,11,13)",
-            boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
             zIndex: "0",
-            width: groupBoxWidth(skills.length),
-            height: groupBoxHeight,
+            width: skillGroupWidth(skills.length),
+            height: skillGroup.artHeight,
           },
           className: "reactFlowGroup",
-          width: groupBoxWidth(skills.length),
-          height: groupBoxHeight,
+          width: skillGroupWidth(skills.length),
+          height: skillGroup.artHeight,
         });
       }
     }
@@ -732,7 +771,7 @@ const SkillsView = memo(
       } else {
         position = {
           y: skill.x * effectiveNodeHeight + indexInSameCoords * 40,
-          x: skill.y * nodeWidth + indexInSameCoords * 25,
+          x: columnXs[skill.x][skill.y] + indexInSameCoords * 25,
         };
         if (skill.group) {
           const skillsInGroup = groupedSkills[skill.group];
@@ -740,8 +779,8 @@ const SkillsView = memo(
             const index = skillsInGroup.indexOf(skill);
             if (index > -1) {
               position = {
-                y: 15 + indexInSameCoords * 40,
-                x: index * nodeWidth + 10 + indexInSameCoords * 25,
+                y: -skillGroup.artY + indexInSameCoords * 40,
+                x: skillGroup.marginX + index * (skillEntry.width + skillGroup.spacing) + indexInSameCoords * 25,
               };
             }
           }
@@ -842,37 +881,6 @@ const SkillsView = memo(
 
     // console.log("skillNodes:", skillNodes);
 
-    if (!isEditMode) {
-      const skillNodesByRow = groupBy(
-        skillNodes.filter((node) => !node.parentId), // without sub-nodes, only groups or stand-alone nodes
-        (node) => node.data.row.toString(),
-      );
-      for (const row of Object.keys(skillNodesByRow)) {
-        const skillNodesRow = skillNodesByRow[row];
-
-        skillNodesRow.sort((firstNode, secondNode) => firstNode.position.x - secondNode.position.x);
-        let delta = 0;
-        for (let i = 1; i < skillNodesRow.length; i++) {
-          const node = skillNodesRow[i];
-          const nodePrev = skillNodesRow[i - 1];
-          if (node.position.x != nodePrev.position.x) {
-            if (node.data.isGrouping) {
-              delta += 50;
-            }
-            if (!node.data.isGrouping && nodePrev.data.isGrouping) {
-              delta += 50;
-            }
-          } else {
-            node.position.y = nodePrev.position.y + 20;
-          }
-          node.position.x += delta;
-          if (!node.parentId) {
-            // console.log("+");
-          }
-        }
-      }
-    }
-
     const initialEdges: SkillEdge[] = [];
     skills
       .filter((skill) => skill.linkedToNode)
@@ -969,10 +977,13 @@ const SkillsView = memo(
         const targetNode =
           nodes.find((n) => n.id === edge.target) || nodes.find((n) => (n.data as any)?.id === edge.target);
         if (!sourceNode || !targetNode) return;
-        // The arrow ends at the target card's left edge.
-        const targetLeft = targetNode.position.x + ((targetNode.data as any)?.isGrouping ? skillGroupPad.x : 0);
+        // The arrow ends at the target card's left edge, or at the edge of a game-style group.
+        const groupInsetX = isEditMode ? skillGroupPad.x : 0;
+        const targetLeft = targetNode.position.x + ((targetNode.data as any)?.isGrouping ? groupInsetX : 0);
         const x = Math.max(sourceNode.position.x, targetLeft) - skillArrow.width;
-        const y = sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? skillGroupPad.top : 0) + skillArrow.y;
+        // A group's arrow leaves from its cards' row.
+        const sourceMember = (sourceNode.data as any)?.isGrouping && nodes.find((n) => n.parentId == sourceNode.id);
+        const y = sourceNode.position.y + (sourceMember ? sourceMember.position.y : 0) + skillArrow.y;
         return { x, y };
       })
       .filter((arrow): arrow is { x: number; y: number } => arrow != undefined);

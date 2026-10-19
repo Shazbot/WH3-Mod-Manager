@@ -13,6 +13,7 @@ export const skillArt = {
   levelHover: require("../../assets/skills/skills_tab_level_over.png") as string,
   stickyBarFill: require("../../assets/skills/sticky_bar_fill.png") as string,
   stickyFlameMask: require("../../assets/skills/sticky_tooltip_flame_mask.png") as string,
+  group: require("../../assets/skills/parchment_divider.png") as string,
   spellTitle: require("../../assets/skills/tooltip_title_rare.png") as string,
   spellCost: require("../../assets/skills/spell_cost_frame.png") as string,
   tooltipAvailable: require("../../assets/skills/icon_tooltip_available.png") as string,
@@ -41,8 +42,21 @@ export const skillLevels = { x: 169, centerY: skillCard.height / 2 - 3, pipWidth
 // runs from 12 px inside the left card to the next card's left edge.
 export const skillArrow = { y: 16 + 10, width: 68 };
 
-// Not from the game: the box drawn around grouped skills, padding its cards on the left/right, top and bottom.
+// Not from the game: the edit mode box drawn around grouped skills, padding its cards on the left/right, top and bottom.
 export const skillGroupPad = { x: 10, top: 15, bottom: 10 };
+
+// template_module: a group of skills, laid out as one item of its chain. Its entries are 20 px apart with 20 px margins.
+// It draws parchment_divider as a 9-slice with 30/30/15/30 margins, 99 px tall at y -22, whose clear edges leave a
+// panel from y -9 to 76.
+export const skillGroup = { marginX: 20, spacing: 20, artY: -22, artHeight: 99, slice: "30 15 30 30" };
+
+/**
+ * Gets the width of a game-style group of skills.
+ * @param numSkills How many cards the group holds.
+ * @returns The width in px.
+ */
+export const skillGroupWidth = (numSkills: number) =>
+  skillGroup.marginX * 2 + numSkills * skillEntry.width + (numSkills - 1) * skillGroup.spacing;
 
 // The padlock in card's locked state, and the skill_locked_rank chains, drawn on skills another skill locks out.
 export const skillPadlock = { x: -2, y: 30, width: 32, height: 40 };

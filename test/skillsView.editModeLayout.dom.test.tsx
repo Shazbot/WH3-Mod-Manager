@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import initialState from "../src/initialAppState";
 import appReducer from "../src/appSlice";
 import SkillsView, { SkillsViewHandle } from "../src/components/skillsViewer/SkillsView";
-import { skillEntry } from "../src/components/skillsViewer/skillPanelLayout";
+import { skillEntry, skillGroup, skillGroupWidth } from "../src/components/skillsViewer/skillPanelLayout";
 
 vi.mock("@xyflow/react", () => {
   const React = require("react");
@@ -161,5 +161,50 @@ describe("SkillsView edit-mode layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     await waitFor(() => expect(viewRef.current?.getSnapshot().isEditMode).toBe(true));
     expect(viewRef.current?.getSnapshot().nodes.some((node) => node.id === "node_5")).toBe(true);
+  });
+});
+
+describe("SkillsView normal-mode layout", () => {
+  it("lays a group out as one chain item, pushing later columns past it", async () => {
+    const groupedSkillsData = {
+      ...skillsData,
+      currentSkills: [0, 1, 2, 3].map((column) => ({
+        ...skillAtRow(0),
+        y: column,
+        id: `skill_c${column}`,
+        nodeId: `node_c${column}`,
+        origTier: `${column}`,
+        group: column == 1 || column == 2 ? "group" : undefined,
+      })),
+    } as SkillsData;
+    window.api = {
+      ...window.api,
+      getSkillsEditorData: vi.fn().mockResolvedValue(undefined),
+    } as NonNullable<Window["api"]>;
+
+    const viewRef = createRef<SkillsViewHandle>();
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: { app: { ...initialState, skillsData: groupedSkillsData } },
+    });
+
+    render(
+      <Provider store={store}>
+        <SkillsView ref={viewRef} skillsData={groupedSkillsData} />
+      </Provider>,
+    );
+
+    await waitFor(() => expect(viewRef.current?.getSnapshot().nodes.length).toBeGreaterThan(0));
+    const nodes = viewRef.current!.getSnapshot().nodes;
+    const positionOf = (id: string) => nodes.find((node) => node.id === id)?.position;
+    expect(positionOf("group_group")).toEqual({ x: skillEntry.columnPitch, y: skillGroup.artY });
+    expect(positionOf("node_c1")).toEqual({ x: skillGroup.marginX, y: -skillGroup.artY });
+    expect(positionOf("node_c2")).toEqual({
+      x: skillGroup.marginX + skillEntry.width + skillGroup.spacing,
+      y: -skillGroup.artY,
+    });
+    expect(positionOf("node_c3")?.x).toBe(
+      skillEntry.columnPitch + skillGroupWidth(2) + skillEntry.columnPitch - skillEntry.width,
+    );
   });
 });
