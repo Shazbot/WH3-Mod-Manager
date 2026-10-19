@@ -228,8 +228,8 @@ export function getModsSortedByCustomizable(mods: Mod[], customizableMods: Recor
 
 export function getModsSortedByLastUpdated(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
-    const firstModLastChanged = firstMod.lastChanged || firstMod.lastChangedLocal;
-    const secondModLastChanged = secondMod.lastChanged || secondMod.lastChangedLocal;
+    const firstModLastChanged = getModLastChanged(firstMod);
+    const secondModLastChanged = getModLastChanged(secondMod);
     if (firstModLastChanged === undefined && secondModLastChanged === undefined) return 0;
     if (firstModLastChanged === undefined) return 1;
     if (secondModLastChanged === undefined) return -1;
@@ -237,10 +237,17 @@ export function getModsSortedByLastUpdated(mods: Mod[]) {
   });
 }
 
+/** Data folder mods use the file timestamp because it reflects local edits to Workshop copies. */
+export function getModLastChanged(mod: Pick<Mod, "isInData" | "lastChanged" | "lastChangedLocal">) {
+  return mod.isInData
+    ? (mod.lastChangedLocal || mod.lastChanged)
+    : (mod.lastChanged || mod.lastChangedLocal);
+}
+
 export function getModsSortedBySubbedTime(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
-    const firstModLastChanged = firstMod.subbedTime || firstMod.lastChanged || firstMod.lastChangedLocal;
-    const secondModLastChanged = secondMod.subbedTime || secondMod.lastChanged || secondMod.lastChangedLocal;
+    const firstModLastChanged = firstMod.subbedTime || getModLastChanged(firstMod);
+    const secondModLastChanged = secondMod.subbedTime || getModLastChanged(secondMod);
     if (firstModLastChanged === undefined && secondModLastChanged === undefined) return 0;
     if (firstModLastChanged === undefined) return 1;
     if (secondModLastChanged === undefined) return -1;

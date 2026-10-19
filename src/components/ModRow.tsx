@@ -10,6 +10,7 @@ import { Icons } from "./icons";
 import CustomModFolderIcon from "./CustomModFolderIcon";
 import { BsArrowDownUp } from "react-icons/bs";
 import { ModListLayout } from "../utility/frontend/modListLayout";
+import { getModLastChanged } from "../modSortingHelpers";
 
 const FontAwesomeIconMemo = memo(FontAwesomeIcon);
 
@@ -252,13 +253,13 @@ const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
         "",
       [isShowingSubbedTime, mod.subbedTime],
     );
+    const modLastChanged = getModLastChanged(mod);
     const timeColumnValue = useMemo(
       () =>
         (!hasSubbedTimeColumn && isSubbedTimeSort(sortingType) && subbedTimeValue) ||
-        (mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
-        (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
+        (modLastChanged && formatLastChanged(modLastChanged)) ||
         "",
-      [hasSubbedTimeColumn, sortingType, subbedTimeValue, mod.lastChanged, mod.lastChangedLocal],
+      [hasSubbedTimeColumn, sortingType, subbedTimeValue, modLastChanged],
     );
 
     const isCompact = layout === "compact";
