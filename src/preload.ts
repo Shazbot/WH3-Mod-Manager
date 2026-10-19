@@ -141,6 +141,8 @@ const api = {
   techTreesAreReady: () => ipcRenderer.send("techTreesAreReady"),
   requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
   viewerClosedPack: (packPath: string) => ipcRenderer.send("viewerClosedPack", packPath),
+  reloadPackForViewer: (packPath: string): Promise<ReloadPackForViewerResult> =>
+    ipcRenderer.invoke("reloadPackForViewer", packPath),
   setViewerActivePack: (packPath: string) => ipcRenderer.send("setViewerActivePack", packPath),
   requestOpenSkillsWindow: (mods: Mod[]) => ipcRenderer.send("requestOpenSkillsWindow", mods),
   requestSkillsData: (mods: Mod[]) => ipcRenderer.send("requestSkillsData", mods),
@@ -149,6 +151,8 @@ const api = {
     ipcRenderer.send("setSkillsViewOptions", skillsViewOptions),
   openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("openModInViewer", callback),
+  viewerPackChangedOnDisk: (callback: (event: Electron.IpcRendererEvent, packPath: string) => void) =>
+    ipcRenderer.on("viewerPackChangedOnDisk", callback),
   onSkillsViewOptions: (callback: (event: Electron.IpcRendererEvent, skillsViewOptions: SkillsViewOptions) => void) =>
     ipcRenderer.on("setSkillsViewOptions", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),

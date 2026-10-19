@@ -1619,6 +1619,43 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
   const packPathKey = (packPath: string) =>
     packPath.startsWith("memory://") ? packPath.toLowerCase() : nodePath.resolve(packPath).toLowerCase();
+  const physicalPackPathKey = async (packPath: string) => {
+    try {
+      return packPathKey(await fs.promises.realpath(packPath));
+    } catch {
+      return packPathKey(packPath);
+    }
+  };
+  const recentProgrammaticPackWrites = new Map<string, { size: number; mtimeMs: number; expiresAt: number }>();
+  const rememberProgrammaticPackWrite = async (packPath: string) => {
+    try {
+      const stat = await fs.promises.stat(packPath);
+      recentProgrammaticPackWrites.set(await physicalPackPathKey(packPath), {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        expiresAt: Date.now() + 30_000,
+      });
+    } catch {
+      // A write that could not be statted is handled as an ordinary disk change if a watcher sees it.
+    }
+  };
+  const isRecentProgrammaticPackWrite = async (packPath: string) => {
+    const key = await physicalPackPathKey(packPath);
+    const expected = recentProgrammaticPackWrites.get(key);
+    if (!expected) return false;
+    if (Date.now() > expected.expiresAt) {
+      recentProgrammaticPackWrites.delete(key);
+      return false;
+    }
+    try {
+      const stat = await fs.promises.stat(packPath);
+      if (stat.size === expected.size && stat.mtimeMs === expected.mtimeMs) return true;
+    } catch {
+      // A deleted or replaced file is an external change from the viewer's perspective.
+    }
+    recentProgrammaticPackWrites.delete(key);
+    return false;
+  };
   const findPackByPath = (packPath: string) =>
     appData.packsData.find((pack) => pack.path === packPath || packPathKey(pack.path) === packPathKey(packPath));
   const broadcastPackStagingState = (packPath: string) => {
@@ -5624,6 +5661,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     removePackFromCollisions(path);
   };
+  const onPackChangedOnDisk = async (path: string, fromWatcher = false) => {
+    await onPackDeleted(path);
+    const changedPathKey = await physicalPackPathKey(path);
+    const openViewerPackPath = await (async () => {
+      for (const openPath of appData.openViewerPackPaths) {
+        if ((await physicalPackPathKey(openPath)) === changedPathKey) return openPath;
+      }
+      return undefined;
+    })();
+    // A workshop content pack may be open through its Data-folder symlink. Invalidate that alias
+    // too so a later viewer read cannot reuse its retained index.
+    if (openViewerPackPath && packPathKey(openViewerPackPath) !== packPathKey(path)) {
+      await invalidateCachedPackData(openViewerPackPath);
+    }
+    if (openViewerPackPath && !(await isRecentProgrammaticPackWrite(path))) {
+      windows.viewerWindow?.webContents.send("viewerPackChangedOnDisk", openViewerPackPath);
+    }
+    await onNewPackFound(path, fromWatcher);
+  };
   const getAllMods = async (afterModsPopulated?: () => void | Promise<void>) => {
     const timeStartedFetchingSubbedIds = Date.now();
     try {
@@ -5875,8 +5931,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("NEW CONTENT CHANGE", path);
-          await onPackDeleted(path);
-          await onNewPackFound(path);
+          await onPackChangedOnDisk(path);
         });
     }
     if (!downloadsWatcher) {
@@ -5917,9 +5972,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("data pack changed:", path);
-          await onPackDeleted(path);
           console.log("dataWatcher change:", path);
-          await onNewPackFound(path);
+          await onPackChangedOnDisk(path);
         });
     }
     const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
@@ -5939,8 +5993,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         .on("add", async (path) => onNewPackFound(path, true))
         .on("unlink", async (path) => onPackDeleted(path))
         .on("change", async (path) => {
-          await onPackDeleted(path);
-          await onNewPackFound(path, true);
+          await onPackChangedOnDisk(path, true);
         });
     }
     if (!mergedWatcher) {
@@ -5965,8 +6018,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("pack changed:", path);
-          await onPackDeleted(path);
-          await onNewPackFound(path);
+          await onPackChangedOnDisk(path);
         });
     }
   };
@@ -7309,6 +7361,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       try {
         // Write the pack with unsaved files appended/overwritten
         await writePack(sortedFilesToSave, savePath, pack, true, [], deletedPaths);
+        if (replacedOriginal) await rememberProgrammaticPackWrite(savePath);
         console.log(`Pack saved to: ${savePath}`);
       } catch (error) {
         // If we can't overwrite (file in use/locked), save as _modified instead
@@ -11971,6 +12024,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
   ipcMain.on("getPackData", (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table, undefined, getPackDataDestination(event.sender));
+  });
+  ipcMain.handle("reloadPackForViewer", async (_event, packPath: string): Promise<ReloadPackForViewerResult> => {
+    try {
+      await invalidateCachedPackData(packPath);
+      const pack = await readPack(packPath, { skipParsingTables: true });
+
+      delete appData.unsavedPacksData[packPath];
+      delete appData.deletedPackFilePaths[packPath];
+      appendPacksData(pack, undefined, false);
+      broadcastPackStagingState(packPath);
+
+      return { success: true, packData: getPackViewData(pack) };
+    } catch (error) {
+      console.error("Failed to reload viewer pack from disk:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to reload pack from disk",
+      };
+    }
   });
   ipcMain.on("getPackDataWithLocs", (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table, true, getPackDataDestination(event.sender));

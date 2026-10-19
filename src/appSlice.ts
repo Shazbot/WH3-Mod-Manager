@@ -1118,12 +1118,19 @@ const appSlice = createSlice({
       delete state.packsData[packPath];
       delete state.unsavedPacksData[packPath];
       delete state.deletedPackFilePaths[packPath];
+      delete state.staleViewerPackPaths[packPath];
       if (state.currentDBTableSelection?.packPath === packPath) state.currentDBTableSelection = undefined;
       if (state.currentFlowFilePackPath === packPath) {
         state.currentFlowFileSelection = undefined;
         state.currentFlowFilePackPath = undefined;
       }
       if (state.packOpenRequest?.packPath === packPath) state.packOpenRequest = undefined;
+    },
+    markViewerPackStale: (state: AppState, action: PayloadAction<string>) => {
+      state.staleViewerPackPaths[action.payload] = true;
+    },
+    clearViewerPackStale: (state: AppState, action: PayloadAction<string>) => {
+      delete state.staleViewerPackPaths[action.payload];
     },
     setUnsavedPacksData: (state: AppState, action: PayloadAction<SetUnsavedPacksDataPayload>) => {
       const { packPath, unsavedFileData } = action.payload;
@@ -2126,6 +2133,8 @@ export const {
   setPacksData,
   applySavedPackData,
   removePackData,
+  markViewerPackStale,
+  clearViewerPackStale,
   setUnsavedPacksData,
   setDeletedPackFilePaths,
   setRecentPackPaths,

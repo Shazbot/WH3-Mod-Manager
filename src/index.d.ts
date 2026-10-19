@@ -292,6 +292,8 @@ declare global {
     packsData: Record<string, PackViewData>;
     unsavedPacksData: Record<string, PackedFile[]>;
     deletedPackFilePaths: Record<string, string[]>;
+    /** Open viewer packs whose files changed on disk after they were loaded. */
+    staleViewerPackPaths: Record<string, boolean>;
     /** Physical packs most recently opened in the mod viewer, newest first. */
     recentPackPaths: string[];
     packCollisions: PackCollisions;
@@ -613,6 +615,12 @@ declare global {
     packPath: string;
     tables: string[];
     packedFiles: Record<string, PackedFile>;
+  }
+
+  interface ReloadPackForViewerResult {
+    success: boolean;
+    packData?: PackViewData;
+    error?: string;
   }
 
   interface PackReadingOptions {
