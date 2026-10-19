@@ -1,5 +1,6 @@
 import { DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import type { FilterRow, FlowNodeDataPatch } from "../types";
+import type { NativePatchTableSchemas } from "../nativePatchSchema";
 
 export interface NodeData extends Record<string, unknown> {
   label: string;
@@ -401,6 +402,8 @@ export interface NativePatchFlowNodeData extends NodeData {
   scalarValues: Record<string, unknown>;
   scalarOptionBindings: Record<string, string>;
   tableBindings: string[];
+  /** Editor metadata only; execution reads the schema from the validated template. */
+  tableSchemas?: NativePatchTableSchemas;
   outputType: "TableSelection";
 }
 

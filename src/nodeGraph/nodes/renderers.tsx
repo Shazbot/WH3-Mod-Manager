@@ -26,6 +26,7 @@ import {
   useFlowSourcePack,
 } from "./shared";
 import { splitMultilineOptionValue } from "../types";
+import { nativePatchColumnsToSchema } from "../nativePatchSchema";
 import { getFilterRegexError, getLastFilterMatchMode, normalizeFilterMatchMode } from "../types";
 import type { FilterMatchMode, FilterRow } from "../types";
 import type {
@@ -5595,10 +5596,17 @@ export const NativePatchFlowNode: React.FC<{
   useEffect(() => {
     if (!selectedTemplate) return;
     const nextBindings = selectedTemplate.tables.map((table) => table.id);
-    if (JSON.stringify(nextBindings) === JSON.stringify(data.tableBindings || [])) return;
+    const tableSchemas = Object.fromEntries(
+      selectedTemplate.tables.map((table) => [table.id, nativePatchColumnsToSchema(table.columns)]),
+    );
+    if (
+      JSON.stringify(nextBindings) === JSON.stringify(data.tableBindings || []) &&
+      JSON.stringify(tableSchemas) === JSON.stringify(data.tableSchemas || {})
+    )
+      return;
     setTableBindings(nextBindings);
-    updateNode({ tableBindings: nextBindings });
-  }, [selectedTemplate, data.tableBindings]);
+    updateNode({ tableBindings: nextBindings, tableSchemas });
+  }, [selectedTemplate, data.tableBindings, data.tableSchemas]);
   const selectPack = (packName: string) => {
     setSelectedPackName(packName);
     setTemplatePath("");
@@ -5611,6 +5619,7 @@ export const NativePatchFlowNode: React.FC<{
       scalarValues: {},
       scalarOptionBindings: {},
       tableBindings: [],
+      tableSchemas: {},
     });
   };
   const selectTemplate = (nextPath: string) => {
@@ -5632,6 +5641,9 @@ export const NativePatchFlowNode: React.FC<{
       scalarValues: defaults,
       scalarOptionBindings: {},
       tableBindings: bindings,
+      tableSchemas: Object.fromEntries(
+        (nextTemplate?.tables || []).map((table) => [table.id, nativePatchColumnsToSchema(table.columns)]),
+      ),
     });
   };
   const setScalarValue = (inputId: string, value: unknown) => {
@@ -5828,6 +5840,16 @@ export const NativePatchFlowNode: React.FC<{
                 <div className="text-xs text-gray-200">
                   {table.id} <span className="text-gray-500">· {table.table_name}</span>
                 </div>
+                <div className="text-[11px] text-purple-300 text-right pr-2">Schema →</div>
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={`output-schema:${table.id}`}
+                  className="w-3 h-3 bg-purple-500"
+                  data-output-type="CustomSchema"
+                  title={`Custom Schema for ${table.id}`}
+                  style={{ right: -6, top: "50%", transform: "translateY(-50%)" }}
+                />
                 <div className="text-[11px] text-gray-400">
                   Connect a TableSelection with{" "}
                   {table.columns.map((column) => `${column.name} (${column.type})`).join(", ")} · max {table.max_rows}{" "}
@@ -5840,7 +5862,7 @@ export const NativePatchFlowNode: React.FC<{
         </>
       )}
       <div className="mt-3 text-xs text-gray-400">
-        Leave output unconnected to apply at game startup, or connect Save Changes to export a contribution.
+        Leave contribution output unconnected to apply at startup, or connect Save Changes to export it.
       </div>
       <Handle
         type="source"

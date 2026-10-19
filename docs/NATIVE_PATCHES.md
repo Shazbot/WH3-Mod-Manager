@@ -84,6 +84,15 @@ options. Table input IDs create named `TableSelection` sockets; rows must provid
 the declared column names and types. `table_name` is a display label, while
 column names define the accepted table shape.
 
+Each declared table also exposes a purple **Schema** output. Connect it to Custom
+Rows Input's schema input, then connect those rows back to the matching table
+input on Native Patch. Schema connections read the validated template declaration
+before runtime execution, so this wiring does not create an execution dependency
+cycle. The editor fills in the row columns automatically and refreshes them when
+the selected template changes. Saved editor schema metadata is never trusted for
+execution. ASCII, bool, i32, u32, and f32 columns map to StringU8, Boolean, I32,
+I64, and F32 respectively; I64 preserves the complete unsigned u32 range.
+
 Table declarations choose a `group_by` column and a `value_column`. Duplicate
 group/value rows are removed. When several flows or mods provide the same
 template, they can add different groups. Providers of the same group must declare
@@ -115,12 +124,14 @@ and leaves the following three bytes zero.
 The node emits a raw file under `whmm_patch_contributions/v1/`, carrying the
 validated template, hashed payload bytes, resolved input values, and flow/node
 provenance. Save Changes writes that file into its output pack. If the Native
-Patch node has no outgoing connections, a successful startup flow instead passes
+Patch node has no outgoing contribution connection, a successful startup flow instead passes
 its contribution directly to the launch planner without creating a pack. These
 terminal flows run again on each launch; their contributions are not persisted in
 the flow output cache. Manual editor execution previews the contribution; startup
 application requires the flow in an enabled pack. Disabled, pruned, empty, or
 failed flows register no terminal contribution.
+Schema output connections do not count as contribution connections and do not
+disable terminal behavior.
 
 At launch WHMM reads saved contributions from the final enabled packs after flow
 generation and validates terminal contributions through the same parser and merge

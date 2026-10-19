@@ -50,6 +50,7 @@ import {
 } from "./vanillaPackIndex/format";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
+import { nativePatchColumnsToSchema } from "./nodeGraph/nativePatchSchema";
 import { readNativePatchPackEntry, type NativePatchPack } from "./nativePatches/planner";
 import {
   createNativePatchFlowContribution,
@@ -987,13 +988,11 @@ const getNativePatchTableCellValue = (value: unknown, type: string, where: strin
   return number;
 };
 
-const executeNativePatchFlowNode = async (
-  nodeId: string,
-  inputData: any,
+const loadNativePatchFlowTemplate = async (
   rawConfig: unknown,
   textValue: string,
   executionContext?: FlowExecutionContext,
-): Promise<NodeExecutionResult> => {
+) => {
   const config = getNodeConfig<NativePatchFlowConfig>(rawConfig, textValue) ?? {};
   if (!config.templatePath?.trim()) throw new Error("Select a native patch template before running this node");
   const templatePackPath = resolveNativePatchTemplatePackPath(config, executionContext);
@@ -1023,6 +1022,42 @@ const executeNativePatchFlowNode = async (
   }
   const templateBytes = await readNativePatchPackEntry(nativePack, templateEntries[0], 8 * 1024 * 1024);
   const template = parseNativePatchFlowTemplate(templateBytes);
+  return {
+    config: { ...config, templatePath: normalizedTemplatePath },
+    templatePackPath,
+    sourcePack,
+    nativePack,
+    template,
+  };
+};
+
+/** Schema declarations can feed rows back into this patch without executing the patch first. */
+export const readNativePatchFlowTableSchema = async (
+  inputId: string,
+  rawConfig: unknown,
+  textValue: string,
+  executionContext?: FlowExecutionContext,
+) => {
+  const { template } = await loadNativePatchFlowTemplate(rawConfig, textValue, executionContext);
+  const input = template.inputs.tables.find((input) => input.id === inputId);
+  if (!input) throw new Error(`Native Patch template has no table input '${inputId}'`);
+  const parameter = template.native_patch.parameters.find((parameter) => parameter.id === input.parameter)!;
+  if (parameter.type !== "table") throw new Error(`Native Patch input '${inputId}' is not a table parameter`);
+  return { type: "CustomSchema", schemaColumns: nativePatchColumnsToSchema(parameter.columns) };
+};
+
+const executeNativePatchFlowNode = async (
+  nodeId: string,
+  inputData: any,
+  rawConfig: unknown,
+  textValue: string,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> => {
+  const { config, templatePackPath, sourcePack, nativePack, template } = await loadNativePatchFlowTemplate(
+    rawConfig,
+    textValue,
+    executionContext,
+  );
   const parameterById = new Map(
     (template.native_patch.parameters as Array<Record<string, any>>).map((parameter) => [parameter.id, parameter]),
   );

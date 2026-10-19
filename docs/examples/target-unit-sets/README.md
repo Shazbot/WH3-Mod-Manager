@@ -13,14 +13,18 @@ Put these entries in the same mod pack:
 
 Open the flow in WHMM and edit **Custom Rows Input**. Replace the example strings
 with your flag name and existing DB unit-set keys. Repeat a flag in several rows
-to allow any of its listed unit sets. Connect any other table with the same
+to allow any of its listed unit sets. The Native Patch node's **Schema** output
+defines the required columns for Custom Rows Input, whose rows feed back into
+the patch's **mappings** input. No separate Custom Schema node is needed.
+Connect any other table with the same
 `flag` and `unit_set` string columns to the Native Patch node's **mappings** input
 to author the rows elsewhere. Save Changes writes the resolved native contribution
 into `target_unit_sets_mapping.pack`; enable that generated pack for launch.
-Alternatively, remove the connection from Native Patch to Save Changes to use it
+Alternatively, remove the contribution connection from Native Patch to Save Changes to use it
 as a terminal node. When the owning pack's flow runs at startup, WHMM applies its
 contribution directly without writing a contribution pack. Keep the connection
 for the existing pack export workflow.
+Keep the schema connection to Custom Rows Input in either mode.
 Different providers may add flags; providers defining the same flag must agree on
 its complete set of unit-set keys.
 

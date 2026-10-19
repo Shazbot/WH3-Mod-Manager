@@ -202,7 +202,9 @@ describe("Native Patch flow node", () => {
     const flow = JSON.parse(fs.readFileSync(path.join(exampleDirectory, "flow.json"), "utf8"));
     if (terminal) {
       flow.nodes = flow.nodes.filter((node: any) => node.type !== "savechanges");
-      flow.connections = flow.connections.filter((connection: any) => connection.sourceId !== "node_2");
+      flow.connections = flow.connections.filter(
+        (connection: any) => connection.sourceId !== "node_2" || connection.sourceHandle?.startsWith("output-schema:"),
+      );
     }
     const flowText = JSON.stringify(flow);
     fs.writeFileSync(templatePackPath, templateBytes);
@@ -283,6 +285,17 @@ describe("Native Patch flow node", () => {
       if (mode === "disabled") graph.nodes.find((node) => node.id === "patch")!.data.isDisabled = true;
       if (mode === "empty") graph.nodeConfigs.rows = { customRows: [], tableName: "mapping_input" };
       if (mode === "failed") graph.connections = graph.connections.filter((edge) => edge.sourceId !== "schema");
+      if (mode !== "failed") {
+        graph.nodes = graph.nodes.filter((node) => node.id !== "schema");
+        graph.connections = graph.connections.filter((edge) => edge.sourceId !== "schema");
+        graph.connections.unshift({
+          id: "patch-schema-rows",
+          sourceId: "patch",
+          sourceHandle: "output-schema:mappings",
+          targetId: "rows",
+          targetHandle: "input-schema",
+        });
+      }
       const flow = {
         version: "1.0.0",
         timestamp: 0,
@@ -332,6 +345,53 @@ describe("Native Patch flow node", () => {
       nodeId: "patch",
     });
     expect(contribution.inputs.tables.mappings).toEqual([{ flag: "flag_alpha", unit_set: "set_alpha" }]);
+  });
+
+  it("feeds its declared schema into rows that connect back to the same Native Patch", async () => {
+    const graph = makeGraph("whmm_patch_templates/mapping.wh3patchtemplate.json");
+    graph.nodes = graph.nodes.filter((node) => node.id !== "schema");
+    graph.nodes.find((node) => node.id === "patch")!.data.tableSchemas = {
+      mappings: [{ name: "stale_editor_column", type: "Boolean" }],
+    };
+    graph.connections = graph.connections.filter((edge) => edge.sourceId !== "schema");
+    graph.connections.unshift({
+      id: "schema-from-patch",
+      sourceId: "patch",
+      sourceHandle: "output-schema:mappings",
+      targetId: "rows",
+      targetHandle: "input-schema",
+    });
+    const context = createFlowExecutionContext();
+    context.flowSourcePackPath = templatePackPath;
+    const result = await executeNodeGraph({ ...graph, executionContext: context });
+    expect(result.success).toBe(true);
+    expect(result.totalExecuted).toBe(2);
+    expect(
+      result.executionResults.get("rows")?.data.tables[0].table.tableSchema.fields.map((field: any) => field.name),
+    ).toEqual(["flag", "unit_set"]);
+    const output = result.executionResults.get("patch")?.data.tables[0];
+    expect(parseNativePatchFlowContribution(output.table.buffer).contribution.inputs.tables.mappings).toEqual([
+      { flag: "flag_alpha", unit_set: "set_alpha" },
+    ]);
+  });
+
+  it("reports a deleted schema output instead of using cached editor columns", async () => {
+    const graph = makeGraph("whmm_patch_templates/mapping.wh3patchtemplate.json");
+    graph.nodes = graph.nodes.filter((node) => node.id !== "schema");
+    graph.connections = graph.connections.filter((edge) => edge.sourceId !== "schema");
+    graph.connections.unshift({
+      id: "missing-schema",
+      sourceId: "patch",
+      sourceHandle: "output-schema:removed",
+      targetId: "rows",
+      targetHandle: "input-schema",
+    });
+    const context = createFlowExecutionContext();
+    context.flowSourcePackPath = templatePackPath;
+    const result = await executeNodeGraph({ ...graph, executionContext: context });
+    expect(result.success).toBe(false);
+    expect(result.executionResults.get("rows")?.error).toContain("no table input 'removed'");
+    expect(result.executionResults.has("patch")).toBe(false);
   });
 
   it("keeps the output path stable when values change and separates flow identities", async () => {

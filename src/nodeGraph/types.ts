@@ -2,6 +2,7 @@ import type { XYPosition } from "@xyflow/react";
 
 import { DBVersion } from "../packFileTypes";
 import type { DeepCloneOverride, DeepCloneTreeNode, DeepCloneVariantAxis } from "./nodes/types";
+import type { NativePatchTableSchemas } from "./nativePatchSchema";
 
 export type FilterMatchMode = "full" | "partial" | "regex";
 
@@ -190,6 +191,7 @@ export interface SerializedNode {
     scalarValues?: Record<string, unknown>;
     scalarOptionBindings?: Record<string, string>;
     tableBindings?: string[];
+    tableSchemas?: NativePatchTableSchemas;
     tableName?: string;
     sourceInputColumns?: string[] | null;
     indexedTableColumns?: string[] | null;

@@ -1,4 +1,5 @@
 import { Edge, Node } from "@xyflow/react";
+import { isNativePatchSchemaConnection } from "./nativePatchSchema";
 
 import {
   FlowOption,
@@ -127,6 +128,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         scalarValues: (data.scalarValues || {}) as Record<string, unknown>,
         scalarOptionBindings: (data.scalarOptionBindings || {}) as Record<string, string>,
         tableBindings: data.tableBindings || [],
+        tableSchemas: data.tableSchemas || {},
         tableName: maybeString(data.tableName),
         sourceInputColumns: data.sourceInputColumns || null,
         indexedTableColumns: data.indexedTableColumns || null,
@@ -177,7 +179,9 @@ export const serializeReactFlowEdges = (nodes: Node[], edges: Edge[]): Serialize
       id: edge.id || `${edge.source}-${edge.target}`,
       sourceId: edge.source || "",
       targetId: edge.target || "",
-      sourceType: toNodeEdgeType(sourceData?.outputType),
+      sourceType: toNodeEdgeType(
+        isNativePatchSchemaConnection(sourceNode, edge.sourceHandle) ? "CustomSchema" : sourceData?.outputType,
+      ),
       targetType: toNodeEdgeType(targetData?.inputType),
       sourceHandle: edge.sourceHandle,
       targetHandle: edge.targetHandle,

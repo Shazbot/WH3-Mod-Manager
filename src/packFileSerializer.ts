@@ -53,6 +53,7 @@ import { decompress } from "@mongodb-js/zstd";
 import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
 import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
+import { isNativePatchSchemaConnection } from "./nodeGraph/nativePatchSchema";
 import {
   PreparedFlow,
   buildAutomaticFlowExecutionId,
@@ -1625,7 +1626,12 @@ export const executeFlowsForPack = async (
           );
           console.log(`Executed ${result.successCount}/${result.totalExecuted} nodes`);
           for (const node of preparedFlow.nodes) {
-            if (node.type !== "nativepatch" || preparedFlow.connections.some((edge) => edge.sourceId === node.id))
+            if (
+              node.type !== "nativepatch" ||
+              preparedFlow.connections.some(
+                (edge) => edge.sourceId === node.id && !isNativePatchSchemaConnection(node, edge.sourceHandle),
+              )
+            )
               continue;
             const output = result.executionResults.get(node.id);
             if (!output?.success) continue;

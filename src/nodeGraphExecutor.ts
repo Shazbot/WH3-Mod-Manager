@@ -1,6 +1,7 @@
 import type { SerializedConnection, SerializedNode } from "./nodeGraph/types";
 import { FlowExecutionContext, flowExecutionDebugLog } from "./flowExecutionSupport";
-import { executeNodeAction, resetCounterTracking } from "./nodeExecutor";
+import { executeNodeAction, readNativePatchFlowTableSchema, resetCounterTracking } from "./nodeExecutor";
+import { isNativePatchSchemaConnection, NATIVE_PATCH_SCHEMA_HANDLE_PREFIX } from "./nodeGraph/nativePatchSchema";
 
 interface NodeGraphExecutionRequest {
   nodes: SerializedNode[];
@@ -276,11 +277,18 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
   }
   return node.data.textValue || "";
 };
+type SchemaOutputs = Map<string, Awaited<ReturnType<typeof readNativePatchFlowTableSchema>>>;
+const schemaOutputKey = (connection: SerializedConnection) => `${connection.sourceId}\0${connection.sourceHandle}`;
+
 const extractConnectionData = (
   connection: SerializedConnection,
   executionResults: Map<string, NodeExecutionResult>,
   nodeMap: Map<string, SerializedNode>,
+  schemaOutputs: SchemaOutputs,
 ) => {
+  if (isNativePatchSchemaConnection(nodeMap.get(connection.sourceId), connection.sourceHandle)) {
+    return schemaOutputs.get(schemaOutputKey(connection)) ?? null;
+  }
   const sourceResult = executionResults.get(connection.sourceId);
   if (!sourceResult) return null;
   if (connection.sourceHandle === "else" && sourceResult.elseData) {
@@ -302,11 +310,12 @@ const mergeTableSelectionInputs = (
   targetIncomingConnections: SerializedConnection[],
   executionResults: Map<string, NodeExecutionResult>,
   nodeMap: Map<string, SerializedNode>,
+  schemaOutputs: SchemaOutputs,
 ) => {
   const mergedSourceFilesByPath = new Map<string, any>();
   const allTables: any[] = [];
   for (const connection of targetIncomingConnections) {
-    const sourceData = extractConnectionData(connection, executionResults, nodeMap);
+    const sourceData = extractConnectionData(connection, executionResults, nodeMap, schemaOutputs);
     if (sourceData?.type !== "TableSelection") continue;
     if (sourceData.tables) {
       allTables.push(...sourceData.tables);
@@ -334,6 +343,7 @@ const buildInputDataForTarget = (
   targetIncomingConnections: SerializedConnection[],
   executionResults: Map<string, NodeExecutionResult>,
   nodeMap: Map<string, SerializedNode>,
+  schemaOutputs: SchemaOutputs,
 ) => {
   if (
     targetNode.type === "mergechanges" ||
@@ -342,7 +352,7 @@ const buildInputDataForTarget = (
     targetNode.type === "mathceil"
   ) {
     const allInputs = targetIncomingConnections
-      .map((connection) => extractConnectionData(connection, executionResults, nodeMap))
+      .map((connection) => extractConnectionData(connection, executionResults, nodeMap, schemaOutputs))
       .filter((data) => data !== null && data !== undefined);
     return allInputs.length > 0 ? allInputs : null;
   }
@@ -353,7 +363,7 @@ const buildInputDataForTarget = (
     let sawTableSelection = false;
     let textData = null;
     for (const connection of targetIncomingConnections) {
-      const inputData = extractConnectionData(connection, executionResults, nodeMap);
+      const inputData = extractConnectionData(connection, executionResults, nodeMap, schemaOutputs);
       if (inputData?.type === "Text" && !textData) {
         textData = inputData;
       } else if (inputData?.type === "TableSelection") {
@@ -391,8 +401,8 @@ const buildInputDataForTarget = (
       return null;
     }
     return [
-      extractConnectionData(sourceConnection, executionResults, nodeMap),
-      extractConnectionData(indexConnection, executionResults, nodeMap),
+      extractConnectionData(sourceConnection, executionResults, nodeMap, schemaOutputs),
+      extractConnectionData(indexConnection, executionResults, nodeMap, schemaOutputs),
     ];
   }
   if (targetNode.type === "readtsvfrompack") {
@@ -402,8 +412,8 @@ const buildInputDataForTarget = (
       return null;
     }
     return [
-      extractConnectionData(schemaConnection, executionResults, nodeMap),
-      packsConnection ? extractConnectionData(packsConnection, executionResults, nodeMap) : null,
+      extractConnectionData(schemaConnection, executionResults, nodeMap, schemaOutputs),
+      packsConnection ? extractConnectionData(packsConnection, executionResults, nodeMap, schemaOutputs) : null,
     ];
   }
   if (targetNode.type === "nativepatch") {
@@ -415,7 +425,12 @@ const buildInputDataForTarget = (
       if (seenHandles.has(handle))
         throw new Error(`Native Patch input socket '${handle}' has more than one incoming connection`);
       seenHandles.add(handle);
-      tables[handle.slice("input-table:".length)] = extractConnectionData(connection, executionResults, nodeMap);
+      tables[handle.slice("input-table:".length)] = extractConnectionData(
+        connection,
+        executionResults,
+        nodeMap,
+        schemaOutputs,
+      );
     }
     return { type: "NativePatchFlowInputs", tables };
   }
@@ -426,7 +441,7 @@ const buildInputDataForTarget = (
       targetNode.type === "combinesametables") &&
     targetIncomingConnections.length > 1
   ) {
-    return mergeTableSelectionInputs(targetIncomingConnections, executionResults, nodeMap);
+    return mergeTableSelectionInputs(targetIncomingConnections, executionResults, nodeMap, schemaOutputs);
   }
   if (targetIncomingConnections.length === 0) {
     return null;
@@ -435,6 +450,7 @@ const buildInputDataForTarget = (
     targetIncomingConnections[targetIncomingConnections.length - 1],
     executionResults,
     nodeMap,
+    schemaOutputs,
   );
 };
 export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Promise<NodeGraphExecutionResult> => {
@@ -450,7 +466,14 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
     const outgoingConnectionsBySource = new Map<string, SerializedConnection[]>();
     const incomingConnectionsByTarget = new Map<string, SerializedConnection[]>();
     const incomingEdges = new Set<string>();
+    const schemaConnections = connections.filter((connection) =>
+      isNativePatchSchemaConnection(nodeMap.get(connection.sourceId), connection.sourceHandle),
+    );
+    const schemaConnectionKeys = new Set(schemaConnections.map(getConnectionKey));
+    const schemaOutputs: SchemaOutputs = new Map();
     for (const connection of connections) {
+      // Template schemas are declarations, not runtime dependencies: rows can feed the same patch back.
+      if (schemaConnectionKeys.has(getConnectionKey(connection))) continue;
       const outgoingConnections = outgoingConnectionsBySource.get(connection.sourceId);
       if (outgoingConnections) {
         outgoingConnections.push(connection);
@@ -520,13 +543,10 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       deadConnectionKeys.has(getConnectionKey(incomingConnection)) ||
       (executed.has(incomingConnection.sourceId) &&
         executionResults.get(incomingConnection.sourceId)?.success === true);
-    const executionQueue = startingNodes.map((node) => ({
-      node,
-      inputData: null as any,
-    }));
+    const executionQueue = startingNodes.map((node) => ({ node }));
     let queueIndex = 0;
     while (queueIndex < executionQueue.length) {
-      const { node, inputData } = executionQueue[queueIndex++];
+      const { node } = executionQueue[queueIndex++];
       if (executed.has(node.id)) {
         continue;
       }
@@ -542,6 +562,38 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
         const config = nodeConfigs?.[node.id];
         const textValue =
           config === undefined ? serializeNodeConfigForExecution(node) : typeof config === "string" ? config : "";
+        const schemaIncoming = schemaConnections.filter((connection) => connection.targetId === node.id);
+        for (const connection of schemaIncoming) {
+          const key = schemaOutputKey(connection);
+          if (schemaOutputs.has(key)) continue;
+          const source = nodeMap.get(connection.sourceId)!;
+          const sourceConfig = nodeConfigs?.[source.id];
+          const sourceText =
+            sourceConfig === undefined
+              ? serializeNodeConfigForExecution(source)
+              : typeof sourceConfig === "string"
+                ? sourceConfig
+                : "";
+          schemaOutputs.set(
+            key,
+            await readNativePatchFlowTableSchema(
+              connection.sourceHandle!.slice(NATIVE_PATCH_SCHEMA_HANDLE_PREFIX.length),
+              sourceConfig,
+              sourceText,
+              executionContext,
+            ),
+          );
+        }
+        const incoming = (incomingConnectionsByTarget.get(node.id) ?? []).filter(
+          (connection) => !deadConnectionKeys.has(getConnectionKey(connection)),
+        );
+        const inputData = buildInputDataForTarget(
+          node,
+          [...incoming, ...schemaIncoming],
+          executionResults,
+          nodeMap,
+          schemaOutputs,
+        );
         const result = await executeNodeAction({
           nodeId: node.id,
           nodeType: node.type,
@@ -605,15 +657,7 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
           if (!allDependenciesCompleted) {
             continue;
           }
-          // Dead edges carry no data, and counting them would push a join node down the
-          // multiple-inputs path with a null in the list.
-          const liveIncomingConnections = targetIncomingConnections.filter(
-            (incomingConnection) => !deadConnectionKeys.has(getConnectionKey(incomingConnection)),
-          );
-          executionQueue.push({
-            node: targetNode,
-            inputData: buildInputDataForTarget(targetNode, liveIncomingConnections, executionResults, nodeMap),
-          });
+          executionQueue.push({ node: targetNode });
         }
       } catch (error) {
         console.error(`Error executing node ${node.id}:`, error);

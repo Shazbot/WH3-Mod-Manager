@@ -6296,12 +6296,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
+  // 10: native patch schema outputs can provide Custom Rows Input declarations before patch execution.
   // 9: terminal native patch nodes register contributions in memory rather than saved pack files.
   // 8: native patch template selection and contribution generation now affect saved flow outputs.
   // 7: automatic flow execution uses saved pack content only; also invalidate v6 entries that included staged data.
   // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
   // Changes node's configured name instead.
-  const FLOW_EXECUTION_CACHE_VERSION = 9;
+  const FLOW_EXECUTION_CACHE_VERSION = 10;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;

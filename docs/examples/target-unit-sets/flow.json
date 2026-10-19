@@ -3,33 +3,10 @@
   "timestamp": 0,
   "nodes": [
     {
-      "id": "node_0",
-      "type": "customschema",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "data": {
-        "label": "Custom Schema",
-        "type": "customschema",
-        "schemaColumns": [
-          {
-            "name": "flag",
-            "type": "StringU8"
-          },
-          {
-            "name": "unit_set",
-            "type": "StringU8"
-          }
-        ],
-        "outputType": "CustomSchema"
-      }
-    },
-    {
       "id": "node_1",
       "type": "customrowsinput",
       "position": {
-        "x": 320,
+        "x": 520,
         "y": 0
       },
       "data": {
@@ -54,7 +31,7 @@
       "id": "node_2",
       "type": "nativepatch",
       "position": {
-        "x": 680,
+        "x": 0,
         "y": 0
       },
       "data": {
@@ -66,15 +43,27 @@
         "scalarOptionBindings": {},
         "tableBindings": ["mappings"],
         "inputType": "TableSelection",
-        "outputType": "TableSelection"
+        "outputType": "TableSelection",
+        "tableSchemas": {
+          "mappings": [
+            {
+              "name": "flag",
+              "type": "StringU8"
+            },
+            {
+              "name": "unit_set",
+              "type": "StringU8"
+            }
+          ]
+        }
       }
     },
     {
       "id": "node_3",
       "type": "savechanges",
       "position": {
-        "x": 1040,
-        "y": 0
+        "x": 520,
+        "y": 360
       },
       "data": {
         "label": "Save Changes",
@@ -88,11 +77,11 @@
   ],
   "connections": [
     {
-      "id": "edge-node_0-node_1",
-      "sourceId": "node_0",
+      "id": "edge-patch-schema-rows",
+      "sourceId": "node_2",
+      "sourceHandle": "output-schema:mappings",
       "targetId": "node_1",
-      "sourceHandle": "output",
-      "targetHandle": "input"
+      "targetHandle": "input-schema"
     },
     {
       "id": "edge-node_1-node_2",
@@ -111,7 +100,7 @@
   ],
   "options": [],
   "metadata": {
-    "nodeCount": 4,
+    "nodeCount": 3,
     "connectionCount": 3
   },
   "isGraphEnabled": true,

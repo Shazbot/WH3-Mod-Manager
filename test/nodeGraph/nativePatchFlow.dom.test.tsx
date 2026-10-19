@@ -119,6 +119,9 @@ describe("Native Patch flow controls", () => {
 
     const textarea = await screen.findByLabelText(/keys \(ascii_key_list\)/);
     await waitFor(() => expect(listTemplates).toHaveBeenCalledWith("owner.pack"));
+    expect(
+      document.querySelector('[data-handleid="output-schema:initial_mapping"][data-output-type="CustomSchema"]'),
+    ).not.toBeNull();
     fireEvent.change(textarea, { target: { value: "alpha\nbeta\n" } });
 
     expect(textarea).toHaveValue("alpha\nbeta\n");
@@ -135,5 +138,7 @@ describe("Native Patch flow controls", () => {
     await waitFor(() =>
       expect(document.querySelector('[data-handleid="input-table:replacement_mapping"]')).not.toBeNull(),
     );
+    expect(document.querySelector('[data-handleid="output-schema:replacement_mapping"]')).not.toBeNull();
+    expect(document.querySelector('[data-handleid="output-schema:initial_mapping"]')).toBeNull();
   });
 });

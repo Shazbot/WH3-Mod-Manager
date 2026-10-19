@@ -1,6 +1,11 @@
 import { Connection, Edge, Node } from "@xyflow/react";
 
 import { DBVersion } from "../packFileTypes";
+import {
+  isNativePatchSchemaConnection,
+  NATIVE_PATCH_SCHEMA_HANDLE_PREFIX,
+  type NativePatchTableSchemas,
+} from "./nativePatchSchema";
 import type {
   AggregateNestedNodeData,
   CustomRowsInputNodeData,
@@ -128,6 +133,16 @@ const getNodeData = <TData extends Record<string, unknown>>(node: Node): TData =
   return (node.data || {}) as TData;
 };
 
+const sourceOutputTypeForHandle = (source: Node, handle: string | null | undefined): NodeEdgeTypes | undefined => {
+  if (isNativePatchSchemaConnection(source, handle)) {
+    const schemas = source.data.tableSchemas as NativePatchTableSchemas | undefined;
+    return schemas?.[handle!.slice(NATIVE_PATCH_SCHEMA_HANDLE_PREFIX.length)]
+      ? ("CustomSchema" as NodeEdgeTypes)
+      : undefined;
+  }
+  return getNodeData<GraphRuleNodeData>(source).outputType as NodeEdgeTypes | undefined;
+};
+
 const updateNode = (nodes: Node[], nodeId: string, patch: Record<string, unknown>) => {
   return nodes.map((node) => {
     if (node.id !== nodeId) {
@@ -239,7 +254,28 @@ const getGenerateRowsSourceColumns = (sourceNode: Node, context: SchemaContext):
 };
 
 export const synchronizeDerivedGraphState = (state: GraphState, context: SchemaContext): GraphMutationResult => {
-  let nextNodes = withSchemaContext(state.nodes, context);
+  const schemaNodes = state.nodes.map((node) => {
+    if (!["customrowsinput", "readtsvfrompack", "generaterows", "generaterowsschema"].includes(node.type ?? ""))
+      return node;
+    const edge = state.edges.find(
+      (edge) =>
+        edge.target === node.id &&
+        isNativePatchSchemaConnection(
+          state.nodes.find((source) => source.id === edge.source),
+          edge.sourceHandle,
+        ),
+    );
+    if (!edge) return node;
+    const source = state.nodes.find((source) => source.id === edge.source)!;
+    const schemas = source.data.tableSchemas as NativePatchTableSchemas | undefined;
+    const schemaColumns = schemas?.[edge.sourceHandle!.slice(NATIVE_PATCH_SCHEMA_HANDLE_PREFIX.length)] ?? [];
+    const patch =
+      node.type === "generaterows" || node.type === "generaterowsschema"
+        ? { customSchemaData: schemaColumns, customSchemaColumns: schemaColumns.map((column) => column.name) }
+        : { schemaColumns };
+    return { ...node, data: { ...node.data, ...patch } };
+  });
+  let nextNodes = withSchemaContext(schemaNodes, context);
 
   nextNodes = nextNodes.map((node) => {
     if (node.type !== "lookup") {
@@ -403,7 +439,7 @@ const withSchemaContext = (nodes: Node[], context: SchemaContext) => {
 
 export const resolveTargetInputType = (
   state: GraphState,
-  params: Pick<Connection, "source" | "target" | "targetHandle">,
+  params: Pick<Connection, "source" | "target" | "targetHandle" | "sourceHandle">,
 ): NodeEdgeTypes | undefined => {
   if (!params.source || !params.target) {
     return undefined;
@@ -416,9 +452,7 @@ export const resolveTargetInputType = (
     return undefined;
   }
 
-  const sourceOutputType: NodeEdgeTypes | undefined = sourceNode.data
-    ? (getNodeData<GraphRuleNodeData>(sourceNode).outputType as NodeEdgeTypes | undefined)
-    : undefined;
+  const sourceOutputType = sourceOutputTypeForHandle(sourceNode, params.sourceHandle);
 
   if (targetNode.type === "lookup" && targetNode.data) {
     if (params.targetHandle === "input-source") {
@@ -464,9 +498,7 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     return false;
   }
 
-  const sourceOutputType: NodeEdgeTypes | undefined = sourceNode.data
-    ? (getNodeData<GraphRuleNodeData>(sourceNode).outputType as NodeEdgeTypes | undefined)
-    : undefined;
+  const sourceOutputType = sourceOutputTypeForHandle(sourceNode, params.sourceHandle);
   const targetInputType = resolveTargetInputType(state, params);
 
   const isTextSurroundCompatible =
@@ -531,9 +563,7 @@ export const applyConnection = (state: GraphState, params: Connection, context: 
     return { ...state, accepted: false };
   }
 
-  const sourceOutputType: NodeEdgeTypes | undefined = sourceNode.data
-    ? (getNodeData<GraphRuleNodeData>(sourceNode).outputType as NodeEdgeTypes | undefined)
-    : undefined;
+  const sourceOutputType = sourceOutputTypeForHandle(sourceNode, params.sourceHandle);
   const targetInputType = resolveTargetInputType(state, params);
 
   const isTextSurroundCompatible =
