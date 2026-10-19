@@ -109,8 +109,10 @@ type CategoryGroupingOptions = {
    * right click to switch them all back off.
    */
   categoryMods: Mod[];
-  /** Mods that count as enabled whatever their own flag says. */
+  /** Mods that count as enabled when the always-enabled lock is active. */
   alwaysEnabledModNames: Set<string>;
+  /** When true, always-enabled mods count as enabled only when their own flag is set. */
+  canDisableAlwaysEnabledMods?: boolean;
   collapsedCategories: Set<string>;
 };
 
@@ -126,7 +128,12 @@ type CategoryCounts = { modCount: number; notEnabledCount: number };
  */
 export const groupModRowsByCategory = (
   rows: ModListModRow[],
-  { categoryMods, alwaysEnabledModNames, collapsedCategories }: CategoryGroupingOptions,
+  {
+    categoryMods,
+    alwaysEnabledModNames,
+    canDisableAlwaysEnabledMods = false,
+    collapsedCategories,
+  }: CategoryGroupingOptions,
 ): ModListRow[] => {
   const rowsByCategory = new Map<string, ModListModRow[]>();
   for (const row of rows) {
@@ -139,7 +146,7 @@ export const groupModRowsByCategory = (
 
   const countsByCategory = new Map<string, CategoryCounts>();
   for (const mod of categoryMods) {
-    const isEnabled = mod.isEnabled || alwaysEnabledModNames.has(mod.name);
+    const isEnabled = mod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(mod.name));
     for (const category of getModCategories(mod)) {
       const counts = countsByCategory.get(category) ?? { modCount: 0, notEnabledCount: 0 };
       counts.modCount += 1;

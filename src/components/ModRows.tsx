@@ -150,6 +150,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const filter = useAppSelector((state) => state.app.filter);
   const hiddenModNamesList = useAppSelector((state) => state.app.hiddenModNames);
   const alwaysEnabledModNamesList = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isSubbedTimeEnabled = useAppSelector((state) => state.app.isSubbedTimeEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
@@ -235,8 +236,12 @@ const ModRows = memo((props: ModRowsProps) => {
   const loadOrderEdges = useMemo(() => buildLoadOrderEdges(loadOrderRuleRules), [loadOrderRuleRules]);
 
   const enabledMods = useMemo(
-    () => currentPresetMods.filter((iterMod) => iterMod.isEnabled || alwaysEnabledModNames.has(iterMod.name)),
-    [alwaysEnabledModNames, currentPresetMods],
+    () =>
+      currentPresetMods.filter(
+        (iterMod) =>
+          iterMod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(iterMod.name)),
+      ),
+    [alwaysEnabledModNames, canDisableAlwaysEnabledMods, currentPresetMods],
   );
   const canonicalEnabledMods = useMemo(
     () => getVisibleMods(sortByNameAndLoadOrder(enabledMods, loadOrderEdges), noHiddenModNames),
@@ -267,8 +272,11 @@ const ModRows = memo((props: ModRowsProps) => {
     [orderedMods],
   );
   const disabledMods = useMemo(
-    () => currentPresetMods.filter((mod) => !mod.isEnabled && !alwaysEnabledModNames.has(mod.name)),
-    [alwaysEnabledModNames, currentPresetMods],
+    () =>
+      currentPresetMods.filter(
+        (mod) => !mod.isEnabled && (canDisableAlwaysEnabledMods || !alwaysEnabledModNames.has(mod.name)),
+      ),
+    [alwaysEnabledModNames, canDisableAlwaysEnabledMods, currentPresetMods],
   );
 
   /** Everything the two panes derive their lists from alike; the sorting type is per pane. */
@@ -355,14 +363,14 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const onModToggled = useCallback(
     (mod: Mod): void => {
-      // if always enabled don't allow unchecking
-      if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList)) {
+      // Keep always-enabled mods locked unless the modder option allows disabling them.
+      if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList) && !canDisableAlwaysEnabledMods) {
         return;
       }
 
       runPreservingScroll(() => dispatch(toggleMod(mod)));
     },
-    [alwaysEnabledModNamesList, dispatch, runPreservingScroll],
+    [alwaysEnabledModNamesList, canDisableAlwaysEnabledMods, dispatch, runPreservingScroll],
   );
 
   const onModOpenInViewer = useCallback((mod: Mod) => {
@@ -394,17 +402,18 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const onEnabledRightClick = useCallback(() => {
     // The header action applies to the whole preset, so its direction must not depend on a search
-    // filter that may only show one side of the preset. Always-enabled mods are not a useful signal:
-    // disableAllMods deliberately leaves them on, so direction is based on ordinary enabled mods only.
-    const hasEnabledOrdinaryMod = currentPresetMods.some(
-      (mod) => mod.isEnabled && !alwaysEnabledModNames.has(mod.name),
+    // filter that may only show one side of the preset. Locked always-enabled mods do not signal
+    // that disableAllMods can run, since that action deliberately leaves them enabled.
+    const hasEnabledMod = currentPresetMods.some(
+      (mod) =>
+        mod.isEnabled && (canDisableAlwaysEnabledMods || !alwaysEnabledModNames.has(mod.name)),
     );
-    if (hasEnabledOrdinaryMod) {
+    if (hasEnabledMod) {
       dispatch(disableAllMods());
     } else {
       dispatch(enableAll());
     }
-  }, [alwaysEnabledModNames, currentPresetMods, dispatch]);
+  }, [alwaysEnabledModNames, canDisableAlwaysEnabledMods, currentPresetMods, dispatch]);
 
   const onOrderRightClick = useCallback(() => {
     dispatch(resetModLoadOrderAll());
@@ -799,9 +808,21 @@ const ModRows = memo((props: ModRowsProps) => {
   const disabledPaneRows = useMemo(
     (): ModListRow[] =>
       isGroupedByCategory
-        ? groupModRowsByCategory(disabledRowData, { categoryMods, alwaysEnabledModNames, collapsedCategories })
+        ? groupModRowsByCategory(disabledRowData, {
+            categoryMods,
+            alwaysEnabledModNames,
+            canDisableAlwaysEnabledMods,
+            collapsedCategories,
+          })
         : disabledRowData,
-    [alwaysEnabledModNames, categoryMods, collapsedCategories, disabledRowData, isGroupedByCategory],
+    [
+      alwaysEnabledModNames,
+      canDisableAlwaysEnabledMods,
+      categoryMods,
+      collapsedCategories,
+      disabledRowData,
+      isGroupedByCategory,
+    ],
   );
 
   const onCategoryToggled = useCallback((category: string) => {
@@ -814,24 +835,26 @@ const ModRows = memo((props: ModRowsProps) => {
 
   /**
    * Right clicking a heading enables every mod of that category, or switches them all off once there is
-   * nothing left to enable. Always enabled mods are left alone, the same way clicking their row is.
+   * nothing left to enable. Locked always-enabled mods are left alone.
    */
   const onCategoryRightClick = useCallback(
     (category: string) => {
       const modsInCategory = categoryMods.filter((mod) => getModCategories(mod).includes(category));
       if (modsInCategory.length === 0) return;
 
-      const isEveryModEnabled = modsInCategory.every((mod) => mod.isEnabled || alwaysEnabledModNames.has(mod.name));
+      const isModEnabled = (mod: Mod) =>
+        mod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(mod.name));
+      const isEveryModEnabled = modsInCategory.every(isModEnabled);
       const modsToSet = isEveryModEnabled
-        ? modsInCategory.filter((mod) => !alwaysEnabledModNames.has(mod.name))
-        : modsInCategory.filter((mod) => !mod.isEnabled);
+        ? modsInCategory.filter((mod) => canDisableAlwaysEnabledMods || !alwaysEnabledModNames.has(mod.name))
+        : modsInCategory.filter((mod) => !isModEnabled(mod));
       if (modsToSet.length === 0) return;
 
       runPreservingScroll(() =>
         dispatch(setAreModsEnabled(modsToSet.map((mod) => ({ mod, isEnabled: !isEveryModEnabled })))),
       );
     },
-    [alwaysEnabledModNames, categoryMods, dispatch, runPreservingScroll],
+    [alwaysEnabledModNames, canDisableAlwaysEnabledMods, categoryMods, dispatch, runPreservingScroll],
   );
 
   /** Right clicking the toggle folds every category away, or opens them all back up. */

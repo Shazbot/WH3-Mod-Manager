@@ -261,9 +261,11 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   }
 
   if (state.dataFromConfig) {
-    findAlwaysEnabledMods(state.currentPreset.mods, state.dataFromConfig.alwaysEnabledModNames).forEach(
-      (mod) => (mod.isEnabled = true),
-    );
+    if (!state.canDisableAlwaysEnabledMods) {
+      findAlwaysEnabledMods(state.currentPreset.mods, state.dataFromConfig.alwaysEnabledModNames).forEach(
+        (mod) => (mod.isEnabled = true),
+      );
+    }
 
     if (isInitialModPopulation) {
       applyModUserData(state.currentPreset.mods, state.dataFromConfig.modUserData);
@@ -402,7 +404,9 @@ const applyPresetModsUnaryInternal = (state: AppState, presetEntries: PresetModE
   state.currentPreset.mods = sortModsAsInEntries(state.currentPreset.mods, normalizedEntries);
   state.currentPreset.version = 2;
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+  if (!state.canDisableAlwaysEnabledMods) {
+    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+  }
 
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
@@ -421,7 +425,9 @@ const selectPresetInternal = (state: AppState, presetSelection: SelectOperation,
     });
   }
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+  if (!state.canDisableAlwaysEnabledMods) {
+    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+  }
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
@@ -708,7 +714,7 @@ const appSlice = createSlice({
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((iterMod) => iterMod.path == inputMod.path);
       if (mod) {
-        if (isModAlwaysEnabled(mod, state.alwaysEnabledModNames)) {
+        if (isModAlwaysEnabled(mod, state.alwaysEnabledModNames) && !state.canDisableAlwaysEnabledMods) {
           mod.isEnabled = true;
           return;
         }
@@ -720,7 +726,7 @@ const appSlice = createSlice({
       const { mod, isEnabled } = action.payload;
       const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
       if (presetMod) {
-        if (isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames)) {
+        if (isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames) && !state.canDisableAlwaysEnabledMods) {
           presetMod.isEnabled = true;
           return;
         }
@@ -733,7 +739,10 @@ const appSlice = createSlice({
       for (const { mod, isEnabled } of enablePayloads) {
         const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
         if (!presetMod) continue;
-        presetMod.isEnabled = isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames) ? true : isEnabled;
+        presetMod.isEnabled =
+          isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames) && !state.canDisableAlwaysEnabledMods
+            ? true
+            : isEnabled;
       }
       if (enablePayloads.some(({ isEnabled }) => isEnabled)) {
         sanitizeEnabledModLoadOrders(state.currentPreset.mods);
@@ -756,9 +765,11 @@ const appSlice = createSlice({
         mod.loadOrder = importedMod?.loadOrder;
       });
 
-      findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
-        (mod) => (mod.isEnabled = true),
-      );
+      if (!state.canDisableAlwaysEnabledMods) {
+        findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+          (mod) => (mod.isEnabled = true),
+        );
+      }
 
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
       state.importedMods = [];
@@ -806,9 +817,11 @@ const appSlice = createSlice({
     disableAllMods: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
-      findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
-        (mod) => (mod.isEnabled = true),
-      );
+      if (!state.canDisableAlwaysEnabledMods) {
+        findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+          (mod) => (mod.isEnabled = true),
+        );
+      }
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     setImportedMods: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
@@ -891,7 +904,7 @@ const appSlice = createSlice({
       if (state.newMergedPacks.some((mergedPack) => mergedPack.path == mod.path)) {
         mod.isEnabled = true;
       }
-      if (state.alwaysEnabledModNames.includes(mod.name)) {
+      if (state.alwaysEnabledModNames.includes(mod.name) && !state.canDisableAlwaysEnabledMods) {
         mod.isEnabled = true;
       }
 
@@ -1236,6 +1249,7 @@ const appSlice = createSlice({
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
+      state.canDisableAlwaysEnabledMods = fromConfigAppState.canDisableAlwaysEnabledMods ?? false;
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
       state.isRigidModelV2CompressionEnabled =
         fromConfigAppState.isRigidModelV2CompressionEnabled ?? state.isRigidModelV2CompressionEnabled;
@@ -1290,9 +1304,11 @@ const appSlice = createSlice({
       state.disabledModLoadOrderRules = fromConfigAppState.disabledModLoadOrderRules ?? [];
       state.loadOrderRuleDisabledPacks = fromConfigAppState.loadOrderRuleDisabledPacks ?? [];
 
-      findAlwaysEnabledMods(state.currentPreset.mods, fromConfigAppState.alwaysEnabledModNames).forEach(
-        (mod) => (mod.isEnabled = true),
-      );
+      if (!state.canDisableAlwaysEnabledMods) {
+        findAlwaysEnabledMods(state.currentPreset.mods, fromConfigAppState.alwaysEnabledModNames).forEach(
+          (mod) => (mod.isEnabled = true),
+        );
+      }
       refreshLoadOrderRules(state);
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 
@@ -1506,6 +1522,7 @@ const appSlice = createSlice({
     toggleAlwaysEnabledMods: (state: AppState, action: PayloadAction<string[]>) => {
       state.alwaysEnabledModNames = toggleModNames(state.alwaysEnabledModNames, action.payload);
 
+      if (state.canDisableAlwaysEnabledMods) return;
       const modsToEnable = findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames);
       modsToEnable.forEach((mod) => (mod.isEnabled = true));
       if (modsToEnable.length > 0) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
@@ -1517,7 +1534,10 @@ const appSlice = createSlice({
       const alwaysEnabledNames = new Set(state.alwaysEnabledModNames);
       const hiddenNames = new Set(state.hiddenModNames);
       state.currentPreset.mods
-        .filter((mod) => hiddenNames.has(mod.name) && !alwaysEnabledNames.has(mod.name))
+        .filter(
+          (mod) =>
+            hiddenNames.has(mod.name) && (state.canDisableAlwaysEnabledMods || !alwaysEnabledNames.has(mod.name)),
+        )
         .forEach((mod) => (mod.isEnabled = false));
     },
     toggleIgnoredMissingReqMods: (state: AppState, action: PayloadAction<string[]>) => {
@@ -1711,6 +1731,14 @@ const appSlice = createSlice({
       state.isFeaturesForModdersEnabled = action.payload;
       if (!state.isFeaturesForModdersEnabled) state.isCompatCheckingVanillaPacks = false;
       reconcileCurrentPresetModSources(state);
+    },
+    setCanDisableAlwaysEnabledMods: (state: AppState, action: PayloadAction<boolean>) => {
+      state.canDisableAlwaysEnabledMods = action.payload;
+      if (!action.payload) {
+        const modsToEnable = findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames);
+        modsToEnable.forEach((mod) => (mod.isEnabled = true));
+        if (modsToEnable.length > 0) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
+      }
     },
     /** Replaces the whole list, since both toggling and reordering rewrite the order. */
     setNodeEditorFavorites: (state: AppState, action: PayloadAction<FlowNodeType[]>) => {
@@ -2118,6 +2146,7 @@ export const {
   toggleIsChangingGameProcessPriority,
   toggleIsFeaturesForModdersEnabled,
   setIsFeaturesForModdersEnabled,
+  setCanDisableAlwaysEnabledMods,
   setModdersPrefix,
   setIsRigidModelV2CompressionEnabled,
   toggleCompressModsOnUpload,

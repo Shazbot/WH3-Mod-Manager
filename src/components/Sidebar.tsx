@@ -137,6 +137,7 @@ const Sidebar = memo(() => {
   const workshopInstallStatuses = useAppSelector((state) => state.app.workshopInstallStatuses);
   const workshopUpdateCheckResults = useAppSelector((state) => state.app.workshopUpdateCheckResults);
   const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const lastSelectedPreset: SavedPreset | null = useAppSelector((state) => state.app.lastSelectedPreset);
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
@@ -527,7 +528,7 @@ const Sidebar = memo(() => {
     previousIsWH3RunningRef.current = isWH3Running;
   }, [isWH3Running, isWaitingForRelaunch, isWaitingForContinueRelaunch, onContinueGameClicked, playGameClicked]);
 
-  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
+  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames, canDisableAlwaysEnabledMods);
   const outdatedPackFilesForEnabledMods = Object.fromEntries(
     Object.entries(outdatedPackFiles).filter(([packName]) => enabledMods.some((mod) => mod.name === packName)),
   );

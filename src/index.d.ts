@@ -281,6 +281,8 @@ declare global {
     isAutoStartCustomBattleEnabled: boolean;
     isChangingGameProcessPriority: boolean;
     isFeaturesForModdersEnabled: boolean;
+    /** Allow mods marked always-enabled to be turned off in the mod manager. */
+    canDisableAlwaysEnabledMods: boolean;
     moddersPrefix: string;
     /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
     isRigidModelV2CompressionEnabled: boolean;
@@ -437,6 +439,7 @@ declare global {
     | "isAutoStartCustomBattleEnabled"
     | "isChangingGameProcessPriority"
     | "isFeaturesForModdersEnabled"
+    | "canDisableAlwaysEnabledMods"
     | "moddersPrefix"
     | "isRigidModelV2CompressionEnabled"
     | "compressModsOnUpload"

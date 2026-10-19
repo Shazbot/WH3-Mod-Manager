@@ -21,6 +21,7 @@ const TopBarFrame = memo(({ title }: { title: string }) => {
 const TopBarMain = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
   const startArgs = useAppSelector((state) => state.app.startArgs);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
@@ -28,7 +29,7 @@ const TopBarMain = memo(() => {
 
   const [translated, setTranslated] = useState<Record<string, string>>({});
 
-  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
+  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames, canDisableAlwaysEnabledMods);
   const hiddenAndEnabledMods = enabledMods.filter((mod) => hiddenModNames.includes(mod.name));
   const isHardwareAccelerationDisabled = startArgs.some((arg) => arg == "-nogpu");
 

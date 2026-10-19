@@ -172,6 +172,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     unitViewerUnsyncedAnimations: config.unitViewerUnsyncedAnimations ?? true,
     unitViewerShowUnitCard: config.unitViewerShowUnitCard ?? true,
     moddersPrefix: config.moddersPrefix ?? "",
+    canDisableAlwaysEnabledMods: config.canDisableAlwaysEnabledMods ?? false,
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
     compressModsOnUpload: config.compressModsOnUpload ?? true,
     workshopModStagingMode,

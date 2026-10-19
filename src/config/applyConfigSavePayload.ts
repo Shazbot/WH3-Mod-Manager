@@ -16,7 +16,11 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
 
   if (payload.mods) {
     appData.allMods = payload.mods.allMods;
-    appData.enabledMods = getEnabledMods(payload.mods.currentPresetMods, config.alwaysEnabledModNames);
+    appData.enabledMods = getEnabledMods(
+      payload.mods.currentPresetMods,
+      config.alwaysEnabledModNames,
+      config.canDisableAlwaysEnabledMods,
+    );
   }
   appData.isCompatCheckingVanillaPacks = config.isCompatCheckingVanillaPacks;
   appData.isUsingEnglishLocalizations = !!config.isUsingEnglishLocalizations;

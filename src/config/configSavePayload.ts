@@ -108,6 +108,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
       isChangingGameProcessPriority: appState.isChangingGameProcessPriority,
       isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,
+      canDisableAlwaysEnabledMods: appState.canDisableAlwaysEnabledMods,
       moddersPrefix: appState.moddersPrefix,
       isRigidModelV2CompressionEnabled: appState.isRigidModelV2CompressionEnabled,
       compressModsOnUpload: appState.compressModsOnUpload,

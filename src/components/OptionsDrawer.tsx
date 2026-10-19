@@ -21,6 +21,7 @@ import {
   toggleMakeUnitsGenerals,
   toggleIsChangingGameProcessPriority,
   toggleIsFeaturesForModdersEnabled,
+  setCanDisableAlwaysEnabledMods,
   setIsRigidModelV2CompressionEnabled,
   setModdersPrefix,
   setIsCreateSteamCollectionOpen,
@@ -169,6 +170,7 @@ const OptionsDrawer = memo(() => {
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const isRigidModelV2CompressionEnabled = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
   const compressModsOnUpload = useAppSelector((state) => state.app.compressModsOnUpload);
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
@@ -1592,6 +1594,24 @@ const OptionsDrawer = memo(() => {
                 </Tooltip>
               </label>
             </div>
+            <label className="ml-1 mt-3 flex items-start cursor-pointer" htmlFor="allow-disabling-always-enabled-mods">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="allow-disabling-always-enabled-mods"
+                checked={!!canDisableAlwaysEnabledMods}
+                onChange={(event) => dispatch(setCanDisableAlwaysEnabledMods(event.target.checked))}
+              />
+              <span className="ml-3">
+                <span className="block">
+                  {localized.allowDisablingAlwaysEnabledMods || "Allow disabling always-enabled mods"}
+                </span>
+                <span className="mt-1 block text-xs text-gray-400">
+                  {localized.allowDisablingAlwaysEnabledModsDescription ||
+                    "Lets you turn off mods marked as always enabled. They remain purple in the mod manager."}
+                </span>
+              </span>
+            </label>
             <label
               className={
                 "ml-1 mt-3 flex items-start " +

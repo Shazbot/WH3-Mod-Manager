@@ -46,6 +46,7 @@ const initialState = {
   isAutoStartCustomBattleEnabled: false,
   isChangingGameProcessPriority: false,
   isFeaturesForModdersEnabled: false,
+  canDisableAlwaysEnabledMods: false,
   moddersPrefix: "",
   isRigidModelV2CompressionEnabled: true,
   compressModsOnUpload: true,

@@ -108,6 +108,7 @@ const PresetsTab = memo(() => {
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const storedModUserData = useAppSelector((state) => state.app.dataFromConfig?.modUserData ?? noStoredModUserData);
   const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const categories = useAppSelector((state) => state.app.categories);
   const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -284,7 +285,7 @@ const PresetsTab = memo(() => {
 
       const enabledPresetMods = computeEnabledPresetMods(preset);
       const nextEnabledNames = new Set<string>(enabledPresetMods.map((entry) => entry.name));
-      alwaysEnabledNames.forEach((name) => nextEnabledNames.add(name));
+      if (!canDisableAlwaysEnabledMods) alwaysEnabledNames.forEach((name) => nextEnabledNames.add(name));
 
       const nextLoadOrderByName = new Map<string, number>();
       enabledPresetMods.forEach((entry) => {
@@ -303,13 +304,15 @@ const PresetsTab = memo(() => {
       setIsDiscardConfirmOpen(false);
       setIsDeleteConfirmOpen(false);
     },
-    [alwaysEnabledNames, computeEnabledPresetMods, presets],
+    [alwaysEnabledNames, canDisableAlwaysEnabledMods, computeEnabledPresetMods, presets],
   );
 
   const loadCurrentEnabledDraft = useCallback(() => {
-    const enabledCurrentMods = currentPresetMods.filter((mod) => mod.isEnabled || alwaysEnabledNames.has(mod.name));
+    const enabledCurrentMods = currentPresetMods.filter(
+      (mod) => mod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledNames.has(mod.name)),
+    );
     const nextEnabledNames = new Set<string>(enabledCurrentMods.map((mod) => mod.name));
-    alwaysEnabledNames.forEach((name) => nextEnabledNames.add(name));
+    if (!canDisableAlwaysEnabledMods) alwaysEnabledNames.forEach((name) => nextEnabledNames.add(name));
 
     const nextLoadOrderByName = new Map<string, number>();
     enabledCurrentMods.forEach((mod) => {
@@ -327,7 +330,7 @@ const PresetsTab = memo(() => {
     setPendingPresetName(undefined);
     setIsDiscardConfirmOpen(false);
     setIsDeleteConfirmOpen(false);
-  }, [alwaysEnabledNames, currentPresetMods]);
+  }, [alwaysEnabledNames, canDisableAlwaysEnabledMods, currentPresetMods]);
 
   useEffect(() => {
     const selectedPresetStillExists = !!(
@@ -352,9 +355,9 @@ const PresetsTab = memo(() => {
 
   const effectiveEnabledNames = useMemo(() => {
     const effective = new Set(draftEnabledNames);
-    alwaysEnabledNames.forEach((name) => effective.add(name));
+    if (!canDisableAlwaysEnabledMods) alwaysEnabledNames.forEach((name) => effective.add(name));
     return effective;
-  }, [alwaysEnabledNames, draftEnabledNames]);
+  }, [alwaysEnabledNames, canDisableAlwaysEnabledMods, draftEnabledNames]);
 
   const enabledDraftMods = useMemo(() => {
     const mods: Mod[] = [];
@@ -628,7 +631,7 @@ const PresetsTab = memo(() => {
       setDraftEnabledNames((previousEnabledNames) => {
         const nextEnabledNames = new Set(previousEnabledNames);
         modNames.forEach((name) => {
-          if (alwaysEnabledNames.has(name)) return;
+          if (alwaysEnabledNames.has(name) && !canDisableAlwaysEnabledMods) return;
           nextEnabledNames.delete(name);
         });
         return nextEnabledNames;
@@ -636,13 +639,13 @@ const PresetsTab = memo(() => {
       setDraftLoadOrderByName((previousLoadOrderByName) => {
         const nextLoadOrderByName = new Map(previousLoadOrderByName);
         modNames.forEach((name) => {
-          if (alwaysEnabledNames.has(name)) return;
+          if (alwaysEnabledNames.has(name) && !canDisableAlwaysEnabledMods) return;
           nextLoadOrderByName.delete(name);
         });
         return nextLoadOrderByName;
       });
     },
-    [alwaysEnabledNames],
+    [alwaysEnabledNames, canDisableAlwaysEnabledMods],
   );
 
   const applyPlacement = useCallback(
@@ -787,8 +790,11 @@ const PresetsTab = memo(() => {
   }, [placeMode, removeModNamesFromPreset, selectedInPresetNames]);
 
   const visibleRemovableEnabledModNames = useMemo(
-    () => visibleEnabledDraftMods.map((mod) => mod.name).filter((name) => !alwaysEnabledNames.has(name)),
-    [alwaysEnabledNames, visibleEnabledDraftMods],
+    () =>
+      visibleEnabledDraftMods
+        .map((mod) => mod.name)
+        .filter((name) => canDisableAlwaysEnabledMods || !alwaysEnabledNames.has(name)),
+    [alwaysEnabledNames, canDisableAlwaysEnabledMods, visibleEnabledDraftMods],
   );
 
   const onRemoveAllFromPreset = useCallback(() => {
@@ -1176,7 +1182,7 @@ const PresetsTab = memo(() => {
                     onClick={() => onToggleInPresetSelection(mod.name)}
                     onDoubleClick={() => {
                       if (placeMode) return;
-                      if (!isAlwaysEnabled) removeModNamesFromPreset([mod.name]);
+                      if (!isAlwaysEnabled || canDisableAlwaysEnabledMods) removeModNamesFromPreset([mod.name]);
                     }}
                   >
                     <button
@@ -1228,7 +1234,7 @@ const PresetsTab = memo(() => {
                           removeModNamesFromPreset([mod.name]);
                           if (placeMode?.modName === mod.name) setPlaceMode(undefined);
                         }}
-                        disabled={isAlwaysEnabled || !!placeMode}
+                        disabled={(isAlwaysEnabled && !canDisableAlwaysEnabledMods) || !!placeMode}
                       >
                         {localized.remove || "Remove"}
                       </button>

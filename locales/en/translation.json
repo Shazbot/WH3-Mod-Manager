@@ -373,6 +373,8 @@
   "gameStartParameters": "Game Start Parameters",
   "featuresForModders": "Features For Modders",
   "featuresForModdersHelp": "Enables features inside the Mod Manager intended for modders.",
+  "allowDisablingAlwaysEnabledMods": "Allow disabling always-enabled mods",
+  "allowDisablingAlwaysEnabledModsDescription": "Lets you turn off mods marked as always enabled. They remain purple in the mod manager.",
   "compressModsOnUpload": "Compress mod on upload",
   "compressModsOnUploadDescription": "Compresses the pack before updating it on the Steam Workshop and backs up the original in whmm_backups.",
   "compressModsOnUploadFailed": "Could not compress {{mod}} before uploading: {{error}}",

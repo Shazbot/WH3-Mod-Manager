@@ -9,13 +9,14 @@ const PackSearcher = memo(() => {
   const dispatch = useAppDispatch();
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const isOpen = useAppSelector((state) => state.app.isPackSearcherOpen);
   const packSearchResults = useAppSelector((state) => state.app.packSearchResults);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
 
-  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
+  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames, canDisableAlwaysEnabledMods);
 
   const localized = useLocalizations();
 
