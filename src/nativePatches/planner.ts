@@ -19,11 +19,17 @@ import {
 import { parseJsonWithoutDuplicateKeys } from "./json";
 import { NativePatchPackageError, skipFailedNativePatches } from "./failurePolicy";
 
-export type NativePatchPack = { path: string; pack: Pick<Pack, "path" | "packedFiles">; priority: number };
+export type NativePatchPack = {
+  path: string;
+  pack: Pick<Pack, "path" | "packedFiles">;
+  priority: number;
+  displayName?: string;
+};
 
 export type NativePatchPreparedPackage = {
   manifestPath: string;
   sourcePackPath: string;
+  sourceModName?: string;
   contentHash: string;
   manifest: NativePatchManifest;
   blocks: Array<{ id: string; size: number; alignment: number; protection: "rx" | "r" | "rw"; bytesBase64: string }>;
@@ -584,6 +590,7 @@ const loadCandidatePayloads = async (candidate: Candidate): Promise<NativePatchP
   return {
     manifestPath: candidate.manifestPath,
     sourcePackPath: candidate.pack.path,
+    sourceModName: candidate.pack.displayName,
     contentHash: sha256(candidate.rawManifest),
     manifest: candidate.manifest,
     blocks,
@@ -638,9 +645,22 @@ const resolvePackageCandidates = async (
         manifest = parseAndValidateNativePatchManifest(rawManifest);
       } catch (error) {
         // Invalid JSON/duplicate keys or an invalid policy cannot opt out of abort.
-        const raw = parseJsonWithoutDuplicateKeys(rawManifest.toString("utf8")) as Partial<NativePatchManifest> | null;
-        if (!raw || (raw.on_failure !== "warn" && raw.on_failure !== "silent")) throw error;
         const message = error instanceof Error ? error.message : String(error);
+        let raw: Partial<NativePatchManifest> | null = null;
+        try {
+          raw = parseJsonWithoutDuplicateKeys(rawManifest.toString("utf8")) as Partial<NativePatchManifest> | null;
+        } catch {
+          // The original validation error remains the diagnostic for malformed JSON.
+        }
+        const identity = {
+          packageId: typeof raw?.package?.id === "string" ? raw.package.id : `${pack.path}:${manifestPath}`,
+          packageName: typeof raw?.package?.name === "string" ? raw.package.name : undefined,
+          sourcePackPath: pack.path,
+          sourceModName: pack.displayName,
+        };
+        if (!raw || (raw.on_failure !== "warn" && raw.on_failure !== "silent")) {
+          throw new NativePatchPackageError(message, [identity.packageId], [identity]);
+        }
         if (
           typeof raw.package?.id === "string" &&
           typeof raw.package.version === "string" &&
@@ -651,7 +671,7 @@ const resolvePackageCandidates = async (
           manifest = raw as NativePatchManifest;
           validationError = message;
         } else {
-          onSkippedPackage?.({ packageId: `${pack.path}:${manifestPath}`, policy: raw.on_failure, message });
+          onSkippedPackage?.({ ...identity, policy: raw.on_failure, message });
           continue;
         }
       }

@@ -4,8 +4,8 @@ import * as fs from "fs";
 import { execFileSync } from "child_process";
 import * as nodePath from "path";
 import type { NativePatchLaunchPlan } from "./planner";
-import type { NativePatchSkippedPackage } from "./manifest";
-import { skipFailedNativePatches } from "./failurePolicy";
+import type { NativePatchIdentity, NativePatchSkippedPackage } from "./manifest";
+import { NativePatchPackageError, nativePatchIdentity, skipFailedNativePatches } from "./failurePolicy";
 import { findExecutableOnPath, type GameLaunchCommand } from "../utility/gameLaunch";
 
 const STATUS_POLL_MS = 200;
@@ -397,7 +397,9 @@ export const launchNativePatchPlan = async (input: {
   onSkippedPackage?: (notice: NativePatchSkippedPackage) => void;
   onAttempt?: (invocation: NativePatchLaunchInvocation) => void;
 }): Promise<
-  { kind: "started" } | { kind: "unpatched" } | { kind: "failed"; message: string; cancellationAcknowledged: boolean }
+  | { kind: "started" }
+  | { kind: "unpatched" }
+  | { kind: "failed"; message: string; cancellationAcknowledged: boolean; packages: NativePatchIdentity[] }
 > => {
   let packages = input.plan.packages;
   while (packages.length) {
@@ -439,10 +441,15 @@ export const launchNativePatchPlan = async (input: {
         }
       }
     }
+    const failedPackages = packages
+      .filter(
+        (item) => !failure.failedPackageIds?.length || failure.failedPackageIds.includes(item.manifest.package.id),
+      )
+      .map(nativePatchIdentity);
     if (!failure.cancellationAcknowledged)
-      return { kind: "failed", message: failure.message, cancellationAcknowledged: false };
+      return { kind: "failed", message: failure.message, cancellationAcknowledged: false, packages: failedPackages };
     if (failure.retryable === false)
-      return { kind: "failed", message: failure.message, cancellationAcknowledged: true };
+      return { kind: "failed", message: failure.message, cancellationAcknowledged: true, packages: failedPackages };
     try {
       packages = skipFailedNativePatches(
         packages,
@@ -455,6 +462,7 @@ export const launchNativePatchPlan = async (input: {
         kind: "failed",
         message: error instanceof Error ? error.message : String(error),
         cancellationAcknowledged: true,
+        packages: error instanceof NativePatchPackageError ? error.packages : failedPackages,
       };
     }
   }

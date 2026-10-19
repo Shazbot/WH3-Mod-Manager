@@ -232,7 +232,7 @@ import {
   normalizeModSourceOrder,
   WORKSHOP_MOD_SOURCE_ID,
 } from "./modSources";
-import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { getModSortName, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import {
   createModdingFolderPacks,
   replaceEnabledModsWithGeneratedPacks,
@@ -380,6 +380,8 @@ import { buildGameLaunchArguments, launchGame, resolveGameLaunchPlan } from "./u
 import { buildNativePatchLaunchPlan, type NativePatchPack } from "./nativePatches/planner";
 import { launchNativePatchPlan } from "./nativePatches/launch";
 import type { NativePatchSkippedPackage } from "./nativePatches/manifest";
+import { NativePatchPackageError } from "./nativePatches/failurePolicy";
+import { nativePatchUserMessage } from "./nativePatches/messages";
 import {
   cleanupWorkshopModStaging,
   getWorkshopModStagingFolderInfo,
@@ -13173,18 +13175,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       for (const pack of appData.packsData) {
         console.log(pack.name, pack.readTables);
       }
-      const reportGameLaunchError = (message: string, error?: unknown) => {
+      const reportGameLaunchError = (message: string, error?: unknown, userMessage = message) => {
         console.error(message, error);
         mainWindow?.webContents.send("handleLog", message);
         mainWindow?.webContents.send("addToast", {
           type: "warning",
-          messages: [message],
+          messages: [userMessage],
           startTime: Date.now(),
         } as Toast);
       };
       const reportNativePatchSkip = (notice: NativePatchSkippedPackage) => {
-        const message = `Native patch '${notice.packageId}' was skipped: ${notice.message}`;
-        if (notice.policy === "warn") reportGameLaunchError(message);
+        const message = `Native patch '${notice.packageId}' from '${notice.sourceModName || notice.sourcePackPath || "unknown mod"}' was skipped: ${notice.message}`;
+        if (notice.policy === "warn")
+          reportGameLaunchError(message, undefined, nativePatchUserMessage([notice], "skipped"));
         else console.log(message);
       };
       let workshopStagingResult: WorkshopStagingResult | undefined;
@@ -13727,6 +13730,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
 
         let launchFailureMessage: string | undefined;
+        let launchFailureUserMessage: string | undefined;
         let launched = false;
         if (appData.currentGame === "wh3") {
           isPreparingNativePatches = true;
@@ -13756,6 +13760,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             const resolved = nodePath.resolve(packPath);
             return process.platform === "win32" ? resolved.toLowerCase() : resolved;
           };
+          const modNamesByPath = new Map(
+            modPackPaths.map((packPath, index) => [
+              pathIdentity(packPath),
+              getModSortName(enabledModsWithoutMergedInMods[index]),
+            ]),
+          );
+          const modNamesByFileName = new Map(mods.map((mod) => [mod.name.toLowerCase(), getModSortName(mod)]));
           const indexedPacks = new Map<string, NativePatchPack>();
           const indexNativePatchPack = async (packPath: string, priority: number): Promise<NativePatchPack> => {
             const key = pathIdentity(packPath);
@@ -13783,7 +13794,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 throw new Error(`Invalid packed-file index range for ${entry.name} in ${packPath}`);
               }
             }
-            const indexed = { path: packPath, pack: packIndex, priority };
+            const displayName =
+              modNamesByPath.get(key) ?? modNamesByFileName.get(nodePath.basename(packPath).toLowerCase());
+            const indexed = { path: packPath, pack: packIndex, priority, displayName };
             indexedPacks.set(key, indexed);
             return indexed;
           };
@@ -13852,6 +13865,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               launchFailureMessage = nativeLaunchResult.cancellationAcknowledged
                 ? nativeLaunchResult.message
                 : `${nativeLaunchResult.message} Startup state is unknown; launch files and staged mods were retained. Check the game process before trying again.`;
+              launchFailureUserMessage = nativePatchUserMessage(
+                nativeLaunchResult.packages,
+                nativeLaunchResult.cancellationAcknowledged ? "stopped" : "unknown",
+              );
             }
           }
         } else {
@@ -13860,7 +13877,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           if (!launchResult.started) launchFailureMessage = launchResult.message;
         }
         if (!launched) {
-          reportGameLaunchError(launchFailureMessage || "Game launch failed.");
+          reportGameLaunchError(launchFailureMessage || "Game launch failed.", undefined, launchFailureUserMessage);
           await cleanStagingAfterFailedLaunch();
           return;
         }
@@ -13914,8 +13931,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           reportGameLaunchError(message, e);
         } else {
           stagingFailureMessage = e instanceof Error ? e.message : String(e);
-          if (isPreparingNativePatches) reportGameLaunchError(stagingFailureMessage, e);
-          else console.log(e);
+          if (isPreparingNativePatches) {
+            reportGameLaunchError(
+              stagingFailureMessage,
+              e,
+              nativePatchUserMessage(e instanceof NativePatchPackageError ? e.packages : [], "stopped"),
+            );
+          } else console.log(e);
         }
       } finally {
         if (workshopStagingRun && !stagingCompleted) {

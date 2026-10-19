@@ -4,7 +4,13 @@ import { validateNativePatchStructure } from "./schemaValidation";
 
 export const NATIVE_PATCH_LOADER_VERSION = "2.1.0";
 export type NativePatchFailurePolicy = "abort" | "warn" | "silent";
-export type NativePatchSkippedPackage = { packageId: string; policy: "warn" | "silent"; message: string };
+export type NativePatchIdentity = {
+  packageId: string;
+  packageName?: string;
+  sourcePackPath?: string;
+  sourceModName?: string;
+};
+export type NativePatchSkippedPackage = NativePatchIdentity & { policy: "warn" | "silent"; message: string };
 export const NATIVE_PATCH_CAPABILITIES = [
   "blocks.v1",
   "fixups.v1",
