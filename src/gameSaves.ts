@@ -82,7 +82,12 @@ export const setupSavesWatcher = async (cb: (saves: GameSave[]) => void) => {
   }
 
   savesWatcher = chokidar
-    .watch(`${getSavesFolderPath()}/*.save`, { ignoreInitial: true })
+    .watch(getSavesFolderPath(), {
+      depth: 0,
+      disableGlobbing: true,
+      ignoreInitial: true,
+      ignored: (path: string, stats?: fs.Stats) => !!stats && !stats.isDirectory() && !path.endsWith(".save"),
+    })
     .on("add", async (path: string) => {
       await addNewSave(path);
       console.log("Save added: " + path);
