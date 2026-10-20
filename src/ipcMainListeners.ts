@@ -5917,12 +5917,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const isIgnoredInModFolder = (path: string, stats?: fs.Stats) =>
       /whmm_backups/.test(path) || (!!stats && !stats.isDirectory() && !path.endsWith(".pack"));
     if (!contentWatcher) {
-      const sanitizedContentFolder = contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
       console.log("content folder:", contentFolder);
       contentWatcher = chokidar
-        .watch(`${sanitizedContentFolder}/**/*.pack`, {
+        .watch(contentFolder, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
           awaitWriteFinish: {
             stabilityThreshold: 2000,
             pollInterval: 100,
@@ -5948,10 +5949,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         .replace("/content/", "/downloads/");
       console.log("downloads folder:", downloadsFolder);
       downloadsWatcher = chokidar
-        .watch(`${downloadsFolder}/**/*.pack`, {
+        .watch(downloadsFolder, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => {
           console.log("NEW DOWNLOADS ADD", path);
@@ -5988,16 +5991,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
     const existingCustomFolders = customFolders.filter((folder) => fsExtra.existsSync(folder.path));
     if (!customModFoldersWatcher && existingCustomFolders.length > 0) {
-      const customFolderPatterns = existingCustomFolders.flatMap((folder) => {
-        const sanitizedFolder = folder.path.replaceAll("\\", "/").replaceAll("//", "/");
-        return [`${sanitizedFolder}/*.pack`, `${sanitizedFolder}/*/*.pack`];
-      });
+      const customFolderPaths = existingCustomFolders.map((folder) => folder.path);
       customModFoldersWatcher = chokidar
-        .watch(customFolderPatterns, {
+        .watch(customFolderPaths, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
           followSymlinks: false,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => onNewPackFound(path, true))
         .on("unlink", async (path) => onPackDeleted(path))
