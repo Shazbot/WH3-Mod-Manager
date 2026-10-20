@@ -5914,13 +5914,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
     if (!contentFolder || !dataFolder || !gamePath) return;
+    const isIgnoredInModFolder = (path: string, stats?: fs.Stats) =>
+      /whmm_backups/.test(path) || (!!stats && !stats.isDirectory() && !path.endsWith(".pack"));
     if (!contentWatcher) {
-      const sanitizedContentFolder = contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
       console.log("content folder:", contentFolder);
       contentWatcher = chokidar
-        .watch(`${sanitizedContentFolder}/**/*.pack`, {
+        .watch(contentFolder, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
           awaitWriteFinish: {
             stabilityThreshold: 2000,
             pollInterval: 100,
@@ -5946,10 +5949,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         .replace("/content/", "/downloads/");
       console.log("downloads folder:", downloadsFolder);
       downloadsWatcher = chokidar
-        .watch(`${downloadsFolder}/**/*.pack`, {
+        .watch(downloadsFolder, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => {
           console.log("NEW DOWNLOADS ADD", path);
@@ -5960,13 +5965,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
     }
     if (!dataWatcher) {
-      const sanitizedDataFolder = dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
+      const dataFolders = [dataFolder, nodePath.join(dataFolder, "modding")].filter(fsExtra.existsSync);
       dataWatcher = chokidar
-        .watch([`${sanitizedDataFolder}/*.pack`, `${sanitizedDataFolder}/modding/*.pack`], {
+        .watch(dataFolders, {
+          depth: 0,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
           followSymlinks: false,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => {
           console.log("dataWatcher add:", path);
@@ -5984,16 +5991,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
     const existingCustomFolders = customFolders.filter((folder) => fsExtra.existsSync(folder.path));
     if (!customModFoldersWatcher && existingCustomFolders.length > 0) {
-      const customFolderPatterns = existingCustomFolders.flatMap((folder) => {
-        const sanitizedFolder = folder.path.replaceAll("\\", "/").replaceAll("//", "/");
-        return [`${sanitizedFolder}/*.pack`, `${sanitizedFolder}/*/*.pack`];
-      });
+      const customFolderPaths = existingCustomFolders.map((folder) => folder.path);
       customModFoldersWatcher = chokidar
-        .watch(customFolderPatterns, {
+        .watch(customFolderPaths, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
           followSymlinks: false,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => onNewPackFound(path, true))
         .on("unlink", async (path) => onPackDeleted(path))
@@ -6004,15 +6010,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
       await fsExtra.ensureDir(mergedDirPath);
-      const sanitizedGamePath = gamePath.replaceAll("\\", "/").replaceAll("//", "/");
       mergedWatcher = chokidar
-        .watch([`${sanitizedGamePath}/merged/*.pack`], {
+        .watch(mergedDirPath, {
+          depth: 0,
+          disableGlobbing: true,
           ignoreInitial: false,
           awaitWriteFinish: {
             stabilityThreshold: 3000,
             pollInterval: 100,
           },
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
           usePolling: true,
         })
         .on("add", async (path) => {
