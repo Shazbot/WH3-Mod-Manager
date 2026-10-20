@@ -7,9 +7,7 @@ export type UnitViewerAnimationProfileSource = {
 };
 
 /** Maps the unit's movement metadata to the animation-bin family used by its model. */
-export const getUnitViewerAnimationProfile = (
-  unit: UnitViewerAnimationProfileSource,
-): AnimationSelectionProfile => {
+export const getUnitViewerAnimationProfile = (unit: UnitViewerAnimationProfileSource): AnimationSelectionProfile => {
   const isFlying = unit.baseEntity.flySpeed > 0 || (unit.mountEntity?.flySpeed ?? 0) > 0;
   if (unit.mountEntity) return isFlying ? "riderFlying" : "rider";
   return isFlying ? "flying" : "ground";

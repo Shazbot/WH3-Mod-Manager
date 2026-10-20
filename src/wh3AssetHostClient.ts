@@ -383,9 +383,10 @@ export class Wh3AssetHostClient {
   }
 
   exportModel(request: Wh3AssetHostExportModelRequest): Promise<Wh3AssetHostExportResult> {
-    const animationPaths = request.animationSelections && request.animationSelections.length > 0
-      ? request.animationSelections.map((selection) => selection.path)
-      : request.animationPaths ?? [];
+    const animationPaths =
+      request.animationSelections && request.animationSelections.length > 0
+        ? request.animationSelections.map((selection) => selection.path)
+        : (request.animationPaths ?? []);
     const payload = {
       assetPath: request.assetPath,
       outputPath: request.outputPath,
@@ -402,9 +403,10 @@ export class Wh3AssetHostClient {
   }
 
   exportModels(request: Wh3AssetHostExportModelBatchRequest): Promise<Wh3AssetHostExportModelBatchResult> {
-    const animationPaths = request.animationSelections && request.animationSelections.length > 0
-      ? request.animationSelections.map((selection) => selection.path)
-      : request.animationPaths ?? [];
+    const animationPaths =
+      request.animationSelections && request.animationSelections.length > 0
+        ? request.animationSelections.map((selection) => selection.path)
+        : (request.animationPaths ?? []);
     const payload = {
       assetPath: request.assetPath,
       items: request.items.map((item) => ({
@@ -426,9 +428,7 @@ export class Wh3AssetHostClient {
     return this.request<Wh3AssetHostAnimationCatalog>("getAnimationCatalog", { assetPath });
   }
 
-  exportPaintedVariant(
-    request: Wh3AssetHostPaintedVariantRequest,
-  ): Promise<Wh3AssetHostPaintedVariantResult> {
+  exportPaintedVariant(request: Wh3AssetHostPaintedVariantRequest): Promise<Wh3AssetHostPaintedVariantResult> {
     return this.request<Wh3AssetHostPaintedVariantResult>(
       "exportPaintedVariant",
       {

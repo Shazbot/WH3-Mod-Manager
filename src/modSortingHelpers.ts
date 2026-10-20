@@ -239,9 +239,7 @@ export function getModsSortedByLastUpdated(mods: Mod[]) {
 
 /** Data folder mods use the file timestamp because it reflects local edits to Workshop copies. */
 export function getModLastChanged(mod: Pick<Mod, "isInData" | "lastChanged" | "lastChangedLocal">) {
-  return mod.isInData
-    ? (mod.lastChangedLocal || mod.lastChanged)
-    : (mod.lastChanged || mod.lastChangedLocal);
+  return mod.isInData ? mod.lastChangedLocal || mod.lastChanged : mod.lastChanged || mod.lastChangedLocal;
 }
 
 export function getModsSortedBySubbedTime(mods: Mod[]) {

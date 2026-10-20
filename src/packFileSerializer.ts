@@ -3145,12 +3145,7 @@ export const readDBPackedFilesFromIndex = async (
   }
   return packedFiles;
 };
-const readLoc = (
-  packReadingOptions: PackReadingOptions,
-  locPackFile: PackedFile,
-  buffer: Buffer,
-  modPath: string,
-) => {
+const readLoc = (packReadingOptions: PackReadingOptions, locPackFile: PackedFile, buffer: Buffer, modPath: string) => {
   let currentPos = 0;
   // console.log("READING LOC file", locPackFile.name);
   const marker = buffer.subarray(currentPos, currentPos + 2);

@@ -882,14 +882,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       if (!outputDirectory) return;
       const extractVisualsFiles = window.api?.extractVisualsFilesToDirectory;
       const result = excludeCommonTextures
-        ? await extractVisualsFiles?.(
-            sessionId,
-            outputDirectory,
-            targetPaths,
-            preserveFolders,
-            preferredPackPath,
-            true,
-          )
+        ? await extractVisualsFiles?.(sessionId, outputDirectory, targetPaths, preserveFolders, preferredPackPath, true)
         : await extractVisualsFiles?.(sessionId, outputDirectory, targetPaths, preserveFolders, preferredPackPath);
       if (!result?.success) {
         setViewerMessage(result?.error || "Failed to extract visual files.");
@@ -1505,28 +1498,27 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               {assetEditorContextMenu.targetPath && <div className="my-1 border-t border-gray-700" />}
             </>
           )}
-          {!assetEditorContextMenu.targetPath &&
-            assetEditorContextMenu.targetPaths.some(isCommonTexturesPath) && (
-              <>
-                <div className="my-1 border-t border-gray-700" />
-                <button
-                  type="button"
-                  disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
-                  onClick={() => void onExtractContextAction(true, true)}
-                >
-                  Extract all (with folder, no commontextures)
-                </button>
-                <button
-                  type="button"
-                  disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
-                  onClick={() => void onExtractContextAction(false, true)}
-                >
-                  Extract all (flat, not commontextures)
-                </button>
-              </>
-            )}
+          {!assetEditorContextMenu.targetPath && assetEditorContextMenu.targetPaths.some(isCommonTexturesPath) && (
+            <>
+              <div className="my-1 border-t border-gray-700" />
+              <button
+                type="button"
+                disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
+                onClick={() => void onExtractContextAction(true, true)}
+              >
+                Extract all (with folder, no commontextures)
+              </button>
+              <button
+                type="button"
+                disabled={isExtracting || assetEditorContextMenu.targetPaths.length === 0}
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white disabled:opacity-50 text-sm"
+                onClick={() => void onExtractContextAction(false, true)}
+              >
+                Extract all (flat, not commontextures)
+              </button>
+            </>
+          )}
           {assetEditorContextMenu.targetPath && (
             <>
               <button

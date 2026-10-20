@@ -164,11 +164,7 @@ const normalizePackedColourRgb = (value: unknown) => {
   return normalizeHexColour(raw);
 };
 
-const normalizeRgbComponents = (
-  red: unknown,
-  green: unknown,
-  blue: unknown,
-) => {
+const normalizeRgbComponents = (red: unknown, green: unknown, blue: unknown) => {
   const values = [red, green, blue].map((value) => Number(asString(value).trim()));
   if (!values.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) return undefined;
   return `#${values.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
@@ -179,20 +175,12 @@ const readFactionUniformColour = (
   fieldName: "uniform_colour_primary" | "uniform_colour_secondary" | "uniform_colour_tertiary",
 ) => {
   if (!row) return undefined;
-  return normalizePackedColourRgb(row[fieldName])
-    ?? normalizeHexColour(row[`${fieldName}_hex`]);
+  return normalizePackedColourRgb(row[fieldName]) ?? normalizeHexColour(row[`${fieldName}_hex`]);
 };
 
-const readUnitVariantColour = (
-  row: Record<string, string>,
-  prefix: "primary" | "secondary" | "tertiary",
-) =>
-  normalizeHexColour(row[`${prefix}_colour_hex`])
-  ?? normalizeRgbComponents(
-    row[`${prefix}_colour_r`],
-    row[`${prefix}_colour_g`],
-    row[`${prefix}_colour_b`],
-  );
+const readUnitVariantColour = (row: Record<string, string>, prefix: "primary" | "secondary" | "tertiary") =>
+  normalizeHexColour(row[`${prefix}_colour_hex`]) ??
+  normalizeRgbComponents(row[`${prefix}_colour_r`], row[`${prefix}_colour_g`], row[`${prefix}_colour_b`]);
 const asNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -767,8 +755,7 @@ export const buildUnitViewerData = (
     const variantName = asString(variant?.variant);
     const variantDefinition = variants.get(variantName);
     const unitCardName = asString(variant?.unit_card) || key;
-    const variantMeshPath =
-      toVariantMeshDefinitionPath(asString(variantDefinition?.variant_filename)) || undefined;
+    const variantMeshPath = toVariantMeshDefinitionPath(asString(variantDefinition?.variant_filename)) || undefined;
     const availableVariantFactions = Array.from(
       new Set([
         ...(permissions.get(key) || []).map((permission) => asString(permission.faction)).filter(Boolean),
@@ -786,9 +773,9 @@ export const buildUnitViewerData = (
       .flatMap(([faction, row]) => {
         const subculture = asString(row.subculture);
         if (
-          previewSubcultures.size > 0
-          && !previewSubcultures.has(subculture)
-          && !availableVariantFactions.includes(faction)
+          previewSubcultures.size > 0 &&
+          !previewSubcultures.has(subculture) &&
+          !availableVariantFactions.includes(faction)
         ) {
           return [];
         }
@@ -804,14 +791,16 @@ export const buildUnitViewerData = (
       const secondary = readUnitVariantColour(row, "secondary");
       const tertiary = readUnitVariantColour(row, "tertiary");
       if (!primary || !secondary || !tertiary) return [];
-      return [{
-        faction: asString(row.faction),
-        subculture: asString(row.subculture),
-        soldierType: asString(row.soldier_type),
-        primary,
-        secondary,
-        tertiary,
-      }];
+      return [
+        {
+          faction: asString(row.faction),
+          subculture: asString(row.subculture),
+          soldierType: asString(row.soldier_type),
+          primary,
+          secondary,
+          tertiary,
+        },
+      ];
     });
     const painterVariantContext =
       variant && variantName && variantDefinition

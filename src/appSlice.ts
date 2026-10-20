@@ -405,7 +405,9 @@ const applyPresetModsUnaryInternal = (state: AppState, presetEntries: PresetModE
   state.currentPreset.version = 2;
 
   if (!state.canDisableAlwaysEnabledMods) {
-    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+      (mod) => (mod.isEnabled = true),
+    );
   }
 
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
@@ -426,7 +428,9 @@ const selectPresetInternal = (state: AppState, presetSelection: SelectOperation,
   }
 
   if (!state.canDisableAlwaysEnabledMods) {
-    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+      (mod) => (mod.isEnabled = true),
+    );
   }
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };

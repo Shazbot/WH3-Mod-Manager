@@ -81,11 +81,13 @@ const forEachPixelMaskRun = (
     for (let localY = 0; localY < height; localY += 1) {
       let runStart = -1;
       for (let localX = 0; localX <= width; localX += 1) {
-        const selected = localX < width && (() => {
-          const localIndex = localY * mask.tileSize + localX;
-          const byteIndex = localIndex >> 3;
-          return (tile[byteIndex] & (1 << (localIndex & 7))) !== 0;
-        })();
+        const selected =
+          localX < width &&
+          (() => {
+            const localIndex = localY * mask.tileSize + localX;
+            const byteIndex = localIndex >> 3;
+            return (tile[byteIndex] & (1 << (localIndex & 7))) !== 0;
+          })();
         if (selected && runStart < 0) {
           runStart = localX;
           continue;
@@ -150,10 +152,7 @@ const UnitPainterTextureEditor = ({
     visible: false,
   });
 
-  const views = useMemo(
-    () => session.getTextureViews(scope),
-    [session, historyVersion, selectionKey, scope],
-  );
+  const views = useMemo(() => session.getTextureViews(scope), [session, historyVersion, selectionKey, scope]);
   const view = views.find((candidate) => candidate.id === selectedTextureId) ?? views[0];
   const activeDecal = session.activeDecalInfo;
 
@@ -197,10 +196,7 @@ const UnitPainterTextureEditor = ({
       const screenX = current.x + textureX * current.scale;
       const screenY = current.y + textureY * current.scale;
       const isVisible =
-        screenX >= margin
-        && screenY >= margin
-        && screenX <= rect.width - margin
-        && screenY <= rect.height - margin;
+        screenX >= margin && screenY >= margin && screenX <= rect.width - margin && screenY <= rect.height - margin;
       if (!forceCenter && isVisible) return current;
       transformModeRef.current = "manual";
       return {
@@ -251,10 +247,7 @@ const UnitPainterTextureEditor = ({
       const rowBytes = width * 4;
       for (let row = 0; row < height; row += 1) {
         const sourceStart = ((y + row) * view.width + x) * 4;
-        imageData.data.set(
-          view.data.subarray(sourceStart, sourceStart + rowBytes),
-          row * rowBytes,
-        );
+        imageData.data.set(view.data.subarray(sourceStart, sourceStart + rowBytes), row * rowBytes);
       }
       context.putImageData(imageData, x, y);
       return;
@@ -301,22 +294,13 @@ const UnitPainterTextureEditor = ({
     };
 
     if (displayMode !== "selected") {
-      drawSegments(
-        view.uvSegments,
-        backgroundMode === "light" ? "rgba(17,24,39,0.72)" : "rgba(255,255,255,0.65)",
-        1,
-      );
+      drawSegments(view.uvSegments, backgroundMode === "light" ? "rgba(17,24,39,0.72)" : "rgba(255,255,255,0.65)", 1);
     }
     drawSegments(view.selectedUvSegments, "rgba(250,204,21,0.98)", 2);
   }, [backgroundMode, displayMode, transform.scale, view]);
 
   useEffect(() => {
-    if (
-      displayMode === "selected"
-      && view
-      && view.selectedUvTriangles.length === 0
-      && !view.selectedPixelMask
-    ) {
+    if (displayMode === "selected" && view && view.selectedUvTriangles.length === 0 && !view.selectedPixelMask) {
       setDisplayMode("textureUv");
     }
   }, [displayMode, view]);
@@ -333,14 +317,11 @@ const UnitPainterTextureEditor = ({
     const hasGeometrySelection = view.selectedUvTriangles.length > 0;
     const hasPixelSelection = !!view.selectedPixelMask;
     const shouldDim =
-      (hasGeometrySelection || hasPixelSelection)
-      && (dimOutsideSelection || displayMode === "selected");
+      (hasGeometrySelection || hasPixelSelection) && (dimOutsideSelection || displayMode === "selected");
 
     if (shouldDim) {
       context.globalCompositeOperation = "source-over";
-      context.fillStyle = displayMode === "selected"
-        ? "rgba(3,7,18,0.88)"
-        : "rgba(3,7,18,0.58)";
+      context.fillStyle = displayMode === "selected" ? "rgba(3,7,18,0.88)" : "rgba(3,7,18,0.58)";
       context.fillRect(0, 0, canvas.width, canvas.height);
 
       context.globalCompositeOperation = "destination-out";
@@ -380,33 +361,36 @@ const UnitPainterTextureEditor = ({
     context.globalCompositeOperation = "source-over";
   }, [dimOutsideSelection, displayMode, view]);
 
-  const drawTextureHoverOutline = useCallback((hover?: UnitPainterTextureHover) => {
-    const hoverCanvas = linkedHoverCanvasRef.current;
-    const context = hoverCanvas?.getContext("2d");
-    if (!hoverCanvas || !context || !view || !hover || hover.textureId !== view.id) {
-      if (hoverCanvas && context) context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
-      return;
-    }
+  const drawTextureHoverOutline = useCallback(
+    (hover?: UnitPainterTextureHover) => {
+      const hoverCanvas = linkedHoverCanvasRef.current;
+      const context = hoverCanvas?.getContext("2d");
+      if (!hoverCanvas || !context || !view || !hover || hover.textureId !== view.id) {
+        if (hoverCanvas && context) context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+        return;
+      }
 
-    if (hoverCanvas.width !== view.width) hoverCanvas.width = view.width;
-    if (hoverCanvas.height !== view.height) hoverCanvas.height = view.height;
-    context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
-    if (hover.uvSegments.length === 0) return;
+      if (hoverCanvas.width !== view.width) hoverCanvas.width = view.width;
+      if (hoverCanvas.height !== view.height) hoverCanvas.height = view.height;
+      context.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+      if (hover.uvSegments.length === 0) return;
 
-    context.beginPath();
-    for (let index = 0; index + 3 < hover.uvSegments.length; index += 4) {
-      context.moveTo(hover.uvSegments[index] * view.width, hover.uvSegments[index + 1] * view.height);
-      context.lineTo(hover.uvSegments[index + 2] * view.width, hover.uvSegments[index + 3] * view.height);
-    }
-    context.strokeStyle =
-      hover.scope === "island"
-        ? "rgba(196,181,253,0.98)"
-        : hover.scope === "similar"
-          ? "rgba(250,204,21,0.98)"
-          : "rgba(103,232,249,0.98)";
-    context.lineWidth = Math.max(1, 2 / Math.max(transform.scale, 0.001));
-    context.stroke();
-  }, [transform.scale, view]);
+      context.beginPath();
+      for (let index = 0; index + 3 < hover.uvSegments.length; index += 4) {
+        context.moveTo(hover.uvSegments[index] * view.width, hover.uvSegments[index + 1] * view.height);
+        context.lineTo(hover.uvSegments[index + 2] * view.width, hover.uvSegments[index + 3] * view.height);
+      }
+      context.strokeStyle =
+        hover.scope === "island"
+          ? "rgba(196,181,253,0.98)"
+          : hover.scope === "similar"
+            ? "rgba(250,204,21,0.98)"
+            : "rgba(103,232,249,0.98)";
+      context.lineWidth = Math.max(1, 2 / Math.max(transform.scale, 0.001));
+      context.stroke();
+    },
+    [transform.scale, view],
+  );
 
   useEffect(() => {
     linkedHoverSinkRef.current = (hover) => {
@@ -439,12 +423,7 @@ const UnitPainterTextureEditor = ({
         const radius = selectMode || eyedropperActive ? 5 : brushSettings.radiusPx;
         const screenX = transform.x + hover.x * transform.scale;
         const screenY = transform.y + hover.y * transform.scale;
-        const color =
-          hover.scope === "island"
-            ? "#c4b5fd"
-            : hover.scope === "similar"
-              ? "#facc15"
-              : "#67e8f9";
+        const color = hover.scope === "island" ? "#c4b5fd" : hover.scope === "similar" ? "#facc15" : "#67e8f9";
         cursor.style.display = "block";
         cursor.style.left = `${screenX - radius}px`;
         cursor.style.top = `${screenY - radius}px`;
@@ -507,7 +486,7 @@ const UnitPainterTextureEditor = ({
 
   const getActiveDecalScreenGeometry = () => {
     if (!activeDecal || activeDecal.targetTextureId !== view.id) return undefined;
-    const radians = activeDecal.rotationDeg * Math.PI / 180;
+    const radians = (activeDecal.rotationDeg * Math.PI) / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
     const center = {
@@ -551,7 +530,7 @@ const UnitPainterTextureEditor = ({
     if (!activeDecal || activeDecal.targetTextureId !== view.id) return false;
     const u = point.x / view.width;
     const v = point.y / view.height;
-    const radians = activeDecal.rotationDeg * Math.PI / 180;
+    const radians = (activeDecal.rotationDeg * Math.PI) / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
     const dxPx = (u - activeDecal.centerU) * view.width;
@@ -559,8 +538,8 @@ const UnitPainterTextureEditor = ({
     const localX = cos * dxPx + sin * dyPx;
     const localY = -sin * dxPx + cos * dyPx;
     return (
-      Math.abs(localX) <= activeDecal.widthU * view.width * 0.5
-      && Math.abs(localY) <= activeDecal.heightV * view.height * 0.5
+      Math.abs(localX) <= activeDecal.widthU * view.width * 0.5 &&
+      Math.abs(localY) <= activeDecal.heightV * view.height * 0.5
     );
   };
 
@@ -584,15 +563,9 @@ const UnitPainterTextureEditor = ({
       startPointerV: v,
       startDistancePx: Math.max(
         1e-6,
-        Math.hypot(
-          (u - activeDecal.centerU) * view.width,
-          (v - activeDecal.centerV) * view.height,
-        ),
+        Math.hypot((u - activeDecal.centerU) * view.width, (v - activeDecal.centerV) * view.height),
       ),
-      startAngleRad: Math.atan2(
-        (v - activeDecal.centerV) * view.height,
-        (u - activeDecal.centerU) * view.width,
-      ),
+      startAngleRad: Math.atan2((v - activeDecal.centerV) * view.height, (u - activeDecal.centerU) * view.width),
       startRotationDeg: activeDecal.rotationDeg,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -680,24 +653,23 @@ const UnitPainterTextureEditor = ({
     const point = pointerToTexture(event.clientX, event.clientY);
     const decalGeometry = getActiveDecalScreenGeometry();
     if (
-      !eyedropperActive
-      && !event.altKey
-      && !selectMode
-      && !pendingDecal
-      && point
-      && decalGeometry
-      && activeDecal?.targetTextureId === view.id
+      !eyedropperActive &&
+      !event.altKey &&
+      !selectMode &&
+      !pendingDecal &&
+      point &&
+      decalGeometry &&
+      activeDecal?.targetTextureId === view.id
     ) {
       const rect = event.currentTarget.getBoundingClientRect();
       const screenPoint = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const near = (target: { x: number; y: number }, radius: number) =>
         Math.hypot(screenPoint.x - target.x, screenPoint.y - target.y) <= radius;
-      const handleMode =
-        near(decalGeometry.rotationHandle, 11)
-          ? "rotate"
-          : near(decalGeometry.scaleHandle, 11)
-            ? "scale"
-            : undefined;
+      const handleMode = near(decalGeometry.rotationHandle, 11)
+        ? "rotate"
+        : near(decalGeometry.scaleHandle, 11)
+          ? "scale"
+          : undefined;
       if (handleMode) {
         event.preventDefault();
         if (beginDecalGesture(event, handleMode, point)) onDecalChanged(false);
@@ -718,31 +690,14 @@ const UnitPainterTextureEditor = ({
       const operation = event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
       const clicked =
         selectMode === "similar"
-          ? session.selectSimilarTexturePoint(
-              view.id,
-              point.x,
-              point.y,
-              similarTolerance,
-              operation,
-            )
-          : !!session.selectTexturePoint(
-              view.id,
-              point.x,
-              point.y,
-              selectMode,
-              operation,
-            );
+          ? session.selectSimilarTexturePoint(view.id, point.x, point.y, similarTolerance, operation)
+          : !!session.selectTexturePoint(view.id, point.x, point.y, selectMode, operation);
       if (clicked) onSelectionComplete(session.selectionInfo, selectMode, operation);
       return;
     }
 
     if (pendingDecal) {
-      const layerId = session.addDecalLayerAtTexturePoint(
-        view.id,
-        point.x,
-        point.y,
-        pendingDecal,
-      );
+      const layerId = session.addDecalLayerAtTexturePoint(view.id, point.x, point.y, pendingDecal);
       if (layerId) {
         onDecalPlaced();
         onDecalChanged(true);
@@ -791,10 +746,13 @@ const UnitPainterTextureEditor = ({
           if (point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
             const u = point.x / view.width;
             const v = point.y / view.height;
-            session.updateActiveDecal({
-              centerU: decalGesture.centerU + (u - decalGesture.startPointerU),
-              centerV: decalGesture.centerV + (v - decalGesture.startPointerV),
-            }, false);
+            session.updateActiveDecal(
+              {
+                centerU: decalGesture.centerU + (u - decalGesture.startPointerU),
+                centerV: decalGesture.centerV + (v - decalGesture.startPointerV),
+              },
+              false,
+            );
             setDecalPreviewVersion((value) => value + 1);
             onDecalChanged(false);
           }
@@ -807,19 +765,17 @@ const UnitPainterTextureEditor = ({
               (v - decalGesture.centerV) * view.height,
             );
             const factor = Math.max(0.01, distance / decalGesture.startDistancePx);
-            session.updateActiveDecal({
-              widthU: decalGesture.startWidthU * factor,
-              heightV: decalGesture.startHeightV * factor,
-            }, false);
-          } else {
-            const angle = Math.atan2(
-              (v - decalGesture.centerV) * view.height,
-              (u - decalGesture.centerU) * view.width,
+            session.updateActiveDecal(
+              {
+                widthU: decalGesture.startWidthU * factor,
+                heightV: decalGesture.startHeightV * factor,
+              },
+              false,
             );
-            let rotationDeg =
-              decalGesture.startRotationDeg
-              + (angle - decalGesture.startAngleRad) * 180 / Math.PI;
-            rotationDeg = ((rotationDeg + 180) % 360 + 360) % 360 - 180;
+          } else {
+            const angle = Math.atan2((v - decalGesture.centerV) * view.height, (u - decalGesture.centerU) * view.width);
+            let rotationDeg = decalGesture.startRotationDeg + ((angle - decalGesture.startAngleRad) * 180) / Math.PI;
+            rotationDeg = ((((rotationDeg + 180) % 360) + 360) % 360) - 180;
             session.updateActiveDecal({ rotationDeg }, false);
           }
           setDecalPreviewVersion((value) => value + 1);
@@ -831,9 +787,7 @@ const UnitPainterTextureEditor = ({
 
     if (point && point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height) {
       if (selectMode && selectMode !== "similar") {
-        drawTextureHoverOutline(
-          session.getTexturePointHover(view.id, point.x, point.y, selectMode),
-        );
+        drawTextureHoverOutline(session.getTexturePointHover(view.id, point.x, point.y, selectMode));
       } else {
         drawTextureHoverOutline(undefined);
       }
@@ -850,7 +804,8 @@ const UnitPainterTextureEditor = ({
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerId === activePanPointerRef.current) {
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      if (event.currentTarget.hasPointerCapture(event.pointerId))
+        event.currentTarget.releasePointerCapture(event.pointerId);
       activePanPointerRef.current = undefined;
       lastPanPointRef.current = undefined;
       return;
@@ -916,7 +871,9 @@ const UnitPainterTextureEditor = ({
           >
             <option value="textureUv">Texture + UV</option>
             <option value="uvOnly">UV only</option>
-            <option value="selected" disabled={!hasSelection}>Selected only</option>
+            <option value="selected" disabled={!hasSelection}>
+              Selected only
+            </option>
           </select>
         </label>
         <label className="flex items-center gap-1 text-gray-400" title="Texture editor background">
@@ -957,7 +914,9 @@ const UnitPainterTextureEditor = ({
             className="rounded border border-gray-600 bg-gray-800 px-1 py-1 text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {[0, 2, 4, 8].map((padding) => (
-              <option key={padding} value={padding}>{padding}px</option>
+              <option key={padding} value={padding}>
+                {padding}px
+              </option>
             ))}
           </select>
         </label>
@@ -977,9 +936,7 @@ const UnitPainterTextureEditor = ({
         >
           1:1
         </button>
-        <span className="min-w-12 text-right tabular-nums text-gray-400">
-          {Math.round(transform.scale * 100)}%
-        </span>
+        <span className="min-w-12 text-right tabular-nums text-gray-400">{Math.round(transform.scale * 100)}%</span>
       </div>
 
       <div
@@ -1041,10 +998,7 @@ const UnitPainterTextureEditor = ({
           }}
         />
         {decalGeometry && (
-          <svg
-            className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
-            aria-hidden="true"
-          >
+          <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible" aria-hidden="true">
             <polygon
               points={decalGeometry.corners.map((point) => `${point.x},${point.y}`).join(" ")}
               fill="rgba(250,204,21,0.05)"
@@ -1089,43 +1043,46 @@ const UnitPainterTextureEditor = ({
             className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed"
           />
         </div>
-        {cursor.visible && activePanPointerRef.current == null && !activeDecal && (() => {
-          const precisionToolActive = !!selectMode || eyedropperActive;
-          const radius = precisionToolActive ? 5 : brushSettings.radiusPx;
-          const cursorColor =
-            selectMode === "similar"
-              ? "#facc15"
-              : selectMode === "island"
-                ? "#c4b5fd"
-                : selectMode === "material" || eyedropperActive
-                  ? "#67e8f9"
-                  : "rgba(255,255,255,0.9)";
-          return (
-            <>
-              <div
-                className="pointer-events-none absolute rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
-                style={{
-                  left: cursor.x - radius,
-                  top: cursor.y - radius,
-                  width: radius * 2,
-                  height: radius * 2,
-                  borderColor: cursorColor,
-                }}
-              />
-              {!precisionToolActive && (
+        {cursor.visible &&
+          activePanPointerRef.current == null &&
+          !activeDecal &&
+          (() => {
+            const precisionToolActive = !!selectMode || eyedropperActive;
+            const radius = precisionToolActive ? 5 : brushSettings.radiusPx;
+            const cursorColor =
+              selectMode === "similar"
+                ? "#facc15"
+                : selectMode === "island"
+                  ? "#c4b5fd"
+                  : selectMode === "material" || eyedropperActive
+                    ? "#67e8f9"
+                    : "rgba(255,255,255,0.9)";
+            return (
+              <>
                 <div
-                  className="pointer-events-none absolute rounded-full border border-dashed border-white/70"
+                  className="pointer-events-none absolute rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
                   style={{
-                    left: cursor.x - radius * brushSettings.hardness,
-                    top: cursor.y - radius * brushSettings.hardness,
-                    width: radius * brushSettings.hardness * 2,
-                    height: radius * brushSettings.hardness * 2,
+                    left: cursor.x - radius,
+                    top: cursor.y - radius,
+                    width: radius * 2,
+                    height: radius * 2,
+                    borderColor: cursorColor,
                   }}
                 />
-              )}
-            </>
-          );
-        })()}
+                {!precisionToolActive && (
+                  <div
+                    className="pointer-events-none absolute rounded-full border border-dashed border-white/70"
+                    style={{
+                      left: cursor.x - radius * brushSettings.hardness,
+                      top: cursor.y - radius * brushSettings.hardness,
+                      width: radius * brushSettings.hardness * 2,
+                      height: radius * brushSettings.hardness * 2,
+                    }}
+                  />
+                )}
+              </>
+            );
+          })()}
       </div>
 
       <div className="pointer-events-none absolute bottom-2 left-2 z-20 rounded bg-gray-900/90 px-2 py-1 text-[11px] text-gray-400">
@@ -1135,7 +1092,8 @@ const UnitPainterTextureEditor = ({
             ? "Drag inside decal to move · square handle scale · round handle rotate"
             : selectMode
               ? `LMB select ${selectMode}`
-              : "LMB paint"} · Alt+click sample · RMB/MMB pan · Wheel zoom
+              : "LMB paint"}{" "}
+        · Alt+click sample · RMB/MMB pan · Wheel zoom
         {scope !== "all"
           ? ` · clipped to selection${scope !== "similar" && !view.selectedPixelMask && paddingPx > 0 ? ` + ${paddingPx}px padding` : ""}`
           : ""}

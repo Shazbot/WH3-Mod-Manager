@@ -102,11 +102,8 @@ const getNextEnabledSortMode = (mode: EnabledSortMode): EnabledSortMode => {
   return "none";
 };
 
-const isModEffectivelyEnabled = (
-  mod: Mod,
-  alwaysEnabledModNames: Set<string>,
-  canDisableAlwaysEnabledMods: boolean,
-) => mod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(mod.name));
+const isModEffectivelyEnabled = (mod: Mod, alwaysEnabledModNames: Set<string>, canDisableAlwaysEnabledMods: boolean) =>
+  mod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(mod.name));
 
 const cancelDebounced = (callback: unknown) => {
   (callback as { cancel?: () => void }).cancel?.();
@@ -853,13 +850,12 @@ const Categories = memo(() => {
           const ariaLabel = isCategoryRow(row) ? `Toggle category ${categoryLabel}` : `Toggle mod ${row.humanName}`;
           const isDisabled = isCategoryRow(row)
             ? row.allModPaths.length === 0 ||
-                  (!canDisableAlwaysEnabledMods &&
-                    row.allModPaths.every((path) => {
-                      const mod = modByPath.get(path);
-                      return mod ? alwaysEnabledModNames.includes(mod.name) : false;
-                    }))
-              : !canDisableAlwaysEnabledMods &&
-                alwaysEnabledModNames.includes(modByPath.get(row.path)?.name ?? "");
+              (!canDisableAlwaysEnabledMods &&
+                row.allModPaths.every((path) => {
+                  const mod = modByPath.get(path);
+                  return mod ? alwaysEnabledModNames.includes(mod.name) : false;
+                }))
+            : !canDisableAlwaysEnabledMods && alwaysEnabledModNames.includes(modByPath.get(row.path)?.name ?? "");
 
           return (
             <div className={`flex h-full items-center justify-center ${isThumbnailShown && "scale-125"}`}>

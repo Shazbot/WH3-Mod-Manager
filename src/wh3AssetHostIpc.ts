@@ -180,9 +180,7 @@ export const resolveWh3AssetHostExecutablePath = (): string => {
   const configuredPath = process.env.WH3_ASSET_HOST_PATH?.trim();
   const candidates = app.isPackaged
     ? [bundledPath]
-    : [configuredPath, ...getDevelopmentHostCandidates()].filter(
-        (candidate): candidate is string => !!candidate,
-      );
+    : [configuredPath, ...getDevelopmentHostCandidates()].filter((candidate): candidate is string => !!candidate);
 
   const executablePath = candidates.find((candidate) => fs.existsSync(candidate));
   if (executablePath) return executablePath;
@@ -377,7 +375,9 @@ const sanitizeAnimationSelections = (value: unknown): Wh3AssetHostAnimationRefer
       fragmentPath: fragmentPath || null,
       metadataPath: metadataPath || null,
     } satisfies Wh3AssetHostAnimationReference;
-    const key = [path.toLowerCase(), packIndex ?? "", fragmentPath.toLowerCase(), metadataPath.toLowerCase()].join("\0");
+    const key = [path.toLowerCase(), packIndex ?? "", fragmentPath.toLowerCase(), metadataPath.toLowerCase()].join(
+      "\0",
+    );
     selections.set(key, selection);
   }
   return [...selections.values()];
@@ -436,11 +436,7 @@ const prepareVisualsModelHost = async (enabledModsValue: unknown, generation: nu
   }
 };
 
-const getVisualsModelAnimationCatalogNow = async (
-  assetPath: string,
-  enabledModsValue: unknown,
-  generation: number,
-) => {
+const getVisualsModelAnimationCatalogNow = async (assetPath: string, enabledModsValue: unknown, generation: number) => {
   const normalized = normalizeVisualsModelAssetPath(assetPath);
   if (!normalized.success) return normalized;
 
@@ -559,7 +555,6 @@ const exportVisualsModelNow = async (
   }
 };
 
-
 const exportVisualsModelBatchNow = async (
   assetPath: string,
   enabledModsValue: unknown,
@@ -630,9 +625,7 @@ const exportVisualsModelBatchNow = async (
     }
 
     const glbBytes = (
-      await Promise.all(
-        batchResult.exports.map(async (result) => (await fs.promises.stat(result.primaryFile!)).size),
-      )
+      await Promise.all(batchResult.exports.map(async (result) => (await fs.promises.stat(result.primaryFile!)).size))
     ).reduce((total, bytes) => total + bytes, 0);
     assertHostLifecycleActive(generation);
 
@@ -831,7 +824,7 @@ const sanitizeUnitPainterFactionScope = (value: unknown): UnitPainterFactionScop
   const raw = value as Record<string, unknown>;
   const rawDetails =
     raw.sourceVariantDetails && typeof raw.sourceVariantDetails === "object"
-      ? raw.sourceVariantDetails as Record<string, unknown>
+      ? (raw.sourceVariantDetails as Record<string, unknown>)
       : undefined;
   if (!rawDetails) return undefined;
 
@@ -852,16 +845,16 @@ const sanitizeUnitPainterFactionScope = (value: unknown): UnitPainterFactionScop
   const newVariantFilename = text(raw.newVariantFilename);
   const sourceVariantFilename = text(rawDetails.variantFilename);
   if (
-    !faction
-    || !unitKey
-    || !sourceVariantName
-    || unitVariantName == null
-    || unitCard == null
-    || !newVariantName
-    || !newVariantFilename
-    || !sourceVariantFilename
-    || !/^[a-zA-Z0-9_.-]{1,160}$/.test(newVariantName)
-    || !/^[a-zA-Z0-9_-]{1,120}$/.test(newVariantFilename)
+    !faction ||
+    !unitKey ||
+    !sourceVariantName ||
+    unitVariantName == null ||
+    unitCard == null ||
+    !newVariantName ||
+    !newVariantFilename ||
+    !sourceVariantFilename ||
+    !/^[a-zA-Z0-9_.-]{1,160}$/.test(newVariantName) ||
+    !/^[a-zA-Z0-9_-]{1,120}$/.test(newVariantFilename)
   ) {
     return undefined;
   }
@@ -874,12 +867,12 @@ const sanitizeUnitPainterFactionScope = (value: unknown): UnitPainterFactionScop
   const scaleVariation = optionalDetail("scaleVariation");
   const superLowPolyFilename = optionalDetail("superLowPolyFilename");
   if (
-    techFolder == null
-    || lowPolyFilename == null
-    || mountScale == null
-    || scale == null
-    || scaleVariation == null
-    || superLowPolyFilename == null
+    techFolder == null ||
+    lowPolyFilename == null ||
+    mountScale == null ||
+    scale == null ||
+    scaleVariation == null ||
+    superLowPolyFilename == null
   ) {
     return undefined;
   }
@@ -907,9 +900,7 @@ const sanitizeUnitPainterFactionScope = (value: unknown): UnitPainterFactionScop
 const getUnitPainterScopedVmdPath = (scope: UnitPainterFactionScopeInput) =>
   `variantmeshes\\variantmeshdefinitions\\${scope.newVariantFilename}.variantmeshdefinition`;
 
-const buildUnitPainterFactionScopeDbFiles = async (
-  scope: UnitPainterFactionScopeInput,
-): Promise<NewPackedFile[]> => {
+const buildUnitPainterFactionScopeDbFiles = async (scope: UnitPainterFactionScopeInput): Promise<NewPackedFile[]> => {
   if (appData.currentGame !== "wh3") {
     throw new Error("Faction-scoped unit painter variants are currently supported for WH3 only.");
   }
@@ -960,19 +951,18 @@ const readUnitPainterRgba = (value: unknown, width: number, height: number) => {
   return bytes.length === expectedBytes ? bytes : undefined;
 };
 
-
 const sanitizeUnitPainterProjectMask = (value: unknown): UnitPainterProjectMaskInput | undefined => {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as { width?: unknown; height?: unknown; tiles?: unknown };
   const width = typeof raw.width === "number" && Number.isInteger(raw.width) ? raw.width : 0;
   const height = typeof raw.height === "number" && Number.isInteger(raw.height) ? raw.height : 0;
   if (
-    width <= 0
-    || height <= 0
-    || width > 16384
-    || height > 16384
-    || !Array.isArray(raw.tiles)
-    || raw.tiles.length === 0
+    width <= 0 ||
+    height <= 0 ||
+    width > 16384 ||
+    height > 16384 ||
+    !Array.isArray(raw.tiles) ||
+    raw.tiles.length === 0
   ) {
     return undefined;
   }
@@ -988,11 +978,7 @@ const sanitizeUnitPainterProjectMask = (value: unknown): UnitPainterProjectMaskI
     if (key < 0 || key >= maxTileKey || seen.has(key) || !ArrayBuffer.isView(tile.maskBytes)) {
       return undefined;
     }
-    const maskBytes = Buffer.from(
-      tile.maskBytes.buffer,
-      tile.maskBytes.byteOffset,
-      tile.maskBytes.byteLength,
-    );
+    const maskBytes = Buffer.from(tile.maskBytes.buffer, tile.maskBytes.byteOffset, tile.maskBytes.byteLength);
     if (maskBytes.length !== UNIT_PAINTER_PROJECT_MASK_TILE_BYTES) return undefined;
     seen.add(key);
     tiles.push({ key, maskBytes });
@@ -1000,9 +986,7 @@ const sanitizeUnitPainterProjectMask = (value: unknown): UnitPainterProjectMaskI
   return { width, height, tiles };
 };
 
-const sanitizeUnitPainterProjectState = (
-  value: unknown,
-): UnitPainterProjectStateInput | undefined => {
+const sanitizeUnitPainterProjectState = (value: unknown): UnitPainterProjectStateInput | undefined => {
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as {
     activeLayerId?: unknown;
@@ -1013,13 +997,17 @@ const sanitizeUnitPainterProjectState = (
   };
   const activeLayerId = typeof candidate.activeLayerId === "string" ? candidate.activeLayerId.trim() : "";
   const usedColorHistory = sanitizeUnitPainterColorHistory(candidate.usedColorHistory);
-  const selectedColor =
-    candidate.selectedColor == null ? undefined : sanitizeUnitPainterColor(candidate.selectedColor);
+  const selectedColor = candidate.selectedColor == null ? undefined : sanitizeUnitPainterColor(candidate.selectedColor);
   const factionScope = sanitizeUnitPainterFactionScope(candidate.factionScope);
   if (candidate.usedColorHistory != null && !usedColorHistory) return undefined;
   if (candidate.selectedColor != null && !selectedColor) return undefined;
   if (candidate.factionScope != null && !factionScope) return undefined;
-  if (!activeLayerId || !Array.isArray(candidate.layers) || candidate.layers.length < 1 || candidate.layers.length > 32) {
+  if (
+    !activeLayerId ||
+    !Array.isArray(candidate.layers) ||
+    candidate.layers.length < 1 ||
+    candidate.layers.length > 32
+  ) {
     return undefined;
   }
 
@@ -1041,16 +1029,16 @@ const sanitizeUnitPainterProjectState = (
     const name = typeof layer.name === "string" ? layer.name.trim().slice(0, 80) : "";
     const opacity = typeof layer.opacity === "number" ? layer.opacity : Number.NaN;
     if (
-      !id
-      || !/^[a-zA-Z0-9_-]{1,80}$/.test(id)
-      || seenLayerIds.has(id)
-      || !name
-      || typeof layer.visible !== "boolean"
-      || !Number.isFinite(opacity)
-      || opacity < 0
-      || opacity > 1
-      || !Array.isArray(layer.textures)
-      || layer.textures.length > MAX_UNIT_PAINTER_TEXTURES
+      !id ||
+      !/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
+      seenLayerIds.has(id) ||
+      !name ||
+      typeof layer.visible !== "boolean" ||
+      !Number.isFinite(opacity) ||
+      opacity < 0 ||
+      opacity > 1 ||
+      !Array.isArray(layer.textures) ||
+      layer.textures.length > MAX_UNIT_PAINTER_TEXTURES
     ) {
       return undefined;
     }
@@ -1068,21 +1056,19 @@ const sanitizeUnitPainterProjectState = (
           ? undefined
           : sanitizeUnitPainterSourcePath(rawDecal.normalSourceVirtualPath);
       const sourceName = typeof rawDecal.sourceName === "string" ? rawDecal.sourceName.trim().slice(0, 160) : "";
-      const sourceWidth = typeof rawDecal.sourceWidth === "number" && Number.isInteger(rawDecal.sourceWidth)
-        ? rawDecal.sourceWidth
-        : 0;
-      const sourceHeight = typeof rawDecal.sourceHeight === "number" && Number.isInteger(rawDecal.sourceHeight)
-        ? rawDecal.sourceHeight
-        : 0;
+      const sourceWidth =
+        typeof rawDecal.sourceWidth === "number" && Number.isInteger(rawDecal.sourceWidth) ? rawDecal.sourceWidth : 0;
+      const sourceHeight =
+        typeof rawDecal.sourceHeight === "number" && Number.isInteger(rawDecal.sourceHeight)
+          ? rawDecal.sourceHeight
+          : 0;
       const sourceRgbaBytes =
         sourceWidth > 0 && sourceHeight > 0 && sourceWidth <= 8192 && sourceHeight <= 8192
           ? readUnitPainterRgba(rawDecal.sourceRgbaBytes, sourceWidth, sourceHeight)
           : undefined;
-      const tint = rawDecal.tint && typeof rawDecal.tint === "object"
-        ? rawDecal.tint as Record<string, unknown>
-        : undefined;
-      const readNumber = (input: unknown) =>
-        typeof input === "number" && Number.isFinite(input) ? input : Number.NaN;
+      const tint =
+        rawDecal.tint && typeof rawDecal.tint === "object" ? (rawDecal.tint as Record<string, unknown>) : undefined;
+      const readNumber = (input: unknown) => (typeof input === "number" && Number.isFinite(input) ? input : Number.NaN);
       const centerU = readNumber(rawDecal.centerU);
       const centerV = readNumber(rawDecal.centerV);
       const widthU = readNumber(rawDecal.widthU);
@@ -1092,58 +1078,54 @@ const sanitizeUnitPainterProjectState = (
       const tintEnabled = typeof rawDecal.tintEnabled === "boolean" ? rawDecal.tintEnabled : undefined;
       const affectNormal = typeof rawDecal.affectNormal === "boolean" ? rawDecal.affectNormal : undefined;
       const normalHeightSource =
-        rawDecal.normalHeightSource === "alpha"
-        || rawDecal.normalHeightSource === "luminance"
-        || rawDecal.normalHeightSource === "emboss"
+        rawDecal.normalHeightSource === "alpha" ||
+        rawDecal.normalHeightSource === "luminance" ||
+        rawDecal.normalHeightSource === "emboss"
           ? rawDecal.normalHeightSource
           : undefined;
-      const normalBevelPx =
-        rawDecal.normalBevelPx == null ? 6 : readNumber(rawDecal.normalBevelPx);
-      const normalSoftnessPx =
-        rawDecal.normalSoftnessPx == null ? 1 : readNumber(rawDecal.normalSoftnessPx);
+      const normalBevelPx = rawDecal.normalBevelPx == null ? 6 : readNumber(rawDecal.normalBevelPx);
+      const normalSoftnessPx = rawDecal.normalSoftnessPx == null ? 1 : readNumber(rawDecal.normalSoftnessPx);
       const placementMask =
-        rawDecal.placementMask == null
-          ? undefined
-          : sanitizeUnitPainterProjectMask(rawDecal.placementMask);
+        rawDecal.placementMask == null ? undefined : sanitizeUnitPainterProjectMask(rawDecal.placementMask);
       if (rawDecal.placementMask != null && !placementMask) return undefined;
       const tintR = readNumber(tint?.r);
       const tintG = readNumber(tint?.g);
       const tintB = readNumber(tint?.b);
       if (
-        !targetSourceVirtualPath
-        || (rawDecal.normalSourceVirtualPath != null && !normalSourceVirtualPath)
-        || !sourceName
-        || !sourceRgbaBytes
-        || !Number.isFinite(centerU)
-        || !Number.isFinite(centerV)
-        || !Number.isFinite(widthU)
-        || widthU <= 0
-        || !Number.isFinite(heightV)
-        || heightV <= 0
-        || !Number.isFinite(rotationDeg)
-        || tintEnabled == null
-        || !Number.isFinite(tintR)
-        || tintR < 0
-        || tintR > 255
-        || !Number.isFinite(tintG)
-        || tintG < 0
-        || tintG > 255
-        || !Number.isFinite(tintB)
-        || tintB < 0
-        || tintB > 255
-        || affectNormal == null
-        || !Number.isFinite(normalStrength)
-        || normalStrength < -4
-        || normalStrength > 4
-        || !normalHeightSource
-        || !Number.isFinite(normalBevelPx)
-        || normalBevelPx < 1
-        || normalBevelPx > 32
-        || !Number.isFinite(normalSoftnessPx)
-        || normalSoftnessPx < 0
-        || normalSoftnessPx > 8
-        || (rawDecal.flipX != null && typeof rawDecal.flipX !== "boolean")
-        || (rawDecal.flipY != null && typeof rawDecal.flipY !== "boolean")
+        !targetSourceVirtualPath ||
+        (rawDecal.normalSourceVirtualPath != null && !normalSourceVirtualPath) ||
+        !sourceName ||
+        !sourceRgbaBytes ||
+        !Number.isFinite(centerU) ||
+        !Number.isFinite(centerV) ||
+        !Number.isFinite(widthU) ||
+        widthU <= 0 ||
+        !Number.isFinite(heightV) ||
+        heightV <= 0 ||
+        !Number.isFinite(rotationDeg) ||
+        tintEnabled == null ||
+        !Number.isFinite(tintR) ||
+        tintR < 0 ||
+        tintR > 255 ||
+        !Number.isFinite(tintG) ||
+        tintG < 0 ||
+        tintG > 255 ||
+        !Number.isFinite(tintB) ||
+        tintB < 0 ||
+        tintB > 255 ||
+        affectNormal == null ||
+        !Number.isFinite(normalStrength) ||
+        normalStrength < -4 ||
+        normalStrength > 4 ||
+        !normalHeightSource ||
+        !Number.isFinite(normalBevelPx) ||
+        normalBevelPx < 1 ||
+        normalBevelPx > 32 ||
+        !Number.isFinite(normalSoftnessPx) ||
+        normalSoftnessPx < 0 ||
+        normalSoftnessPx > 8 ||
+        (rawDecal.flipX != null && typeof rawDecal.flipX !== "boolean") ||
+        (rawDecal.flipY != null && typeof rawDecal.flipY !== "boolean")
       ) {
         return undefined;
       }
@@ -1193,12 +1175,12 @@ const sanitizeUnitPainterProjectState = (
       const width = typeof texture.width === "number" && Number.isInteger(texture.width) ? texture.width : 0;
       const height = typeof texture.height === "number" && Number.isInteger(texture.height) ? texture.height : 0;
       if (
-        !sourceVirtualPath
-        || width <= 0
-        || height <= 0
-        || width > 16384
-        || height > 16384
-        || !Array.isArray(texture.tiles)
+        !sourceVirtualPath ||
+        width <= 0 ||
+        height <= 0 ||
+        width > 16384 ||
+        height > 16384 ||
+        !Array.isArray(texture.tiles)
       ) {
         return undefined;
       }
@@ -1219,11 +1201,7 @@ const sanitizeUnitPainterProjectState = (
         if (key < 0 || key >= maxTileKey || seenTileKeys.has(key) || !ArrayBuffer.isView(tile.rgbaBytes)) {
           return undefined;
         }
-        const rgbaBytes = Buffer.from(
-          tile.rgbaBytes.buffer,
-          tile.rgbaBytes.byteOffset,
-          tile.rgbaBytes.byteLength,
-        );
+        const rgbaBytes = Buffer.from(tile.rgbaBytes.buffer, tile.rgbaBytes.byteOffset, tile.rgbaBytes.byteLength);
         if (rgbaBytes.length !== UNIT_PAINTER_PROJECT_TILE_BYTES) return undefined;
         seenTileKeys.add(key);
         totalBytes += rgbaBytes.length;
@@ -1272,8 +1250,7 @@ const exportUnitPainterVariantNow = async (
     return { success: false as const, error: "The unit painter layer project payload is invalid." };
   }
 
-  const requestedPackPath =
-    typeof targetPackPathValue === "string" ? targetPackPathValue.trim() : "";
+  const requestedPackPath = typeof targetPackPathValue === "string" ? targetPackPathValue.trim() : "";
   if (!Array.isArray(texturesValue)) {
     return { success: false as const, error: "The painted texture export payload is invalid." };
   }
@@ -1363,10 +1340,9 @@ const exportUnitPainterVariantNow = async (
   }
   const packName = nodePath.basename(packPath);
   const vanillaPackNames = new Set(
-    [
-      ...gameToVanillaPacksData[appData.currentGame].map((pack) => pack.name),
-      ...appData.allVanillaPackNames,
-    ].map((name) => name.toLowerCase()),
+    [...gameToVanillaPacksData[appData.currentGame].map((pack) => pack.name), ...appData.allVanillaPackNames].map(
+      (name) => name.toLowerCase(),
+    ),
   );
   if (vanillaPackNames.has(packName.toLowerCase())) {
     return {
@@ -1433,7 +1409,10 @@ const exportUnitPainterVariantNow = async (
     assertHostLifecycleActive(generation);
 
     if (!result.success || !result.variantMeshVirtualPath) {
-      const hostErrors = result.errors?.map((error) => error.message).filter(Boolean).join(" | ");
+      const hostErrors = result.errors
+        ?.map((error) => error.message)
+        .filter(Boolean)
+        .join(" | ");
       return {
         success: false as const,
         error: hostErrors || "WH3AssetHost could not create the painted unit variant.",
@@ -1441,14 +1420,13 @@ const exportUnitPainterVariantNow = async (
       };
     }
 
-    const normalizeVirtualPath = (value: string) =>
-      value.replace(/\//g, "\\").trim().replace(/^\\+/, "").toLowerCase();
+    const normalizeVirtualPath = (value: string) => value.replace(/\//g, "\\").trim().replace(/^\\+/, "").toLowerCase();
     if (normalizeVirtualPath(result.variantMeshVirtualPath) !== normalizeVirtualPath(normalizedAsset.assetPath)) {
       return {
         success: false as const,
         error:
-          "WH3AssetHost did not export the painted VariantMeshDefinition at the source path. "
-          + "Rebuild the bundled asset host before creating a painted mod.",
+          "WH3AssetHost did not export the painted VariantMeshDefinition at the source path. " +
+          "Rebuild the bundled asset host before creating a painted mod.",
         warnings: result.warnings ?? [],
       };
     }
@@ -1484,13 +1462,10 @@ const exportUnitPainterVariantNow = async (
     // renderer can exclude its own output pack from the source stack before Redux sees it.
     const normalizedDataFolder = dataFolder ? nodePath.resolve(dataFolder).toLowerCase() : undefined;
     const normalizedPackDirectory = nodePath.resolve(nodePath.dirname(packPath)).toLowerCase();
-    const normalizedModdingDirectory = dataFolder
-      ? nodePath.resolve(dataFolder, "modding").toLowerCase()
-      : undefined;
+    const normalizedModdingDirectory = dataFolder ? nodePath.resolve(dataFolder, "modding").toLowerCase() : undefined;
     const isManagedDataPack =
-      !!normalizedDataFolder
-      && (normalizedPackDirectory === normalizedDataFolder
-        || normalizedPackDirectory === normalizedModdingDirectory);
+      !!normalizedDataFolder &&
+      (normalizedPackDirectory === normalizedDataFolder || normalizedPackDirectory === normalizedModdingDirectory);
     if (isManagedDataPack && windows.mainWindow && !windows.mainWindow.isDestroyed()) {
       setImmediate(() => {
         void (async () => {
@@ -1580,13 +1555,12 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
     const manifestBuffer = withManifest.packedFiles.find(
       (file) => file.name.toLowerCase() === manifestEntry.name.toLowerCase(),
     )?.buffer;
-    if (!manifestBuffer) return { success: false as const, error: "The unit painter project manifest could not be read." };
+    if (!manifestBuffer)
+      return { success: false as const, error: "The unit painter project manifest could not be read." };
     const manifest = parseUnitPainterProjectManifest(manifestBuffer);
 
     if (manifest.layers.some((layer) => layer.textures.length > MAX_UNIT_PAINTER_TEXTURES)) {
-      throw new Error(
-        `Each unit-painter layer may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`,
-      );
+      throw new Error(`Each unit-painter layer may contain at most ${MAX_UNIT_PAINTER_TEXTURES} painted textures.`);
     }
 
     const textureEntries = manifest.layers.flatMap((layer) => layer.textures);
@@ -1594,16 +1568,14 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
       ...textureEntries.map((texture) => texture.filePath),
       ...manifest.layers.flatMap((layer) =>
         layer.decal
-          ? [
-              layer.decal.filePath,
-              ...(layer.decal.placementMask ? [layer.decal.placementMask.filePath] : []),
-            ]
-          : []
+          ? [layer.decal.filePath, ...(layer.decal.placementMask ? [layer.decal.placementMask.filePath] : [])]
+          : [],
       ),
     ];
-    const withTextures = payloadPaths.length > 0
-      ? await readPack(packPath, { skipParsingTables: true, filesToRead: payloadPaths })
-      : withManifest;
+    const withTextures =
+      payloadPaths.length > 0
+        ? await readPack(packPath, { skipParsingTables: true, filesToRead: payloadPaths })
+        : withManifest;
     const byPath = new Map(withTextures.packedFiles.map((file) => [file.name.toLowerCase(), file]));
     let totalBytes = 0;
     const layers = [];
@@ -1653,9 +1625,7 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
           const maskPacked = byPath.get(layer.decal.placementMask.filePath.toLowerCase());
           const maskCompressed = maskPacked?.buffer;
           if (!maskCompressed) {
-            throw new Error(
-              `The saved painter decal mask '${layer.decal.placementMask.filePath}' is missing.`,
-            );
+            throw new Error(`The saved painter decal mask '${layer.decal.placementMask.filePath}' is missing.`);
           }
           const maskDecoded = await decodeUnitPainterProjectMaskTiles(
             maskCompressed,

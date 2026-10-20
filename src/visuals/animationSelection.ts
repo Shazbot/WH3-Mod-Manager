@@ -12,9 +12,7 @@ export type AnimationSelectionDefault = {
   slot?: string | null;
 };
 
-export type AnimationSelectionDefaults = Partial<
-  Record<AnimationSelectionProfile, AnimationSelectionDefault>
->;
+export type AnimationSelectionDefaults = Partial<Record<AnimationSelectionProfile, AnimationSelectionDefault>>;
 
 const STAND_IDLE_ANIMATION = /stand[_-]idle/i;
 const CAMERA_ANIMATION = /^cam(?:\s|[_-]|$)/i;

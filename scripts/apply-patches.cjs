@@ -8,11 +8,9 @@ function applyPatchDirectory(directory) {
     return;
   }
 
-  const result = spawnSync(
-    process.execPath,
-    [require.resolve("patch-package"), "--patch-dir", directory],
-    { stdio: "inherit" }
-  );
+  const result = spawnSync(process.execPath, [require.resolve("patch-package"), "--patch-dir", directory], {
+    stdio: "inherit",
+  });
 
   if (result.error) {
     throw result.error;

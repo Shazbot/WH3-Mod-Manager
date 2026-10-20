@@ -17,13 +17,7 @@
     },
     "requires_loader": {
       "min_version": "2.2.0",
-      "capabilities": [
-        "blocks.v1",
-        "fixups.v1",
-        "win64-unwind.v1",
-        "startup-activation.v1",
-        "table-parameters.v1"
-      ]
+      "capabilities": ["blocks.v1", "fixups.v1", "win64-unwind.v1", "startup-activation.v1", "table-parameters.v1"]
     },
     "target": {
       "id": "game",

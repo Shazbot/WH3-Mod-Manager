@@ -31,19 +31,10 @@ describe("WH3AssetHost pack state", () => {
   it("honors pinned loadOrder positions using the existing manager sorting rules", () => {
     const result = buildWh3AssetHostPackPaths(
       ["C:\\game\\data\\data.pack"],
-      [
-        mod("c.pack", "C:\\mods\\c.pack"),
-        mod("a.pack", "C:\\mods\\a.pack", 2),
-        mod("b.pack", "C:\\mods\\b.pack"),
-      ],
+      [mod("c.pack", "C:\\mods\\c.pack"), mod("a.pack", "C:\\mods\\a.pack", 2), mod("b.pack", "C:\\mods\\b.pack")],
     );
 
-    expect(result).toEqual([
-      "C:\\game\\data\\data.pack",
-      "C:\\mods\\b.pack",
-      "C:\\mods\\c.pack",
-      "C:\\mods\\a.pack",
-    ]);
+    expect(result).toEqual(["C:\\game\\data\\data.pack", "C:\\mods\\b.pack", "C:\\mods\\c.pack", "C:\\mods\\a.pack"]);
   });
 
   it("deduplicates paths case-insensitively and preserves the highest-priority occurrence", () => {
@@ -74,26 +65,14 @@ describe("WH3AssetHost pack state", () => {
 
   it("builds the host pack snapshot from the manifest and explicit enabled mods", () => {
     expect(
-      getWh3AssetHostPackPathsForMods([
-        mod("b.pack", "C:\\mods\\b.pack"),
-        mod("a.pack", "C:\\mods\\a.pack"),
-      ]),
-    ).toEqual([
-      "C:\\game\\data\\data.pack",
-      "C:\\game\\data\\variants.pack",
-      "C:\\mods\\a.pack",
-      "C:\\mods\\b.pack",
-    ]);
+      getWh3AssetHostPackPathsForMods([mod("b.pack", "C:\\mods\\b.pack"), mod("a.pack", "C:\\mods\\a.pack")]),
+    ).toEqual(["C:\\game\\data\\data.pack", "C:\\game\\data\\variants.pack", "C:\\mods\\a.pack", "C:\\mods\\b.pack"]);
   });
 
   it("does not reinitialize for repeated exports while the effective pack state is unchanged", async () => {
     const initialize = vi.fn(async (request) => ({ ...request }));
     const initializer = new Wh3AssetHostPackInitializer({ initialize });
-    const packPaths = [
-      "C:\\game\\data\\data.pack",
-      "C:\\game\\data\\variants.pack",
-      "C:\\mods\\a.pack",
-    ];
+    const packPaths = ["C:\\game\\data\\data.pack", "C:\\game\\data\\variants.pack", "C:\\mods\\a.pack"];
 
     const first = await initializer.ensureInitializedForPackPaths(packPaths, "C:\\cache\\model-previews");
     const second = await initializer.ensureInitializedForPackPaths(
@@ -120,10 +99,7 @@ describe("WH3AssetHost pack state", () => {
     );
 
     expect(initialize).toHaveBeenCalledTimes(2);
-    expect(initialize.mock.calls[1][0].packPaths).toEqual([
-      "C:\\game\\data\\data.pack",
-      "C:\\mods\\c.pack",
-    ]);
+    expect(initialize.mock.calls[1][0].packPaths).toEqual(["C:\\game\\data\\data.pack", "C:\\mods\\c.pack"]);
   });
 
   it("retries initialization after a failed host swap instead of caching the failed state", async () => {
@@ -134,13 +110,12 @@ describe("WH3AssetHost pack state", () => {
     const initializer = new Wh3AssetHostPackInitializer({ initialize });
     const packPaths = ["C:\\game\\data\\data.pack", "C:\\mods\\a.pack"];
 
-    await expect(
-      initializer.ensureInitializedForPackPaths(packPaths, "C:\\cache\\model-previews"),
-    ).rejects.toThrow("bad pack");
+    await expect(initializer.ensureInitializedForPackPaths(packPaths, "C:\\cache\\model-previews")).rejects.toThrow(
+      "bad pack",
+    );
     await expect(
       initializer.ensureInitializedForPackPaths(packPaths, "C:\\cache\\model-previews"),
     ).resolves.not.toBeNull();
     expect(initialize).toHaveBeenCalledTimes(2);
   });
-
 });

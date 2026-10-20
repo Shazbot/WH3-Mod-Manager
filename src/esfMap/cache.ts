@@ -188,11 +188,7 @@ export const cleanupEsfMapImageCache = async (
   );
 };
 
-export const saveEsfMapDiskCache = (
-  userDataPath: string,
-  signature: string,
-  data: EsfMapPayload,
-): Promise<void> => {
+export const saveEsfMapDiskCache = (userDataPath: string, signature: string, data: EsfMapPayload): Promise<void> => {
   const save = cacheSaveQueue.then(async () => {
     try {
       await externalizeEsfMapImages(userDataPath, data);

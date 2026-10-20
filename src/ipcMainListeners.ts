@@ -709,8 +709,7 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
   };
 
   forEachTableRow("variants_tables", (row) => {
-    const value = (fieldName: string) =>
-      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const value = (fieldName: string) => row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
     const variantName = value("variant_name");
     if (!variantName) return;
     const variantFilename = value("variant_filename");
@@ -729,17 +728,10 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     ]);
   });
   forEachTableRow("unit_variants_tables", (row) => {
-    const value = (fieldName: string) =>
-      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const value = (fieldName: string) => row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
     const unitKey = value("unit");
     if (!unitKey) return;
-    contribution.unitVariants.push([
-      unitKey,
-      value("faction"),
-      value("variant"),
-      value("name"),
-      value("unit_card"),
-    ]);
+    contribution.unitVariants.push([unitKey, value("faction"), value("variant"), value("name"), value("unit_card")]);
   });
   forEachTableRow("main_units_tables", (row) => {
     const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
@@ -3504,7 +3496,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!rootPath) return { success: false, error: "Missing variantmeshdefinition path" };
       const queue = [rootPath];
       const seen = new Set<string>();
-      const bindings: Array<{ baseColourSourcePath: string; baseColourPreviewFileNames: string[]; maskUrl: string }> = [];
+      const bindings: Array<{ baseColourSourcePath: string; baseColourPreviewFileNames: string[]; maskUrl: string }> =
+        [];
       const bindingKeys = new Set<string>();
       while (queue.length > 0) {
         const requestedPath = queue.shift()!;
@@ -3526,7 +3519,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             if (!bindingKeys.has(bindingKey)) {
               bindingKeys.add(bindingKey);
               const normalizedBasePath = basePath.replaceAll("\\", "/").trim().toLowerCase();
-              const stem = basePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "texture";
+              const stem =
+                basePath
+                  .split(/[\\/]/)
+                  .pop()
+                  ?.replace(/\.[^.]+$/, "") || "texture";
               const cacheKey = `${normalizedBasePath}|default|False|ktx2|srgb=True`;
               const hash = createHash("sha256").update(`${normalizedBasePath}|${cacheKey}`).digest("hex").slice(0, 10);
               bindings.push({
@@ -3539,14 +3536,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
         for (const reference of getSupportedVisualReferences(text)) {
           const referenceExtension = getSupportedVisualDependencyExtension(reference);
-          if (referenceExtension === "variantmeshdefinition" || referenceExtension === "wsmodel" || referenceExtension === "xml.material") {
+          if (
+            referenceExtension === "variantmeshdefinition" ||
+            referenceExtension === "wsmodel" ||
+            referenceExtension === "xml.material"
+          ) {
             queue.push(reference);
           }
         }
       }
       return { success: true, bindings };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Failed to resolve faction-colour masks" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve faction-colour masks",
+      };
     }
   });
 
@@ -13988,7 +13992,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
             const displayName =
               modNamesByPath.get(key) ?? modNamesByFileName.get(nodePath.basename(packPath).toLowerCase());
-              const indexed = { path: packPath, pack: packIndex, priority, displayName };
+            const indexed = { path: packPath, pack: packIndex, priority, displayName };
             indexedPacks.set(key, indexed);
             return indexed;
           };
@@ -14654,10 +14658,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
 
         let filePathsToExtract = filePaths;
-        const recursivelyResolvedFiles = new Map<
-          string,
-          { pack: Pack; packPath: string; fileName: string }
-        >();
+        const recursivelyResolvedFiles = new Map<string, { pack: Pack; packPath: string; fileName: string }>();
         if (recursive) {
           if (filePaths.length !== 1) {
             return {
@@ -14714,13 +14715,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                   const packedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
                   if (packedFile) {
                     let buffer = Buffer.allocUnsafe(packedFile.file_size);
-                    fs.readSync(
-                      getDependencyFileId(resolved.packPath),
-                      buffer,
-                      0,
-                      buffer.length,
-                      packedFile.start_pos,
-                    );
+                    fs.readSync(getDependencyFileId(resolved.packPath), buffer, 0, buffer.length, packedFile.start_pos);
                     if (packedFile.is_compressed) {
                       buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
                     }
@@ -14787,8 +14782,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ? recursivelyResolvedFiles.get(normalizePackFilePathKey(requestedPath))
             : undefined;
           const resolved =
-            recursiveResolved ??
-            (await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath }));
+            recursiveResolved ?? (await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath }));
           if (!resolved?.pack || !resolved.packPath || !resolved.fileName) {
             skipped.push({ name: requestedPath, reason: "File was not found in the visuals packs" });
             continue;
@@ -14845,7 +14839,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
         for (const result of ensureDirResults) {
           if (result.status === "rejected") {
-            errors.push(result.reason instanceof Error ? result.reason.message : "Failed to create extraction directory");
+            errors.push(
+              result.reason instanceof Error ? result.reason.message : "Failed to create extraction directory",
+            );
           }
         }
 

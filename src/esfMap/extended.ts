@@ -468,11 +468,19 @@ const normalizeRelationship = (relationship: string): ExtendedMapDiplomacyField 
   if (["war", "wars", "at_war", "at_war_with", "enemy", "enemies"].includes(normalized)) return "war";
   if (["vassal", "vassals", "subject", "subjects"].includes(normalized)) return "vassals";
   const aliases: Record<string, ExtendedMapDiplomacyField> = {
-    trade: "trade", trade_partner: "trade", trade_agreement: "trade",
-    non_aggression: "non_aggression", non_aggression_pact: "non_aggression",
-    military_access: "mil_access", mil_access: "mil_access",
-    defensive_alliance: "def_ally", defensive_ally: "def_ally", def_ally: "def_ally",
-    military_alliance: "mil_ally", military_ally: "mil_ally", mil_ally: "mil_ally",
+    trade: "trade",
+    trade_partner: "trade",
+    trade_agreement: "trade",
+    non_aggression: "non_aggression",
+    non_aggression_pact: "non_aggression",
+    military_access: "mil_access",
+    mil_access: "mil_access",
+    defensive_alliance: "def_ally",
+    defensive_ally: "def_ally",
+    def_ally: "def_ally",
+    military_alliance: "mil_ally",
+    military_ally: "mil_ally",
+    mil_ally: "mil_ally",
   };
   const field = aliases[normalized];
   if (field) return field;
@@ -481,7 +489,11 @@ const normalizeRelationship = (relationship: string): ExtendedMapDiplomacyField 
 
 const relationKey = (faction: string) => faction.trim().toLowerCase();
 
-const removeDiplomacyTarget = (group: ExtendedMapFactionCharacters, field: ExtendedMapDiplomacyField, target: string) => {
+const removeDiplomacyTarget = (
+  group: ExtendedMapFactionCharacters,
+  field: ExtendedMapDiplomacyField,
+  target: string,
+) => {
   const targetKey = relationKey(target);
   group.diplo[field] = group.diplo[field].filter((entry) => relationKey(entry) !== targetKey);
 };
@@ -509,7 +521,8 @@ const setDiplomacy = (
 ) => {
   if (typeof faction !== "string" || !faction.trim()) throw new Error("Source faction is required.");
   if (typeof targetFaction !== "string" || !targetFaction.trim()) throw new Error("Target faction is required.");
-  if (relationKey(faction) === relationKey(targetFaction)) throw new Error("A faction cannot have diplomacy with itself.");
+  if (relationKey(faction) === relationKey(targetFaction))
+    throw new Error("A faction cannot have diplomacy with itself.");
   const source = findGroup(document, faction);
   const target = findGroup(document, targetFaction);
   if (!source || !target) throw new Error("Diplomacy faction was not found.");
@@ -572,7 +585,8 @@ const validateCharacterDraft = (character: ExtendedMapCharacterDraft) => {
     throw new Error("Character subtype cannot be empty.");
   if (!Number.isSafeInteger(character.rank) || character.rank < 1 || character.rank > 50)
     throw new Error("Character rank must be an integer from 1 to 50.");
-  if (character.units !== undefined && !Array.isArray(character.units)) throw new Error("Character units must be an array.");
+  if (character.units !== undefined && !Array.isArray(character.units))
+    throw new Error("Character units must be an array.");
   if ((character.units?.length ?? 0) > 20) throw new Error("An army may contain at most 20 units.");
 };
 
@@ -595,11 +609,7 @@ const allocateId = (nextId: number, used: Set<number>, kind: "unit" | "character
   return candidate;
 };
 
-const validateConfederation = (
-  document: ExtendedMapDocument,
-  faction: string,
-  targetFaction: string,
-) => {
+const validateConfederation = (document: ExtendedMapDocument, faction: string, targetFaction: string) => {
   if (typeof faction !== "string" || !faction.trim()) throw new Error("Source faction is required.");
   if (typeof targetFaction !== "string" || !targetFaction.trim()) throw new Error("Target faction is required.");
   if (relationKey(faction) === relationKey(targetFaction)) throw new Error("A faction cannot confederate itself.");
@@ -677,7 +687,9 @@ export const applyExtendedMapEdit = (
     if (!group) throw new Error("Character faction was not found.");
     if (action.index !== undefined && (!Number.isSafeInteger(action.index) || action.index < 0))
       throw new Error("Character insertion index must be a non-negative integer.");
-    const characterIds = new Set(document.faction_to_chars.flatMap((candidate) => candidate.chars.map((character) => character.id)));
+    const characterIds = new Set(
+      document.faction_to_chars.flatMap((candidate) => candidate.chars.map((character) => character.id)),
+    );
     const characterId = allocateId(state.nextCharacterId, characterIds, "character");
     const unitIds = collectUnitIds(document);
     let nextUnitId = state.nextUnitId;
@@ -742,10 +754,7 @@ export const applyExtendedMapEdit = (
     return {
       ...state,
       document,
-      pendingConfederations: [
-        ...state.pendingConfederations,
-        validated,
-      ],
+      pendingConfederations: [...state.pendingConfederations, validated],
     };
   } else {
     const character = findCharacter(document, action.faction, action.characterId);
@@ -1276,7 +1285,8 @@ export const buildExtendedMapDelta = (
       const secondAfter = diplomacyRelationsForPair(afterDocument, secondFaction, firstFaction);
       const firstBefore = diplomacyRelationsForPair(beforeDocument, firstFaction, secondFaction);
       const secondBefore = diplomacyRelationsForPair(beforeDocument, secondFaction, firstFaction);
-      const reverseVassal = secondAfter.includes("vassals") || (!firstAfter.includes("vassals") && secondBefore.includes("vassals"));
+      const reverseVassal =
+        secondAfter.includes("vassals") || (!firstAfter.includes("vassals") && secondBefore.includes("vassals"));
       const faction = reverseVassal ? secondFaction : firstFaction;
       const targetFaction = reverseVassal ? firstFaction : secondFaction;
       const beforeRelations = reverseVassal ? secondBefore : firstBefore;

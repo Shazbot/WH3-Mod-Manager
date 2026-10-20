@@ -1255,7 +1255,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
                   {/* Control buttons positioned in top-right corner */}
                   <div className="absolute top-4 right-4 z-10 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
                     {/* Hidden file input */}
-                    <input type="file" accept=".json" onChange={handleFileInput} className="hidden" id="load-graph-input" />
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleFileInput}
+                      className="hidden"
+                      id="load-graph-input"
+                    />
 
                     {/* Pack operations */}
                     <div className="relative">

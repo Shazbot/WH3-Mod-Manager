@@ -109,8 +109,7 @@ export class Wh3Ktx2Loader extends KTX2Loader {
     if (isRawPreviewTexture) {
       this.timing.textureUploadMs += uploadMs;
       const completedAt = performance.now();
-      this.rawWallEndMs =
-        this.rawWallEndMs == null ? completedAt : Math.max(this.rawWallEndMs, completedAt);
+      this.rawWallEndMs = this.rawWallEndMs == null ? completedAt : Math.max(this.rawWallEndMs, completedAt);
     }
   }
 
@@ -220,13 +219,7 @@ export class Wh3Ktx2Loader extends KTX2Loader {
     const data = await this.getWh3RawTextureData(buffer, header, timingGeneration, cacheKey);
 
     const textureStartedAt = performance.now();
-    const texture = new THREE.DataTexture(
-      data.rgba,
-      data.width,
-      data.height,
-      THREE.RGBAFormat,
-      THREE.UnsignedByteType,
-    );
+    const texture = new THREE.DataTexture(data.rgba, data.width, data.height, THREE.RGBAFormat, THREE.UnsignedByteType);
     texture.colorSpace = data.srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     texture.flipY = false;
     texture.unpackAlignment = 1;

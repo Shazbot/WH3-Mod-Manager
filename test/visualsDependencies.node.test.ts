@@ -9,12 +9,14 @@ import {
 
 describe("Visuals isolated dependency extraction", () => {
   it("reads base-colour and faction-mask slots from xml.material", () => {
-    expect(getVisualMaterialFactionTextures(`
+    expect(
+      getVisualMaterialFactionTextures(`
       <material><textures>
         <texture><slot version="2">t_xml_base_colour</slot><source>VariantMeshes\\unit\\unit_base_colour.dds</source></texture>
         <texture><slot version="2">t_xml_mask</slot><source>VariantMeshes\\unit\\unit_mask.dds</source></texture>
       </textures></material>
-    `)).toEqual({
+    `),
+    ).toEqual({
       baseColourPath: "VariantMeshes\\unit\\unit_base_colour.dds",
       maskPath: "VariantMeshes\\unit\\unit_mask.dds",
     });
@@ -80,10 +82,7 @@ describe("Visuals isolated dependency extraction", () => {
           text: `<VARIANT_MESH model="models\\unit.wsmodel" />`,
         },
       ],
-      [
-        "models\\unit.rigid_model_v2",
-        { resolvedPath: "models\\unit.rigid_model_v2" },
-      ],
+      ["models\\unit.rigid_model_v2", { resolvedPath: "models\\unit.rigid_model_v2" }],
       [
         "materials\\unit.xml.material",
         {
@@ -97,14 +96,8 @@ describe("Visuals isolated dependency extraction", () => {
           `,
         },
       ],
-      [
-        "textures\\unit_base_colour.dds",
-        { resolvedPath: "textures\\unit_base_colour.dds" },
-      ],
-      [
-        "commontextures\\default_black.dds",
-        { resolvedPath: "commontextures\\default_black.dds" },
-      ],
+      ["textures\\unit_base_colour.dds", { resolvedPath: "textures\\unit_base_colour.dds" }],
+      ["commontextures\\default_black.dds", { resolvedPath: "commontextures\\default_black.dds" }],
     ]);
 
     const readAsset = vi.fn(async (requestedPath: string) => {

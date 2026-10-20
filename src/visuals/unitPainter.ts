@@ -95,11 +95,7 @@ export const mirrorPointAcrossObjectLocalX = (
 };
 
 /** Mirror a world-space ray through an object's local X=0 plane. */
-export const mirrorRayAcrossObjectLocalX = (
-  ray: THREE.Ray,
-  root: THREE.Object3D,
-  target = new THREE.Ray(),
-) => {
+export const mirrorRayAcrossObjectLocalX = (ray: THREE.Ray, root: THREE.Object3D, target = new THREE.Ray()) => {
   root.updateWorldMatrix(true, false);
   const inverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
   target.copy(ray).applyMatrix4(inverse);
@@ -229,12 +225,25 @@ export type UnitPainterDecalInfo = {
   hasNormalMap: boolean;
 };
 
-export type UnitPainterDecalPatch = Partial<Pick<
-  UnitPainterDecalInfo,
-  "centerU" | "centerV" | "widthU" | "heightV" | "rotationDeg"
-  | "tintEnabled" | "tint" | "affectNormal" | "normalStrength" | "normalHeightSource"
-  | "normalBevelPx" | "normalSoftnessPx" | "flipX" | "flipY"
->>;
+export type UnitPainterDecalPatch = Partial<
+  Pick<
+    UnitPainterDecalInfo,
+    | "centerU"
+    | "centerV"
+    | "widthU"
+    | "heightV"
+    | "rotationDeg"
+    | "tintEnabled"
+    | "tint"
+    | "affectNormal"
+    | "normalStrength"
+    | "normalHeightSource"
+    | "normalBevelPx"
+    | "normalSoftnessPx"
+    | "flipX"
+    | "flipY"
+  >
+>;
 
 export type UnitPainterProjectTile = {
   key: number;
@@ -481,8 +490,15 @@ export const sampleUnitPainterStrokeSegment = (
 };
 
 const sanitizeExportFileName = (value: string) => {
-  const trimmed = value.replace(/[?#].*$/, "").split(/[\\/]/).pop() || "painted_texture";
-  const stem = trimmed.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^[_\.]+|[_\.]+$/g, "");
+  const trimmed =
+    value
+      .replace(/[?#].*$/, "")
+      .split(/[\\/]/)
+      .pop() || "painted_texture";
+  const stem = trimmed
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^[_\.]+|[_\.]+$/g, "");
   return `${stem || "painted_texture"}.rgba`;
 };
 
@@ -573,11 +589,7 @@ const getIntersectionMaterial = (intersection: THREE.Intersection<THREE.Object3D
 };
 
 const packPixel = (data: Uint8Array, byteIndex: number) =>
-  (data[byteIndex] |
-    (data[byteIndex + 1] << 8) |
-    (data[byteIndex + 2] << 16) |
-    (data[byteIndex + 3] << 24)) >>>
-  0;
+  (data[byteIndex] | (data[byteIndex + 1] << 8) | (data[byteIndex + 2] << 16) | (data[byteIndex + 3] << 24)) >>> 0;
 
 const unpackPixel = (value: number, data: Uint8Array, byteIndex: number) => {
   data[byteIndex] = value & 0xff;
@@ -590,10 +602,9 @@ const createLayerTexture = (): LayerTexture => ({ tiles: new Map() });
 
 const cloneLayerTexture = (source: LayerTexture): LayerTexture => ({
   tiles: new Map(
-    [...source.tiles].map(([key, tile]) => [
-      key,
-      { data: new Uint8Array(tile.data), nonZeroPixels: tile.nonZeroPixels },
-    ] as const),
+    [...source.tiles].map(
+      ([key, tile]) => [key, { data: new Uint8Array(tile.data), nonZeroPixels: tile.nonZeroPixels }] as const,
+    ),
   ),
 });
 
@@ -619,12 +630,7 @@ const getLayerPixel = (texture: LayerTexture, target: PaintableTexture, byteInde
   return tile ? packPixel(tile.data, localByteIndex) : 0;
 };
 
-const setLayerPixel = (
-  texture: LayerTexture,
-  target: PaintableTexture,
-  byteIndex: number,
-  packedValue: number,
-) => {
+const setLayerPixel = (texture: LayerTexture, target: PaintableTexture, byteIndex: number, packedValue: number) => {
   const { tileKey, localByteIndex } = getLayerTileAddress(target, byteIndex);
   const normalizedValue = ((packedValue >>> 24) & 0xff) === 0 ? 0 : packedValue >>> 0;
   let tile = texture.tiles.get(tileKey);
@@ -695,24 +701,18 @@ const estimateBrushRadiusTexels = (
   const worldA = mesh.localToWorld(mesh.getVertexPosition(a, new THREE.Vector3()));
   const worldB = mesh.localToWorld(mesh.getVertexPosition(b, new THREE.Vector3()));
   const worldC = mesh.localToWorld(mesh.getVertexPosition(c, new THREE.Vector3()));
-  const worldArea =
-    worldB.clone().sub(worldA).cross(worldC.clone().sub(worldA)).length() * 0.5;
+  const worldArea = worldB.clone().sub(worldA).cross(worldC.clone().sub(worldA)).length() * 0.5;
   if (worldArea <= Number.EPSILON) return MIN_BRUSH_RADIUS_TEXELS;
 
   target.editable.updateMatrix();
   const uvA = new THREE.Vector2(uvAttribute.getX(a), uvAttribute.getY(a)).applyMatrix3(target.editable.matrix);
   const uvB = new THREE.Vector2(uvAttribute.getX(b), uvAttribute.getY(b)).applyMatrix3(target.editable.matrix);
   const uvC = new THREE.Vector2(uvAttribute.getX(c), uvAttribute.getY(c)).applyMatrix3(target.editable.matrix);
-  const uvArea =
-    Math.abs(
-      (uvB.x - uvA.x) * (uvC.y - uvA.y) -
-        (uvB.y - uvA.y) * (uvC.x - uvA.x),
-    ) * 0.5;
+  const uvArea = Math.abs((uvB.x - uvA.x) * (uvC.y - uvA.y) - (uvB.y - uvA.y) * (uvC.x - uvA.x)) * 0.5;
   if (uvArea <= Number.EPSILON) return MIN_BRUSH_RADIUS_TEXELS;
 
   const distance = Math.max(intersection.point.distanceTo(camera.position), 0.0001);
-  const worldViewportHeight =
-    2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5);
+  const worldViewportHeight = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5);
   const worldRadius = (screenRadiusPx / viewportHeight) * worldViewportHeight;
   const uvPerWorld = Math.sqrt(uvArea / worldArea);
   const textureScale = Math.sqrt(target.width * target.height);
@@ -734,8 +734,7 @@ const getBrushFalloff = (distance: number, hardness: number) => {
   return amount * amount * (3 - 2 * amount);
 };
 
-const uvPointKey = (point: THREE.Vector2) =>
-  `${Math.round(point.x * 1_000_000)},${Math.round(point.y * 1_000_000)}`;
+const uvPointKey = (point: THREE.Vector2) => `${Math.round(point.x * 1_000_000)},${Math.round(point.y * 1_000_000)}`;
 
 const uvEdgeKey = (first: THREE.Vector2, second: THREE.Vector2) => {
   const a = uvPointKey(first);
@@ -756,11 +755,7 @@ const getTriangleVertexIndices = (geometry: THREE.BufferGeometry, faceIndex: num
   const base = faceIndex * 3;
   if (geometry.index) {
     if (base + 2 >= geometry.index.count) return undefined;
-    return [
-      geometry.index.getX(base),
-      geometry.index.getX(base + 1),
-      geometry.index.getX(base + 2),
-    ] as const;
+    return [geometry.index.getX(base), geometry.index.getX(base + 1), geometry.index.getX(base + 2)] as const;
   }
 
   const positions = geometry.getAttribute("position");
@@ -811,9 +806,7 @@ const createUvIslandTopology = (
     const uvA = new THREE.Vector2(uv.getX(a), uv.getY(a));
     const uvB = new THREE.Vector2(uv.getX(b), uv.getY(b));
     const uvC = new THREE.Vector2(uv.getX(c), uv.getY(c));
-    const twiceArea = Math.abs(
-      (uvB.x - uvA.x) * (uvC.y - uvA.y) - (uvB.y - uvA.y) * (uvC.x - uvA.x),
-    );
+    const twiceArea = Math.abs((uvB.x - uvA.x) * (uvC.y - uvA.y) - (uvB.y - uvA.y) * (uvC.x - uvA.x));
     if (twiceArea <= Number.EPSILON) continue;
 
     triangles.set(faceIndex, { faceIndex, uvA, uvB, uvC });
@@ -916,10 +909,7 @@ const setMaskPixel = (mask: UvIslandMask, x: number, y: number) => {
   tile[byteIndex] |= bit;
 };
 
-const buildUvIslandMask = (
-  triangles: readonly UvTriangle[],
-  target: PaintableTexture,
-): UvIslandMask | undefined => {
+const buildUvIslandMask = (triangles: readonly UvTriangle[], target: PaintableTexture): UvIslandMask | undefined => {
   if (triangles.length === 0) return undefined;
 
   target.editable.updateMatrix();
@@ -945,7 +935,11 @@ const buildUvIslandMask = (
     const triangleMaxY = Math.min(target.height - 1, Math.ceil(Math.max(a.y, b.y, c.y)));
     if (triangleMaxY < triangleMinY) continue;
 
-    const edges = [[a, b], [b, c], [c, a]] as const;
+    const edges = [
+      [a, b],
+      [b, c],
+      [c, a],
+    ] as const;
     for (let y = triangleMinY; y <= triangleMaxY; y += 1) {
       const scanY = y + 0.5;
       const intersections: number[] = [];
@@ -1004,7 +998,7 @@ const clearMaskPixel = (mask: UvIslandMask, x: number, y: number) => {
   if (!tile) return;
   const byteIndex = localIndex >> 3;
   const bit = 1 << (localIndex & 7);
-  tile[byteIndex] &= (~bit) & 0xff;
+  tile[byteIndex] &= ~bit & 0xff;
 };
 
 const pruneEmptyMaskTiles = (mask: UvIslandMask) => {
@@ -1042,10 +1036,7 @@ const unionUvMasks = (masks: readonly UvIslandMask[]): UvIslandMask | undefined 
   return result.tiles.size > 0 ? result : undefined;
 };
 
-const xorUvMasks = (
-  first: UvIslandMask | undefined,
-  second: UvIslandMask,
-): UvIslandMask | undefined => {
+const xorUvMasks = (first: UvIslandMask | undefined, second: UvIslandMask): UvIslandMask | undefined => {
   if (!first) return second;
   const result: UvIslandMask = {
     width: first.width,
@@ -1090,13 +1081,25 @@ const getSelectionSplitRegionDefinitions = (
 ): Array<{ id: string; label: string }> => {
   switch (kind) {
     case "vertical":
-      return [{ id: "left", label: "Left" }, { id: "right", label: "Right" }];
+      return [
+        { id: "left", label: "Left" },
+        { id: "right", label: "Right" },
+      ];
     case "horizontal":
-      return [{ id: "top", label: "Top" }, { id: "bottom", label: "Bottom" }];
+      return [
+        { id: "top", label: "Top" },
+        { id: "bottom", label: "Bottom" },
+      ];
     case "slash":
-      return [{ id: "upperLeft", label: "Upper-left" }, { id: "lowerRight", label: "Lower-right" }];
+      return [
+        { id: "upperLeft", label: "Upper-left" },
+        { id: "lowerRight", label: "Lower-right" },
+      ];
     case "backslash":
-      return [{ id: "upperRight", label: "Upper-right" }, { id: "lowerLeft", label: "Lower-left" }];
+      return [
+        { id: "upperRight", label: "Upper-right" },
+        { id: "lowerLeft", label: "Lower-left" },
+      ];
     case "x":
       return [
         { id: "top", label: "Top" },
@@ -1107,11 +1110,7 @@ const getSelectionSplitRegionDefinitions = (
   }
 };
 
-const getSelectionSplitRegionId = (
-  kind: UnitPainterSelectionSplitKind,
-  u: number,
-  v: number,
-) => {
+const getSelectionSplitRegionId = (kind: UnitPainterSelectionSplitKind, u: number, v: number) => {
   switch (kind) {
     case "vertical":
       return u < 0.5 ? "left" : "right";
@@ -1132,16 +1131,10 @@ const getSelectionSplitRegionId = (
   }
 };
 
-const partitionUvMask = (
-  source: UvIslandMask,
-  kind: UnitPainterSelectionSplitKind,
-) => {
+const partitionUvMask = (source: UvIslandMask, kind: UnitPainterSelectionSplitKind) => {
   const definitions = getSelectionSplitRegionDefinitions(kind);
   const result = new Map<string, UvIslandMask>(
-    definitions.map(({ id }) => [
-      id,
-      { width: source.width, height: source.height, tiles: new Map(), byteSize: 0 },
-    ]),
+    definitions.map(({ id }) => [id, { width: source.width, height: source.height, tiles: new Map(), byteSize: 0 }]),
   );
   const bounds = getUvMaskBounds(source);
   if (!bounds) return result;
@@ -1159,9 +1152,7 @@ const partitionUvMask = (
 
 const SRGB_TO_LINEAR = Float32Array.from({ length: 256 }, (_, value) => {
   const channel = value / 255;
-  return channel <= 0.04045
-    ? channel / 12.92
-    : Math.pow((channel + 0.055) / 1.055, 2.4);
+  return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
 });
 
 const rgbBytesToOklab = (r: number, g: number, b: number) => {
@@ -1206,9 +1197,9 @@ const buildSimilarColorMask = (
   if (normalizedTolerance === 0) {
     for (let byteIndex = 0, pixelIndex = 0; byteIndex < target.data.length; byteIndex += 4, pixelIndex += 1) {
       if (
-        target.data[byteIndex] !== sampleR
-        || target.data[byteIndex + 1] !== sampleG
-        || target.data[byteIndex + 2] !== sampleB
+        target.data[byteIndex] !== sampleR ||
+        target.data[byteIndex + 1] !== sampleG ||
+        target.data[byteIndex + 2] !== sampleB
       ) {
         continue;
       }
@@ -1222,11 +1213,7 @@ const buildSimilarColorMask = (
   const threshold = (normalizedTolerance / 100) * 0.45;
   const thresholdSquared = threshold * threshold;
   for (let byteIndex = 0, pixelIndex = 0; byteIndex < target.data.length; byteIndex += 4, pixelIndex += 1) {
-    const candidate = rgbBytesToOklab(
-      target.data[byteIndex],
-      target.data[byteIndex + 1],
-      target.data[byteIndex + 2],
-    );
+    const candidate = rgbBytesToOklab(target.data[byteIndex], target.data[byteIndex + 1], target.data[byteIndex + 2]);
     const deltaL = candidate.l - sample.l;
     const deltaA = candidate.a - sample.a;
     const deltaB = candidate.b - sample.b;
@@ -1236,10 +1223,7 @@ const buildSimilarColorMask = (
   return mask.tiles.size > 0 ? mask : undefined;
 };
 
-const forEachMaskPixel = (
-  mask: UvIslandMask,
-  callback: (x: number, y: number) => void,
-) => {
+const forEachMaskPixel = (mask: UvIslandMask, callback: (x: number, y: number) => void) => {
   const tilesPerRow = Math.ceil(mask.width / MASK_TILE_SIZE);
   for (const [tileKey, tile] of mask.tiles) {
     const tileX = tileKey % tilesPerRow;
@@ -1288,7 +1272,7 @@ const setMaskSpan = (mask: UvIslandMask, y: number, startX: number, endX: number
     const firstBit = localStartX & 7;
     const lastBit = localEndX & 7;
     if (firstByte === lastByte) {
-      const maskBits = ((0xff << firstBit) & (0xff >>> (7 - lastBit))) & 0xff;
+      const maskBits = (0xff << firstBit) & (0xff >>> (7 - lastBit)) & 0xff;
       tile[rowByteStart + firstByte] |= maskBits;
       continue;
     }
@@ -1336,11 +1320,7 @@ const dilateUvMask = (source: UvIslandMask, padding: number): UvIslandMask => {
   return result;
 };
 
-const protectOccupiedUvPixels = (
-  padded: UvIslandMask,
-  selected: UvIslandMask,
-  occupied: UvIslandMask | undefined,
-) => {
+const protectOccupiedUvPixels = (padded: UvIslandMask, selected: UvIslandMask, occupied: UvIslandMask | undefined) => {
   if (!occupied) return padded;
   forEachMaskPixel(occupied, (x, y) => {
     if (!maskContainsPixel(selected, x, y)) clearMaskPixel(padded, x, y);
@@ -1372,11 +1352,9 @@ const blendLayerPixelFromStrokeStart = (
   let targetG = settings.color.g;
   let targetB = settings.color.b;
   if (settings.mode === "recolor") {
-    const originalValue = Math.max(
-      target.originalData[byteIndex],
-      target.originalData[byteIndex + 1],
-      target.originalData[byteIndex + 2],
-    ) / 255;
+    const originalValue =
+      Math.max(target.originalData[byteIndex], target.originalData[byteIndex + 1], target.originalData[byteIndex + 2]) /
+      255;
     targetR *= originalValue;
     targetG *= originalValue;
     targetB *= originalValue;
@@ -1441,10 +1419,10 @@ const importProjectMask = (
 ): UvIslandMask | undefined => {
   if (!saved) return undefined;
   if (
-    saved.width !== target.width
-    || saved.height !== target.height
-    || !Array.isArray(saved.tiles)
-    || saved.tiles.length === 0
+    saved.width !== target.width ||
+    saved.height !== target.height ||
+    !Array.isArray(saved.tiles) ||
+    saved.tiles.length === 0
   ) {
     throw new Error("The decal UV-island mask no longer matches its target texture.");
   }
@@ -1461,12 +1439,12 @@ const importProjectMask = (
   };
   for (const tile of saved.tiles) {
     if (
-      !Number.isInteger(tile.key)
-      || tile.key < 0
-      || tile.key >= maxTileKey
-      || seen.has(tile.key)
-      || !(tile.maskBytes instanceof Uint8Array)
-      || tile.maskBytes.length !== MASK_TILE_BYTES
+      !Number.isInteger(tile.key) ||
+      tile.key < 0 ||
+      tile.key >= maxTileKey ||
+      seen.has(tile.key) ||
+      !(tile.maskBytes instanceof Uint8Array) ||
+      tile.maskBytes.length !== MASK_TILE_BYTES
     ) {
       throw new Error("The decal UV-island mask is invalid.");
     }
@@ -1483,26 +1461,22 @@ const importProjectMask = (
 const validateDecalSource = (source: UnitPainterDecalSource) => {
   const expectedBytes = source.width * source.height * 4;
   return (
-    !!source.name.trim()
-    && Number.isInteger(source.width)
-    && Number.isInteger(source.height)
-    && source.width > 0
-    && source.height > 0
-    && source.width <= MAX_DECAL_SOURCE_DIMENSION
-    && source.height <= MAX_DECAL_SOURCE_DIMENSION
-    && Number.isSafeInteger(expectedBytes)
-    && expectedBytes > 0
-    && expectedBytes <= MAX_DECAL_SOURCE_BYTES
-    && source.rgbaBytes instanceof Uint8Array
-    && source.rgbaBytes.length === expectedBytes
+    !!source.name.trim() &&
+    Number.isInteger(source.width) &&
+    Number.isInteger(source.height) &&
+    source.width > 0 &&
+    source.height > 0 &&
+    source.width <= MAX_DECAL_SOURCE_DIMENSION &&
+    source.height <= MAX_DECAL_SOURCE_DIMENSION &&
+    Number.isSafeInteger(expectedBytes) &&
+    expectedBytes > 0 &&
+    expectedBytes <= MAX_DECAL_SOURCE_BYTES &&
+    source.rgbaBytes instanceof Uint8Array &&
+    source.rgbaBytes.length === expectedBytes
   );
 };
 
-const sampleDecalSource = (
-  source: UnitPainterDecalSource,
-  u: number,
-  v: number,
-) => {
+const sampleDecalSource = (source: UnitPainterDecalSource, u: number, v: number) => {
   if (u < 0 || v < 0 || u > 1 || v > 1) return undefined;
   const x = Math.max(0, Math.min(source.width - 1, u * (source.width - 1)));
   const y = Math.max(0, Math.min(source.height - 1, v * (source.height - 1)));
@@ -1527,11 +1501,7 @@ const sampleDecalSource = (
   };
 };
 
-const getDecalSourceUv = (
-  decal: UnitPainterDecalState,
-  textureU: number,
-  textureV: number,
-) => {
+const getDecalSourceUv = (decal: UnitPainterDecalState, textureU: number, textureV: number) => {
   const radians = THREE.MathUtils.degToRad(decal.rotationDeg);
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
@@ -1541,30 +1511,22 @@ const getDecalSourceUv = (
   const dyPx = (textureV - decal.centerV) * decal.target.height;
   const localX = cos * dxPx + sin * dyPx;
   const localY = -sin * dxPx + cos * dyPx;
-  const sourceU =
-    localX / Math.max(Math.abs(decal.widthU) * decal.target.width, 1e-6) + 0.5;
-  const sourceV =
-    localY / Math.max(Math.abs(decal.heightV) * decal.target.height, 1e-6) + 0.5;
+  const sourceU = localX / Math.max(Math.abs(decal.widthU) * decal.target.width, 1e-6) + 0.5;
+  const sourceV = localY / Math.max(Math.abs(decal.heightV) * decal.target.height, 1e-6) + 0.5;
   return {
     u: decal.flipX ? 1 - sourceU : sourceU,
     v: decal.flipY ? 1 - sourceV : sourceV,
   };
 };
 
-const getDecalBounds = (
-  decal: UnitPainterDecalState,
-  width: number,
-  height: number,
-) => {
+const getDecalBounds = (decal: UnitPainterDecalState, width: number, height: number) => {
   const radians = THREE.MathUtils.degToRad(decal.rotationDeg);
   const cos = Math.abs(Math.cos(radians));
   const sin = Math.abs(Math.sin(radians));
   const halfWidthPx = Math.abs(decal.widthU) * decal.target.width * 0.5;
   const halfHeightPx = Math.abs(decal.heightV) * decal.target.height * 0.5;
-  const extentU =
-    (halfWidthPx * cos + halfHeightPx * sin) / Math.max(1, decal.target.width);
-  const extentV =
-    (halfWidthPx * sin + halfHeightPx * cos) / Math.max(1, decal.target.height);
+  const extentU = (halfWidthPx * cos + halfHeightPx * sin) / Math.max(1, decal.target.width);
+  const extentV = (halfWidthPx * sin + halfHeightPx * cos) / Math.max(1, decal.target.height);
   return {
     minX: Math.max(0, Math.floor((decal.centerU - extentU) * width) - 1),
     maxX: Math.min(width - 1, Math.ceil((decal.centerU + extentU) * width) + 1),
@@ -1573,13 +1535,7 @@ const getDecalBounds = (
   };
 };
 
-const sampleHeightField = (
-  field: Float32Array,
-  width: number,
-  height: number,
-  u: number,
-  v: number,
-) => {
+const sampleHeightField = (field: Float32Array, width: number, height: number, u: number, v: number) => {
   if (u < 0 || u > 1 || v < 0 || v > 1 || width <= 0 || height <= 0) return 0;
   const x = u * Math.max(0, width - 1);
   const y = v * Math.max(0, height - 1);
@@ -1594,11 +1550,7 @@ const sampleHeightField = (
   return top * (1 - ty) + bottom * ty;
 };
 
-const buildEmbossHeightField = (
-  source: UnitPainterDecalSource,
-  bevelPx: number,
-  softnessPx: number,
-) => {
+const buildEmbossHeightField = (source: UnitPainterDecalSource, bevelPx: number, softnessPx: number) => {
   const { width, height, rgbaBytes } = source;
   const count = width * height;
   const distance = new Float32Array(count);
@@ -1611,9 +1563,7 @@ const buildEmbossHeightField = (
     for (let x = 0; x < width; x += 1) {
       const index = y * width + x;
       const alpha = rgbaBytes[index * 4 + 3] / 255;
-      distance[index] = alpha <= 1 / 255
-        ? 0
-        : Math.min(bevel, x + 1, y + 1, width - x, height - y);
+      distance[index] = alpha <= 1 / 255 ? 0 : Math.min(bevel, x + 1, y + 1, width - x, height - y);
     }
   }
   for (let y = 0; y < height; y += 1) {
@@ -1652,10 +1602,7 @@ const buildEmbossHeightField = (
     distance[index] = smooth * alpha;
   }
 
-  const radius = Math.max(
-    0,
-    Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, Math.round(softnessPx)),
-  );
+  const radius = Math.max(0, Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, Math.round(softnessPx)));
   if (radius === 0 || count === 0) return distance;
 
   const temp = new Float32Array(count);
@@ -1698,13 +1645,7 @@ const getDecalHeight = (
 ) => {
   const sourceUv = getDecalSourceUv(decal, textureU, textureV);
   if (decal.normalHeightSource === "emboss" && embossHeight) {
-    return sampleHeightField(
-      embossHeight,
-      decal.source.width,
-      decal.source.height,
-      sourceUv.u,
-      sourceUv.v,
-    );
+    return sampleHeightField(embossHeight, decal.source.width, decal.source.height, sourceUv.u, sourceUv.v);
   }
   const pixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
   if (!pixel) return 0;
@@ -1785,10 +1726,7 @@ export class UnitPainterSession {
   private currentStrokeCoverage = new Map<PaintableTexture, Map<number, number>>();
   private currentStrokeLayerId = "";
   private activeDecalTransformBefore?: LayerSnapshot;
-  private readonly decalEmbossHeightCache = new WeakMap<
-    Uint8Array,
-    { key: string; data: Float32Array }
-  >();
+  private readonly decalEmbossHeightCache = new WeakMap<Uint8Array, { key: string; data: Float32Array }>();
   private currentStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private completedStrokeGpuProfile: UnitPainterStrokeGpuProfile = { updateRanges: 0, updateBytes: 0 };
   private isStrokeOpen = false;
@@ -1865,9 +1803,7 @@ export class UnitPainterSession {
         this.restores.push({ material, property: "map", original });
         material.map = target.editable;
 
-        const normalOriginal = material.normalMap instanceof THREE.DataTexture
-          ? material.normalMap
-          : undefined;
+        const normalOriginal = material.normalMap instanceof THREE.DataTexture ? material.normalMap : undefined;
         const normalImage = normalOriginal ? getDataTextureImage(normalOriginal) : undefined;
         if (normalOriginal && normalImage) {
           let normalTarget = this.normalTargetsByOriginal.get(normalOriginal);
@@ -2036,12 +1972,7 @@ export class UnitPainterSession {
     operation: UnitPainterSelectionOperation,
   ) {
     this.selectionPartitions.length = 0;
-    const key = this.getSelectionKey(
-      selection.mesh,
-      selection.materialIndex,
-      mode,
-      selection.islandId,
-    );
+    const key = this.getSelectionKey(selection.mesh, selection.materialIndex, mode, selection.islandId);
     if (!key) return false;
 
     if (this.selectionMode !== mode) {
@@ -2059,10 +1990,7 @@ export class UnitPainterSession {
     let changed = false;
     if (operation === "replace") {
       const current = this.selections[0];
-      changed =
-        this.selections.length !== 1
-        || current?.key !== key
-        || current?.islandId !== next.islandId;
+      changed = this.selections.length !== 1 || current?.key !== key || current?.islandId !== next.islandId;
       this.selections = [next];
     } else if (operation === "add") {
       if (existingIndex < 0) {
@@ -2109,10 +2037,9 @@ export class UnitPainterSession {
     }
 
     const remainingTargets = [...this.similarSelectionMasks.keys()];
-    this.similarSelectionLastTarget =
-      this.similarSelectionMasks.has(target)
-        ? target
-        : remainingTargets[remainingTargets.length - 1];
+    this.similarSelectionLastTarget = this.similarSelectionMasks.has(target)
+      ? target
+      : remainingTargets[remainingTargets.length - 1];
     if (this.similarSelectionMasks.size === 0) {
       this.selectionMode = undefined;
       this.similarSelectionLastTarget = undefined;
@@ -2121,9 +2048,7 @@ export class UnitPainterSession {
   }
 
   get selectionCount() {
-    return this.selectionMode === "similar"
-      ? this.similarSelectionMasks.size
-      : this.selections.length;
+    return this.selectionMode === "similar" ? this.similarSelectionMasks.size : this.selections.length;
   }
 
   get selectionInfo(): UnitPainterSelectionInfo | undefined {
@@ -2144,8 +2069,7 @@ export class UnitPainterSession {
   }
 
   get selectionHasUvIsland() {
-    return this.selectionMode !== "similar"
-      && this.selections.some((selection) => selection.islandId != null);
+    return this.selectionMode !== "similar" && this.selections.some((selection) => selection.islandId != null);
   }
 
   get hasSimilarSelection() {
@@ -2177,8 +2101,7 @@ export class UnitPainterSession {
         active: partition.activeRegionIds.has(region.id),
       })),
       allActive:
-        partition.regions.length > 0
-        && partition.regions.every((region) => partition.activeRegionIds.has(region.id)),
+        partition.regions.length > 0 && partition.regions.every((region) => partition.activeRegionIds.has(region.id)),
       depth: this.selectionPartitions.length,
       pathLabels: this.selectionPartitions.map((level) => this.getSelectionPartitionActiveLabel(level)),
     };
@@ -2193,8 +2116,7 @@ export class UnitPainterSession {
   private rebuildSelectionPartitionActiveMasks(partition: UnitPainterSelectionPartition) {
     partition.activeMasks.clear();
     const allActive =
-      partition.regions.length > 0
-      && partition.regions.every((region) => partition.activeRegionIds.has(region.id));
+      partition.regions.length > 0 && partition.regions.every((region) => partition.activeRegionIds.has(region.id));
     if (allActive) {
       for (const [target, mask] of partition.sourceMasks) partition.activeMasks.set(target, mask);
       return;
@@ -2210,10 +2132,7 @@ export class UnitPainterSession {
     }
   }
 
-  splitSelection(
-    scope: Exclude<UnitPainterSelectionScope, "all">,
-    kind: UnitPainterSelectionSplitKind,
-  ) {
+  splitSelection(scope: Exclude<UnitPainterSelectionScope, "all">, kind: UnitPainterSelectionSplitKind) {
     const parentPartition = this.getActiveSelectionPartition();
     if (parentPartition && parentPartition.sourceScope !== scope) return false;
 
@@ -2258,10 +2177,7 @@ export class UnitPainterSession {
     return true;
   }
 
-  setSelectionPartitionRegion(
-    regionId: string,
-    operation: UnitPainterSelectionOperation = "replace",
-  ) {
+  setSelectionPartitionRegion(regionId: string, operation: UnitPainterSelectionOperation = "replace") {
     const partition = this.getActiveSelectionPartition();
     if (!partition || !partition.regions.some((region) => region.id === regionId)) return false;
 
@@ -2454,11 +2370,7 @@ export class UnitPainterSession {
     const before = recordHistory ? this.layerMetadata(layer) : undefined;
     layer.opacity = nextOpacity;
     this.recomposeTargets(layer.textures.keys());
-    if (
-      layer.kind === "decal"
-      && layer.decal
-      && (recordHistory || !this.activeDecalTransformBefore)
-    ) {
+    if (layer.kind === "decal" && layer.decal && (recordHistory || !this.activeDecalTransformBefore)) {
       this.recomposeNormalTargetsForBase(layer.decal.target);
     }
     if (before) {
@@ -2467,15 +2379,8 @@ export class UnitPainterSession {
     return true;
   }
 
-  addDecalLayerAtTexturePoint(
-    textureId: string,
-    x: number,
-    y: number,
-    source: UnitPainterDecalSource,
-  ) {
-    const target = [...this.targetsByEditableTexture.values()].find(
-      (candidate) => candidate.textureId === textureId,
-    );
+  addDecalLayerAtTexturePoint(textureId: string, x: number, y: number, source: UnitPainterDecalSource) {
+    const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
     if (!target) return undefined;
     const normalTargets = [...(this.normalTargetsByBaseTarget.get(target) ?? [])];
     return this.addDecalLayer(
@@ -2488,10 +2393,7 @@ export class UnitPainterSession {
     );
   }
 
-  addDecalLayerAtIntersection(
-    intersection: THREE.Intersection<THREE.Object3D>,
-    source: UnitPainterDecalSource,
-  ) {
+  addDecalLayerAtIntersection(intersection: THREE.Intersection<THREE.Object3D>, source: UnitPainterDecalSource) {
     if (!intersection.uv) return undefined;
     const material = getIntersectionMaterial(intersection);
     const target = material?.map ? this.targetsByEditableTexture.get(material.map) : undefined;
@@ -2518,13 +2420,14 @@ export class UnitPainterSession {
     const sourceCopy = cloneDecalSource(source);
     const number = this.nextLayerNumber++;
     const widthU = 0.2;
-    const heightV = Math.max(
-      0.01,
-      widthU * (sourceCopy.height / sourceCopy.width) * (target.width / target.height),
-    );
+    const heightV = Math.max(0.01, widthU * (sourceCopy.height / sourceCopy.width) * (target.width / target.height));
     const layer: PaintLayer = {
       id: `layer-${number}`,
-      name: sourceCopy.name.replace(/\.[^.]+$/, "").trim().slice(0, 80) || `Decal ${number}`,
+      name:
+        sourceCopy.name
+          .replace(/\.[^.]+$/, "")
+          .trim()
+          .slice(0, 80) || `Decal ${number}`,
       visible: true,
       opacity: 1,
       kind: "decal",
@@ -2584,10 +2487,7 @@ export class UnitPainterSession {
     return true;
   }
 
-  moveActiveDecalToIntersection(
-    intersection: THREE.Intersection<THREE.Object3D>,
-    live = false,
-  ) {
+  moveActiveDecalToIntersection(intersection: THREE.Intersection<THREE.Object3D>, live = false) {
     if (!intersection.uv) return false;
     const layer = this.getActiveLayer();
     const decal = layer?.kind === "decal" ? layer.decal : undefined;
@@ -2621,10 +2521,7 @@ export class UnitPainterSession {
     // Crossing to another material can also change the exact normal map. Clear
     // the previous material's normal contribution immediately; the new normal
     // is rebuilt now for committed moves or once at gesture end for live moves.
-    if (
-      previousNormalTarget
-      && (target !== previousTarget || previousNormalTarget !== nextNormalTarget)
-    ) {
+    if (previousNormalTarget && (target !== previousTarget || previousNormalTarget !== nextNormalTarget)) {
       this.recomposeNormalTarget(previousNormalTarget);
     }
     return true;
@@ -2655,10 +2552,7 @@ export class UnitPainterSession {
     return true;
   }
 
-  replaceActiveDecalSource(
-    source: UnitPainterDecalSource,
-    recordHistory = true,
-  ) {
+  replaceActiveDecalSource(source: UnitPainterDecalSource, recordHistory = true) {
     const layer = this.getActiveLayer();
     const decal = layer?.kind === "decal" ? layer.decal : undefined;
     if (!layer || !decal || !validateDecalSource(source)) return false;
@@ -2695,9 +2589,7 @@ export class UnitPainterSession {
     decal.widthU = 0.2;
     decal.heightV = Math.max(
       0.01,
-      decal.widthU
-        * (decal.source.height / decal.source.width)
-        * (decal.target.width / decal.target.height),
+      decal.widthU * (decal.source.height / decal.source.width) * (decal.target.width / decal.target.height),
     );
     decal.rotationDeg = 0;
     decal.flipX = false;
@@ -2716,10 +2608,7 @@ export class UnitPainterSession {
     return true;
   }
 
-  updateActiveDecal(
-    patch: UnitPainterDecalPatch,
-    recordHistory = true,
-  ) {
+  updateActiveDecal(patch: UnitPainterDecalPatch, recordHistory = true) {
     const layer = this.getActiveLayer();
     const decal = layer?.kind === "decal" ? layer.decal : undefined;
     if (!layer || !decal) return false;
@@ -2748,18 +2637,12 @@ export class UnitPainterSession {
       decal.normalBevelPx = Math.max(1, Math.min(MAX_DECAL_NORMAL_BEVEL_PX, patch.normalBevelPx));
     }
     if (patch.normalSoftnessPx != null && Number.isFinite(patch.normalSoftnessPx)) {
-      decal.normalSoftnessPx = Math.max(
-        0,
-        Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, patch.normalSoftnessPx),
-      );
+      decal.normalSoftnessPx = Math.max(0, Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, patch.normalSoftnessPx));
     }
     if (patch.flipX != null) decal.flipX = patch.flipX;
     if (patch.flipY != null) decal.flipY = patch.flipY;
 
-    this.rasterizeDecalLayer(
-      layer,
-      recordHistory || !this.activeDecalTransformBefore,
-    );
+    this.rasterizeDecalLayer(layer, recordHistory || !this.activeDecalTransformBefore);
     if (before) {
       const after = this.snapshotLayer(layer);
       const index = this.paintLayers.indexOf(layer);
@@ -2810,18 +2693,12 @@ export class UnitPainterSession {
       textures: new Map(),
     };
 
-    const targets = new Set<PaintableTexture>([
-      ...bottom.textures.keys(),
-      ...top.textures.keys(),
-    ]);
+    const targets = new Set<PaintableTexture>([...bottom.textures.keys(), ...top.textures.keys()]);
     for (const target of targets) {
       const bottomData = bottom.textures.get(target);
       const topData = top.textures.get(target);
       const output = createLayerTexture();
-      const tileKeys = new Set<number>([
-        ...(bottomData?.tiles.keys() ?? []),
-        ...(topData?.tiles.keys() ?? []),
-      ]);
+      const tileKeys = new Set<number>([...(bottomData?.tiles.keys() ?? []), ...(topData?.tiles.keys() ?? [])]);
 
       for (const tileKey of tileKeys) {
         const bottomTile = bottomData?.tiles.get(tileKey);
@@ -2834,8 +2711,7 @@ export class UnitPainterSession {
         for (let localByteIndex = 0; localByteIndex < LAYER_TILE_BYTES; localByteIndex += 4) {
           const bottomAlpha =
             bottom.visible && bottomTile ? (bottomTile.data[localByteIndex + 3] / 255) * bottom.opacity : 0;
-          const topAlpha =
-            top.visible && topTile ? (topTile.data[localByteIndex + 3] / 255) * top.opacity : 0;
+          const topAlpha = top.visible && topTile ? (topTile.data[localByteIndex + 3] / 255) * top.opacity : 0;
           const alpha = topAlpha + bottomAlpha * (1 - topAlpha);
           const outputAlpha = Math.round(alpha * 255);
           if (outputAlpha === 0) continue;
@@ -2843,16 +2719,19 @@ export class UnitPainterSession {
           const bottomWeight = bottomAlpha * (1 - topAlpha);
           const topWeight = topAlpha;
           outputTile.data[localByteIndex] = Math.round(
-            (((topTile?.data[localByteIndex] ?? 0) * topWeight)
-              + ((bottomTile?.data[localByteIndex] ?? 0) * bottomWeight)) / alpha,
+            ((topTile?.data[localByteIndex] ?? 0) * topWeight +
+              (bottomTile?.data[localByteIndex] ?? 0) * bottomWeight) /
+              alpha,
           );
           outputTile.data[localByteIndex + 1] = Math.round(
-            (((topTile?.data[localByteIndex + 1] ?? 0) * topWeight)
-              + ((bottomTile?.data[localByteIndex + 1] ?? 0) * bottomWeight)) / alpha,
+            ((topTile?.data[localByteIndex + 1] ?? 0) * topWeight +
+              (bottomTile?.data[localByteIndex + 1] ?? 0) * bottomWeight) /
+              alpha,
           );
           outputTile.data[localByteIndex + 2] = Math.round(
-            (((topTile?.data[localByteIndex + 2] ?? 0) * topWeight)
-              + ((bottomTile?.data[localByteIndex + 2] ?? 0) * bottomWeight)) / alpha,
+            ((topTile?.data[localByteIndex + 2] ?? 0) * topWeight +
+              (bottomTile?.data[localByteIndex + 2] ?? 0) * bottomWeight) /
+              alpha,
           );
           outputTile.data[localByteIndex + 3] = outputAlpha;
           outputTile.nonZeroPixels += 1;
@@ -2902,9 +2781,7 @@ export class UnitPainterSession {
     this.savedStateId = this.currentStateId;
   }
 
-  subscribeTextureChanges(
-    listener: (textureId: string, dirty: UnitPainterTexturePaintResult) => void,
-  ) {
+  subscribeTextureChanges(listener: (textureId: string, dirty: UnitPainterTexturePaintResult) => void) {
     this.textureChangeListeners.add(listener);
     return () => {
       this.textureChangeListeners.delete(listener);
@@ -2927,7 +2804,11 @@ export class UnitPainterSession {
       const points = indices.map((index) =>
         new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
       );
-      for (const [firstIndex, secondIndex] of [[0, 1], [1, 2], [2, 0]] as const) {
+      for (const [firstIndex, secondIndex] of [
+        [0, 1],
+        [1, 2],
+        [2, 0],
+      ] as const) {
         const first = points[firstIndex];
         const second = points[secondIndex];
         const key = uvEdgeKey(first, second);
@@ -2995,7 +2876,11 @@ export class UnitPainterSession {
           const points = indices.map((index) =>
             new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
           );
-          for (const [firstIndex, secondIndex] of [[0, 1], [1, 2], [2, 0]] as const) {
+          for (const [firstIndex, secondIndex] of [
+            [0, 1],
+            [1, 2],
+            [2, 0],
+          ] as const) {
             const first = points[firstIndex];
             const second = points[secondIndex];
             const key = uvEdgeKey(first, second);
@@ -3019,8 +2904,9 @@ export class UnitPainterSession {
           selectionScope === "material" || selection.islandId == null
             ? getMaterialFaceIndices(geometry, selection.materialIndex)
             : selectionScope === "island"
-              ? (this.getUvTopology(geometry, selection.materialIndex)?.islands.get(selection.islandId) ?? [])
-                  .map((triangle) => triangle.faceIndex)
+              ? (this.getUvTopology(geometry, selection.materialIndex)?.islands.get(selection.islandId) ?? []).map(
+                  (triangle) => triangle.faceIndex,
+                )
               : [];
         for (const faceIndex of selectedFaces) {
           const faceKey = `${geometry.uuid}:${faceIndex}`;
@@ -3031,12 +2917,12 @@ export class UnitPainterSession {
           const points = indices.map((index) =>
             new THREE.Vector2(uv.getX(index), uv.getY(index)).applyMatrix3(target.editable.matrix),
           );
-          selectedUvTriangles.push(
-            points[0].x, points[0].y,
-            points[1].x, points[1].y,
-            points[2].x, points[2].y,
-          );
-          for (const [firstIndex, secondIndex] of [[0, 1], [1, 2], [2, 0]] as const) {
+          selectedUvTriangles.push(points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y);
+          for (const [firstIndex, secondIndex] of [
+            [0, 1],
+            [1, 2],
+            [2, 0],
+          ] as const) {
             const first = points[firstIndex];
             const second = points[secondIndex];
             const key = uvEdgeKey(first, second);
@@ -3087,8 +2973,8 @@ export class UnitPainterSession {
 
     const mesh = intersection.object;
     const materialIndex =
-      intersection.face?.materialIndex
-      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+      intersection.face?.materialIndex ??
+      (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
     const transformedUv = intersection.uv.clone();
     target.editable.updateMatrix();
     target.editable.transformUv(transformedUv);
@@ -3120,9 +3006,7 @@ export class UnitPainterSession {
     y: number,
     scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterSurfaceHighlight | undefined {
-    const target = [...this.targetsByEditableTexture.values()].find(
-      (candidate) => candidate.textureId === textureId,
-    );
+    const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
     if (!target) return undefined;
     target.editable.updateMatrix();
 
@@ -3149,12 +3033,7 @@ export class UnitPainterSession {
         ) {
           continue;
         }
-        const highlight = this.getSurfaceHighlightForFace(
-          surface.mesh,
-          surface.materialIndex,
-          faceIndex,
-          scope,
-        );
+        const highlight = this.getSurfaceHighlightForFace(surface.mesh, surface.materialIndex, faceIndex, scope);
         if (highlight) return highlight;
       }
     }
@@ -3167,9 +3046,7 @@ export class UnitPainterSession {
     y: number,
     scope: UnitPainterSurfaceSelectionScope,
   ): UnitPainterTextureHover | undefined {
-    const target = [...this.targetsByEditableTexture.values()].find(
-      (candidate) => candidate.textureId === textureId,
-    );
+    const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
     if (!target) return undefined;
     target.editable.updateMatrix();
 
@@ -3266,12 +3143,10 @@ export class UnitPainterSession {
           islandId,
         };
         return this.applySelection(selection, mode, operation)
-          ? this.createSelectionInfo({ ...selection, key: this.getSelectionKey(
-              surface.mesh,
-              surface.materialIndex,
-              mode,
-              islandId,
-            )! })
+          ? this.createSelectionInfo({
+              ...selection,
+              key: this.getSelectionKey(surface.mesh, surface.materialIndex, mode, islandId)!,
+            })
           : undefined;
       }
     }
@@ -3285,9 +3160,7 @@ export class UnitPainterSession {
     tolerance: number,
     operation: UnitPainterSelectionOperation = "replace",
   ) {
-    const target = [...this.targetsByEditableTexture.values()].find(
-      (candidate) => candidate.textureId === textureId,
-    );
+    const target = [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId);
     if (!target) return false;
     const mask = buildSimilarColorMask(target, x, y, tolerance);
     return !!mask && this.applySimilarSelection(target, mask, operation);
@@ -3310,9 +3183,9 @@ export class UnitPainterSession {
   }
 
   getTextureRevision(textureId: string) {
-    return [...this.targetsByEditableTexture.values()].find(
-      (candidate) => candidate.textureId === textureId,
-    )?.revision ?? -1;
+    return (
+      [...this.targetsByEditableTexture.values()].find((candidate) => candidate.textureId === textureId)?.revision ?? -1
+    );
   }
 
   sampleTexturePoint(textureId: string, x: number, y: number) {
@@ -3349,11 +3222,13 @@ export class UnitPainterSession {
 
     return this.paintTexturePointsInternal(
       target,
-      [{
-        x: centerX,
-        y: centerY,
-        radius: Math.max(MIN_BRUSH_RADIUS_TEXELS, radiusTexels),
-      }],
+      [
+        {
+          x: centerX,
+          y: centerY,
+          radius: Math.max(MIN_BRUSH_RADIUS_TEXELS, radiusTexels),
+        },
+      ],
       settings,
       mask,
       false,
@@ -3372,8 +3247,8 @@ export class UnitPainterSession {
 
     const mesh = intersection.object;
     const materialIndex =
-      intersection.face?.materialIndex
-      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+      intersection.face?.materialIndex ??
+      (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
     const topology = this.getUvTopology(mesh.geometry, materialIndex);
     const islandId = intersection.faceIndex != null ? topology?.faceToIsland.get(intersection.faceIndex) : undefined;
     if (mode === "island" && islandId == null) return undefined;
@@ -3407,44 +3282,31 @@ export class UnitPainterSession {
 
     const mesh = intersection.object;
     const materialIndex =
-      intersection.face?.materialIndex
-      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+      intersection.face?.materialIndex ??
+      (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
     if (intersection.faceIndex == null) {
       if (scope === "island") return undefined;
       const firstFace = getMaterialFaceIndices(mesh.geometry, materialIndex)[0];
-      return firstFace == null
-        ? undefined
-        : this.getSurfaceHighlightForFace(mesh, materialIndex, firstFace, scope);
+      return firstFace == null ? undefined : this.getSurfaceHighlightForFace(mesh, materialIndex, firstFace, scope);
     }
     return this.getSurfaceHighlightForFace(mesh, materialIndex, intersection.faceIndex, scope);
   }
 
-  getSelectionSurfaceHighlights(
-    scope: UnitPainterSurfaceSelectionScope,
-  ): UnitPainterSurfaceHighlight[] {
+  getSelectionSurfaceHighlights(scope: UnitPainterSurfaceSelectionScope): UnitPainterSurfaceHighlight[] {
     const highlights: UnitPainterSurfaceHighlight[] = [];
     const seen = new Set<string>();
 
     for (const selection of this.selections) {
       let highlight: UnitPainterSurfaceHighlight | undefined;
       if (scope === "material") {
-        const firstFace = getMaterialFaceIndices(
-          selection.mesh.geometry,
-          selection.materialIndex,
-        )[0];
+        const firstFace = getMaterialFaceIndices(selection.mesh.geometry, selection.materialIndex)[0];
         if (firstFace != null) {
-          highlight = this.getSurfaceHighlightForFace(
-            selection.mesh,
-            selection.materialIndex,
-            firstFace,
-            "material",
-          );
+          highlight = this.getSurfaceHighlightForFace(selection.mesh, selection.materialIndex, firstFace, "material");
         }
       } else if (selection.islandId != null) {
-        const triangle = this.getUvTopology(
-          selection.mesh.geometry,
-          selection.materialIndex,
-        )?.islands.get(selection.islandId)?.[0];
+        const triangle = this.getUvTopology(selection.mesh.geometry, selection.materialIndex)?.islands.get(
+          selection.islandId,
+        )?.[0];
         if (triangle) {
           highlight = this.getSurfaceHighlightForFace(
             selection.mesh,
@@ -3463,16 +3325,11 @@ export class UnitPainterSession {
     return highlights;
   }
 
-  getSelectionSurfaceHighlight(
-    scope: UnitPainterSurfaceSelectionScope,
-  ): UnitPainterSurfaceHighlight | undefined {
+  getSelectionSurfaceHighlight(scope: UnitPainterSurfaceSelectionScope): UnitPainterSurfaceHighlight | undefined {
     return this.getSelectionSurfaceHighlights(scope)[0];
   }
 
-  matchesSelectionScope(
-    intersection: THREE.Intersection<THREE.Object3D>,
-    scope: UnitPainterSelectionScope,
-  ) {
+  matchesSelectionScope(intersection: THREE.Intersection<THREE.Object3D>, scope: UnitPainterSelectionScope) {
     if (scope === "all") return true;
     if (!(intersection.object instanceof THREE.Mesh)) return false;
 
@@ -3510,8 +3367,8 @@ export class UnitPainterSession {
     if (this.selections.length === 0) return false;
     const mesh = intersection.object;
     const materialIndex =
-      intersection.face?.materialIndex
-      ?? (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
+      intersection.face?.materialIndex ??
+      (intersection.faceIndex != null ? getTriangleMaterialIndex(mesh.geometry, intersection.faceIndex) : 0);
     const candidates = this.selections.filter(
       (selection) => selection.mesh === mesh && selection.materialIndex === materialIndex,
     );
@@ -3554,10 +3411,8 @@ export class UnitPainterSession {
         ? this.getActiveSelectionPartition()!.activeMasks.get(target)
         : undefined;
     const mask =
-      partitionMask
-      ?? (scope === "similar"
-        ? this.similarSelectionMasks.get(target)
-        : this.getUvIslandMask(intersection, target));
+      partitionMask ??
+      (scope === "similar" ? this.similarSelectionMasks.get(target) : this.getUvIslandMask(intersection, target));
     if ((scope === "similar" || this.getActiveSelectionPartition()?.sourceScope === scope) && !mask) return undefined;
     const uv = intersection.uv.clone();
     target.editable.transformUv(uv);
@@ -3566,13 +3421,7 @@ export class UnitPainterSession {
       mask,
       centerX: uv.x * target.width,
       centerY: uv.y * target.height,
-      radius: estimateBrushRadiusTexels(
-        intersection,
-        target,
-        Math.max(1, screenRadiusPx),
-        camera,
-        viewportHeight,
-      ),
+      radius: estimateBrushRadiusTexels(intersection, target, Math.max(1, screenRadiusPx), camera, viewportHeight),
     };
   }
 
@@ -3584,13 +3433,7 @@ export class UnitPainterSession {
     screenRadiusPx = settings.radiusPx,
     scope: UnitPainterSelectionScope = "all",
   ) {
-    const resolved = this.resolveBrushIntersection(
-      intersection,
-      camera,
-      viewportHeight,
-      screenRadiusPx,
-      scope,
-    );
+    const resolved = this.resolveBrushIntersection(intersection, camera, viewportHeight, screenRadiusPx, scope);
     if (!resolved) return false;
     return this.paintTexturePointsInternal(
       resolved.target,
@@ -3612,20 +3455,8 @@ export class UnitPainterSession {
     scope: UnitPainterSelectionScope = "all",
   ) {
     if (sampleAmounts.length === 0) return false;
-    const previous = this.resolveBrushIntersection(
-      previousIntersection,
-      camera,
-      viewportHeight,
-      screenRadiusPx,
-      scope,
-    );
-    const current = this.resolveBrushIntersection(
-      intersection,
-      camera,
-      viewportHeight,
-      screenRadiusPx,
-      scope,
-    );
+    const previous = this.resolveBrushIntersection(previousIntersection, camera, viewportHeight, screenRadiusPx, scope);
+    const current = this.resolveBrushIntersection(intersection, camera, viewportHeight, screenRadiusPx, scope);
     if (!current) return false;
 
     // Crossing a mesh/texture/UV-island seam cannot safely be interpolated in UV
@@ -3648,13 +3479,7 @@ export class UnitPainterSession {
         radius: previous.radius + (current.radius - previous.radius) * amount,
       };
     });
-    return this.paintTexturePointsInternal(
-      current.target,
-      points,
-      settings,
-      current.mask,
-      true,
-    ).changed;
+    return this.paintTexturePointsInternal(current.target, points, settings, current.mask, true).changed;
   }
 
   private paintTexturePointsInternal(
@@ -3718,8 +3543,13 @@ export class UnitPainterSession {
           if (nextCoverage <= previousCoverage) continue;
           coverage.set(byteIndex, nextCoverage);
 
-          const nextLayerValue =
-            blendLayerPixelFromStrokeStart(target, byteIndex, strokeStartValue, settings, nextCoverage);
+          const nextLayerValue = blendLayerPixelFromStrokeStart(
+            target,
+            byteIndex,
+            strokeStartValue,
+            settings,
+            nextCoverage,
+          );
           if (nextLayerValue === currentLayerValue) continue;
 
           setLayerPixel(layerData, target, byteIndex, nextLayerValue);
@@ -3754,8 +3584,6 @@ export class UnitPainterSession {
     }
     return result;
   }
-
-
 
   sampleIntersection(intersection: THREE.Intersection<THREE.Object3D>) {
     if (!intersection.uv) return undefined;
@@ -3803,19 +3631,8 @@ export class UnitPainterSession {
         scope === "island"
           ? selection.islandId == null
             ? undefined
-            : this.getUvMask(
-                target,
-                selection.mesh.geometry,
-                selection.materialIndex,
-                selection.islandId,
-                paddingPx,
-              )
-          : this.getMaterialMask(
-              target,
-              selection.mesh.geometry,
-              selection.materialIndex,
-              paddingPx,
-            );
+            : this.getUvMask(target, selection.mesh.geometry, selection.materialIndex, selection.islandId, paddingPx)
+          : this.getMaterialMask(target, selection.mesh.geometry, selection.materialIndex, paddingPx);
       if (mask) masks.push(mask);
     }
     const combined = masks.length === 1 ? masks[0] : unionUvMasks(masks);
@@ -3834,11 +3651,7 @@ export class UnitPainterSession {
     return this.getBaseSelectionMaskForTarget(target, scope, paddingPx);
   }
 
-  fillSelection(
-    scope: Exclude<UnitPainterSelectionScope, "all">,
-    settings: UnitPainterBrushSettings,
-    paddingPx = 0,
-  ) {
+  fillSelection(scope: Exclude<UnitPainterSelectionScope, "all">, settings: UnitPainterBrushSettings, paddingPx = 0) {
     const layer = this.getActiveLayer();
     const targets = this.getBaseSelectionTargets(scope);
     if (targets.length === 0 || !layer || layer.kind !== "paint") return false;
@@ -3860,8 +3673,7 @@ export class UnitPainterSession {
       forEachMaskPixel(mask, (pixelX, pixelY) => {
         const byteIndex = (pixelY * target.width + pixelX) * 4;
         const currentValue = getLayerPixel(layerData, target, byteIndex);
-        const nextValue =
-          blendLayerPixelFromStrokeStart(target, byteIndex, currentValue, settings, fillOpacity);
+        const nextValue = blendLayerPixelFromStrokeStart(target, byteIndex, currentValue, settings, fillOpacity);
         if (nextValue === currentValue) return;
         setLayerPixel(layerData, target, byteIndex, nextValue);
         byteIndices.push(byteIndex);
@@ -4043,9 +3855,7 @@ export class UnitPainterSession {
     if (this.isStrokeOpen) this.endStroke();
     for (const layer of this.paintLayers) {
       if (layer.decal && !layer.decal.target.sourceVirtualPath) {
-        throw new Error(
-          `The decal '${layer.name}' targets a texture without its original WH3 texture path.`,
-        );
+        throw new Error(`The decal '${layer.name}' targets a texture without its original WH3 texture path.`);
       }
     }
     return {
@@ -4081,43 +3891,38 @@ export class UnitPainterSession {
                 normalSoftnessPx: layer.decal.normalSoftnessPx,
                 flipX: layer.decal.flipX,
                 flipY: layer.decal.flipY,
-                ...(layer.decal.placementMask
-                  ? { placementMask: exportProjectMask(layer.decal.placementMask) }
-                  : {}),
+                ...(layer.decal.placementMask ? { placementMask: exportProjectMask(layer.decal.placementMask) } : {}),
               },
             }
           : {}),
-        textures: layer.kind === "decal"
-          ? []
-          : [...layer.textures.entries()]
-          .filter(([, data]) => data.tiles.size > 0)
-          .map(([target, data]) => {
-            if (!target.sourceVirtualPath) {
-              throw new Error(
-                `The painted texture '${target.sourceFileName}' is missing its original WH3 texture path.`,
-              );
-            }
-            return {
-              sourceVirtualPath: target.sourceVirtualPath,
-              width: target.width,
-              height: target.height,
-              tiles: [...data.tiles.entries()].map(([key, tile]) => ({
-                key,
-                rgbaBytes: new Uint8Array(tile.data),
-              })),
-            };
-          }),
+        textures:
+          layer.kind === "decal"
+            ? []
+            : [...layer.textures.entries()]
+                .filter(([, data]) => data.tiles.size > 0)
+                .map(([target, data]) => {
+                  if (!target.sourceVirtualPath) {
+                    throw new Error(
+                      `The painted texture '${target.sourceFileName}' is missing its original WH3 texture path.`,
+                    );
+                  }
+                  return {
+                    sourceVirtualPath: target.sourceVirtualPath,
+                    width: target.width,
+                    height: target.height,
+                    tiles: [...data.tiles.entries()].map(([key, tile]) => ({
+                      key,
+                      rgbaBytes: new Uint8Array(tile.data),
+                    })),
+                  };
+                }),
       })),
     };
   }
 
   loadProjectLayers(project: UnitPainterProjectState) {
     if (this.isStrokeOpen) this.endStroke();
-    if (
-      !Array.isArray(project.layers)
-      || project.layers.length === 0
-      || project.layers.length > MAX_PAINT_LAYERS
-    ) {
+    if (!Array.isArray(project.layers) || project.layers.length === 0 || project.layers.length > MAX_PAINT_LAYERS) {
       throw new Error("The painter project does not contain any paint layers.");
     }
 
@@ -4143,20 +3948,20 @@ export class UnitPainterSession {
         const normalKey = savedDecal?.normalSourceVirtualPath?.replace(/\//g, "\\").toLowerCase();
         const normalTarget = normalKey ? this.normalTargetsBySourcePath.get(normalKey) : undefined;
         if (
-          !savedDecal
-          || !target
-          || (!!savedDecal.normalSourceVirtualPath && !normalTarget)
-          || !Number.isFinite(savedDecal.centerU)
-          || !Number.isFinite(savedDecal.centerV)
-          || !Number.isFinite(savedDecal.widthU)
-          || !Number.isFinite(savedDecal.heightV)
-          || !Number.isFinite(savedDecal.rotationDeg)
-          || !Number.isFinite(savedDecal.normalStrength)
-          || !savedDecal.tint
-          || !Number.isFinite(savedDecal.tint.r)
-          || !Number.isFinite(savedDecal.tint.g)
-          || !Number.isFinite(savedDecal.tint.b)
-          || !validateDecalSource({
+          !savedDecal ||
+          !target ||
+          (!!savedDecal.normalSourceVirtualPath && !normalTarget) ||
+          !Number.isFinite(savedDecal.centerU) ||
+          !Number.isFinite(savedDecal.centerV) ||
+          !Number.isFinite(savedDecal.widthU) ||
+          !Number.isFinite(savedDecal.heightV) ||
+          !Number.isFinite(savedDecal.rotationDeg) ||
+          !Number.isFinite(savedDecal.normalStrength) ||
+          !savedDecal.tint ||
+          !Number.isFinite(savedDecal.tint.r) ||
+          !Number.isFinite(savedDecal.tint.g) ||
+          !Number.isFinite(savedDecal.tint.b) ||
+          !validateDecalSource({
             name: savedDecal.sourceName,
             width: savedDecal.sourceWidth,
             height: savedDecal.sourceHeight,
@@ -4199,9 +4004,7 @@ export class UnitPainterSession {
             1,
             Math.min(
               MAX_DECAL_NORMAL_BEVEL_PX,
-              Number.isFinite(savedDecal.normalBevelPx)
-                ? savedDecal.normalBevelPx!
-                : DEFAULT_DECAL_NORMAL_BEVEL_PX,
+              Number.isFinite(savedDecal.normalBevelPx) ? savedDecal.normalBevelPx! : DEFAULT_DECAL_NORMAL_BEVEL_PX,
             ),
           ),
           normalSoftnessPx: Math.max(
@@ -4243,11 +4046,11 @@ export class UnitPainterSession {
         const seenTileKeys = new Set<number>();
         for (const savedTile of texture.tiles ?? []) {
           if (
-            !Number.isInteger(savedTile.key)
-            || savedTile.key < 0
-            || savedTile.key >= maxTileKey
-            || seenTileKeys.has(savedTile.key)
-            || savedTile.rgbaBytes.length !== LAYER_TILE_BYTES
+            !Number.isInteger(savedTile.key) ||
+            savedTile.key < 0 ||
+            savedTile.key >= maxTileKey ||
+            seenTileKeys.has(savedTile.key) ||
+            savedTile.rgbaBytes.length !== LAYER_TILE_BYTES
           ) {
             throw new Error(`The saved layer tiles for '${texture.sourceVirtualPath}' are invalid.`);
           }
@@ -4313,9 +4116,7 @@ export class UnitPainterSession {
       const seenCount = usedNames.get(target.sourceFileName) ?? 0;
       usedNames.set(target.sourceFileName, seenCount + 1);
       const fileName =
-        seenCount === 0
-          ? target.sourceFileName
-          : target.sourceFileName.replace(/\.rgba$/i, `_${seenCount + 1}.rgba`);
+        seenCount === 0 ? target.sourceFileName : target.sourceFileName.replace(/\.rgba$/i, `_${seenCount + 1}.rgba`);
       output.push({
         fileName,
         sourceVirtualPath: target.sourceVirtualPath,
@@ -4400,13 +4201,9 @@ export class UnitPainterSession {
   private cacheUvMask(cache: Map<string, CachedUvMask>, key: string, mask: UvIslandMask) {
     if (mask.byteSize > MAX_UV_MASK_CACHE_BYTES) return mask;
 
-    while (
-      this.uvMaskCacheBytes + mask.byteSize > MAX_UV_MASK_CACHE_BYTES
-      && this.uvMaskCacheLru.size > 0
-    ) {
+    while (this.uvMaskCacheBytes + mask.byteSize > MAX_UV_MASK_CACHE_BYTES && this.uvMaskCacheLru.size > 0) {
       const oldest = this.uvMaskCacheLru.entries().next().value as
-        | [number, { owner: Map<string, CachedUvMask>; key: string; mask: UvIslandMask }]
-        | undefined;
+        [number, { owner: Map<string, CachedUvMask>; key: string; mask: UvIslandMask }] | undefined;
       if (!oldest) break;
       const [cacheId, entry] = oldest;
       this.uvMaskCacheLru.delete(cacheId);
@@ -4525,11 +4322,7 @@ export class UnitPainterSession {
     return this.cacheUvMask(masks, key, mask);
   }
 
-  private getUvIslandMaskAtTexturePoint(
-    target: PaintableTexture,
-    x: number,
-    y: number,
-  ): UvIslandMask | undefined {
+  private getUvIslandMaskAtTexturePoint(target: PaintableTexture, x: number, y: number): UvIslandMask | undefined {
     target.editable.updateMatrix();
     for (const surface of this.surfacesByTarget.get(target) ?? []) {
       const uv = surface.geometry.getAttribute("uv");
@@ -4578,9 +4371,7 @@ export class UnitPainterSession {
   }
 
   private estimateLayerSnapshotBytes(snapshot: LayerSnapshot) {
-    let bytes =
-      HISTORY_SNAPSHOT_OVERHEAD_BYTES
-      + (snapshot.id.length + snapshot.name.length) * 2;
+    let bytes = HISTORY_SNAPSHOT_OVERHEAD_BYTES + (snapshot.id.length + snapshot.name.length) * 2;
     for (const { data } of snapshot.textures) {
       bytes += HISTORY_TEXTURE_OVERHEAD_BYTES;
       for (const tile of data.tiles.values()) {
@@ -4599,37 +4390,34 @@ export class UnitPainterSession {
     if (change.kind === "pixels") {
       for (const pixelChange of change.changes) {
         bytes +=
-          HISTORY_TEXTURE_OVERHEAD_BYTES
-          + pixelChange.layerId.length * 2
-          + pixelChange.byteIndices.byteLength
-          + pixelChange.before.byteLength
-          + pixelChange.after.byteLength;
+          HISTORY_TEXTURE_OVERHEAD_BYTES +
+          pixelChange.layerId.length * 2 +
+          pixelChange.byteIndices.byteLength +
+          pixelChange.before.byteLength +
+          pixelChange.after.byteLength;
       }
       return bytes;
     }
 
     if (change.kind === "layer-add" || change.kind === "layer-delete") {
-      return bytes
-        + this.estimateLayerSnapshotBytes(change.layer)
-        + (change.beforeActiveLayerId.length + change.afterActiveLayerId.length) * 2;
+      return (
+        bytes +
+        this.estimateLayerSnapshotBytes(change.layer) +
+        (change.beforeActiveLayerId.length + change.afterActiveLayerId.length) * 2
+      );
     }
 
     if (change.kind === "layer-replace") {
       for (const snapshot of change.before) bytes += this.estimateLayerSnapshotBytes(snapshot);
       for (const snapshot of change.after) bytes += this.estimateLayerSnapshotBytes(snapshot);
-      return bytes
-        + (change.beforeActiveLayerId.length + change.afterActiveLayerId.length) * 2;
+      return bytes + (change.beforeActiveLayerId.length + change.afterActiveLayerId.length) * 2;
     }
 
     if (change.kind === "layer-order") {
-      return bytes
-        + [...change.before, ...change.after].reduce((total, id) => total + id.length * 2, 0);
+      return bytes + [...change.before, ...change.after].reduce((total, id) => total + id.length * 2, 0);
     }
 
-    return bytes
-      + change.layerId.length * 2
-      + (change.before.name.length + change.after.name.length) * 2
-      + 64;
+    return bytes + change.layerId.length * 2 + (change.before.name.length + change.after.name.length) * 2 + 64;
   }
 
   private clearRedoHistory() {
@@ -4643,11 +4431,8 @@ export class UnitPainterSession {
 
   private trimHistoryToBudget() {
     while (
-      this.history.length > 1
-      && (
-        this.history.length > MAX_HISTORY_STROKES
-        || this.retainedHistoryBytes > MAX_HISTORY_BYTES
-      )
+      this.history.length > 1 &&
+      (this.history.length > MAX_HISTORY_STROKES || this.retainedHistoryBytes > MAX_HISTORY_BYTES)
     ) {
       const removed = this.history.shift();
       if (!removed) break;
@@ -4750,8 +4535,7 @@ export class UnitPainterSession {
         this.layerFromSnapshot(snapshot),
       );
       this.paintLayers.splice(change.index, removeCount, ...insert);
-      this.activePaintLayerId =
-        side === "before" ? change.beforeActiveLayerId : change.afterActiveLayerId;
+      this.activePaintLayerId = side === "before" ? change.beforeActiveLayerId : change.afterActiveLayerId;
       const affectedTargets = [...change.before, ...change.after].flatMap((snapshot) =>
         snapshot.textures.map(({ target }) => target),
       );
@@ -4844,11 +4628,7 @@ export class UnitPainterSession {
     for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
       for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
         if (coverageMask && !maskContainsPixel(coverageMask, x, y)) continue;
-        const sourceUv = getDecalSourceUv(
-          decal,
-          (x + 0.5) / decal.target.width,
-          (y + 0.5) / decal.target.height,
-        );
+        const sourceUv = getDecalSourceUv(decal, (x + 0.5) / decal.target.width, (y + 0.5) / decal.target.height);
         const sourcePixel = sampleDecalSource(decal.source, sourceUv.u, sourceUv.v);
         if (!sourcePixel || sourcePixel.a === 0) continue;
 
@@ -4867,12 +4647,11 @@ export class UnitPainterSession {
           output,
           decal.target,
           byteIndex,
-          (
-            Math.max(0, Math.min(255, Math.round(r)))
-            | (Math.max(0, Math.min(255, Math.round(g))) << 8)
-            | (Math.max(0, Math.min(255, Math.round(b))) << 16)
-            | (alpha << 24)
-          ) >>> 0,
+          (Math.max(0, Math.min(255, Math.round(r))) |
+            (Math.max(0, Math.min(255, Math.round(g))) << 8) |
+            (Math.max(0, Math.min(255, Math.round(b))) << 16) |
+            (alpha << 24)) >>>
+            0,
         );
       }
     }
@@ -4884,10 +4663,7 @@ export class UnitPainterSession {
 
   private getDecalEmbossHeight(decal: UnitPainterDecalState) {
     const bevel = Math.max(1, Math.min(MAX_DECAL_NORMAL_BEVEL_PX, decal.normalBevelPx));
-    const softness = Math.max(
-      0,
-      Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, decal.normalSoftnessPx),
-    );
+    const softness = Math.max(0, Math.min(MAX_DECAL_NORMAL_SOFTNESS_PX, decal.normalSoftnessPx));
     const key = `${decal.source.width}x${decal.source.height}:${bevel}:${softness}`;
     const cached = this.decalEmbossHeightCache.get(decal.source.rgbaBytes);
     if (cached?.key === key) return cached.data;
@@ -4896,24 +4672,14 @@ export class UnitPainterSession {
     return data;
   }
 
-  private applyDecalToNormalTarget(
-    layer: PaintLayer,
-    decal: UnitPainterDecalState,
-    normalTarget: PaintableTexture,
-  ) {
-    if (
-      !layer.visible
-      || layer.opacity <= 0
-      || !decal.affectNormal
-      || Math.abs(decal.normalStrength) <= 1e-6
-    ) {
+  private applyDecalToNormalTarget(layer: PaintLayer, decal: UnitPainterDecalState, normalTarget: PaintableTexture) {
+    if (!layer.visible || layer.opacity <= 0 || !decal.affectNormal || Math.abs(decal.normalStrength) <= 1e-6) {
       return;
     }
 
     const bounds = getDecalBounds(decal, normalTarget.width, normalTarget.height);
     const coverageMask = decal.placementMask ?? this.getTargetUvCoverageMask(decal.target);
-    const embossHeight =
-      decal.normalHeightSource === "emboss" ? this.getDecalEmbossHeight(decal) : undefined;
+    const embossHeight = decal.normalHeightSource === "emboss" ? this.getDecalEmbossHeight(decal) : undefined;
     const du = 1 / normalTarget.width;
     const dv = 1 / normalTarget.height;
     for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
@@ -4946,14 +4712,7 @@ export class UnitPainterSession {
         const baseX = decodeNormalByte(normalTarget.data[byteIndex]);
         const baseY = decodeNormalByte(normalTarget.data[byteIndex + 1]);
         const baseZ = decodeNormalByte(normalTarget.data[byteIndex + 2]);
-        const composed = blendReorientedNormal(
-          baseX,
-          baseY,
-          baseZ,
-          detailX,
-          detailY,
-          detailZ,
-        );
+        const composed = blendReorientedNormal(baseX, baseY, baseZ, detailX, detailY, detailZ);
         const alpha = (sourcePixel.a / 255) * layer.opacity;
         const outX = baseX + (composed.x - baseX) * alpha;
         const outY = baseY + (composed.y - baseY) * alpha;
@@ -5047,9 +4806,7 @@ export class UnitPainterSession {
       }
 
       for (const tileKey of [...target.touchedLayerTiles]) {
-        const stillUsed = this.paintLayers.some((layer) =>
-          layer.textures.get(target)?.tiles.has(tileKey),
-        );
+        const stillUsed = this.paintLayers.some((layer) => layer.textures.get(target)?.tiles.has(tileKey));
         if (stillUsed) continue;
         this.restoreTargetTileFromOriginal(target, tileKey);
         target.touchedLayerTiles.delete(tileKey);
@@ -5128,12 +4885,7 @@ export class UnitPainterSession {
     for (const tileKey of target.touchedLayerTiles) {
       const tileX = tileKey % tilesPerRow;
       const tileY = Math.floor(tileKey / tilesPerRow);
-      if (
-        tileX < 0
-        || tileX >= tilesPerRow
-        || tileY < 0
-        || tileY * LAYER_TILE_SIZE >= target.height
-      ) {
+      if (tileX < 0 || tileX >= tilesPerRow || tileY < 0 || tileY * LAYER_TILE_SIZE >= target.height) {
         continue;
       }
       const row = tileRows.get(tileY);
@@ -5213,7 +4965,6 @@ export class UnitPainterSession {
   private recomposeAllTargets() {
     this.recomposeTargets(this.targetsByEditableTexture.values());
   }
-
 }
 
 export const createUnitPainterSession = (root: THREE.Object3D) => new UnitPainterSession(root);

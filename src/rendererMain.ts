@@ -65,7 +65,6 @@ import { SupportedGames } from "./supportedGames";
 
 setupRendererLogging();
 
-
 window.api?.subscribedToMods((event, ids: string[]) => {
   console.log("subbed to mods: ", ids);
 });
@@ -346,11 +345,7 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
   const appState = store.getState().app;
   const presetMods = appState.currentPreset.mods;
   const customizableMods = appState.customizableMods;
-  const enabledMods = getEnabledMods(
-    presetMods,
-    appState.alwaysEnabledModNames,
-    appState.canDisableAlwaysEnabledMods,
-  );
+  const enabledMods = getEnabledMods(presetMods, appState.alwaysEnabledModNames, appState.canDisableAlwaysEnabledMods);
   const customizableTables = [
     "units_to_groupings_military_permissions_tables",
     "building_culture_variants_tables",

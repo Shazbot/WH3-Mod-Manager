@@ -238,8 +238,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const enabledMods = useMemo(
     () =>
       currentPresetMods.filter(
-        (iterMod) =>
-          iterMod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(iterMod.name)),
+        (iterMod) => iterMod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(iterMod.name)),
       ),
     [alwaysEnabledModNames, canDisableAlwaysEnabledMods, currentPresetMods],
   );
@@ -405,8 +404,7 @@ const ModRows = memo((props: ModRowsProps) => {
     // filter that may only show one side of the preset. Locked always-enabled mods do not signal
     // that disableAllMods can run, since that action deliberately leaves them enabled.
     const hasEnabledMod = currentPresetMods.some(
-      (mod) =>
-        mod.isEnabled && (canDisableAlwaysEnabledMods || !alwaysEnabledModNames.has(mod.name)),
+      (mod) => mod.isEnabled && (canDisableAlwaysEnabledMods || !alwaysEnabledModNames.has(mod.name)),
     );
     if (hasEnabledMod) {
       dispatch(disableAllMods());

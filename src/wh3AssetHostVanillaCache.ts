@@ -1,8 +1,5 @@
 import { readPack } from "./packFileSerializer";
-import {
-  hasCurrentVanillaPackIndex,
-  saveVanillaPackFilesCache,
-} from "./vanillaPackFilesCache";
+import { hasCurrentVanillaPackIndex, saveVanillaPackFilesCache } from "./vanillaPackFilesCache";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 
 export interface Wh3AssetHostVanillaCacheWarmResult {
