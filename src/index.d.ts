@@ -42,6 +42,16 @@ declare global {
     fromCache?: boolean;
   }
 
+  /** Status of the background optimization, see src/workshopModOptimizer/background.ts. */
+  interface WorkshopOptimizerBackgroundStatus {
+    state: "idle" | "waiting" | "running" | "paused";
+    total: number;
+    done: number;
+    currentMod?: string;
+    fraction?: number;
+    stage?: string;
+  }
+
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
 
   interface DiagnosticPathResult {

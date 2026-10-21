@@ -407,7 +407,21 @@ import {
   comparableDirectory,
   selectCustomFolderStaging,
 } from "./workshopModOptimizer/stagingSelection";
-import { createWorkshopModOptimizer, getWorkshopOptimizerCache } from "./workshopModOptimizer/runtime";
+import {
+  type BackgroundModsPayload,
+  getOptimizerBackground,
+  initOptimizerBackground,
+  optimizerGameChanged,
+  optimizerPackChanged,
+  updateOptimizerBackground,
+} from "./workshopModOptimizer/backgroundRuntime";
+import {
+  createWorkshopModOptimizer,
+  getWorkshopOptimizerCache,
+  removeLegacyOptimizerCacheOnce,
+} from "./workshopModOptimizer/runtime";
+import { computeGameIdentity } from "./workshopModOptimizer/packInspection";
+import { formatSavedBytes, totalOptimizations } from "./workshopModOptimizer/summary";
 import { findGameProcessIds } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
@@ -802,6 +816,8 @@ const globalSearchCancelStateByWebContentsId = new Map<
 >();
 
 const workshopStagingProgressChannel = "workshopModStagingProgress";
+/** The savings line of the latest launch that optimized mods, kept for the options drawer. */
+let lastOptimizerRunText: string | undefined;
 
 const sendWorkshopStagingProgress = (sender: Electron.WebContents, progress: WorkshopModStagingProgressEvent): void => {
   if (sender.isDestroyed()) return;
@@ -5626,6 +5642,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     removePackFromCollisions(path);
   };
   const onPackChangedOnDisk = async (path: string, fromWatcher = false) => {
+    optimizerPackChanged(path);
     await onPackDeleted(path);
     const changedPathKey = await physicalPackPathKey(path);
     const openViewerPackPath = await (async () => {
@@ -13280,6 +13297,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       console.log(line);
     }
   };
+  /** The savings of the launch's optimized mods: one log line, and one short line under the Optimize option. */
+  const reportOptimizerSummary = (outcomes: WorkshopStagingOptimizerOutcome[]) => {
+    const totals = totalOptimizations(
+      outcomes
+        .filter((outcome) => outcome.status === "optimized" || outcome.status === "restored")
+        .map((outcome) => outcome.summary),
+    );
+    if (!totals) return;
+    const text = i18n.t("optimizerSummaryLine", {
+      count: totals.mods,
+      size: formatSavedBytes(totals.savedBytes),
+      draws: Math.round(totals.drawCalls),
+    });
+    console.log(`Optimizer: ${text}`);
+    lastOptimizerRunText = text;
+    mainWindow?.webContents.send("workshopOptimizerLastRun", text);
+  };
   const getRealDataPackNames = async (dataFolder: string): Promise<Set<string>> => {
     const names = new Set(appData.allMods.filter((mod) => mod.isInData).map((mod) => mod.name.toLowerCase()));
     const collectPackNames = async (folderPath: string) => {
@@ -13296,6 +13330,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     await collectPackNames(nodePath.join(dataFolder, "modding"));
     return names;
   };
+  initOptimizerBackground({
+    getDataPackNames: getRealDataPackNames,
+    sendStatus: (status) => mainWindow?.webContents.send("workshopOptimizerBackgroundStatus", status),
+  });
+  // A game patch changes the packs every cached result was made against: replan when the identity of the
+  // game's packs changes.
+  let lastGameIdentity: string | undefined;
+  const checkGameIdentity = async () => {
+    try {
+      const identity = await computeGameIdentity(getVanillaPackPathsInLoadOrder());
+      if (lastGameIdentity !== undefined && identity !== lastGameIdentity) optimizerGameChanged();
+      lastGameIdentity = identity;
+    } catch {
+      // The game folder may not be configured yet.
+    }
+  };
+  void checkGameIdentity();
+  void removeLegacyOptimizerCacheOnce();
+  setInterval(() => void checkGameIdentity(), 10 * 60 * 1000).unref();
   ipcMain.on(
     "startGame",
     async (
@@ -13430,11 +13483,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           appData.currentGame === "wh3" &&
           workshopModStagingMode === "copy" &&
           startGameOptions.optimizeWorkshopModsOnStart === true;
+        if (optimizeWorkshopMods) await removeLegacyOptimizerCacheOnce();
+        const optimizerCache = getWorkshopOptimizerCache(gamePath);
         const workshopOptimizer = optimizeWorkshopMods
           ? createWorkshopModOptimizer({
-              cache: getWorkshopOptimizerCache(),
+              cache: optimizerCache,
               dataFolder,
               loadOrder: sortedMods.map((mod) => ({ name: mod.name, path: mod.path })),
+              // A background job making a mod this launch needs is waited for, not restarted.
+              background: getOptimizerBackground(),
             })
           : undefined;
         if (optimizeWorkshopMods && !workshopOptimizer) {
@@ -13487,21 +13544,27 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             }
           }
           const stagedCustomPaths = new Set(stagedCustomFolders?.mods.map((mod) => mod.path) ?? []);
-          workshopStagingResult = await stageWorkshopMods({
-            gameFolder: gamePath,
-            mode: workshopModStagingMode,
-            workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod) || stagedCustomPaths.has(mod.path)),
-            realDataPackNames,
-            canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
-            recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
-            compressMods: compressWorkshopMods,
-            includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
-            optimizer: workshopOptimizer,
-            optimizerProfile: workshopOptimizer ? WORKSHOP_OPTIMIZER_PROFILE_ID : undefined,
-            skipOptimizationSignal: workshopStagingRun?.skipOptimizationController.signal,
-            signal: workshopStagingRun?.controller.signal,
-            onProgress: (progress) => reportStagingProgress(progress),
-          });
+          const background = getOptimizerBackground();
+          if (workshopOptimizer) background?.setLaunchActive(true);
+          try {
+            workshopStagingResult = await stageWorkshopMods({
+              gameFolder: gamePath,
+              mode: workshopModStagingMode,
+              workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod) || stagedCustomPaths.has(mod.path)),
+              realDataPackNames,
+              canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
+              recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
+              compressMods: compressWorkshopMods,
+              includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
+              optimizer: workshopOptimizer,
+              optimizerProfile: workshopOptimizer ? WORKSHOP_OPTIMIZER_PROFILE_ID : undefined,
+              skipOptimizationSignal: workshopStagingRun?.skipOptimizationController.signal,
+              signal: workshopStagingRun?.controller.signal,
+              onProgress: (progress) => reportStagingProgress(progress),
+            });
+          } finally {
+            if (workshopOptimizer) background?.setLaunchActive(false);
+          }
           for (const warning of workshopOptimizer?.warnings ?? []) {
             workshopStagingResult.compressionWarnings.push(warning);
           }
@@ -13518,7 +13581,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               startTime: Date.now(),
             } as Toast);
           }
-          getWorkshopOptimizerCache().unpinAll();
+          optimizerCache.unpinAll();
           if (workshopOptimizer) {
             logOptimizerOutcomes({
               mods: sortedMods,
@@ -13528,6 +13591,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               result: workshopStagingResult,
               userSkipped: workshopStagingRun?.skipOptimizationController.signal.aborted === true,
             });
+            reportOptimizerSummary(workshopStagingResult.optimizerResults);
           } else if (startGameOptions.optimizeWorkshopModsOnStart === true) {
             console.log(
               `Optimizer: not run (${
@@ -14276,9 +14340,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (typeof requestedRunId === "string" && requestedRunId.length > 0 && requestedRunId !== run.runId) return;
     run.skipOptimizationController.abort();
   });
+  const getCurrentGamePath = () => appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
   ipcMain.handle("getWorkshopOptimizerCacheInfo", async () => {
     try {
-      return { success: true, ...(await getWorkshopOptimizerCache().getInfo()) };
+      const gamePath = getCurrentGamePath();
+      if (!gamePath) return { success: true, size: 0, hasContents: false, lastRun: lastOptimizerRunText };
+      return {
+        success: true,
+        ...(await getWorkshopOptimizerCache(gamePath).getInfo()),
+        lastRun: lastOptimizerRunText,
+      };
     } catch (error) {
       return {
         success: false,
@@ -14289,12 +14360,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
   ipcMain.handle("clearWorkshopOptimizerCache", async () => {
-    // A launch in progress is reading from and writing to this folder.
-    if (activeWorkshopStagingRun) {
+    // A launch or a background job is reading from and writing to this folder, and a running game may
+    // have staged packs open that are hard links of its entries.
+    const background = getOptimizerBackground()?.getStatus();
+    if (activeWorkshopStagingRun || appData.isWH3Running || background?.state === "running") {
       return { success: false, code: "STAGING_ACTIVE", error: i18n.t("workshopOptimizerCacheBusy") };
     }
     try {
-      await getWorkshopOptimizerCache().clear();
+      const gamePath = getCurrentGamePath();
+      if (gamePath) await getWorkshopOptimizerCache(gamePath).clear();
+      lastOptimizerRunText = undefined;
       return { success: true };
     } catch (error) {
       const message = i18n.t("workshopOptimizerCacheClearFailed", {
@@ -14304,17 +14379,40 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
   ipcMain.handle("openWorkshopOptimizerReport", async (_event, modName: string) => {
-    const cache = getWorkshopOptimizerCache();
-    const reportPath = cache.reportPathFor(String(modName));
-    const failure = fs.existsSync(reportPath)
-      ? await shell.openPath(reportPath)
-      : i18n.t("workshopOptimizerReportMissing");
+    const gamePath = getCurrentGamePath();
+    const reportPath = gamePath ? getWorkshopOptimizerCache(gamePath).reportPathFor(String(modName)) : "";
+    const failure =
+      reportPath && fs.existsSync(reportPath)
+        ? await shell.openPath(reportPath)
+        : i18n.t("workshopOptimizerReportMissing");
     if (failure) {
       mainWindow?.webContents.send("addToast", { type: "info", messages: [failure], startTime: Date.now() } as Toast);
       return { success: false, error: failure };
     }
     return { success: true };
   });
+  ipcMain.on(
+    "updateWorkshopOptimizerBackground",
+    (_event, enabledMods: Mod[], settings: { optimize: boolean; workshopModStagingMode: string }) => {
+      const gamePath = getCurrentGamePath();
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+      if (!gamePath || !dataFolder) return;
+      const payload: BackgroundModsPayload = {
+        gamePath,
+        dataFolder,
+        mods: sortByNameAndLoadOrder(enabledMods.filter((mod) => mod.isEnabled)).map((mod) => ({
+          name: mod.name,
+          path: mod.path,
+          modDirectory: mod.modDirectory,
+          sourceKind: getModSourceKind(mod),
+          isInModding: mod.isInModding,
+        })),
+      };
+      updateOptimizerBackground(payload, { ...settings, currentGame: appData.currentGame });
+    },
+  );
+  ipcMain.on("cancelWorkshopOptimizerBackground", () => getOptimizerBackground()?.cancel());
+  ipcMain.handle("getWorkshopOptimizerBackgroundStatus", () => getOptimizerBackground()?.getStatus());
   ipcMain.on("cancelWorkshopModStaging", (event, requestedRunId?: string) => {
     const run = activeWorkshopStagingRun;
     if (!run || run.senderId !== event.sender.id) return;

@@ -19,7 +19,11 @@ import {
   packHasOptimizableVisuals,
 } from "../src/workshopModOptimizer/packInspection";
 import { comparableDirectory, selectCustomFolderStaging } from "../src/workshopModOptimizer/stagingSelection";
-import { buildWorkshopStagingWorkingDirectoryLines, stageWorkshopMods } from "../src/utility/workshopModStaging";
+import {
+  WORKSHOP_OPTIMIZED_MODS_FOLDER,
+  buildWorkshopStagingWorkingDirectoryLines,
+  stageWorkshopMods,
+} from "../src/utility/workshopModStaging";
 import { lz4CompressFrame, lz4DecompressFrame } from "./helpers/lz4Frame";
 
 /**
@@ -52,14 +56,13 @@ describe.skipIf(!enabled)("custom mod folder end to end", () => {
       const before = { folder: listing(customFolder), parent: listing(path.dirname(customFolder)) };
       fs.rmSync(outputRoot, { recursive: true, force: true });
       fs.mkdirSync(outputRoot, { recursive: true });
-      const cache = new WorkshopOptimizerCache({ root: path.join(outputRoot, "cache") });
       const gameFolder = path.join(outputRoot, "game");
       fs.mkdirSync(gameFolder, { recursive: true });
+      const cache = new WorkshopOptimizerCache({ root: path.join(gameFolder, WORKSHOP_OPTIMIZED_MODS_FOLDER) });
       const vanillaPacks = fs
         .readdirSync(dataFolder)
         .filter((f) => f.endsWith(".pack"))
         .map((f) => path.join(dataFolder, f));
-      const hostHash = await hashFileSha256(hostPath);
       let hostRuns = 0;
       const countingRunHost: typeof realRunHost = async (options) => {
         if (options.args.includes("--request")) hostRuns++;
@@ -86,14 +89,13 @@ describe.skipIf(!enabled)("custom mod folder end to end", () => {
         const optimizer = new WorkshopModOptimizer({
           cache,
           hostExecutablePath: hostPath,
-          hostHash: async () => hostHash,
           vanillaFileIndexPath: vanillaIndex,
           ensureVanillaIndex: async () => undefined,
           gameDataFolder: dataFolder,
           dbSchemaPath: schemaPath,
           gameIdentity: () => computeGameIdentity(vanillaPacks),
           schemaDigest: () => hashFileSha256(schemaPath),
-          includeRigidModelV2: true,
+          compressRigidModels: true,
           loadOrder: enabledMods.map((mod) => ({ name: mod.name, path: mod.path })),
           hasVisualAssets: packHasOptimizableVisuals,
           runHost: countingRunHost,
@@ -137,6 +139,11 @@ describe.skipIf(!enabled)("custom mod folder end to end", () => {
       const firstHash = await hashFileSha256(stagedPack);
       expect(fs.statSync(stagedPack).size).toBeLessThan(fs.statSync(sourcePack).size);
       expect(hostRuns).toBe(1);
+      const entryFile = path.join(
+        cache.entriesDirectory,
+        fs.readdirSync(cache.entriesDirectory).find((name) => name.endsWith(".pack"))!,
+      );
+      expect(fs.statSync(stagedPack).ino).toBe(fs.statSync(entryFile).ino);
 
       // The cleanup after the game exit removes the copy; the next launch restores it from the cache.
       fs.rmSync(first.result.destinationPath, { recursive: true, force: true });
@@ -145,6 +152,7 @@ describe.skipIf(!enabled)("custom mod folder end to end", () => {
       expect(second.log[0]).toContain("restored from cache");
       expect(hostRuns).toBe(1);
       expect(await hashFileSha256(stagedPack)).toBe(firstHash);
+      expect(fs.statSync(stagedPack).ino).toBe(fs.statSync(entryFile).ino);
 
       expect(listing(customFolder)).toEqual(before.folder);
       expect(listing(path.dirname(customFolder))).toEqual(before.parent);

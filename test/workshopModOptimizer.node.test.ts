@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { PassThrough } from "node:stream";
-import { afterEach, describe, expect, it } from "vitest";
+import * as crypto from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkshopOptimizerCache } from "../src/workshopModOptimizer/cache";
 import { type OptimizerKeyBase, buildExactKey, buildNarrowKey } from "../src/workshopModOptimizer/cacheKey";
@@ -30,9 +31,9 @@ afterEach(() => {
 const baseKey: OptimizerKeyBase = {
   profile: "wh3-visual-v1",
   options: { a: true, b: false },
-  includeRigidModelV2: true,
   source: { name: "mod.pack", size: 100, mtimeMs: 5000 },
-  hostHash: "h",
+  outputVersion: 1,
+  scanVersion: 1,
   gameIdentity: "g",
   schemaDigest: "s",
 };
@@ -48,19 +49,22 @@ describe("optimizer cache keys", () => {
     expect(buildNarrowKey(baseKey, [first])).not.toBe(buildNarrowKey(baseKey, [{ ...first, size: 9 }]));
   });
 
-  it("changes with the source, host, game, schema, options and rigid-model setting", () => {
+  it("changes with the source, output version, game, schema and options, not with the host build", () => {
     const reference = buildNarrowKey(baseKey, []);
     for (const changed of [
       { source: { ...baseKey.source, size: 101 } },
-      { hostHash: "x" },
+      { outputVersion: 2 },
       { gameIdentity: "x" },
       { schemaDigest: "x" },
       { options: { a: false, b: false } },
-      { includeRigidModelV2: false },
       { profile: "wh3-visual-v2" },
     ]) {
       expect(buildNarrowKey({ ...baseKey, ...changed }, [])).not.toBe(reference);
     }
+
+    // The scan version only decides the exact-to-narrow alias.
+    expect(buildNarrowKey({ ...baseKey, scanVersion: 2 }, [])).toBe(reference);
+    expect(buildExactKey({ ...baseKey, scanVersion: 2 }, [])).not.toBe(buildExactKey(baseKey, []));
   });
 
   it("keys the exact key on every consumer", () => {
@@ -116,7 +120,11 @@ describe("optimizer cache store", () => {
     const cache = new WorkshopOptimizerCache({ root: makeDirectory() });
     await addEntry(cache, 1, "a", 10);
     expect(await cache.lookup(key(1))).toBeDefined();
-    fs.appendFileSync(path.join(cache.entriesDirectory, `${key(1)}.pack`), "x");
+    const entryPath = path.join(cache.entriesDirectory, `${key(1)}.pack`);
+    // Entries are read-only: an accidental in-place write fails instead of corrupting a staged link.
+    expect(() => fs.appendFileSync(entryPath, "x")).toThrow(/EPERM|EACCES/);
+    fs.chmodSync(entryPath, 0o666);
+    fs.appendFileSync(entryPath, "x");
     expect(await cache.lookup(key(1))).toBeUndefined();
     await addEntry(cache, 2, "a", 10);
     await cache.clear();
@@ -215,6 +223,9 @@ describe("host runner", () => {
 
 interface FakeHostCalls {
   probes: number;
+  probedSources: string[];
+  hostBuild?: string;
+  outputVersion?: number;
   optimizations: number;
   relevant: Set<string>;
   failNext: boolean;
@@ -225,15 +236,35 @@ const makeFakeHost =
   (calls: FakeHostCalls) =>
   async (options: Parameters<typeof runHost>[0]): Promise<HostRunOutcome> => {
     if (options.args.includes("--check-dds")) return { kind: "ok" };
+    if (options.args.includes("--version")) {
+      return { kind: "version", text: `0.6.0+${calls.hostBuild ?? "a"} output=${calls.outputVersion ?? 1} scan=1` };
+    }
     const request = JSON.parse(fs.readFileSync(options.args[options.args.indexOf("--request") + 1], "utf8"));
     const consumers: string[] = request.consumerPackPaths ?? [];
-    const packs = consumers.map((consumerPath) => ({
-      path: consumerPath,
-      relevant: calls.relevant.has(path.basename(consumerPath)),
-      reasons: { frozenFiles: 0, usedFiles: 0, dbMentions: 0, undecodableTables: 0, vanillaOverridesReached: 0 },
-    }));
+    const describe = (list: string[]) =>
+      list.map((consumerPath) => ({
+        path: consumerPath,
+        relevant: calls.relevant.has(path.basename(consumerPath)),
+        reasons: { frozenFiles: 0, usedFiles: 0, dbMentions: 0, undecodableTables: 0, vanillaOverridesReached: 0 },
+      }));
+    const packs = describe(consumers);
     if (request.probeOnly) {
       calls.probes++;
+      if (request.probeSources) {
+        calls.probedSources.push(...request.probeSources);
+        return {
+          kind: "probe",
+          probe: {
+            type: "probe",
+            hostVersion: "t",
+            consumers: [],
+            sources: request.probeSources.map((source: string) => ({
+              sourcePackPath: source,
+              consumers: describe(consumers.filter((item) => item !== source)),
+            })),
+          },
+        };
+      }
       return { kind: "probe", probe: { type: "probe", hostVersion: "t", consumers: packs } };
     }
     calls.optimizations++;
@@ -263,6 +294,14 @@ const makeFakeHost =
         reportPath: request.reportPath,
         consumerPacks: packs,
         hostVersion: "t",
+        outputVersion: 1,
+        summary: {
+          sourceBytes: 1000,
+          outputBytes: 400,
+          textureBytesSaved: 100,
+          drawCallsEliminated: 12.4,
+          mergedModelsGenerated: 3,
+        },
       },
     };
   };
@@ -286,13 +325,12 @@ describe("Workshop mod optimizer staging", () => {
       new WorkshopModOptimizer({
         cache,
         hostExecutablePath: host,
-        hostHash: async () => "hosthash",
         vanillaFileIndexPath: "index.bin",
         ensureVanillaIndex: async () => undefined,
         gameDataFolder: "data",
         gameIdentity: async () => "game",
         schemaDigest: async () => "schema",
-        includeRigidModelV2: true,
+        compressRigidModels: true,
         loadOrder: enabled.map((mod) => ({ name: mod.name, path: mod.path })),
         hasVisualAssets: async (packPath) => path.basename(packPath).startsWith("unit"),
         runHost: makeFakeHost(calls),
@@ -328,17 +366,23 @@ describe("Workshop mod optimizer staging", () => {
   const read = (gameFolder: string, name: string) =>
     fs.readFileSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER, name), "utf8");
 
-  it("optimizes eligible mods only, compresses the result and restores it from the cache next time", async () => {
-    const calls: FakeHostCalls = { probes: 0, optimizations: 0, relevant: new Set(), failNext: false };
+  it("optimizes eligible mods only, does not compress the host's output again and restores it from the cache next time", async () => {
+    const calls: FakeHostCalls = {
+      probes: 0,
+      probedSources: [],
+      optimizations: 0,
+      relevant: new Set(),
+      failNext: false,
+    };
     const { make, stage, gameFolder, compressionCalls } = setup(["aaa.pack", "unit_one.pack", "zzz.pack"], calls);
 
     const first = await stage(make());
-    expect(read(gameFolder, "unit_one.pack")).toBe("optimized:content-unit_one.pack+lz4");
+    expect(read(gameFolder, "unit_one.pack")).toBe("optimized:content-unit_one.pack");
     expect(read(gameFolder, "aaa.pack")).toBe("content-aaa.pack+lz4");
     expect(first.optimizerResults).toEqual([expect.objectContaining({ name: "unit_one.pack", status: "optimized" })]);
     expect(calls.optimizations).toBe(1);
-    expect(compressionCalls).toHaveLength(3);
-    expect(compressionCalls.filter((name) => name.endsWith("unit_one.pack"))).toHaveLength(1);
+    // The host compresses its own output; whmm's compressor only handles the plain copies.
+    expect(compressionCalls.sort()).toEqual(["aaa.pack", "zzz.pack"]);
 
     // Same input again: nothing is staged or optimized.
     const second = await stage(make());
@@ -350,11 +394,139 @@ describe("Workshop mod optimizer staging", () => {
     const third = await stage(make());
     expect(calls.optimizations).toBe(1);
     expect(third.optimizerResults).toEqual([expect.objectContaining({ status: "restored" })]);
-    expect(read(gameFolder, "unit_one.pack")).toBe("optimized:content-unit_one.pack+lz4");
+    expect(read(gameFolder, "unit_one.pack")).toBe("optimized:content-unit_one.pack");
+  });
+
+  const newCalls = (overrides: Partial<FakeHostCalls> = {}): FakeHostCalls => ({
+    probes: 0,
+    probedSources: [],
+    optimizations: 0,
+    relevant: new Set(),
+    failNext: false,
+    ...overrides,
+  });
+  const entryPath = (cache: WorkshopOptimizerCache) => {
+    const names = fs.readdirSync(cache.entriesDirectory).filter((name) => name.endsWith(".pack"));
+    expect(names).toHaveLength(1);
+    return path.join(cache.entriesDirectory, names[0]);
+  };
+  const sha = (file: string) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+
+  it("restores a cached result as a hard link to the cache entry and never writes it in place", async () => {
+    const calls = newCalls();
+    const { make, stage, gameFolder, cache } = setup(["unit_one.pack", "zzz.pack"], calls);
+    await stage(make());
+    const staged = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER, "unit_one.pack");
+    const entry = entryPath(cache);
+    const entryBefore = { bytes: sha(entry), ino: fs.statSync(entry).ino, mtimeMs: fs.statSync(entry).mtimeMs };
+
+    // A fresh result is linked too: the staged file and the cache entry are one file.
+    expect(fs.statSync(staged).ino).toBe(entryBefore.ino);
+    expect(fs.statSync(staged).nlink).toBe(2);
+
+    // Nothing a launch does writes the linked file: restaging unchanged, restaging after the staging
+    // folder was cleaned (a fresh link), and the cleanup itself.
+    await stage(make());
+    expect(fs.statSync(staged).ino).toBe(entryBefore.ino);
+    // The data folder-style cleanup removes the staged links only.
+    fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+    expect(fs.statSync(entry).nlink).toBe(1);
+    const restored = await stage(make());
+    expect(restored.optimizerResults).toEqual([
+      expect.objectContaining({ status: "restored", placement: "hard link" }),
+    ]);
+    expect(fs.statSync(staged).ino).toBe(entryBefore.ino);
+    expect(calls.optimizations).toBe(1);
+
+    expect(sha(entry)).toBe(entryBefore.bytes);
+    expect(fs.statSync(entry).ino).toBe(entryBefore.ino);
+    expect(fs.statSync(entry).mtimeMs).toBe(entryBefore.mtimeMs);
+    // An in-place write through the staged link fails: the shared file is read-only.
+    expect(() => fs.appendFileSync(staged, "x")).toThrow(/EPERM|EACCES/);
+    expect(sha(entry)).toBe(entryBefore.bytes);
+  });
+
+  it("copies instead when linking fails and says why", async () => {
+    const calls = newCalls();
+    const { make, stage, gameFolder, cache } = setup(["unit_one.pack"], calls);
+    await stage(make());
+    fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+
+    const spy = vi
+      .spyOn(fs.promises, "link")
+      .mockRejectedValue(Object.assign(new Error("cross-device"), { code: "EXDEV" }));
+    try {
+      const result = await stage(make());
+      expect(result.optimizerResults).toEqual([
+        expect.objectContaining({ status: "restored", placement: "copy", placementReason: "EXDEV" }),
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const staged = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER, "unit_one.pack");
+    const entry = entryPath(cache);
+    expect(fs.statSync(staged).ino).not.toBe(fs.statSync(entry).ino);
+    expect(fs.readFileSync(staged, "utf8")).toBe("optimized:content-unit_one.pack");
+  });
+
+  it("probes every mod in one host run", async () => {
+    const calls = newCalls();
+    const { make, stage } = setup(["unit_a.pack", "unit_b.pack", "unit_c.pack", "zzz.pack"], calls);
+    await stage(make());
+    expect(calls.probes).toBe(1);
+    expect(calls.probedSources.map((source) => path.basename(source)).sort()).toEqual([
+      "unit_a.pack",
+      "unit_b.pack",
+      "unit_c.pack",
+    ]);
+    expect(calls.optimizations).toBe(3);
+  });
+
+  it("keeps cached results across a host build change and drops them with a new output version", async () => {
+    const calls = newCalls();
+    const { make, stage, gameFolder } = setup(["unit_one.pack"], calls);
+    await stage(make());
+    expect(calls.optimizations).toBe(1);
+
+    fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+    calls.hostBuild = "newer-build";
+    await stage(make());
+    expect(calls.optimizations).toBe(1);
+
+    fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+    calls.outputVersion = 2;
+    await stage(make());
+    expect(calls.optimizations).toBe(2);
+  });
+
+  it("carries the host's savings summary to the outcome and the cache entry", async () => {
+    const calls = newCalls();
+    const { make, stage, gameFolder, cache } = setup(["unit_one.pack"], calls);
+    const first = await stage(make());
+    const expected = {
+      sourceBytes: 1000,
+      outputBytes: 400,
+      textureBytesSaved: 100,
+      drawCallsEliminated: 12.4,
+      mergedModelsGenerated: 3,
+    };
+    expect(first.optimizerResults[0].summary).toEqual(expected);
+
+    fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+    const restored = await stage(make());
+    expect(restored.optimizerResults[0]).toMatchObject({ status: "restored", summary: expected });
+    expect((await cache.listEntries())[0].summary).toEqual(expected);
   });
 
   it("ignores an unrelated mod being added but re-optimizes for a relevant one", async () => {
-    const calls: FakeHostCalls = { probes: 0, optimizations: 0, relevant: new Set(), failNext: false };
+    const calls: FakeHostCalls = {
+      probes: 0,
+      probedSources: [],
+      optimizations: 0,
+      relevant: new Set(),
+      failNext: false,
+    };
     const cacheRoot = makeDirectory();
     const one = setup(["unit_one.pack", "zzz.pack"], calls, cacheRoot);
     await one.stage(one.make());
@@ -378,7 +550,13 @@ describe("Workshop mod optimizer staging", () => {
   });
 
   it("falls back to a plain copy after a host failure and does not retry the same input", async () => {
-    const calls: FakeHostCalls = { probes: 0, optimizations: 0, relevant: new Set(), failNext: true };
+    const calls: FakeHostCalls = {
+      probes: 0,
+      probedSources: [],
+      optimizations: 0,
+      relevant: new Set(),
+      failNext: true,
+    };
     const { make, stage, gameFolder } = setup(["unit_one.pack"], calls);
     const result = await stage(make());
     expect(result.optimizerResults).toEqual([expect.objectContaining({ status: "failed", message: "host failed" })]);
@@ -394,6 +572,7 @@ describe("Workshop mod optimizer staging", () => {
     let release!: () => void;
     const calls: FakeHostCalls = {
       probes: 0,
+      probedSources: [],
       optimizations: 0,
       relevant: new Set(),
       failNext: false,

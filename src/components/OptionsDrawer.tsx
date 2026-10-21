@@ -135,6 +135,7 @@ const OptionsDrawer = memo(() => {
   const [isClearingWorkshopStaging, setIsClearingWorkshopStaging] = useState(false);
   const [workshopOptimizerCacheInfo, setWorkshopOptimizerCacheInfo] = useState({ size: 0, hasContents: false });
   const [isClearingWorkshopOptimizerCache, setIsClearingWorkshopOptimizerCache] = useState(false);
+  const [lastOptimizerRun, setLastOptimizerRun] = useState<string>();
   const [workshopStagingFolderMessage, setWorkshopStagingFolderMessage] = useState<{
     message: string;
     isError: boolean;
@@ -271,6 +272,7 @@ const OptionsDrawer = memo(() => {
     try {
       const result = await getInfo();
       if (result?.success) {
+        setLastOptimizerRun(result.lastRun);
         setWorkshopOptimizerCacheInfo({
           size: Math.max(0, result.size || 0),
           hasContents: result.hasContents ?? (result.size || 0) > 0,
@@ -280,6 +282,16 @@ const OptionsDrawer = memo(() => {
       // The cache size is informational; the clear button simply stays hidden.
     }
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.api?.onWorkshopOptimizerLastRun?.((_event, text) => {
+      setLastOptimizerRun(text);
+      void refreshWorkshopOptimizerCacheInfo();
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [refreshWorkshopOptimizerCacheInfo]);
 
   useEffect(() => {
     void refreshWorkshopOptimizerCacheInfo();
@@ -1458,10 +1470,15 @@ const OptionsDrawer = memo(() => {
                       </span>
                       <span className="mt-1 block text-xs text-gray-400">
                         {localized.optimizeWorkshopModsHelp ||
-                          "Merges and shrinks the unit models and textures of Workshop and custom-folder mods in the staged copy, never mods in the Data folder. The first launch after a change takes a few minutes per mod; results are cached."}
+                          "Merges and shrinks the unit models and textures of Workshop and custom-folder mods, never mods in the Data folder. Results are kept in whmm_optimized_mods and made in the background while you change the mod list."}
                       </span>
                     </span>
                   </label>
+                  {optimizeWorkshopModsOnStart && lastOptimizerRun && (
+                    <p className="mt-2 px-2 text-xs text-gray-400">
+                      {(localized.optimizerLastRun || "Last run: {{summary}}").replace("{{summary}}", lastOptimizerRun)}
+                    </p>
+                  )}
                   {(workshopOptimizerCacheInfo.hasContents || isClearingWorkshopOptimizerCache) && (
                     <div className="mt-2 flex flex-wrap items-center gap-3 px-2">
                       <button
@@ -1481,6 +1498,12 @@ const OptionsDrawer = memo(() => {
                         )}
                       </span>
                     </div>
+                  )}
+                  {(compressWorkshopModsOnStart || optimizeWorkshopModsOnStart) && (
+                    <p className="mt-2 px-2 text-xs text-amber-300">
+                      {localized.workshopMultiplayerWarning ||
+                        "Multiplayer needs identical packs for every player: turn off Compress and Optimize mods for multiplayer sessions."}
+                    </p>
                   )}
                 </div>
               )}

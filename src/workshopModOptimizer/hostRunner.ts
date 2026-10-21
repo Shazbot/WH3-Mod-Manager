@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import * as os from "node:os";
 
 /**
  * Runs `WH3AssetHost.exe optimize` once and reads its stdout protocol: one JSON object per line
@@ -18,7 +19,34 @@ export const WORKSHOP_OPTIMIZER_HOST_OPTIONS = {
   sharedTextureRepack: true,
   compactTextures: true,
   dropUnreadAlpha: true,
+  // The host writes the output's rigid models LZ4-compressed the way whmm's staging compressor does, so
+  // optimized results need no compression step here.
+  compressRigidModels: true,
 } as const;
+
+/** The host option set for a launch; `compressRigidModels` follows the user's rigid-model compression setting. */
+export const buildHostOptions = (compressRigidModels: boolean) => ({
+  ...WORKSHOP_OPTIMIZER_HOST_OPTIONS,
+  compressRigidModels,
+});
+
+export interface HostVersions {
+  hostVersion: string;
+  outputVersion: number;
+  scanVersion: number;
+}
+
+/** Parses the line `WH3AssetHost --version` prints: "0.6.0+abc123 output=1 scan=1". */
+export const parseHostVersionLine = (text: string): HostVersions | undefined => {
+  const output = /\boutput=(\d+)/.exec(text);
+  const scan = /\bscan=(\d+)/.exec(text);
+  if (!output || !scan) return undefined;
+  return {
+    hostVersion: text.trim().split(/\s+/)[0] ?? "",
+    outputVersion: Number(output[1]),
+    scanVersion: Number(scan[1]),
+  };
+};
 
 /** Bumped when the option set or the meaning of an optimized result changes. */
 export const WORKSHOP_OPTIMIZER_PROFILE_ID = "wh3-visual-v1";
@@ -45,6 +73,20 @@ export interface HostProgressLine {
   total: number;
 }
 
+/** What a run saved, as the host reports it. Sizes are bytes. */
+export interface HostSummaryLine {
+  sourceBytes: number;
+  outputBytes: number;
+  textureBytesSaved: number;
+  drawCallsEliminated: number;
+  mergedModelsGenerated: number;
+}
+
+export interface HostSourceProbe {
+  sourcePackPath: string;
+  consumers: HostConsumerPack[];
+}
+
 export interface HostResultLine {
   type: "result";
   status: "succeeded" | "cancelled" | string;
@@ -54,6 +96,8 @@ export interface HostResultLine {
   warnings?: string[];
   hostVersion?: string;
   consumerPacks?: HostConsumerPack[];
+  outputVersion?: number;
+  summary?: HostSummaryLine;
 }
 
 export interface HostProbeLine {
@@ -61,6 +105,13 @@ export interface HostProbeLine {
   hostVersion: string;
   consumers: HostConsumerPack[];
   elapsedSeconds?: number;
+  outputVersion?: number;
+  scanVersion?: number;
+  /** Present for a batch probe (`probeSources`). */
+  sources?: HostSourceProbe[];
+  packsScanned?: number;
+  scanCacheHits?: number;
+  scanSeconds?: number;
 }
 
 export interface HostErrorLine {
@@ -81,6 +132,7 @@ export type HostRunOutcome =
 
 /** The part of a child process this runner uses; tests supply a fake. */
 export interface HostChildProcess {
+  pid?: number;
   stdout: NodeJS.ReadableStream | null;
   stderr: NodeJS.ReadableStream | null;
   on(event: "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
@@ -231,6 +283,12 @@ export interface RunHostOptions {
   signal?: AbortSignal;
   onProgress?: (line: HostProgressLine) => void;
   spawnProcess?: SpawnHostProcess;
+  /** Run below normal priority (background optimization), so the game and the manager stay responsive. */
+  lowPriority?: boolean;
+  /** Lowers a process's priority; defaults to `os.setPriority` (a seam for tests). */
+  setPriority?: (pid: number, priority: number) => void;
+  /** Receives the process id once it started. */
+  onStarted?: (pid: number | undefined) => void;
 }
 
 const MAX_STDERR_CHARS = 16 * 1024;
@@ -249,6 +307,15 @@ export const runHost = (options: RunHostOptions): Promise<HostRunOutcome> =>
       resolve({ kind: "failed", exitCode: null, message: error instanceof Error ? error.message : String(error) });
       return;
     }
+
+    if (options.lowPriority && child.pid) {
+      try {
+        (options.setPriority ?? os.setPriority)(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+      } catch {
+        // A host that cannot be lowered still runs, just at normal priority.
+      }
+    }
+    options.onStarted?.(child.pid);
 
     let settled = false;
     let result: HostResultLine | undefined;

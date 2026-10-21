@@ -3,17 +3,23 @@ import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
 
 /**
- * The persistent store of optimized packs. It lives under userData, outside the game folder, so
- * "Clean up after game exit" does not touch it. An entry is the final pack (optimized and
- * compressed) plus a small JSON file; restoring one is a file copy.
+ * The persistent store of optimized packs. It lives next to the staging folder, in
+ * `<game folder>\whmm_optimized_mods` (a sibling of `whmm_copied_mods`, never inside it), so "Clean up
+ * after game exit" and "Clear copied mods" do not touch it. Everything the optimizer keeps lives here
+ * (results, failure markers, aliases, reports, host logs, the host's scan cache), so one "Clear optimized
+ * mods cache" removes it all. An entry is the final pack (optimized and compressed by the host) plus a
+ * small JSON file. Restoring one is a hard link into the staging folder (a copy when linking fails), so
+ * the entry is read-only and nothing may ever write a staged file in place: a staged pack and its cache
+ * entry are the same file.
  *
  * Layout under `root`:
  *   entries/<key>.pack, entries/<key>.json     a result
  *   entries/<key>.failed.json                  the host failed for this key (do not retry)
  *   aliases/<exactKey>.txt                     exact key -> narrow key
  *   reports/<pack name>.report.txt             the latest host report per mod
- *   tmp/                                       host output, compression work
- *   host-cache/                                the host's own cacheDirectory
+ *   tmp/                                       host output
+ *   logs/                                      host logs of failed runs
+ *   host-cache/                                the host's own cacheDirectory (probe scans)
  */
 
 export const DEFAULT_OPTIMIZER_CACHE_BUDGET_BYTES = 12 * 1024 * 1024 * 1024;
@@ -29,7 +35,18 @@ export interface OptimizerCacheEntryMeta {
   createdAt: number;
   lastUsed: number;
   hostVersion?: string;
+  outputVersion?: number;
   relevantConsumers?: string[];
+  summary?: OptimizerSummary;
+}
+
+/** What an optimization saved, as the host reports it. Sizes are bytes. */
+export interface OptimizerSummary {
+  sourceBytes: number;
+  outputBytes: number;
+  textureBytesSaved: number;
+  drawCallsEliminated: number;
+  mergedModelsGenerated: number;
 }
 
 export interface OptimizerCacheFailure {
@@ -141,6 +158,8 @@ export class WorkshopOptimizerCache {
     meta.lastUsed = this.now();
     this.pin(key);
     await writeJsonAtomically(this.metaPath(key), meta).catch(() => undefined);
+    // Removing a staged link clears the read-only flag it shares with the entry; put it back.
+    await fs.promises.chmod(this.packPath(key), 0o444).catch(() => undefined);
     return { packPath: this.packPath(key), meta };
   }
 
@@ -174,6 +193,8 @@ export class WorkshopOptimizerCache {
     const finalPath = this.packPath(key);
     await fs.promises.rm(finalPath, { force: true });
     await fs.promises.rename(temporaryPackPath, finalPath);
+    // The entry is shared with staged hard links: make an accidental in-place write fail.
+    await fs.promises.chmod(finalPath, 0o444).catch(() => undefined);
     const entry: OptimizerCacheEntryMeta = {
       ...meta,
       key,
@@ -309,9 +330,29 @@ export class WorkshopOptimizerCache {
     }
   }
 
-  async cleanTemp() {
-    await fs.promises.rm(this.tempDirectory, { recursive: true, force: true }).catch(() => undefined);
+  /**
+   * Removes host output left by a crashed run. Only files untouched for a while go: a background job
+   * may be writing here while a launch starts.
+   */
+  async cleanTemp(olderThanMs = 15 * 60 * 1000) {
     await fs.promises.mkdir(this.tempDirectory, { recursive: true }).catch(() => undefined);
+    let names: string[] = [];
+    try {
+      names = await fs.promises.readdir(this.tempDirectory);
+    } catch {
+      return;
+    }
+
+    const cutoff = this.now() - olderThanMs;
+    for (const name of names) {
+      const path = nodePath.join(this.tempDirectory, name);
+      try {
+        const stats = await fs.promises.stat(path);
+        if (stats.mtimeMs < cutoff) await fs.promises.rm(path, { recursive: true, force: true });
+      } catch {
+        // Gone already.
+      }
+    }
   }
 
   async getInfo(): Promise<{ size: number; entryCount: number; hasContents: boolean }> {
@@ -330,3 +371,19 @@ export class WorkshopOptimizerCache {
     this.pinned.clear();
   }
 }
+
+/**
+ * The cache used to live in the app's user data folder. It is not migrated (the results are not
+ * reusable there); the folder is removed once. Returns whether it existed.
+ */
+export const removeLegacyUserDataCache = async (userDataPath: string): Promise<boolean> => {
+  const legacy = nodePath.join(userDataPath, "workshop-optimizer");
+  try {
+    await fs.promises.access(legacy);
+  } catch {
+    return false;
+  }
+
+  await fs.promises.rm(legacy, { recursive: true, force: true });
+  return true;
+};
