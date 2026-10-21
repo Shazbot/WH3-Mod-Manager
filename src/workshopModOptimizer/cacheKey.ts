@@ -14,11 +14,15 @@ export interface OptimizerKeyBase {
   /** The optimizer option set and its profile id. */
   profile: string;
   options: Record<string, boolean>;
-  /** Whether whmm's compression also LZ4-compresses `.rigid_model_v2` (part of the final bytes). */
-  includeRigidModelV2: boolean;
   source: { name: string; size: number; mtimeMs: number };
-  /** sha256 of the host executable. */
-  hostHash: string;
+  /**
+   * The optimizer's OUTPUT version (`PackOptimizerVersions.OutputVersion`, from `WH3AssetHost --version`).
+   * It changes only when the output for the same inputs changes, so an app or host update that leaves the
+   * output alone keeps every cached result.
+   */
+  outputVersion: number;
+  /** Version of the host's probe/scan rules; only the exact-to-narrow alias depends on it. */
+  scanVersion: number;
   /** Digest of the installed game's packs. */
   gameIdentity: string;
   /** Digest of the DB table layouts the optimizer reads. */
@@ -43,9 +47,8 @@ const comparablePath = (path: string) => path.replace(/\//g, "\\").toLowerCase()
 const baseParts = (base: OptimizerKeyBase) => ({
   profile: base.profile,
   options: Object.fromEntries(Object.entries(base.options).sort(([first], [second]) => first.localeCompare(second))),
-  rigid: base.includeRigidModelV2,
   source: { name: base.source.name.toLowerCase(), size: base.source.size, mtimeMs: Math.round(base.source.mtimeMs) },
-  host: base.hostHash,
+  output: base.outputVersion,
   game: base.gameIdentity,
   schema: base.schemaDigest,
 });
@@ -55,6 +58,7 @@ export const buildExactKey = (base: OptimizerKeyBase, consumers: readonly KeyedC
   sha({
     kind: "exact",
     ...baseParts(base),
+    scan: base.scanVersion,
     consumers: consumers.map((consumer) => [
       comparablePath(consumer.path),
       consumer.size,

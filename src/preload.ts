@@ -217,8 +217,39 @@ const api = {
     success: boolean;
     size?: number;
     hasContents?: boolean;
+    /** The savings line of the latest launch that optimized mods. */
+    lastRun?: string;
     error?: string;
   }> => ipcRenderer.invoke("getWorkshopOptimizerCacheInfo"),
+  updateWorkshopOptimizerBackground: (
+    enabledMods: Pick<
+      Mod,
+      | "name"
+      | "path"
+      | "modDirectory"
+      | "isEnabled"
+      | "isInModding"
+      | "isInData"
+      | "loadOrder"
+      | "humanName"
+      | "sourceKind"
+      | "sourceId"
+    >[],
+    settings: { optimize: boolean; workshopModStagingMode: string },
+  ) => ipcRenderer.send("updateWorkshopOptimizerBackground", enabledMods, settings),
+  getWorkshopOptimizerBackgroundStatus: (): Promise<WorkshopOptimizerBackgroundStatus | undefined> =>
+    ipcRenderer.invoke("getWorkshopOptimizerBackgroundStatus"),
+  cancelWorkshopOptimizerBackground: () => ipcRenderer.send("cancelWorkshopOptimizerBackground"),
+  onWorkshopOptimizerBackgroundStatus: (
+    callback: (event: Electron.IpcRendererEvent, status: WorkshopOptimizerBackgroundStatus) => void,
+  ) => {
+    ipcRenderer.on("workshopOptimizerBackgroundStatus", callback);
+    return () => ipcRenderer.removeListener("workshopOptimizerBackgroundStatus", callback);
+  },
+  onWorkshopOptimizerLastRun: (callback: (event: Electron.IpcRendererEvent, text: string) => void) => {
+    ipcRenderer.on("workshopOptimizerLastRun", callback);
+    return () => ipcRenderer.removeListener("workshopOptimizerLastRun", callback);
+  },
   clearWorkshopOptimizerCache: (): Promise<{
     success: boolean;
     code?: "STAGING_ACTIVE" | "CLEAR_FAILED";

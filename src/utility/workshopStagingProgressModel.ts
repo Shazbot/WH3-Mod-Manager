@@ -8,7 +8,7 @@
  */
 
 export type StagingModKind =
-  /** The optimizer runs: optimize the pack, compress it, copy it. */
+  /** The optimizer runs: optimize the pack, then link or copy the result. */
   | "optimize"
   /** An optimized pack is restored from the cache: a copy. */
   | "restore"
@@ -21,12 +21,13 @@ export type StagingPhaseKey = "optimizing" | "compressing" | "copying";
 type Band = readonly [number, number];
 
 /**
- * Shares of one mod's time. Measured: the host takes about 80 % of an optimized mod (112 to 140 s of
- * 140 to 175 s), compressing the result most of the rest; a plain copy of a large pack is about
- * 15 % copy and 85 % compress.
+ * Shares of one mod's time. Measured: the host takes nearly all of an optimized mod (112 to 140 s), the
+ * hard link or copy of the result the rest; a plain copy of a large pack is about 15 % copy and 85 %
+ * compress.
  */
 const BANDS: Record<StagingModKind, Partial<Record<StagingPhaseKey, Band>>> = {
-  optimize: { optimizing: [0, 0.78], compressing: [0.78, 0.97], copying: [0.97, 1] },
+  // The host compresses its own output (rigid models included), so there is no compress step here.
+  optimize: { optimizing: [0, 0.97], copying: [0.97, 1] },
   restore: { copying: [0, 1] },
   "copy-compress": { copying: [0, 0.15], compressing: [0.15, 1] },
   copy: { copying: [0, 1] },
@@ -34,7 +35,7 @@ const BANDS: Record<StagingModKind, Partial<Record<StagingPhaseKey, Band>>> = {
 
 /** Estimated seconds per megabyte of the source pack, measured on a 824 MB mod. */
 const SECONDS_PER_MEGABYTE: Record<StagingModKind, number> = {
-  optimize: 0.2,
+  optimize: 0.17,
   restore: 0.005,
   "copy-compress": 0.07,
   copy: 0.01,

@@ -11,6 +11,7 @@ vi.mock("@mongodb-js/zstd", () => ({
 }));
 vi.mock("electron-is-dev", () => ({ default: false }));
 
+import { BackgroundOptimizer } from "../src/workshopModOptimizer/background";
 import { WorkshopOptimizerCache } from "../src/workshopModOptimizer/cache";
 import { runHost as realRunHost } from "../src/workshopModOptimizer/hostRunner";
 import { WorkshopModOptimizer } from "../src/workshopModOptimizer/optimizer";
@@ -19,7 +20,12 @@ import {
   hashFileSha256,
   packHasOptimizableVisuals,
 } from "../src/workshopModOptimizer/packInspection";
-import { stageWorkshopMods, WORKSHOP_MOD_STAGING_FOLDER } from "../src/utility/workshopModStaging";
+import {
+  cleanupWorkshopModStaging,
+  stageWorkshopMods,
+  WORKSHOP_MOD_STAGING_FOLDER,
+  WORKSHOP_OPTIMIZED_MODS_FOLDER,
+} from "../src/utility/workshopModStaging";
 import { lz4CompressFrame, lz4DecompressFrame } from "./helpers/lz4Frame";
 
 describe("test LZ4 frame helper", () => {
@@ -34,7 +40,8 @@ describe("test LZ4 frame helper", () => {
 /**
  * Opt in with `WHMM_OPTIMIZER_E2E=1`. Needs the game, the Workshop mods named below, the vanilla
  * pack index, and a built WH3AssetHost.exe; it runs the real host for minutes. Everything it writes
- * goes under WHMM_OPTIMIZER_E2E_DIR; the Workshop and game folders are only read.
+ * goes under WHMM_OPTIMIZER_E2E_DIR; the Workshop and game folders are only read. The cache is created
+ * where the app puts it: `whmm_optimized_mods`, a sibling of the staging folder `whmm_copied_mods`.
  */
 const enabled = process.env.WHMM_OPTIMIZER_E2E === "1";
 const workshop = process.env.WHMM_WORKSHOP_DIR ?? "K:\\SteamLibrary\\steamapps\\workshop\\content\\1142710";
@@ -47,16 +54,19 @@ const schemaPath = path.resolve(__dirname, "../schema/schema_wh3.json.zst");
 
 const sourcePack = path.join(workshop, "2927296206", "!ak_teb3.pack");
 const relevantConsumer = path.join(workshop, "3147025997", "Professional_Empire_state_troops_reskin.pack");
+// Another consumer the probe calls relevant (its DB tables name the mod's units).
+const secondRelevantConsumer = path.join(workshop, "3280233154", "gra_cecil_gastonne.pack");
 
 describe.skipIf(!enabled)("Workshop mod optimizer end to end", () => {
   it(
-    "optimizes, caches, restores, re-keys, cancels, skips and falls back",
+    "optimizes, links, restores, plans in the background, hands over at Play, cancels, skips and falls back",
     async () => {
       fs.rmSync(outputRoot, { recursive: true, force: true });
       fs.mkdirSync(outputRoot, { recursive: true });
-      const cache = new WorkshopOptimizerCache({ root: path.join(outputRoot, "cache") });
       const gameFolder = path.join(outputRoot, "game");
       fs.mkdirSync(gameFolder, { recursive: true });
+      const cache = new WorkshopOptimizerCache({ root: path.join(gameFolder, WORKSHOP_OPTIMIZED_MODS_FOLDER) });
+      const stagingFolder = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER);
 
       // An extra enabled mod the probe should call irrelevant: any Workshop pack that is not a visual mod.
       const extraCandidates = fs
@@ -76,7 +86,6 @@ describe.skipIf(!enabled)("Workshop mod optimizer end to end", () => {
         .readdirSync(dataFolder)
         .filter((f) => f.endsWith(".pack"))
         .map((f) => path.join(dataFolder, f));
-      const hostHash = await hashFileSha256(hostPath);
       const counters = { probes: 0, optimizations: 0 };
       let failNextOptimization = false;
       const countingRunHost: typeof realRunHost = async (options) => {
@@ -95,21 +104,24 @@ describe.skipIf(!enabled)("Workshop mod optimizer end to end", () => {
         return realRunHost(options);
       };
 
-      const makeOptimizer = (loadOrder: string[]) =>
+      const makeOptimizer = (
+        loadOrder: string[],
+        options: Partial<ConstructorParameters<typeof WorkshopModOptimizer>[0]> = {},
+      ) =>
         new WorkshopModOptimizer({
           cache,
           hostExecutablePath: hostPath,
-          hostHash: async () => hostHash,
           vanillaFileIndexPath: vanillaIndex,
           ensureVanillaIndex: async () => undefined,
           gameDataFolder: dataFolder,
           dbSchemaPath: schemaPath,
           gameIdentity: () => computeGameIdentity(vanillaPacks),
           schemaDigest: () => hashFileSha256(schemaPath),
-          includeRigidModelV2: true,
+          compressRigidModels: true,
           loadOrder: loadOrder.map((p) => ({ name: path.basename(p), path: p })),
           hasVisualAssets: packHasOptimizableVisuals,
           runHost: countingRunHost,
+          ...options,
         });
 
       const codecs = {
@@ -118,16 +130,17 @@ describe.skipIf(!enabled)("Workshop mod optimizer end to end", () => {
         zstdCompress: async (data: Buffer) => zlib.zstdCompressSync(data),
         zstdDecompress: async (data: Buffer) => zlib.zstdDecompressSync(data),
       };
-      const staged = path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER, path.basename(sourcePack));
+      const staged = path.join(stagingFolder, path.basename(sourcePack));
       const timings: Record<string, number> = {};
       const stage = async (
         label: string,
         loadOrder: string[],
-        extra: Partial<Parameters<typeof stageWorkshopMods>[0]> = {},
+        extraOptions: Partial<Parameters<typeof stageWorkshopMods>[0]> = {},
+        optimizerOptions: Partial<ConstructorParameters<typeof WorkshopModOptimizer>[0]> = {},
       ) => {
         const started = Date.now();
         const mods = loadOrder.map((p) => ({ name: path.basename(p), path: p, isEnabled: true }));
-        const stages: string[] = [];
+        const optimizer = makeOptimizer(loadOrder, optimizerOptions);
         const result = await stageWorkshopMods({
           gameFolder,
           mode: "copy",
@@ -135,94 +148,207 @@ describe.skipIf(!enabled)("Workshop mod optimizer end to end", () => {
           compressMods: true,
           includeRigidModelV2: true,
           compressionCodecs: codecs,
-          optimizer: makeOptimizer(loadOrder),
+          optimizer,
           optimizerProfile: "wh3-visual-v1",
           getFreeBytes: async () => 1e12,
-          onProgress: (progress) => {
-            if (!stages.includes(progress.phase)) stages.push(progress.phase);
-          },
-          ...extra,
+          ...extraOptions,
         });
         timings[label] = (Date.now() - started) / 1000;
-        console.log(
-          `[e2e] ${label}: ${timings[label]}s phases=${stages.join(",")} optimizer=${JSON.stringify(result.optimizerResults)}`,
-        );
-        return result;
+        console.log(`[e2e] ${label}: ${timings[label]}s optimizer=${JSON.stringify(result.optimizerResults)}`);
+        return { result, optimizer };
       };
       const sha = async () => hashFileSha256(staged);
       const sourceStat = fs.statSync(sourcePack);
+      const entry = () => {
+        const names = fs.readdirSync(cache.entriesDirectory).filter((name) => name.endsWith(".pack"));
+        return names.map((name) => path.join(cache.entriesDirectory, name));
+      };
 
-      // 1. Cold: optimizes.
+      // 1. Cold: optimizes, links into the staging folder, and the cache is a sibling of it.
       const first = await stage("run1-optimize", [sourcePack]);
-      expect(first.optimizerResults).toEqual([expect.objectContaining({ status: "optimized" })]);
+      expect(first.result.optimizerResults).toEqual([
+        expect.objectContaining({ status: "optimized", placement: "hard link" }),
+      ]);
       expect(counters.optimizations).toBe(1);
+      expect(path.dirname(cache.root)).toBe(path.dirname(stagingFolder));
+      expect(cache.root.startsWith(stagingFolder + path.sep)).toBe(false);
       const optimizedHash = await sha();
       expect(fs.statSync(staged).size).toBeLessThan(sourceStat.size);
+      const [entryPath] = entry();
+      const entryStat = fs.statSync(entryPath);
+      expect(fs.statSync(staged).ino).toBe(entryStat.ino);
+      expect(first.result.optimizerResults[0].summary?.outputBytes).toBe(entryStat.size);
 
-      // 2. Staging folder removed, same input: restored from the cache, no host process.
-      fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+      // 2. The cleanup after game exit removes the staging folder and leaves the cache alone.
+      await cleanupWorkshopModStaging(gameFolder);
+      expect(fs.existsSync(stagingFolder)).toBe(false);
+      expect(fs.existsSync(entryPath)).toBe(true);
+      expect(hashFileSha256Sync(entryPath)).toBe(optimizedHash);
+      expect(fs.statSync(entryPath).ino).toBe(entryStat.ino);
+
+      // 3. Restore: a hard link to the same file, no host process.
       const hostRuns = counters.optimizations + counters.probes;
       const second = await stage("run2-restore", [sourcePack]);
-      expect(second.optimizerResults).toEqual([expect.objectContaining({ status: "restored" })]);
+      expect(second.result.optimizerResults).toEqual([
+        expect.objectContaining({ status: "restored", placement: "hard link" }),
+      ]);
       expect(counters.optimizations + counters.probes).toBe(hostRuns);
+      expect(fs.statSync(staged).ino).toBe(entryStat.ino);
       expect(await sha()).toBe(optimizedHash);
 
-      // 3. An unrelated extra mod: one probe, no optimization, same bytes.
-      fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+      // 4. A mod-list change by an unrelated mod: one batch probe, restored, no optimization.
+      await cleanupWorkshopModStaging(gameFolder);
       const optimizationsBefore = counters.optimizations;
+      const probesBefore = counters.probes;
       const third = await stage("run3-irrelevant-extra", [extra, sourcePack]);
-      expect(third.optimizerResults).toEqual([expect.objectContaining({ status: "restored" })]);
+      expect(third.result.optimizerResults).toEqual([expect.objectContaining({ status: "restored" })]);
       expect(counters.optimizations).toBe(optimizationsBefore);
-      expect(await sha()).toBe(optimizedHash);
+      expect(counters.probes).toBe(probesBefore + 1);
+      expect(fs.statSync(staged).ino).toBe(entryStat.ino);
 
-      // 4. A consumer that reskins the mod's assets: re-optimized.
-      fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
-      const fourth = await stage("run4-relevant-consumer", [sourcePack, relevantConsumer]);
-      expect(fourth.optimizerResults).toEqual([expect.objectContaining({ status: "optimized" })]);
+      // 5. A mod-list change that matters, made in the background before "Play".
+      await cleanupWorkshopModStaging(gameFolder);
+      const changedList = [sourcePack, relevantConsumer];
+      const background = new BackgroundOptimizer<string[]>({
+        debounceMs: 500,
+        plan: async (list, signal) => {
+          const optimizer = makeOptimizer(list, { lowPriority: true });
+          const mod = {
+            name: path.basename(sourcePack),
+            path: sourcePack,
+            sourceFingerprint: { size: sourceStat.size, mtimeMs: sourceStat.mtimeMs },
+          };
+          await optimizer.prepare([mod], signal);
+          const plan = await optimizer.plan(mod, signal);
+          return {
+            considered: plan ? 1 : 0,
+            jobs: plan && !plan.cached ? [{ mod, plan }] : [],
+            produce: (target, jobPlan, context) => optimizer.produce(target, jobPlan, context),
+            describe: (job, result) => `[background] ${job.mod.name}: ${result.status}`,
+          };
+        },
+        isGameRunning: () => false,
+        log: (message) => console.log(`[e2e] ${message}`),
+        onStatus: () => undefined,
+      });
+      const backgroundStarted = Date.now();
+      background.notifyChange(changedList);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await background.idle();
+      timings["run4-background"] = (Date.now() - backgroundStarted) / 1000;
+      console.log(`[e2e] run4-background: ${timings["run4-background"]}s`);
       expect(counters.optimizations).toBe(optimizationsBefore + 1);
+
+      // "Play": the background result restores instantly (a hard link), nothing new is optimized.
+      const fourth = await stage("run4-play", changedList, {}, { background });
+      expect(fourth.result.optimizerResults).toEqual([
+        expect.objectContaining({ status: "restored", placement: "hard link" }),
+      ]);
+      expect(counters.optimizations).toBe(optimizationsBefore + 1);
+      expect(timings["run4-play"]).toBeLessThan(20);
       expect(await sha()).not.toBe(optimizedHash);
 
-      // 5. Cancel mid-optimization (new key: consumer loads before the mod): nothing partial is left.
-      fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
-      const entriesBefore = (await cache.listEntries()).length;
+      // 6. Play while the background is still working on the mod: the launch waits for that job.
+      await cleanupWorkshopModStaging(gameFolder);
+      const handoverList = [relevantConsumer, sourcePack];
+      const optimizationsBeforeHandover = counters.optimizations;
+      const handoverBackground = new BackgroundOptimizer<string[]>({
+        debounceMs: 100,
+        plan: async (list, signal) => {
+          const optimizer = makeOptimizer(list, { lowPriority: true });
+          const mod = {
+            name: path.basename(sourcePack),
+            path: sourcePack,
+            sourceFingerprint: { size: sourceStat.size, mtimeMs: sourceStat.mtimeMs },
+          };
+          await optimizer.prepare([mod], signal);
+          const plan = await optimizer.plan(mod, signal);
+          return {
+            considered: 1,
+            jobs: plan && !plan.cached ? [{ mod, plan }] : [],
+            produce: (target, jobPlan, context) => optimizer.produce(target, jobPlan, context),
+            describe: (job, result) => `[background] ${job.mod.name}: ${result.status}`,
+          };
+        },
+        isGameRunning: () => false,
+        log: (message) => console.log(`[e2e] ${message}`),
+        onStatus: () => undefined,
+      });
+      handoverBackground.notifyChange(handoverList);
+      for (let waited = 0; handoverBackground.getStatus().state !== "running" && waited < 120_000; waited += 250) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(handoverBackground.getStatus().state).toBe("running");
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      handoverBackground.setLaunchActive(true);
+      const progressSeen: number[] = [];
+      const handover = await stage(
+        "run5-handover",
+        handoverList,
+        { onProgress: (progress) => {
+            if (progress.fraction !== undefined) progressSeen.push(progress.fraction);
+          } },
+        { background: handoverBackground },
+      );
+      handoverBackground.setLaunchActive(false);
+      expect(handover.result.optimizerResults).toEqual([
+        expect.objectContaining({ status: "restored", placement: "hard link" }),
+      ]);
+      expect(handover.optimizer.getRecord(sourcePack)?.joinedBackground).toBe(true);
+      expect(counters.optimizations).toBe(optimizationsBeforeHandover + 1);
+      expect(Math.max(...progressSeen)).toBeGreaterThan(0.5);
+      for (let index = 1; index < progressSeen.length; index++) {
+        expect(progressSeen[index]).toBeGreaterThanOrEqual(progressSeen[index - 1]);
+      }
+
+      // 7. Cancel mid-optimization at launch: nothing partial is left (new key: order swapped again).
+      await cleanupWorkshopModStaging(gameFolder);
+      const entriesBefore = entry().length;
       const controller = new AbortController();
-      const cancelRun = stage("run5-cancel", [relevantConsumer, sourcePack], { signal: controller.signal });
+      const cancelList = [secondRelevantConsumer, sourcePack];
+      const cancelRun = stage("run6-cancel", cancelList, { signal: controller.signal });
       const cancelWatch = setInterval(() => {
-        if (counters.optimizations === optimizationsBefore + 2)
-          (setTimeout(() => controller.abort(), 15000), clearInterval(cancelWatch));
+        if (counters.optimizations === optimizationsBeforeHandover + 2) {
+          clearInterval(cancelWatch);
+          setTimeout(() => controller.abort(), 15000);
+        }
       }, 200);
       await expect(cancelRun).rejects.toMatchObject({ code: "CANCELED" });
       clearInterval(cancelWatch);
       expect(fs.existsSync(staged)).toBe(false);
-      expect((await cache.listEntries()).length).toBe(entriesBefore);
+      expect(entry().length).toBe(entriesBefore);
       expect(fs.readdirSync(cache.tempDirectory)).toEqual([]);
 
-      // 6. Launch without optimizing: plain copy + compress.
+      // 8. Launch without optimizing: plain copy + compress.
       const skip = new AbortController();
       const skipWatch = setInterval(() => {
-        if (counters.optimizations === optimizationsBefore + 3)
-          (setTimeout(() => skip.abort(), 10000), clearInterval(skipWatch));
+        if (counters.optimizations === optimizationsBeforeHandover + 3) {
+          clearInterval(skipWatch);
+          setTimeout(() => skip.abort(), 10000);
+        }
       }, 200);
-      const sixth = await stage("run6-skip", [relevantConsumer, sourcePack], { skipOptimizationSignal: skip.signal });
+      const sixth = await stage("run7-skip", cancelList, { skipOptimizationSignal: skip.signal });
       clearInterval(skipWatch);
-      expect(sixth.optimizerResults.map((r) => r.status)).toEqual(["skipped"]);
-      expect(fs.existsSync(staged)).toBe(true);
+      expect(sixth.result.optimizerResults.map((r) => r.status)).toEqual(["skipped"]);
       expect(Math.abs(fs.statSync(staged).size - sourceStat.size)).toBeLessThan(sourceStat.size * 0.5);
-      expect(await sha()).not.toBe(optimizedHash);
       expect(fs.readdirSync(cache.tempDirectory)).toEqual([]);
 
-      // 7. Host failure: fall back to the plain copy, remember the failure.
-      fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+      // 9. Host failure: fall back to the plain copy, remember the failure.
+      await cleanupWorkshopModStaging(gameFolder);
       failNextOptimization = true;
-      const seventh = await stage("run7-failure", [relevantConsumer, sourcePack]);
-      expect(seventh.optimizerResults).toEqual([expect.objectContaining({ status: "failed" })]);
-      expect(await sha()).not.toBe(optimizedHash);
+      const seventh = await stage("run8-failure", cancelList);
+      expect(seventh.result.optimizerResults).toEqual([expect.objectContaining({ status: "failed" })]);
       const afterFailure = counters.optimizations;
-      fs.rmSync(path.join(gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
-      await stage("run8-after-failure", [relevantConsumer, sourcePack]);
+      await cleanupWorkshopModStaging(gameFolder);
+      await stage("run9-after-failure", cancelList);
       expect(counters.optimizations).toBe(afterFailure);
+
+      // The cache survived all the cleanups.
+      expect(entry().length).toBeGreaterThanOrEqual(3);
       console.log("[e2e] timings", JSON.stringify(timings));
     },
-    40 * 60 * 1000,
+    60 * 60 * 1000,
   );
 });
+
+const hashFileSha256Sync = (file: string) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");

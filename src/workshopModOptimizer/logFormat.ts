@@ -11,6 +11,10 @@ export type OptimizerSkipReason =
 export interface OptimizerModRecord {
   keyKind?: "narrow (alias hit)" | "narrow (probed)" | "narrow (no other mods)" | "exact (probe unavailable)";
   probeSeconds?: number;
+  /** How many mods the probe answered at once. */
+  probeBatchSize?: number;
+  /** The result was made by a background job that the launch waited for. */
+  joinedBackground?: boolean;
   /** File names of the consumers the probe called relevant. */
   relevantConsumers?: string[];
   probeError?: string;
@@ -30,6 +34,9 @@ export interface OptimizerLogInput {
   status?: "optimized" | "restored" | "skipped" | "failed";
   failureMessage?: string;
   record?: OptimizerModRecord;
+  /** How the result got into the staging folder. */
+  placement?: "hard link" | "copy";
+  placementReason?: string;
 }
 
 const formatDate = (milliseconds: number) => new Date(milliseconds).toISOString().slice(0, 10);
@@ -60,10 +67,13 @@ const skipText = (input: OptimizerLogInput): string => {
 export const formatOptimizerLogLine = (input: OptimizerLogInput): string => {
   const record = input.record;
   let outcome: string;
+  const placed = input.placement
+    ? ` (${input.placement === "copy" ? `copied${input.placementReason ? `, linking failed: ${input.placementReason}` : ""}` : "hard link"})`
+    : "";
   if (input.status === "optimized") {
-    outcome = `optimized in ${Math.round(record?.seconds ?? 0)} s`;
+    outcome = `optimized in ${Math.round(record?.seconds ?? 0)} s${placed}`;
   } else if (input.status === "restored") {
-    outcome = "restored from cache";
+    outcome = `restored from cache${record?.joinedBackground ? " (made by the background job)" : ""}${placed}`;
   } else if (input.status === "failed") {
     outcome =
       `failed: ${input.failureMessage ?? "unknown error"}` +
@@ -80,7 +90,9 @@ export const formatOptimizerLogLine = (input: OptimizerLogInput): string => {
   if (record?.keyKind) details.push(`key: ${record.keyKind}`);
   if (record?.probeSeconds !== undefined) {
     details.push(
-      `probe ${record.probeSeconds.toFixed(1)} s, relevant consumers: ` +
+      `probe ${record.probeSeconds.toFixed(1)} s${
+        record.probeBatchSize && record.probeBatchSize > 1 ? ` (batch of ${record.probeBatchSize})` : ""
+      }, relevant consumers: ` +
         (record.relevantConsumers && record.relevantConsumers.length > 0
           ? record.relevantConsumers.join(", ")
           : "none"),
@@ -112,7 +124,13 @@ export interface BuildOptimizerLaunchLogOptions {
   comparableDirectory: (directory: string) => string;
   /** The optimizer's per-mod facts, by comparable source path. */
   recordFor: (path: string) => OptimizerModRecord | undefined;
-  outcomes: ReadonlyArray<{ name: string; status: "optimized" | "restored" | "skipped" | "failed"; message?: string }>;
+  outcomes: ReadonlyArray<{
+    name: string;
+    status: "optimized" | "restored" | "skipped" | "failed";
+    message?: string;
+    placement?: "hard link" | "copy";
+    placementReason?: string;
+  }>;
   userSkipped: boolean;
 }
 
@@ -149,6 +167,8 @@ export const buildOptimizerLaunchLog = ({
       record,
       status: outcome?.status,
       failureMessage: outcome?.message,
+      placement: outcome?.placement,
+      placementReason: outcome?.placementReason,
       stagedWithFolder: mod.sourceKind === "custom",
     });
   });

@@ -11,6 +11,7 @@ import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
 import UsedModsLoadOrderModal from "./components/UsedModsLoadOrderModal";
 import WorkshopGameStartProgressCard from "./components/WorkshopGameStartProgress";
+import WorkshopOptimizerBackground from "./components/WorkshopOptimizerBackground";
 import Wh3AssetHostDecisionModal from "./components/Wh3AssetHostDecisionModal";
 
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
@@ -59,6 +60,7 @@ const AppMain = React.memo(() => {
         </div>
         <UsedModsLoadOrderModal />
         <WorkshopGameStartProgressCard />
+        <WorkshopOptimizerBackground />
         <Wh3AssetHostDecisionModal />
         <Toasts />
       </ErrorBoundary>

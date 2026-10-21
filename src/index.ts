@@ -15,6 +15,7 @@ import electronLog from "electron-log/main";
 import i18n, { getLocaleDirectory } from "./configs/i18next.config";
 import { globSync } from "glob";
 import { cleanupWorkshopStagingAfterGameExit, windows, registerIpcMainListeners } from "./ipcMainListeners";
+import { optimizerGameRunningChanged } from "./workshopModOptimizer/backgroundRuntime";
 import * as https from "https";
 import { Extract } from "unzipper";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
@@ -698,6 +699,7 @@ exec ${quoteForShell(process.execPath)}
                 }
               }
               appData.isWH3Running = isGameRunning;
+              optimizerGameRunningChanged(isGameRunning);
               windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
               if (didGameStop) void cleanupWorkshopStagingAfterGameExit();
             }

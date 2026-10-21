@@ -18,6 +18,8 @@ import {
 } from "./workshopStagingProgressModel";
 
 export const WORKSHOP_MOD_STAGING_FOLDER = "whmm_copied_mods";
+/** The optimizer's cache: a sibling of the staging folder, never inside it. */
+export const WORKSHOP_OPTIMIZED_MODS_FOLDER = "whmm_optimized_mods";
 export const WORKSHOP_MOD_STAGING_MANIFEST_FILENAME = ".whmm-staging-manifest.json";
 export const WORKSHOP_MOD_STAGING_MANIFEST_VERSION = 1;
 export const WORKSHOP_MOD_STAGING_POLICY_ID = "workshop-mod-staging-v2";
@@ -119,12 +121,34 @@ export interface WorkshopStagingOptimizerContext {
   onProgress(progress: WorkshopStagingOptimizerProgress): void;
 }
 
+/** What an optimization saved (bytes); the host reports it and the cache entry keeps it. */
+export interface WorkshopStagingOptimizerSummary {
+  sourceBytes: number;
+  outputBytes: number;
+  textureBytesSaved: number;
+  drawCallsEliminated: number;
+  mergedModelsGenerated: number;
+}
+
 export type WorkshopStagingOptimizerResult =
-  | { status: "ready"; packPath: string; fromCache: boolean; reportPath?: string; warnings: string[] }
+  | {
+      status: "ready";
+      /** The cache entry. The caller hard-links it into the staging folder (copies it when linking fails); it never writes it. */
+      packPath: string;
+      fromCache: boolean;
+      reportPath?: string;
+      warnings: string[];
+      summary?: WorkshopStagingOptimizerSummary;
+    }
   | { status: "skipped" }
   | { status: "failed"; message: string; warnings: string[] };
 
 export interface WorkshopStagingOptimizer {
+  /**
+   * Called once with every candidate mod before the first `plan`, so work shared by all of them (the
+   * host's probe of the load order) is done in one go.
+   */
+  prepare?(mods: WorkshopStagingOptimizerMod[], signal?: AbortSignal): Promise<void>;
   /** Resolves whether and how a mod is optimized; undefined means a plain copy. */
   plan(mod: WorkshopStagingOptimizerMod, signal?: AbortSignal): Promise<WorkshopStagingOptimizerPlan | undefined>;
   /** Produces the final (optimized and compressed) pack; the caller copies it to the destination. */
@@ -140,6 +164,10 @@ export interface WorkshopStagingOptimizerOutcome {
   status: "optimized" | "restored" | "skipped" | "failed";
   message?: string;
   reportPath?: string;
+  /** How the result got into the staging folder: a hard link into the cache, or a copy (and why). */
+  placement?: "hard link" | "copy";
+  placementReason?: string;
+  summary?: WorkshopStagingOptimizerSummary;
 }
 
 export interface WorkshopStagingManifestPolicy {
@@ -525,7 +553,9 @@ const getFolderFileSize = async (folderPath: string): Promise<number> => {
     const stats = await fs.promises.lstat(entryPath);
     if (stats.isSymbolicLink()) continue;
     if (stats.isDirectory()) size += await getFolderFileSize(entryPath);
-    else if (stats.isFile()) size += stats.size;
+    // A pack hard-linked from the optimizer's cache is counted there, once: this folder holds no
+    // data of its own for it, and clearing the folder frees none.
+    else if (stats.isFile() && stats.nlink <= 1) size += stats.size;
   }
 
   return size;
@@ -708,6 +738,29 @@ export const buildWorkshopStagingPlan = async ({
   const manifestRead: WorkshopStagingManifestRead =
     mode === "copy" ? await readWorkshopStagingManifest(manifestPath) : { present: false };
   if (manifestRead.warning) compressionWarnings.push(manifestRead.warning);
+
+  if (policy.optimizerProfile && optimizer?.prepare && mode === "copy" && !skipOptimizationSignal?.aborted) {
+    const candidates: WorkshopStagingOptimizerMod[] = [];
+    for (const mod of selectedMods) {
+      try {
+        const stats = await fs.promises.stat(mod.path);
+        if (stats.isFile()) {
+          candidates.push({ name: mod.name, path: mod.path, sourceFingerprint: fingerprintForStats(stats) });
+        }
+      } catch {
+        // The loop below reports an unreadable mod.
+      }
+    }
+
+    reportWorkshopProgress(onProgress, {
+      phase: "planning",
+      current: 0,
+      total: selectedMods.length,
+      message: "Checking the mods for optimization",
+    });
+    await optimizer.prepare(candidates, signal);
+    throwIfStagingAborted(signal, destinationPath);
+  }
 
   const entries: WorkshopStagingPlanEntry[] = [];
   for (const mod of selectedMods) {
@@ -910,6 +963,54 @@ const copyFileAtomically = async (
     await source?.close().catch(() => undefined);
     await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
   }
+};
+
+export interface CachedPackPlacement {
+  method: "hard link" | "copy";
+  /** Why a copy was made instead of a link (the error code), when it was. */
+  reason?: string;
+}
+
+/**
+ * Puts a pack of the optimizer's cache into the staging folder. A hard link costs no time or space and
+ * the staged file is the cache entry itself, so nothing may write it in place (the entry is read-only).
+ * When linking fails (another volume, a file system without hard links, a permission), the pack is
+ * copied atomically instead, and the reason is returned for the log.
+ */
+export const placeCachedPack = async (
+  entry: WorkshopStagingPlanEntry,
+  signal?: AbortSignal,
+  onBytesCopied?: (bytesCopied: number) => void,
+): Promise<CachedPackPlacement> => {
+  const temporaryPath = nodePath.join(
+    nodePath.dirname(entry.destinationPath),
+    `.${nodePath.basename(entry.destinationPath)}.${randomUUID()}.tmp`,
+  );
+  try {
+    await fs.promises.link(entry.sourcePath, temporaryPath);
+  } catch (error) {
+    const reason = (error as NodeJS.ErrnoException).code ?? (error instanceof Error ? error.message : String(error));
+    await copyFileAtomically(entry, signal, onBytesCopied);
+    return { method: "copy", reason };
+  }
+
+  try {
+    throwIfStagingAborted(signal, nodePath.dirname(entry.destinationPath));
+    try {
+      await fs.promises.rename(temporaryPath, entry.destinationPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST" && code !== "EPERM" && code !== "ENOTEMPTY" && code !== "EISDIR" && code !== "ENOTDIR") {
+        throw error;
+      }
+      await removeDestination(entry.destinationPath);
+      await fs.promises.rename(temporaryPath, entry.destinationPath);
+    }
+  } finally {
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+
+  return { method: "hard link" };
 };
 
 const createSymlinkAtomically = async (entry: WorkshopStagingPlanEntry, signal?: AbortSignal) => {
@@ -1231,6 +1332,7 @@ const executeWorkshopStagingPlan = async (
       };
 
       let optimizedPackPath: string | undefined;
+      let readyOutcome: WorkshopStagingOptimizerOutcome | undefined;
       if (entry.optimizerPlan && options.optimizer && !options.skipOptimizationSignal?.aborted) {
         const outcome = await options.optimizer.produce(
           { name: entry.name, path: entry.sourcePath, sourceFingerprint: entry.sourceFingerprint },
@@ -1257,11 +1359,13 @@ const executeWorkshopStagingPlan = async (
         throwIfStagingAborted(options.signal, plan.destinationPath);
         if (outcome.status === "ready") {
           optimizedPackPath = outcome.packPath;
-          optimizerResults.push({
+          readyOutcome = {
             name: entry.name,
             status: outcome.fromCache ? "restored" : "optimized",
             reportPath: outcome.reportPath,
-          });
+            ...(outcome.summary ? { summary: outcome.summary } : {}),
+          };
+          optimizerResults.push(readyOutcome);
           compressionWarnings.push(...outcome.warnings.map((warning) => `${entry.name}: ${warning}`));
         } else if (outcome.status === "failed") {
           optimizerResults.push({ name: entry.name, status: "failed", message: outcome.message });
@@ -1282,12 +1386,12 @@ const executeWorkshopStagingPlan = async (
             current: completedEntries.size,
             total: plan.entries.length,
             modName: entry.name,
-            message: `Copying optimized ${entry.name}`,
+            message: `Linking optimized ${entry.name}`,
           },
           "copying",
           0,
         );
-        await copyFileAtomically(
+        const placement = await placeCachedPack(
           { ...entry, sourcePath: optimizedPackPath, sourceSize: optimizedStats.size },
           options.signal,
           (bytesCopied) =>
@@ -1304,6 +1408,10 @@ const executeWorkshopStagingPlan = async (
               optimizedStats.size > 0 ? bytesCopied / optimizedStats.size : 1,
             ),
         );
+        if (readyOutcome) {
+          readyOutcome.placement = placement.method;
+          if (placement.reason) readyOutcome.placementReason = placement.reason;
+        }
         const optimizedResult: WorkshopStagingCompressionResult = {
           name: entry.name,
           status: "compressed",

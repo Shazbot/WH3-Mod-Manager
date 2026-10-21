@@ -31,7 +31,10 @@ describe("optimizer localization keys", () => {
     }
     keys.add("showOptimizerReport");
 
-    const missing = [...keys].filter((key) => !(key in enTranslation));
+    // Plural keys exist as key_one / key_other.
+    const missing = [...keys].filter(
+      (key) => !(key in enTranslation) && !(`${key}_one` in enTranslation && `${key}_other` in enTranslation),
+    );
     expect(missing).toEqual([]);
     expect(keys.size).toBeGreaterThan(15);
   });
