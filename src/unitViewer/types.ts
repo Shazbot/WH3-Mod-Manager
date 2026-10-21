@@ -46,8 +46,8 @@ export interface UnitViewerVisualPart {
   draughtAttachmentPoint?: string;
   /** Engine only: crew models per attachment point (from battle personalities). */
   engineRiders?: UnitViewerEngineRider[];
-  /** Engine only: pack path of the "tech" animation holding the model's `ap_*` attachment bones. */
-  techAnimPath?: string;
+  /** Engine only: candidate pack paths of the "tech" animation holding the `ap_*` attachment bones, tried in order. */
+  techAnimPaths?: string[];
   /** Animation bin table (land man_animation, mount animation, or seat crew table). */
   animationTable?: string;
 }

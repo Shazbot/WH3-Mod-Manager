@@ -188,9 +188,22 @@ const readUnitVariantColour = (row: Record<string, string>, prefix: "primary" | 
   normalizeHexColour(row[`${prefix}_colour_hex`]) ??
   normalizeRgbComponents(row[`${prefix}_colour_r`], row[`${prefix}_colour_g`], row[`${prefix}_colour_b`]);
 /** `dir\\model.wsmodel` -> `dir\\tech\\model.anim`, where models keep their attachment-point skeleton. */
-const getTechAnimPath = (modelPath: string) => {
+/**
+ * Candidate "tech" anims holding an engine's `ap_*` bones: the engine row's tech_folder (which can point at
+ * another engine's folder, e.g. magma cannon → chd_deathshrieker/tech/) first, then `<model dir>\\tech\\`.
+ */
+const getTechAnimPaths = (modelPath: string, techFolder: string) => {
   const match = /^(.*)\\([^\\]+)\.(?:wsmodel|rigid_model_v2)$/i.exec(modelPath);
-  return match ? `${match[1]}\\tech\\${match[2]}.anim`.toLowerCase() : undefined;
+  if (!match) return undefined;
+  const candidates: string[] = [];
+  const folder = normalizePackFilePath(techFolder).replace(/\\+$/, "");
+  if (folder) {
+    const folderOwner = /([^\\]+)\\tech$/i.exec(folder)?.[1];
+    candidates.push(`${folder}\\${match[2]}.anim`);
+    if (folderOwner) candidates.push(`${folder}\\${folderOwner}_01.anim`, `${folder}\\${folderOwner}.anim`);
+  }
+  candidates.push(`${match[1]}\\tech\\${match[2]}.anim`);
+  return Array.from(new Set(candidates.map((candidate) => candidate.toLowerCase())));
 };
 
 const asNumber = (value: unknown) => {
@@ -888,7 +901,9 @@ export const buildUnitViewerData = (
           const riderPath = resolvePartPath(asString(variants.get(asString(personality?.variant))?.variant_filename));
           const attachmentPoint = asString(row.riders_attachment_point).trim();
           const animationTable = asString(personality?.man_animations_table).trim() || undefined;
-          return riderPath && attachmentPoint ? [{ attachmentPoint, variantMeshPath: riderPath, animationTable }] : [];
+          // Prop "riders" such as the magma cannon smokestack use an empty placeholder VMD; skip them.
+          if (!riderPath || /\\dummy[^\\]*\.variantmeshdefinition$/i.test(riderPath)) return [];
+          return attachmentPoint ? [{ attachmentPoint, variantMeshPath: riderPath, animationTable }] : [];
         })
       : [];
     // Seat crew replaces the land unit's man model; the mount is then a draught animal, not ridden.
@@ -925,7 +940,7 @@ export const buildUnitViewerData = (
         riderAttachmentPoint: asString(engine?.rider_attachment_point).trim() || undefined,
         draughtAttachmentPoint: asString(engine?.draught_attachment_point).trim() || undefined,
         engineRiders: engineRiders.length ? engineRiders : undefined,
-        techAnimPath: getTechAnimPath(enginePath),
+        techAnimPaths: getTechAnimPaths(enginePath, asString(engine?.tech_folder)),
         animationTable: asString(engine?.gun_animation_table).trim() || undefined,
       });
     }

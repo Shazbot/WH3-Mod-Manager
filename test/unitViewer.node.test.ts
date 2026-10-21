@@ -685,12 +685,58 @@ describe("Unit Viewer catalog", () => {
     expect(wagonParts?.find((part) => part.role === "engine")).toMatchObject({
       variantMeshPath: "warmachines\\chariot\\emp_war_wagon\\emp_war_wagon_01.wsmodel",
       draughtAttachmentPoint: "ap_draughtposition",
-      techAnimPath: "warmachines\\chariot\\emp_war_wagon\\tech\\emp_war_wagon_01.anim",
+      techAnimPaths: ["warmachines\\chariot\\emp_war_wagon\\tech\\emp_war_wagon_01.anim"],
       engineRiders: [
         { attachmentPoint: "ap_crewposition_1", variantMeshPath: vmd("gunner"), animationTable: "crew_tbl" },
         { attachmentPoint: "ap_crewposition_2", variantMeshPath: vmd("gunner") },
       ],
     });
+  });
+
+  it("skips placeholder seat props and prefers the engine's tech folder", () => {
+    const vmd = (name: string) => `variantmeshes\\variantmeshdefinitions\\${name}.variantmeshdefinition`;
+    const parts = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "cannon", land_unit: "cannon", num_men: "3" }],
+        land_units_tables: [{ key: "cannon", man_entity: "entity", primary_melee_weapon: "weapon", engine: "e" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "cannon", variant: "v_crew" }],
+        land_units_to_battle_personalities_junctions_tables: [
+          { battle_personality: "smokestack", land_unit: "cannon", riders_attachment_point: "ap_funnel" },
+        ],
+        battle_personalities_tables: [{ key: "smokestack", variant: "dummy_variant" }],
+        variants_tables: [
+          { variant_name: "v_crew", variant_filename: "crew" },
+          { variant_name: "dummy_variant", variant_filename: "dummy_variant" },
+        ],
+        battlefield_engines_tables: [
+          {
+            key: "e",
+            model: "magma",
+            rider_attachment_point: "ap_crewposition",
+            tech_folder: "warmachines/engines/chd_deathshrieker/tech/",
+          },
+        ],
+        warscape_animated_lod_tables: [
+          {
+            filename: "warmachines/engines/chd_magma_cannon/chd_magma_cannon_01.wsmodel",
+            range: "0",
+            animated: "magma",
+          },
+        ],
+      },
+      () => undefined,
+    ).units.get("cannon")?.visualParts;
+    expect(parts?.find((part) => part.role === "crew")).toMatchObject({ variantMeshPath: vmd("crew"), count: 3 });
+    const engine = parts?.find((part) => part.role === "engine");
+    expect(engine?.engineRiders).toBeUndefined();
+    expect(engine?.techAnimPaths).toEqual([
+      "warmachines\\engines\\chd_deathshrieker\\tech\\chd_magma_cannon_01.anim",
+      "warmachines\\engines\\chd_deathshrieker\\tech\\chd_deathshrieker_01.anim",
+      "warmachines\\engines\\chd_deathshrieker\\tech\\chd_deathshrieker.anim",
+      "warmachines\\engines\\chd_magma_cannon\\tech\\chd_magma_cannon_01.anim",
+    ]);
   });
 
   it("labels custom battle mount variants from their composite localization key", () => {

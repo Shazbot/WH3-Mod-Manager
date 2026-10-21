@@ -79,8 +79,8 @@ export type VisualsCompanionModel = {
   engineRiders?: Array<{ attachmentPoint: string; assetPath: string; animationTable?: string }>;
   /** Animation bin table whose standing idle this part should play. */
   animationTable?: string;
-  /** Engine only: pack path of the tech animation that defines the `ap_*` attachment bones. */
-  techAnimPath?: string;
+  /** Engine only: candidate pack paths of the tech animation that defines the `ap_*` attachment bones, tried in order. */
+  techAnimPaths?: string[];
 };
 
 type TechSkeletonBone = {
@@ -2706,11 +2706,19 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
           const companion = exportItem.companion;
-          if (companion?.role === "engine" && companion.techAnimPath && variantMeshSessionId) {
+          if (companion?.role === "engine" && companion.techAnimPaths?.length && variantMeshSessionId) {
             try {
-              const tech = await window.api?.getUnitViewerSkeletonAnim(variantMeshSessionId, companion.techAnimPath);
-              if (tech?.success && tech.bones) addTechAttachmentNodes(gltf.scene, tech.bones);
-              else console.log("[unit viewer] engine tech anim unavailable", companion.techAnimPath, tech?.error);
+              let techBones: TechSkeletonBone[] | undefined;
+              for (const techAnimPath of companion.techAnimPaths) {
+                const tech = await window.api?.getUnitViewerSkeletonAnim(variantMeshSessionId, techAnimPath);
+                if (tech?.success && tech.bones) {
+                  techBones = tech.bones;
+                  console.log("[unit viewer] engine tech anim", techAnimPath);
+                  break;
+                }
+              }
+              if (techBones) addTechAttachmentNodes(gltf.scene, techBones);
+              else console.log("[unit viewer] engine tech anim unavailable", companion.techAnimPaths);
             } catch (techError) {
               console.log("[unit viewer] engine tech anim failed", techError);
             }
