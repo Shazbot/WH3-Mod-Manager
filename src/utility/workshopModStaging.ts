@@ -27,7 +27,7 @@ export interface WorkshopStagingMod {
 export type WorkshopStagingAction = "copy" | "symlink" | "unchanged";
 
 export type WorkshopStagingProgressPhase =
-  "planning" | "pruning" | "copying" | "compressing" | "checkpointing" | "completed" | "canceled";
+  "planning" | "pruning" | "copying" | "optimizing" | "compressing" | "checkpointing" | "completed" | "canceled";
 
 export interface WorkshopStagingProgress {
   phase: WorkshopStagingProgressPhase;
@@ -75,11 +75,65 @@ export type WorkshopStagingCompressionRunner = (
   options: WorkshopStagingCompressionRunnerOptions,
 ) => Promise<CompressStagedPackResult | WorkshopStagingCompressionResult>;
 
+/** The optimizer step of staging (see `src/workshopModOptimizer`). */
+export interface WorkshopStagingOptimizerMod {
+  name: string;
+  path: string;
+  sourceFingerprint: WorkshopStagingFingerprint;
+}
+
+export interface WorkshopStagingOptimizerPlan {
+  /** Identifies the optimized result for this mod and everything that can change it. */
+  key: string;
+}
+
+export interface WorkshopStagingOptimizerProgress {
+  stage: string;
+  item?: string;
+  /** 0..1 share of this mod's optimization, when known. */
+  fraction?: number;
+  fromCache?: boolean;
+}
+
+export interface WorkshopStagingOptimizerContext {
+  signal?: AbortSignal;
+  /** Set when the user chose to launch without optimizing; the current mod falls back to a plain copy. */
+  skipSignal?: AbortSignal;
+  /** Compresses a pack in place with the staging compressor. */
+  compress(packPath: string): Promise<WorkshopStagingCompressionResult>;
+  onProgress(progress: WorkshopStagingOptimizerProgress): void;
+}
+
+export type WorkshopStagingOptimizerResult =
+  | { status: "ready"; packPath: string; fromCache: boolean; reportPath?: string; warnings: string[] }
+  | { status: "skipped" }
+  | { status: "failed"; message: string; warnings: string[] };
+
+export interface WorkshopStagingOptimizer {
+  /** Resolves whether and how a mod is optimized; undefined means a plain copy. */
+  plan(mod: WorkshopStagingOptimizerMod, signal?: AbortSignal): Promise<WorkshopStagingOptimizerPlan | undefined>;
+  /** Produces the final (optimized and compressed) pack; the caller copies it to the destination. */
+  produce(
+    mod: WorkshopStagingOptimizerMod,
+    plan: WorkshopStagingOptimizerPlan,
+    context: WorkshopStagingOptimizerContext,
+  ): Promise<WorkshopStagingOptimizerResult>;
+}
+
+export interface WorkshopStagingOptimizerOutcome {
+  name: string;
+  status: "optimized" | "restored" | "skipped" | "failed";
+  message?: string;
+  reportPath?: string;
+}
+
 export interface WorkshopStagingManifestPolicy {
   id: string;
   mode: Exclude<WorkshopModStagingMode, "disabled">;
   compressMods: boolean;
   includeRigidModelV2: boolean;
+  /** Present when the run optimizes eligible mods; a run without it never reuses optimized copies. */
+  optimizerProfile?: string;
 }
 
 export interface WorkshopStagingManifestEntry {
@@ -91,6 +145,8 @@ export interface WorkshopStagingManifestEntry {
   compressed: boolean;
   /** A stable no-op is cacheable; failures are deliberately not written to the manifest. */
   compressionStatus: "compressed" | "noEligibleFiles" | "notRequested";
+  /** The optimizer key of an optimized destination. */
+  optimizerKey?: string;
 }
 
 export interface WorkshopStagingManifest {
@@ -107,6 +163,8 @@ export interface WorkshopStagingPlanEntry {
   sourceMtimeMs: number;
   sourceFingerprint: WorkshopStagingFingerprint;
   action: WorkshopStagingAction;
+  /** Set when this mod is optimized (the key of the result the destination must hold). */
+  optimizerPlan?: WorkshopStagingOptimizerPlan;
 }
 
 export interface WorkshopStagingPlan {
@@ -125,6 +183,7 @@ export interface WorkshopStagingPlan {
   compressMods: boolean;
   includeRigidModelV2: boolean;
   compressionWarnings: string[];
+  optimizerProfile?: string;
 }
 
 export interface WorkshopStagingFolderInfo {
@@ -135,6 +194,7 @@ export interface WorkshopStagingFolderInfo {
 export interface WorkshopStagingResult extends WorkshopStagingPlan {
   changedEntries: WorkshopStagingPlanEntry[];
   compressionResults: WorkshopStagingCompressionResult[];
+  optimizerResults: WorkshopStagingOptimizerOutcome[];
 }
 
 export type WorkshopModStagingErrorCode =
@@ -205,6 +265,15 @@ export interface BuildWorkshopStagingPlanOptions {
   compressionVanillaRecords?: Map<string, VanillaCompressionExtensionRecord>;
   /** Optional staging compressor override for tests/embedders. */
   compressionRunner?: WorkshopStagingCompressionRunner;
+  /**
+   * Optimizes eligible mods (copy mode with compression). The destination is only ever replaced by
+   * a complete result; a failure falls back to the plain copy and compression for that mod.
+   */
+  optimizer?: WorkshopStagingOptimizer;
+  /** Aborted by "Launch without optimizing": remaining mods are copied and compressed, not optimized. */
+  skipOptimizationSignal?: AbortSignal;
+  /** Identifies the optimizer option set in the manifest policy. */
+  optimizerProfile?: string;
   /** Cancels planning or staging at the next safe I/O boundary. */
   signal?: AbortSignal;
   /** Receives best-effort progress notifications; callback failures are ignored. */
@@ -265,14 +334,16 @@ const isManifestEntry = (value: unknown): value is WorkshopStagingManifestEntry 
   typeof value.compressed === "boolean" &&
   (value.compressionStatus === "compressed" ||
     value.compressionStatus === "noEligibleFiles" ||
-    value.compressionStatus === "notRequested");
+    value.compressionStatus === "notRequested") &&
+  (value.optimizerKey === undefined || typeof value.optimizerKey === "string");
 
 const isManifestPolicy = (value: unknown): value is WorkshopStagingManifestPolicy =>
   isRecord(value) &&
   typeof value.id === "string" &&
   (value.mode === "copy" || value.mode === "symlink") &&
   typeof value.compressMods === "boolean" &&
-  typeof value.includeRigidModelV2 === "boolean";
+  typeof value.includeRigidModelV2 === "boolean" &&
+  (value.optimizerProfile === undefined || typeof value.optimizerProfile === "string");
 
 const isManifest = (value: unknown): value is WorkshopStagingManifest => {
   if (!isRecord(value) || value.version !== WORKSHOP_MOD_STAGING_MANIFEST_VERSION || !isManifestPolicy(value.policy)) {
@@ -508,11 +579,13 @@ const manifestPolicyMatches = (
   mode: Exclude<WorkshopModStagingMode, "disabled">,
   compressMods: boolean,
   includeRigidModelV2: boolean,
+  optimizerProfile?: string,
 ) =>
   policy.id === WORKSHOP_MOD_STAGING_POLICY_ID &&
   policy.mode === mode &&
   policy.compressMods === compressMods &&
-  policy.includeRigidModelV2 === includeRigidModelV2;
+  policy.includeRigidModelV2 === includeRigidModelV2 &&
+  policy.optimizerProfile === optimizerProfile;
 
 const manifestEntryCanBeReused = (
   manifestRead: WorkshopStagingManifestRead,
@@ -522,10 +595,17 @@ const manifestEntryCanBeReused = (
   sourceFingerprint: WorkshopStagingFingerprint,
   destinationFingerprint: WorkshopStagingFingerprint | undefined,
   platform: NodeJS.Platform,
+  optimizerKey?: string,
 ) => {
   if (
     !manifestRead.manifest ||
-    !manifestPolicyMatches(manifestRead.manifest.policy, policy.mode, policy.compressMods, policy.includeRigidModelV2)
+    !manifestPolicyMatches(
+      manifestRead.manifest.policy,
+      policy.mode,
+      policy.compressMods,
+      policy.includeRigidModelV2,
+      policy.optimizerProfile,
+    )
   ) {
     return false;
   }
@@ -535,6 +615,7 @@ const manifestEntryCanBeReused = (
   if (comparablePath(entry.sourcePath, platform) !== comparablePath(sourcePath, platform)) return false;
   if (!fingerprintMatches(entry.sourceFingerprint, sourceFingerprint)) return false;
   if (!fingerprintMatches(entry.destinationFingerprint, destinationFingerprint)) return false;
+  if (entry.optimizerKey !== optimizerKey) return false;
   if (policy.compressMods) {
     return entry.compressed ? entry.compressionStatus === "compressed" : entry.compressionStatus === "noEligibleFiles";
   }
@@ -556,6 +637,9 @@ export const buildWorkshopStagingPlan = async ({
   recreateDestination = false,
   compressMods = false,
   includeRigidModelV2 = false,
+  optimizer,
+  skipOptimizationSignal,
+  optimizerProfile,
   signal,
   onProgress,
 }: BuildWorkshopStagingPlanOptions): Promise<WorkshopStagingPlan> => {
@@ -569,6 +653,8 @@ export const buildWorkshopStagingPlan = async ({
     mode,
     compressMods: compressionEnabled,
     includeRigidModelV2: effectiveIncludeRigidModelV2,
+    // Optimization is part of compression-enabled copy staging only.
+    ...(compressionEnabled && optimizer ? { optimizerProfile: optimizerProfile ?? "optimizer" } : {}),
   };
   const compressionWarnings: string[] = [];
   if (compressMods && mode !== "copy") {
@@ -623,6 +709,18 @@ export const buildWorkshopStagingPlan = async ({
     const destinationStats = recreateDestination ? undefined : await readDestination(destinationPackPath);
     const sourceFingerprint = fingerprintForStats(sourceStats);
     let action: WorkshopStagingAction = "copy";
+    let optimizerPlan: WorkshopStagingOptimizerPlan | undefined;
+    if (policy.optimizerProfile && optimizer && mode === "copy" && !skipOptimizationSignal?.aborted) {
+      reportWorkshopProgress(onProgress, {
+        phase: "planning",
+        current: entries.length,
+        total: selectedMods.length,
+        modName: mod.name,
+        message: `Checking ${mod.name} for optimization`,
+      });
+      optimizerPlan = await optimizer.plan({ name: mod.name, path: mod.path, sourceFingerprint }, signal);
+      throwIfStagingAborted(signal, destinationPath);
+    }
 
     if (mode === "symlink") {
       action =
@@ -642,6 +740,7 @@ export const buildWorkshopStagingPlan = async ({
             sourceFingerprint,
             destinationFingerprint,
             platform,
+            optimizerPlan?.key,
           )
         ) {
           action = "unchanged";
@@ -661,6 +760,7 @@ export const buildWorkshopStagingPlan = async ({
       sourceMtimeMs: sourceStats.mtimeMs,
       sourceFingerprint,
       action,
+      ...(optimizerPlan ? { optimizerPlan } : {}),
     });
   }
 
@@ -688,6 +788,7 @@ export const buildWorkshopStagingPlan = async ({
     compressMods: compressionEnabled,
     includeRigidModelV2: effectiveIncludeRigidModelV2,
     compressionWarnings,
+    ...(policy.optimizerProfile ? { optimizerProfile: policy.optimizerProfile } : {}),
   };
 };
 
@@ -924,6 +1025,10 @@ interface WorkshopStagingExecutionResult {
   compressionByName: Map<string, WorkshopStagingCompressionResult>;
   /** Entries whose copy/symlink (and optional compression) reached a checkpoint boundary. */
   completedEntries: Set<string>;
+  /** Optimizer key of every destination that holds an optimized result. */
+  optimizerKeys: Map<string, string>;
+  optimizerResults: WorkshopStagingOptimizerOutcome[];
+  optimizerFailures: { name: string; message: string }[];
 }
 
 const ensureRegularDestinationAfterCompressionFailure = async (entry: WorkshopStagingPlanEntry) => {
@@ -952,7 +1057,18 @@ const executeWorkshopStagingPlan = async (
   const compressionWarnings = [...plan.compressionWarnings];
   const compressionByName = new Map<string, WorkshopStagingCompressionResult>();
   const completedEntries = new Set<string>();
-  const execution = { compressionResults, compressionWarnings, compressionByName, completedEntries };
+  const optimizerKeys = new Map<string, string>();
+  const optimizerResults: WorkshopStagingOptimizerOutcome[] = [];
+  const optimizerFailures: { name: string; message: string }[] = [];
+  const execution: WorkshopStagingExecutionResult = {
+    compressionResults,
+    compressionWarnings,
+    compressionByName,
+    completedEntries,
+    optimizerKeys,
+    optimizerResults,
+    optimizerFailures,
+  };
 
   if (plan.staleOutputPaths.length > 0) {
     await fs.promises.mkdir(plan.destinationPath, { recursive: true });
@@ -1001,58 +1117,33 @@ const executeWorkshopStagingPlan = async (
       continue;
     }
     if (entry.action === "copy") {
-      await copyFileAtomically(entry, options.signal, (bytesCopied) =>
-        reportWorkshopProgress(options.onProgress, {
-          phase: "copying",
-          current: completedEntries.size,
-          total: plan.entries.length,
-          modName: entry.name,
-          bytesCopied,
-          totalBytes: entry.sourceSize,
-        }),
-      );
-      if (plan.compressMods) {
-        reportWorkshopProgress(options.onProgress, {
-          phase: "compressing",
-          current: completedEntries.size,
-          total: plan.entries.length,
-          modName: entry.name,
-          message: `Compressing ${entry.name}`,
-        });
+      const compressPackInPlace = async (packPath: string): Promise<WorkshopStagingCompressionResult> => {
         let compressionResult: WorkshopStagingCompressionResult;
         try {
+          const onCompressionProgress = (progress: CompressionAnalysisProgress) =>
+            reportWorkshopProgress(options.onProgress, {
+              phase: "compressing",
+              current: completedEntries.size,
+              total: plan.entries.length,
+              modName: entry.name,
+              fileIndex: progress.fileIndex,
+              fileCount: progress.fileCount,
+              message: progress.message || progress.fileName,
+            });
           const rawResult = options.compressionRunner
-            ? await options.compressionRunner(entry.destinationPath, {
+            ? await options.compressionRunner(packPath, {
                 includeRigidModelV2: plan.includeRigidModelV2,
                 codecs: options.compressionCodecs,
                 signal: options.signal,
-                onProgress: (progress) =>
-                  reportWorkshopProgress(options.onProgress, {
-                    phase: "compressing",
-                    current: completedEntries.size,
-                    total: plan.entries.length,
-                    modName: entry.name,
-                    fileIndex: progress.fileIndex,
-                    fileCount: progress.fileCount,
-                    message: progress.message || progress.fileName,
-                  }),
+                onProgress: onCompressionProgress,
               })
-            : await defaultWorkshopStagingCompressionRunner(entry.destinationPath, {
+            : await defaultWorkshopStagingCompressionRunner(packPath, {
                 includeRigidModelV2: plan.includeRigidModelV2,
                 codecs: options.compressionCodecs,
                 vanillaCsv: options.compressionVanillaCsv,
                 vanillaRecords: options.compressionVanillaRecords,
                 signal: options.signal,
-                onProgress: (progress) =>
-                  reportWorkshopProgress(options.onProgress, {
-                    phase: "compressing",
-                    current: completedEntries.size,
-                    total: plan.entries.length,
-                    modName: entry.name,
-                    fileIndex: progress.fileIndex,
-                    fileCount: progress.fileCount,
-                    message: progress.message || progress.fileName,
-                  }),
+                onProgress: onCompressionProgress,
               });
           compressionResult = normalizeCompressionResult(entry.name, rawResult);
         } catch (error) {
@@ -1065,13 +1156,109 @@ const executeWorkshopStagingPlan = async (
             warnings: [error instanceof Error ? error.message : String(error)],
           };
         }
-        compressionResults.push(compressionResult);
-        compressionByName.set(comparableName(entry.name), compressionResult);
-        compressionWarnings.push(...compressionResult.warnings.map((warning) => `${entry.name}: ${warning}`));
-        if (compressionResult.status === "failed") {
-          // A failed compressor is retryable, but only when its rollback guarantees that the
-          // freshly copied uncompressed destination still exists.
-          await ensureRegularDestinationAfterCompressionFailure(entry);
+        return compressionResult;
+      };
+
+      let optimizedPackPath: string | undefined;
+      if (entry.optimizerPlan && options.optimizer && !options.skipOptimizationSignal?.aborted) {
+        const outcome = await options.optimizer.produce(
+          { name: entry.name, path: entry.sourcePath, sourceFingerprint: entry.sourceFingerprint },
+          entry.optimizerPlan,
+          {
+            signal: options.signal,
+            skipSignal: options.skipOptimizationSignal,
+            compress: compressPackInPlace,
+            onProgress: (progress) =>
+              reportWorkshopProgress(options.onProgress, {
+                phase: "optimizing",
+                current: completedEntries.size,
+                total: plan.entries.length,
+                modName: entry.name,
+                ...(progress.fraction !== undefined
+                  ? { fileIndex: Math.round(progress.fraction * 1000), fileCount: 1000 }
+                  : {}),
+                message: progress.fromCache ? `Using optimized ${entry.name}` : progress.stage,
+              }),
+          },
+        );
+        throwIfStagingAborted(options.signal, plan.destinationPath);
+        if (outcome.status === "ready") {
+          optimizedPackPath = outcome.packPath;
+          optimizerResults.push({
+            name: entry.name,
+            status: outcome.fromCache ? "restored" : "optimized",
+            reportPath: outcome.reportPath,
+          });
+          compressionWarnings.push(...outcome.warnings.map((warning) => `${entry.name}: ${warning}`));
+        } else if (outcome.status === "failed") {
+          optimizerResults.push({ name: entry.name, status: "failed", message: outcome.message });
+          compressionWarnings.push(...outcome.warnings.map((warning) => `${entry.name}: ${warning}`));
+          optimizerFailures.push({ name: entry.name, message: outcome.message });
+        } else {
+          optimizerResults.push({ name: entry.name, status: "skipped" });
+        }
+      }
+
+      if (optimizedPackPath) {
+        const optimizedStats = await fs.promises.stat(optimizedPackPath);
+        reportWorkshopProgress(options.onProgress, {
+          phase: "copying",
+          current: completedEntries.size,
+          total: plan.entries.length,
+          modName: entry.name,
+          message: `Copying optimized ${entry.name}`,
+        });
+        await copyFileAtomically(
+          { ...entry, sourcePath: optimizedPackPath, sourceSize: optimizedStats.size },
+          options.signal,
+          (bytesCopied) =>
+            reportWorkshopProgress(options.onProgress, {
+              phase: "copying",
+              current: completedEntries.size,
+              total: plan.entries.length,
+              modName: entry.name,
+              bytesCopied,
+              totalBytes: optimizedStats.size,
+            }),
+        );
+        const optimizedResult: WorkshopStagingCompressionResult = {
+          name: entry.name,
+          status: "compressed",
+          success: true,
+          compressedFileCount: 0,
+          warnings: [],
+        };
+        compressionResults.push(optimizedResult);
+        compressionByName.set(comparableName(entry.name), optimizedResult);
+        optimizerKeys.set(comparableName(entry.name), entry.optimizerPlan!.key);
+      } else {
+        await copyFileAtomically(entry, options.signal, (bytesCopied) =>
+          reportWorkshopProgress(options.onProgress, {
+            phase: "copying",
+            current: completedEntries.size,
+            total: plan.entries.length,
+            modName: entry.name,
+            bytesCopied,
+            totalBytes: entry.sourceSize,
+          }),
+        );
+        if (plan.compressMods) {
+          reportWorkshopProgress(options.onProgress, {
+            phase: "compressing",
+            current: completedEntries.size,
+            total: plan.entries.length,
+            modName: entry.name,
+            message: `Compressing ${entry.name}`,
+          });
+          const compressionResult = await compressPackInPlace(entry.destinationPath);
+          compressionResults.push(compressionResult);
+          compressionByName.set(comparableName(entry.name), compressionResult);
+          compressionWarnings.push(...compressionResult.warnings.map((warning) => `${entry.name}: ${warning}`));
+          if (compressionResult.status === "failed") {
+            // A failed compressor is retryable, but only when its rollback guarantees that the
+            // freshly copied uncompressed destination still exists.
+            await ensureRegularDestinationAfterCompressionFailure(entry);
+          }
         }
       }
       completedEntries.add(comparableName(entry.name));
@@ -1115,6 +1302,7 @@ const writePlanManifest = async (
     mode: plan.mode,
     compressMods: plan.compressMods,
     includeRigidModelV2: plan.includeRigidModelV2,
+    ...(plan.optimizerProfile ? { optimizerProfile: plan.optimizerProfile } : {}),
   };
   const entries: Record<string, WorkshopStagingManifestEntry> = {};
 
@@ -1135,6 +1323,8 @@ const writePlanManifest = async (
     }
 
     const compressionResult = execution.compressionByName.get(comparableName(entry.name));
+    let optimizerKey = execution.optimizerKeys.get(comparableName(entry.name));
+    if (entry.action === "unchanged" && !optimizerKey) optimizerKey = entry.optimizerPlan?.key;
     let compressionStatus: WorkshopStagingManifestEntry["compressionStatus"];
     if (plan.compressMods) {
       if (compressionResult?.status === "compressed") compressionStatus = "compressed";
@@ -1162,6 +1352,7 @@ const writePlanManifest = async (
       destinationFingerprint: fingerprintForStats(destinationStats),
       compressed: compressionStatus === "compressed",
       compressionStatus,
+      ...(optimizerKey ? { optimizerKey } : {}),
     };
   }
 
@@ -1226,6 +1417,9 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
     compressionWarnings: [...plan.compressionWarnings],
     compressionByName: new Map(),
     completedEntries: new Set(),
+    optimizerKeys: new Map(),
+    optimizerResults: [],
+    optimizerFailures: [],
   };
   let latestExecution = execution;
   try {
@@ -1283,6 +1477,7 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
     changedEntries: plan.entries.filter((entry) => entry.action !== "unchanged"),
     compressionResults: execution.compressionResults,
     compressionWarnings: execution.compressionWarnings,
+    optimizerResults: execution.optimizerResults,
   };
 };
 
