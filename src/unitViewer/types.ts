@@ -26,19 +26,30 @@ export interface UnitViewerEntity {
   size: string;
 }
 
-export type UnitViewerEntityRole = "crew" | "mount" | "engine" | "articulated";
+/** One crew member of a war machine and the engine attachment point it stands on. */
+export interface UnitViewerEngineRider {
+  attachmentPoint: string;
+  variantMeshPath: string;
+  /** battle_personalities.man_animations_table: the animation bin this seat plays from. */
+  animationTable?: string;
+}
 
-/**
- * A database entity participating in the unit composition.  The current model host renders the
- * resolved VMD as one composition, so these rows are intentionally diagnostic until the host can
- * return stable visual bindings for each role.
- */
-export interface UnitViewerCompositionEntity {
-  role: UnitViewerEntityRole;
+export interface UnitViewerVisualPart {
+  role: "crew" | "rider" | "mount" | "engine";
   label: string;
-  entity: UnitViewerEntity;
-  count: number;
-  visualBindingSupported: boolean;
+  variantMeshPath: string;
+  scale?: number;
+  /** Number of copies of this part: crew/rider = men, mount = mounts. */
+  count?: number;
+  /** Engine only: skeleton attachment points for crew and draught animals. */
+  riderAttachmentPoint?: string;
+  draughtAttachmentPoint?: string;
+  /** Engine only: crew models per attachment point (from battle personalities). */
+  engineRiders?: UnitViewerEngineRider[];
+  /** Engine only: pack path of the "tech" animation holding the model's `ap_*` attachment bones. */
+  techAnimPath?: string;
+  /** Animation bin table (land man_animation, mount animation, or seat crew table). */
+  animationTable?: string;
 }
 
 export interface UnitViewerMeleeWeapon {
@@ -183,8 +194,8 @@ export interface UnitViewerUnitModel {
   unitCardPath?: string;
   /** Resolved variantmeshdefinition used by the 3D unit preview. */
   variantMeshPath?: string;
-  /** Database entities shown by the composition inspector. */
-  compositionEntities?: UnitViewerCompositionEntity[];
+  /** Separately previewable visual parts (primary part first). */
+  visualParts?: UnitViewerVisualPart[];
   /** Source DB rows needed to optionally save a painted VMD as a faction-specific unit variant. */
   painterVariantContext?: UnitViewerPainterVariantContext;
   attributes: UnitViewerAttribute[];

@@ -455,29 +455,6 @@ const getVisualsModelAnimationCatalogNow = async (assetPath: string, enabledMods
   }
 };
 
-const getVisualsVariantMeshCompositionNow = async (
-  assetPath: string,
-  enabledModsValue: unknown,
-  variantSelectionsValue: unknown,
-  generation: number,
-) => {
-  const normalized = normalizeVisualsModelAssetPath(assetPath);
-  if (!normalized.success) return normalized;
-
-  try {
-    const host = await prepareVisualsModelHost(enabledModsValue, generation);
-    const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
-    const result = await host.client.getVariantMeshComposition(normalized.assetPath, variantSelections);
-    assertHostLifecycleActive(generation);
-    return { success: true as const, composition: result };
-  } catch (error) {
-    return {
-      success: false as const,
-      error: error instanceof Error ? error.message : "Failed to resolve model composition.",
-    };
-  }
-};
-
 const exportVisualsModelNow = async (
   assetPath: string,
   enabledModsValue: unknown,
@@ -741,17 +718,6 @@ ipcMain.handle("getVisualsModelAnimationCatalog", async (_event, assetPath: stri
   const generation = hostLifecycleGeneration;
   return exportVisualsModel(() => getVisualsModelAnimationCatalogNow(assetPath, enabledMods, generation));
 });
-
-ipcMain.removeHandler("getVisualsVariantMeshComposition");
-ipcMain.handle(
-  "getVisualsVariantMeshComposition",
-  async (_event, assetPath: string, enabledMods: unknown, variantSelections: unknown) => {
-    const generation = hostLifecycleGeneration;
-    return exportVisualsModel(() =>
-      getVisualsVariantMeshCompositionNow(assetPath, enabledMods, variantSelections, generation),
-    );
-  },
-);
 
 const finiteNumber = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 const formatTiming = (value: unknown) => finiteNumber(value).toFixed(1);

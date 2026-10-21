@@ -671,31 +671,28 @@ const api = {
   getUnitViewerDetails: (sessionId: string, unitKey: string): Promise<UnitViewerDetailsResponse> =>
     ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
 
-  getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
-    ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
+  getUnitViewerAnimationBinClips: (
+    sessionId: string,
+    tableName: string,
+  ): Promise<{ success: boolean; clips?: string[]; error?: string }> =>
+    ipcRenderer.invoke("getUnitViewerAnimationBinClips", sessionId, tableName),
 
-  getVisualsVariantMeshComposition: (
+  getUnitViewerSkeletonAnim: (
+    sessionId: string,
     assetPath: string,
-    enabledMods: Mod[],
-    variantSelections?: readonly { slotPath: string; choiceIndex: number }[],
   ): Promise<{
     success: boolean;
-    composition?: {
-      success: boolean;
-      assetPath: string;
-      sharedSkeletonName?: string | null;
-      components: Array<{
-        bindingId: string;
-        sourceModelPath: string;
-        attachmentPoint: string;
-        skeletonName?: string | null;
-        meshCount: number;
-        hasWeights: boolean;
-      }>;
-      diagnostics: string[];
-    };
+    bones?: Array<{
+      name: string;
+      parent: number;
+      translation: [number, number, number];
+      rotation: [number, number, number, number];
+    }>;
     error?: string;
-  }> => ipcRenderer.invoke("getVisualsVariantMeshComposition", assetPath, enabledMods, variantSelections || []),
+  }> => ipcRenderer.invoke("getUnitViewerSkeletonAnim", sessionId, assetPath),
+
+  getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
+    ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
 
   getVisualsVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
     ipcRenderer.invoke("getVisualsVariantMeshCatalog", sessionId, assetPath),

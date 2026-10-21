@@ -49,6 +49,8 @@ import {
   type BuiltUnitViewerData,
   type UnitViewerTableRows,
 } from "./unitViewer/data";
+import { extractBinAnimClipPaths } from "./visuals/twAnimBin";
+import { parseTwAnimSkeleton } from "./visuals/twAnimSkeleton";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
 import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
 import {
@@ -3539,6 +3541,33 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         success: false,
         error: error instanceof Error ? error.message : "Failed to resolve unit appearances",
       };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerAnimationBinClips", async (_event, sessionId: string, tableName: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      if (!/^[\w.-]+$/.test(tableName || "")) return { success: false, error: "Invalid animation table" };
+      const asset = await getUnitViewerAsset(session, `animations\\database\\battle\\bin\\${tableName}.bin`);
+      if (!asset) return { success: false, error: "Animation table not found" };
+      return { success: true, clips: extractBinAnimClipPaths(asset.buffer) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to read animation table" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerSkeletonAnim", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!/\.anim$/i.test(normalizedPath)) return { success: false, error: "Not an animation path" };
+      const asset = await getUnitViewerAsset(session, normalizedPath);
+      if (!asset) return { success: false, error: "Animation not found" };
+      return { success: true, bones: parseTwAnimSkeleton(asset.buffer) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to read animation skeleton" };
     }
   });
 

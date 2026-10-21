@@ -99,7 +99,7 @@ const makeUnit = (overrides: Partial<UnitViewerUnitModel>): UnitViewerUnitModel 
   groundStatEffects: [],
   baseEntity: rider,
   mountEntity: { ...rider, key: "horse", runSpeed: 8.4, chargeSpeed: 10.8, mass: 1000 },
-  compositionEntities: [],
+  visualParts: [],
   meleeWeapon: {
     key: "weapon",
     baseDamage: 14,
@@ -597,6 +597,100 @@ describe("Unit Viewer catalog", () => {
     expect(built.units.get("unit")?.multiplayerCost).toBe(250);
     expect(built.constants.experienceBonuses).toEqual([{ stat: "stat_morale", growthRate: 0, growthScalar: 3 }]);
     expect(built.constants.sizeScaling[0].singleEntityValue).toBe(0.5);
+  });
+
+  it("resolves rider, mount and engine visual parts", () => {
+    const base = {
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      unit_variants_tables: [{ unit: "land", variant: "v_man" }],
+      variants_tables: [
+        { variant_name: "v_man", variant_filename: "man" },
+        { variant_name: "v_horse", variant_filename: "horse", scale: "1.2" },
+      ],
+    };
+    const vmd = (name: string) => `variantmeshes\\variantmeshdefinitions\\${name}.variantmeshdefinition`;
+    const build = (extra: UnitViewerTableRows) =>
+      buildUnitViewerData(
+        {
+          ...base,
+          main_units_tables: [{ unit: "unit", land_unit: "land", num_men: "1" }],
+          ...extra,
+        },
+        () => undefined,
+      ).units.get("unit")?.visualParts;
+
+    expect(
+      build({
+        land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon", mount: "m" }],
+        mounts_tables: [{ key: "m", variant: "v_horse" }],
+      }),
+    ).toEqual([
+      { role: "rider", label: "Rider", variantMeshPath: vmd("man"), count: 1 },
+      { role: "mount", label: "Mount", variantMeshPath: vmd("horse"), scale: 1.2, count: 1 },
+    ]);
+    expect(
+      build({
+        land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon", engine: "e" }],
+        battlefield_engines_tables: [
+          {
+            key: "e",
+            variant: "",
+            model: "emp_mortar",
+            rider_attachment_point: "ap_crew",
+            draught_attachment_point: "",
+          },
+        ],
+      }),
+    ).toEqual([
+      { role: "crew", label: "Crew", variantMeshPath: vmd("man"), count: 1 },
+      { role: "engine", label: "Engine", variantMeshPath: vmd("emp_mortar"), riderAttachmentPoint: "ap_crew" },
+    ]);
+    const wagonParts = build({
+      land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon", engine: "e" }],
+      land_units_to_battle_personalities_junctions_tables: [
+        { land_unit: "land", battle_personality: "p1", riders_attachment_point: "ap_crewposition_1" },
+        { land_unit: "land", battle_personality: "p2", riders_attachment_point: "ap_crewposition_2" },
+        { land_unit: "land", battle_personality: "missing", riders_attachment_point: "ap_crewposition_3" },
+      ],
+      battle_personalities_tables: [
+        { key: "p1", variant: "v_gunner", man_animations_table: "crew_tbl" },
+        { key: "p2", variant: "v_gunner" },
+      ],
+      variants_tables: [
+        { variant_name: "v_man", variant_filename: "man" },
+        { variant_name: "v_gunner", variant_filename: "gunner" },
+      ],
+      battlefield_engines_tables: [
+        { key: "e", variant: "", model: "emp_war_wagon", draught_attachment_point: "ap_draughtposition" },
+      ],
+      warscape_animated_lod_tables: [
+        {
+          filename: "warmachines/chariot/emp_war_wagon/emp_war_wagon_01_lod1.wsmodel",
+          range: "60",
+          animated: "emp_war_wagon",
+        },
+        {
+          filename: "warmachines/chariot/emp_war_wagon/emp_war_wagon_01.wsmodel",
+          range: "0",
+          animated: "emp_war_wagon",
+        },
+      ],
+    });
+    expect(wagonParts?.find((part) => part.role === "crew")).toMatchObject({
+      variantMeshPath: vmd("gunner"),
+      count: 2,
+      animationTable: "crew_tbl",
+    });
+    expect(wagonParts?.find((part) => part.role === "engine")).toMatchObject({
+      variantMeshPath: "warmachines\\chariot\\emp_war_wagon\\emp_war_wagon_01.wsmodel",
+      draughtAttachmentPoint: "ap_draughtposition",
+      techAnimPath: "warmachines\\chariot\\emp_war_wagon\\tech\\emp_war_wagon_01.anim",
+      engineRiders: [
+        { attachmentPoint: "ap_crewposition_1", variantMeshPath: vmd("gunner"), animationTable: "crew_tbl" },
+        { attachmentPoint: "ap_crewposition_2", variantMeshPath: vmd("gunner") },
+      ],
+    });
   });
 
   it("labels custom battle mount variants from their composite localization key", () => {
