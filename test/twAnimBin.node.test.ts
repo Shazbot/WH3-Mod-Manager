@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractBinAnimClipPaths, pickStandingClip } from "../src/visuals/twAnimBin";
+import { extractBinAnimClipPaths, pickBinStandingClip, pickStandingClip } from "../src/visuals/twAnimBin";
 
 const lengthPrefixed = (text: string) => {
   const bytes = [text.length & 0xff, text.length >> 8, ...Buffer.from(text, "ascii")];
@@ -37,5 +37,33 @@ describe("animation bin clips", () => {
       "a\\stand\\hu1_stand_idle_01.anim",
     );
     expect(pickStandingClip(["a\\walk.anim"])).toBeUndefined();
+  });
+
+  it("picks the standing idle by bin slot, not by clip name", () => {
+    const u32 = (value: number) => [value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, value >>> 24];
+    const entry = (slot: number, clip: string) => [
+      ...u32(slot),
+      ...new Array(13).fill(0), // blend in, selection weight, weapon bools, unknown bool
+      ...u32(1),
+      ...lengthPrefixed(clip),
+      ...lengthPrefixed(""),
+      ...lengthPrefixed(""),
+    ];
+    const bin = (...entries: number[][]) =>
+      new Uint8Array([
+        ...u32(4),
+        ...u32(3),
+        ...["name", "", "", "humanoid03", ""].flatMap(lengthPrefixed),
+        0,
+        0,
+        ...u32(entries.length),
+        ...entries.flat(),
+      ]);
+    // STAND_IDLE_2 beats STAND, even though STAND's clip name looks more like an idle.
+    expect(
+      pickBinStandingClip(bin(entry(1, "a/axe/stand/hu3_axe_stand_idle_01.anim"), entry(33, "a/pub/beer_02.anim"))),
+    ).toBe("a\\pub\\beer_02.anim");
+    expect(pickBinStandingClip(bin(entry(1, "a/stand.anim"), entry(5, "a/walk.anim")))).toBe("a\\stand.anim");
+    expect(pickBinStandingClip(new Uint8Array([1, 2, 3]))).toBeUndefined();
   });
 });

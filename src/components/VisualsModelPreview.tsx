@@ -81,6 +81,8 @@ export type VisualsCompanionModel = {
   animationTable?: string;
   /** Engine only: candidate pack paths of the tech animation that defines the `ap_*` attachment bones, tried in order. */
   techAnimPaths?: string[];
+  /** The part whose attachment points seat the crew (an engine, or a ridden monster mount). */
+  seatHost?: boolean;
 };
 
 type TechSkeletonBone = {
@@ -120,11 +122,28 @@ const findAttachmentNodes = (root: THREE.Object3D, name: string | undefined, fal
   return found.sort((first, second) => first.index - second.index).map((entry) => entry.node);
 };
 
-/** Standing idle clip of an animation bin, or undefined when the bin is missing or has none. */
-const resolveBinStandingClip = async (sessionId: string, table: string) => {
+/**
+ * Standing idle of an animation bin as an export reference, or undefined when the bin is missing or has
+ * none. Uses the bin's own STAND_IDLE/STAND slots and keeps that entry's fragment + metadata, which the
+ * host needs to dock weapons (a shared clip alone gets metadata from whichever bin the host guesses).
+ * The clip-name heuristic is only a fallback for unparsable bins.
+ */
+const resolveBinStandingReference = async (
+  sessionId: string,
+  table: string,
+): Promise<VisualsModelPreviewAnimationReference | undefined> => {
   try {
     const result = await window.api?.getUnitViewerAnimationBinClips(sessionId, table);
-    return result?.success && result.clips ? pickStandingClip(result.clips) : undefined;
+    if (!result?.success) return undefined;
+    if (result.standingClip) {
+      return {
+        path: result.standingClip,
+        fragmentPath: result.fragmentPath,
+        metadataPath: result.standingClipMetadataPath,
+      };
+    }
+    const fallback = result.clips ? pickStandingClip(result.clips) : undefined;
+    return fallback ? { path: fallback } : undefined;
   } catch {
     return undefined;
   }
@@ -2282,28 +2301,39 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               (first.reference.metadataPath ?? "").localeCompare(second.reference.metadataPath ?? "") ||
               first.key.localeCompare(second.key),
           );
-        let preferredAnimationPath =
+        let binDefaultAnimation: (typeof animations)[number] | undefined;
+        const preferredAnimationPath =
           result.animationDefaults?.[animationProfile]?.path ?? result.animationDefaults?.ground?.path;
         if (primaryAnimationTable && variantMeshSessionId) {
-          const binClip = await resolveBinStandingClip(variantMeshSessionId, primaryAnimationTable);
+          const binReference = await resolveBinStandingReference(variantMeshSessionId, primaryAnimationTable);
           if (isCancelled) return;
-          console.log("[unit viewer] part animation", { role: "primary", table: primaryAnimationTable, clip: binClip });
-          if (binClip) {
-            const wanted = binClip.replaceAll("\\", "/").toLowerCase();
-            if (!animations.some((animation) => animation.path.replaceAll("\\", "/").toLowerCase() === wanted)) {
-              const reference = { path: binClip };
-              animations.push({
-                key: getAnimationSelectionKey(reference, animations.length),
-                path: binClip,
-                label: getAnimationLabel(binClip),
-                reference,
-              });
+          console.log("[unit viewer] part animation", {
+            role: "primary",
+            table: primaryAnimationTable,
+            ...binReference,
+          });
+          if (binReference) {
+            const normalize = (value?: string | null) => (value ?? "").replaceAll("\\", "/").toLowerCase();
+            // Match path AND fragment so the option carries this bin's metadata, not another bin's.
+            const existing = animations.find(
+              (animation) =>
+                normalize(animation.path) === normalize(binReference.path) &&
+                normalize(animation.reference.fragmentPath) === normalize(binReference.fragmentPath),
+            );
+            if (existing) binDefaultAnimation = existing;
+            else {
+              binDefaultAnimation = {
+                key: getAnimationSelectionKey(binReference, animations.length),
+                path: binReference.path,
+                label: getAnimationLabel(binReference.path),
+                reference: binReference,
+              };
+              animations.push(binDefaultAnimation);
             }
-            preferredAnimationPath = binClip;
           }
         }
         const options = [NONE_ANIMATION, ...animations];
-        const defaultAnimation = selectDefaultAnimation(animations, preferredAnimationPath);
+        const defaultAnimation = binDefaultAnimation ?? selectDefaultAnimation(animations, preferredAnimationPath);
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.key || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
@@ -2588,9 +2618,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           for (const companion of companionModels ?? []) {
             if (isCancelled) break;
             let companionReference: VisualsModelPreviewAnimationReference | undefined;
-            let binClip: string | undefined;
+            let binReference: VisualsModelPreviewAnimationReference | undefined;
             if (companion.animationTable && variantMeshSessionId) {
-              binClip = await resolveBinStandingClip(variantMeshSessionId, companion.animationTable);
+              binReference = await resolveBinStandingReference(variantMeshSessionId, companion.animationTable);
             }
             try {
               const companionCatalog = await getVisualsModelAnimationCatalog(companion.assetPath, effectiveEnabledMods);
@@ -2609,17 +2639,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 })),
                 preferredPath,
               );
-              companionReference = companionAnimation?.reference;
-              if (binClip) {
-                const wanted = binClip.replaceAll("\\", "/").toLowerCase();
-                companionReference = companionAnimations.find(
-                  (reference) => reference.path.replaceAll("\\", "/").toLowerCase() === wanted,
-                ) ?? { path: binClip };
-              }
+              companionReference = binReference ?? companionAnimation?.reference;
             } catch {
               // Companions without a resolvable animation catalog render in their bind pose.
             }
-            if (binClip && !companionReference) companionReference = { path: binClip };
+            if (binReference && !companionReference) companionReference = binReference;
             console.log("[unit viewer] part animation", {
               role: companion.role,
               table: companion.animationTable,
@@ -2706,7 +2730,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
           const companion = exportItem.companion;
-          if (companion?.role === "engine" && companion.techAnimPaths?.length && variantMeshSessionId) {
+          if (companion?.seatHost && companion.techAnimPaths?.length && variantMeshSessionId) {
             try {
               let techBones: TechSkeletonBone[] | undefined;
               for (const techAnimPath of companion.techAnimPaths) {
@@ -2740,7 +2764,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             assetPath: companion ? companion.assetPath : assetPath,
             animationTable: companion ? companion.animationTable : primaryAnimationTable,
             scene: gltf.scene,
-            kind: placeableRole === "engine" ? "engine" : placeableRole === "mount" ? "mount" : "crew",
+            kind:
+              placeableRole === "engine" || companion?.seatHost
+                ? "engine"
+                : placeableRole === "mount"
+                  ? "mount"
+                  : "crew",
             count: Math.max(1, (companion ? companion.count : primaryModelCount) ?? 1),
           };
           if (placeable.kind === "engine" && companion) {

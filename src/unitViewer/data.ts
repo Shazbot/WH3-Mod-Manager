@@ -196,7 +196,7 @@ const readUnitVariantColour = (row: Record<string, string>, prefix: "primary" | 
 const isPlaceholderVmd = (path: string) => /(^|\\)dummy[^\\]*\.variantmeshdefinition$/i.test(path);
 
 const getTechAnimPaths = (modelPath: string, techFolder: string) => {
-  const match = /^(.*)\\([^\\]+)\.(?:wsmodel|rigid_model_v2)$/i.exec(modelPath);
+  const match = /^(.*)\\([^\\]+)\.(?:wsmodel|rigid_model_v2|variantmeshdefinition)$/i.exec(modelPath);
   if (!match) return undefined;
   const candidates: string[] = [];
   const folder = normalizePackFilePath(techFolder).replace(/\\+$/, "");
@@ -205,8 +205,9 @@ const getTechAnimPaths = (modelPath: string, techFolder: string) => {
     candidates.push(`${folder}\\${match[2]}.anim`);
     if (folderOwner) candidates.push(`${folder}\\${folderOwner}_01.anim`, `${folder}\\${folderOwner}.anim`);
   }
-  candidates.push(`${match[1]}\\tech\\${match[2]}.anim`);
-  return Array.from(new Set(candidates.map((candidate) => candidate.toLowerCase())));
+  // VMDs live in a shared folder, so only geometry files get the "<model dir>\\tech\\" guess.
+  if (!/\.variantmeshdefinition$/i.test(modelPath)) candidates.push(`${match[1]}\\tech\\${match[2]}.anim`);
+  return candidates.length ? Array.from(new Set(candidates.map((candidate) => candidate.toLowerCase()))) : undefined;
 };
 
 const asNumber = (value: unknown) => {
@@ -897,18 +898,20 @@ export const buildUnitViewerData = (
         resolvePartPath(engineModelKey)
       : undefined;
     const hasMountPart = !!mountPath && mountPath !== variantMeshPath;
-    // War machine crews come from battle personalities, one per attachment point on the engine.
-    const engineRiders: UnitViewerEngineRider[] = engine
-      ? (personalityJunctions.get(landUnitKey) || []).flatMap((row) => {
-          const personality = personalities.get(asString(row.battle_personality));
-          const riderPath = resolvePartPath(asString(variants.get(asString(personality?.variant))?.variant_filename));
-          const attachmentPoint = asString(row.riders_attachment_point).trim();
-          const animationTable = asString(personality?.man_animations_table).trim() || undefined;
-          // Prop "riders" such as the magma cannon smokestack use an empty placeholder VMD; skip them.
-          if (!riderPath || isPlaceholderVmd(riderPath)) return [];
-          return attachmentPoint ? [{ attachmentPoint, variantMeshPath: riderPath, animationTable }] : [];
-        })
-      : [];
+    // Seat crews come from battle personalities, one per attachment point on the engine, or on the
+    // mount for ridden monsters without an engine (e.g. Thundertusk).
+    const engineRiders: UnitViewerEngineRider[] =
+      engine || mount
+        ? (personalityJunctions.get(landUnitKey) || []).flatMap((row) => {
+            const personality = personalities.get(asString(row.battle_personality));
+            const riderPath = resolvePartPath(asString(variants.get(asString(personality?.variant))?.variant_filename));
+            const attachmentPoint = asString(row.riders_attachment_point).trim();
+            const animationTable = asString(personality?.man_animations_table).trim() || undefined;
+            // Prop "riders" such as the magma cannon smokestack use an empty placeholder VMD; skip them.
+            if (!riderPath || isPlaceholderVmd(riderPath)) return [];
+            return attachmentPoint ? [{ attachmentPoint, variantMeshPath: riderPath, animationTable }] : [];
+          })
+        : [];
     // Seat crew replaces the land unit's man model; the mount is then a draught animal, not ridden.
     const hasSeatCrew = engineRiders.length > 0;
     const isRidden = hasMountPart && !hasSeatCrew;
@@ -934,6 +937,12 @@ export const buildUnitViewerData = (
         scale: partScale(mountVariant),
         count: Math.max(1, asNumber(land.num_mounts)),
         animationTable: asString(mount?.animation).trim() || undefined,
+        ...(!engine && engineRiders.length
+          ? {
+              engineRiders,
+              techAnimPaths: getTechAnimPaths(mountPath, asString(mountVariant?.tech_folder)),
+            }
+          : {}),
       });
     }
     if (enginePath && enginePath !== crewPath && enginePath !== mountPath) {

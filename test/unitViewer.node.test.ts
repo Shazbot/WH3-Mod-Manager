@@ -763,6 +763,51 @@ describe("Unit Viewer catalog", () => {
     expect(unit?.painterVariantContext).toBeUndefined();
   });
 
+  it("seats personality riders on a ridden monster mount without an engine", () => {
+    const vmd = (name: string) => `variantmeshes\\variantmeshdefinitions\\${name}.variantmeshdefinition`;
+    const parts = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "tusk", land_unit: "tusk", num_men: "1" }],
+        land_units_tables: [{ key: "tusk", man_entity: "entity", primary_melee_weapon: "weapon", mount: "m" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "tusk", variant: "v_front" }],
+        mounts_tables: [{ key: "m", variant: "v_tusk", animation: "tusk_tbl" }],
+        land_units_to_battle_personalities_junctions_tables: [
+          { battle_personality: "front", land_unit: "tusk", riders_attachment_point: "ap_thundertusk_rider_01" },
+          { battle_personality: "back", land_unit: "tusk", riders_attachment_point: "ap_thundertusk_rider_02" },
+        ],
+        battle_personalities_tables: [
+          { key: "front", variant: "v_front", man_animations_table: "front_tbl" },
+          { key: "back", variant: "v_back", man_animations_table: "back_tbl" },
+        ],
+        variants_tables: [
+          { variant_name: "v_front", variant_filename: "rider_front" },
+          { variant_name: "v_back", variant_filename: "rider_back" },
+          {
+            variant_name: "v_tusk",
+            variant_filename: "ogr_thundertusk",
+            tech_folder: "VariantMeshes/wh_variantmodels/hq3b/ogr/ogr_thundertusk/tech/",
+          },
+        ],
+      },
+      () => undefined,
+    ).units.get("tusk")?.visualParts;
+    expect(parts?.find((part) => part.role === "crew")).toMatchObject({
+      variantMeshPath: vmd("rider_front"),
+      count: 2,
+      animationTable: "front_tbl",
+    });
+    const mount = parts?.find((part) => part.role === "mount");
+    expect(mount?.engineRiders?.map((rider) => rider.attachmentPoint)).toEqual([
+      "ap_thundertusk_rider_01",
+      "ap_thundertusk_rider_02",
+    ]);
+    expect(mount?.techAnimPaths).toContain(
+      "variantmeshes\\wh_variantmodels\\hq3b\\ogr\\ogr_thundertusk\\tech\\ogr_thundertusk_01.anim",
+    );
+  });
+
   it("labels custom battle mount variants from their composite localization key", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [

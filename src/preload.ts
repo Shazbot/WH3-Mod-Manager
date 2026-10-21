@@ -674,8 +674,14 @@ const api = {
   getUnitViewerAnimationBinClips: (
     sessionId: string,
     tableName: string,
-  ): Promise<{ success: boolean; clips?: string[]; error?: string }> =>
-    ipcRenderer.invoke("getUnitViewerAnimationBinClips", sessionId, tableName),
+  ): Promise<{
+    success: boolean;
+    clips?: string[];
+    standingClip?: string;
+    standingClipMetadataPath?: string;
+    fragmentPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("getUnitViewerAnimationBinClips", sessionId, tableName),
 
   getUnitViewerSkeletonAnim: (
     sessionId: string,

@@ -49,7 +49,7 @@ import {
   type BuiltUnitViewerData,
   type UnitViewerTableRows,
 } from "./unitViewer/data";
-import { extractBinAnimClipPaths } from "./visuals/twAnimBin";
+import { extractBinAnimClipPaths, pickBinStandingEntry } from "./visuals/twAnimBin";
 import { parseTwAnimSkeleton } from "./visuals/twAnimSkeleton";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
 import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
@@ -3551,7 +3551,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!/^[\w.-]+$/.test(tableName || "")) return { success: false, error: "Invalid animation table" };
       const asset = await getUnitViewerAsset(session, `animations\\database\\battle\\bin\\${tableName}.bin`);
       if (!asset) return { success: false, error: "Animation table not found" };
-      return { success: true, clips: extractBinAnimClipPaths(asset.buffer) };
+      const standing = pickBinStandingEntry(asset.buffer);
+      return {
+        success: true,
+        clips: extractBinAnimClipPaths(asset.buffer),
+        standingClip: standing?.clip,
+        standingClipMetadataPath: standing?.metadataPath,
+        fragmentPath: `animations/database/battle/bin/${tableName}.bin`,
+      };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to read animation table" };
     }
