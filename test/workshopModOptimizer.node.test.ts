@@ -191,7 +191,7 @@ describe("host runner", () => {
     failed.stdout.write('{"type":"error","message":"bad input"}\n');
     await new Promise((resolve) => setImmediate(resolve));
     failed.emitter.emit("exit", 1, null);
-    expect(await failedRun).toEqual({ kind: "failed", exitCode: 1, message: "bad input" });
+    expect(await failedRun).toMatchObject({ kind: "failed", exitCode: 1, message: "bad input" });
 
     const canceled = fakeChild();
     const controller = new AbortController();

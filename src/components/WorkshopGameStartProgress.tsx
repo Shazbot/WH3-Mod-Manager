@@ -139,7 +139,7 @@ const stageFallback: Record<string, string> = {
   copying: "Copying Workshop mods…",
   compress: "Compressing Workshop mods…",
   compressing: "Compressing Workshop mods…",
-  optimizing: "Optimizing Workshop mods…",
+  optimizing: "Optimizing mods…",
   cleanup: "Cleaning up Workshop mods…",
   cleaning: "Cleaning up Workshop mods…",
   checkpointing: "Saving Workshop staging checkpoint…",

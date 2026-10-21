@@ -1439,7 +1439,7 @@ const OptionsDrawer = memo(() => {
                       </span>
                       <span className="mt-1 block text-xs text-gray-400">
                         {localized.optimizeWorkshopModsHelp ||
-                          "Merges and shrinks the unit models and textures of Workshop mods in the staged copy. The first launch after a change takes a few minutes per mod; results are cached."}
+                          "Merges and shrinks the unit models and textures of Workshop and custom-folder mods in the staged copy, never mods in the Data folder. The first launch after a change takes a few minutes per mod; results are cached."}
                       </span>
                     </span>
                   </label>

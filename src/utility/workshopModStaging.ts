@@ -296,6 +296,11 @@ export interface BuildWorkshopStagingWorkingDirectoryLinesOptions {
   mods: WorkshopStagingWorkingDirectoryMod[];
   realDataPackNames?: Iterable<string>;
   pathPrefix?: string;
+  /**
+   * Folders (lowercase, resolved) whose mods are all staged this launch, so their line is dropped:
+   * the custom mod folders the optimizer stages as a whole.
+   */
+  stagedDirectories?: Iterable<string>;
 }
 
 const defaultGetFreeBytes: GetFreeBytes = async (path) => {
@@ -800,7 +805,9 @@ export const buildWorkshopStagingWorkingDirectoryLines = ({
   mods,
   realDataPackNames = [],
   pathPrefix = "",
+  stagedDirectories = [],
 }: BuildWorkshopStagingWorkingDirectoryLinesOptions) => {
+  const stagedFolders = new Set(stagedDirectories);
   const stagedNames = new Set([...stagedModNames].map(comparableName));
   const dataNames = new Set([...realDataPackNames].map(comparableName));
   const workingDirectories = new Set<string>();
@@ -811,6 +818,7 @@ export const buildWorkshopStagingWorkingDirectoryLines = ({
     const name = comparableName(mod.name);
     if (mod.isInModding) continue;
     if (mod.isWorkshop && (stagedNames.has(name) || dataNames.has(name))) continue;
+    if (stagedFolders.size > 0 && stagedFolders.has(nodePath.resolve(mod.modDirectory).toLowerCase())) continue;
     if (nodePath.relative(dataFolder, mod.modDirectory) === "") continue;
     workingDirectories.add(`${pathPrefix}${mod.modDirectory}`);
   }

@@ -76,7 +76,7 @@ export type HostRunOutcome =
   | { kind: "probe"; probe: HostProbeLine }
   | { kind: "version"; text: string }
   | { kind: "ok" }
-  | { kind: "failed"; exitCode: number | null; message: string }
+  | { kind: "failed"; exitCode: number | null; message: string; stderr?: string }
   | { kind: "canceled" };
 
 /** The part of a child process this runner uses; tests supply a fake. */
@@ -273,6 +273,7 @@ export const runHost = (options: RunHostOptions): Promise<HostRunOutcome> =>
         kind: "failed",
         exitCode: code,
         message: errorLine?.message || stderrTail.trim().split("\n").slice(-3).join(" ") || `exit code ${code}`,
+        stderr: stderrTail,
       });
     });
 

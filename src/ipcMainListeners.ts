@@ -228,6 +228,7 @@ import {
   getModSourceId,
   getWorkshopModSyncItems,
   insertCustomSourceAfterData,
+  getModSourceKind,
   isWorkshopMod,
   normalizeModSourceOrder,
   WORKSHOP_MOD_SOURCE_ID,
@@ -390,12 +391,21 @@ import {
   getWorkshopModStagingFolderInfo,
   buildWorkshopStagingWorkingDirectoryLines,
   stageWorkshopMods,
+  type WorkshopStagingOptimizerOutcome,
   WorkshopModStagingError,
   WORKSHOP_MOD_STAGING_FOLDER,
   type WorkshopStagingProgress,
   type WorkshopStagingResult,
 } from "./utility/workshopModStaging";
 import { WORKSHOP_OPTIMIZER_PROFILE_ID } from "./workshopModOptimizer/hostRunner";
+import { buildOptimizerLaunchLog } from "./workshopModOptimizer/logFormat";
+import type { WorkshopModOptimizer } from "./workshopModOptimizer/optimizer";
+import { packHasOptimizableVisuals } from "./workshopModOptimizer/packInspection";
+import {
+  type CustomFolderStaging,
+  comparableDirectory,
+  selectCustomFolderStaging,
+} from "./workshopModOptimizer/stagingSelection";
 import { createWorkshopModOptimizer, getWorkshopOptimizerCache } from "./workshopModOptimizer/runtime";
 import { findGameProcessIds } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
@@ -13282,6 +13292,39 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("getDataFolder", async (event) => {
     return appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
   });
+  const logOptimizerOutcomes = ({
+    mods,
+    realDataPackNames,
+    stagedCustomFolders,
+    optimizer,
+    result,
+    userSkipped,
+  }: {
+    mods: Mod[];
+    realDataPackNames: Set<string>;
+    stagedCustomFolders: CustomFolderStaging | undefined;
+    optimizer: WorkshopModOptimizer;
+    result: { optimizerResults: WorkshopStagingOptimizerOutcome[] };
+    userSkipped: boolean;
+  }) => {
+    for (const line of buildOptimizerLaunchLog({
+      mods: mods.map((mod) => ({
+        name: mod.name,
+        path: mod.path,
+        modDirectory: mod.modDirectory,
+        sourceKind: getModSourceKind(mod),
+        isInModding: mod.isInModding,
+      })),
+      dataPackNames: realDataPackNames,
+      stagedDirectories: stagedCustomFolders?.stagedDirectories ?? new Set<string>(),
+      comparableDirectory,
+      recordFor: (path) => optimizer.getRecord(path),
+      outcomes: result.optimizerResults,
+      userSkipped,
+    })) {
+      console.log(line);
+    }
+  };
   const getRealDataPackNames = async (dataFolder: string): Promise<Set<string>> => {
     const names = new Set(appData.allMods.filter((mod) => mod.isInData).map((mod) => mod.name.toLowerCase()));
     const collectPackNames = async (folderPath: string) => {
@@ -13453,14 +13496,46 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           (startGameOptions.compressWorkshopModsOnStart === true || optimizeWorkshopMods);
         let realDataPackNames = new Set<string>();
         let stagedWorkshopModNames = new Set<string>();
+        // Custom mod folders the optimizer stages as a whole (their working-directory line is dropped).
+        let stagedCustomFolders: CustomFolderStaging | undefined;
         if (workshopModStagingMode !== "disabled") {
           throwIfWorkshopStagingCanceled();
           realDataPackNames = await getRealDataPackNames(dataFolder);
           stagedGamePath = gamePath;
+          if (workshopOptimizer) {
+            stagedCustomFolders = await selectCustomFolderStaging({
+              mods: sortedMods.map((mod) => ({
+                name: mod.name,
+                path: mod.path,
+                modDirectory: mod.modDirectory,
+                sourceKind: getModSourceKind(mod),
+                isInModding: mod.isInModding,
+              })),
+              dataPackNames: realDataPackNames,
+              hasVisualAssets: packHasOptimizableVisuals,
+              listPackNames: async (directory) => {
+                try {
+                  return new Set(
+                    (await fs.promises.readdir(directory))
+                      .filter((name) => name.toLowerCase().endsWith(".pack"))
+                      .map((name) => name.toLowerCase()),
+                  );
+                } catch {
+                  return new Set<string>();
+                }
+              },
+            });
+            for (const [directory, reason] of stagedCustomFolders.folderReasons) {
+              console.log(
+                `Optimizer: custom folder ${directory} is staged this launch (${reason}); its line is dropped.`,
+              );
+            }
+          }
+          const stagedCustomPaths = new Set(stagedCustomFolders?.mods.map((mod) => mod.path) ?? []);
           workshopStagingResult = await stageWorkshopMods({
             gameFolder: gamePath,
             mode: workshopModStagingMode,
-            workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod)),
+            workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod) || stagedCustomPaths.has(mod.path)),
             realDataPackNames,
             canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
             recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
@@ -13489,6 +13564,26 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             } as Toast);
           }
           getWorkshopOptimizerCache().unpinAll();
+          if (workshopOptimizer) {
+            logOptimizerOutcomes({
+              mods: sortedMods,
+              realDataPackNames,
+              stagedCustomFolders,
+              optimizer: workshopOptimizer,
+              result: workshopStagingResult,
+              userSkipped: workshopStagingRun?.skipOptimizationController.signal.aborted === true,
+            });
+          } else if (startGameOptions.optimizeWorkshopModsOnStart === true) {
+            console.log(
+              `Optimizer: not run (${
+                appData.currentGame !== "wh3"
+                  ? "only available for Warhammer III"
+                  : workshopModStagingMode !== "copy"
+                    ? `${workshopModStagingMode === "symlink" ? "symlink" : "staging off"} mode, copy mode is required`
+                    : "the optimizer is unavailable"
+              }).`,
+            );
+          }
           stagingCompleted = true;
           reportStagingProgress(
             {
@@ -13885,6 +13980,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           stagedModNames: stagedWorkshopModNames,
           realDataPackNames,
           pathPrefix: linuxBit,
+          stagedDirectories: stagedCustomFolders?.stagedDirectories,
           mods: enabledModsWithoutMergedInMods.map((mod) => ({
             name: mod.name,
             modDirectory: mod.modDirectory,
@@ -13979,7 +14075,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               return nodePath.join(workshopStagingResult.destinationPath, mod.name);
             }
             if (
-              isWorkshopMod(mod) &&
+              (isWorkshopMod(mod) ||
+                stagedCustomFolders?.stagedDirectories.has(comparableDirectory(mod.modDirectory))) &&
               [...realDataPackNames].some((name) => name.toLowerCase() === mod.name.toLowerCase())
             ) {
               return nodePath.join(dataFolder, mod.name);

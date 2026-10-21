@@ -11,6 +11,7 @@ import type {
 } from "../utility/workshopModStaging";
 import { type OptimizerKeyBase, type KeyedConsumer, buildExactKey, buildNarrowKey } from "./cacheKey";
 import type { WorkshopOptimizerCache } from "./cache";
+import type { OptimizerModRecord, OptimizerSkipReason } from "./logFormat";
 import {
   type HostConsumerPack,
   type HostRunOutcome,
@@ -84,6 +85,27 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
   private memo: { hostHash?: string; gameIdentity?: string; schemaDigest?: string } = {};
   private vanillaIndexReady = false;
   private tempCleaned = false;
+  /** What happened per mod, by comparable source path: for the launch's main.log lines. */
+  readonly records = new Map<string, OptimizerModRecord>();
+
+  recordFor(path: string): OptimizerModRecord {
+    const key = comparablePath(path);
+    let record = this.records.get(key);
+    if (!record) {
+      record = {};
+      this.records.set(key, record);
+    }
+    return record;
+  }
+
+  getRecord(path: string): OptimizerModRecord | undefined {
+    return this.records.get(comparablePath(path));
+  }
+
+  private skip(path: string, reason: OptimizerSkipReason): undefined {
+    this.recordFor(path).skipReason = reason;
+    return undefined;
+  }
 
   constructor(private readonly deps: WorkshopOptimizerDeps) {
     this.runHostProcess = deps.runHost ?? runHost;
@@ -160,8 +182,8 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
     mod: WorkshopStagingOptimizerMod,
     signal?: AbortSignal,
   ): Promise<WorkshopStagingOptimizerPlan | undefined> {
-    if (!(await this.deps.hasVisualAssets(mod.path))) return undefined;
-    if (!(await this.ensureHost(signal))) return undefined;
+    if (!(await this.deps.hasVisualAssets(mod.path))) return this.skip(mod.path, "no-visual-assets");
+    if (!(await this.ensureHost(signal))) return this.skip(mod.path, "host-unavailable");
     if (!this.tempCleaned) {
       // Host output left behind by a crashed earlier launch.
       this.tempCleaned = true;
@@ -193,17 +215,22 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
     const aliased = await this.deps.cache.resolveAlias(exactKey);
     if (aliased) {
       if ((await this.deps.cache.lookup(aliased)) || (await this.deps.cache.lookupFailure(aliased))) {
-        return this.finishPlan(aliased, { base, consumers, sourceLoadOrderIndex, relevantPaths: new Set() });
+        this.recordFor(mod.path).keyKind = "narrow (alias hit)";
+        return this.finishPlan(mod.path, aliased, { base, consumers, sourceLoadOrderIndex, relevantPaths: new Set() });
       }
     }
 
     // No entry for the exact set: ask the host which of the other mods can matter.
     let narrowKey = exactKey;
     let relevantPaths = new Set(consumers.map((consumer) => comparablePath(consumer.path)));
+    const record = this.recordFor(mod.path);
+    record.keyKind = "exact (probe unavailable)";
     if (consumers.length === 0) {
       narrowKey = buildNarrowKey(base, []);
       relevantPaths = new Set();
+      record.keyKind = "narrow (no other mods)";
     } else {
+      const probeStarted = Date.now();
       try {
         await this.ensureVanillaIndex();
         const requestPath = await this.writeRequest({
@@ -228,34 +255,71 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
               .map((consumer) => comparablePath(consumer.path)),
           );
           relevantPaths = relevant;
+          record.keyKind = "narrow (probed)";
+          record.probeSeconds = (Date.now() - probeStarted) / 1000;
+          record.relevantConsumers = consumers
+            .filter((consumer) => relevant.has(comparablePath(consumer.path)))
+            .map((consumer) => nodePath.basename(consumer.path));
           narrowKey = buildNarrowKey(
             base,
             consumers.filter((consumer) => relevant.has(comparablePath(consumer.path))),
           );
         } else {
+          record.probeError = describeOutcome(outcome);
           this.log(
             `Optimizer probe for ${mod.name} did not answer (${describeOutcome(outcome)}); keying on every enabled mod.`,
           );
         }
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") throw error;
-        this.log(`Optimizer probe for ${mod.name} failed (${error instanceof Error ? error.message : String(error)}).`);
+        record.probeError = error instanceof Error ? error.message : String(error);
+        this.log(`Optimizer probe for ${mod.name} failed (${record.probeError}).`);
       }
     }
 
     await this.deps.cache.writeAlias(exactKey, narrowKey).catch(() => undefined);
-    return this.finishPlan(narrowKey, { base, consumers, sourceLoadOrderIndex, relevantPaths });
+    return this.finishPlan(mod.path, narrowKey, { base, consumers, sourceLoadOrderIndex, relevantPaths });
+  }
+
+  /** The failed host run's exit code, error and stderr tail, for the user and for bug reports. */
+  private async writeHostLog(
+    modName: string,
+    outcome: Extract<HostRunOutcome, { kind: "failed" }>,
+  ): Promise<string | undefined> {
+    try {
+      const directory = nodePath.join(this.deps.cache.root, "logs");
+      await fs.promises.mkdir(directory, { recursive: true });
+      const logPath = nodePath.join(directory, `${nodePath.basename(modName)}.host.log`);
+      await fs.promises.writeFile(
+        logPath,
+        [
+          `time: ${new Date().toISOString()}`,
+          `mod: ${modName}`,
+          `exit code: ${outcome.exitCode ?? "none"}`,
+          `message: ${outcome.message}`,
+          "stderr:",
+          outcome.stderr ?? "",
+        ].join("\n"),
+      );
+      return logPath;
+    } catch {
+      return undefined;
+    }
   }
 
   private parentArgs(): string[] {
     return this.deps.parentProcessId ? ["--parent-pid", String(this.deps.parentProcessId)] : [];
   }
 
-  private async finishPlan(key: string, details: PlanDetails): Promise<WorkshopStagingOptimizerPlan | undefined> {
+  private async finishPlan(
+    sourcePath: string,
+    key: string,
+    details: PlanDetails,
+  ): Promise<WorkshopStagingOptimizerPlan | undefined> {
     const failure = await this.deps.cache.lookupFailure(key);
     if (failure) {
-      this.log(`Skipping optimization (failed before for this exact input): ${failure.message}`);
-      return undefined;
+      this.recordFor(sourcePath).failureMarker = { message: failure.message, createdAt: failure.createdAt };
+      return this.skip(sourcePath, "cached-failure");
     }
     const plan: WorkshopStagingOptimizerPlan = { key };
     this.details.set(plan, details);
@@ -286,6 +350,8 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
     await this.ensureVanillaIndex();
     await cache.ensureDirectories();
 
+    const startedAt = Date.now();
+    const record = this.recordFor(mod.path);
     const outputPath = cache.newTempPath(mod.name);
     const reportPath = `${outputPath}.report.txt`;
     const requestPath = await this.writeRequest({
@@ -340,10 +406,15 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
       }
       if (outcome.kind !== "result") {
         const message = describeOutcome(outcome);
+        if (outcome.kind === "failed") {
+          record.exitCode = outcome.exitCode;
+          record.hostLogPath = await this.writeHostLog(mod.name, outcome);
+        }
         await cache.recordFailure(plan.key, message).catch(() => undefined);
         return { status: "failed", message, warnings: [] };
       }
 
+      record.exitCode = 0;
       const warnings: string[] = [...(outcome.result.warnings ?? [])];
       context.onProgress({ stage: "Compressing", fraction: 0.97 });
       const compression = await context.compress(outputPath);
@@ -382,6 +453,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
         },
         hostReport,
       );
+      record.seconds = (Date.now() - startedAt) / 1000;
       return { status: "ready", packPath, fromCache: false, reportPath: cache.reportPathFor(mod.name), warnings };
     } finally {
       await cleanup();
