@@ -38,6 +38,8 @@ declare global {
     currentFile?: string;
     detail?: string;
     error?: string;
+    /** The optimizing stage is restoring a cached result. */
+    fromCache?: boolean;
   }
 
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";

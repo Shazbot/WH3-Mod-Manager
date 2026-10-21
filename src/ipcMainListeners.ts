@@ -397,6 +397,7 @@ import {
   type WorkshopStagingProgress,
   type WorkshopStagingResult,
 } from "./utility/workshopModStaging";
+import { makeWorkshopStagingProgressEvent } from "./utility/workshopStagingProgressEvent";
 import { WORKSHOP_OPTIMIZER_PROFILE_ID } from "./workshopModOptimizer/hostRunner";
 import { buildOptimizerLaunchLog } from "./workshopModOptimizer/logFormat";
 import type { WorkshopModOptimizer } from "./workshopModOptimizer/optimizer";
@@ -801,64 +802,6 @@ const globalSearchCancelStateByWebContentsId = new Map<
 >();
 
 const workshopStagingProgressChannel = "workshopModStagingProgress";
-
-const workshopStagingStageForPhase = (phase: WorkshopStagingProgress["phase"]): string => {
-  switch (phase) {
-    case "planning":
-      return "preparing";
-    case "pruning":
-      return "cleaning";
-    case "copying":
-      return "copying";
-    case "compressing":
-      return "compressing";
-    case "optimizing":
-      return "optimizing";
-    case "checkpointing":
-      return "saving";
-    case "completed":
-      return "complete";
-    case "canceled":
-      return "cleaning";
-    default:
-      return phase;
-  }
-};
-
-const makeWorkshopStagingProgressEvent = (
-  runId: string,
-  progress: WorkshopStagingProgress,
-  status: WorkshopModStagingProgressStatus,
-  overrides: Partial<WorkshopModStagingProgressEvent> = {},
-): WorkshopModStagingProgressEvent => {
-  const total = Number.isFinite(progress.total) ? Math.max(0, progress.total) : 0;
-  const completed = Number.isFinite(progress.current) ? Math.max(0, Math.min(total, progress.current)) : 0;
-  const byteFraction =
-    progress.bytesCopied !== undefined && progress.totalBytes !== undefined && progress.totalBytes > 0
-      ? Math.min(1, Math.max(0, progress.bytesCopied / progress.totalBytes))
-      : undefined;
-  const fileFraction =
-    progress.fileIndex !== undefined && progress.fileCount !== undefined && progress.fileCount > 0
-      ? Math.min(1, Math.max(0, progress.fileIndex / progress.fileCount))
-      : undefined;
-  const itemFraction = byteFraction ?? fileFraction ?? 0;
-  return {
-    runId,
-    status,
-    stage: workshopStagingStageForPhase(progress.phase),
-    ...(total > 0 ? { percent: Math.round(((completed + itemFraction) / total) * 100) } : {}),
-    completedMods: completed,
-    totalMods: total,
-    ...(progress.bytesCopied !== undefined ? { bytesCopied: progress.bytesCopied } : {}),
-    ...(progress.totalBytes !== undefined ? { totalBytes: progress.totalBytes } : {}),
-    ...(progress.fileIndex !== undefined ? { fileIndex: progress.fileIndex } : {}),
-    ...(progress.fileCount !== undefined ? { fileCount: progress.fileCount } : {}),
-    ...(progress.modName ? { currentMod: progress.modName } : {}),
-    ...(progress.phase === "compressing" && progress.message ? { currentFile: progress.message } : {}),
-    ...(progress.message ? { detail: progress.message } : {}),
-    ...overrides,
-  };
-};
 
 const sendWorkshopStagingProgress = (sender: Electron.WebContents, progress: WorkshopModStagingProgressEvent): void => {
   if (sender.isDestroyed()) return;
@@ -9172,7 +9115,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     const translated: Record<string, string> = {};
     for (const id of Object.keys(translationIds)) {
-      translated[id] = i18n.t(id);
+      const text = i18n.t(id);
+      // The renderer sends its bundled English strings. A key the main process has not loaded
+      // (the locale files are read once at startup) comes back as the key itself; show the English
+      // text instead of the raw key.
+      const fallback = translationIds[id];
+      translated[id] = text === id && typeof fallback === "string" ? fallback : text;
     }
     return translated;
   });

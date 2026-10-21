@@ -17,7 +17,7 @@ import {
   type HostRunOutcome,
   WORKSHOP_OPTIMIZER_HOST_OPTIONS,
   WORKSHOP_OPTIMIZER_PROFILE_ID,
-  hostStageFraction,
+  HostProgressTracker,
   runHost,
 } from "./hostRunner";
 
@@ -321,7 +321,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
       this.recordFor(sourcePath).failureMarker = { message: failure.message, createdAt: failure.createdAt };
       return this.skip(sourcePath, "cached-failure");
     }
-    const plan: WorkshopStagingOptimizerPlan = { key };
+    const plan: WorkshopStagingOptimizerPlan = { key, cached: !!(await this.deps.cache.lookup(key)) };
     this.details.set(plan, details);
     this.deps.cache.pin(key);
     return plan;
@@ -384,6 +384,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
 
     try {
       let outcome: HostRunOutcome;
+      const tracker = new HostProgressTracker();
       try {
         outcome = await this.runHostProcess({
           executablePath: this.deps.hostExecutablePath,
@@ -393,7 +394,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
             context.onProgress({
               stage: line.stage,
               item: line.item ?? undefined,
-              fraction: hostStageFraction(line.stage, line.current, line.total),
+              fraction: tracker.update(line.stage, line.current, line.total),
             }),
         });
       } catch (error) {
@@ -416,7 +417,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
 
       record.exitCode = 0;
       const warnings: string[] = [...(outcome.result.warnings ?? [])];
-      context.onProgress({ stage: "Compressing", fraction: 0.97 });
+      context.onProgress({ stage: "Compressing", fraction: tracker.finish() });
       const compression = await context.compress(outputPath);
       if (compression.status === "failed") warnings.push(...compression.warnings);
 

@@ -155,6 +155,9 @@ const getStageLabel = (localized: Record<string, string>, stage: string): string
   return (key && localized[key]) || stageFallback[normalizedStage] || humanizeStage(stage);
 };
 
+const interpolate = (template: string, values: Record<string, string | number>): string =>
+  template.replace(/\{\{(\w+)\}\}/g, (match, name: string) => (name in values ? String(values[name]) : match));
+
 const getCurrentItem = (progress: WorkshopGameStartProgress): string | undefined =>
   progress.currentMod || progress.currentFile;
 
@@ -297,6 +300,24 @@ const WorkshopGameStartProgressCard = memo(() => {
   const stageLabel = getStageLabel(localized, progress.stage);
   const title = localized.workshopGameStartTitle || "Preparing Workshop mods for game start";
   const progressLabel = localized.workshopGameStartProgressLabel || "Workshop mod staging progress";
+  const isOptimizingStage = progress.stage.toLowerCase() === "optimizing" && status === "running" && !stagingComplete;
+  const optimizingValues = {
+    mod: progress.currentMod ?? "",
+    current: Math.min(progress.totalMods ?? 1, (progress.completedMods ?? 0) + 1),
+    total: progress.totalMods ?? 1,
+    stage: progress.detail ?? "",
+  };
+  const optimizingLabel = !isOptimizingStage
+    ? undefined
+    : progress.fromCache
+      ? interpolate(
+          localized.workshopGameStartOptimizedFromCache || "Restoring optimized {{mod}} from the cache",
+          optimizingValues,
+        )
+      : interpolate(
+          localized.workshopGameStartOptimizingMod || "Optimizing {{mod}} ({{current}}/{{total}}): {{stage}}",
+          optimizingValues,
+        ).replace(/:\s*$/, "");
   const statusLabel = stagingComplete
     ? localized.workshopGameStartComplete || "Workshop mods ready"
     : status === "cancelled"
@@ -305,7 +326,7 @@ const WorkshopGameStartProgressCard = memo(() => {
         ? localized.workshopGameStartFailed || "Workshop mod staging failed"
         : isCanceling
           ? localized.workshopGameStartCanceling || "Canceling Workshop mod staging…"
-          : stageLabel;
+          : (optimizingLabel ?? stageLabel);
   const cancelLabel = localized.workshopGameStartCancel || localized.cancel || "Cancel";
 
   return (
@@ -337,7 +358,9 @@ const WorkshopGameStartProgressCard = memo(() => {
             )}
             <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-600 dark:text-gray-300">{statusLabel}</p>
-              {currentItem && <p className="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">{currentItem}</p>}
+              {currentItem && !isOptimizingStage && (
+                <p className="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">{currentItem}</p>
+              )}
               {progress.completedMods !== undefined && progress.totalMods !== undefined && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {progress.completedMods} / {progress.totalMods} mods
@@ -348,7 +371,7 @@ const WorkshopGameStartProgressCard = memo(() => {
                   {formatBytes(progress.bytesCopied)} / {formatBytes(progress.totalBytes)}
                 </p>
               )}
-              {progress.detail && (
+              {progress.detail && !isOptimizingStage && (
                 <p className="mt-1 break-words text-xs text-gray-500 dark:text-gray-400">{progress.detail}</p>
               )}
               {progress.error && <p className="mt-1 break-words text-xs text-red-600">{progress.error}</p>}

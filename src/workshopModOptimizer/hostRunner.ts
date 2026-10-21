@@ -121,66 +121,109 @@ export const parseHostLine = (line: string): HostLine | undefined => {
 };
 
 /**
- * A rough share of the whole run (0..1) each named host stage starts at, from the phase timings of
- * a measured run on a large mod. It only has to move the bar in the right direction.
+ * Seconds each host stage took in a measured run on a large mod (`!ak_teb3`, 112 s, from the
+ * arrival timestamps of the host's stdout). They only set the shape of the bar: how big each stage's
+ * share of it is. A stage name the host repeats after later stages (it runs "Pruning unused assets"
+ * and "Texture downscale analysis" twice) has its own "#2" entry for the second run.
  */
-const STAGE_WEIGHTS: ReadonlyArray<readonly [string, number]> = [
-  ["Loading source pack", 4],
-  ["Validating VMD roots", 1],
-  ["Resolving unit categories", 11],
-  ["Selecting atlas VMD population", 0.5],
-  ["Scanning source dependencies", 2],
-  ["Copying source pack", 3],
-  ["Auditing LODs", 8],
-  ["Asset checks: reading materials", 1.5],
-  ["Asset checks: comparing textures", 1.5],
-  ["Asset checks: decoding alpha", 1.5],
-  ["Asset checks: comparing rigid parts", 1.5],
-  ["Auditing bone weights", 1.5],
-  ["Indexing WSModels", 2],
-  ["Analyzing structural mesh merges", 5],
-  ["Texture downscale early estimate", 2.5],
-  ["Texture downscale analysis", 1.5],
-  ["Vanilla texture coverage", 8],
-  ["Per-unit texture repack estimate", 0.5],
-  ["Analyzing cross-rigid merges", 60],
-  ["Emitting cross-rigid merges", 4.5],
-  ["Shared texture repack", 9],
-  ["Merging compatible mesh parts", 1.5],
-  ["Optimizing geometry", 5],
-  ["Serializing modified rigids", 8],
-  ["Serializing modified WSModels", 1],
-  ["Serializing modified VMDs", 1],
-  ["Replacing modified assets", 1],
-  ["Scanning rewritten dependencies", 2.5],
-  ["Pruning unused assets", 1.5],
-  ["Finding unused assets", 1],
-  ["Checking retained references", 1],
-  ["Downscaling textures", 2],
-  ["Exact texture compaction", 0.5],
-  ["Compacting textures", 3.5],
-  ["Validating output", 2],
-  ["Validating modified VMDs", 0.5],
-  ["Validating modified rigids", 0.5],
-  ["Validating WSModels", 0.5],
-  ["Validating generated materials", 0.5],
-  ["Saving output pack", 5],
+const STAGE_SECONDS: ReadonlyArray<readonly [string, number]> = [
+  ["Loading source pack", 0.6],
+  ["Validating VMD roots", 0.3],
+  ["Resolving unit categories", 8.9],
+  ["Selecting atlas VMD population", 0.3],
+  ["Scanning source dependencies", 1.2],
+  ["Copying source pack", 0.3],
+  ["Auditing LODs", 3.9],
+  ["Asset checks: reading materials", 0.3],
+  ["Asset checks: comparing textures", 0.3],
+  ["Asset checks: decoding alpha", 2.9],
+  ["Asset checks: comparing rigid parts", 0.3],
+  ["Auditing bone weights", 0.6],
+  ["Indexing WSModels", 3.4],
+  ["Analyzing structural mesh merges", 0.5],
+  ["Texture downscale early estimate", 0.3],
+  ["Texture downscale analysis", 1.1],
+  ["Vanilla texture coverage", 4.6],
+  ["Per-unit texture repack estimate", 0.3],
+  ["Analyzing cross-rigid merges", 43.8],
+  ["Emitting cross-rigid merges", 2.3],
+  ["Shared texture repack", 8.3],
+  ["Merging compatible mesh parts", 1.6],
+  ["Optimizing geometry", 4.4],
+  ["Serializing modified rigids", 10.1],
+  ["Serializing modified WSModels", 0.3],
+  ["Serializing modified VMDs", 0.3],
+  ["Replacing modified assets", 0.3],
+  ["Scanning rewritten dependencies", 1.4],
+  ["Pruning unused assets", 0.3],
+  ["Finding unused assets", 0.3],
+  ["Checking retained references", 1.6],
+  ["Pruning unused assets#2", 0.3],
+  ["Texture downscale analysis#2", 1.3],
+  ["Downscaling textures", 0.3],
+  ["Exact texture compaction", 1.5],
+  ["Compacting textures", 1.1],
+  ["Validating output", 0.3],
+  ["Validating modified VMDs", 0.3],
+  ["Validating modified rigids", 0.4],
+  ["Validating WSModels", 0.4],
+  ["Validating generated materials", 1.2],
+  ["Saving output pack", 3.7],
 ];
 
-const STAGE_TOTAL_WEIGHT = STAGE_WEIGHTS.reduce((total, [, weight]) => total + weight, 0);
+const STAGE_TOTAL_SECONDS = STAGE_SECONDS.reduce((total, [, seconds]) => total + seconds, 0);
+const STAGE_BANDS = (() => {
+  let start = 0;
+  return new Map(
+    STAGE_SECONDS.map(([name, seconds]) => {
+      const band = { start: start / STAGE_TOTAL_SECONDS, end: (start + seconds) / STAGE_TOTAL_SECONDS };
+      start += seconds;
+      return [name, band] as const;
+    }),
+  );
+})();
+const STAGE_ORDER = new Map(STAGE_SECONDS.map(([name], index) => [name, index] as const));
 
-/** Fraction (0..1) of a host run done when `stage` is reported, optionally with its item progress. */
-export const hostStageFraction = (stage: string, current = 0, total = 0): number | undefined => {
-  let before = 0;
-  for (const [name, weight] of STAGE_WEIGHTS) {
-    if (name === stage) {
-      const within = total > 0 ? Math.min(1, Math.max(0, current / total)) : 0;
-      return Math.min(1, (before + weight * within) / STAGE_TOTAL_WEIGHT);
-    }
-    before += weight;
+/**
+ * Turns the host's progress lines into a share (0..1) of one host run that never goes backwards.
+ * - A stage inside its band only moves with current/total of that stage.
+ * - A stage the table does not know holds the last value instead of jumping.
+ * - A stage name that comes again after other stages uses its "#2" entry, or holds when it has none.
+ */
+export class HostProgressTracker {
+  private last = 0;
+  private lastStage: string | undefined;
+  private lastOrder = -1;
+  private readonly occurrences = new Map<string, number>();
+
+  get fraction(): number {
+    return this.last;
   }
-  return undefined;
-};
+
+  update(stage: string, current = 0, total = 0): number {
+    if (stage !== this.lastStage) {
+      this.occurrences.set(stage, (this.occurrences.get(stage) ?? 0) + 1);
+      this.lastStage = stage;
+    }
+
+    const occurrence = this.occurrences.get(stage) ?? 1;
+    const key = occurrence > 1 ? `${stage}#${occurrence}` : stage;
+    const band = STAGE_BANDS.get(key);
+    const order = STAGE_ORDER.get(key);
+    if (!band || order === undefined || order < this.lastOrder) return this.last;
+
+    this.lastOrder = order;
+    const within = total > 0 ? Math.min(1, Math.max(0, current / total)) : 0;
+    this.last = Math.max(this.last, band.start + (band.end - band.start) * within);
+    return this.last;
+  }
+
+  /** The host reported its result. */
+  finish(): number {
+    this.last = 1;
+    return 1;
+  }
+}
 
 export interface RunHostOptions {
   executablePath: string;

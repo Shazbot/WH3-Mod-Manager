@@ -88,7 +88,7 @@ describe("Workshop game-start progress", () => {
     render(<WorkshopGameStartProgressCard />);
     send({ runId: "launch-1", status: "running", stage: "optimizing", currentMod: "big.pack", percent: 40 });
 
-    expect(screen.getByRole("status")).toHaveTextContent("Optimizing mods");
+    expect(screen.getByRole("status")).toHaveTextContent("Optimizing big.pack (1/1)");
     fireEvent.click(screen.getByRole("button", { name: "Launch without optimizing" }));
     expect(window.api?.skipWorkshopModOptimization).toHaveBeenCalledWith("launch-1");
     expect(screen.getByRole("button", { name: "Launching without optimizing…" })).toBeDisabled();

@@ -10,7 +10,7 @@ import { type OptimizerKeyBase, buildExactKey, buildNarrowKey } from "../src/wor
 import {
   type HostChildProcess,
   type HostRunOutcome,
-  hostStageFraction,
+  HostProgressTracker,
   parseHostLine,
   runHost,
 } from "../src/workshopModOptimizer/hostRunner";
@@ -182,7 +182,13 @@ describe("host runner", () => {
     const outcome = await run;
     expect(outcome.kind).toBe("result");
     expect(stages).toContain("Saving output pack");
-    expect(stages.every((stage) => hostStageFraction(stage) !== undefined)).toBe(true);
+    const tracker = new HostProgressTracker();
+    let previous = 0;
+    for (const stage of stages) {
+      const value = tracker.update(stage);
+      expect(value).toBeGreaterThanOrEqual(previous);
+      previous = value;
+    }
   });
 
   it("maps exit codes and kills the process on abort", async () => {

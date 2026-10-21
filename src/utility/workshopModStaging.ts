@@ -10,6 +10,12 @@ import {
   type CompressionAnalysisProgress,
 } from "../compressionAnalysis";
 import type { VanillaCompressionExtensionRecord } from "../compressionAnalysis/vanillaGuardrail";
+import {
+  type StagingModKind,
+  type StagingPhaseKey,
+  StagingProgressModel,
+  estimateStagingWeight,
+} from "./workshopStagingProgressModel";
 
 export const WORKSHOP_MOD_STAGING_FOLDER = "whmm_copied_mods";
 export const WORKSHOP_MOD_STAGING_MANIFEST_FILENAME = ".whmm-staging-manifest.json";
@@ -39,6 +45,13 @@ export interface WorkshopStagingProgress {
   bytesCopied?: number;
   totalBytes?: number;
   message?: string;
+  /** Overall progress of the run, 0..1, that never goes backwards (set while mods are being staged). */
+  fraction?: number;
+  /** Mods that have work to do, and how many of them are finished. */
+  modsDone?: number;
+  modsTotal?: number;
+  /** The optimizing phase is restoring a cached result. */
+  fromCache?: boolean;
 }
 
 export interface WorkshopStagingFingerprint {
@@ -85,6 +98,8 @@ export interface WorkshopStagingOptimizerMod {
 export interface WorkshopStagingOptimizerPlan {
   /** Identifies the optimized result for this mod and everything that can change it. */
   key: string;
+  /** The result is already in the cache: staging only restores it. */
+  cached?: boolean;
 }
 
 export interface WorkshopStagingOptimizerProgress {
@@ -1037,6 +1052,8 @@ interface WorkshopStagingExecutionResult {
   optimizerKeys: Map<string, string>;
   optimizerResults: WorkshopStagingOptimizerOutcome[];
   optimizerFailures: { name: string; message: string }[];
+  /** The run's overall progress, for updates sent outside the execution (checkpoints). */
+  progress?: () => Pick<WorkshopStagingProgress, "fraction" | "modsDone" | "modsTotal">;
 }
 
 const ensureRegularDestinationAfterCompressionFailure = async (entry: WorkshopStagingPlanEntry) => {
@@ -1101,10 +1118,52 @@ const executeWorkshopStagingPlan = async (
 
   if (plan.entries.length === 0) return execution;
   await fs.promises.mkdir(plan.destinationPath, { recursive: true });
+  const optimizing = (entry: WorkshopStagingPlanEntry) =>
+    !!entry.optimizerPlan && !!options.optimizer && !options.skipOptimizationSignal?.aborted;
+  const kindOf = (entry: WorkshopStagingPlanEntry): StagingModKind =>
+    entry.action !== "copy"
+      ? "copy"
+      : optimizing(entry)
+        ? entry.optimizerPlan?.cached
+          ? "restore"
+          : "optimize"
+        : plan.compressMods
+          ? "copy-compress"
+          : "copy";
+  const progressModel = new StagingProgressModel(
+    plan.entries.map((entry) => {
+      const kind = kindOf(entry);
+      return {
+        name: entry.name,
+        kind,
+        weight: entry.action === "unchanged" ? 0 : estimateStagingWeight(kind, entry.sourceSize),
+      };
+    }),
+  );
+  execution.progress = () => ({
+    fraction: progressModel.overall(),
+    modsDone: progressModel.doneCount,
+    modsTotal: progressModel.workCount,
+  });
+  // Every update carries the overall progress, which only grows and counts the mods that have work.
+  const emit = (progress: WorkshopStagingProgress, phase?: StagingPhaseKey, within = 0) => {
+    const fraction =
+      phase && progress.modName ? progressModel.update(progress.modName, phase, within) : progressModel.overall();
+    reportWorkshopProgress(options.onProgress, {
+      ...progress,
+      fraction,
+      modsDone: progressModel.doneCount,
+      modsTotal: progressModel.workCount,
+    });
+  };
+  const finishEntry = (entry: WorkshopStagingPlanEntry) => {
+    progressModel.complete(entry.name);
+    completedEntries.add(comparableName(entry.name));
+  };
   for (const entry of plan.entries) {
     throwIfStagingAborted(options.signal, plan.destinationPath);
     const completedCount = completedEntries.size;
-    reportWorkshopProgress(options.onProgress, {
+    emit({
       phase: "copying",
       current: completedCount,
       total: plan.entries.length,
@@ -1113,9 +1172,9 @@ const executeWorkshopStagingPlan = async (
     });
 
     if (entry.action === "unchanged") {
-      completedEntries.add(comparableName(entry.name));
+      finishEntry(entry);
       await onCheckpoint?.(execution);
-      reportWorkshopProgress(options.onProgress, {
+      emit({
         phase: "copying",
         current: completedEntries.size,
         total: plan.entries.length,
@@ -1129,15 +1188,19 @@ const executeWorkshopStagingPlan = async (
         let compressionResult: WorkshopStagingCompressionResult;
         try {
           const onCompressionProgress = (progress: CompressionAnalysisProgress) =>
-            reportWorkshopProgress(options.onProgress, {
-              phase: "compressing",
-              current: completedEntries.size,
-              total: plan.entries.length,
-              modName: entry.name,
-              fileIndex: progress.fileIndex,
-              fileCount: progress.fileCount,
-              message: progress.message || progress.fileName,
-            });
+            emit(
+              {
+                phase: "compressing",
+                current: completedEntries.size,
+                total: plan.entries.length,
+                modName: entry.name,
+                fileIndex: progress.fileIndex,
+                fileCount: progress.fileCount,
+                message: progress.message || progress.fileName,
+              },
+              "compressing",
+              (progress.fileCount ?? 0) > 0 ? (progress.fileIndex ?? 0) / (progress.fileCount ?? 1) : 0,
+            );
           const rawResult = options.compressionRunner
             ? await options.compressionRunner(packPath, {
                 includeRigidModelV2: plan.includeRigidModelV2,
@@ -1177,16 +1240,18 @@ const executeWorkshopStagingPlan = async (
             skipSignal: options.skipOptimizationSignal,
             compress: compressPackInPlace,
             onProgress: (progress) =>
-              reportWorkshopProgress(options.onProgress, {
-                phase: "optimizing",
-                current: completedEntries.size,
-                total: plan.entries.length,
-                modName: entry.name,
-                ...(progress.fraction !== undefined
-                  ? { fileIndex: Math.round(progress.fraction * 1000), fileCount: 1000 }
-                  : {}),
-                message: progress.fromCache ? `Using optimized ${entry.name}` : progress.stage,
-              }),
+              emit(
+                {
+                  phase: "optimizing",
+                  current: completedEntries.size,
+                  total: plan.entries.length,
+                  modName: entry.name,
+                  message: progress.fromCache ? `Using optimized ${entry.name}` : progress.stage,
+                  ...(progress.fromCache ? { fromCache: true } : {}),
+                },
+                "optimizing",
+                progress.fraction ?? 0,
+              ),
           },
         );
         throwIfStagingAborted(options.signal, plan.destinationPath);
@@ -1205,29 +1270,39 @@ const executeWorkshopStagingPlan = async (
         } else {
           optimizerResults.push({ name: entry.name, status: "skipped" });
         }
+        if (outcome.status !== "ready")
+          progressModel.changeKind(entry.name, plan.compressMods ? "copy-compress" : "copy");
       }
 
       if (optimizedPackPath) {
         const optimizedStats = await fs.promises.stat(optimizedPackPath);
-        reportWorkshopProgress(options.onProgress, {
-          phase: "copying",
-          current: completedEntries.size,
-          total: plan.entries.length,
-          modName: entry.name,
-          message: `Copying optimized ${entry.name}`,
-        });
+        emit(
+          {
+            phase: "copying",
+            current: completedEntries.size,
+            total: plan.entries.length,
+            modName: entry.name,
+            message: `Copying optimized ${entry.name}`,
+          },
+          "copying",
+          0,
+        );
         await copyFileAtomically(
           { ...entry, sourcePath: optimizedPackPath, sourceSize: optimizedStats.size },
           options.signal,
           (bytesCopied) =>
-            reportWorkshopProgress(options.onProgress, {
-              phase: "copying",
-              current: completedEntries.size,
-              total: plan.entries.length,
-              modName: entry.name,
-              bytesCopied,
-              totalBytes: optimizedStats.size,
-            }),
+            emit(
+              {
+                phase: "copying",
+                current: completedEntries.size,
+                total: plan.entries.length,
+                modName: entry.name,
+                bytesCopied,
+                totalBytes: optimizedStats.size,
+              },
+              "copying",
+              optimizedStats.size > 0 ? bytesCopied / optimizedStats.size : 1,
+            ),
         );
         const optimizedResult: WorkshopStagingCompressionResult = {
           name: entry.name,
@@ -1241,23 +1316,31 @@ const executeWorkshopStagingPlan = async (
         optimizerKeys.set(comparableName(entry.name), entry.optimizerPlan!.key);
       } else {
         await copyFileAtomically(entry, options.signal, (bytesCopied) =>
-          reportWorkshopProgress(options.onProgress, {
-            phase: "copying",
-            current: completedEntries.size,
-            total: plan.entries.length,
-            modName: entry.name,
-            bytesCopied,
-            totalBytes: entry.sourceSize,
-          }),
+          emit(
+            {
+              phase: "copying",
+              current: completedEntries.size,
+              total: plan.entries.length,
+              modName: entry.name,
+              bytesCopied,
+              totalBytes: entry.sourceSize,
+            },
+            "copying",
+            entry.sourceSize > 0 ? bytesCopied / entry.sourceSize : 1,
+          ),
         );
         if (plan.compressMods) {
-          reportWorkshopProgress(options.onProgress, {
-            phase: "compressing",
-            current: completedEntries.size,
-            total: plan.entries.length,
-            modName: entry.name,
-            message: `Compressing ${entry.name}`,
-          });
+          emit(
+            {
+              phase: "compressing",
+              current: completedEntries.size,
+              total: plan.entries.length,
+              modName: entry.name,
+              message: `Compressing ${entry.name}`,
+            },
+            "compressing",
+            0,
+          );
           const compressionResult = await compressPackInPlace(entry.destinationPath);
           compressionResults.push(compressionResult);
           compressionByName.set(comparableName(entry.name), compressionResult);
@@ -1269,9 +1352,9 @@ const executeWorkshopStagingPlan = async (
           }
         }
       }
-      completedEntries.add(comparableName(entry.name));
+      finishEntry(entry);
       await onCheckpoint?.(execution);
-      reportWorkshopProgress(options.onProgress, {
+      emit({
         phase: "copying",
         current: completedEntries.size,
         total: plan.entries.length,
@@ -1282,9 +1365,9 @@ const executeWorkshopStagingPlan = async (
     }
 
     await createSymlinkAtomically(entry, options.signal);
-    completedEntries.add(comparableName(entry.name));
+    finishEntry(entry);
     await onCheckpoint?.(execution);
-    reportWorkshopProgress(options.onProgress, {
+    emit({
       phase: "copying",
       current: completedEntries.size,
       total: plan.entries.length,
@@ -1439,6 +1522,7 @@ export const stageWorkshopMods = async (options: StageWorkshopModsOptions): Prom
           current: checkpoint.completedEntries.size,
           total: plan.entries.length,
           message: "Saving Workshop staging checkpoint",
+          ...checkpoint.progress?.(),
         });
         checkpoint.compressionWarnings.push(...(await writePlanManifest(plan, checkpoint)));
       });

@@ -269,6 +269,8 @@
   "workshopGameStartCopying": "Copying Workshop mods…",
   "workshopGameStartCompressing": "Compressing Workshop mods…",
   "workshopGameStartOptimizing": "Optimizing mods…",
+  "workshopGameStartOptimizingMod": "Optimizing {{mod}} ({{current}}/{{total}}): {{stage}}",
+  "workshopGameStartOptimizedFromCache": "Restoring optimized {{mod}} from the cache",
   "workshopGameStartSkipOptimization": "Launch without optimizing",
   "workshopGameStartSkippingOptimization": "Launching without optimizing…",
   "workshopGameStartCancelLaunch": "Cancel launch",
