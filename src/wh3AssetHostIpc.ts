@@ -371,7 +371,9 @@ const sanitizeAnimationSelections = (value: unknown): Wh3AssetHostAnimationRefer
     const metadataPath = typeof candidate.metadataPath === "string" ? candidate.metadataPath.trim() : "";
     const selection = {
       path,
-      packIndex: packIndex ?? null,
+      // The host rejects a null packIndex; omit it so references without one (e.g. picked from an
+      // animation bin by fragment) still resolve by path.
+      ...(packIndex != null ? { packIndex } : {}),
       fragmentPath: fragmentPath || null,
       metadataPath: metadataPath || null,
     } satisfies Wh3AssetHostAnimationReference;

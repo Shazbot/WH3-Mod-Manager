@@ -671,6 +671,32 @@ const api = {
   getUnitViewerDetails: (sessionId: string, unitKey: string): Promise<UnitViewerDetailsResponse> =>
     ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
 
+  getUnitViewerAnimationBinClips: (
+    sessionId: string,
+    tableName: string,
+  ): Promise<{
+    success: boolean;
+    clips?: string[];
+    standingClip?: string;
+    standingClipMetadataPath?: string;
+    fragmentPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("getUnitViewerAnimationBinClips", sessionId, tableName),
+
+  getUnitViewerSkeletonAnim: (
+    sessionId: string,
+    assetPath: string,
+  ): Promise<{
+    success: boolean;
+    bones?: Array<{
+      name: string;
+      parent: number;
+      translation: [number, number, number];
+      rotation: [number, number, number, number];
+    }>;
+    error?: string;
+  }> => ipcRenderer.invoke("getUnitViewerSkeletonAnim", sessionId, assetPath),
+
   getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
     ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
 

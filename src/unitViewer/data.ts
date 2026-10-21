@@ -6,17 +6,20 @@ import type {
   UnitViewerCharacterExperienceData,
   UnitViewerCharacterExperienceTier,
   UnitViewerFactionAgentPermittedSubtype,
+  UnitViewerEngineRider,
   UnitViewerEntity,
   UnitViewerFatigue,
   UnitViewerMeleeWeapon,
   UnitViewerMissileWeapon,
   UnitViewerProjectile,
   UnitViewerUnitModel,
+  UnitViewerVisualPart,
   UnitViewerUnitSize,
   UnitViewerLordOption,
 } from "./types";
 import { resolveTextReplacements } from "../skills";
 import { toVariantMeshDefinitionPath } from "../visuals/paths";
+import { normalizePackFilePath } from "../utility/packFilePathUtils";
 
 export type UnitViewerTableRows = Record<string, Array<Record<string, string>>>;
 
@@ -90,6 +93,9 @@ export const UNIT_VIEWER_TABLES = [
   "ground_type_to_stat_effects_tables",
   "_kv_morale_tables",
   "variants_tables",
+  "warscape_animated_lod_tables",
+  "land_units_to_battle_personalities_junctions_tables",
+  "battle_personalities_tables",
 ] as const;
 
 /** Bucket that collects units the game does not assign to a roster group. */
@@ -181,6 +187,29 @@ const readFactionUniformColour = (
 const readUnitVariantColour = (row: Record<string, string>, prefix: "primary" | "secondary" | "tertiary") =>
   normalizeHexColour(row[`${prefix}_colour_hex`]) ??
   normalizeRgbComponents(row[`${prefix}_colour_r`], row[`${prefix}_colour_g`], row[`${prefix}_colour_b`]);
+/** `dir\\model.wsmodel` -> `dir\\tech\\model.anim`, where models keep their attachment-point skeleton. */
+/**
+ * Candidate "tech" anims holding an engine's `ap_*` bones: the engine row's tech_folder (which can point at
+ * another engine's folder, e.g. magma cannon → chd_deathshrieker/tech/) first, then `<model dir>\\tech\\`.
+ */
+/** Empty placeholder VMDs (e.g. dummy_variant) used by units whose visuals come entirely from a mount or prop. */
+const isPlaceholderVmd = (path: string) => /(^|\\)dummy[^\\]*\.variantmeshdefinition$/i.test(path);
+
+const getTechAnimPaths = (modelPath: string, techFolder: string) => {
+  const match = /^(.*)\\([^\\]+)\.(?:wsmodel|rigid_model_v2|variantmeshdefinition)$/i.exec(modelPath);
+  if (!match) return undefined;
+  const candidates: string[] = [];
+  const folder = normalizePackFilePath(techFolder).replace(/\\+$/, "");
+  if (folder) {
+    const folderOwner = /([^\\]+)\\tech$/i.exec(folder)?.[1];
+    candidates.push(`${folder}\\${match[2]}.anim`);
+    if (folderOwner) candidates.push(`${folder}\\${folderOwner}_01.anim`, `${folder}\\${folderOwner}.anim`);
+  }
+  // VMDs live in a shared folder, so only geometry files get the "<model dir>\\tech\\" guess.
+  if (!/\.variantmeshdefinition$/i.test(modelPath)) candidates.push(`${match[1]}\\tech\\${match[2]}.anim`);
+  return candidates.length ? Array.from(new Set(candidates.map((candidate) => candidate.toLowerCase()))) : undefined;
+};
+
 const asNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -573,6 +602,18 @@ export const buildUnitViewerData = (
   const engines = indexRows(tables.battlefield_engines_tables, "key");
   const articulated = indexRows(tables.land_unit_articulated_vehicles_tables, "key");
   const variants = indexRows(tables.variants_tables, "variant_name");
+  // Engines without a VMD variant reference their model by key here (e.g. war wagons → .wsmodel).
+  const animatedLodModels = new Map<string, { filename: string; range: number }>();
+  for (const row of tables.warscape_animated_lod_tables || []) {
+    const animated = asString(row.animated).toLowerCase();
+    const filename = normalizePackFilePath(asString(row.filename));
+    if (!animated || !filename || !/\.(wsmodel|rigid_model_v2)$/i.test(filename)) continue;
+    const range = asNumber(row.range);
+    const current = animatedLodModels.get(animated);
+    if (!current || range < current.range) animatedLodModels.set(animated, { filename, range });
+  }
+  const personalityJunctions = groupRows(tables.land_units_to_battle_personalities_junctions_tables, "land_unit");
+  const personalities = indexRows(tables.battle_personalities_tables, "key");
   const armour = indexRows(tables.unit_armour_types_tables, "key");
   const shields = indexRows(tables.unit_shield_types_tables, "key");
   const meleeWeapons = indexRows(tables.melee_weapons_tables, "key");
@@ -842,6 +883,81 @@ export const buildUnitViewerData = (
       .filter((candidate): candidate is UnitViewerMissileWeapon => !!candidate);
     const primaryMissileWeapon = missileCandidates.find((candidate) => !candidate.useSecondaryAmmoPool);
     const secondaryMissileWeapon = missileCandidates.find((candidate) => candidate.useSecondaryAmmoPool);
+    const resolvePartPath = (filename: string | undefined) => toVariantMeshDefinitionPath(filename || "") || undefined;
+    const partScale = (row: unknown) => {
+      const scale = asNumber((row as Record<string, unknown> | undefined)?.scale);
+      return scale > 0 && scale !== 1 ? scale : undefined;
+    };
+    const mountVariant = variants.get(asString(mount?.variant));
+    const mountPath = mount ? resolvePartPath(asString(mountVariant?.variant_filename)) : undefined;
+    const engineVariant = engine ? variants.get(asString(engine.variant)) : undefined;
+    const engineModelKey = asString(engine?.model);
+    const enginePath = engine
+      ? resolvePartPath(asString(engineVariant?.variant_filename)) ||
+        animatedLodModels.get(engineModelKey.toLowerCase())?.filename ||
+        resolvePartPath(engineModelKey)
+      : undefined;
+    const hasMountPart = !!mountPath && mountPath !== variantMeshPath;
+    // Seat crews come from battle personalities, one per attachment point on the engine, or on the
+    // mount for ridden monsters without an engine (e.g. Thundertusk).
+    const engineRiders: UnitViewerEngineRider[] =
+      engine || mount
+        ? (personalityJunctions.get(landUnitKey) || []).flatMap((row) => {
+            const personality = personalities.get(asString(row.battle_personality));
+            const riderPath = resolvePartPath(asString(variants.get(asString(personality?.variant))?.variant_filename));
+            const attachmentPoint = asString(row.riders_attachment_point).trim();
+            const animationTable = asString(personality?.man_animations_table).trim() || undefined;
+            // Prop "riders" such as the magma cannon smokestack use an empty placeholder VMD; skip them.
+            if (!riderPath || isPlaceholderVmd(riderPath)) return [];
+            return attachmentPoint ? [{ attachmentPoint, variantMeshPath: riderPath, animationTable }] : [];
+          })
+        : [];
+    // Seat crew replaces the land unit's man model; the mount is then a draught animal, not ridden.
+    const hasSeatCrew = engineRiders.length > 0;
+    const isRidden = hasMountPart && !hasSeatCrew;
+    // Units like the Skullcannon use a placeholder man VMD; their visuals live on the mount/engine.
+    const ownMeshPath = variantMeshPath && !isPlaceholderVmd(variantMeshPath) ? variantMeshPath : undefined;
+    const crewPath = engineRiders[0]?.variantMeshPath || ownMeshPath;
+    const visualParts: UnitViewerVisualPart[] = [];
+    if (crewPath) {
+      visualParts.push({
+        role: isRidden ? "rider" : "crew",
+        label: isRidden ? "Rider" : "Crew",
+        variantMeshPath: crewPath,
+        scale: crewPath === variantMeshPath ? partScale(variantDefinition) : undefined,
+        count: hasSeatCrew ? engineRiders.length : Math.max(1, asNumber(main.num_men)),
+        animationTable: engineRiders[0]?.animationTable || asString(land.man_animation).trim() || undefined,
+      });
+    }
+    if (hasMountPart && mountPath) {
+      visualParts.push({
+        role: "mount",
+        label: "Mount",
+        variantMeshPath: mountPath,
+        scale: partScale(mountVariant),
+        count: Math.max(1, asNumber(land.num_mounts)),
+        animationTable: asString(mount?.animation).trim() || undefined,
+        ...(!engine && engineRiders.length
+          ? {
+              engineRiders,
+              techAnimPaths: getTechAnimPaths(mountPath, asString(mountVariant?.tech_folder)),
+            }
+          : {}),
+      });
+    }
+    if (enginePath && enginePath !== crewPath && enginePath !== mountPath) {
+      visualParts.push({
+        role: "engine",
+        label: "Engine",
+        variantMeshPath: enginePath,
+        scale: partScale(engineVariant),
+        riderAttachmentPoint: asString(engine?.rider_attachment_point).trim() || undefined,
+        draughtAttachmentPoint: asString(engine?.draught_attachment_point).trim() || undefined,
+        engineRiders: engineRiders.length ? engineRiders : undefined,
+        techAnimPaths: getTechAnimPaths(enginePath, asString(engine?.tech_folder)),
+        animationTable: asString(engine?.gun_animation_table).trim() || undefined,
+      });
+    }
 
     const model: UnitViewerUnitModel = {
       key,
@@ -899,8 +1015,10 @@ export const buildUnitViewerData = (
       primaryMissileWeapon,
       secondaryMissileWeapon,
       unitCardPath,
-      variantMeshPath,
-      painterVariantContext,
+      variantMeshPath: ownMeshPath || visualParts[0]?.variantMeshPath,
+      visualParts,
+      // Faction-variant saving targets the unit's own VMD; without one, painting edits the part's source VMD.
+      painterVariantContext: ownMeshPath ? painterVariantContext : undefined,
       attributes: unitAttributes,
       abilities: unitAbilities,
     };

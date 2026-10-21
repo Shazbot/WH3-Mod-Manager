@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Wh3Ktx2Loader } from "../visuals/Wh3Ktx2Loader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -25,6 +26,7 @@ import type { VisualsModelPreviewAnimationReference } from "../visuals/modelPrev
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
 import { selectDefaultAnimation, type AnimationSelectionProfile } from "../visuals/animationSelection";
+import { pickStandingClip } from "../visuals/twAnimBin";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
   createUnitPainterSession,
@@ -62,6 +64,272 @@ type PainterStrokeRuntimeProfile = {
   maxBvhRefitMs: number;
 };
 
+export type VisualsCompanionModel = {
+  assetPath: string;
+  role: string;
+  offset?: [number, number, number];
+  scale?: number;
+  animationProfile?: AnimationSelectionProfile;
+  /** How many copies to place when the model is attached to engine attachment points. */
+  count?: number;
+  /** Engine only: skeleton node names crew and draught models attach to. */
+  riderAttachmentPoint?: string;
+  draughtAttachmentPoint?: string;
+  /** Engine only: per-seat crew models and the attachment point each one stands on. */
+  engineRiders?: Array<{ attachmentPoint: string; assetPath: string; animationTable?: string }>;
+  /** Animation bin table whose standing idle this part should play. */
+  animationTable?: string;
+  /** Engine only: candidate pack paths of the tech animation that defines the `ap_*` attachment bones, tried in order. */
+  techAnimPaths?: string[];
+  /** The part whose attachment points seat the crew (an engine, or a ridden monster mount). */
+  seatHost?: boolean;
+};
+
+type TechSkeletonBone = {
+  name: string;
+  parent: number;
+  translation: [number, number, number];
+  rotation: [number, number, number, number];
+};
+
+type PreviewPlaceable = {
+  assetPath: string;
+  animationTable?: string;
+  scene: THREE.Object3D;
+  clip?: THREE.AnimationClip;
+  kind: "crew" | "mount" | "engine";
+  count: number;
+};
+
+/** Finds skeleton nodes by name: exact, then `<name>_<n>` / `<name><n>` sorted by index; optional prefix fallback. */
+const findAttachmentNodes = (root: THREE.Object3D, name: string | undefined, fallbackPrefix?: string) => {
+  const base = name?.trim().toLowerCase() ?? "";
+  const found: Array<{ node: THREE.Object3D; index: number }> = [];
+  root.traverse((node) => {
+    const nodeName = node.name.toLowerCase();
+    if (!nodeName) return;
+    if (base) {
+      if (nodeName === base) found.push({ node, index: -1 });
+      else if (nodeName.startsWith(base)) {
+        const match = /^_?(\d+)$/.exec(nodeName.slice(base.length));
+        if (match) found.push({ node, index: Number(match[1]) });
+      }
+    } else if (fallbackPrefix && nodeName.startsWith(fallbackPrefix)) {
+      const match = /(\d+)$/.exec(nodeName);
+      found.push({ node, index: match ? Number(match[1]) : -1 });
+    }
+  });
+  return found.sort((first, second) => first.index - second.index).map((entry) => entry.node);
+};
+
+/**
+ * Standing idle of an animation bin as an export reference, or undefined when the bin is missing or has
+ * none. Uses the bin's own STAND_IDLE/STAND slots and keeps that entry's fragment + metadata, which the
+ * host needs to dock weapons (a shared clip alone gets metadata from whichever bin the host guesses).
+ * The clip-name heuristic is only a fallback for unparsable bins.
+ */
+const resolveBinStandingReference = async (
+  sessionId: string,
+  table: string,
+): Promise<VisualsModelPreviewAnimationReference | undefined> => {
+  try {
+    const result = await window.api?.getUnitViewerAnimationBinClips(sessionId, table);
+    if (!result?.success) return undefined;
+    if (result.standingClip) {
+      return {
+        path: result.standingClip,
+        fragmentPath: result.fragmentPath,
+        metadataPath: result.standingClipMetadataPath,
+      };
+    }
+    const fallback = result.clips ? pickStandingClip(result.clips) : undefined;
+    return fallback ? { path: fallback } : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const findNodeByName = (root: THREE.Object3D, name: string) => {
+  const wanted = name.trim().toLowerCase();
+  let found: THREE.Object3D | undefined;
+  root.traverse((node) => {
+    if (!found && node.name.toLowerCase() === wanted) found = node;
+  });
+  return found;
+};
+
+/**
+ * The engine's own skeleton lacks `ap_*` bones; they live in its tech animation. Creates an Object3D per
+ * `ap_*` bone under the nearest ancestor bone that exists in the engine GLB, so it follows engine animation.
+ * The exporter may mirror X (translation x -> -x, rotation y/z -> -y/-z); that is detected by comparing
+ * bones both skeletons share.
+ */
+const addTechAttachmentNodes = (engine: THREE.Object3D, bones: readonly TechSkeletonBone[]) => {
+  const nodesByName = new Map<string, THREE.Object3D>();
+  engine.traverse((node) => {
+    const name = node.name.toLowerCase();
+    if (name && !nodesByName.has(name)) nodesByName.set(name, node);
+  });
+  const isAp = (bone: TechSkeletonBone) => bone.name.toLowerCase().startsWith("ap_");
+  const convert = (bone: TechSkeletonBone, mirror: boolean) => {
+    const [x, y, z] = bone.translation;
+    const [qx, qy, qz, qw] = bone.rotation;
+    return {
+      position: new THREE.Vector3(mirror ? -x : x, y, z),
+      quaternion: new THREE.Quaternion(qx, mirror ? -qy : qy, mirror ? -qz : qz, qw),
+    };
+  };
+  const mismatch = (mirror: boolean) => {
+    let total = 0;
+    for (const bone of bones) {
+      const node = isAp(bone) ? undefined : nodesByName.get(bone.name.toLowerCase());
+      if (!node) continue;
+      const local = convert(bone, mirror);
+      total += local.position.distanceTo(node.position) + (1 - Math.abs(local.quaternion.dot(node.quaternion)));
+    }
+    return total;
+  };
+  const mirror = mismatch(true) < mismatch(false);
+  const created: string[] = [];
+  const missing: string[] = [];
+  for (const bone of bones) {
+    if (!isAp(bone) || nodesByName.has(bone.name.toLowerCase())) continue;
+    const local = convert(bone, mirror);
+    const matrix = new THREE.Matrix4().compose(local.position, local.quaternion, new THREE.Vector3(1, 1, 1));
+    let parentIndex = bone.parent;
+    let anchor: THREE.Object3D | undefined;
+    while (parentIndex >= 0 && !anchor) {
+      const parentBone = bones[parentIndex];
+      anchor = nodesByName.get(parentBone.name.toLowerCase());
+      if (!anchor) {
+        const parentLocal = convert(parentBone, mirror);
+        matrix.premultiply(
+          new THREE.Matrix4().compose(parentLocal.position, parentLocal.quaternion, new THREE.Vector3(1, 1, 1)),
+        );
+        parentIndex = parentBone.parent;
+      }
+    }
+    if (!anchor) {
+      missing.push(bone.name);
+      continue;
+    }
+    const node = new THREE.Object3D();
+    node.name = bone.name;
+    matrix.decompose(node.position, node.quaternion, node.scale);
+    anchor.add(node);
+    nodesByName.set(bone.name.toLowerCase(), node);
+    created.push(bone.name);
+  }
+  console.log("[unit viewer] engine tech-anim attachment nodes", { mirrorX: mirror, created, noAnchor: missing });
+};
+
+/** Parents crew/mount models to the engine's attachment nodes; returns true when anything was attached. */
+/** Gap kept between the engine and its crew when there are no attachment points to seat them. */
+const ENGINE_CREW_GAP = 0.3;
+
+/**
+ * Fallback for engines without attachment points: moves the engine along -X so its posed mesh bounds
+ * clear the crew's (plus a gap) instead of using a fixed offset that can clip larger engines.
+ */
+const placeEngineBesideCrew = (
+  engine: THREE.Object3D,
+  crewScenes: readonly THREE.Object3D[],
+  mixers: readonly THREE.AnimationMixer[],
+) => {
+  if (crewScenes.length === 0) return;
+  // Apply the first animation frame so skinned bounds reflect the posed crew, not the bind pose.
+  for (const mixer of mixers) mixer.update(0);
+  engine.position.set(0, 0, 0);
+  engine.parent?.updateMatrixWorld(true);
+  const engineBox = new THREE.Box3().setFromObject(engine, true);
+  const crewBox = new THREE.Box3();
+  for (const scene of crewScenes) {
+    scene.updateMatrixWorld(true);
+    crewBox.union(new THREE.Box3().setFromObject(scene, true));
+  }
+  if (engineBox.isEmpty() || crewBox.isEmpty()) return;
+  engine.position.x = crewBox.min.x - ENGINE_CREW_GAP - engineBox.max.x;
+  engine.position.z = (crewBox.min.z + crewBox.max.z) / 2 - (engineBox.min.z + engineBox.max.z) / 2;
+  engine.updateMatrixWorld(true);
+};
+
+const attachToEngine = (
+  engine: THREE.Object3D,
+  engineLabel: Pick<VisualsCompanionModel, "riderAttachmentPoint" | "draughtAttachmentPoint" | "engineRiders">,
+  placeables: readonly PreviewPlaceable[],
+  addAction: (scene: THREE.Object3D, clip: THREE.AnimationClip) => void,
+) => {
+  engine.updateWorldMatrix(true, true);
+  let attached = false;
+  const mountOn = (node: THREE.Object3D, scene: THREE.Object3D) => {
+    node.add(scene);
+    scene.position.set(0, 0, 0);
+    scene.quaternion.identity();
+    node.updateWorldMatrix(true, false);
+    const worldScale = node.getWorldScale(new THREE.Vector3());
+    scene.scale.set(1 / (worldScale.x || 1), 1 / (worldScale.y || 1), 1 / (worldScale.z || 1));
+  };
+  /** Draught animals take only the node's position and stand upright like the engine root. */
+  const mountUpright = (node: THREE.Object3D, scene: THREE.Object3D) => {
+    mountOn(node, scene);
+    const nodeRotation = node.getWorldQuaternion(new THREE.Quaternion());
+    const engineRotation = engine.getWorldQuaternion(new THREE.Quaternion());
+    scene.quaternion.copy(nodeRotation.invert().multiply(engineRotation));
+  };
+  const cloneOf = (source: PreviewPlaceable) => {
+    const scene = cloneSkinned(source.scene);
+    if (source.clip) addAction(scene, source.clip);
+    return scene;
+  };
+  const placeRiders = () => {
+    const riders = engineLabel.engineRiders ?? [];
+    const crew = placeables.filter((placeable) => placeable.kind === "crew");
+    if (riders.length === 0 || crew.length === 0) return false;
+    const used = new Set<THREE.Object3D>();
+    const found: string[] = [];
+    const missing: string[] = [];
+    for (const rider of riders) {
+      const node = findNodeByName(engine, rider.attachmentPoint);
+      if (!node) {
+        missing.push(rider.attachmentPoint);
+        continue;
+      }
+      const source =
+        crew.find(
+          (placeable) => placeable.assetPath === rider.assetPath && placeable.animationTable === rider.animationTable,
+        ) ??
+        crew.find((placeable) => placeable.assetPath === rider.assetPath) ??
+        crew[0];
+      mountOn(node, used.has(source.scene) ? cloneOf(source) : source.scene);
+      used.add(source.scene);
+      found.push(rider.attachmentPoint);
+    }
+    console.log("[unit viewer] engine rider attachment nodes", { found, missing });
+    return found.length > 0;
+  };
+  const place = (kind: "crew" | "mount", nodes: THREE.Object3D[]) => {
+    const attach = kind === "mount" ? mountUpright : mountOn;
+    const models = placeables.filter((placeable) => placeable.kind === kind);
+    console.log(
+      `[unit viewer] engine ${kind} attachment nodes`,
+      nodes.length ? nodes.map((node) => node.name) : "none found (fixed-offset fallback)",
+    );
+    if (models.length === 0 || nodes.length === 0) return;
+    const source = models[0];
+    const total = Math.max(1, Math.min(source.count, nodes.length));
+    for (let index = 0; index < total; index++) {
+      attach(nodes[index], index > 0 ? cloneOf(source) : source.scene);
+    }
+    attached = true;
+  };
+  if (placeRiders()) attached = true;
+  else place("crew", findAttachmentNodes(engine, engineLabel.riderAttachmentPoint, "ap_crew"));
+  if (placeables.some((placeable) => placeable.kind === "mount")) {
+    place("mount", findAttachmentNodes(engine, engineLabel.draughtAttachmentPoint));
+  }
+  return attached;
+};
+
 type VisualsModelPreviewProps = {
   assetPath: string;
   /** Semantic animation family used to resolve the metadata-selected standing idle. */
@@ -75,6 +343,13 @@ type VisualsModelPreviewProps = {
   /** Session used to inspect VMD slots and select appearances. */
   variantMeshSessionId?: string;
   variantMeshSessionType?: "unitViewer" | "visuals";
+  /** Extra models shown beside the primary one (single-variant view only); painting stays on the primary. */
+  companionModels?: VisualsCompanionModel[];
+  /** Role and copy count of the primary model, used for engine attachment placement. */
+  primaryModelRole?: string;
+  /** Seat-crew animation table: its standing idle becomes the primary default (war machine crews only). */
+  primaryAnimationTable?: string;
+  primaryModelCount?: number;
   /** DB row context used to optionally save the painted VMD for one faction instead of overriding the source VMD. */
   unitVariantContext?: UnitPainterUnitVariantContext;
   /** Enables the experimental direct-on-model base-colour painter. */
@@ -839,6 +1114,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     unsyncedAnimations = true,
     variantMeshSessionId,
     variantMeshSessionType = "unitViewer",
+    companionModels,
+    primaryModelRole,
+    primaryModelCount,
+    primaryAnimationTable,
     unitVariantContext,
     enablePainting = false,
   } = props;
@@ -958,8 +1237,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const loadedAnimationCatalogKeyRef = useRef<string>();
   const loadedVariantCatalogKeyRef = useRef<string>();
   const animationCatalogKey = useMemo(
-    () => JSON.stringify([assetPath, animationProfile, effectiveEnabledMods]),
-    [animationProfile, assetPath, effectiveEnabledMods],
+    () => JSON.stringify([assetPath, animationProfile, effectiveEnabledMods, primaryAnimationTable ?? ""]),
+    [animationProfile, assetPath, effectiveEnabledMods, primaryAnimationTable],
   );
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const selectedAnimation = animationOptions.find((animation) => animation.key === selectedAnimationPath);
@@ -2022,10 +2301,39 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               (first.reference.metadataPath ?? "").localeCompare(second.reference.metadataPath ?? "") ||
               first.key.localeCompare(second.key),
           );
-        const options = [NONE_ANIMATION, ...animations];
+        let binDefaultAnimation: (typeof animations)[number] | undefined;
         const preferredAnimationPath =
           result.animationDefaults?.[animationProfile]?.path ?? result.animationDefaults?.ground?.path;
-        const defaultAnimation = selectDefaultAnimation(animations, preferredAnimationPath);
+        if (primaryAnimationTable && variantMeshSessionId) {
+          const binReference = await resolveBinStandingReference(variantMeshSessionId, primaryAnimationTable);
+          if (isCancelled) return;
+          console.log("[unit viewer] part animation", {
+            role: "primary",
+            table: primaryAnimationTable,
+            ...binReference,
+          });
+          if (binReference) {
+            const normalize = (value?: string | null) => (value ?? "").replaceAll("\\", "/").toLowerCase();
+            // Match path AND fragment so the option carries this bin's metadata, not another bin's.
+            const existing = animations.find(
+              (animation) =>
+                normalize(animation.path) === normalize(binReference.path) &&
+                normalize(animation.reference.fragmentPath) === normalize(binReference.fragmentPath),
+            );
+            if (existing) binDefaultAnimation = existing;
+            else {
+              binDefaultAnimation = {
+                key: getAnimationSelectionKey(binReference, animations.length),
+                path: binReference.path,
+                label: getAnimationLabel(binReference.path),
+                reference: binReference,
+              };
+              animations.push(binDefaultAnimation);
+            }
+          }
+        }
+        const options = [NONE_ANIMATION, ...animations];
+        const defaultAnimation = binDefaultAnimation ?? selectDefaultAnimation(animations, preferredAnimationPath);
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.key || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
@@ -2050,7 +2358,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [animationCatalogKey, animationProfile, assetPath, effectiveEnabledMods, isActive]);
+  }, [
+    animationCatalogKey,
+    animationProfile,
+    assetPath,
+    effectiveEnabledMods,
+    isActive,
+    primaryAnimationTable,
+    variantMeshSessionId,
+  ]);
 
   useEffect(() => {
     if (!isActive || loadedVariantCatalogKeyRef.current === variantCatalogKey) return;
@@ -2257,10 +2573,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         let singleExportRoundTripMs = 0;
         let singleGltfLoadMs = 0;
         let maxClipDuration = 0;
+        const companionScenes: THREE.Object3D[] = [];
+        const placeables: PreviewPlaceable[] = [];
+        let engineScene: THREE.Object3D | undefined;
+        let engineCompanion: VisualsCompanionModel | undefined;
+        const addCloneAction = (scene: THREE.Object3D, clip: THREE.AnimationClip) => {
+          const mixer = new THREE.AnimationMixer(scene);
+          const action = mixer.clipAction(clip);
+          action.setLoop(THREE.LoopRepeat, Infinity);
+          action.timeScale = animationSpeedRef.current;
+          action.play();
+          action.paused = !isPlayingRef.current;
+          ownedMixers.push(mixer);
+          ownedActions.push(action);
+        };
         let exportsToLoad: Array<{
           previewId: string;
           url: string;
           warnings?: string[];
+          companion?: VisualsCompanionModel;
         }>;
 
         if (comparisonVariants.length === 1) {
@@ -2283,6 +2614,59 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               warnings: exportResult.warnings,
             },
           ];
+          ownedPreviewIds.add(exportResult.previewId);
+          for (const companion of companionModels ?? []) {
+            if (isCancelled) break;
+            let companionReference: VisualsModelPreviewAnimationReference | undefined;
+            let binReference: VisualsModelPreviewAnimationReference | undefined;
+            if (companion.animationTable && variantMeshSessionId) {
+              binReference = await resolveBinStandingReference(variantMeshSessionId, companion.animationTable);
+            }
+            try {
+              const companionCatalog = await getVisualsModelAnimationCatalog(companion.assetPath, effectiveEnabledMods);
+              const companionAnimations = (companionCatalog.animations || []).filter((animation) =>
+                animation.path?.trim(),
+              );
+              const companionProfile = companion.animationProfile ?? "ground";
+              const preferredPath =
+                companionCatalog.animationDefaults?.[companionProfile]?.path ??
+                companionCatalog.animationDefaults?.ground?.path;
+              const companionAnimation = selectDefaultAnimation(
+                companionAnimations.map((reference) => ({
+                  path: reference.path,
+                  label: getAnimationLabel(reference.path),
+                  reference,
+                })),
+                preferredPath,
+              );
+              companionReference = binReference ?? companionAnimation?.reference;
+            } catch {
+              // Companions without a resolvable animation catalog render in their bind pose.
+            }
+            if (binReference && !companionReference) companionReference = binReference;
+            console.log("[unit viewer] part animation", {
+              role: companion.role,
+              table: companion.animationTable,
+              clip: companionReference?.path,
+            });
+            const companionExport = await exportVisualsModel(
+              companion.assetPath,
+              effectiveEnabledMods,
+              companionReference ? [companionReference] : [],
+              [],
+            );
+            if (!companionExport.success || !companionExport.previewId || !companionExport.url) {
+              warningSet.add(companionExport.error || `Failed to export ${companion.role} model.`);
+              continue;
+            }
+            ownedPreviewIds.add(companionExport.previewId);
+            exportsToLoad.push({
+              previewId: companionExport.previewId,
+              url: companionExport.url,
+              warnings: companionExport.warnings,
+              companion,
+            });
+          }
         } else {
           const batchResult = await exportVisualsModelBatch(
             assetPath,
@@ -2345,10 +2729,56 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
-          ownedModels.push(gltf.scene);
+          const companion = exportItem.companion;
+          if (companion?.seatHost && companion.techAnimPaths?.length && variantMeshSessionId) {
+            try {
+              let techBones: TechSkeletonBone[] | undefined;
+              for (const techAnimPath of companion.techAnimPaths) {
+                const tech = await window.api?.getUnitViewerSkeletonAnim(variantMeshSessionId, techAnimPath);
+                if (tech?.success && tech.bones) {
+                  techBones = tech.bones;
+                  console.log("[unit viewer] engine tech anim", techAnimPath);
+                  break;
+                }
+              }
+              if (techBones) addTechAttachmentNodes(gltf.scene, techBones);
+              else console.log("[unit viewer] engine tech anim unavailable", companion.techAnimPaths);
+            } catch (techError) {
+              console.log("[unit viewer] engine tech anim failed", techError);
+            }
+            if (isCancelled) {
+              disposeObject(gltf.scene);
+              return;
+            }
+          }
+          if (companion) {
+            companionScenes.push(gltf.scene);
+            if (companion.offset) gltf.scene.position.set(...companion.offset);
+            if (companion.scale && companion.scale > 0) gltf.scene.scale.multiplyScalar(companion.scale);
+          } else {
+            ownedModels.push(gltf.scene);
+          }
           ownedGroup.add(gltf.scene);
+          const placeableRole = companion ? companion.role : primaryModelRole;
+          const placeable: PreviewPlaceable = {
+            assetPath: companion ? companion.assetPath : assetPath,
+            animationTable: companion ? companion.animationTable : primaryAnimationTable,
+            scene: gltf.scene,
+            kind:
+              placeableRole === "engine" || companion?.seatHost
+                ? "engine"
+                : placeableRole === "mount"
+                  ? "mount"
+                  : "crew",
+            count: Math.max(1, (companion ? companion.count : primaryModelCount) ?? 1),
+          };
+          if (placeable.kind === "engine" && companion) {
+            engineScene = gltf.scene;
+            engineCompanion = companion;
+          }
+          placeables.push(placeable);
 
-          if (selectedAnimationPath && gltf.animations.length > 0) {
+          if ((companion ? true : selectedAnimationPath) && gltf.animations.length > 0) {
             const mixer = new THREE.AnimationMixer(gltf.scene);
             const animation = gltf.animations[0];
             const action = mixer.clipAction(animation);
@@ -2361,6 +2791,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             action.paused = !isPlayingRef.current;
             ownedMixers.push(mixer);
             ownedActions.push(action);
+            placeable.clip = animation;
             maxClipDuration = Math.max(maxClipDuration, gltf.animations[0].duration);
           }
         }
@@ -2368,7 +2799,22 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         if (isCancelled) return;
 
         const sceneSetupStartedAt = performance.now();
-        layoutComparisonModels(ownedModels, comparisonColumnCount, comparisonRowCount, comparisonLayerCount);
+        if (engineScene && engineCompanion) {
+          const crewAndMounts = placeables.filter((placeable) => placeable.kind !== "engine");
+          if (attachToEngine(engineScene, engineCompanion, crewAndMounts, addCloneAction)) {
+            engineScene.position.set(0, 0, 0);
+          } else {
+            placeEngineBesideCrew(
+              engineScene,
+              crewAndMounts.map((placeable) => placeable.scene),
+              ownedMixers,
+            );
+          }
+        }
+        // Companion parts share the primary's origin (rider animations are authored in mount space), so skip recentering.
+        if (companionScenes.length === 0) {
+          layoutComparisonModels(ownedModels, comparisonColumnCount, comparisonRowCount, comparisonLayerCount);
+        }
         paintRootRef.current = comparisonVariants.length === 1 ? (ownedModels[0] ?? null) : null;
         context.scene.add(ownedGroup);
         context.mixers = ownedMixers;
@@ -2434,6 +2880,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     comparisonRowCount,
     comparisonTooLarge,
     comparisonVariants,
+    companionModels,
+    primaryModelCount,
+    primaryModelRole,
     effectiveEnabledMods,
     isActive,
     paintProjectReloadVersion,
