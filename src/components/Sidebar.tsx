@@ -92,6 +92,7 @@ const Sidebar = memo(() => {
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
+  const optimizeWorkshopModsOnStart = useAppSelector((state) => state.app.optimizeWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
     (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
   );
@@ -257,6 +258,7 @@ const Sidebar = memo(() => {
               isClosedOnPlay,
               workshopModStagingMode,
               compressWorkshopModsOnStart,
+              optimizeWorkshopModsOnStart,
               cleanUpWorkshopModStagingAfterGameExit,
               packDataOverwrites,
               userFlowOptions,
@@ -274,6 +276,7 @@ const Sidebar = memo(() => {
         isClosedOnPlay,
         workshopModStagingMode,
         compressWorkshopModsOnStart,
+        optimizeWorkshopModsOnStart,
         cleanUpWorkshopModStagingAfterGameExit,
         packDataOverwrites,
         userFlowOptions,
@@ -286,6 +289,7 @@ const Sidebar = memo(() => {
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,
+      optimizeWorkshopModsOnStart,
       cleanUpWorkshopModStagingAfterGameExit,
       isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled,
@@ -334,6 +338,7 @@ const Sidebar = memo(() => {
                 isClosedOnPlay,
                 workshopModStagingMode,
                 compressWorkshopModsOnStart,
+                optimizeWorkshopModsOnStart,
                 cleanUpWorkshopModStagingAfterGameExit,
                 packDataOverwrites,
                 userFlowOptions,
@@ -356,6 +361,7 @@ const Sidebar = memo(() => {
           isClosedOnPlay,
           workshopModStagingMode,
           compressWorkshopModsOnStart,
+          optimizeWorkshopModsOnStart,
           cleanUpWorkshopModStagingAfterGameExit,
           packDataOverwrites,
           userFlowOptions,
@@ -369,6 +375,7 @@ const Sidebar = memo(() => {
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,
+      optimizeWorkshopModsOnStart,
       cleanUpWorkshopModStagingAfterGameExit,
       isMakeUnitsGeneralsEnabled,
       isScriptLoggingEnabled,

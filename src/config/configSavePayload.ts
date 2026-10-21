@@ -115,6 +115,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isClosedOnPlay: appState.isClosedOnPlay,
       workshopModStagingMode: appState.workshopModStagingMode,
       compressWorkshopModsOnStart: appState.compressWorkshopModsOnStart,
+      optimizeWorkshopModsOnStart: appState.optimizeWorkshopModsOnStart,
       cleanUpWorkshopModStagingAfterGameExit: appState.cleanUpWorkshopModStagingAfterGameExit,
       isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,
       isUsingEnglishLocalizations: appState.isUsingEnglishLocalizations,

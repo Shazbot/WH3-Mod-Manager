@@ -395,6 +395,8 @@ import {
   type WorkshopStagingProgress,
   type WorkshopStagingResult,
 } from "./utility/workshopModStaging";
+import { WORKSHOP_OPTIMIZER_PROFILE_ID } from "./workshopModOptimizer/hostRunner";
+import { createWorkshopModOptimizer, getWorkshopOptimizerCache } from "./workshopModOptimizer/runtime";
 import { findGameProcessIds } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
@@ -777,6 +779,8 @@ interface ActiveWorkshopStagingRun {
   runId: string;
   senderId: number;
   controller: AbortController;
+  /** Aborted by "Launch without optimizing"; staging carries on without the optimizer. */
+  skipOptimizationController: AbortController;
   canceled: boolean;
   lastProgress: WorkshopStagingProgress;
 }
@@ -798,6 +802,8 @@ const workshopStagingStageForPhase = (phase: WorkshopStagingProgress["phase"]): 
       return "copying";
     case "compressing":
       return "compressing";
+    case "optimizing":
+      return "optimizing";
     case "checkpointing":
       return "saving";
     case "completed":
@@ -13328,6 +13334,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             runId,
             senderId: event.sender.id,
             controller: new AbortController(),
+            skipOptimizationController: new AbortController(),
             canceled: false,
             lastProgress: { phase: "planning", current: 0, total: 0 },
           }
@@ -13420,10 +13427,30 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ? startGameOptions.workshopModStagingMode
             : "disabled";
         const cleanUpWorkshopModStagingAfterGameExit = !!startGameOptions.cleanUpWorkshopModStagingAfterGameExit;
+        // Optimizing staged mods is part of copy-mode staging for Warhammer III and implies compression.
+        const optimizeWorkshopMods =
+          appData.currentGame === "wh3" &&
+          workshopModStagingMode === "copy" &&
+          startGameOptions.optimizeWorkshopModsOnStart === true;
+        const workshopOptimizer = optimizeWorkshopMods
+          ? createWorkshopModOptimizer({
+              cache: getWorkshopOptimizerCache(),
+              dataFolder,
+              loadOrder: sortedMods.map((mod) => ({ name: mod.name, path: mod.path })),
+            })
+          : undefined;
+        if (optimizeWorkshopMods && !workshopOptimizer) {
+          const message = i18n.t("automaticWorkshopStagingOptimizeUnavailable");
+          mainWindow?.webContents.send("addToast", {
+            type: "warning",
+            messages: [message],
+            startTime: Date.now(),
+          } as Toast);
+        }
         const compressWorkshopMods =
           appData.currentGame === "wh3" &&
           workshopModStagingMode === "copy" &&
-          startGameOptions.compressWorkshopModsOnStart === true;
+          (startGameOptions.compressWorkshopModsOnStart === true || optimizeWorkshopMods);
         let realDataPackNames = new Set<string>();
         let stagedWorkshopModNames = new Set<string>();
         if (workshopModStagingMode !== "disabled") {
@@ -13439,9 +13466,29 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
             compressMods: compressWorkshopMods,
             includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
+            optimizer: workshopOptimizer,
+            optimizerProfile: workshopOptimizer ? WORKSHOP_OPTIMIZER_PROFILE_ID : undefined,
+            skipOptimizationSignal: workshopStagingRun?.skipOptimizationController.signal,
             signal: workshopStagingRun?.controller.signal,
             onProgress: (progress) => reportStagingProgress(progress),
           });
+          for (const warning of workshopOptimizer?.warnings ?? []) {
+            workshopStagingResult.compressionWarnings.push(warning);
+          }
+          for (const outcome of workshopStagingResult.optimizerResults) {
+            if (outcome.status !== "failed") continue;
+            const message = i18n.t("automaticWorkshopStagingOptimizeFailed", {
+              mod: outcome.name,
+              error: outcome.message ?? "",
+            });
+            mainWindow?.webContents.send("handleLog", message);
+            mainWindow?.webContents.send("addToast", {
+              type: "warning",
+              messages: [message],
+              startTime: Date.now(),
+            } as Toast);
+          }
+          getWorkshopOptimizerCache().unpinAll();
           stagingCompleted = true;
           reportStagingProgress(
             {
@@ -14171,6 +14218,51 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  ipcMain.on("skipWorkshopModOptimization", (event, requestedRunId?: string) => {
+    const run = activeWorkshopStagingRun;
+    if (!run || run.senderId !== event.sender.id || run.canceled) return;
+    if (typeof requestedRunId === "string" && requestedRunId.length > 0 && requestedRunId !== run.runId) return;
+    run.skipOptimizationController.abort();
+  });
+  ipcMain.handle("getWorkshopOptimizerCacheInfo", async () => {
+    try {
+      return { success: true, ...(await getWorkshopOptimizerCache().getInfo()) };
+    } catch (error) {
+      return {
+        success: false,
+        size: 0,
+        hasContents: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+  ipcMain.handle("clearWorkshopOptimizerCache", async () => {
+    // A launch in progress is reading from and writing to this folder.
+    if (activeWorkshopStagingRun) {
+      return { success: false, code: "STAGING_ACTIVE", error: i18n.t("workshopOptimizerCacheBusy") };
+    }
+    try {
+      await getWorkshopOptimizerCache().clear();
+      return { success: true };
+    } catch (error) {
+      const message = i18n.t("workshopOptimizerCacheClearFailed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, code: "CLEAR_FAILED", error: message };
+    }
+  });
+  ipcMain.handle("openWorkshopOptimizerReport", async (_event, modName: string) => {
+    const cache = getWorkshopOptimizerCache();
+    const reportPath = cache.reportPathFor(String(modName));
+    const failure = fs.existsSync(reportPath)
+      ? await shell.openPath(reportPath)
+      : i18n.t("workshopOptimizerReportMissing");
+    if (failure) {
+      mainWindow?.webContents.send("addToast", { type: "info", messages: [failure], startTime: Date.now() } as Toast);
+      return { success: false, error: failure };
+    }
+    return { success: true };
+  });
   ipcMain.on("cancelWorkshopModStaging", (event, requestedRunId?: string) => {
     const run = activeWorkshopStagingRun;
     if (!run || run.senderId !== event.sender.id) return;

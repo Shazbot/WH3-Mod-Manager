@@ -118,6 +118,7 @@ const stageCopyKey: Record<string, string> = {
   copying: "workshopGameStartCopying",
   compress: "workshopGameStartCompressing",
   compressing: "workshopGameStartCompressing",
+  optimizing: "workshopGameStartOptimizing",
   cleanup: "workshopGameStartCleaning",
   cleaning: "workshopGameStartCleaning",
   checkpointing: "workshopGameStartCheckpointing",
@@ -138,6 +139,7 @@ const stageFallback: Record<string, string> = {
   copying: "Copying Workshop mods…",
   compress: "Compressing Workshop mods…",
   compressing: "Compressing Workshop mods…",
+  optimizing: "Optimizing Workshop mods…",
   cleanup: "Cleaning up Workshop mods…",
   cleaning: "Cleaning up Workshop mods…",
   checkpointing: "Saving Workshop staging checkpoint…",
@@ -185,6 +187,7 @@ const WorkshopGameStartProgressCard = memo(() => {
   const localized = useContext(localizationContext) as Record<string, string>;
   const [progress, setProgress] = useState<WorkshopGameStartProgress>();
   const [cancelRequestedRunId, setCancelRequestedRunId] = useState<string>();
+  const [skipRequestedRunId, setSkipRequestedRunId] = useState<string>();
   const cancelRequestedRunIdRef = useRef<string>();
   const seenRunIds = useRef(new Set<string>());
 
@@ -255,6 +258,16 @@ const WorkshopGameStartProgressCard = memo(() => {
   const isCanceling = status === "canceling" || cancelRequestedRunId === progress?.runId;
   const cancel = window.api?.cancelWorkshopModStaging;
   const canCancel = isRunning && !isCanceling && !!cancel;
+  const skipOptimization = window.api?.skipWorkshopModOptimization;
+  const isOptimizing = progress?.stage.toLowerCase() === "optimizing";
+  const isSkipRequested = skipRequestedRunId === progress?.runId;
+  const canSkipOptimization = isRunning && isOptimizing && !isCanceling && !!skipOptimization;
+
+  const requestSkipOptimization = useCallback(() => {
+    if (!progress || !canSkipOptimization || !skipOptimization || skipRequestedRunId === progress.runId) return;
+    setSkipRequestedRunId(progress.runId);
+    skipOptimization(progress.runId);
+  }, [canSkipOptimization, progress, skipOptimization, skipRequestedRunId]);
 
   const requestCancel = useCallback(() => {
     if (!progress || !canCancel || !cancel || cancelRequestedRunIdRef.current === progress.runId) return;
@@ -361,13 +374,29 @@ const WorkshopGameStartProgressCard = memo(() => {
       </Modal.Body>
       {((isRunning && !!cancel) || isCanceling) && (
         <Modal.Footer>
+          {(canSkipOptimization || (isOptimizing && isSkipRequested)) && (
+            <button
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!canSkipOptimization || isSkipRequested}
+              onClick={requestSkipOptimization}
+              type="button"
+            >
+              {isSkipRequested
+                ? localized.workshopGameStartSkippingOptimization || "Launching without optimizing…"
+                : localized.workshopGameStartSkipOptimization || "Launch without optimizing"}
+            </button>
+          )}
           <button
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!canCancel}
             onClick={requestCancel}
             type="button"
           >
-            {isCanceling ? localized.workshopGameStartCanceling || "Canceling Workshop mod staging…" : cancelLabel}
+            {isCanceling
+              ? localized.workshopGameStartCanceling || "Canceling Workshop mod staging…"
+              : isOptimizing
+                ? localized.workshopGameStartCancelLaunch || "Cancel launch"
+                : cancelLabel}
           </button>
         </Modal.Footer>
       )}

@@ -9,6 +9,7 @@ import {
 } from "../appSlice";
 import {
   FaFolderOpen,
+  FaFileAlt,
   FaExternalLinkAlt,
   FaCopy,
   FaTable,
@@ -43,6 +44,9 @@ type ModDropdownOptionsProps = {
 const openInExplorer = (mod: Mod) => {
   window.api?.openFolderInExplorer(mod.path);
 };
+const openOptimizerReport = (mod: Mod) => {
+  void window.api?.openWorkshopOptimizerReport(mod.name);
+};
 const openInRPFM = (mod: Mod) => {
   window.api?.openPack(mod.path);
 };
@@ -76,6 +80,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const dispatch = useAppDispatch();
   const allMods = useAppSelector((state) => state.app.allMods);
   const isDev = useAppSelector((state) => state.app.isDev);
+  const optimizeWorkshopModsOnStart = useAppSelector((state) => state.app.optimizeWorkshopModsOnStart);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isComparingToWorkshop, setIsComparingToWorkshop] = useState(false);
@@ -421,6 +426,22 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </span>
               </a>
             </li>
+            {optimizeWorkshopModsOnStart && selectedMods.length === 1 && hasWorkshopMod(selectedMods[0]) && (
+              <li>
+                <a
+                  onClick={() => {
+                    runForSelectedMods(openOptimizerReport);
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <span className="flex items-center gap-2">
+                    <FaFileAlt className="w-5 h-5"></FaFileAlt>
+                    {localized.showOptimizerReport}
+                  </span>
+                </a>
+              </li>
+            )}
             <li>
               <a
                 onClick={() => {

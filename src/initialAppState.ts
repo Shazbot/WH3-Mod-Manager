@@ -24,6 +24,7 @@ const initialState = {
   isClosedOnPlay: false,
   workshopModStagingMode: "disabled",
   compressWorkshopModsOnStart: false,
+  optimizeWorkshopModsOnStart: false,
   cleanUpWorkshopModStagingAfterGameExit: false,
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,

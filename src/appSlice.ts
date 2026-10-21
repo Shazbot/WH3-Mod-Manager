@@ -1226,6 +1226,8 @@ const appSlice = createSlice({
         : "disabled";
       state.compressWorkshopModsOnStart =
         state.workshopModStagingMode === "copy" && !!fromConfigAppState.compressWorkshopModsOnStart;
+      state.optimizeWorkshopModsOnStart =
+        state.workshopModStagingMode === "copy" && !!fromConfigAppState.optimizeWorkshopModsOnStart;
       state.cleanUpWorkshopModStagingAfterGameExit = !!fromConfigAppState.cleanUpWorkshopModStagingAfterGameExit;
       state.isUsingEnglishLocalizations = !!fromConfigAppState.isUsingEnglishLocalizations;
       state.isCompatCheckingVanillaPacks =
@@ -1632,16 +1634,26 @@ const appSlice = createSlice({
       if (!(["disabled", "copy", "symlink"] as WorkshopModStagingMode[]).includes(action.payload)) {
         state.workshopModStagingMode = "disabled";
         state.compressWorkshopModsOnStart = false;
+        state.optimizeWorkshopModsOnStart = false;
         state.cleanUpWorkshopModStagingAfterGameExit = false;
         return;
       }
       state.workshopModStagingMode = action.payload;
-      if (action.payload !== "copy") state.compressWorkshopModsOnStart = false;
+      if (action.payload !== "copy") {
+        state.compressWorkshopModsOnStart = false;
+        state.optimizeWorkshopModsOnStart = false;
+      }
       if (action.payload === "disabled") state.cleanUpWorkshopModStagingAfterGameExit = false;
     },
     toggleCompressWorkshopModsOnStart: (state: AppState) => {
       if (state.currentGame !== "wh3" || state.workshopModStagingMode !== "copy") return;
       state.compressWorkshopModsOnStart = !state.compressWorkshopModsOnStart;
+    },
+    // Optimizing implies compressing, but never rewrites the stored compress choice, so turning
+    // the optimizer off returns the user to what they had.
+    toggleOptimizeWorkshopModsOnStart: (state: AppState) => {
+      if (state.currentGame !== "wh3" || state.workshopModStagingMode !== "copy") return;
+      state.optimizeWorkshopModsOnStart = !state.optimizeWorkshopModsOnStart;
     },
     toggleCleanUpWorkshopModStagingAfterGameExit: (state: AppState) => {
       if (state.workshopModStagingMode === "disabled") {
@@ -2135,6 +2147,7 @@ export const {
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
   toggleCompressWorkshopModsOnStart,
+  toggleOptimizeWorkshopModsOnStart,
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   setIsDev,

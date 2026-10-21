@@ -7,6 +7,7 @@ import {
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
   toggleCompressWorkshopModsOnStart,
+  toggleOptimizeWorkshopModsOnStart,
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
@@ -132,6 +133,8 @@ const OptionsDrawer = memo(() => {
   });
   const [isLoadingWorkshopStagingFolderInfo, setIsLoadingWorkshopStagingFolderInfo] = useState(true);
   const [isClearingWorkshopStaging, setIsClearingWorkshopStaging] = useState(false);
+  const [workshopOptimizerCacheInfo, setWorkshopOptimizerCacheInfo] = useState({ size: 0, hasContents: false });
+  const [isClearingWorkshopOptimizerCache, setIsClearingWorkshopOptimizerCache] = useState(false);
   const [workshopStagingFolderMessage, setWorkshopStagingFolderMessage] = useState<{
     message: string;
     isError: boolean;
@@ -153,6 +156,7 @@ const OptionsDrawer = memo(() => {
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
+  const optimizeWorkshopModsOnStart = useAppSelector((state) => state.app.optimizeWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
     (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
   );
@@ -260,6 +264,63 @@ const OptionsDrawer = memo(() => {
   useEffect(() => {
     void refreshWorkshopStagingFolderInfo();
   }, [currentGame, appFolderPaths.gamePath, isWH3Running, refreshWorkshopStagingFolderInfo, workshopModStagingMode]);
+
+  const refreshWorkshopOptimizerCacheInfo = useCallback(async () => {
+    const getInfo = window.api?.getWorkshopOptimizerCacheInfo;
+    if (!getInfo) return;
+    try {
+      const result = await getInfo();
+      if (result?.success) {
+        setWorkshopOptimizerCacheInfo({
+          size: Math.max(0, result.size || 0),
+          hasContents: result.hasContents ?? (result.size || 0) > 0,
+        });
+      }
+    } catch {
+      // The cache size is informational; the clear button simply stays hidden.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWorkshopOptimizerCacheInfo();
+  }, [
+    currentGame,
+    isWH3Running,
+    refreshWorkshopOptimizerCacheInfo,
+    workshopModStagingMode,
+    optimizeWorkshopModsOnStart,
+  ]);
+
+  const clearWorkshopOptimizerCache = useCallback(async () => {
+    const clear = window.api?.clearWorkshopOptimizerCache;
+    if (!clear) return;
+    setIsClearingWorkshopOptimizerCache(true);
+    setWorkshopStagingFolderMessage(undefined);
+    try {
+      const result = await clear();
+      setWorkshopStagingFolderMessage(
+        result?.success
+          ? { message: localized.workshopOptimizerCacheCleared || "Cleared optimized mods cache.", isError: false }
+          : {
+              message:
+                result?.error || localized.workshopOptimizerCacheBusy || "Could not clear the optimized mods cache.",
+              isError: true,
+            },
+      );
+      await refreshWorkshopOptimizerCacheInfo();
+    } catch (error) {
+      setWorkshopStagingFolderMessage({
+        message: error instanceof Error ? error.message : String(error),
+        isError: true,
+      });
+    } finally {
+      setIsClearingWorkshopOptimizerCache(false);
+    }
+  }, [
+    localized.workshopOptimizerCacheBusy,
+    localized.workshopOptimizerCacheCleared,
+    refreshWorkshopOptimizerCacheInfo,
+  ]);
 
   const clearWorkshopStagingFolder = useCallback(async () => {
     const clearWorkshopModStaging = window.api?.clearWorkshopModStaging;
@@ -1349,17 +1410,59 @@ const OptionsDrawer = memo(() => {
                       className="mt-1"
                       type="checkbox"
                       id="compress-workshop-mods-on-start"
-                      checked={!!compressWorkshopModsOnStart}
+                      checked={!!compressWorkshopModsOnStart || !!optimizeWorkshopModsOnStart}
+                      disabled={!!optimizeWorkshopModsOnStart}
                       onChange={() => dispatch(toggleCompressWorkshopModsOnStart())}
                     />
-                    <span className="ml-3">
+                    <span className={`ml-3 ${optimizeWorkshopModsOnStart ? "opacity-60" : ""}`}>
                       <span className="block">{localized.compressWorkshopModsOnStart || "Compress mods"}</span>
                       <span className="mt-1 block text-xs text-gray-400">
-                        {localized.compressWorkshopModsHelp ||
-                          "Copies the pack, then compresses eligible files in the staged copy."}
+                        {optimizeWorkshopModsOnStart
+                          ? localized.compressWorkshopModsOptimizeHelp ||
+                            "Compression is part of mod optimization and stays on while it is enabled."
+                          : localized.compressWorkshopModsHelp ||
+                            "Copies the pack, then compresses eligible files in the staged copy."}
                       </span>
                     </span>
                   </label>
+                  <label className="mt-3 flex cursor-pointer items-start px-2">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="optimize-workshop-mods-on-start"
+                      checked={!!optimizeWorkshopModsOnStart}
+                      onChange={() => dispatch(toggleOptimizeWorkshopModsOnStart())}
+                    />
+                    <span className="ml-3">
+                      <span className="block">
+                        {localized.optimizeWorkshopModsOnStart || "Optimize mods (experimental)"}
+                      </span>
+                      <span className="mt-1 block text-xs text-gray-400">
+                        {localized.optimizeWorkshopModsHelp ||
+                          "Merges and shrinks the unit models and textures of Workshop mods in the staged copy. The first launch after a change takes a few minutes per mod; results are cached."}
+                      </span>
+                    </span>
+                  </label>
+                  {(workshopOptimizerCacheInfo.hasContents || isClearingWorkshopOptimizerCache) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-3 px-2">
+                      <button
+                        type="button"
+                        className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isClearingWorkshopOptimizerCache}
+                        onClick={clearWorkshopOptimizerCache}
+                      >
+                        {isClearingWorkshopOptimizerCache
+                          ? localized.automaticWorkshopStagingClearing || "Clearing…"
+                          : localized.clearWorkshopOptimizerCache || "Clear optimized mods cache"}
+                      </button>
+                      <span className="text-xs text-gray-400">
+                        {(localized.workshopOptimizerCacheSize || "Cache size: {{size}}").replace(
+                          "{{size}}",
+                          formatWorkshopStagingBytes(workshopOptimizerCacheInfo.size),
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
