@@ -21,3 +21,7 @@ If you downloaded WH3 Mod Manager from its official release page, this file is a
 
 WH3 Mod Manager:
 https://github.com/Shazbot/WH3-Mod-Manager
+
+## Mod optimizer
+
+The same executable optimizes Workshop mods when "Optimize mods" is enabled in the options (the `optimize` command). host-build.txt records the AssetEditor commit this exe was built from; scripts/update-wh3-asset-host.ps1 rebuilds it.

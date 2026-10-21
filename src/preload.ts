@@ -212,6 +212,20 @@ const api = {
     ipcRenderer.invoke("compressPack", request),
   cancelCompressionAnalysis: () => ipcRenderer.send("cancelCompressionAnalysis"),
   cancelWorkshopModStaging: (runId?: string) => ipcRenderer.send("cancelWorkshopModStaging", runId),
+  skipWorkshopModOptimization: (runId?: string) => ipcRenderer.send("skipWorkshopModOptimization", runId),
+  getWorkshopOptimizerCacheInfo: (): Promise<{
+    success: boolean;
+    size?: number;
+    hasContents?: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("getWorkshopOptimizerCacheInfo"),
+  clearWorkshopOptimizerCache: (): Promise<{
+    success: boolean;
+    code?: "STAGING_ACTIVE" | "CLEAR_FAILED";
+    error?: string;
+  }> => ipcRenderer.invoke("clearWorkshopOptimizerCache"),
+  openWorkshopOptimizerReport: (modName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("openWorkshopOptimizerReport", modName),
   onWorkshopModStagingProgress: (
     callback: (event: Electron.IpcRendererEvent, progress: WorkshopModStagingProgressEvent) => void,
   ) => {

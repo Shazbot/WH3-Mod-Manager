@@ -178,6 +178,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     workshopModStagingMode,
     modListWidth: ["default", "wide", "full"].includes(config.modListWidth) ? config.modListWidth : "default",
     compressWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.compressWorkshopModsOnStart,
+    optimizeWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.optimizeWorkshopModsOnStart,
     cleanUpWorkshopModStagingAfterGameExit:
       workshopModStagingMode !== "disabled" && !!config.cleanUpWorkshopModStagingAfterGameExit,
     modRowsSortingType: config.modRowsSortingType ?? SortingType.Ordered,
