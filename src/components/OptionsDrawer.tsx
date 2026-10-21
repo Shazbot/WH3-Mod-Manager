@@ -1,4 +1,4 @@
-import Select, { ActionMeta, SingleValue, SingleValueProps, components } from "react-select";
+import Select, { ActionMeta, OptionProps, SingleValue, SingleValueProps, components } from "react-select";
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
@@ -623,6 +623,15 @@ const OptionsDrawer = memo(() => {
     </components.SingleValue>
   );
 
+  const GameOption = ({ children, ...props }: OptionProps<OptionType, false>) => (
+    <components.Option {...props}>
+      <div className="flex items-center gap-2">
+        <img className="h-6 w-6 shrink-0 object-contain" src={gameToImageSrc[props.data.value]} alt="" />
+        <span>{children}</span>
+      </div>
+    </components.Option>
+  );
+
   return (
     <div>
       <GamePathsSetup isOpen={isShowingSetFolderPaths} setIsOpen={setIsShowingSetFolderPaths}></GamePathsSetup>
@@ -760,11 +769,21 @@ const OptionsDrawer = memo(() => {
                   className="aspect-square m-2 mt-5 cursor-pointer"
                   id="gameSelect"
                   options={availableGames}
-                  styles={selectStyle}
+                  maxMenuHeight={window.innerHeight}
+                  menuPlacement="auto"
+                  styles={{
+                    ...selectStyle,
+                    menu: (base) => ({
+                      ...selectStyle.menu(base),
+                      width: "175%",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                    }),
+                  }}
                   onChange={onGameChange}
                   isClearable={false}
                   isSearchable={false}
-                  components={{ SingleValue, DropdownIndicator: null }}
+                  components={{ SingleValue, Option: GameOption, DropdownIndicator: null }}
                   value={{ value: currentGame, label: currentGame } as OptionType}
                 ></Select>
               </div>
