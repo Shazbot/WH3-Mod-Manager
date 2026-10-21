@@ -606,18 +606,26 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
   );
   if (!vanillaBattlePersmission) return;
   const vanillaBattlePersmissionVersion = vanillaBattlePersmission.version;
+  // Rows go in load order, and by table name within a pack, never in packsData order: that is the
+  // order packs happened to be read this session, and multiplayer needs every PC with the same mods
+  // and settings to write a byte-identical pack.
+  const packsDataByPath = new Map(packsData.map((packData) => [packData.path, packData]));
+  const seenPaths = new Set<string>();
   const battlePermissions = clone(
-    packsData
-      .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
-      .map((packData) => packData.packedFiles)
-      .map((packedFiles) =>
-        packedFiles.filter(
-          (packedFile) =>
-            packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\") &&
-            packedFile.version == vanillaBattlePersmissionVersion,
-        ),
+    enabledMods
+      .filter((enabledMod) => !seenPaths.has(enabledMod.path) && seenPaths.add(enabledMod.path))
+      .map((enabledMod) => packsDataByPath.get(enabledMod.path))
+      .filter((packData): packData is Pack => !!packData)
+      .map((packData) =>
+        packData.packedFiles
+          .filter(
+            (packedFile) =>
+              packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\") &&
+              packedFile.version == vanillaBattlePersmissionVersion,
+          )
+          .sort((first, second) => (first.name < second.name ? -1 : first.name > second.name ? 1 : 0)),
       )
-      .reduce((previous, packedFile) => previous.concat(packedFile), []),
+      .reduce((previous, packedFiles) => previous.concat(packedFiles), [] as PackedFile[]),
   );
   for (const packFile of battlePermissions) {
     const newFields: SchemaField[] = [];
