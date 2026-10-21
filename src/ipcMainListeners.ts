@@ -422,6 +422,8 @@ import {
 } from "./workshopModOptimizer/runtime";
 import { computeGameIdentity } from "./workshopModOptimizer/packInspection";
 import { formatSavedBytes, totalOptimizations } from "./workshopModOptimizer/summary";
+import { formatHousekeepingLine } from "./workshopModOptimizer/cache";
+import { scheduleStartupHousekeeping } from "./workshopModOptimizer/housekeepingSchedule";
 import { findGameProcessIds } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
@@ -13330,7 +13332,32 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     await collectPackNames(nodePath.join(dataFolder, "modding"));
     return names;
   };
+  /** The optimizer cache is in use by a launch, a background job or a running game. */
+  const isOptimizerCacheBusy = () =>
+    !!activeWorkshopStagingRun || appData.isWH3Running || getOptimizerBackground()?.getStatus().state === "running";
+  let housekeepingRunning = false;
+  /**
+   * Keeps the optimizer cache bounded (see `WorkshopOptimizerCache.housekeep`). Fire and forget: it never
+   * blocks startup or the UI, never runs while the cache is in use, and never throws.
+   */
+  const runOptimizerHousekeeping = async (afterJob = false): Promise<void> => {
+    if (housekeepingRunning || (!afterJob && isOptimizerCacheBusy())) return;
+    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
+    if (!gamePath || appData.currentGame !== "wh3" || !fs.existsSync(gamePath)) return;
+    housekeepingRunning = true;
+    try {
+      const cache = getWorkshopOptimizerCache(gamePath);
+      if (!fs.existsSync(cache.root)) return;
+      const line = formatHousekeepingLine(await cache.housekeep());
+      if (line) console.log(line);
+    } catch (error) {
+      console.warn("Optimizer cache housekeeping failed:", error);
+    } finally {
+      housekeepingRunning = false;
+    }
+  };
   initOptimizerBackground({
+    afterJob: () => runOptimizerHousekeeping(true),
     getDataPackNames: getRealDataPackNames,
     sendStatus: (status) => mainWindow?.webContents.send("workshopOptimizerBackgroundStatus", status),
   });
@@ -13348,6 +13375,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
   void checkGameIdentity();
   void removeLegacyOptimizerCacheOnce();
+  // Once, a little after startup, off the startup path.
+  scheduleStartupHousekeeping(() => runOptimizerHousekeeping());
   setInterval(() => void checkGameIdentity(), 10 * 60 * 1000).unref();
   ipcMain.on(
     "startGame",
@@ -13615,6 +13644,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             { stage: "complete", percent: 100, detail: "Workshop mods ready" },
           );
           if (activeWorkshopStagingRun === workshopStagingRun) activeWorkshopStagingRun = undefined;
+          if (workshopOptimizer) setTimeout(() => void runOptimizerHousekeeping(), 2000).unref();
           stagedWorkshopModNames = new Set(workshopStagingResult.stagedModNames.map((name) => name.toLowerCase()));
           log(
             `Prepared ${stagedWorkshopModNames.size} Workshop mod(s) in ${workshopStagingResult.destinationPath}; ` +
@@ -14362,8 +14392,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("clearWorkshopOptimizerCache", async () => {
     // A launch or a background job is reading from and writing to this folder, and a running game may
     // have staged packs open that are hard links of its entries.
-    const background = getOptimizerBackground()?.getStatus();
-    if (activeWorkshopStagingRun || appData.isWH3Running || background?.state === "running") {
+    if (isOptimizerCacheBusy()) {
       return { success: false, code: "STAGING_ACTIVE", error: i18n.t("workshopOptimizerCacheBusy") };
     }
     try {

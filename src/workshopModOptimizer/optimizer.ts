@@ -562,7 +562,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
           record.exitCode = outcome.exitCode;
           record.hostLogPath = await this.writeHostLog(mod.name, outcome);
         }
-        await cache.recordFailure(plan.key, message).catch(() => undefined);
+        await cache.recordFailure(plan.key, message, { name: mod.name, path: mod.path }).catch(() => undefined);
         return { status: "failed", message, warnings: [] };
       }
 

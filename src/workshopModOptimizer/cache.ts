@@ -24,6 +24,11 @@ import { randomUUID } from "node:crypto";
 
 export const DEFAULT_OPTIMIZER_CACHE_BUDGET_BYTES = 12 * 1024 * 1024 * 1024;
 export const DEFAULT_OPTIMIZER_MAX_ENTRIES_PER_SOURCE = 2;
+/** An entry not used for this long, and a failure marker this old, are removed by housekeeping. */
+export const OPTIMIZER_CACHE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
+/** Files younger than this are never treated as orphans: a job may be about to write their partner file. */
+const ORPHAN_GRACE_MS = 10 * 60 * 1000;
+const ALIAS_GRACE_MS = 60 * 60 * 1000;
 const MAX_ALIASES = 400;
 
 export interface OptimizerCacheEntryMeta {
@@ -53,7 +58,51 @@ export interface OptimizerCacheFailure {
   key: string;
   message: string;
   createdAt: number;
+  /** The mod the failure belongs to; a marker of a mod that is gone is removed. */
+  sourceName?: string;
+  sourcePath?: string;
 }
+
+export type HousekeepingReason = "missing source" | "expired" | "over budget" | "per-source cap" | "orphan files";
+
+export interface HousekeepingResult {
+  removed: Record<HousekeepingReason, { count: number; bytes: number }>;
+  /** Files that could not be deleted now (still open, e.g. a staged hard link of a running game). */
+  skipped: number;
+}
+
+const emptyHousekeepingResult = (): HousekeepingResult => ({
+  removed: {
+    "missing source": { count: 0, bytes: 0 },
+    expired: { count: 0, bytes: 0 },
+    "over budget": { count: 0, bytes: 0 },
+    "per-source cap": { count: 0, bytes: 0 },
+    "orphan files": { count: 0, bytes: 0 },
+  },
+  skipped: 0,
+});
+
+const formatBytes = (bytes: number): string => {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
+/** One log line for a housekeeping run, or undefined when it removed nothing. */
+export const formatHousekeepingLine = (result: HousekeepingResult): string | undefined => {
+  const parts = (Object.entries(result.removed) as [HousekeepingReason, { count: number; bytes: number }][])
+    .filter(([, value]) => value.count > 0)
+    .map(([reason, value]) => `${reason} ${value.count} (${formatBytes(value.bytes)})`);
+  if (parts.length === 0) return undefined;
+  const count = Object.values(result.removed).reduce((total, value) => total + value.count, 0);
+  const bytes = Object.values(result.removed).reduce((total, value) => total + value.bytes, 0);
+  return (
+    `Optimizer cache housekeeping: removed ${count} item(s), ${formatBytes(bytes)}: ${parts.join(", ")}` +
+    (result.skipped > 0 ? `; ${result.skipped} in use, retried next time` : "")
+  );
+};
+
+const BUSY_CODES = new Set(["EBUSY", "EPERM", "EACCES", "ENOTEMPTY"]);
 
 export interface OptimizerCacheOptions {
   root: string;
@@ -168,12 +217,13 @@ export class WorkshopOptimizerCache {
     return readJson<OptimizerCacheFailure>(this.failurePath(key));
   }
 
-  async recordFailure(key: string, message: string) {
+  async recordFailure(key: string, message: string, source?: { name: string; path: string }) {
     await this.ensureDirectories();
     await writeJsonAtomically(this.failurePath(key), {
       key,
       message,
       createdAt: this.now(),
+      ...(source ? { sourceName: source.name, sourcePath: source.path } : {}),
     } satisfies OptimizerCacheFailure);
   }
 
@@ -278,6 +328,12 @@ export class WorkshopOptimizerCache {
   /** At most N entries per (source, profile), then least-recently-used first until under budget. */
   async evict(): Promise<string[]> {
     const removed: string[] = [];
+    await this.enforceBounds(emptyHousekeepingResult(), removed);
+    if (removed.length > 0) await this.pruneAliases(new Set(removed));
+    return removed;
+  }
+
+  private async enforceBounds(result: HousekeepingResult, removedKeys: string[]) {
     const entries = (await this.listEntries()).sort((first, second) => second.lastUsed - first.lastUsed);
 
     const perSource = new Map<string, number>();
@@ -286,9 +342,10 @@ export class WorkshopOptimizerCache {
       const sourceKey = `${entry.sourcePath.toLowerCase()}|${entry.profile}`;
       const count = perSource.get(sourceKey) ?? 0;
       if (count >= this.maxEntriesPerSource && !this.pinned.has(entry.key)) {
-        await this.remove(entry.key);
-        removed.push(entry.key);
-        continue;
+        if (await this.removeEntry(entry, "per-source cap", result)) {
+          removedKeys.push(entry.key);
+          continue;
+        }
       }
       perSource.set(sourceKey, count + 1);
       survivors.push(entry);
@@ -298,13 +355,166 @@ export class WorkshopOptimizerCache {
     for (const entry of [...survivors].reverse()) {
       if (total <= this.budgetBytes) break;
       if (this.pinned.has(entry.key)) continue;
-      await this.remove(entry.key);
-      removed.push(entry.key);
-      total -= entry.size;
+      if (await this.removeEntry(entry, "over budget", result)) {
+        removedKeys.push(entry.key);
+        total -= entry.size;
+      }
+    }
+  }
+
+  /**
+   * Deletes an entry (the pack first). A pack that cannot be deleted because something has it open, such
+   * as a hard link in the staging folder of a running game, is skipped whole and counted: the next run
+   * tries again. Never throws.
+   */
+  private async removeEntry(
+    entry: OptimizerCacheEntryMeta,
+    reason: HousekeepingReason,
+    result: HousekeepingResult,
+  ): Promise<boolean> {
+    try {
+      await fs.promises.rm(this.packPath(entry.key), { force: true });
+    } catch (error) {
+      if (BUSY_CODES.has((error as NodeJS.ErrnoException).code ?? "")) {
+        result.skipped++;
+        // Deleting clears the read-only flag it shares with the staged link; put it back.
+        await fs.promises.chmod(this.packPath(entry.key), 0o444).catch(() => undefined);
+        return false;
+      }
+
+      result.skipped++;
+      return false;
     }
 
-    if (removed.length > 0) await this.pruneAliases(new Set(removed));
-    return removed;
+    await fs.promises.rm(this.metaPath(entry.key), { force: true }).catch(() => undefined);
+    await fs.promises.rm(this.failurePath(entry.key), { force: true }).catch(() => undefined);
+    result.removed[reason].count++;
+    result.removed[reason].bytes += entry.size;
+    return true;
+  }
+
+  private async removeOrphanFile(path: string, result: HousekeepingResult, bytes?: number) {
+    try {
+      const size = bytes ?? (await fs.promises.stat(path)).size;
+      await fs.promises.rm(path, { force: true });
+      result.removed["orphan files"].count++;
+      result.removed["orphan files"].bytes += size;
+    } catch (error) {
+      if (BUSY_CODES.has((error as NodeJS.ErrnoException).code ?? "")) result.skipped++;
+    }
+  }
+
+  /**
+   * Keeps the cache from growing without bound. In order: entries whose source pack is gone, entries not
+   * used for 30 days, the per-source cap and the size budget, then files that belong to no remaining
+   * entry (reports, host logs, failure markers of gone or expired sources, aliases, half entries).
+   * Entries pinned by the current launch or background job are never removed. The caller makes sure no
+   * staging or background job is using the cache.
+   */
+  async housekeep(sourceExists: (path: string) => Promise<boolean> = defaultSourceExists): Promise<HousekeepingResult> {
+    const result = emptyHousekeepingResult();
+    const removedKeys: string[] = [];
+    const cutoff = this.now() - OPTIMIZER_CACHE_EXPIRY_MS;
+    for (const entry of await this.listEntries()) {
+      if (this.pinned.has(entry.key)) continue;
+      const packExists = await fs.promises.access(this.packPath(entry.key)).then(
+        () => true,
+        () => false,
+      );
+      if (!packExists) {
+        // Half an entry (the pack was deleted or never finished moving in).
+        if (this.now() - entry.createdAt > ORPHAN_GRACE_MS)
+          await this.removeOrphanFile(this.metaPath(entry.key), result, 0);
+        removedKeys.push(entry.key);
+        continue;
+      }
+
+      const reason: HousekeepingReason | undefined = !(await sourceExists(entry.sourcePath))
+        ? "missing source"
+        : entry.lastUsed < cutoff
+          ? "expired"
+          : undefined;
+      if (reason && (await this.removeEntry(entry, reason, result))) removedKeys.push(entry.key);
+    }
+
+    await this.enforceBounds(result, removedKeys);
+
+    const entries = await this.listEntries();
+    const entryKeys = new Set(entries.map((entry) => entry.key));
+    const liveNames = new Set(entries.map((entry) => nodePath.basename(entry.sourceName).toLowerCase()));
+
+    // Entries directory: failure markers, half entries.
+    try {
+      for (const name of await fs.promises.readdir(this.entriesDirectory)) {
+        const path = nodePath.join(this.entriesDirectory, name);
+        const stats = await fs.promises.stat(path).catch(() => undefined);
+        if (!stats?.isFile()) continue;
+        if (name.endsWith(".failed.json")) {
+          const failure = await readJson<OptimizerCacheFailure>(path);
+          const gone = failure?.sourcePath ? !(await sourceExists(failure.sourcePath)) : false;
+          if (!failure || failure.createdAt < cutoff || gone) {
+            await this.removeOrphanFile(path, result, stats.size);
+          } else if (failure.sourceName) {
+            liveNames.add(nodePath.basename(failure.sourceName).toLowerCase());
+          }
+          continue;
+        }
+
+        const key = name.replace(/\.(pack|json)$/, "");
+        if (name.endsWith(".tmp") || key === name) continue;
+        const partner = name.endsWith(".pack") ? this.metaPath(key) : this.packPath(key);
+        if (!entryKeys.has(key) && this.now() - stats.mtimeMs > ORPHAN_GRACE_MS && !this.pinned.has(key)) {
+          await fs.promises.access(partner).then(
+            async () => undefined,
+            async () => this.removeOrphanFile(path, result, stats.size),
+          );
+        }
+      }
+    } catch {
+      // Housekeeping is best effort.
+    }
+
+    // Reports and host logs of mods that have no entry and no failure marker any more.
+    for (const [directory, suffix] of [
+      [this.reportsDirectory, ".report.txt"],
+      [nodePath.join(this.root, "logs"), ".host.log"],
+    ] as const) {
+      try {
+        for (const name of await fs.promises.readdir(directory)) {
+          if (!name.endsWith(suffix)) continue;
+          const path = nodePath.join(directory, name);
+          const stats = await fs.promises.stat(path).catch(() => undefined);
+          if (!stats?.isFile() || this.now() - stats.mtimeMs <= ORPHAN_GRACE_MS) continue;
+          if (!liveNames.has(name.slice(0, -suffix.length).toLowerCase())) {
+            await this.removeOrphanFile(path, result, stats.size);
+          }
+        }
+      } catch {
+        // The folder may not exist yet.
+      }
+    }
+
+    // Aliases that lead nowhere.
+    try {
+      for (const name of await fs.promises.readdir(this.aliasesDirectory)) {
+        const path = nodePath.join(this.aliasesDirectory, name);
+        const stats = await fs.promises.stat(path).catch(() => undefined);
+        if (!stats?.isFile() || this.now() - stats.mtimeMs <= ALIAS_GRACE_MS) continue;
+        const target = (await fs.promises.readFile(path, "utf8").catch(() => "")).trim();
+        const hasTarget =
+          entryKeys.has(target) ||
+          (await fs.promises.access(this.failurePath(target)).then(
+            () => true,
+            () => false,
+          ));
+        if (!hasTarget) await this.removeOrphanFile(path, result, stats.size);
+      }
+    } catch {
+      // Aliases are only a shortcut.
+    }
+
+    if (removedKeys.length > 0) await this.pruneAliases(new Set(removedKeys));
+    return result;
   }
 
   private async pruneAliases(removedKeys: Set<string>) {
@@ -386,4 +596,22 @@ export const removeLegacyUserDataCache = async (userDataPath: string): Promise<b
 
   await fs.promises.rm(legacy, { recursive: true, force: true });
   return true;
+};
+
+/**
+ * A pack is missing when its file is gone while its drive is there: an unplugged drive must not empty
+ * the cache.
+ */
+const defaultSourceExists = async (path: string): Promise<boolean> => {
+  try {
+    await fs.promises.access(path);
+    return true;
+  } catch {
+    try {
+      await fs.promises.access(nodePath.parse(path).root || path);
+      return false;
+    } catch {
+      return true;
+    }
+  }
 };

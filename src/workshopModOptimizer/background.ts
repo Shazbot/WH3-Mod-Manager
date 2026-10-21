@@ -58,6 +58,8 @@ export interface BackgroundDeps<Snapshot> {
   isGameRunning(): boolean;
   log(message: string): void;
   onStatus(status: BackgroundStatus): void;
+  /** Called between jobs and when a pass ends (never while a launch is preparing): cache housekeeping. */
+  afterJob?(): Promise<void>;
   debounceMs?: number;
   /** How long after the game exits the pass is redone. */
   afterGameMs?: number;
@@ -228,6 +230,7 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
       if (controller.signal.aborted || this.launchActive) break;
       this.publish({ state: "running", total: pass.jobs.length, done, currentMod: job.mod.name, fraction: 0 });
       const result = await this.runJob(pass, job, controller, done);
+      if (!this.launchActive) await this.deps.afterJob?.().catch(() => undefined);
       if (result === "stopped") break;
       done++;
     }

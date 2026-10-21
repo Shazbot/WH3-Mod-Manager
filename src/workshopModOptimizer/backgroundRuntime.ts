@@ -28,6 +28,8 @@ export interface OptimizerBackgroundSettings {
 }
 
 interface Hooks {
+  /** Housekeeping of the optimizer cache, run after each job. */
+  afterJob: () => Promise<void>;
   getDataPackNames: (dataFolder: string) => Promise<Set<string>>;
   sendStatus: (status: BackgroundStatus) => void;
 }
@@ -135,6 +137,7 @@ export const initOptimizerBackground = (newHooks: Hooks): BackgroundOptimizer<Ba
   background ??= new BackgroundOptimizer<BackgroundModsPayload>({
     plan: planPass,
     isGameRunning: () => appData.isWH3Running,
+    afterJob: async () => hooks?.afterJob(),
     log: (message) => console.log(message),
     onStatus: (status) => hooks?.sendStatus(status),
   });
