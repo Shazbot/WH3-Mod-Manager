@@ -739,6 +739,30 @@ describe("Unit Viewer catalog", () => {
     ]);
   });
 
+  it("uses the mount as the preview model when the unit's own VMD is a placeholder", () => {
+    const unit = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "skullcannon", land_unit: "skullcannon", num_men: "2" }],
+        land_units_tables: [
+          { key: "skullcannon", man_entity: "entity", primary_melee_weapon: "weapon", mount: "m", num_mounts: "1" },
+        ],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "skullcannon", variant: "dummy_variant" }],
+        mounts_tables: [{ key: "m", variant: "v_cannon" }],
+        variants_tables: [
+          { variant_name: "dummy_variant", variant_filename: "dummy_variant" },
+          { variant_name: "v_cannon", variant_filename: "dae_skullcannon" },
+        ],
+      },
+      () => undefined,
+    ).units.get("skullcannon");
+    const cannon = "variantmeshes\\variantmeshdefinitions\\dae_skullcannon.variantmeshdefinition";
+    expect(unit?.variantMeshPath).toBe(cannon);
+    expect(unit?.visualParts?.map((part) => [part.role, part.variantMeshPath])).toEqual([["mount", cannon]]);
+    expect(unit?.painterVariantContext).toBeUndefined();
+  });
+
   it("labels custom battle mount variants from their composite localization key", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [

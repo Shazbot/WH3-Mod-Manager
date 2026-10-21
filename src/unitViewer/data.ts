@@ -192,6 +192,9 @@ const readUnitVariantColour = (row: Record<string, string>, prefix: "primary" | 
  * Candidate "tech" anims holding an engine's `ap_*` bones: the engine row's tech_folder (which can point at
  * another engine's folder, e.g. magma cannon → chd_deathshrieker/tech/) first, then `<model dir>\\tech\\`.
  */
+/** Empty placeholder VMDs (e.g. dummy_variant) used by units whose visuals come entirely from a mount or prop. */
+const isPlaceholderVmd = (path: string) => /(^|\\)dummy[^\\]*\.variantmeshdefinition$/i.test(path);
+
 const getTechAnimPaths = (modelPath: string, techFolder: string) => {
   const match = /^(.*)\\([^\\]+)\.(?:wsmodel|rigid_model_v2)$/i.exec(modelPath);
   if (!match) return undefined;
@@ -902,14 +905,16 @@ export const buildUnitViewerData = (
           const attachmentPoint = asString(row.riders_attachment_point).trim();
           const animationTable = asString(personality?.man_animations_table).trim() || undefined;
           // Prop "riders" such as the magma cannon smokestack use an empty placeholder VMD; skip them.
-          if (!riderPath || /\\dummy[^\\]*\.variantmeshdefinition$/i.test(riderPath)) return [];
+          if (!riderPath || isPlaceholderVmd(riderPath)) return [];
           return attachmentPoint ? [{ attachmentPoint, variantMeshPath: riderPath, animationTable }] : [];
         })
       : [];
     // Seat crew replaces the land unit's man model; the mount is then a draught animal, not ridden.
     const hasSeatCrew = engineRiders.length > 0;
     const isRidden = hasMountPart && !hasSeatCrew;
-    const crewPath = engineRiders[0]?.variantMeshPath || variantMeshPath;
+    // Units like the Skullcannon use a placeholder man VMD; their visuals live on the mount/engine.
+    const ownMeshPath = variantMeshPath && !isPlaceholderVmd(variantMeshPath) ? variantMeshPath : undefined;
+    const crewPath = engineRiders[0]?.variantMeshPath || ownMeshPath;
     const visualParts: UnitViewerVisualPart[] = [];
     if (crewPath) {
       visualParts.push({
@@ -1001,9 +1006,10 @@ export const buildUnitViewerData = (
       primaryMissileWeapon,
       secondaryMissileWeapon,
       unitCardPath,
-      variantMeshPath,
+      variantMeshPath: ownMeshPath || visualParts[0]?.variantMeshPath,
       visualParts,
-      painterVariantContext,
+      // Faction-variant saving targets the unit's own VMD; without one, painting edits the part's source VMD.
+      painterVariantContext: ownMeshPath ? painterVariantContext : undefined,
       attributes: unitAttributes,
       abilities: unitAbilities,
     };
