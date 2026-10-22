@@ -230,6 +230,8 @@ interface FakeHostCalls {
   relevant: Set<string>;
   failNext: boolean;
   block?: Promise<void>;
+  /** The optimize (not probe) requests the host received. */
+  requests?: Record<string, unknown>[];
 }
 
 const makeFakeHost =
@@ -268,6 +270,7 @@ const makeFakeHost =
       return { kind: "probe", probe: { type: "probe", hostVersion: "t", consumers: packs } };
     }
     calls.optimizations++;
+    calls.requests?.push(request);
     options.onProgress?.({ type: "progress", stage: "Loading source pack", current: 0, total: 0 });
     if (calls.block) {
       await Promise.race([
@@ -331,7 +334,7 @@ describe("Workshop mod optimizer staging", () => {
         gameIdentity: async () => "game",
         schemaDigest: async () => "schema",
         compressRigidModels: true,
-        loadOrder: enabled.map((mod) => ({ name: mod.name, path: mod.path })),
+        loadOrder: enabled.map((mod) => ({ ...mod })),
         hasVisualAssets: async (packPath) => path.basename(packPath).startsWith("unit"),
         runHost: makeFakeHost(calls),
       });
@@ -546,6 +549,39 @@ describe("Workshop mod optimizer staging", () => {
     fs.writeFileSync(extraPath, "extra changed!");
     fs.rmSync(path.join(one.gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
     await one.stage(one.make(withExtra), { workshopMods: withExtra });
+    expect(calls.optimizations).toBe(2);
+  });
+
+  it("sends the dependency packs to the host and keys the result on them even when the probe calls them irrelevant", async () => {
+    const calls: FakeHostCalls = {
+      probes: 0,
+      probedSources: [],
+      optimizations: 0,
+      relevant: new Set(),
+      failNext: false,
+      requests: [],
+    };
+    const cacheRoot = makeDirectory();
+    const one = setup(["unit_one.pack", "dep.pack", "other.pack"], calls, cacheRoot);
+    const withDependency = one.mods.map((mod) =>
+      mod.name === "unit_one.pack" ? { ...mod, dependencyPacks: ["dep.pack"] } : mod,
+    );
+    await one.stage(one.make(withDependency));
+    expect(calls.optimizations).toBe(1);
+    const request = calls.requests![0] as { dependencyPackPaths?: string[]; consumerPackPaths: string[] };
+    expect(request.dependencyPackPaths?.map((item) => path.basename(item))).toEqual(["dep.pack"]);
+    expect(request.consumerPackPaths.map((item) => path.basename(item))).toEqual(["dep.pack", "other.pack"]);
+
+    // An unrelated pack changing keeps the result.
+    fs.writeFileSync(one.files.get("other.pack")!, "other changed!");
+    fs.rmSync(path.join(one.gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+    await one.stage(one.make(withDependency));
+    expect(calls.optimizations).toBe(1);
+
+    // The dependency pack changing invalidates it, although the host never called it relevant.
+    fs.writeFileSync(one.files.get("dep.pack")!, "dependency changed!");
+    fs.rmSync(path.join(one.gameFolder, WORKSHOP_MOD_STAGING_FOLDER), { recursive: true, force: true });
+    await one.stage(one.make(withDependency));
     expect(calls.optimizations).toBe(2);
   });
 

@@ -47,7 +47,13 @@ const planPass = async (payload: BackgroundModsPayload, signal: AbortSignal): Pr
   const optimizer = createWorkshopModOptimizer({
     cache,
     dataFolder: payload.dataFolder,
-    loadOrder: payload.mods.map((mod) => ({ name: mod.name, path: mod.path })),
+    loadOrder: payload.mods.map((mod) => ({
+      name: mod.name,
+      path: mod.path,
+      workshopId: mod.workshopId,
+      reqModIdToName: mod.reqModIdToName,
+      dependencyPacks: mod.dependencyPacks,
+    })),
     lowPriority: true,
     log: (message) => console.log(`Optimizer (background): ${message}`),
   });

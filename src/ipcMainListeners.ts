@@ -13576,7 +13576,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           ? createWorkshopModOptimizer({
               cache: optimizerCache,
               dataFolder,
-              loadOrder: sortedMods.map((mod) => ({ name: mod.name, path: mod.path })),
+              loadOrder: sortedMods.map((mod) => ({
+                name: mod.name,
+                path: mod.path,
+                workshopId: mod.workshopId,
+                reqModIdToName: mod.reqModIdToName,
+                dependencyPacks: mod.dependencyPacks,
+              })),
               // A background job making a mod this launch needs is waited for, not restarted.
               background: getOptimizerBackground(),
             })
@@ -14515,6 +14521,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           modDirectory: mod.modDirectory,
           sourceKind: getModSourceKind(mod),
           isInModding: mod.isInModding,
+          workshopId: mod.workshopId,
+          reqModIdToName: mod.reqModIdToName,
+          dependencyPacks: mod.dependencyPacks,
         })),
       };
       updateOptimizerBackground(payload, { ...settings, currentGame: appData.currentGame });

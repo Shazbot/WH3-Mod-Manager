@@ -17,6 +17,10 @@ export interface SelectionMod {
   modDirectory: string;
   sourceKind: "workshop" | "custom" | "data";
   isInModding?: boolean;
+  /** Dependency metadata for the optimizer, see `dependencyPacks.ts`. */
+  workshopId?: string;
+  reqModIdToName?: [string, string][];
+  dependencyPacks?: string[];
 }
 
 export interface CustomFolderStaging {

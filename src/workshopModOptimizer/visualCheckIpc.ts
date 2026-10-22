@@ -9,6 +9,7 @@ import { resolveWh3AssetHostExecutablePath } from "../wh3AssetHostIpc";
 import { getBundledSchemaPath } from "./runtime";
 import {
   type VisualCheckFailureCode,
+  type VisualCheckEnabledMod,
   type VisualCheckMod,
   type VisualCheckReport,
   type VisualCheckDeps,
@@ -61,13 +62,19 @@ export const registerVisualAssetCheckIpc = (mainWindow: BrowserWindow) => {
 
   ipcMain.handle(
     "startVisualAssetCheck",
-    async (_event, requested: VisualCheckMod, enabledMods?: { name: string; path: string; loadOrder?: number }[]) => {
+    async (_event, requested: VisualCheckMod, enabledMods?: VisualCheckEnabledMod[]) => {
       if (controller) return { success: false, code: "BUSY" as const };
       if (!requested || typeof requested.name !== "string" || !isPackPath(requested.path)) {
         return { success: false, code: "NOT_A_PACK" as const };
       }
 
-      const mod: VisualCheckMod = { name: requested.name, path: requested.path };
+      const mod: VisualCheckMod = {
+        name: requested.name,
+        path: requested.path,
+        workshopId: requested.workshopId,
+        reqModIdToName: requested.reqModIdToName,
+        dependencyPacks: requested.dependencyPacks,
+      };
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       const vanillaFileIndexPath = getVanillaPackFilesCachePath();
       if (!dataFolder || !vanillaFileIndexPath) {

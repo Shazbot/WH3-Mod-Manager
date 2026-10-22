@@ -138,13 +138,30 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
     [dispatch, isComparingToWorkshop, localized],
   );
 
-  // The check treats the user's other enabled mods as dependency packs (what they provide is not missing).
+  // The check treats the enabled mods that have a dependency relationship with the checked mod (either direction)
+  // as dependency packs: what they provide is not missing.
   const checkVisualAssets = useCallback(
     (mod: Mod) => {
       const enabledMods = presetMods
         .filter((other) => other.isEnabled)
-        .map((other) => ({ name: other.name, path: other.path, loadOrder: other.loadOrder }));
-      void window.api?.startVisualAssetCheck({ name: mod.name, path: mod.path }, enabledMods);
+        .map((other) => ({
+          name: other.name,
+          path: other.path,
+          loadOrder: other.loadOrder,
+          workshopId: other.workshopId,
+          reqModIdToName: other.reqModIdToName,
+          dependencyPacks: other.dependencyPacks,
+        }));
+      void window.api?.startVisualAssetCheck(
+        {
+          name: mod.name,
+          path: mod.path,
+          workshopId: mod.workshopId,
+          reqModIdToName: mod.reqModIdToName,
+          dependencyPacks: mod.dependencyPacks,
+        },
+        enabledMods,
+      );
     },
     [presetMods],
   );

@@ -10,6 +10,7 @@ import type {
   WorkshopStagingOptimizerResult,
 } from "../utility/workshopModStaging";
 import { type OptimizerKeyBase, type KeyedConsumer, buildExactKey, buildNarrowKey } from "./cacheKey";
+import { dependencyRelatedMods } from "./dependencyPacks";
 import type { WorkshopOptimizerCache } from "./cache";
 import type { OptimizerModRecord, OptimizerSkipReason } from "./logFormat";
 import {
@@ -27,6 +28,10 @@ export interface WorkshopOptimizerEnabledMod {
   name: string;
   /** The original pack, not a staged copy. */
   path: string;
+  /** Dependency metadata, see `dependencyPacks.ts`; a mod without it has no declared dependencies. */
+  workshopId?: string;
+  reqModIdToName?: [string, string][];
+  dependencyPacks?: string[];
 }
 
 /** A running background job the launch can wait for, see `background.ts`. */
@@ -85,6 +90,8 @@ interface PlanDetails {
   base: OptimizerKeyBase;
   consumers: KeyedConsumer[];
   sourceLoadOrderIndex: number;
+  /** Comparable paths of the consumers that have a declared dependency relationship with the mod. */
+  dependencyPaths: Set<string>;
   relevantPaths: Set<string>;
 }
 
@@ -92,6 +99,7 @@ interface ModContext {
   base: OptimizerKeyBase;
   consumers: KeyedConsumer[];
   sourceLoadOrderIndex: number;
+  dependencyPaths: Set<string>;
   exactKey: string;
 }
 
@@ -200,7 +208,15 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
     };
   }
 
-  private baseRequest(sourcePath: string, consumers: KeyedConsumer[], sourceLoadOrderIndex: number) {
+  private baseRequest(
+    sourcePath: string,
+    consumers: KeyedConsumer[],
+    sourceLoadOrderIndex: number,
+    dependencyPaths: ReadonlySet<string>,
+  ) {
+    const dependencyPackPaths = consumers
+      .map((consumer) => consumer.path)
+      .filter((path) => dependencyPaths.has(comparablePath(path)));
     return {
       schemaVersion: 1,
       gameDirectory: this.deps.gameDataFolder,
@@ -209,6 +225,8 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
       ...(this.deps.dbSchemaPath ? { dbSchemaPath: this.deps.dbSchemaPath } : {}),
       consumerPackPaths: consumers.map((consumer) => consumer.path),
       ...(consumers.length > 0 ? { sourceLoadOrderIndex } : {}),
+      // Packs the mod is split across: the host resolves the files it references from them.
+      ...(dependencyPackPaths.length > 0 ? { dependencyPackPaths } : {}),
     };
   }
 
@@ -255,7 +273,13 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
       }))
       .filter((item) => item.index !== ownIndex)
       .map(({ index: _index, ...rest }) => rest);
-    return { base, consumers, sourceLoadOrderIndex, exactKey: buildExactKey(base, consumers) };
+    const ownMod = this.deps.loadOrder.find((enabled) => comparablePath(enabled.path) === comparablePath(mod.path));
+    const dependencyPaths = new Set(
+      dependencyRelatedMods(ownMod ?? { name: mod.name, path: mod.path }, this.deps.loadOrder)
+        .map((related) => comparablePath(related.path))
+        .filter((path) => consumers.some((consumer) => comparablePath(consumer.path) === path)),
+    );
+    return { base, consumers, sourceLoadOrderIndex, dependencyPaths, exactKey: buildExactKey(base, consumers) };
   }
 
   /**
@@ -365,12 +389,18 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
     }
 
     const context = await this.contextFor(mod);
-    const { base, consumers, sourceLoadOrderIndex, exactKey } = context;
+    const { base, consumers, sourceLoadOrderIndex, dependencyPaths, exactKey } = context;
     const aliased = await this.deps.cache.resolveAlias(exactKey);
     if (aliased) {
       if ((await this.deps.cache.lookup(aliased)) || (await this.deps.cache.lookupFailure(aliased))) {
         this.recordFor(mod.path).keyKind = "narrow (alias hit)";
-        return this.finishPlan(mod.path, aliased, { base, consumers, sourceLoadOrderIndex, relevantPaths: new Set() });
+        return this.finishPlan(mod.path, aliased, {
+          base,
+          consumers,
+          sourceLoadOrderIndex,
+          dependencyPaths,
+          relevantPaths: new Set(dependencyPaths),
+        });
       }
     }
 
@@ -387,22 +417,29 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
       if (!this.probeAnswers.has(comparablePath(mod.path))) await this.runProbe([{ mod, context }], signal);
       const answer = this.probeAnswers.get(comparablePath(mod.path));
       if (answer) {
-        relevantPaths = answer.relevant;
+        // The dependency packs always count: the host may read files from them, and the probe does not know.
+        relevantPaths = new Set([...answer.relevant, ...dependencyPaths]);
         record.keyKind = "narrow (probed)";
         record.probeSeconds = answer.seconds;
         record.probeBatchSize = answer.batchSize;
         record.relevantConsumers = consumers
-          .filter((consumer) => answer.relevant.has(comparablePath(consumer.path)))
+          .filter((consumer) => relevantPaths.has(comparablePath(consumer.path)))
           .map((consumer) => nodePath.basename(consumer.path));
         narrowKey = buildNarrowKey(
           base,
-          consumers.filter((consumer) => answer.relevant.has(comparablePath(consumer.path))),
+          consumers.filter((consumer) => relevantPaths.has(comparablePath(consumer.path))),
         );
       }
     }
 
     await this.deps.cache.writeAlias(exactKey, narrowKey).catch(() => undefined);
-    return this.finishPlan(mod.path, narrowKey, { base, consumers, sourceLoadOrderIndex, relevantPaths });
+    return this.finishPlan(mod.path, narrowKey, {
+      base,
+      consumers,
+      sourceLoadOrderIndex,
+      dependencyPaths,
+      relevantPaths,
+    });
   }
 
   /** The host's answer for a mod is only valid for the load order it was asked about. */
@@ -502,7 +539,12 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
     const outputPath = cache.newTempPath(mod.name);
     const reportPath = `${outputPath}.report.txt`;
     const requestPath = await this.writeRequest({
-      ...this.baseRequest(mod.path, details.consumers, details.consumers.filter((c) => c.beforeSource).length),
+      ...this.baseRequest(
+        mod.path,
+        details.consumers,
+        details.consumers.filter((c) => c.beforeSource).length,
+        details.dependencyPaths,
+      ),
       outputPackPath: outputPath,
       reportPath,
       cacheDirectory: cache.hostCacheDirectory,

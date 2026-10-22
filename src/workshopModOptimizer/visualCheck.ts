@@ -3,6 +3,7 @@ import * as nodePath from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
 import { sortByNameAndLoadOrder } from "../modSortingHelpers";
+import { type DependencyAwareMod, dependencyRelatedMods } from "./dependencyPacks";
 import {
   type HostCheckFinding,
   type HostCheckSummary,
@@ -23,7 +24,13 @@ export interface VisualCheckMod {
   name: string;
   /** The pack file to check. */
   path: string;
+  /** Dependency metadata of the mod (see `dependencyPacks.ts`); without it only packs that require the mod count. */
+  workshopId?: string;
+  reqModIdToName?: [string, string][];
+  dependencyPacks?: string[];
 }
+
+export type VisualCheckEnabledMod = DependencyAwareMod & { loadOrder?: number };
 
 export interface VisualCheckReport {
   modName: string;
@@ -243,15 +250,16 @@ export const runVisualAssetCheck = async (
 
 const isPackFile = (path: unknown): path is string => typeof path === "string" && /\.pack$/i.test(path);
 
-/** The user's other enabled packs in load order (first loads first), this mod excluded. */
-export const dependencyPacksOf = (
-  mod: VisualCheckMod,
-  enabledMods: { name: string; path: string; loadOrder?: number }[] | undefined,
-): string[] => {
+/**
+ * The user's enabled packs that have a declared dependency relationship with this mod, in either direction
+ * (see `dependencyRelatedMods`), in load order (first loads first), this mod excluded.
+ */
+export const dependencyPacksOf = (mod: VisualCheckMod, enabledMods: VisualCheckEnabledMod[] | undefined): string[] => {
   const own = nodePath.win32.normalize(mod.path).toLowerCase();
   const seen = new Set<string>([own]);
   const result: string[] = [];
-  for (const other of sortByNameAndLoadOrder((enabledMods ?? []).filter((item) => isPackFile(item?.path)))) {
+  const ordered = sortByNameAndLoadOrder((enabledMods ?? []).filter((item) => isPackFile(item?.path)));
+  for (const other of dependencyRelatedMods(mod, ordered)) {
     const key = nodePath.win32.normalize(other.path).toLowerCase();
     if (seen.has(key) || !fs.existsSync(other.path)) continue;
     seen.add(key);

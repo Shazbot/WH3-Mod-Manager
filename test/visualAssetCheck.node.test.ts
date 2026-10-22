@@ -293,20 +293,49 @@ describe("visual asset check localization", () => {
 });
 
 describe("dependency packs", () => {
-  it("lists the other enabled packs in load order without this mod", async () => {
+  const makePacks = (names: string[]) => {
     const directory = makeDirectory();
-    const files = ["b.pack", "a.pack", "me.pack"].map((name) => {
-      const file = path.join(directory, name);
-      fs.writeFileSync(file, "x");
-      return file;
-    });
-    const result = dependencyPacksOf({ name: "me.pack", path: files[2] }, [
+    return {
+      directory,
+      files: names.map((name) => {
+        const file = path.join(directory, name);
+        fs.writeFileSync(file, "x");
+        return file;
+      }),
+    };
+  };
+
+  it("lists the enabled packs related to the mod in load order without the mod or unrelated packs", () => {
+    const { directory, files } = makePacks(["b.pack", "a.pack", "me.pack", "c.pack"]);
+    const result = dependencyPacksOf({ name: "me.pack", path: files[2], dependencyPacks: ["a.pack", "b.pack"] }, [
       { name: "b.pack", path: files[0] },
       { name: "a.pack", path: files[1] },
-      { name: "me.pack", path: files[2] },
-      { name: "gone.pack", path: path.join(directory, "gone.pack") },
-      { name: "folder", path: directory },
+      { name: "me.pack", path: files[2], dependencyPacks: ["a.pack"] },
+      { name: "c.pack", path: files[3] },
+      { name: "gone.pack", path: path.join(directory, "gone.pack"), dependencyPacks: ["me.pack"] },
+      { name: "folder", path: directory, dependencyPacks: ["me.pack"] },
     ]);
     expect(result).toEqual([files[1], files[0]]);
+  });
+
+  it("includes a pack that depends on the mod and excludes an unrelated enabled mod", () => {
+    const { files } = makePacks(["requires_me.pack", "workshop_user.pack", "unrelated.pack", "me.pack"]);
+    const result = dependencyPacksOf({ name: "me.pack", path: files[3], workshopId: "42" }, [
+      { name: "requires_me.pack", path: files[0], dependencyPacks: ["me.pack"] },
+      { name: "workshop_user.pack", path: files[1], reqModIdToName: [["42", "me"]] },
+      { name: "unrelated.pack", path: files[2], reqModIdToName: [["7", "x"]], dependencyPacks: ["other.pack"] },
+      { name: "me.pack", path: files[3] },
+    ]);
+    expect(result).toEqual([files[0], files[1]]);
+  });
+
+  it("includes a pack the mod requires by workshop id, even when the checked mod is not enabled", () => {
+    const { files } = makePacks(["core.pack", "me.pack"]);
+    expect(
+      dependencyPacksOf({ name: "me.pack", path: files[1], reqModIdToName: [["9", "core"]] }, [
+        { name: "core.pack", path: files[0], workshopId: "9" },
+      ]),
+    ).toEqual([files[0]]);
+    expect(dependencyPacksOf({ name: "me.pack", path: files[1] }, [{ name: "core.pack", path: files[0] }])).toEqual([]);
   });
 });

@@ -258,8 +258,15 @@ const api = {
   openWorkshopOptimizerReport: (modName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("openWorkshopOptimizerReport", modName),
   startVisualAssetCheck: (
-    mod: { name: string; path: string },
-    enabledMods: { name: string; path: string; loadOrder?: number }[],
+    mod: { name: string; path: string; workshopId?: string; reqModIdToName?: [string, string][]; dependencyPacks?: string[] },
+    enabledMods: {
+      name: string;
+      path: string;
+      loadOrder?: number;
+      workshopId?: string;
+      reqModIdToName?: [string, string][];
+      dependencyPacks?: string[];
+    }[],
   ): Promise<{ success: boolean; code?: "BUSY" | "NOT_A_PACK" | "NO_GAME" | "HOST_MISSING" }> =>
     ipcRenderer.invoke("startVisualAssetCheck", mod, enabledMods),
   cancelVisualAssetCheck: () => ipcRenderer.send("cancelVisualAssetCheck"),
