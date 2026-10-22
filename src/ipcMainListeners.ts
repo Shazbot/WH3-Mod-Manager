@@ -13488,10 +13488,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
       let stagingCompleted = false;
       let stagingFailureMessage: string | undefined;
-      console.log("before start:");
-      for (const pack of appData.packsData) {
-        console.log(pack.name, pack.readTables);
-      }
       const reportGameLaunchError = (message: string, error?: unknown, userMessage = message) => {
         console.error(message, error);
         mainWindow?.webContents.send("handleLog", message);
@@ -13791,10 +13787,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           await fs.mkdirSync(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
           log("getting start game dbs");
           await getDBsForGameStartOptions(sortedMods.concat(vanillaPacks), startGameOptions);
-          console.log("before start:");
-          for (const pack of appData.packsData) {
-            console.log(pack.name, pack.readTables);
-          }
+          const packsWithTables = appData.packsData.filter(
+            (pack) => pack.readTables === "all" || pack.readTables.length > 0,
+          );
+          console.log(
+            `before start: ${appData.packsData.length} packs loaded, ${packsWithTables.length} with parsed tables`,
+          );
           const tempPackName = "!!!!out.pack";
           const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
           log("writing start game pack");
