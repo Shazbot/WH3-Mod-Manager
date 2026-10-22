@@ -42,6 +42,7 @@ describe("pack header file index metadata", () => {
         isMovie: false,
         hasStartpos: true,
         hasLoadOrderRules: false,
+        hasNativePatches: false,
         dependencyPacks: ["data.pack"],
       });
     } finally {
@@ -84,6 +85,7 @@ describe("pack header file index metadata", () => {
         isMovie: false,
         hasStartpos: true,
         hasLoadOrderRules: false,
+        hasNativePatches: false,
         dependencyPacks: [],
       });
     } finally {
@@ -110,6 +112,7 @@ describe("scanPackedFileIndex", () => {
     expect(scanPackedFileIndex(index, 3, true)).toEqual({
       hasStartpos: true,
       hasLoadOrderRules: true,
+      hasNativePatches: false,
       loadOrderRulesFileName: "whmm\\load_order.whmm",
     });
   });
@@ -121,6 +124,16 @@ describe("scanPackedFileIndex", () => {
     expect(scan.hasLoadOrderRules).toBe(true);
     // A targeted read looks the file up by its stored name, so the original casing has to survive.
     expect(scan.loadOrderRulesFileName).toBe("WHMM/Load_Order.WHMM");
+  });
+
+  it("spots native patch manifests and contributions regardless of slash style and case", () => {
+    const manifest = makeIndexEntry("WHMM_Patches\\x.WH3Patch.json", true);
+    const contribution = makeIndexEntry("whmm_patch_contributions/v1/a.wh3patchcontrib.json", true);
+    const other = makeIndexEntry("whmm_patches\\notes.txt", true);
+
+    expect(scanPackedFileIndex(manifest, 1, true).hasNativePatches).toBe(true);
+    expect(scanPackedFileIndex(contribution, 1, true).hasNativePatches).toBe(true);
+    expect(scanPackedFileIndex(other, 1, true).hasNativePatches).toBe(false);
   });
 
   it("does not mistake a flow or a nested lookalike for it", () => {
@@ -135,7 +148,7 @@ describe("scanPackedFileIndex", () => {
 
   it("reports neither for a pack holding nothing special", () => {
     const index = Buffer.concat([makeIndexEntry("db\\units_tables\\data__", true)]);
-    expect(scanPackedFileIndex(index, 1, true)).toEqual({ hasStartpos: false, hasLoadOrderRules: false });
+    expect(scanPackedFileIndex(index, 1, true)).toEqual({ hasStartpos: false, hasLoadOrderRules: false, hasNativePatches: false });
   });
 
   it("skips the filename hash before scanning a hashed PFH5 entry", () => {
@@ -144,6 +157,7 @@ describe("scanPackedFileIndex", () => {
     expect(scanPackedFileIndex(index, 1, true, true)).toEqual({
       hasStartpos: false,
       hasLoadOrderRules: true,
+      hasNativePatches: false,
       loadOrderRulesFileName: "whmm\\load_order.whmm",
     });
   });

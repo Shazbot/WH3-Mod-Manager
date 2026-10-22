@@ -5,6 +5,11 @@ import * as semver from "semver";
 import { decompress as decompressZstd } from "@mongodb-js/zstd";
 import * as zlib from "zlib";
 import type { Pack, PackedFile } from "../packFileTypes";
+import {
+  canonicalPackName,
+  isNativePatchContributionPackedFile,
+  isNativePatchManifestPackedFile,
+} from "../utility/nativePatchPackFileNames";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import {
   MAX_BLOCK_BYTES,
@@ -77,7 +82,6 @@ type Candidate = {
 
 const sha256 = (bytes: Buffer) => crypto.createHash("sha256").update(bytes).digest("hex");
 const ordinalCompare = (first: string, second: string) => (first < second ? -1 : first > second ? 1 : 0);
-const canonicalPackName = (name: string) => name.replace(/\\/g, "/").replace(/^\/+/, "");
 const normalizedVirtualPath = (name: string) => nodePath.posix.normalize(canonicalPackName(name)).toLowerCase();
 const exactEntries = (pack: NativePatchPack, virtualPath: string): PackedFile[] => {
   const pathKey = normalizePackFilePathKey(virtualPath);
@@ -691,10 +695,7 @@ const resolvePackageCandidates = async (
   const candidates: Candidate[] = [];
   let totalManifestBytes = 0;
   for (const pack of packs) {
-    const patchEntries = pack.pack.packedFiles.filter((entry) => {
-      const name = canonicalPackName(entry.name);
-      return /^whmm_patches\//i.test(name) && name.toLowerCase().endsWith(".wh3patch.json");
-    });
+    const patchEntries = pack.pack.packedFiles.filter((entry) => isNativePatchManifestPackedFile(entry.name));
     const normalizedNames = new Set<string>();
     for (const entry of patchEntries) {
       const nameKey = normalizedVirtualPath(entry.name);
@@ -837,10 +838,7 @@ const resolveFlowContributionCandidates = async (
     (pack) => ({
       pack,
       entries: pack.pack.packedFiles
-        .filter((entry) => {
-          const name = canonicalPackName(entry.name);
-          return /^whmm_patch_contributions\/v1\//i.test(name) && name.toLowerCase().endsWith(".wh3patchcontrib.json");
-        })
+        .filter((entry) => isNativePatchContributionPackedFile(entry.name))
         .map((entry) => ({ entry })),
     }),
   );

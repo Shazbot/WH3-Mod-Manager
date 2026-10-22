@@ -143,6 +143,8 @@ declare global {
     hasStartpos: boolean;
     /** Whether the pack ships its own whmm\load_order.whmm, spotted during the header's index walk. */
     hasLoadOrderRules?: boolean;
+    /** Whether the pack ships native patch manifests or flow contributions. */
+    hasNativePatches?: boolean;
     /** That file's name as the pack spells it, which is what a targeted read has to ask for. */
     loadOrderRulesFileName?: string;
     dependencyPacks: string[];

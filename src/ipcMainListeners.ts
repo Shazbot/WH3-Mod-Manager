@@ -5701,25 +5701,36 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
   const getAllMods = async (afterModsPopulated?: () => void | Promise<void>) => {
     const timeStartedFetchingSubbedIds = Date.now();
+    let subscribedIdsSettled = false;
+    let subscribedIds: string[] = [];
     try {
-      appData.subscribedModIds = [];
       const child = fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "getSubscribedIds"],
         {},
       );
       child.on("message", (workshopIds: string[]) => {
-        appData.subscribedModIds = workshopIds;
+        subscribedIds = workshopIds;
+        subscribedIdsSettled = true;
         console.log("getSubscribedIds returned:", workshopIds);
+      });
+      // Steam not running makes the child exit without a message; that is an answer too.
+      child.on("exit", () => {
+        subscribedIdsSettled = true;
+      });
+      child.on("error", () => {
+        subscribedIdsSettled = true;
       });
     } catch (e) {
       console.log(e);
+      subscribedIdsSettled = true;
     }
     try {
       let mods = await getMods(log);
-      while (Date.now() - timeStartedFetchingSubbedIds < 5000 && appData.subscribedModIds.length == 0) {
+      while (Date.now() - timeStartedFetchingSubbedIds < 5000 && !subscribedIdsSettled) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
+      appData.subscribedModIds = subscribedIds;
       console.log("before subscription filter:", mods.length);
       // for (const mod of mods) {
       //   if (!mod.isInData && !appData.subscribedModIds.includes(mod.workshopId)) console.log(mod.workshopId);
@@ -6193,6 +6204,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     dependencyPacks: string[];
     /** Absent on entries written before load order rules existed, which forces a re-read. */
     hasLoadOrderRules?: boolean;
+    /** Absent on entries written before native patch detection, which forces a re-read. */
+    hasNativePatches?: boolean;
     loadOrderRulesFileName?: string;
     /** The parsed rules, kept here so a restart does not reopen every pack that has them. */
     loadOrderRules?: LoadOrderRule[];
@@ -6241,13 +6254,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         entry.size === stat.size &&
         entry.lastChangedLocal === stat.mtimeMs &&
         typeof entry.hasStartpos === "boolean" &&
-        typeof entry.hasLoadOrderRules === "boolean"
+        typeof entry.hasLoadOrderRules === "boolean" &&
+        typeof entry.hasNativePatches === "boolean"
       ) {
         return {
           path,
           isMovie: entry.isMovie,
           hasStartpos: entry.hasStartpos,
           hasLoadOrderRules: entry.hasLoadOrderRules,
+          hasNativePatches: entry.hasNativePatches,
           loadOrderRulesFileName: entry.loadOrderRulesFileName,
           dependencyPacks: entry.dependencyPacks,
         };
@@ -6261,6 +6276,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         isMovie: data.isMovie,
         hasStartpos: data.hasStartpos,
         hasLoadOrderRules: data.hasLoadOrderRules ?? false,
+        hasNativePatches: data.hasNativePatches ?? false,
         loadOrderRulesFileName: data.loadOrderRulesFileName,
         dependencyPacks: data.dependencyPacks,
       };
@@ -14226,10 +14242,29 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             return indexed;
           };
           const enabledPacks: NativePatchPack[] = [];
+          // Only packs that may carry native patch manifests or flow contributions need a full index;
+          // the cached header scan tells us cheaply. Runtime flow contributions keep their source
+          // pack's priority, so those source packs are indexed too.
+          const runtimeContributionPackKeys = new Set(
+            runtimeNativePatchContributions.map((contribution) => pathIdentity(contribution.sourcePackPath)),
+          );
           for (const [priority, packPath] of enabledPackPaths.entries()) {
+            if (!runtimeContributionPackKeys.has(pathIdentity(packPath))) {
+              if (!fs.existsSync(packPath) || !fs.statSync(packPath).isFile()) {
+                throw new Error(`Final WH3 pack is missing: ${packPath}`);
+              }
+              let mayHaveNativePatches = true;
+              try {
+                mayHaveNativePatches = (await readPackHeaderCached(packPath)).hasNativePatches !== false;
+              } catch {
+                // fall back to a full index
+              }
+              if (!mayHaveNativePatches) continue;
+            }
             const indexed = await indexNativePatchPack(packPath, priority);
             if (!enabledPacks.includes(indexed)) enabledPacks.push(indexed);
           }
+          void savePackHeaderCache();
           const nativePlan = await buildNativePatchLaunchPlan({
             runId: randomUUID(),
             targetPath: gameExecutablePath,
