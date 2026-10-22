@@ -425,6 +425,8 @@ import {
 } from "./workshopModOptimizer/runtime";
 import { computeGameIdentity } from "./workshopModOptimizer/packInspection";
 import { formatSavedBytes, totalOptimizations } from "./workshopModOptimizer/summary";
+import { type OptimizerRunReport, buildOptimizerRunReport } from "./workshopModOptimizer/runReport";
+import { loadOptimizerRunReport, saveOptimizerRunReport } from "./workshopModOptimizer/runReportStore";
 import { formatHousekeepingLine } from "./workshopModOptimizer/cache";
 import { scheduleStartupHousekeeping } from "./workshopModOptimizer/housekeepingSchedule";
 import { findGameProcessIds } from "./utility/gameProcess";
@@ -823,6 +825,8 @@ const globalSearchCancelStateByWebContentsId = new Map<
 const workshopStagingProgressChannel = "workshopModStagingProgress";
 /** The savings line of the latest launch that optimized mods, kept for the options drawer. */
 let lastOptimizerRunText: string | undefined;
+/** The per-mod results of the latest "Optimize mods" launch; also kept in userData for the next start. */
+let lastOptimizerRunReport: OptimizerRunReport | undefined;
 
 const sendWorkshopStagingProgress = (sender: Electron.WebContents, progress: WorkshopModStagingProgressEvent): void => {
   if (sender.isDestroyed()) return;
@@ -13361,6 +13365,40 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       console.log(line);
     }
   };
+  /** Keeps the per-mod results of this launch for the "Optimizer results" window. */
+  const saveOptimizerRunResults = async ({
+    mods,
+    realDataPackNames,
+    stagedCustomFolders,
+    optimizer,
+    result,
+    userSkipped,
+  }: Parameters<typeof logOptimizerOutcomes>[0]) => {
+    const report = buildOptimizerRunReport({
+      game: appData.currentGame,
+      mods: mods.map((mod) => ({
+        name: mod.name,
+        humanName: mod.humanName,
+        path: mod.path,
+        modDirectory: mod.modDirectory,
+        sourceKind: getModSourceKind(mod),
+        isInModding: mod.isInModding,
+      })),
+      dataPackNames: realDataPackNames,
+      stagedDirectories: stagedCustomFolders?.stagedDirectories ?? new Set<string>(),
+      comparableDirectory,
+      recordFor: (path) => optimizer.getRecord(path),
+      outcomes: result.optimizerResults,
+      userSkipped,
+    });
+    lastOptimizerRunReport = report;
+    mainWindow?.webContents.send("workshopOptimizerRunReport", report);
+    try {
+      await saveOptimizerRunReport(app.getPath("userData"), report);
+    } catch (error) {
+      console.warn("Could not save the optimizer results report:", error);
+    }
+  };
   /** The savings of the launch's optimized mods: one log line, and one short line under the Optimize option. */
   const reportOptimizerSummary = (outcomes: WorkshopStagingOptimizerOutcome[]) => {
     const totals = totalOptimizations(
@@ -13676,14 +13714,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
           optimizerCache.unpinAll();
           if (workshopOptimizer) {
-            logOptimizerOutcomes({
+            const optimizerLogInput = {
               mods: sortedMods,
               realDataPackNames,
               stagedCustomFolders,
               optimizer: workshopOptimizer,
               result: workshopStagingResult,
               userSkipped: workshopStagingRun?.skipOptimizationController.signal.aborted === true,
-            });
+            };
+            logOptimizerOutcomes(optimizerLogInput);
+            await saveOptimizerRunResults(optimizerLogInput);
             reportOptimizerSummary(workshopStagingResult.optimizerResults);
           } else if (startGameOptions.optimizeWorkshopModsOnStart === true) {
             console.log(
@@ -14474,6 +14514,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  });
+  ipcMain.handle("getWorkshopOptimizerRunReport", async () => {
+    lastOptimizerRunReport ??= await loadOptimizerRunReport(app.getPath("userData"));
+    return lastOptimizerRunReport;
   });
   ipcMain.handle("clearWorkshopOptimizerCache", async () => {
     // A launch or a background job is reading from and writing to this folder, and a running game may

@@ -255,6 +255,14 @@ const api = {
     code?: "STAGING_ACTIVE" | "CLEAR_FAILED";
     error?: string;
   }> => ipcRenderer.invoke("clearWorkshopOptimizerCache"),
+  getWorkshopOptimizerRunReport: (): Promise<WorkshopOptimizerRunReport | undefined> =>
+    ipcRenderer.invoke("getWorkshopOptimizerRunReport"),
+  onWorkshopOptimizerRunReport: (
+    callback: (event: Electron.IpcRendererEvent, report: WorkshopOptimizerRunReport) => void,
+  ) => {
+    ipcRenderer.on("workshopOptimizerRunReport", callback);
+    return () => ipcRenderer.removeListener("workshopOptimizerRunReport", callback);
+  },
   openWorkshopOptimizerReport: (modName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("openWorkshopOptimizerReport", modName),
   startVisualAssetCheck: (

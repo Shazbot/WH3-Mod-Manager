@@ -52,6 +52,8 @@ declare global {
     stage?: string;
   }
 
+  /** Per-mod results of the latest "Optimize mods" launch, see src/workshopModOptimizer/runReport.ts. */
+  type WorkshopOptimizerRunReport = import("./workshopModOptimizer/runReport").OptimizerRunReport;
   /** State of the per-mod "Check visual assets" action, see src/workshopModOptimizer/visualCheckIpc.ts. */
   type VisualAssetCheckState = import("./workshopModOptimizer/visualCheckIpc").VisualAssetCheckState;
   type VisualAssetCheckReport = import("./workshopModOptimizer/visualCheck").VisualCheckReport;

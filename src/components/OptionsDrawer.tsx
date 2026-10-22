@@ -50,6 +50,7 @@ import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
 import ImportSteamCollection from "./ImportSteamCollection";
 import { useLocalizations } from "../localizationContext";
+import OptimizerRunReportButton from "./OptimizerRunReportButton";
 import ISO6391 from "iso-639-1";
 import { gameToSupportedGameOptions, supportedGames } from "../supportedGames";
 import store from "../store";
@@ -1479,6 +1480,9 @@ const OptionsDrawer = memo(() => {
                       {(localized.optimizerLastRun || "Last run: {{summary}}").replace("{{summary}}", lastOptimizerRun)}
                     </p>
                   )}
+                  <div className="mt-2 px-2">
+                    <OptimizerRunReportButton />
+                  </div>
                   {(workshopOptimizerCacheInfo.hasContents || isClearingWorkshopOptimizerCache) && (
                     <div className="mt-2 flex flex-wrap items-center gap-3 px-2">
                       <button
