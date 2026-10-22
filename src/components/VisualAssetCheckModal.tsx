@@ -293,20 +293,20 @@ const VisualAssetCheckModal = memo(() => {
     ) => {
       const result = await action();
       if (!result || result.canceled) return;
+      // Opening the report or its folder is visible on its own; only a save or a failure gets a toast.
+      if (result.success && !result.savedPath) return;
       dispatch(
         addToast({
           type: result.success ? "success" : "warning",
           messages: [
             result.success
-              ? result.savedPath
-                ? interpolate(localized.visualCheckReportSaved || "Report saved to {{path}}", {
-                    path: result.savedPath,
-                  })
-                : ""
+              ? interpolate(localized.visualCheckReportSaved || "Report saved to {{path}}", {
+                  path: result.savedPath ?? "",
+                })
               : interpolate(localized.visualCheckReportFailed || "The report could not be opened or saved: {{error}}", {
                   error: result.error ?? "",
                 }),
-          ].filter(Boolean),
+          ],
           duration: 6000,
           startTime: Date.now(),
         }),
@@ -322,41 +322,44 @@ const VisualAssetCheckModal = memo(() => {
   const buttonBase = "px-4 py-2 font-medium text-sm rounded focus:outline-none focus:ring-2";
 
   return (
-    <Modal show dismissible onClose={dismiss} size="5xl" position="center">
+    <Modal show dismissible onClose={dismiss} size="5xl" position="center" explicitClasses={["max-h-[90vh]"]}>
       <Modal.Header>
         {localized.visualCheckTitle || "Visual asset check"}
         <span className="block text-sm font-normal text-gray-400 break-all">{modName}</span>
       </Modal.Header>
       <Modal.Body>
-        {state.state === "running" && (
-          <div className="space-y-2" role="status" aria-live="polite">
-            <p className="text-sm text-gray-300">
-              {interpolate(localized.visualCheckRunning || "Checking {{mod}}...", { mod: state.modName })}
-            </p>
-            <div
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={percent}
-              className="h-2 w-full overflow-hidden rounded bg-gray-600"
-            >
-              <div className="h-full bg-blue-500" style={{ width: `${percent}%` }} />
+        {/* Long reports scroll inside the modal; header and footer stay on screen. */}
+        <div className="max-h-[72vh] overflow-y-auto pr-1">
+          {state.state === "running" && (
+            <div className="space-y-2" role="status" aria-live="polite">
+              <p className="text-sm text-gray-300">
+                {interpolate(localized.visualCheckRunning || "Checking {{mod}}...", { mod: state.modName })}
+              </p>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+                className="h-2 w-full overflow-hidden rounded bg-gray-600"
+              >
+                <div className="h-full bg-blue-500" style={{ width: `${percent}%` }} />
+              </div>
+              <p className="text-xs text-gray-400 break-all">
+                {state.stage ?? localized.visualCheckStarting ?? "Starting the asset host..."}
+                {state.item ? ` - ${state.item}` : ""} ({percent}%)
+              </p>
             </div>
-            <p className="text-xs text-gray-400 break-all">
-              {state.stage ?? localized.visualCheckStarting ?? "Starting the asset host..."}
-              {state.item ? ` - ${state.item}` : ""} ({percent}%)
-            </p>
-          </div>
-        )}
-        {state.state === "failed" && (
-          <div role="alert" className="space-y-2">
-            <p className="text-base font-medium text-red-400">
-              {localized.visualCheckFailedTitle || "The check could not be completed"}
-            </p>
-            <p className="text-sm text-gray-300 break-words">{failureText(state, localized)}</p>
-          </div>
-        )}
-        {state.state === "done" && <Findings report={state.report} localized={localized} />}
+          )}
+          {state.state === "failed" && (
+            <div role="alert" className="space-y-2">
+              <p className="text-base font-medium text-red-400">
+                {localized.visualCheckFailedTitle || "The check could not be completed"}
+              </p>
+              <p className="text-sm text-gray-300 break-words">{failureText(state, localized)}</p>
+            </div>
+          )}
+          {state.state === "done" && <Findings report={state.report} localized={localized} />}
+        </div>
       </Modal.Body>
       <Modal.Footer>
         {state.state === "done" && state.report.reportPath && (
