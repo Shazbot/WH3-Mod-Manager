@@ -708,7 +708,8 @@ exec ${quoteForShell(process.execPath)}
           }
           if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
         };
-        checkWH3RunningInterval = setTimeout(isGameRuningCheck, 500);
+        // Each check spawns tasklist/ps, so don't run it more often than the UI needs.
+        checkWH3RunningInterval = setTimeout(isGameRuningCheck, 2000);
       }
     });
   };

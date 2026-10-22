@@ -5568,6 +5568,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (appData.currentGame != "wh3") return await setLastGameUpdateTimeUsingAppManifest();
       const res = await fetch(
         `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`,
+        { signal: AbortSignal.timeout(15_000) },
       );
       // eslint-disable-next-line prefer-const
       let gameUpdates = (await res.json()) as GameUpdateData[];
@@ -5866,7 +5867,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
         await saveVanillaPackFilesCache();
         appData.vanillaPacksDBFileNames.sort((a, b) => collator.compare(a, b));
-        await fetchGameUpdates();
+        // A network fetch: don't hold the Workshop update check and the folder watchers behind it.
+        void fetchGameUpdates();
       }
       try {
         const workshopUpdateChild = fork(
@@ -6064,7 +6066,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // readAppConfig has already migrated anything older than the current config version
       const appState = await readAppConfig();
       if (!appData.hasReadConfig) {
-        fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {}); // forces steam workshop to download mods
+        // No separate "justRun" helper: getAllMods runs right after this and its getSubscribedIds helper
+        // connects to Steam too, which is what nudges the Workshop into downloading mods.
         setStartingConfig(appState);
       }
       appData.gamesToGameFolderPaths = appState.gameFolderPaths;
