@@ -6209,6 +6209,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     hasLoadOrderRules?: boolean;
     /** Absent on entries written before native patch detection, which forces a re-read. */
     hasNativePatches?: boolean;
+    /** Absent on entries written before flow detection, which forces a re-read. */
+    hasFlows?: boolean;
     loadOrderRulesFileName?: string;
     /** The parsed rules, kept here so a restart does not reopen every pack that has them. */
     loadOrderRules?: LoadOrderRule[];
@@ -6258,7 +6260,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         entry.lastChangedLocal === stat.mtimeMs &&
         typeof entry.hasStartpos === "boolean" &&
         typeof entry.hasLoadOrderRules === "boolean" &&
-        typeof entry.hasNativePatches === "boolean"
+        typeof entry.hasNativePatches === "boolean" &&
+        typeof entry.hasFlows === "boolean"
       ) {
         return {
           path,
@@ -6266,6 +6269,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           hasStartpos: entry.hasStartpos,
           hasLoadOrderRules: entry.hasLoadOrderRules,
           hasNativePatches: entry.hasNativePatches,
+          hasFlows: entry.hasFlows,
           loadOrderRulesFileName: entry.loadOrderRulesFileName,
           dependencyPacks: entry.dependencyPacks,
         };
@@ -6280,6 +6284,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         hasStartpos: data.hasStartpos,
         hasLoadOrderRules: data.hasLoadOrderRules ?? false,
         hasNativePatches: data.hasNativePatches ?? false,
+        hasFlows: data.hasFlows ?? false,
         loadOrderRulesFileName: data.loadOrderRulesFileName,
         dependencyPacks: data.dependencyPacks,
       };
@@ -6636,8 +6641,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       size: number;
       mtimeMs: number;
     }> = [];
-    for (const mod of sortedEnabledMods) {
-      const stat = await getModStatForFlowSignature(mod);
+    const modStats = await Promise.all(sortedEnabledMods.map((mod) => getModStatForFlowSignature(mod)));
+    for (const [index, mod] of sortedEnabledMods.entries()) {
+      const stat = modStats[index];
       if (!stat) return null;
       enabledModsSignatureData.push({
         path: mod.path,
@@ -13935,23 +13941,24 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           console.log("Flow execution cache unavailable: failed to build signature, executing flows normally.");
         }
         if (shouldExecuteFlows) {
-          for (const packPath of sortedMods.map((mod) => mod.path)) {
-            const pack = appData.packsData.find((packData) => packData.path == packPath);
-            if (!pack || (pack && pack.packedFiles.length == 0)) {
-              await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
+          // Only packs that ship flows need reading; the cached header scan says which ones do.
+          // This covers every pack userFlowOptions can name, since those are enabled mods too.
+          const packPathsToRead = sortedMods
+            .map((mod) => mod.path)
+            .filter((packPath) => {
+              const pack = appData.packsData.find((packData) => packData.path == packPath);
+              return !pack || pack.packedFiles.length == 0;
+            });
+          await forEachWithConcurrency(packPathsToRead, 4, async (packPath) => {
+            let mayHaveFlows = true;
+            try {
+              mayHaveFlows = (await readPackHeaderCached(packPath)).hasFlows !== false;
+            } catch {
+              // fall back to a full read
             }
-          }
-          for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
-            const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
-            if (mod) {
-              console.log("FOUND MOD TO READ FOR FLOWS:", mod.name);
-              const pack = appData.packsData.find((packData) => packData.path == mod.path);
-              if (!pack || (pack && pack.packedFiles.length == 0)) {
-                console.log("need to read pack for flows:", mod.name);
-                await readModsByPath([mod.path], { readFlows: true, skipParsingTables: true });
-              }
-            }
-          }
+            if (mayHaveFlows) await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
+          });
+          void savePackHeaderCache();
           // Execute flows for enabled mods
           enabledModsWithFlows = sortedMods.filter((iterMod) => {
             const pack = appData.packsData.find((packData) => packData.path == iterMod.path);

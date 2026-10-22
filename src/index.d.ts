@@ -145,6 +145,8 @@ declare global {
     hasLoadOrderRules?: boolean;
     /** Whether the pack ships native patch manifests or flow contributions. */
     hasNativePatches?: boolean;
+    /** Whether the pack ships node flows, which run on game start. */
+    hasFlows?: boolean;
     /** That file's name as the pack spells it, which is what a targeted read has to ask for. */
     loadOrderRulesFileName?: string;
     dependencyPacks: string[];

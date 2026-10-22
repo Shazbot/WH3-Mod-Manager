@@ -43,6 +43,7 @@ describe("pack header file index metadata", () => {
         hasStartpos: true,
         hasLoadOrderRules: false,
         hasNativePatches: false,
+        hasFlows: false,
         dependencyPacks: ["data.pack"],
       });
     } finally {
@@ -86,6 +87,7 @@ describe("pack header file index metadata", () => {
         hasStartpos: true,
         hasLoadOrderRules: false,
         hasNativePatches: false,
+        hasFlows: false,
         dependencyPacks: [],
       });
     } finally {
@@ -113,6 +115,7 @@ describe("scanPackedFileIndex", () => {
       hasStartpos: true,
       hasLoadOrderRules: true,
       hasNativePatches: false,
+      hasFlows: false,
       loadOrderRulesFileName: "whmm\\load_order.whmm",
     });
   });
@@ -136,6 +139,14 @@ describe("scanPackedFileIndex", () => {
     expect(scanPackedFileIndex(other, 1, true).hasNativePatches).toBe(false);
   });
 
+  it("spots node flows regardless of slash style and case", () => {
+    const flow = makeIndexEntry("WHMMFlows/my_flow.json", true);
+    const nested = makeIndexEntry("db\\whmmflows\\thing.json", true);
+
+    expect(scanPackedFileIndex(flow, 1, true).hasFlows).toBe(true);
+    expect(scanPackedFileIndex(nested, 1, true).hasFlows).toBe(false);
+  });
+
   it("does not mistake a flow or a nested lookalike for it", () => {
     const index = Buffer.concat([
       makeIndexEntry("whmmflows\\thing.json", true),
@@ -148,7 +159,12 @@ describe("scanPackedFileIndex", () => {
 
   it("reports neither for a pack holding nothing special", () => {
     const index = Buffer.concat([makeIndexEntry("db\\units_tables\\data__", true)]);
-    expect(scanPackedFileIndex(index, 1, true)).toEqual({ hasStartpos: false, hasLoadOrderRules: false, hasNativePatches: false });
+    expect(scanPackedFileIndex(index, 1, true)).toEqual({
+      hasStartpos: false,
+      hasLoadOrderRules: false,
+      hasNativePatches: false,
+      hasFlows: false,
+    });
   });
 
   it("skips the filename hash before scanning a hashed PFH5 entry", () => {
@@ -158,6 +174,7 @@ describe("scanPackedFileIndex", () => {
       hasStartpos: false,
       hasLoadOrderRules: true,
       hasNativePatches: false,
+      hasFlows: false,
       loadOrderRulesFileName: "whmm\\load_order.whmm",
     });
   });
