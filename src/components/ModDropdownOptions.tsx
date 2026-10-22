@@ -10,6 +10,7 @@ import {
 import {
   FaFolderOpen,
   FaFileAlt,
+  FaClipboardCheck,
   FaExternalLinkAlt,
   FaCopy,
   FaTable,
@@ -81,6 +82,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const allMods = useAppSelector((state) => state.app.allMods);
   const isDev = useAppSelector((state) => state.app.isDev);
   const optimizeWorkshopModsOnStart = useAppSelector((state) => state.app.optimizeWorkshopModsOnStart);
+  const presetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isComparingToWorkshop, setIsComparingToWorkshop] = useState(false);
@@ -134,6 +136,17 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
       }
     },
     [dispatch, isComparingToWorkshop, localized],
+  );
+
+  // The check treats the user's other enabled mods as dependency packs (what they provide is not missing).
+  const checkVisualAssets = useCallback(
+    (mod: Mod) => {
+      const enabledMods = presetMods
+        .filter((other) => other.isEnabled)
+        .map((other) => ({ name: other.name, path: other.path, loadOrder: other.loadOrder }));
+      void window.api?.startVisualAssetCheck({ name: mod.name, path: mod.path }, enabledMods);
+    },
+    [presetMods],
   );
 
   const selectedMods = useMemo(
@@ -438,6 +451,22 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   <span className="flex items-center gap-2">
                     <FaFileAlt className="w-5 h-5"></FaFileAlt>
                     {localized.showOptimizerReport}
+                  </span>
+                </a>
+              </li>
+            )}
+            {selectedMods.length === 1 && /\.pack$/i.test(selectedMods[0].path) && (
+              <li>
+                <a
+                  onClick={() => {
+                    runForSelectedMods(checkVisualAssets);
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <span className="flex items-center gap-2">
+                    <FaClipboardCheck className="w-5 h-5"></FaClipboardCheck>
+                    {localized.checkVisualAssets || "Check visual assets"}
                   </span>
                 </a>
               </li>

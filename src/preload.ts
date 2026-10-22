@@ -257,6 +257,27 @@ const api = {
   }> => ipcRenderer.invoke("clearWorkshopOptimizerCache"),
   openWorkshopOptimizerReport: (modName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("openWorkshopOptimizerReport", modName),
+  startVisualAssetCheck: (
+    mod: { name: string; path: string },
+    enabledMods: { name: string; path: string; loadOrder?: number }[],
+  ): Promise<{ success: boolean; code?: "BUSY" | "NOT_A_PACK" | "NO_GAME" | "HOST_MISSING" }> =>
+    ipcRenderer.invoke("startVisualAssetCheck", mod, enabledMods),
+  cancelVisualAssetCheck: () => ipcRenderer.send("cancelVisualAssetCheck"),
+  getVisualAssetCheckState: (): Promise<VisualAssetCheckState> => ipcRenderer.invoke("getVisualAssetCheckState"),
+  onVisualAssetCheckState: (callback: (event: Electron.IpcRendererEvent, state: VisualAssetCheckState) => void) => {
+    ipcRenderer.on("visualAssetCheckState", callback);
+    return () => ipcRenderer.removeListener("visualAssetCheckState", callback);
+  },
+  openVisualAssetCheckReport: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("openVisualAssetCheckReport"),
+  showVisualAssetCheckReportInFolder: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("showVisualAssetCheckReportInFolder"),
+  saveVisualAssetCheckReport: (): Promise<{
+    success: boolean;
+    canceled?: boolean;
+    savedPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("saveVisualAssetCheckReport"),
   onWorkshopModStagingProgress: (
     callback: (event: Electron.IpcRendererEvent, progress: WorkshopModStagingProgressEvent) => void,
   ) => {

@@ -52,6 +52,11 @@ declare global {
     stage?: string;
   }
 
+  /** State of the per-mod "Check visual assets" action, see src/workshopModOptimizer/visualCheckIpc.ts. */
+  type VisualAssetCheckState = import("./workshopModOptimizer/visualCheckIpc").VisualAssetCheckState;
+  type VisualAssetCheckReport = import("./workshopModOptimizer/visualCheck").VisualCheckReport;
+  type VisualAssetCheckFinding = import("./workshopModOptimizer/hostRunner").HostCheckFinding;
+
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
 
   interface DiagnosticPathResult {

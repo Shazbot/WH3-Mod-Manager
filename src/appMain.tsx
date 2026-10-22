@@ -13,6 +13,7 @@ import UsedModsLoadOrderModal from "./components/UsedModsLoadOrderModal";
 import WorkshopGameStartProgressCard from "./components/WorkshopGameStartProgress";
 import WorkshopOptimizerBackground from "./components/WorkshopOptimizerBackground";
 import Wh3AssetHostDecisionModal from "./components/Wh3AssetHostDecisionModal";
+import VisualAssetCheckModal from "./components/VisualAssetCheckModal";
 
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
@@ -62,6 +63,7 @@ const AppMain = React.memo(() => {
         <WorkshopGameStartProgressCard />
         <WorkshopOptimizerBackground />
         <Wh3AssetHostDecisionModal />
+        <VisualAssetCheckModal />
         <Toasts />
       </ErrorBoundary>
     </LocalizationContext.Provider>

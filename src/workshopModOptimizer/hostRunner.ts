@@ -2,8 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import * as os from "node:os";
 
 /**
- * Runs `WH3AssetHost.exe optimize` once and reads its stdout protocol: one JSON object per line
- * (`progress`, then `result`, `probe` or `error`) and an exit code of 0 succeeded, 1 failed,
+ * Runs `WH3AssetHost.exe optimize` (or `check`) once and reads its stdout protocol: one JSON object per
+ * line (`progress`, then `result`, `probe`, `check` or `error`) and an exit code of 0 succeeded, 1 failed,
  * 2 invalid request, 3 canceled. No Electron imports, so it can be tested with a fake process.
  */
 
@@ -34,17 +34,21 @@ export interface HostVersions {
   hostVersion: string;
   outputVersion: number;
   scanVersion: number;
+  /** The version of the host's `check` action; absent on a host that predates it. */
+  checkVersion?: number;
 }
 
-/** Parses the line `WH3AssetHost --version` prints: "0.6.0+abc123 output=1 scan=1". */
+/** Parses the line `WH3AssetHost --version` prints: "0.6.0+abc123 output=1 scan=1 check=1". */
 export const parseHostVersionLine = (text: string): HostVersions | undefined => {
   const output = /\boutput=(\d+)/.exec(text);
   const scan = /\bscan=(\d+)/.exec(text);
   if (!output || !scan) return undefined;
+  const check = /\bcheck=(\d+)/.exec(text);
   return {
     hostVersion: text.trim().split(/\s+/)[0] ?? "",
     outputVersion: Number(output[1]),
     scanVersion: Number(scan[1]),
+    ...(check ? { checkVersion: Number(check[1]) } : {}),
   };
 };
 
@@ -114,17 +118,70 @@ export interface HostProbeLine {
   scanSeconds?: number;
 }
 
+export type HostCheckSeverity = "error" | "warning" | "info";
+
+/** One finding of the host's visual-asset check (`WH3AssetHost check`). */
+export interface HostCheckFinding {
+  severity: HostCheckSeverity;
+  /** Stable identifier of the kind of finding, e.g. "MissingTexture". */
+  code: string;
+  category: string;
+  message: string;
+  /** The pack file the finding is about, or the path that cannot be resolved. May be empty. */
+  path: string;
+  relatedPaths: string[];
+  /** The real number of related paths; `relatedPaths` is capped. */
+  relatedCount: number;
+  details?: string | null;
+  /**
+   * Whether a unit in the game data reaches the asset: true, false (only unused variant meshes do; the
+   * severity is already one level lower), or null when unknown (no DB schema, or the data could not be resolved).
+   */
+  usedByGame: boolean | null;
+}
+
+export interface HostCheckSummary {
+  errors: number;
+  warnings: number;
+  infos: number;
+  byCode: Record<string, number>;
+  byCategory: Record<string, number>;
+  findingsUsed: number;
+  findingsUnused: number;
+  findingsUnknown: number;
+  /** Whether findings could be marked used or unused. */
+  usageKnown: boolean;
+  vmdsUsed: number;
+  vmdsUnused: number;
+}
+
+export interface HostCheckLine {
+  type: "check";
+  status: "succeeded" | "cancelled" | string;
+  hostVersion?: string;
+  findings: HostCheckFinding[];
+  summary: HostCheckSummary;
+  /** The text report the host wrote, or empty when none was requested. */
+  reportPath: string;
+  elapsedSeconds?: number;
+  vmdCount?: number;
+  wsModelCount?: number;
+  rigidCount?: number;
+  materialCount?: number;
+}
+
 export interface HostErrorLine {
   type: "error";
   message: string;
   exceptionType?: string;
 }
 
-export type HostLine = HostProgressLine | HostResultLine | HostProbeLine | HostErrorLine;
+export type HostLine = HostProgressLine | HostResultLine | HostProbeLine | HostCheckLine | HostErrorLine;
 
 export type HostRunOutcome =
   | { kind: "result"; result: HostResultLine }
   | { kind: "probe"; probe: HostProbeLine }
+  | { kind: "check"; check: HostCheckLine }
   | { kind: "version"; text: string }
   | { kind: "ok" }
   | { kind: "failed"; exitCode: number | null; message: string; stderr?: string }
@@ -146,6 +203,57 @@ export const defaultSpawnHostProcess: SpawnHostProcess = (executablePath, args) 
   spawn(executablePath, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] }) as ChildProcess &
     HostChildProcess;
 
+const SEVERITIES: ReadonlySet<string> = new Set(["error", "warning", "info"]);
+const asCount = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+const asCounts = (value: unknown): Record<string, number> =>
+  value && typeof value === "object"
+    ? Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, count]) => [key, asCount(count)]))
+    : {};
+
+/** Normalizes the host's `check` line: missing arrays and counts become empty, unknown severities become "info". */
+export const parseHostCheckLine = (value: Record<string, unknown>): HostCheckLine => {
+  const summary = (value.summary ?? {}) as Record<string, unknown>;
+  const findings = Array.isArray(value.findings) ? (value.findings as Record<string, unknown>[]) : [];
+  return {
+    type: "check",
+    status: String(value.status ?? ""),
+    hostVersion: typeof value.hostVersion === "string" ? value.hostVersion : undefined,
+    findings: findings.map((finding) => {
+      const relatedPaths = Array.isArray(finding.relatedPaths) ? finding.relatedPaths.map(String) : [];
+      return {
+        severity: SEVERITIES.has(String(finding.severity)) ? (finding.severity as HostCheckSeverity) : "info",
+        code: String(finding.code ?? ""),
+        category: String(finding.category ?? ""),
+        message: String(finding.message ?? ""),
+        path: String(finding.path ?? ""),
+        relatedPaths,
+        relatedCount: typeof finding.relatedCount === "number" ? finding.relatedCount : relatedPaths.length,
+        details: typeof finding.details === "string" ? finding.details : null,
+        usedByGame: typeof finding.usedByGame === "boolean" ? finding.usedByGame : null,
+      };
+    }),
+    summary: {
+      errors: asCount(summary.errors),
+      warnings: asCount(summary.warnings),
+      infos: asCount(summary.infos),
+      byCode: asCounts(summary.byCode),
+      byCategory: asCounts(summary.byCategory),
+      findingsUsed: asCount(summary.findingsUsed),
+      findingsUnused: asCount(summary.findingsUnused),
+      findingsUnknown: asCount(summary.findingsUnknown),
+      usageKnown: summary.usageKnown === true,
+      vmdsUsed: asCount(summary.vmdsUsed),
+      vmdsUnused: asCount(summary.vmdsUnused),
+    },
+    reportPath: String(value.reportPath ?? ""),
+    elapsedSeconds: typeof value.elapsedSeconds === "number" ? value.elapsedSeconds : undefined,
+    vmdCount: asCount(value.vmdCount),
+    wsModelCount: asCount(value.wsModelCount),
+    rigidCount: asCount(value.rigidCount),
+    materialCount: asCount(value.materialCount),
+  };
+};
+
 export const parseHostLine = (line: string): HostLine | undefined => {
   const text = line.trim();
   if (!text.startsWith("{")) return undefined;
@@ -160,6 +268,8 @@ export const parseHostLine = (line: string): HostLine | undefined => {
           current: Number(value.current) || 0,
           total: Number(value.total) || 0,
         };
+      case "check":
+        return parseHostCheckLine(value);
       case "result":
       case "probe":
       case "error":
@@ -223,17 +333,37 @@ const STAGE_SECONDS: ReadonlyArray<readonly [string, number]> = [
   ["Saving output pack", 3.7],
 ];
 
-const STAGE_TOTAL_SECONDS = STAGE_SECONDS.reduce((total, [, seconds]) => total + seconds, 0);
-const STAGE_BANDS = (() => {
+/**
+ * Seconds each stage of `WH3AssetHost check` took on the same mod (about 14 s warm), measured the same way.
+ * The loading share also holds the host's start-up, which happens before its first progress line.
+ */
+export const CHECK_STAGE_SECONDS: ReadonlyArray<readonly [string, number]> = [
+  ["Loading source pack", 0.6],
+  ["Validating VMD roots", 0.1],
+  ["Indexing WSModels", 0.1],
+  ["Resolving unit categories", 8.5],
+  ["Indexing mesh dependencies", 0.2],
+  ["Auditing LODs", 7.8],
+  ["Asset checks: reading materials", 0.3],
+  ["Asset checks: comparing textures", 0.6],
+  ["Asset checks: decoding alpha", 3.3],
+  ["Auditing bone weights", 1.7],
+  ["Collecting findings", 0.1],
+];
+
+type StageTable = ReadonlyArray<readonly [string, number]>;
+const buildStageBands = (stages: StageTable) => {
+  const total = stages.reduce((sum, [, seconds]) => sum + seconds, 0);
   let start = 0;
   return new Map(
-    STAGE_SECONDS.map(([name, seconds]) => {
-      const band = { start: start / STAGE_TOTAL_SECONDS, end: (start + seconds) / STAGE_TOTAL_SECONDS };
+    stages.map(([name, seconds]) => {
+      const band = { start: start / total, end: (start + seconds) / total };
       start += seconds;
       return [name, band] as const;
     }),
   );
-})();
+};
+const STAGE_BANDS = buildStageBands(STAGE_SECONDS);
 const STAGE_ORDER = new Map(STAGE_SECONDS.map(([name], index) => [name, index] as const));
 
 /**
@@ -243,10 +373,18 @@ const STAGE_ORDER = new Map(STAGE_SECONDS.map(([name], index) => [name, index] a
  * - A stage name that comes again after other stages uses its "#2" entry, or holds when it has none.
  */
 export class HostProgressTracker {
+  private readonly bands: ReturnType<typeof buildStageBands>;
+  private readonly order: Map<string, number>;
   private last = 0;
   private lastStage: string | undefined;
   private lastOrder = -1;
   private readonly occurrences = new Map<string, number>();
+
+  /** `stages` defaults to the optimizer's stage table; the check passes `CHECK_STAGE_SECONDS`. */
+  constructor(stages?: StageTable) {
+    this.bands = stages ? buildStageBands(stages) : STAGE_BANDS;
+    this.order = stages ? new Map(stages.map(([name], index) => [name, index] as const)) : STAGE_ORDER;
+  }
 
   get fraction(): number {
     return this.last;
@@ -260,8 +398,8 @@ export class HostProgressTracker {
 
     const occurrence = this.occurrences.get(stage) ?? 1;
     const key = occurrence > 1 ? `${stage}#${occurrence}` : stage;
-    const band = STAGE_BANDS.get(key);
-    const order = STAGE_ORDER.get(key);
+    const band = this.bands.get(key);
+    const order = this.order.get(key);
     if (!band || order === undefined || order < this.lastOrder) return this.last;
 
     this.lastOrder = order;
@@ -320,6 +458,7 @@ export const runHost = (options: RunHostOptions): Promise<HostRunOutcome> =>
     let settled = false;
     let result: HostResultLine | undefined;
     let probe: HostProbeLine | undefined;
+    let check: HostCheckLine | undefined;
     let errorLine: HostErrorLine | undefined;
     let versionText = "";
     let stderrTail = "";
@@ -353,6 +492,7 @@ export const runHost = (options: RunHostOptions): Promise<HostRunOutcome> =>
         }
       } else if (line.type === "result") result = line;
       else if (line.type === "probe") probe = line;
+      else if (line.type === "check") check = line;
       else if (line.type === "error") errorLine = line;
     };
 
@@ -373,8 +513,11 @@ export const runHost = (options: RunHostOptions): Promise<HostRunOutcome> =>
       if (buffer.trim()) handleLine(buffer);
       buffer = "";
       if (options.signal?.aborted) return finish({ kind: "canceled" });
-      if (code === 3 || (result && result.status === "cancelled")) return finish({ kind: "canceled" });
+      if (code === 3 || (result && result.status === "cancelled") || (check && check.status === "cancelled")) {
+        return finish({ kind: "canceled" });
+      }
       if (code === 0) {
+        if (check) return finish({ kind: "check", check });
         if (probe) return finish({ kind: "probe", probe });
         if (result) return finish({ kind: "result", result });
         return finish(versionText ? { kind: "version", text: versionText } : { kind: "ok" });

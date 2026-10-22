@@ -401,6 +401,7 @@ import {
 } from "./utility/workshopModStaging";
 import { makeWorkshopStagingProgressEvent } from "./utility/workshopStagingProgressEvent";
 import { WORKSHOP_OPTIMIZER_PROFILE_ID } from "./workshopModOptimizer/hostRunner";
+import { registerVisualAssetCheckIpc } from "./workshopModOptimizer/visualCheckIpc";
 import { buildOptimizerLaunchLog } from "./workshopModOptimizer/logFormat";
 import type { WorkshopModOptimizer } from "./workshopModOptimizer/optimizer";
 import { packHasOptimizableVisuals } from "./workshopModOptimizer/packInspection";
@@ -14520,6 +14521,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     },
   );
   ipcMain.on("cancelWorkshopOptimizerBackground", () => getOptimizerBackground()?.cancel());
+  // "Check visual assets" (per mod): runs the host's check action; see workshopModOptimizer/visualCheckIpc.ts.
+  registerVisualAssetCheckIpc(mainWindow);
   ipcMain.handle("getWorkshopOptimizerBackgroundStatus", () => getOptimizerBackground()?.getStatus());
   ipcMain.on("cancelWorkshopModStaging", (event, requestedRunId?: string) => {
     const run = activeWorkshopStagingRun;
