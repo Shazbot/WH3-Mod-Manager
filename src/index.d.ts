@@ -50,6 +50,7 @@ declare global {
     currentMod?: string;
     fraction?: number;
     stage?: string;
+    upToDate?: boolean;
   }
 
   /** Per-mod results of the latest "Optimize mods" launch, see src/workshopModOptimizer/runReport.ts. */

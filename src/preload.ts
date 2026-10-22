@@ -240,6 +240,7 @@ const api = {
   getWorkshopOptimizerBackgroundStatus: (): Promise<WorkshopOptimizerBackgroundStatus | undefined> =>
     ipcRenderer.invoke("getWorkshopOptimizerBackgroundStatus"),
   cancelWorkshopOptimizerBackground: () => ipcRenderer.send("cancelWorkshopOptimizerBackground"),
+  runWorkshopOptimizerBackgroundNow: () => ipcRenderer.send("runWorkshopOptimizerBackgroundNow"),
   onWorkshopOptimizerBackgroundStatus: (
     callback: (event: Electron.IpcRendererEvent, status: WorkshopOptimizerBackgroundStatus) => void,
   ) => {

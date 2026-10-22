@@ -198,6 +198,33 @@ describe("background optimizer", () => {
     expect(h.planCalls).toEqual(["s"]);
   });
 
+  it("runNow() reports when every mod was optimized already", async () => {
+    const h = makeHarness(() => []);
+    h.background.notifyChange("s");
+    expect(await h.background.runNow()).toBe("nothingToDo");
+    expect(h.planCalls).toEqual(["s"]);
+  });
+
+  it("runNow() reports a pass that had work as ran", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.notifyChange("s");
+    const outcome = h.background.runNow();
+    await flush();
+    h.finish("a.pack");
+    expect(await outcome).toBe("ran");
+  });
+
+  it("markStale() clears upToDate after the cache is cleared", async () => {
+    const h = makeHarness(() => []);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.background.idle();
+    expect(h.background.getStatus().upToDate).toBe(true);
+    h.background.markStale();
+    expect(h.background.getStatus().upToDate).toBe(false);
+    expect(h.statuses.at(-1)?.upToDate).toBe(false);
+  });
+
   it("stop() resolves after the running job has ended", async () => {
     const h = makeHarness(() => ["a.pack"]);
     h.background.notifyChange("s");
@@ -251,6 +278,94 @@ describe("background optimizer", () => {
     expect(h.background.getStatus().state).toBe("idle");
     await vi.advanceTimersByTimeAsync(300_000);
     expect(h.planCalls).toEqual(["s"]);
+  });
+
+  it("is up to date after a plan with nothing to optimize, and resets on a change", async () => {
+    const h = makeHarness(() => []);
+    h.background.notifyChange("s");
+    expect(h.background.getStatus().upToDate).toBe(false);
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.background.idle();
+    expect(h.background.getStatus()).toMatchObject({ state: "idle", upToDate: true });
+    h.background.notifyChange("t");
+    expect(h.background.getStatus()).toMatchObject({ state: "waiting", upToDate: false });
+  });
+
+  it("is up to date once every job finished, not while they run", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await flush();
+    expect(h.background.getStatus().upToDate).toBe(false);
+    h.finish("a.pack");
+    await h.background.idle();
+    expect(h.background.getStatus()).toMatchObject({ state: "idle", upToDate: true });
+  });
+
+  it("keeps up to date across the game starting and exiting", async () => {
+    const h = makeHarness(() => []);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.background.idle();
+    h.setGameRunning(true);
+    expect(h.background.getStatus().upToDate).toBe(true);
+    h.setGameRunning(false);
+    expect(h.background.getStatus()).toMatchObject({ state: "waiting", upToDate: true });
+  });
+
+  it("is not up to date when a job was stopped", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await flush();
+    h.background.cancel();
+    await h.background.idle();
+    expect(h.background.getStatus().upToDate).toBe(false);
+  });
+
+  it("runNow plans right away without the debounce", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.notifyChange("s");
+    h.background.runNow();
+    await flush();
+    expect(h.planCalls).toEqual(["s"]);
+    expect(h.produced).toEqual(["a.pack"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(h.planCalls).toEqual(["s"]);
+  });
+
+  it("runNow does nothing while a pass runs, while the game runs or without a snapshot", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.runNow();
+    await flush();
+    expect(h.planCalls).toEqual([]);
+    h.background.notifyChange("s");
+    h.background.runNow();
+    await flush();
+    h.background.runNow();
+    await flush();
+    expect(h.planCalls).toEqual(["s"]);
+    h.finish("a.pack");
+    await h.background.idle();
+
+    const g = makeHarness(() => ["a.pack"]);
+    g.background.notifyChange("s");
+    g.setGameRunning(true);
+    g.background.runNow();
+    await flush();
+    expect(g.planCalls).toEqual([]);
+  });
+
+  it("runNow works after a cancel", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await flush();
+    h.background.cancel();
+    await h.background.idle();
+    h.background.runNow();
+    await flush();
+    expect(h.planCalls).toEqual(["s", "s"]);
   });
 });
 

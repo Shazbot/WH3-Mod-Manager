@@ -14530,6 +14530,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     try {
       const gamePath = getCurrentGamePath();
       if (gamePath) await getWorkshopOptimizerCache(gamePath).clear();
+      getOptimizerBackground()?.markStale();
       lastOptimizerRunText = undefined;
       return { success: true };
     } catch (error) {
@@ -14576,6 +14577,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     },
   );
   ipcMain.on("cancelWorkshopOptimizerBackground", () => getOptimizerBackground()?.cancel());
+  ipcMain.on("runWorkshopOptimizerBackgroundNow", async () => {
+    const outcome = await getOptimizerBackground()?.runNow();
+    if (outcome !== "nothingToDo") return;
+    mainWindow?.webContents.send("addToast", {
+      type: "info",
+      messages: [i18n.t("optimizeNowUpToDate")],
+      startTime: Date.now(),
+    } as Toast);
+  });
   // "Check visual assets" (per mod): runs the host's check action; see workshopModOptimizer/visualCheckIpc.ts.
   registerVisualAssetCheckIpc(mainWindow);
   ipcMain.handle("getWorkshopOptimizerBackgroundStatus", () => getOptimizerBackground()?.getStatus());
