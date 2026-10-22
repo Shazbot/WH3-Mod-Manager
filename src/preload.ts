@@ -250,11 +250,14 @@ const api = {
     ipcRenderer.on("workshopOptimizerLastRun", callback);
     return () => ipcRenderer.removeListener("workshopOptimizerLastRun", callback);
   },
-  clearWorkshopOptimizerCache: (): Promise<{
+  /** `stopBackground`: stop background optimization first (used when leaving copy mode). */
+  clearWorkshopOptimizerCache: (options?: {
+    stopBackground?: boolean;
+  }): Promise<{
     success: boolean;
     code?: "STAGING_ACTIVE" | "CLEAR_FAILED";
     error?: string;
-  }> => ipcRenderer.invoke("clearWorkshopOptimizerCache"),
+  }> => ipcRenderer.invoke("clearWorkshopOptimizerCache", options),
   getWorkshopOptimizerRunReport: (): Promise<WorkshopOptimizerRunReport | undefined> =>
     ipcRenderer.invoke("getWorkshopOptimizerRunReport"),
   onWorkshopOptimizerRunReport: (

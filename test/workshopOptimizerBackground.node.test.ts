@@ -170,7 +170,44 @@ describe("background optimizer", () => {
     h.background.notifyChange("s");
     await vi.advanceTimersByTimeAsync(61_000);
     expect(h.planCalls).toEqual([]);
-    expect(h.background.getStatus().state).toBe("paused");
+    // Nothing was planned, so no work is known to be waiting: no "paused" notice.
+    expect(h.background.getStatus().state).toBe("idle");
+  });
+
+  it("does not report paused when the game starts with every mod already optimized", async () => {
+    const h = makeHarness(() => []);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.background.idle();
+    expect(h.background.getStatus().state).toBe("idle");
+
+    h.setGameRunning(true);
+    expect(h.background.getStatus().state).toBe("idle");
+    expect(h.statuses.some((status) => status.state === "paused")).toBe(false);
+  });
+
+  it("does not report paused when the game starts during the debounce", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(10_000);
+    h.setGameRunning(true);
+    expect(h.background.getStatus().state).toBe("idle");
+    h.setGameRunning(false);
+    await vi.advanceTimersByTimeAsync(16_000);
+    await flush();
+    expect(h.planCalls).toEqual(["s"]);
+  });
+
+  it("stop() resolves after the running job has ended", async () => {
+    const h = makeHarness(() => ["a.pack"]);
+    h.background.notifyChange("s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await flush();
+    const signal = h.signalOf("a.pack")!;
+    await h.background.stop();
+    expect(signal.aborted).toBe(true);
+    expect(h.background.getStatus().state).toBe("idle");
+    expect(h.logs).toContain("a.pack: stopped");
   });
 
   it("hands a running job to the launch without restarting it, and stops jobs for other mods", async () => {

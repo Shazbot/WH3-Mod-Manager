@@ -13,7 +13,8 @@ import type { OptimizerBackgroundJoin } from "./optimizer";
  *   results that are not cached yet, one host process at a time, at below-normal priority.
  * - A change of the mod list, of an enabled pack or of the game starts the debounce again; a change during
  *   a pass stops it (killing the host) and replans.
- * - While the game runs nothing runs; the pass is redone after it exits.
+ * - While the game runs nothing runs; the pass is redone after it exits. "Paused" is shown only when the
+ *   game stopped jobs that were running: with nothing left to do (or not known yet) the status stays idle.
  * - A launch takes over: it waits for the job that makes a mod it needs (without restarting it), stops any
  *   other job and holds the background back until it is done.
  * Results go to the cache only. Nothing here touches the staging folder.
@@ -137,7 +138,9 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
       this.stopPass();
       if (this.timer !== undefined) this.clearTimer(this.timer);
       this.timer = undefined;
-      if (this.snapshot !== undefined) this.publish({ state: "paused", total: 0, done: 0 });
+      // Only work the game actually interrupted counts as paused.
+      const interrupted = this.status.state === "running" || this.status.state === "paused";
+      this.publish({ state: interrupted && this.snapshot !== undefined ? "paused" : "idle", total: 0, done: 0 });
     } else if (this.snapshot !== undefined && !this.launchActive) {
       if (this.timer !== undefined) this.clearTimer(this.timer);
       this.timer = this.setTimer(() => this.start(), this.deps.afterGameMs ?? 15_000);
@@ -169,6 +172,14 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     this.publish({ state: "idle", total: 0, done: 0 });
   }
 
+  /** Cancels like `cancel` and resolves once the job and the pass have really ended. */
+  async stop(): Promise<void> {
+    const running = this.running;
+    this.cancel();
+    await running?.done;
+    await this.passDone;
+  }
+
   dispose() {
     this.disposed = true;
     this.cancel();
@@ -183,8 +194,10 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     this.timer = undefined;
     if (this.disposed || this.snapshot === undefined || this.launchActive) return;
     if (this.deps.isGameRunning()) {
+      // Nothing was planned yet, so it is unknown whether anything needs optimizing: the pass is redone
+      // after the game exits without claiming work is paused.
       this.gameWasRunning = true;
-      this.publish({ state: "paused", total: 0, done: 0 });
+      if (this.status.state !== "paused") this.publish({ state: "idle", total: 0, done: 0 });
       return;
     }
 

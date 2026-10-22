@@ -14519,7 +14519,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     lastOptimizerRunReport ??= await loadOptimizerRunReport(app.getPath("userData"));
     return lastOptimizerRunReport;
   });
-  ipcMain.handle("clearWorkshopOptimizerCache", async () => {
+  ipcMain.handle("clearWorkshopOptimizerCache", async (_event, options?: { stopBackground?: boolean }) => {
+    // Leaving copy mode: the background has nothing to do any more, wait until its job has really ended.
+    if (options?.stopBackground) await getOptimizerBackground()?.stop();
     // A launch or a background job is reading from and writing to this folder, and a running game may
     // have staged packs open that are hard links of its entries.
     if (isOptimizerCacheBusy()) {
