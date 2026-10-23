@@ -150,7 +150,7 @@ export const getPackNameFromPath = (packPath: string) => {
   return packName;
 };
 
-export const getDBPackedFilePath = (dbTableSelection: DBTableSelection) => {
+export const getDBPackedFilePath = (dbTableSelection: { dbName: string; dbSubname: string; dbFolder?: string; packPath?: string }) => {
   // Absent means a selection made before spare folders existed, which means the live table. An empty
   // string is different: a loc sitting one folder deep, whose table folder is the pack root's child.
   const dbFolder = dbTableSelection.dbFolder ?? DEFAULT_DB_TABLE_ROOT;

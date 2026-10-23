@@ -16,9 +16,13 @@ export interface NewPackedFile {
   schemaFields?: SchemaField[];
   file_size?: number;
   version?: number;
+  guid?: string;
   tableSchema?: DBVersion;
   buffer?: Buffer;
   readBuffer?: boolean;
+  is_compressed?: boolean;
+  file_name_hash?: number;
+  dbPreamble?: Buffer;
 }
 
 export interface PackedFile {
@@ -30,6 +34,8 @@ export interface PackedFile {
   entryCount?: number;
   version?: number;
   guid?: string;
+  file_name_hash?: number;
+  dbPreamble?: Buffer;
   tableSchema?: DBVersion;
   text?: string;
   buffer?: Buffer;
@@ -42,6 +48,7 @@ export interface PackHeader {
   pack_file_index_size: number;
   pack_file_count: number;
   header_buffer: Buffer;
+  packed_file_index_size?: number;
 }
 
 export interface Pack {

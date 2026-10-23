@@ -29,7 +29,6 @@ import { compareModNames } from "./modSortingHelpers";
 import { getDBName, getDBPackedFilePath, parseDBTablePath, resolveParsedDBVersion } from "./utility/packFileHelpers";
 import { groupPackedFilesIntoReadRuns } from "./utility/packedFileReadRuns";
 import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
-import { hasPackedFileNameHash, readPackedFileIndexEntry } from "./utility/packFileIndex";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
 import { resolveRadioChoiceId, splitMultilineOptionValue } from "./nodeGraph/types";
 import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
@@ -46,10 +45,18 @@ import deepClone from "clone-deep";
 import { gameToIntroMovies, gameToPackHeader, supportsCompression } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
-import * as zlib from "zlib";
 import { collator } from "./utility/packFileSorting";
 import bs from "binary-search";
-import { decompress } from "@mongodb-js/zstd";
+import {
+  decompressPackedPayload as decompressPackedPayloadCore,
+  parseTypeBufferExact,
+  readDbTablePreamble,
+  readPackIndex,
+  rewritePackFromIndex,
+  serializePackFileDataToBuffer as serializePackFileDataToBufferCore,
+  serializeSchemaFieldToBuffer as serializeSchemaFieldToBufferCore,
+  writeRawPack,
+} from "./packCore";
 import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
 import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
@@ -82,91 +89,7 @@ const string_schema = `{
 const object_schema = JSON.parse(string_schema);
 const latest_version = Object.keys(object_schema.units_custom_battle_permissions_tables).sort()[0];
 const ver_schema = object_schema.units_custom_battle_permissions_tables[latest_version];
-const zstdFrameMagic = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
-const lz4FrameMagic = Buffer.from([0x04, 0x22, 0x4d, 0x18]);
-let lz4DecompressFrame: ((data: string | Buffer) => Promise<Buffer>) | undefined;
-try {
-  lz4DecompressFrame = (
-    require("lz4-napi") as {
-      decompressFrame?: (data: string | Buffer) => Promise<Buffer>;
-    }
-  ).decompressFrame;
-} catch (error) {
-  console.log("lz4-napi unavailable in this environment, LZ4 pack payloads will fail to decompress");
-}
-const tryZstdDecompress = async (payload: Buffer): Promise<Buffer> => Buffer.from(await decompress(payload));
-const tryLz4FrameDecompress = async (payload: Buffer): Promise<Buffer> => {
-  if (!lz4DecompressFrame) throw new Error("lz4-napi is not available");
-  return Buffer.from(await lz4DecompressFrame(payload));
-};
-const tryZlibDecompress = (payload: Buffer): Buffer => {
-  try {
-    return Buffer.from(zlib.inflateRawSync(payload));
-  } catch {
-    return Buffer.from(zlib.inflateSync(payload));
-  }
-};
-export const decompressPackedPayload = async (buffer: Buffer, context?: string): Promise<Buffer> => {
-  const offsets = [] as number[];
-  const addOffset = (offset: number) => {
-    if (offset < 0 || offset >= buffer.length) return;
-    if (!offsets.includes(offset)) offsets.push(offset);
-  };
-  addOffset(4);
-  addOffset(0);
-  for (let i = 0; i <= Math.min(32, buffer.length - 4); i++) {
-    if (buffer.subarray(i, i + 4).equals(zstdFrameMagic)) addOffset(i);
-    if (buffer.subarray(i, i + 4).equals(lz4FrameMagic)) addOffset(i);
-  }
-  addOffset(8);
-  addOffset(12);
-  addOffset(16);
-  let lastError: unknown;
-  for (const offset of offsets) {
-    const payload = buffer.subarray(offset);
-    if (payload.length < 4) continue;
-    if (!payload.subarray(0, 4).equals(zstdFrameMagic)) continue;
-    try {
-      return await tryZstdDecompress(payload);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  for (const offset of offsets) {
-    const payload = buffer.subarray(offset);
-    if (payload.length < 4) continue;
-    if (!payload.subarray(0, 4).equals(lz4FrameMagic)) continue;
-    try {
-      return await tryLz4FrameDecompress(payload);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  for (const offset of offsets) {
-    const payload = buffer.subarray(offset);
-    if (payload.length < 4) continue;
-    try {
-      return await tryZstdDecompress(payload);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  for (const offset of offsets) {
-    const payload = buffer.subarray(offset);
-    if (payload.length < 2) continue;
-    try {
-      return tryZlibDecompress(payload);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  const contextSuffix = context ? ` (${context})` : "";
-  throw new Error(
-    `Failed to decompress packed payload${contextSuffix}: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
-  );
-};
+export const decompressPackedPayload = decompressPackedPayloadCore;
 function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE): number {
   switch (type) {
     case "Int8":
@@ -421,117 +344,12 @@ function parseTypeBuffer(
   type: SCHEMA_FIELD_TYPE,
   existingFields?: Field[],
 ): [Field[], number] {
-  const fields: Field[] = existingFields || [];
-  switch (type) {
-    case "Boolean":
-      {
-        // console.log('boolean');
-        const val = buffer.readUInt8(pos); //await file.readUInt8();
-        pos += 1;
-        fields.push({ type: "UInt8", val });
-        return [fields, pos];
-        // await outFile.writeInt8(newVal !== undefined ? newVal : val);
-      }
-      break;
-    case "ColourRGB":
-      {
-        const val = buffer.readInt32LE(pos); // await file.readInt32();
-        pos += 4;
-        fields.push({ type: "I32", val });
-        return [fields, pos];
-      }
-      break;
-    case "StringU16":
-      {
-        try {
-          const length = buffer.readInt16LE(pos); //await file.readInt16();
-          pos += 2;
-          const val = buffer.subarray(pos, pos + length * 2).toString("utf16le"); //(await file.read(length * 2)).toString("utf8");
-          pos += length * 2;
-          fields.push({ type: "String", val });
-          return [fields, pos];
-        } catch (e) {
-          console.log(e);
-          throw e;
-        }
-      }
-      break;
-    case "StringU8":
-      {
-        const length = buffer.readUint16LE(pos); //await file.readUInt16();
-        // console.log("stringU8 length is", length);
-        pos += 2;
-        const val = buffer.subarray(pos, pos + length).toString("ascii"); //await file.readString(length);
-        pos += length;
-        // console.log("val is", val);
-        // console.log('string');
-        // console.log('position is ' + file.tell());
-        // const val = await read_string(file);
-        // console.log(length);
-        // console.log(val);
-        fields.push({ type: "Int16", val: length });
-        fields.push({ type: "String", val });
-        return [fields, pos];
-        // await outFile.writeString(val + '\0');
-        // await outFile.writeInt16(length);
-        // await outFile.writeString(val);
-      }
-      break;
-    case "OptionalStringU8":
-      {
-        const doesExist = buffer.readUint8(pos); // await file.readUInt8();
-        pos += 1;
-        fields.push({ type: "Int8", val: doesExist });
-        if (doesExist === 1) {
-          return parseTypeBuffer(buffer, pos, "StringU8", fields);
-        }
-        return [fields, pos];
-      }
-      break;
-    case "F32":
-      {
-        const doesExist = buffer.readFloatLE(pos); //await file.readFloat();
-        pos += 4;
-        fields.push({ type: "F32", val: doesExist });
-        return [fields, pos];
-      }
-      break;
-    case "I32":
-      {
-        const doesExist = buffer.readInt32LE(pos); //await file.readInt32();
-        pos += 4;
-        fields.push({ type: "I32", val: doesExist });
-        return [fields, pos];
-      }
-      break;
-    case "I16":
-      {
-        const doesExist = buffer.readInt16LE(pos); //await file.readInt32();
-        pos += 2;
-        fields.push({ type: "I16", val: doesExist });
-        return [fields, pos];
-      }
-      break;
-    case "F64":
-      {
-        const doesExist = buffer.readDoubleLE(pos); //await file.readDouble();
-        pos += 8;
-        fields.push({ type: "F64", val: doesExist });
-        return [fields, pos];
-      }
-      break;
-    case "I64":
-      {
-        const doesExist = Number(buffer.readBigInt64LE(pos)); //await file.readInt64();
-        pos += 8;
-        fields.push({ type: "I64", val: doesExist });
-        return [fields, pos];
-      }
-      break;
-    default:
-      throw new Error("NO WAY TO RESOLVE " + type);
-      break;
-  }
+  const result = parseTypeBufferExact(buffer, pos, type, existingFields, { strict: false, legacyGuiEncoding: true });
+  // The GUI historically exposes I64 cells as Numbers. The shared core retains exact decimal strings.
+  const fields = result.fields.map((field) =>
+    field.type === "I64" && typeof field.val === "string" ? { ...field, val: Number(field.val) } : field,
+  );
+  return [fields, result.nextPosition];
 }
 export function getFieldSize(value: string, type: SCHEMA_FIELD_TYPE): number {
   switch (type) {
@@ -1953,205 +1771,28 @@ export const writePackAppendFast = async (
   removedFileNames: string[] = [],
   packType?: PackType,
 ) => {
-  let outFile: BinaryFile | undefined;
-  let sourceFile: BinaryFile | undefined;
-  const timestamp = format(new Date(), "ddMMyy_HHmmss");
-  const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
   const removedKeys = new Set(removedFileNames.map(normalizePackFilePathKey));
-  try {
-    if (packFiles.length < 1 && removedKeys.size === 0) return;
-    ensurePackFilesReadyForWrite(packFiles);
-    if (existingPackToAppend) {
-      // FAST PATH: Clone existing pack and append new files
-      console.log("Fast append mode: cloning existing pack and appending new files");
-      // Open source file for reading
-      sourceFile = new BinaryFile(existingPackToAppend.path, "r", true);
-      console.log("trying to open source file:", existingPackToAppend.path);
-      await sourceFile.open();
-      console.log("source file opened");
-      // Open output file for writing
-      outFile = new BinaryFile(outPath, "w", true);
-      await outFile.open();
-      // Handle duplicate replacement logic
-      const newKeys = new Set(packFiles.map((pf) => normalizePackFilePathKey(pf.name)));
-      const filesToKeep =
-        replaceDuplicates || removedKeys.size > 0
-          ? existingPackToAppend.packedFiles.filter((pf) => {
-              const key = normalizePackFilePathKey(pf.name);
-              return !newKeys.has(key) && !removedKeys.has(key);
-            })
-          : existingPackToAppend.packedFiles;
-      // Calculate new counts and sizes
-      const originalFileCount = existingPackToAppend.packedFiles.length;
-      const keptFileCount = filesToKeep.length;
-      const replacedFileCount = originalFileCount - keptFileCount;
-      const newFileCount = keptFileCount + packFiles.length;
-      // Use existing dependency packs if not provided
-      const finalDependencyPacks =
-        dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend.dependencyPacks || [];
-      // Calculate pack_file_index_size based on dependency packs
-      const pack_file_index_size = finalDependencyPacks.reduce(
-        (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-        0,
-      );
-      // Calculate additional index size needed for new files
-      const newIndexSize = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-      // For pack files, the packed_file_index_size in header refers to the file index section
-      // We need to calculate the total size of existing + new file index entries
-      const keptIndexSize = filesToKeep.reduce((acc, pf) => acc + new Blob([pf.name]).size + 1 + 5, 0);
-      const totalIndexSize = keptIndexSize + newIndexSize;
-      // Write updated header with new counts
-      const headerAccumulator = new BufferAccumulator(outFile);
-      headerAccumulator.addString(gameToPackHeader[appData.currentGame]);
-      headerAccumulator.addInt32(packType ? getPackTypeByteMask(packType) : existingPackToAppend.packHeader.byteMask);
-      headerAccumulator.addInt32(existingPackToAppend.packHeader.refFileCount);
-      headerAccumulator.addInt32(pack_file_index_size);
-      headerAccumulator.addInt32(newFileCount); // Updated file count
-      headerAccumulator.addInt32(totalIndexSize); // Updated index size
-      headerAccumulator.addInt32(0x7fffffff); // header_buffer
-      await headerAccumulator.flush();
-      // Write dependency packs
-      for (const dep of finalDependencyPacks) {
-        await outFile.writeString(dep);
-        await outFile.writeUInt8(0);
-      }
-      console.log(
-        `Original files: ${originalFileCount}, Kept files: ${keptFileCount}, Replaced files: ${replacedFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`,
-      );
-      // Copy file index entries (selectively if replacing duplicates)
-      if (replacedFileCount > 0) {
-        console.log("Selectively copying file index entries (excluding duplicates)...");
-        // Write index entries for files we're keeping
-        const keptIndexAccumulator = new BufferAccumulator(outFile);
-        for (const keptFile of filesToKeep) {
-          keptIndexAccumulator.addInt32(keptFile.file_size);
-          keptIndexAccumulator.addInt8(keptFile.is_compressed ? 1 : 0);
-          keptIndexAccumulator.addString(keptFile.name + "\0");
-          await keptIndexAccumulator.flushIfNeeded();
-        }
-        await keptIndexAccumulator.flush();
-      } else {
-        console.log("Copying existing file index entries...");
-        // Calculate the original pack's dependency pack size
-        const originalDependencyPackSize = (existingPackToAppend.dependencyPacks || []).reduce(
-          (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-          0,
-        );
-        const existingIndexStartPos = 4 + 4 + 4 + 4 + 4 + 4 + 4 + originalDependencyPackSize; // After header (7 * 4 bytes) + dependency packs
-        const existingIndexSize = existingPackToAppend.packedFiles.reduce(
-          (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
-          0,
-        );
-        await sourceFile.seek(existingIndexStartPos);
-        const existingIndexBuffer = await sourceFile.read(existingIndexSize);
-        await outFile.write(existingIndexBuffer);
-      }
-      // Write new file index entries
-      console.log("Writing new file index entries...");
-      const newIndexAccumulator = new BufferAccumulator(outFile);
-      for (const packFile of packFiles) {
-        const { name } = packFile;
-        const file_size = packFile.file_size!;
-        if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
-          newIndexAccumulator.addInt32(file_size);
-        } else {
-          newIndexAccumulator.addInt32(file_size);
-        }
-        if (supportsCompression[appData.currentGame]) newIndexAccumulator.addInt8(0); // is_compressed
-        newIndexAccumulator.addString(name + "\0");
-        await newIndexAccumulator.flushIfNeeded();
-      }
-      await newIndexAccumulator.flush();
-      // Copy file data (selectively if replacing duplicates)
-      if (replacedFileCount > 0) {
-        console.log("Selectively copying file data (excluding duplicates)...");
-        // Copy data for files we're keeping
-        for (const keptFile of filesToKeep) {
-          await sourceFile.seek(keptFile.start_pos);
-          const fileData = await sourceFile.read(keptFile.file_size);
-          await outFile.write(fileData);
-        }
-      } else {
-        console.log("Copying existing file data...");
-        const originalDependencyPackSize = (existingPackToAppend.dependencyPacks || []).reduce(
-          (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-          0,
-        );
-        const headerSize = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
-        const indexSize = existingPackToAppend.packedFiles.reduce(
-          (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
-          0,
-        );
-        const dataStartPos = headerSize + originalDependencyPackSize + indexSize;
-        const sourceFileSize = await sourceFile.size();
-        const dataSize = sourceFileSize - dataStartPos;
-        if (dataSize > 0) {
-          await sourceFile.seek(dataStartPos);
-          // Copy in chunks for better memory usage
-          const chunkSize = 1024 * 1024; // 1MB chunks
-          let remainingBytes = dataSize;
-          while (remainingBytes > 0) {
-            const bytesToRead = Math.min(chunkSize, remainingBytes);
-            const chunk = await sourceFile.read(bytesToRead);
-            await outFile.write(chunk);
-            remainingBytes -= bytesToRead;
-          }
-        }
-      }
-      // Append new file data
-      console.log("Appending new file data...");
-      for (const packFile of packFiles) {
-        if (packFile.buffer) {
-          await outFile.write(packFile.buffer);
-        } else if (packFile.schemaFields && packFile.tableSchema) {
-          if (packFile.name.endsWith(".loc")) {
-            await outFile.write(Buffer.from([0xff, 0xfe]));
-            await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
-          } else {
-            if (packFile.version != null) {
-              console.log(packFile.name, "version:", packFile.version);
-              await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
-              await outFile.writeInt32(packFile.version); // db version
-            }
-          }
-          if (packFile.name.endsWith(".loc")) {
-            await outFile.writeInt8(0);
-            await outFile.writeInt32(1);
-          } else {
-            await outFile.writeInt8(1);
-          }
-          console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
-          await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
-          // Use buffered field writing
-          await writeFieldBuffered(outFile, packFile.schemaFields);
-          console.log("WROTE FILE:", packFile.name);
-        } else {
-          console.log("NO BUFFER AND NO SCHEMA DATA FOR", packFile.name);
-        }
-      }
-      console.log("Fast append completed successfully");
-    } else {
-      // SLOW PATH: No existing pack, use regular sorted approach
-      console.log("No existing pack, using regular sorted approach");
-      return await writePackSorted(packFiles, path, dependencyPacks, packType ?? "mod");
-    }
-    // Move temp file to final location
-    if (existingPackToAppend) {
-      if (outFile) {
-        await outFile.close();
-        outFile = undefined;
-      }
-      if (sourceFile) {
-        await sourceFile.close();
-        sourceFile = undefined;
-      }
-      await fsExtra.move(outPath, path, { overwrite: true });
-    }
-  } finally {
-    if (outFile) await outFile.close();
-    if (sourceFile) await sourceFile.close();
-  }
+  if (packFiles.length === 0 && removedKeys.size === 0) return;
+  ensurePackFilesReadyForWrite(packFiles);
+  if (!existingPackToAppend) return writePackSorted(packFiles, path, dependencyPacks, packType ?? "mod");
+
+  const indexedPack = readPackIndex(existingPackToAppend.path, { game: appData.currentGame });
+  const outPath = `${path}_${format(new Date(), "ddMMyy_HHmmss")}`;
+  const additions = packFiles.map((packFile) => ({
+    name: packFile.name,
+    buffer: serializePackFileDataToBuffer(packFile),
+    is_compressed: false,
+    ...(packFile.file_name_hash === undefined ? {} : { file_name_hash: packFile.file_name_hash }),
+  }));
+  await rewritePackFromIndex(outPath, indexedPack, additions, {
+    replaceDuplicates,
+    removedFileNames,
+    dependencyPacks,
+    packType,
+  });
+  await fsExtra.move(outPath, path, { overwrite: true });
 };
+
 // Original sorted implementation for when no existing pack is provided
 const writePackSorted = async (
   packFiles: NewPackedFile[],
@@ -2159,85 +1800,24 @@ const writePackSorted = async (
   dependencyPacks: string[] = [],
   packType: PackType = "mod",
 ) => {
-  let outFile: BinaryFile | undefined;
-  try {
-    const header = gameToPackHeader[appData.currentGame];
-    const byteMask = getPackTypeByteMask(packType);
-    const refFileCount = 0;
-    if (packFiles.length < 1) return;
-    ensurePackFilesReadyForWrite(packFiles);
-    outFile = new BinaryFile(path, "w", true);
-    await outFile.open();
-    // Sort files for consistent ordering
-    packFiles.sort((firstPf, secondPf) => {
-      return firstPf.name.localeCompare(secondPf.name);
-    });
-    // Calculate pack_file_index_size based on dependency packs
-    const pack_file_index_size = dependencyPacks.reduce((acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1, 0);
-    const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-    // Write header
-    const headerAccumulator = new BufferAccumulator(outFile);
-    headerAccumulator.addString(header);
-    headerAccumulator.addInt32(byteMask);
-    headerAccumulator.addInt32(refFileCount);
-    headerAccumulator.addInt32(pack_file_index_size);
-    headerAccumulator.addInt32(packFiles.length);
-    headerAccumulator.addInt32(index_size);
-    headerAccumulator.addInt32(0x7fffffff); // header_buffer
-    await headerAccumulator.flush();
-    // Write dependency packs
-    for (const dep of dependencyPacks) {
-      await outFile.writeString(dep);
-      await outFile.writeUInt8(0);
-    }
-    // Write file index
-    const indexAccumulator = new BufferAccumulator(outFile);
-    for (const packFile of packFiles) {
-      const { name } = packFile;
-      const file_size = packFile.file_size!;
-      if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
-        indexAccumulator.addInt32(file_size);
-      } else {
-        indexAccumulator.addInt32(file_size);
-      }
-      if (supportsCompression[appData.currentGame]) indexAccumulator.addInt8(0); // is_compressed
-      indexAccumulator.addString(name + "\0");
-      await indexAccumulator.flushIfNeeded();
-    }
-    await indexAccumulator.flush();
-    // Write file contents
-    for (const packFile of packFiles) {
-      if (packFile.buffer) {
-        console.log("WRITE AS BUFFER:", packFile.name);
-        await outFile.write(packFile.buffer);
-      } else if (packFile.schemaFields && packFile.tableSchema) {
-        if (packFile.name.endsWith(".loc")) {
-          await outFile.write(Buffer.from([0xff, 0xfe]));
-          await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
-        } else {
-          if (packFile.version != null) {
-            console.log(packFile.name, "version:", packFile.version);
-            await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
-            await outFile.writeInt32(packFile.version); // db version
-          }
-        }
-        if (packFile.name.endsWith(".loc")) {
-          await outFile.writeInt8(0);
-          await outFile.writeInt32(1);
-        } else {
-          await outFile.writeInt8(1);
-        }
-        console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
-        await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
-        await writeFieldBuffered(outFile, packFile.schemaFields);
-        console.log("WROTE FILE:", packFile.name);
-      } else {
-        console.log("NO BUFFER AND NO SCHEMA DATA FOR", packFile.name);
-      }
-    }
-  } finally {
-    if (outFile) await outFile.close();
-  }
+  ensurePackFilesReadyForWrite(packFiles);
+  packFiles.sort((firstPackFile, secondPackFile) => firstPackFile.name.localeCompare(secondPackFile.name));
+  await writeRawPack(
+    path,
+    packFiles.map((packFile) => ({
+      name: packFile.name,
+      buffer: serializePackFileDataToBuffer(packFile),
+      is_compressed: false,
+      ...(packFile.file_name_hash === undefined ? {} : { file_name_hash: packFile.file_name_hash }),
+    })),
+    {
+      game: appData.currentGame,
+      byteMask: getPackTypeByteMask(packType),
+      refFileCount: 0,
+      headerBuffer: Buffer.from([0xff, 0xff, 0xff, 0x7f]),
+      dependencies: dependencyPacks,
+    },
+  );
 };
 export const writePack = async (
   packFiles: NewPackedFile[],
@@ -2496,105 +2076,9 @@ const reusableBuffers = {
   i16: Buffer.allocUnsafe(2),
   i8: Buffer.allocUnsafe(1),
 };
-// Helper function to serialize a single field to buffer without writing
-const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
-  switch (field.type) {
-    case "UInt8":
-    case "Int8": {
-      reusableBuffers.i8.writeUInt8(field.val as number, 0);
-      return Buffer.from(reusableBuffers.i8);
-    }
-    case "F32": {
-      reusableBuffers.f32.writeFloatLE(field.val as number, 0);
-      return Buffer.from(reusableBuffers.f32);
-    }
-    case "I32": {
-      reusableBuffers.i32.writeInt32LE(field.val as number, 0);
-      return Buffer.from(reusableBuffers.i32);
-    }
-    case "I16": {
-      reusableBuffers.i16.writeInt16LE(field.val as number, 0);
-      return Buffer.from(reusableBuffers.i16);
-    }
-    case "Int16": {
-      reusableBuffers.i16.writeUInt16LE(field.val as number, 0);
-      return Buffer.from(reusableBuffers.i16);
-    }
-    case "I64": {
-      reusableBuffers.i64.writeBigInt64LE(BigInt(field.val as number), 0);
-      return Buffer.from(reusableBuffers.i64);
-    }
-    case "F64": {
-      reusableBuffers.f64.writeDoubleLE(field.val as number, 0);
-      return Buffer.from(reusableBuffers.f64);
-    }
-    case "String": {
-      const stringVal = field.val as string;
-      // console.log(`    serializeFieldToBuffer String: val="${stringVal}" length=${stringVal.length}`);
-      return Buffer.from(stringVal, "utf8");
-    }
-    case "Buffer": {
-      return Buffer.isBuffer(field.val) ? field.val : Buffer.from(field.val as number[]);
-    }
-    default:
-      throw new Error("NO WAY TO RESOLVE " + field.type);
-  }
-};
-// Serialize an entire schema field to buffer
-const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
-  // StringU16 is parsed into a single already-decoded string, its length prefix dropped - unlike
-  // StringU8, which keeps the prefix as a field of its own and so round-trips field by field. Written
-  // the generic way a StringU16 would lose its prefix and come back out as utf8, which is how loc
-  // files (three StringU16-family fields) were unwritable.
-  if (schemaField.type === "StringU16" && schemaField.fields.length === 1) {
-    const value = String(schemaField.fields[0]?.val ?? "");
-    const lengthBuffer = Buffer.allocUnsafe(2);
-    // The reader takes this as a count of utf16 code units and reads twice as many bytes.
-    lengthBuffer.writeInt16LE(value.length, 0);
-    return Buffer.concat([lengthBuffer, Buffer.from(value, "utf16le")]);
-  }
-
-  const fieldBuffers: Buffer[] = [];
-  for (const field of schemaField.fields) {
-    const buffer = serializeFieldToBuffer(field);
-    fieldBuffers.push(buffer);
-  }
-  const result = Buffer.concat(fieldBuffers);
-  return result;
-};
-export const serializePackFileDataToBuffer = (packFile: NewPackedFile): Buffer => {
-  if (packFile.buffer) {
-    return packFile.buffer;
-  }
-  if (!packFile.schemaFields || !packFile.tableSchema) {
-    throw new Error(`Cannot serialize pack file "${packFile.name}" without buffer or schema data`);
-  }
-  const buffers: Buffer[] = [];
-  if (packFile.name.endsWith(".loc")) {
-    buffers.push(Buffer.from([0xff, 0xfe]));
-    buffers.push(Buffer.from([0x4c, 0x4f, 0x43]));
-    buffers.push(Buffer.from([0x00]));
-    const rowCountBuffer = Buffer.allocUnsafe(4);
-    rowCountBuffer.writeInt32LE(1, 0);
-    buffers.push(rowCountBuffer);
-  } else {
-    if (packFile.version != null) {
-      const versionBuffer = Buffer.allocUnsafe(4);
-      versionBuffer.writeInt32LE(packFile.version, 0);
-      buffers.push(Buffer.from([0xfc, 0xfd, 0xfe, 0xff]));
-      buffers.push(versionBuffer);
-    }
-    buffers.push(Buffer.from([0x01]));
-  }
-  const rowCount = packFile.schemaFields.length / packFile.tableSchema.fields.length;
-  const rowCountBuffer = Buffer.allocUnsafe(4);
-  rowCountBuffer.writeInt32LE(rowCount, 0);
-  buffers.push(rowCountBuffer);
-  for (const schemaField of packFile.schemaFields) {
-    buffers.push(serializeSchemaFieldToBuffer(schemaField));
-  }
-  return Buffer.concat(buffers);
-};
+const serializeSchemaFieldToBuffer = serializeSchemaFieldToBufferCore;
+export const serializePackFileDataToBuffer = (packFile: NewPackedFile): Buffer =>
+  serializePackFileDataToBufferCore(packFile);
 const ensurePackFileReadyForWrite = (packFile: NewPackedFile): NewPackedFile => {
   if (packFile.buffer) {
     if (packFile.file_size == null) {
@@ -3007,38 +2491,12 @@ const readDBPackedFiles = async (
     }
     currentPos = 0;
     // console.log(`reading ${pack_file.name}`);
-    let version: number | undefined;
-    for (;;) {
-      const marker = packBuffer.subarray(currentPos, currentPos + 4);
-      currentPos += 4;
-      if (marker.toString("hex") === "fdfefcff") {
-        const readUTF = readUTFStringFromBuffer(packBuffer, currentPos);
-        // console.log("guid is " + readUTF[0]);
-        pack_file.guid = readUTF[0];
-        currentPos = readUTF[1];
-        // console.log("current pos after guid is:", currentPos);
-      } else if (marker.toString("hex") === "fcfdfeff") {
-        // console.log("found version marker");
-        version = packBuffer.readInt32LE(currentPos); // await file.readInt32();
-        currentPos += 4;
-        pack_file.version = version;
-        // await file.read(1);
-      } else {
-        // console.log(marker.toString("hex"));
-        currentPos -= 4;
-        currentPos += 1;
-        // file.seek(file.tell() - 4);
-        break;
-      }
-      // if (pack_file.name === "db\\character_skill_nodes_tables\\mixu_ll_empire") {
-      // console.log(pack_file.name);
-      // console.log(dbName);
-      // console.log(file.tell());
-      // console.log(dbName);
-      // console.log(marker);
-      // console.log("-------------------");
-      // }
-    }
+    const preamble = readDbTablePreamble(packBuffer);
+    pack_file.guid = preamble.guid;
+    pack_file.version = preamble.version;
+    pack_file.dbPreamble = preamble.bytes;
+    const version = preamble.version;
+    currentPos = preamble.dataPosition;
     // if (version == null) {
     //   console.log("version is", version);
     //   console.log(pack_file.guid);
@@ -3051,8 +2509,7 @@ const readDBPackedFiles = async (
     // if (version == null) {
     //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
     // }
-    const entryCount = packBuffer.readInt32LE(currentPos); //await file.readInt32();
-    currentPos += 4;
+    const entryCount = preamble.rowCount;
     // console.log("entry count is ", entryCount);
     // console.log("pos is ", currentPos);
     // console.log(dbName);
@@ -3282,95 +2739,27 @@ export const readPack = async (
       dependencyPacks.push(...cachedVanillaPackIndex.dependencyPacks);
       console.log(`[readPack] vanilla index cache hit: ${nodePath.basename(modPath)}`);
     } else {
-      // header 4
-      // byteMask 4
-      // refFileCount 4
-      // pack_file_index_size 4
-      // pack_file_count 4
-      // packed_file_index_size 4
-      // headerBuffer 4
-      // header_buffer_len 4;
-      const packedFileHeaderSize = 8 * 4;
-      const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
-      fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
-      let packedFileHeaderPosition = 0;
-      const header = packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
-      packedFileHeaderPosition += 4;
-      if (header === null) throw new Error("header missing");
-      if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
-        throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
-      }
-      const byteMask = packedFileHeader.readInt32LE(packedFileHeaderPosition);
-      packedFileHeaderPosition += 4;
-      const refFileCount = packedFileHeader.readInt32LE(packedFileHeaderPosition);
-      packedFileHeaderPosition += 4;
-      const pack_file_index_size = packedFileHeader.readInt32LE(packedFileHeaderPosition);
-      packedFileHeaderPosition += 4;
-      const pack_file_count = packedFileHeader.readInt32LE(packedFileHeaderPosition);
-      packedFileHeaderPosition += 4;
-      const packed_file_index_size = packedFileHeader.readInt32LE(packedFileHeaderPosition);
-      packedFileHeaderPosition += 4;
-      const header_buffer_len = 4;
-      const header_buffer = packedFileHeader.subarray(
-        packedFileHeaderPosition,
-        packedFileHeaderPosition + header_buffer_len,
-      );
-      packedFileHeaderPosition += header_buffer_len;
+      const indexedPack = readPackIndex(modPath, { game: appData.currentGame });
       packHeader = {
-        header,
-        byteMask,
-        refFileCount,
-        pack_file_index_size,
-        pack_file_count,
-        header_buffer,
-      } as PackHeader;
-      if (pack_file_index_size > 0) {
-        const packIndexBuffer = Buffer.allocUnsafe(pack_file_index_size);
-        fs.readSync(fileId, packIndexBuffer, 0, pack_file_index_size, packedFileHeaderPosition);
-        packedFileHeaderPosition += pack_file_index_size;
-        // get the dependencyPacks
-        let start = 0;
-        for (let i = 0; i < pack_file_index_size; i++) {
-          if (packIndexBuffer[i] === 0) {
-            if (i > start) {
-              dependencyPacks[dependencyPacks.length] = packIndexBuffer.toString("utf8", start, i);
-            }
-            start = i + 1;
-          }
-        }
-      }
-      const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
-      // console.log("data starts at " + dataStart);
-      let file_pos = dataStart;
-      const headerSize = dataStart - packedFileHeaderPosition;
-      // const headerBuffer = await file.read(headerSize);
-      const headerBuffer = Buffer.allocUnsafe(headerSize);
-      fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, packedFileHeaderPosition);
-      // console.log("header size is: " + headerSize);
-      // console.time("1000files");
-      let bufPos = 0;
-      // console.log("pack_file_count is " + pack_file_count);
-      const hasCompressionFlag = supportsCompression[appData.currentGame];
-      const hasFileNameHash = hasPackedFileNameHash(byteMask);
-      for (let i = 0; i < pack_file_count; i++) {
-        const entry = readPackedFileIndexEntry(headerBuffer, bufPos, hasCompressionFlag, hasFileNameHash);
-        if (!entry) throw new Error(`Could not parse packed-file index entry ${i} in ${modPath}`);
-        const { name, file_size, is_compressed } = entry;
-        bufPos = entry.nextPosition;
-        // if (i === 1000) {
-        // console.log(console.timeEnd("1000files"));
-        // }
-        pack_files.push({
-          name,
-          file_size,
-          start_pos: file_pos,
-          is_compressed,
-        });
-        file_pos += file_size;
-      }
-      if (packHeader) {
-        rememberVanillaPackIndex(modPath, size, lastChangedLocal, pack_files, packHeader, dependencyPacks);
-      }
+        header: indexedPack.header.signature,
+        byteMask: indexedPack.header.byteMask,
+        refFileCount: indexedPack.header.refFileCount,
+        pack_file_index_size: indexedPack.header.dependencyIndexSize,
+        pack_file_count: indexedPack.header.fileCount,
+        packed_file_index_size: indexedPack.header.fileIndexSize,
+        header_buffer: indexedPack.header.headerBuffer,
+      };
+      dependencyPacks.push(...indexedPack.dependencies);
+      pack_files.push(
+        ...indexedPack.entries.map((entry) => ({
+          name: entry.name,
+          file_size: entry.file_size,
+          start_pos: entry.start_pos,
+          is_compressed: entry.is_compressed,
+          ...(entry.file_name_hash === undefined ? {} : { file_name_hash: entry.file_name_hash }),
+        })),
+      );
+      rememberVanillaPackIndex(modPath, size, lastChangedLocal, pack_files, packHeader, dependencyPacks);
     }
     if (!packReadingOptions.skipSorting) pack_files.sort((a, b) => collator.compare(a.name, b.name));
     // Early return if no additional processing needed

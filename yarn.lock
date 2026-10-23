@@ -1668,6 +1668,34 @@
   resolved "https://registry.yarnpkg.com/@marijn/find-cluster-break/-/find-cluster-break-1.0.4.tgz#42c2aea61cda307cdb1347444792452d7b5dbfb4"
   integrity sha512-Wy0V7+SGUjnF9/TkiM1hKVDPj7jKXduPNboMVtHTA8dySMURWqfg/JZ9E2Sq8JgSJmkl7k7Qe9FLeMSrSraWmQ==
 
+"@modelcontextprotocol/client@2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@modelcontextprotocol/client/-/client-2.4.0.tgz#855e4dacf19c2a9db49bf55d332628c08d068b6d"
+  integrity sha512-LgrD2OphHuG12vfKFKz6SOnq7bKHQmhGJIAYdD+MZBn2npHEyry6uD8zvktodtl5CQM85MO0anUyD9JwmUmxww==
+  dependencies:
+    "@modelcontextprotocol/core" "2.4.0"
+    cross-spawn "^7.0.5"
+    eventsource "^3.0.2"
+    eventsource-parser "^3.0.8"
+    jose "^6.1.3"
+    pkce-challenge "^5.0.0"
+    zod "^4.2.0"
+
+"@modelcontextprotocol/core@2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@modelcontextprotocol/core/-/core-2.4.0.tgz#c7f1a505452c3a0ad666d9a6e78a5804d8d8d0d9"
+  integrity sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==
+  dependencies:
+    zod "^4.2.0"
+
+"@modelcontextprotocol/server@2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@modelcontextprotocol/server/-/server-2.4.0.tgz#282a61ccbdc531361f03525a33e33283534d6fc7"
+  integrity sha512-rgR9yxSaAJ+bcsi/XroT/S2AfPiIWloXAnrdfYSCms9ivVju0ishu/wW0J21Ho6+ZOR1r7RyeRbjiRuF87ix5Q==
+  dependencies:
+    "@modelcontextprotocol/core" "2.4.0"
+    zod "^4.2.0"
+
 "@mongodb-js/zstd@^2.0.1":
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/@mongodb-js/zstd/-/zstd-2.0.1.tgz#2dadafd458c2effe69eb4b3d13e27fba7d60af6c"
@@ -4548,7 +4576,7 @@ cross-spawn@^6.0.0:
     shebang-command "^1.2.0"
     which "^1.2.9"
 
-cross-spawn@^7.0.1, cross-spawn@^7.0.3, cross-spawn@^7.0.6:
+cross-spawn@^7.0.1, cross-spawn@^7.0.3, cross-spawn@^7.0.5, cross-spawn@^7.0.6:
   version "7.0.6"
   resolved "https://registry.yarnpkg.com/cross-spawn/-/cross-spawn-7.0.6.tgz#8a58fe78f00dcd70c370451759dfbfaf03e8ee9f"
   integrity sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==
@@ -5754,6 +5782,18 @@ events@^3.2.0:
   version "3.3.0"
   resolved "https://registry.yarnpkg.com/events/-/events-3.3.0.tgz#31a95ad0a924e2d2c419a813aeb2c4e878ea7400"
   integrity sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==
+
+eventsource-parser@^3.0.1, eventsource-parser@^3.0.8:
+  version "3.1.1"
+  resolved "https://registry.yarnpkg.com/eventsource-parser/-/eventsource-parser-3.1.1.tgz#b96cbb7dace4f3774f58a9e3b1ae9a4a524872e2"
+  integrity sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==
+
+eventsource@^3.0.2:
+  version "3.0.7"
+  resolved "https://registry.yarnpkg.com/eventsource/-/eventsource-3.0.7.tgz#1157622e2f5377bb6aef2114372728ba0c156989"
+  integrity sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==
+  dependencies:
+    eventsource-parser "^3.0.1"
 
 execa@^1.0.0:
   version "1.0.0"
@@ -7441,6 +7481,11 @@ jiti@^2.4.2:
   resolved "https://registry.yarnpkg.com/jiti/-/jiti-2.7.0.tgz#974228f2f4ca2bc21885a1797b45fea68e950c64"
   integrity sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==
 
+jose@^6.1.3:
+  version "6.2.13"
+  resolved "https://registry.yarnpkg.com/jose/-/jose-6.2.13.tgz#4e16bf3cc81b5641ef5025cb2c9f61edfa92572f"
+  integrity sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ==
+
 js-tokens@^10.0.0:
   version "10.0.0"
   resolved "https://registry.yarnpkg.com/js-tokens/-/js-tokens-10.0.0.tgz#dffe7599b4a8bb7fe30aff8d0235234dffb79831"
@@ -8976,6 +9021,11 @@ pirates@^4.0.1:
   version "4.0.7"
   resolved "https://registry.yarnpkg.com/pirates/-/pirates-4.0.7.tgz#643b4a18c4257c8a65104b73f3049ce9a0a15e22"
   integrity sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==
+
+pkce-challenge@^5.0.0:
+  version "5.0.1"
+  resolved "https://registry.yarnpkg.com/pkce-challenge/-/pkce-challenge-5.0.1.tgz#3b4446865b17b1745e9ace2016a31f48ddf6230d"
+  integrity sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==
 
 pkg-dir@^4.1.0:
   version "4.2.0"
@@ -11699,10 +11749,15 @@ yoctocolors-cjs@^2.1.2:
   resolved "https://registry.yarnpkg.com/zod-validation-error/-/zod-validation-error-4.0.2.tgz#bc605eba49ce0fcd598c127fee1c236be3f22918"
   integrity sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==
 
-"zod@^3.25.0 || ^4.0.0":
+zod@4.6.5, "zod@^3.25.0 || ^4.0.0":
   version "4.6.5"
   resolved "https://registry.yarnpkg.com/zod/-/zod-4.6.5.tgz#e3af3edbdc260239c52f73caad05dbbffe6e82cd"
   integrity sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==
+
+zod@^4.2.0:
+  version "4.6.7"
+  resolved "https://registry.yarnpkg.com/zod/-/zod-4.6.7.tgz#e806cf64a7f4e37635ce9f2f52c04c3766f75e5b"
+  integrity sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==
 
 zustand@^4.4.0, zustand@^4.4.1:
   version "4.5.7"

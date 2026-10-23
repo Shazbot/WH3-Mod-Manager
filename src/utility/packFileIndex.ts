@@ -11,6 +11,7 @@ export interface PackedFileIndexEntry {
   name: string;
   file_size: number;
   is_compressed: boolean;
+  file_name_hash?: number;
   nextPosition: number;
 }
 
@@ -33,8 +34,10 @@ export const readPackedFileIndexEntry = (
   const file_size = packedFileIndex.readInt32LE(nextPosition);
   nextPosition += 4;
 
+  let file_name_hash: number | undefined;
   if (hasFileNameHash) {
     if (nextPosition + 4 > packedFileIndex.length) return undefined;
+    file_name_hash = packedFileIndex.readUInt32LE(nextPosition);
     nextPosition += 4;
   }
 
@@ -49,5 +52,11 @@ export const readPackedFileIndexEntry = (
   if (nameEnd === -1) return undefined;
 
   const name = packedFileIndex.toString("utf8", nextPosition, nameEnd);
-  return { name, file_size, is_compressed, nextPosition: nameEnd + 1 };
+  return {
+    name,
+    file_size,
+    is_compressed,
+    ...(file_name_hash === undefined ? {} : { file_name_hash }),
+    nextPosition: nameEnd + 1,
+  };
 };

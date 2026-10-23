@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "allowJs": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2021",
+    "lib": ["es2023"],
+    "types": ["node"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noEmit": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/packCore/**/*.ts",
+    "src/packFileTypes.ts",
+    "src/utility/packFileIndex.ts",
+    "src/utility/packFilePathUtils.ts"
+  ]
+}

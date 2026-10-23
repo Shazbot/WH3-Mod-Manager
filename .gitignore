@@ -102,6 +102,8 @@ plans
 
 # Build output for the standalone ESF tools (yarn esf:build)
 tools/esf/dist
+tools/packCore/dist
+/dist/
 tools/nativePatchHelper/.build/
 
 script
