@@ -37,7 +37,15 @@ import groupBy from "object.groupby";
 
 import "@xyflow/react/dist/style.css";
 import Skill, { SkillData } from "./Skill";
-import { skillArrow, skillArt, skillEntry, skillGroup, skillGroupPad, skillGroupWidth } from "./skillPanelLayout";
+import {
+  skillArrow,
+  skillArt,
+  skillEntry,
+  skillGroup,
+  skillGroupPad,
+  skillGroupWidth,
+  skillVariantStackY,
+} from "./skillPanelLayout";
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
@@ -239,7 +247,6 @@ skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 
 const nodeWidth = skillEntry.columnPitch;
 const nodeHeight = skillEntry.rowPitch;
-const biggerNodeHeight = nodeHeight + 20;
 const groupBoxHeight = skillGroupPad.top + skillEntry.height + skillGroupPad.bottom;
 const groupArtStyle = {
   border: "solid",
@@ -255,6 +262,13 @@ const groupArtStyle = {
  * @returns The width in px.
  */
 const groupBoxWidth = (numSkills: number) => (numSkills - 1) * nodeWidth + skillEntry.width + skillGroupPad.x * 2;
+
+/**
+ * Gets the key of the spot a skill sits on in the tree, shared by the skills stacked there.
+ * @param skill The skill to look up.
+ * @returns Its indent and tier, joined.
+ */
+const getStackSpot = (skill: Skill) => `${skill.origIndent}|${skill.origTier}`;
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
 /**
@@ -596,23 +610,20 @@ const SkillsView = memo(
       return skill;
     });
 
-    let usingBiggerNodeHeight = false;
+    // How many skills stack on each spot, which faction variants of one skill do.
+    const stackSizes: Record<string, number> = {};
+    for (const skill of skills) {
+      const spot = getStackSpot(skill);
+      stackSizes[spot] = (stackSizes[spot] || 0) + 1;
+    }
+    const maxStackSize = Math.max(1, ...Object.values(stackSizes));
+
     // if we need to overlay nodes make the y gap between them bigger (normal mode only —
     // in edit mode effectiveNodeHeight must stay at editModeNodeHeight so snap grid,
     // repositionPlaceholders, and the leaving-edit-mode transition all stay consistent)
-    if (
-      !isEditMode &&
-      skills.some((skillFirst) =>
-        skills.some(
-          (skillSecond) =>
-            skillFirst != skillSecond &&
-            skillFirst.origIndent == skillSecond.origIndent &&
-            skillFirst.origTier == skillSecond.origTier,
-        ),
-      )
-    ) {
-      effectiveNodeHeight = biggerNodeHeight;
-      usingBiggerNodeHeight = true;
+    if (!isEditMode && maxStackSize > 1) {
+      // Room for the deepest stack, so its last card clears the next row.
+      effectiveNodeHeight = nodeHeight + (maxStackSize - 1) * skillVariantStackY;
     }
     // console.log("with group:", skills.filter((skill) => skill.group).length);
     const groupedSkills = groupBy(
@@ -638,6 +649,10 @@ const SkillsView = memo(
           if (skills[i].y < lowest.y) lowest = skills[i];
           if (skills[i].y > highest.y) highest = skills[i];
         }
+        // Stacked members sit lower in the group, so the parchment grows to hold them.
+        const groupHeight =
+          skillGroup.artHeight +
+          (Math.max(...skills.map((skill) => stackSizes[getStackSpot(skill)])) - 1) * skillVariantStackY;
         skillNodes.push({
           id: `${group}_group`,
           data: {
@@ -676,11 +691,11 @@ const SkillsView = memo(
             backgroundColor: "transparent",
             zIndex: "0",
             width: skillGroupWidth(skills.length),
-            height: skillGroup.artHeight,
+            height: groupHeight,
           },
           className: "reactFlowGroup",
           width: skillGroupWidth(skills.length),
-          height: skillGroup.artHeight,
+          height: groupHeight,
         });
       }
     }
@@ -770,8 +785,8 @@ const SkillsView = memo(
         }
       } else {
         position = {
-          y: skill.x * effectiveNodeHeight + indexInSameCoords * 40,
-          x: columnXs[skill.x][skill.y] + indexInSameCoords * 25,
+          y: skill.x * effectiveNodeHeight + indexInSameCoords * skillVariantStackY,
+          x: columnXs[skill.x][skill.y],
         };
         if (skill.group) {
           const skillsInGroup = groupedSkills[skill.group];
@@ -779,8 +794,8 @@ const SkillsView = memo(
             const index = skillsInGroup.indexOf(skill);
             if (index > -1) {
               position = {
-                y: -skillGroup.artY + indexInSameCoords * 40,
-                x: skillGroup.marginX + index * (skillEntry.width + skillGroup.spacing) + indexInSameCoords * 25,
+                y: -skillGroup.artY + indexInSameCoords * skillVariantStackY,
+                x: skillGroup.marginX + index * (skillEntry.width + skillGroup.spacing),
               };
             }
           }
@@ -981,7 +996,7 @@ const SkillsView = memo(
         const groupInsetX = isEditMode ? skillGroupPad.x : 0;
         const targetLeft = targetNode.position.x + ((targetNode.data as any)?.isGrouping ? groupInsetX : 0);
         const x = Math.max(sourceNode.position.x, targetLeft) - skillArrow.width;
-        // A group's arrow leaves from its cards' row.
+        // A group's arrow leaves from its cards' row, which sits lower in a stacked faction variant's group.
         const sourceMember = (sourceNode.data as any)?.isGrouping && nodes.find((n) => n.parentId == sourceNode.id);
         const y = sourceNode.position.y + (sourceMember ? sourceMember.position.y : 0) + skillArrow.y;
         return { x, y };

@@ -45,6 +45,10 @@ export const skillArrow = { y: 16 + 10, width: 68 };
 // Not from the game: the edit mode box drawn around grouped skills, padding its cards on the left/right, top and bottom.
 export const skillGroupPad = { x: 10, top: 15, bottom: 10 };
 
+// Not from the game: each faction variant stacked on a taken spot is drawn this far below the one before it, so the
+// variants line up as rows without overlapping.
+export const skillVariantStackY = skillEntry.height + 10;
+
 // template_module: a group of skills, laid out as one item of its chain. Its entries are 20 px apart with 20 px margins.
 // It draws parchment_divider as a 9-slice with 30/30/15/30 margins, 99 px tall at y -22, whose clear edges leave a
 // panel from y -9 to 76.
