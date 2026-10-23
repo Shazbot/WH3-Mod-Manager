@@ -213,6 +213,33 @@ describe("SkillsView normal-mode layout", () => {
       skillEntry.columnPitch + skillGroupWidth(2) + skillEntry.columnPitch - skillEntry.width,
     );
   });
+  it("leaves no gap for an indent that holds no shown skills", async () => {
+    const gappedSkillsData = {
+      ...skillsData,
+      currentSkills: [skillAtRow(0), { ...skillAtRow(1), isHiddentInUI: true }, skillAtRow(2), skillAtRow(4)],
+    } as SkillsData;
+    window.api = {
+      ...window.api,
+      getSkillsEditorData: vi.fn().mockResolvedValue(undefined),
+    } as NonNullable<Window["api"]>;
+
+    const viewRef = createRef<SkillsViewHandle>();
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: { app: { ...initialState, isShowingHiddenSkills: false, skillsData: gappedSkillsData } },
+    });
+
+    render(
+      <Provider store={store}>
+        <SkillsView ref={viewRef} skillsData={gappedSkillsData} />
+      </Provider>,
+    );
+
+    await waitFor(() => expect(viewRef.current?.getSnapshot().nodes.length).toBeGreaterThan(0));
+    const nodes = viewRef.current!.getSnapshot().nodes;
+    expect(nodes.find((node) => node.id === "node_2")?.position.y).toBe(skillEntry.rowPitch);
+    expect(nodes.find((node) => node.id === "node_4")?.position.y).toBe(2 * skillEntry.rowPitch);
+  });
   it("makes room for stacked faction variants of a group", async () => {
     // Two variants of a two-skill group share the same spots in row 0, each linking to its own stacked lone card after
     // the group. Row 1 holds one more skill.

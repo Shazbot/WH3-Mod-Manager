@@ -625,6 +625,11 @@ const SkillsView = memo(
       // Room for the deepest stack, so its last card clears the next row.
       effectiveNodeHeight = nodeHeight + (maxStackSize - 1) * skillVariantStackY;
     }
+    // Like the game, only rows that hold skills take up room, so an unused indent leaves no gap.
+    const rowYs: Record<number, number> = {};
+    [...new Set(skills.map((skill) => skill.x))]
+      .sort((a, b) => a - b)
+      .forEach((row, index) => (rowYs[row] = index * effectiveNodeHeight));
     // console.log("with group:", skills.filter((skill) => skill.group).length);
     const groupedSkills = groupBy(
       skills.filter((skill) => skill.group),
@@ -679,7 +684,7 @@ const SkillsView = memo(
             unlockRank: 0,
           },
           position: {
-            y: lowest.x * effectiveNodeHeight + skillGroup.artY,
+            y: rowYs[lowest.x] + skillGroup.artY,
             x: columnXs[lowest.x][lowest.y],
           },
           sourcePosition: Position.Right,
@@ -785,7 +790,7 @@ const SkillsView = memo(
         }
       } else {
         position = {
-          y: skill.x * effectiveNodeHeight + indexInSameCoords * skillVariantStackY,
+          y: rowYs[skill.x] + indexInSameCoords * skillVariantStackY,
           x: columnXs[skill.x][skill.y],
         };
         if (skill.group) {
