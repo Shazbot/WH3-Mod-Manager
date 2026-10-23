@@ -13,15 +13,27 @@ const rootHelp = `Usage:
   whmm pack write <packPath> --output <outputPath> --input <jsonFile>
   whmm pack validate <packPath> [--full-payloads]
   whmm pack clone <packPath> --output <outputPath>
+  whmm pack diff <beforePath> <afterPath> [--details]
+  whmm pack subset <sourcePackPath> --include <glob> --output <outputPath> [--input <jsonFile>]
   whmm pack table read <packPath> <tablePath>
   whmm pack table query <packPath> <tablePath> --input <jsonFile>
   whmm pack table patch <packPath> <tablePath> --output <outputPath> --input <jsonFile>
+  whmm asset resolve --input <jsonFile>
+  whmm asset references --input <jsonFile>
 
 Flags:
   --format text|json   Select readable or machine-readable output (default text)
-  --input <file>       JSON operation fields for create, write, query, and patch
+  --input <file>       JSON operation fields for create, write, query, patch, subset, and asset tools
   --output <path>      Output pack or extracted file path
   --report <path>      Write the full result as a JSON report
+  --include <glob>     Add a packed path glob to a subset selection (repeatable)
+  --closure <mode>     Subset closure: none, direct, or transitive
+  --mode <mode>        Subset mode: external or selfContained
+  --strict             Reject incomplete requested closure
+  --include-vanilla    Copy vanilla dependencies in selfContained mode
+  --details            Include bounded semantic file-diff details
+  --semantic-offset    Semantic detail offset (default 0)
+  --semantic-limit     Semantic detail page size (default 100)
   --overwrite          Atomically replace an existing output file
   --offset <number>    Result offset (default 0)
   --limit <number>     Result page size (default 100)
@@ -45,6 +57,15 @@ const options = {
   "max-results": { type: "string" as const },
   "full-payloads": { type: "boolean" as const },
   "verify-sha256": { type: "boolean" as const },
+  details: { type: "boolean" as const },
+  "semantic-offset": { type: "string" as const },
+  "semantic-limit": { type: "string" as const },
+  include: { type: "string" as const, multiple: true },
+  closure: { type: "string" as const },
+  mode: { type: "string" as const },
+  strict: { type: "boolean" as const },
+  "no-strict": { type: "boolean" as const },
+  "include-vanilla": { type: "boolean" as const },
   "extract-to": { type: "string" as const },
   "pack-type": { type: "string" as const },
   help: { type: "boolean" as const },
@@ -171,6 +192,34 @@ const buildRequest = async (
       ensurePositionals(command, 3);
       return { ...common, operation: "pack_clone", packPath: first, ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }), ...(values["verify-sha256"] ? { verifySha256: true } : {}) };
     }
+    if (action === "diff") {
+      ensurePositionals(command, 4);
+      if (values.details) common.details = true;
+      if (values["path-prefix"] !== undefined) common.pathPrefix = values["path-prefix"];
+      if (values.glob !== undefined) common.glob = values.glob;
+      const semanticOffset = numericOption(values["semantic-offset"], "semantic-offset");
+      const semanticLimit = numericOption(values["semantic-limit"], "semantic-limit");
+      if (semanticOffset !== undefined) common.semanticOffset = semanticOffset;
+      if (semanticLimit !== undefined) common.semanticLimit = semanticLimit;
+      return { ...common, operation: "pack_diff", beforePath: first, afterPath: second };
+    }
+    if (action === "subset") {
+      ensurePositionals(command, 3);
+      if (values.strict && values["no-strict"]) throw new AutomationError("INVALID_ARGUMENT", "Use only one of --strict or --no-strict");
+      const includes = values.include === undefined ? [] : Array.isArray(values.include) ? values.include : [values.include];
+      const globs = [...(Array.isArray(extra.globs) ? extra.globs.filter((item): item is string => typeof item === "string") : []), ...includes];
+      return {
+        ...common,
+        operation: "pack_subset",
+        sourcePackPaths: Array.isArray(extra.sourcePackPaths) ? extra.sourcePackPaths : [first],
+        ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }),
+        ...(globs.length ? { globs } : {}),
+        ...(values.closure === undefined ? {} : { closure: values.closure }),
+        ...(values.mode === undefined ? {} : { mode: values.mode }),
+        ...(values.strict ? { strict: true } : values["no-strict"] ? { strict: false } : {}),
+        ...(values["include-vanilla"] ? { includeVanilla: true } : {}),
+      };
+    }
     if (action === "table") {
       const [, , tableAction, packPath, tablePath] = command;
       if (!["read", "query", "patch"].includes(tableAction)) throw new AutomationError("INVALID_ARGUMENT", `Unknown table command: ${tableAction ?? "(empty)"}`);
@@ -178,6 +227,12 @@ const buildRequest = async (
       const operation = tableAction === "read" ? "pack_read_table" : tableAction === "query" ? "pack_query_table" : "pack_patch_table";
       return { ...common, operation, packPath, tablePath, ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }) };
     }
+  }
+  if (group === "asset") {
+    ensurePositionals(command, 2);
+    if (!values.input) throw new AutomationError("INVALID_ARGUMENT", `asset ${action} requires --input <jsonFile>`);
+    if (action === "resolve") return { ...extra, ...common, operation: "asset_resolve_references" };
+    if (action === "references" || action === "find-references") return { ...extra, ...common, operation: "asset_find_references" };
   }
   if (group === "table") {
     ensurePositionals(command, 4);
@@ -209,7 +264,7 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
       const inputPath = await context.policy.assertReadPath(parsed.values.input);
       if (request && typeof request === "object") {
         const candidate = request as Record<string, unknown>;
-        const outputs = [candidate.outputPath, candidate.extractTo, candidate.reportPath].filter((value): value is string => typeof value === "string");
+        const outputs = [candidate.outputPath, candidate.extractTo, candidate.reportPath, candidate.manifestPath].filter((value): value is string => typeof value === "string");
         for (const outputPath of outputs) await context.policy.assertOutputDistinctFromSources(outputPath, [inputPath]);
       }
     }

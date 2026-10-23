@@ -13,6 +13,9 @@ import type { DeepCloneOverride, DeepCloneTreeNode, DeepCloneVariantAxis } from 
 import { expandRangeAxis, findTemplatesMissingVariant } from "./nodeGraph/deepCloneTree";
 import { buildLocKey, getLocKeyColumns } from "./utility/locKeyGeneration";
 import { evaluateFormula, formatFormulaResult, isNumericFieldType, isPlainNumber } from "./utility/formulaEvaluation";
+import { getFilenameRelativePathMatch, parseFilenameRelativePaths } from "./utility/filenameRelativePaths";
+
+export { parseFilenameRelativePaths } from "./utility/filenameRelativePaths";
 
 /** Guards against a variant product or a reference closure that would blow up the executor. */
 // A range axis makes large variant counts a normal thing to ask for; the limit is here to catch a
@@ -251,14 +254,6 @@ const resolveOverrideValue = (value: string, originalValue: string, field: DBFie
  * a unit card plus its masks, say - separated by semicolons, and the schema writes them with forward
  * slashes while pack paths use backslashes.
  */
-export const parseFilenameRelativePaths = (filenameRelativePath: unknown): string[] => {
-  if (typeof filenameRelativePath !== "string" || !filenameRelativePath.trim()) return [];
-  return filenameRelativePath
-    .split(";")
-    .map((pattern) => pattern.trim().replace(/\//g, "\\"))
-    .filter((pattern) => pattern.length > 0);
-};
-
 /**
  * Rewrites a value that embeds the row's key, used for the wildcard patterns where the cell already
  * holds a path rather than a bare name: swapping the key inside it gives the path of the copy.
@@ -449,8 +444,8 @@ export const executeDeepClonePlan = async (
         const swappedValue = replaceKeyInValue(cellValue, renamedKey.originalKey, renamedKey.newKey);
         if (swappedValue === cellValue) continue;
 
-        const sourcePrefix = pattern.replace("%", cellValue).replace(/\*.*$/, "");
-        const targetPrefix = pattern.replace("%", swappedValue).replace(/\*.*$/, "");
+        const sourcePrefix = getFilenameRelativePathMatch(pattern, cellValue).prefix!;
+        const targetPrefix = getFilenameRelativePathMatch(pattern, swappedValue).prefix!;
         for (const sourceName of listPackedFiles(sourcePrefix)) {
           const targetName = `${targetPrefix}${sourceName.slice(sourcePrefix.length)}`;
           if (targetName === sourceName) continue;
@@ -462,9 +457,9 @@ export const executeDeepClonePlan = async (
         continue;
       }
 
-      const sourceName = pattern.split("%").join(cellValue);
+      const sourceName = getFilenameRelativePathMatch(pattern, cellValue).exactPath!;
       if (!hasPackedFile(sourceName)) continue;
-      const targetName = pattern.split("%").join(renamedKey.newKey);
+      const targetName = getFilenameRelativePathMatch(pattern, renamedKey.newKey).exactPath!;
       if (targetName === sourceName) continue;
       if (!fileCopiesByTarget.has(targetName)) {
         fileCopiesByTarget.set(targetName, { sourceName, targetName });

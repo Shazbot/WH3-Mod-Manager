@@ -109,7 +109,7 @@ export const readPackIndex = (packPath: string, context: PackCoreContext): CoreP
     let payloadPosition = dataStart;
 
     for (let index = 0; index < fileCount; index++) {
-      const entry = readPackedFileIndexEntry(packedFileIndex, indexPosition, hasCompressionFlag, hasFileNameHash);
+      const entry = readPackedFileIndexEntry(packedFileIndex, indexPosition, hasCompressionFlag, hasFileNameHash, true);
       if (!entry) return fail(packPath, `could not parse packed-file index entry ${index}`);
       if (entry.file_size < 0) fail(packPath, `entry ${index} has a negative payload size`);
       if (entry.name.length === 0) fail(packPath, `entry ${index} has an empty filename`);

@@ -50,6 +50,11 @@ import {
 } from "./vanillaPackIndex/format";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
 import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
+import {
+  getCanonicalLogicalTableName,
+  normalizePackedDbFileName,
+  shouldReplaceEffectiveDbRowWinner,
+} from "./utility/effectiveDbRow";
 import { nativePatchColumnsToSchema } from "./nodeGraph/nativePatchSchema";
 import { readNativePatchPackEntry, type NativePatchPack } from "./nativePatches/planner";
 import {
@@ -220,15 +225,6 @@ const getRowsForPackedFile = (
  * independent of the pack that supplied the file: the effective row is chosen by the packed DB
  * filename alone.
  */
-const getCanonicalLogicalTableName = (packedFileName: string): string => {
-  const normalizedName = packedFileName.replace(/[\\/]+/g, "\\").toLowerCase();
-  const [folder, tableName] = normalizedName.split("\\");
-  return folder === "db" && tableName ? `db\\${tableName}` : normalizedName;
-};
-
-const normalizePackedDbFileName = (packedFileName: string): string =>
-  packedFileName.replace(/[\\/]+/g, "\\").toLowerCase();
-
 const cloneEffectiveSchemaField = (field: AmendedSchemaField): AmendedSchemaField => structuredClone(field);
 
 type EffectiveRowCandidate = {
@@ -317,7 +313,7 @@ export const resolveEffectiveTableRows = (
 
       // Lower lexical filename wins. Keeping the existing winner on equality gives stable
       // first-encountered behavior without consulting pack names or load order.
-      if (!currentWinner || candidate.normalizedFileName < currentWinner.normalizedFileName) {
+      if (!currentWinner || shouldReplaceEffectiveDbRowWinner(candidate.normalizedFileName, currentWinner.normalizedFileName)) {
         winnersByLogicalTableAndKey.set(identity, candidate);
       }
     }

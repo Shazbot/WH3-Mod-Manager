@@ -36,7 +36,7 @@ export const executeAutomationRequest = async (
   }
   try {
     const data = parsed.data as Record<string, unknown>;
-    const outputs = [data.outputPath, data.extractTo, data.reportPath].filter((value): value is string => typeof value === "string");
+    const outputs = [data.outputPath, data.extractTo, data.reportPath, data.manifestPath].filter((value): value is string => typeof value === "string");
     await context.policy.assertOutputsDistinct(outputs);
     const execute = definition.execute as (input: unknown, context: AutomationContext) => Promise<{ data: unknown; diagnostics: AutomationDiagnostic[] }>;
     const result = await execute(parsed.data, context);

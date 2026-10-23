@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { XMLValidator } from "fast-xml-parser";
 import { z } from "zod";
 import type { Field } from "../packFileTypes";
-import { getSchemaForGame } from "../schema";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { decodePackedTextBuffer, isTextPackedFilePath } from "../utility/packFileViewing";
 import { createSearchMatcher } from "../globalSearch/matcher";
@@ -12,12 +11,10 @@ import { scanTextForMatches } from "../globalSearch/textScan";
 import {
   DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES,
   readPackIndex,
-  readPayload,
   rewriteDbTableRows,
   serializeSchemaFieldToBuffer,
   writeRawPack,
   type CorePack,
-  type CorePackEntry,
   type DbSerializedCell,
   type ParsedDbTable,
   type RawPackWriteEntry,
@@ -37,8 +34,22 @@ import {
   type TableSchemaProvider,
   type TableSort,
 } from "./tables";
-import { AutomationError, automationErrorFromUnknown, type AutomationDiagnostic } from "./errors";
+import { AutomationError, type AutomationDiagnostic } from "./errors";
+import { packDiffSchema, runPackDiff } from "./diff";
+import {
+  assetFindReferencesSchema,
+  assetResolveReferencesSchema,
+  runAssetFindReferences,
+  runAssetResolveReferences,
+} from "./references";
+import { packSubsetSchema, runPackSubset } from "./subset";
 import { FilesystemPolicy, normalizeInternalPackPath } from "./filesystem";
+import {
+  findAutomationPackEntry as findEntry,
+  getAutomationSchemaProvider as schemaProviderFor,
+  readAutomationPack as readIndex,
+  readAutomationPayload as readLogical,
+} from "./packAccess";
 
 const pageShape = {
   offset: z.number().int().min(0).default(0),
@@ -122,6 +133,10 @@ export const operationSchemas = {
     operation: z.literal("pack_clone"), packPath: z.string().min(1), outputPath: z.string().min(1),
     overwrite: z.boolean().default(false), verifySha256: z.boolean().default(false), reportPath: z.string().min(1).optional(),
   }).strict(),
+  pack_diff: packDiffSchema,
+  asset_resolve_references: assetResolveReferencesSchema,
+  asset_find_references: assetFindReferencesSchema,
+  pack_subset: packSubsetSchema,
 } as const;
 
 export type OperationName = keyof typeof operationSchemas;
@@ -136,9 +151,6 @@ type OperationHandler<K extends OperationName> = (request: Request<K>, context: 
 export type OperationRegistry = { [K in OperationName]: { schema: (typeof operationSchemas)[K]; execute: OperationHandler<K> } };
 
 const defaultContext = (): AutomationContext => ({ policy: new FilesystemPolicy() });
-const schemaProviderFor = (context: AutomationContext): TableSchemaProvider =>
-  context.schemaProvider ?? ((game) => getSchemaForGame(game));
-
 const diagnostic = (
   code: string,
   message: string,
@@ -153,26 +165,6 @@ const hashFile = async (filePath: string): Promise<string> => {
   return hash.digest("hex");
 };
 
-const readIndex = async (packPath: string, context: AutomationContext): Promise<CorePack> => {
-  const canonicalPath = await context.policy.assertReadPath(packPath);
-  try {
-    return readPackIndex(canonicalPath, { game: "wh3", maxLogicalPayloadBytes: context.maxLogicalPayloadBytes });
-  } catch (error) {
-    if (error instanceof AutomationError) throw error;
-    const normalized = automationErrorFromUnknown(error);
-    if (normalized.code !== "INTERNAL") throw normalized;
-    throw new AutomationError("VALIDATION", error instanceof Error ? error.message : String(error), { packPath });
-  }
-};
-
-const findEntry = (pack: CorePack, inputPath: string): CorePackEntry => {
-  const wanted = normalizePackFilePathKey(normalizeInternalPackPath(inputPath));
-  const matches = pack.entries.filter((entry) => normalizePackFilePathKey(entry.name) === wanted);
-  if (matches.length === 0) throw new AutomationError("VALIDATION", `Packed file not found: ${inputPath}`);
-  if (matches.length > 1) throw new AutomationError("CONFLICT", `Packed file path is ambiguous: ${inputPath}`);
-  return matches[0];
-};
-
 const parseTablePath = (inputPath: string) => {
   try {
     return parseDBTablePath(normalizeInternalPackPath(inputPath).toLowerCase());
@@ -181,19 +173,6 @@ const parseTablePath = (inputPath: string) => {
   }
 };
 const isDbTablePath = (inputPath: string): boolean => Boolean(parseTablePath(inputPath));
-
-const readLogical = async (pack: CorePack, entry: CorePackEntry, context: AutomationContext): Promise<Buffer> => {
-  try {
-    return await readPayload(pack, entry, {
-      game: "wh3",
-      maxLogicalPayloadBytes: context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const code = /not available|unsupported codec/i.test(message) ? "UNSUPPORTED" : "VALIDATION";
-    throw new AutomationError(code, message, { filePath: entry.name });
-  }
-};
 
 const page = <T>(values: readonly T[], offset: number, limit: number) => ({
   total: values.length,
@@ -775,6 +754,10 @@ export const operationRegistry: OperationRegistry = {
   pack_patch_table: { schema: operationSchemas.pack_patch_table, execute: runPatchTable },
   pack_validate: { schema: operationSchemas.pack_validate, execute: runValidate },
   pack_clone: { schema: operationSchemas.pack_clone, execute: runClone },
+  pack_diff: { schema: operationSchemas.pack_diff, execute: runPackDiff },
+  asset_resolve_references: { schema: operationSchemas.asset_resolve_references, execute: runAssetResolveReferences },
+  asset_find_references: { schema: operationSchemas.asset_find_references, execute: runAssetFindReferences },
+  pack_subset: { schema: operationSchemas.pack_subset, execute: runPackSubset },
 };
 
 export const createAutomationContext = (options: {

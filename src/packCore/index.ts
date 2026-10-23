@@ -18,6 +18,7 @@ export {
 } from "./types";
 export { packGames, packGameSupportsCompression, packGameToHeader, type PackGame } from "./gameContext";
 export { decompressPackedPayload } from "./compression";
+export { UnsupportedPackCodecError } from "./compression";
 export {
   dbPreambleMarkers,
   parseDbTable,

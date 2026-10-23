@@ -27,6 +27,7 @@ export const readPackedFileIndexEntry = (
   position: number,
   hasCompressionFlag: boolean,
   hasFileNameHash: boolean,
+  strictCompressionFlag = false,
 ): PackedFileIndexEntry | undefined => {
   let nextPosition = position;
   if (nextPosition + 4 > packedFileIndex.length) return undefined;
@@ -44,7 +45,11 @@ export const readPackedFileIndexEntry = (
   let is_compressed = false;
   if (hasCompressionFlag) {
     if (nextPosition + 1 > packedFileIndex.length) return undefined;
-    is_compressed = packedFileIndex[nextPosition] === 1;
+    const compressionFlag = packedFileIndex[nextPosition];
+    if (strictCompressionFlag && compressionFlag > 1) {
+      throw new Error(`Invalid packed-file compression flag ${compressionFlag} at ${nextPosition}`);
+    }
+    is_compressed = compressionFlag === 1;
     nextPosition += 1;
   }
 

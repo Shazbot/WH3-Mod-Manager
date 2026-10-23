@@ -11,7 +11,7 @@ import type {
 
 const GUID_MARKER = Buffer.from([0xfd, 0xfe, 0xfc, 0xff]);
 const VERSION_MARKER = Buffer.from([0xfc, 0xfd, 0xfe, 0xff]);
-const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 const requireBytes = (buffer: Buffer, position: number, size: number, type: string): void => {
   if (!Number.isSafeInteger(position) || position < 0 || !Number.isSafeInteger(size) || size < 0) {

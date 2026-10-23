@@ -58,7 +58,7 @@ export const automationErrorFromUnknown = (error: unknown): AutomationError => {
   if (code === "ENOENT" || code === "EACCES" || code === "EPERM" || code === "EROFS" || code === "ENOTDIR") {
     return new AutomationError("IO_ACCESS", (error as Error).message);
   }
-  if (code === "ENOTSUP" || code === "ERR_ZSTD_INVALID_DATA" || code === "ZSTD_DECODER_ERROR") {
+  if (code === "UNSUPPORTED_CODEC" || code === "ENOTSUP" || code === "ERR_ZSTD_INVALID_DATA" || code === "ZSTD_DECODER_ERROR") {
     return new AutomationError("UNSUPPORTED", (error as Error).message);
   }
   return new AutomationError("INTERNAL", error instanceof Error ? error.message : String(error));

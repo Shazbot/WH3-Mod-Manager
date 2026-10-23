@@ -6,10 +6,25 @@ const lz4FrameMagic = Buffer.from([0x04, 0x22, 0x4d, 0x18]);
 
 type Lz4Module = { decompressFrame(data: string | Buffer): Promise<Buffer> };
 
+export class UnsupportedPackCodecError extends Error {
+  readonly code = "UNSUPPORTED_CODEC";
+
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+    this.name = "UnsupportedPackCodecError";
+  }
+}
+
 let lz4Module: Lz4Module | undefined;
 
 const loadLz4 = (): Lz4Module => {
-  lz4Module ??= require("lz4-napi") as Lz4Module;
+  if (!lz4Module) {
+    try {
+      lz4Module = require("lz4-napi") as Lz4Module;
+    } catch (error) {
+      throw new UnsupportedPackCodecError("LZ4-compressed payload requires the lz4-napi native codec binding", error);
+    }
+  }
   return lz4Module;
 };
 
@@ -42,6 +57,8 @@ export const decompressPackedPayload = async (
   }
 
   const offsets: number[] = [];
+  const zstdOffsets = new Set<number>();
+  const lz4Offsets = new Set<number>();
   const addOffset = (offset: number) => {
     if (offset < 0 || offset >= buffer.length) return;
     if (!offsets.includes(offset)) offsets.push(offset);
@@ -49,13 +66,20 @@ export const decompressPackedPayload = async (
   addOffset(4);
   addOffset(0);
   for (let index = 0; index <= Math.min(32, buffer.length - 4); index++) {
-    if (buffer.subarray(index, index + 4).equals(zstdFrameMagic)) addOffset(index);
-    if (buffer.subarray(index, index + 4).equals(lz4FrameMagic)) addOffset(index);
+    if (buffer.subarray(index, index + 4).equals(zstdFrameMagic)) {
+      addOffset(index);
+      zstdOffsets.add(index);
+    }
+    if (buffer.subarray(index, index + 4).equals(lz4FrameMagic)) {
+      addOffset(index);
+      lz4Offsets.add(index);
+    }
   }
   addOffset(8);
   addOffset(12);
   addOffset(16);
   let lastError: unknown;
+  const oversizedZstdOffsets = new Set<number>();
 
   const checked = (result: Buffer): Buffer => {
     if (result.length > maxOutputBytes) throw new Error(`decompressed payload exceeds ${maxOutputBytes} bytes`);
@@ -68,6 +92,9 @@ export const decompressPackedPayload = async (
     try {
       return checked(tryZstdDecompress(payload, maxOutputBytes));
     } catch (error) {
+      if (error instanceof Error && (/maxOutputLength|larger than/i.test(error.message) || ("code" in error && (error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE"))) {
+        oversizedZstdOffsets.add(offset);
+      }
       lastError = error;
     }
   }
@@ -77,10 +104,12 @@ export const decompressPackedPayload = async (
     try {
       return checked(await tryLz4FrameDecompress(payload));
     } catch (error) {
+      if (error instanceof UnsupportedPackCodecError) throw error;
       lastError = error;
     }
   }
   for (const offset of offsets) {
+    if (zstdOffsets.has(offset) || lz4Offsets.has(offset) || oversizedZstdOffsets.has(offset)) continue;
     const payload = buffer.subarray(offset);
     if (payload.length < 4) continue;
     try {
